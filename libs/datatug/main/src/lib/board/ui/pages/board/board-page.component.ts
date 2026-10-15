@@ -1,10 +1,4 @@
-import {
-  Component,
-  OnDestroy,
-  OnInit,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import {
@@ -24,14 +18,23 @@ import {
   IonRow,
   IonToolbar,
 } from '@ionic/angular';
-import { distinctUntilChanged, filter, map, takeUntil } from 'rxjs/operators';
-import { Subject } from 'rxjs';
+import {
+  catchError,
+  distinctUntilChanged,
+  map,
+  switchMap,
+  takeUntil,
+} from 'rxjs/operators';
+import { EMPTY, Subject, combineLatest } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Board } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
-import { projectRefToString } from '../../../../core/project-context';
+import {
+  IProjectRef,
+  projectRefToString,
+} from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import {
@@ -45,7 +48,6 @@ import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-se
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { BoardComponent } from '../../components/board/board.component';
-import { EnvSelectorComponent } from '../../components/env-selector/env-selector.component';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 
 @Component({
@@ -87,7 +89,6 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
     IonCard,
     IonItem,
     IonInput,
-    EnvSelectorComponent,
     BoardComponent,
   ],
   providers: [QueryParamsService, ParameterLookupService],
@@ -115,10 +116,11 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly projBoard = signal<IProjBoard | undefined>(undefined);
 
   readonly boardDef = signal<Board | undefined>(undefined);
+  readonly projectRef = signal<IProjectRef | undefined>(undefined);
+  readonly loading = signal(true);
+  readonly loadError = signal<string | undefined>(undefined);
 
-  readonly parameters = signal<IParamWithDefAndValue[] | undefined>(
-    undefined,
-  );
+  readonly parameters = signal<IParamWithDefAndValue[] | undefined>(undefined);
 
   defaultHref?: string;
   readonly envId = signal<string | null | undefined>('LOCAL');
@@ -132,110 +134,72 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly destroyed$ = new Subject<void>();
 
   constructor() {
-    const dataTugNavContext = this.dataTugNavContext;
-    this.projBoard.set(history.state?.projBoard);
-    this.parameters.set(this.resolveParameters());
-    try {
-      this.route.queryParamMap.subscribe({
-        next: (queryParamMap) => {
-          const envId = queryParamMap.get('env');
-          this.envId.set(envId);
-          if (envId) {
-            this.dataTugNavContext.setCurrentEnvironment(envId);
-          }
-        },
-        error: (err) =>
-          this.errorLogger.logError(err, 'Failed to get query parameters'),
-      });
-      dataTugNavContext.currentEnv
-        .pipe(takeUntil(this.destroyed$.asObservable()))
-        .subscribe({
-          next: (env) => {
-            this.envId.set(env?.id);
-            if (env?.id) {
-              this.queryParamsService.setQueryParameter('env', env.id);
-            }
-          },
-          error: (e) =>
-            this.errorLogger.logError(
-              e,
-              'Failed on getting current environment',
-            ),
-        });
-      dataTugNavContext.currentProject
-        .pipe(
-          filter((p) => !!p?.ref),
-          map((p) => p?.ref),
-          distinctUntilChanged(
-            (a, b) => projectRefToString(a) === projectRefToString(b),
-          ),
-          filter((ref) => !!ref),
-        )
-        .subscribe((ref) => {
-          const { storeId, projectId } = ref;
-          this.storeId.set(storeId);
-          this.projectId.set(projectId);
-          this.route.paramMap.subscribe((params) => {
-            const boardId = params.get(routingParamBoard);
-            this.boardId.set(boardId);
-            try {
-              if (!projectId) {
-                throw new Error('projectId is ' + projectId);
-              }
-              if (!boardId) {
-                throw new Error('boardId is ' + boardId);
-              }
-              if (!this.storeId) {
-                throw new Error('storeId is ' + this.storeId);
-              }
-              // Was hard-coded to 'http://localhost:8989' regardless of the
-              // project's actual store — every board (agent or GitHub) 404'd
-              // /threw against the wrong host unless a local agent happened
-              // to be listening there. `storeId` (destructured from `ref`
-              // just above, and also tracked in the `storeId` signal) is
-              // the project's real store id — use it (confirmed live, S136).
-              this.boardService
-                .getBoard(storeId, projectId, boardId)
-                .subscribe({
-                  next: (board) => {
-                    try {
-                      // `Board.parameters` (from `@datatug/board-models`, a
-                      // field-for-field mirror of boards.go) types `type` as
-                      // plain `string`, matching Go's `ParameterDef.Type`;
-                      // `IProjBoard.parameters` (this app's own model) narrows
-                      // it to `DataType`. Both describe the same JSON shape,
-                      // so the cast is type-only, not a behaviour change.
-                      this.projBoard.set(board as IProjBoard);
-                      this.boardDef.set(board);
-                      this.parameters.set(this.resolveParameters());
-                    } catch (e) {
-                      this.errorLogger.logError(
-                        e,
-                        'Failed to process board response',
-                      );
-                    }
-                  },
-                  error: (err) =>
-                    this.errorLogger.logError(err, 'Failed to get board'),
-                });
-            } catch (e) {
-              this.errorLogger.logError(
-                e,
-                'Failed to request board definition',
-              );
-            }
-          });
-        });
-      dataTugNavContext.currentEnv.subscribe({
+    this.route.queryParamMap.pipe(takeUntil(this.destroyed$)).subscribe({
+      next: (queryParamMap) => {
+        const envId = queryParamMap.get('env');
+        if (envId) this.dataTugNavContext.setCurrentEnvironment(envId);
+      },
+      error: (err) =>
+        this.errorLogger.logError(err, 'Failed to get query parameters'),
+    });
+    this.dataTugNavContext.currentEnv
+      .pipe(takeUntil(this.destroyed$))
+      .subscribe({
         next: (env) => {
           this.envId.set(env?.id);
+          if (env?.id) this.queryParamsService.setQueryParameter('env', env.id);
         },
         error: (err) =>
-          this.errorLogger.logError(err, 'Failed process current environment'),
+          this.errorLogger.logError(err, 'Failed to get current environment'),
       });
-    } catch (e) {
-      this.errorLogger.logError(e, 'Failed in BoardPage.constructor()');
-    }
+    combineLatest([this.dataTugNavContext.currentProject, this.route.paramMap])
+      .pipe(
+        map(([project, params]) => ({
+          ref: project?.ref,
+          id: params.get(routingParamBoard),
+        })),
+        distinctUntilChanged(
+          (a, b) =>
+            a.id === b.id &&
+            projectRefToString(a.ref) === projectRefToString(b.ref),
+        ),
+        switchMap(({ ref, id }) => {
+          this.projectRef.set(ref);
+          this.storeId.set(ref?.storeId);
+          this.projectId.set(ref?.projectId);
+          this.boardId.set(id);
+          this.boardDef.set(undefined);
+          this.projBoard.set(undefined);
+          this.parameters.set(undefined);
+          this.loadError.set(undefined);
+          this.loading.set(true);
+          if (!ref) return EMPTY;
+          if (!id) {
+            this.loading.set(false);
+            this.loadError.set('Board ID is missing.');
+            return EMPTY;
+          }
+          return this.boardService
+            .getBoard(ref.storeId, ref.projectId, id)
+            .pipe(
+              catchError((err: unknown) => {
+                this.errorLogger.logError(err, 'Failed to get board');
+                this.loadError.set(
+                  'This board could not be loaded. Try opening it again from Boards.',
+                );
+                this.loading.set(false);
+                return EMPTY;
+              }),
+            );
+        }),
+        takeUntil(this.destroyed$),
+      )
+      .subscribe((board) => {
+        this.projBoard.set(board as IProjBoard);
+        this.boardDef.set(board);
+        this.parameters.set(this.resolveParameters());
+        this.loading.set(false);
+      });
   }
 
   /**
@@ -247,20 +211,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private resolveParameters(): IParamWithDefAndValue[] | undefined {
     const defs = this.boardDef()?.parameters ?? this.projBoard()?.parameters;
     return defs?.map((def) => ({ def: def as IParameterDef, val: '' }));
-  }
-
-  public startEditing(): void {
-    this.boardContext.update((boardContext) => ({
-      ...boardContext,
-      mode: 'edit',
-    }));
-  }
-
-  public saveChanges(): void {
-    this.boardContext.update((boardContext) => ({
-      ...boardContext,
-      mode: 'view',
-    }));
   }
 
   ngOnInit() {

@@ -1,6 +1,19 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { BoardWidget, SQLWidgetDef, TabsWidgetDef } from '@datatug/board-models';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  input,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { IonButton } from '@ionic/angular';
+import {
+  BoardWidget,
+  SQLWidgetDef,
+  TabsWidgetDef,
+} from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
+import { IProjectRef } from '../../../../core/project-context';
+import { projectPageHref } from '../../../../nav/project-page-href';
 import { QueryType } from '../../../../models/definition/query-def';
 import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.component';
 
@@ -8,7 +21,7 @@ import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.componen
   selector: 'sneat-datatug-board-widget',
   templateUrl: './board-widget.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TabsWidgetComponent],
+  imports: [TabsWidgetComponent, RouterLink, IonButton],
 })
 export class BoardWidgetComponent {
   readonly level = input<number>();
@@ -26,6 +39,24 @@ export class BoardWidgetComponent {
   readonly sqlWidgetDef = computed(
     () => this.widgetDef()?.data as SQLWidgetDef | undefined,
   );
+  readonly queryId = computed(() => this.sqlWidgetDef()?.sql?.queryId?.trim());
+  readonly queryHref = computed(() => {
+    const ref = this.projectRef();
+    const id = this.queryId();
+    if (!ref || !id) return undefined;
+    const href = projectPageHref(ref, ['query', id]);
+    return href === '/' ? undefined : href;
+  });
+  readonly queryParams = computed(() => {
+    const ref = this.projectRef();
+    return {
+      id: this.queryId(),
+      ...(ref?.projectApi
+        ? { projectApi: ref.projectApi, branch: ref.branch }
+        : {}),
+    };
+  });
 
   readonly boardContext = input<IBoardContext>();
+  readonly projectRef = input<IProjectRef>();
 }

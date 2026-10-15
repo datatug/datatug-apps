@@ -1,5 +1,6 @@
 import {
   Component,
+  computed,
   OnDestroy,
   OnInit,
   inject,
@@ -19,9 +20,18 @@ import {
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { Subject } from 'rxjs';
-import { takeUntil } from 'rxjs/operators';
+import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
+import { of, Subject } from 'rxjs';
+import {
+  catchError,
+  distinctUntilChanged,
+  map,
+  switchMap,
+  takeUntil,
+  tap,
+} from 'rxjs/operators';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
+import { projectRefToString } from '../../../../core/project-context';
 import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
 import {
   folderItemsAsList,
@@ -85,8 +95,14 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly alertCtrl = inject(AlertController);
   private readonly foldersService = inject(DatatugFoldersService);
 
-  tab = 'shared';
-  noItemsText?: string;
+  readonly canCreateBoard = computed(() => {
+    const storeId = this.project()?.ref?.storeId;
+    return (
+      !!storeId &&
+      storeId !== STORE_ID_GITHUB_COM &&
+      storeId !== STORE_TYPE_GITHUB
+    );
+  });
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts). Both are written from
@@ -106,22 +122,37 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly destroyed = new Subject<void>();
 
   constructor() {
-    this.tabChanged(this.tab);
     this.datatugNavContextService.currentProject
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (currentProject) => {
-          try {
-            this.setProject(currentProject);
-            // this.project = currentProject;
-            // this.boards = currentProject?.summary?.boards || [];
-          } catch (e) {
-            this.errorLogger.logError(
-              e,
-              'Failed to process current project in Boards page',
-            );
+      .pipe(
+        tap((currentProject) => {
+          if (
+            projectRefToString(currentProject?.ref) !==
+            projectRefToString(this.project()?.ref)
+          ) {
+            this.boards.set(undefined);
           }
-        },
+          this.project.set(currentProject);
+        }),
+        map((currentProject) => currentProject?.ref),
+        distinctUntilChanged(
+          (a, b) => projectRefToString(a) === projectRefToString(b),
+        ),
+        switchMap((ref) =>
+          ref
+            ? this.foldersService
+                .watchFolder({ ...ref, id: this.folderPath })
+                .pipe(
+                  catchError((err: unknown) => {
+                    this.errorLogger.logError(err, 'Failed to load boards');
+                    return of(null);
+                  }),
+                )
+            : of(null),
+        ),
+        takeUntil(this.destroyed),
+      )
+      .subscribe({
+        next: (folder) => this.onFolderReceived(this.folderPath, folder),
         error: (err) =>
           this.errorLogger.logError(
             err,
@@ -133,20 +164,6 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed.next();
     this.destroyed.complete();
-  }
-
-  private setProject(project?: IProjectContext): void {
-    const path = this.folderPath;
-    if (
-      project?.ref?.projectId &&
-      project.ref.projectId !== this.project()?.ref?.projectId
-    ) {
-      this.foldersService
-        .watchFolder({ ...project.ref, id: path })
-        .pipe(takeUntil(this.destroyed))
-        .subscribe((folder) => this.onFolderReceived(path, folder));
-    }
-    this.project.set(project);
   }
 
   private onFolderReceived = (path: string, folder?: IFolder | null): void => {
@@ -256,23 +273,6 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
       ],
     });
     await modal.present();
-  }
-
-  public tabChanged(tab: string): void {
-    this.tab = tab;
-    switch (tab) {
-      case 'favorite':
-        this.noItemsText = 'No favorite boards';
-        break;
-      case 'personal':
-        this.noItemsText = 'No personal boards';
-        break;
-      case 'shared':
-        this.noItemsText = 'No shared boards';
-        break;
-      default:
-        this.noItemsText = 'No boards';
-    }
   }
 
   private logError = (message: () => string) => (err: unknown) =>

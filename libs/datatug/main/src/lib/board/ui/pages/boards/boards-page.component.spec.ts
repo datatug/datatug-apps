@@ -156,7 +156,10 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     fixture = TestBed.createComponent(BoardsPageComponent);
   });
 
-  function boardsCard(): HTMLElement & { isLoading?: boolean; items?: unknown[] } {
+  function boardsCard(): HTMLElement & {
+    isLoading?: boolean;
+    items?: unknown[];
+  } {
     return fixture.nativeElement.querySelector(
       'sneat-card-list',
     ) as HTMLElement & { isLoading?: boolean; items?: unknown[] };
@@ -182,5 +185,68 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     // because `sneat-card-list` reads `.title`, not `.name` — see that
     // method's own doc comment (S136) for the display bug this fixes.
     expect(boardsCard().items).toEqual([{ id: 'b1', title: 'Board One' }]);
+  });
+});
+
+describe('BoardsPage project switching', () => {
+  it('reloads boards when the store changes for the same project ID and ignores stale folder results', async () => {
+    const projects = new Subject<IProjectContext>();
+    const firstFolder = new Subject<IFolder | null>();
+    const secondFolder = new Subject<IFolder | null>();
+    const watchFolder = vi
+      .fn()
+      .mockReturnValueOnce(firstFolder.asObservable())
+      .mockReturnValueOnce(secondFolder.asObservable());
+
+    await TestBed.configureTestingModule({
+      imports: [BoardsPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject: projects.asObservable() },
+        },
+        {
+          provide: DatatugNavService,
+          useValue: { projectPageUrl: vi.fn(), goBoard: vi.fn() },
+        },
+        { provide: DatatugBoardService, useValue: { createNewBoard: vi.fn() } },
+        { provide: AlertController, useValue: { create: vi.fn() } },
+        { provide: DatatugFoldersService, useValue: { watchFolder } },
+      ],
+    })
+      .overrideComponent(BoardsPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(BoardsPageComponent);
+    const page = fixture.componentInstance;
+    projects.next({ ref: { storeId: 'github.com', projectId: 'shared-id' } });
+    firstFolder.next({ id: '~', boards: { first: { name: 'First board' } } });
+    expect(page.boards()).toEqual([{ id: 'first', title: 'First board' }]);
+
+    projects.next({ ref: { storeId: 'firestore', projectId: 'shared-id' } });
+    expect(page.boards()).toBeUndefined();
+    firstFolder.next({ id: '~', boards: { stale: { name: 'Stale board' } } });
+    expect(page.boards()).toBeUndefined();
+    secondFolder.next({
+      id: '~',
+      boards: { second: { name: 'Second board' } },
+    });
+
+    expect(page.boards()).toEqual([{ id: 'second', title: 'Second board' }]);
+    expect(watchFolder).toHaveBeenNthCalledWith(2, {
+      storeId: 'firestore',
+      projectId: 'shared-id',
+      id: '~',
+    });
+    fixture.destroy();
   });
 });

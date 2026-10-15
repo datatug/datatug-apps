@@ -1,6 +1,7 @@
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { IonCol, IonRow } from '@ionic/angular';
 import { BoardRow } from '@datatug/board-models';
+import { IProjectRef } from '../../../../core/project-context';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { BoardCardComponent } from '../board-card/board-card.component';
 
@@ -13,4 +14,5 @@ import { BoardCardComponent } from '../board-card/board-card.component';
 export class BoardRowComponent {
   readonly boardRowDef = input<BoardRow>();
   readonly boardContext = input<IBoardContext>();
+  readonly projectRef = input<IProjectRef>();
 }

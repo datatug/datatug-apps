@@ -139,6 +139,91 @@ describe('BoardPage - currentProject navigation', () => {
   });
 });
 
+describe('BoardPage switches board reads with the full project context', () => {
+  it('clears the old board and ignores a late response after a project switch', async () => {
+    const projects = new Subject<{
+      ref: { storeId: string; projectId: string };
+    }>();
+    const firstBoard = new Subject<Board>();
+    const secondBoard = new Subject<Board>();
+    const getBoard = vi
+      .fn()
+      .mockReturnValueOnce(firstBoard.asObservable())
+      .mockReturnValueOnce(secondBoard.asObservable());
+
+    await TestBed.configureTestingModule({
+      imports: [BoardPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        { provide: DatatugBoardService, useValue: { getBoard } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({
+              get: (key: string) =>
+                key === routingParamBoard ? 'board1' : null,
+            }),
+          },
+        },
+        {
+          provide: ParameterLookupService,
+          useValue: { lookupParameterValue: vi.fn() },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: projects.asObservable(),
+            currentEnv: of(undefined),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: QueryParamsService,
+          useValue: { setQueryParameter: vi.fn() },
+        },
+      ],
+    })
+      .overrideComponent(BoardPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    const page = fixture.componentInstance;
+    projects.next({
+      ref: { storeId: 'github.com', projectId: 'first@owner@' },
+    });
+    firstBoard.next({ id: 'board1', title: 'First project' });
+    expect(page.boardDef()?.title).toBe('First project');
+
+    projects.next({
+      ref: { storeId: 'github.com', projectId: 'second@owner@' },
+    });
+    expect(page.boardDef()).toBeUndefined();
+    expect(page.loading()).toBe(true);
+    firstBoard.next({ id: 'board1', title: 'Stale response' });
+    expect(page.boardDef()).toBeUndefined();
+    secondBoard.next({ id: 'board1', title: 'Second project' });
+
+    expect(page.boardDef()?.title).toBe('Second project');
+    expect(page.loading()).toBe(false);
+    expect(getBoard).toHaveBeenNthCalledWith(
+      2,
+      'github.com',
+      'second@owner@',
+      'board1',
+    );
+    fixture.destroy();
+  });
+});
+
 /**
  * Regression for the same "Loading..." bug class the founder reported
  * (2026-09-10) — same fix already established in
@@ -161,7 +246,9 @@ describe('BoardPage - currentProject navigation', () => {
  */
 describe('BoardPage renders the board once it arrives asynchronously (zoneless)', () => {
   let fixture: ComponentFixture<BoardPageComponent>;
-  let currentProject$: Subject<{ ref: { storeId: string; projectId: string } } | undefined>;
+  let currentProject$: Subject<
+    { ref: { storeId: string; projectId: string } } | undefined
+  >;
   let getBoard$: Subject<Board>;
 
   beforeEach(async () => {
@@ -223,7 +310,7 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
 
   it('replaces the board title placeholder once the board arrives, with no explicit detectChanges()', async () => {
     fixture.detectChanges(); // initial render — nothing has arrived yet
-    expect(fixture.nativeElement.innerHTML).toContain('Board title');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Board');
 
     const board: Board = {
       id: 'board-1',
@@ -244,7 +331,7 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     getBoard$.next(board);
     await fixture.whenStable();
 
-    expect(fixture.nativeElement.innerHTML).not.toContain('Board title');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).not.toBe('Board');
     expect(fixture.nativeElement.innerHTML).toContain('My Real Board');
     expect(fixture.nativeElement.innerHTML).toContain('Param 1');
   });
