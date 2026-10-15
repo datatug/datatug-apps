@@ -1,4 +1,3 @@
-import { DOCUMENT } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -40,7 +39,7 @@ import {
   classifyAgentError,
 } from '../agent-link-api.service';
 import { linkTableRef } from '../link-route';
-import { lookupKey, parseKeyObject, pkOfFragment } from '../record-key';
+import { lookupKey, parseKeyObject, pkOfRouteFragment } from '../record-key';
 import { qualifiedTableName } from '../table-identity';
 import { RecordHop, recordHops } from '../record-hops';
 import { RecordHopsComponent } from '../record-hops.component';
@@ -92,7 +91,6 @@ type RecordState =
 export class TableRecordPageComponent {
   private readonly api = inject(AgentLinkApiService);
   private readonly route = inject(ActivatedRoute);
-  private readonly document = inject(DOCUMENT);
   private readonly reload$ = new Subject<void>();
 
   readonly tableRef = signal<AgentTableRef | undefined>(undefined);
@@ -129,8 +127,9 @@ export class TableRecordPageComponent {
     if (!ref) {
       return of({ kind: 'problem', problem: 'table-not-found' });
     }
-    // The raw fragment of the address, not the router's decoded copy: the key is decoded exactly once, here.
-    const pkText = pkOfFragment(this.document.location?.hash);
+    // The router's copy of the fragment, decoded once: the address bar itself may already hold the router's
+    // re-encoded form, in which a `&` inside a key value is bare (see pkOfRouteFragment).
+    const pkText = pkOfRouteFragment(this.route.snapshot.fragment);
     const key = pkText === undefined ? undefined : parseKeyObject(pkText);
     if (!key) {
       return of({ kind: 'problem', problem: 'bad-key' });

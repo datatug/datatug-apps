@@ -1,6 +1,6 @@
 import { AgentTableSchema } from './agent-link-api.service';
 import { recordsLimit } from './link-route';
-import { lookupKey, parseKeyObject, pkOfFragment } from './record-key';
+import { lookupKey, parseKeyObject, pkOfRouteFragment } from './record-key';
 
 const PLAYLIST_TRACK: AgentTableSchema = {
   columns: [
@@ -35,17 +35,15 @@ function keyOf(text: string, schema: AgentTableSchema) {
   return parsed && lookupKey(parsed, schema);
 }
 
-describe('pkOfFragment', () => {
-  it('reads pk from the fragment a card link carries, after the code was taken out or not', () => {
-    const pk = '%7B%22PlaylistId%22%3A1%2C%22TrackId%22%3A3402%7D';
-    expect(pkOfFragment(`#pk=${pk}`)).toBe('{"PlaylistId":1,"TrackId":3402}');
-    expect(pkOfFragment(`#code=v1.x&pk=${pk}`)).toBe('{"PlaylistId":1,"TrackId":3402}');
-    expect(pkOfFragment(`pk=${pk}`)).toBe('{"PlaylistId":1,"TrackId":3402}');
-  });
+describe('pkOfRouteFragment (the fragment as the router decodes it)', () => {
+  it.each([
+    ['pk={"Code":"AT&T"}', '{"Code":"AT&T"}'],
+    ['code=v1.x&pk={"Code":"a&pk=b"}', '{"Code":"a&pk=b"}'],
+    ['pk={"PlaylistId":1,"TrackId":3402}', '{"PlaylistId":1,"TrackId":3402}'],
+  ])('%s', (fragment, json) => expect(pkOfRouteFragment(fragment)).toBe(json));
 
-  it.each(['', '#', '#code=x', '#pk=', '#pk=%E0%A4%A', '#pk=1&pk=2', null, undefined])(
-    '%s has no key',
-    (fragment) => expect(pkOfFragment(fragment)).toBeUndefined(),
+  it.each(['', 'code=v1.x', 'xpk=1', 'pk=', null, undefined])('%s has no key', (fragment) =>
+    expect(pkOfRouteFragment(fragment)).toBeUndefined(),
   );
 });
 

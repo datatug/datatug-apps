@@ -1,6 +1,6 @@
 import { AgentForeignKey, AgentTableRef } from './agent-link-api.service';
 import { DefaultUrlSerializer } from '@angular/router';
-import { lookupKey, parseKeyObject, pkOfFragment } from './record-key';
+import { lookupKey, parseKeyObject, pkOfRouteFragment } from './record-key';
 import { recordHops } from './record-hops';
 
 const REF: AgentTableRef = {
@@ -52,12 +52,14 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
       { type: 'string', text: 'a&b"#%26 ü' },
       { type: 'integer', text: '9007199254740993' },
     ]);
-    // As the router writes the address bar and the record page then reads location.hash.
+    // As the router writes the address bar.
     const serializer = new DefaultUrlSerializer();
     const tree = serializer.parse('/x');
     tree.fragment = hop.fragment; // as routerLink's [fragment] sets it
     const url = serializer.serialize(tree);
-    const key = parseKeyObject(pkOfFragment(url.slice(url.indexOf('#'))) ?? '');
+    // A reload parses that address again; the record page reads the router's fragment.
+    expect(url).not.toMatch(/#.*[^\\]&/);
+    const key = parseKeyObject(pkOfRouteFragment(serializer.parse(url).fragment) ?? '');
     expect(key).toBeDefined();
     expect(
       lookupKey(key!, {

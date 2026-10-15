@@ -1,4 +1,3 @@
-import { DOCUMENT } from '@angular/common';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -29,7 +28,7 @@ const ALBUM_SCHEMA = {
   referencedBy: ['Track'],
 };
 
-function routeStub(table: string, query: Record<string, string>) {
+function routeStub(table: string, query: Record<string, string>, hash = '') {
   const params = {
     storeId: 'http-127.0.0.1:8989',
     projectId: 'demo',
@@ -39,13 +38,15 @@ function routeStub(table: string, query: Record<string, string>) {
   };
   const paramMap = convertToParamMap(params);
   const queryParamMap = convertToParamMap(query);
-  const snapshot = { paramMap, queryParamMap, pathFromRoot: [] as unknown[] };
+  // As the router hands the fragment over: decoded once, no leading '#'.
+  const fragment = hash ? decodeURIComponent(hash.replace(/^#/, '')) : null;
+  const snapshot = { paramMap, queryParamMap, fragment, pathFromRoot: [] as unknown[] };
   snapshot.pathFromRoot = [snapshot];
   return {
     snapshot,
     paramMap: new BehaviorSubject(paramMap),
     queryParamMap: new BehaviorSubject(queryParamMap),
-    fragment: new BehaviorSubject<string | null>(null),
+    fragment: new BehaviorSubject<string | null>(fragment),
   };
 }
 
@@ -61,15 +62,7 @@ function mount<T>(
       provideHttpClient(),
       provideHttpClientTesting(),
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: routeStub(table, query) },
-      {
-        provide: DOCUMENT,
-        useFactory: () => {
-          const doc = document.implementation.createHTMLDocument('t');
-          Object.defineProperty(doc, 'location', { value: { hash } });
-          return doc;
-        },
-      },
+      { provide: ActivatedRoute, useValue: routeStub(table, query, hash) },
     ],
   });
   const fixture = TestBed.createComponent(component);
@@ -211,6 +204,17 @@ describe('record page (AC:record-link-uses-primary-key-in-fragment, AC:record-lo
     expect(decodeURIComponent(fragment)).toBe('pk={"ArtistId":9007199254740993}');
     // No row text in the hop's address.
     expect(href).not.toContain('Rock');
+  });
+
+  it('opens a string key holding & = and #, which the router leaves bare in the address bar', async () => {
+    const { ctrl } = mount(
+      TableRecordPageComponent,
+      'Album',
+      { schema: '' },
+      '#pk=' + encodeURIComponent('{"Title":"AT&T=1#x"}'),
+    );
+    ctrl.expectOne(SCHEMA_URL).flush({ ...ALBUM_SCHEMA, primaryKey: ['Title'] });
+    expect(ctrl.expectOne(LOOKUP_URL).request.body.key).toEqual({ Title: 'AT&T=1#x' });
   });
 
   it('sends the key 9007199254740993 with every digit', async () => {
