@@ -120,26 +120,6 @@
     </nav>
   }
 
-  @if (!project()?.ref?.spaceID) {
-    @if (sandboxHref(); as href) {
-      <ion-card class="sandbox-summary" data-testid="overview-sandbox-summary">
-        <ion-card-header>
-          <ion-card-title>Private DemoDB sandbox</ion-card-title>
-        </ion-card-header>
-        <ion-card-content>
-          <p>
-            Registered accounts can create a private, writable clone of six
-            sample databases when the sandbox service is available. Once your
-            clone is ready, its page lets you run SQL or delete it.
-          </p>
-          <ion-button [routerLink]="href"
-            >Check sandbox availability</ion-button
-          >
-        </ion-card-content>
-      </ion-card>
-    }
-  }
-
   <!--	<sneat-datatug-card-list [projItemType]="DbModel"-->
   <!--					   title="DB models"-->
   <!--					   itemIcon="server-outline"-->
@@ -278,6 +258,20 @@
           <ion-item><ion-label>Loading entities…</ion-label></ion-item>
         }
       </ion-list>
+    </ion-card>
+  }
+  @if (sandboxHref(); as href) {
+    <ion-card class="sandbox-summary" data-testid="overview-sandbox-summary">
+      <ion-card-header>
+        <ion-card-title>Private DemoDB sandbox</ion-card-title>
+      </ion-card-header>
+      <ion-card-content>
+        <p>
+          Sign in to create a private, writable clone of six sample databases
+          when the sandbox service is available.
+        </p>
+        <ion-button [routerLink]="href">Check sandbox availability</ion-button>
+      </ion-card-content>
     </ion-card>
   }
   <!--	<sneat-datatug-card-list [projItemType]="Agent"-->
