@@ -45,15 +45,23 @@
 </ion-header>
 
 <ion-content color="light">
+  <ng-template #personalQueries>
       @if (semanticPersonalCopies().length) {
+        <ion-item lines="none">
         <ion-select label="Personal queries on this device" placeholder="Open a saved copy" interface="popover" (ionChange)="openSemanticPersonalCopy($event.detail.value)">
           @for (copy of semanticPersonalCopies(); track copy.id) { <ion-select-option [value]="copy.id">{{ copy.title || copy.id }}</ion-select-option> }
         </ion-select>
+        </ion-item>
       }
+  </ng-template>
+  @if (!isTextQueryWorkspace()) {
+    <ng-container *ngTemplateOutlet="personalQueries" />
+  }
 
   @if (isTextQueryWorkspace()) {
     <sneat-query-workspace-layout [showResultsJump]="queryView() === 'author'">
       <div query-workspace-navigation>
+        <ng-container *ngTemplateOutlet="personalQueries" />
         @if (isTugqlAuthorJourney()) {
         <ion-buttons class="query-view-switch" role="group" aria-label="Query workspace view">
           <ion-button data-testid="query-view-author"
@@ -426,6 +434,7 @@
           Choose a public read-only table. The saved query keeps its source in
           the federation definition and runs in this browser.
         </p>
+      </ion-card-content>
         <ion-item>
           <ion-select
             label="Database and table"
@@ -446,7 +455,6 @@
             }
           </ion-select>
         </ion-item>
-      </ion-card-content>
     </ion-card>
   }
 
@@ -455,7 +463,6 @@
       <ion-card-header
         ><ion-card-title>Public SQLite source</ion-card-title></ion-card-header
       >
-      <ion-card-content>
         <ion-item>
           <ion-select
             label="Saved connection"
@@ -470,7 +477,6 @@
             >
           </ion-select>
         </ion-item>
-      </ion-card-content>
     </ion-card>
   }
   @if (!isTugqlAuthorJourney()) {
@@ -546,10 +552,12 @@
                         <ion-icon name="ellipsis-horizontal" aria-hidden="true" />
                       </ion-button>
                     }
-
+                  </ion-buttons>
                     <ion-button
+                      slot="end"
                       data-testid="author-run"
                       class="author-run-button"
+                      size="default"
                       color="primary"
                       fill="solid"
                       [disabled]="authorRunReadiness().blocked && authorRunReadiness().action !== 'parameters'"
@@ -562,14 +570,15 @@
                       Run
                     </ion-button>
                     @if (running()) {
+                      <ion-buttons slot="end">
                       <ion-button
                         data-testid="author-cancel"
                         fill="clear"
                         (click)="cancelAuthorRun()"
                         >Cancel</ion-button
                       >
+                      </ion-buttons>
                     }
-                  </ion-buttons>
             </ion-item>
             <ng-container *ngTemplateOutlet="workspaceTabs" />
             @if (authorRunReadiness(); as readiness) {
@@ -881,14 +890,12 @@
           <ion-item class="author-card-title-row" lines="none">
             <ion-label class="ion-text-wrap"><ion-card-title data-workspace-heading>{{ queryPageTitle() }}</ion-card-title>
               <p>{{ isNativeSqlWorkspace() ? 'Native SQL query' : isNativeDtqlWorkspace() ? 'Saved DTQL query' : 'TugQL query' }}</p></ion-label>
-            <ion-buttons slot="end">
-              <ion-button data-testid="workspace-run" aria-label="Run query" color="primary" fill="solid"
+              <ion-button slot="end" data-testid="workspace-run" aria-label="Run query" size="default" color="primary" fill="solid"
                 [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
                 (click)="runQuery()">
                 @if (running()) { <ion-spinner name="dots" slot="start" /> }
                 Run
               </ion-button>
-            </ion-buttons>
           </ion-item>
           <ng-container *ngTemplateOutlet="workspaceTabs" />
         </ion-card-header>
