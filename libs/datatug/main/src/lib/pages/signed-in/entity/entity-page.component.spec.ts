@@ -507,7 +507,7 @@ describe('EntityPage source preview states (zoneless)', () => {
     expect(component.sourceData()).toEqual([]);
     expect(getEntity).toHaveBeenCalledTimes(1);
     expect(fixture.nativeElement.innerHTML).toContain(
-      'Entity details are not available for this branch project.',
+      'Entity details are unavailable for this project connection or branch.',
     );
     expect(fixture.nativeElement.innerHTML).not.toContain('Loading entity');
 

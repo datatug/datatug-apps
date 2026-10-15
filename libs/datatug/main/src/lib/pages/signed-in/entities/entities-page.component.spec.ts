@@ -267,7 +267,7 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     expect(component.unsupportedProject()).toBe(false);
     expect(fixture.nativeElement.innerHTML).toContain('Album');
     expect(fixture.nativeElement.innerHTML).not.toContain(
-      'Entities are not available for this branch project.',
+      'Entities are unavailable for this project connection or branch.',
     );
   });
 
@@ -282,6 +282,7 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     currentProject$.next({
       ref: { projectId: 'demo', storeId: 'http-localhost:8989' },
     });
+    getAllEntities$.next([{ id: 'Album', dbo: { id: 'Album', fields: [] } }]);
     await fixture.whenStable();
     expect(component.canMutateEntities()).toBe(true);
     expect(fixture.nativeElement.innerHTML).toContain('New entity');
@@ -296,7 +297,6 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
       ref: {
         projectId: 'demo',
         storeId: 'http-localhost:8989',
-        projectApi: 'local',
         branch: 'work',
       },
     });
@@ -306,8 +306,36 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     expect(component.canMutateEntities()).toBe(false);
     expect(getAllEntities).not.toHaveBeenCalled();
     expect(fixture.nativeElement.innerHTML).toContain(
-      'Entities are not available for this branch project.',
+      'Entities are unavailable for this project connection or branch.',
     );
     expect(fixture.nativeElement.innerHTML).not.toContain('Loading...');
+    expect(fixture.nativeElement.innerHTML).not.toContain('New entity');
+    expect(fixture.nativeElement.innerHTML).not.toContain('Delete entity');
+  });
+
+  it('ignores a previous project response after switching projects', async () => {
+    const previousEntities$ = new Subject<IRecord<IEntity>[]>();
+    const nextEntities$ = new Subject<IRecord<IEntity>[]>();
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as unknown as ReturnType<typeof vi.fn>;
+    getAllEntities
+      .mockReturnValueOnce(previousEntities$.asObservable())
+      .mockReturnValueOnce(nextEntities$.asObservable());
+
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: { projectId: 'previous', storeId: 'github.com' },
+    });
+    currentProject$.next({ ref: { projectId: 'next', storeId: 'github.com' } });
+    nextEntities$.next([{ id: 'Next', dbo: { id: 'Next', fields: [] } }]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.innerHTML).toContain('Next');
+
+    previousEntities$.next([
+      { id: 'Previous', dbo: { id: 'Previous', fields: [] } },
+    ]);
+    await fixture.whenStable();
+    expect(component.entities()?.map((entity) => entity.id)).toEqual(['Next']);
+    expect(fixture.nativeElement.innerHTML).not.toContain('Previous');
   });
 });

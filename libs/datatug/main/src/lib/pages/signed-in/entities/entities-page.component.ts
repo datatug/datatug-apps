@@ -17,7 +17,7 @@ import {
   IonMenuButton,
   IonToolbar,
 } from '@ionic/angular';
-import { Subject } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import {
   NavController,
@@ -127,9 +127,14 @@ export class EntitiesPageComponent
   });
   readonly canMutateEntities = computed(() => {
     const ref = this.project()?.ref;
-    return !!ref && !ref.projectApi && isAgentStoreId(ref.storeId);
+    return (
+      !!ref && !ref.projectApi && !ref.branch && isAgentStoreId(ref.storeId)
+    );
   });
   private readonly destroyed = new Subject<void>();
+  private readonly entitiesRequest = signal<Subscription | undefined>(
+    undefined,
+  );
 
   constructor() {
     const navContextService = this.navContextService;
@@ -168,6 +173,7 @@ export class EntitiesPageComponent
   }
 
   ngOnDestroy(): void {
+    this.entitiesRequest()?.unsubscribe();
     this.destroyed.next();
     this.destroyed.complete();
   }
@@ -227,19 +233,22 @@ export class EntitiesPageComponent
   }
 
   private loadEntities(): void {
+    this.entitiesRequest()?.unsubscribe();
+    this.entities.set(undefined);
     const project = this.project();
     if (!project || this.unsupportedProject()) {
-      this.entities.set(undefined);
       return;
     }
-    this.entityService
-      .getAllEntities(project.ref)
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (entities) => this.setEntities(entities),
-        error: (err) =>
-          this.errorLogger.logError(err, 'Failed to load project entities'),
-      });
+    this.entitiesRequest.set(
+      this.entityService
+        .getAllEntities(project.ref)
+        .pipe(takeUntil(this.destroyed))
+        .subscribe({
+          next: (entities) => this.setEntities(entities),
+          error: (err) =>
+            this.errorLogger.logError(err, 'Failed to load project entities'),
+        }),
+    );
   }
 
   private setEntities(entities: Entities): void {
