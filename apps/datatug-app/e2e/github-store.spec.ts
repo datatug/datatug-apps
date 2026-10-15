@@ -257,16 +257,16 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await page
       .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
       .click();
-    // NOT `activePage(page).getByText('1st board')`: the project page
+    // NOT `activePage(page).getByText('Chinook customer insights')`: the project page
     // asserted above ALSO embeds a `sneat-datatug-folder` (`DatatugFolderComponent`)
-    // whose own default tab is 'boards' — the SAME "1st board" text — and on
+    // whose own default tab is 'boards' — the SAME board title — and on
     // a slower runner (confirmed failing in CI, passing every time locally)
     // that page is still present, un-hidden, alongside the dedicated Boards
     // page once this navigates: `document.querySelectorAll('ion-router-outlet
     // > .ion-page')` shows BOTH `sneat-datatug-project` and
     // `sneat-datatug-boards` without `.ion-page-hidden` at the same time
-    // (confirmed live, S136). That made `activePage(page).getByText('1st
-    // board')` strict-mode-fail with 2 matches. `sneat-datatug-boards`
+    // (confirmed live, S136). That made a broad board-title locator
+    // strict-mode-fail with 2 matches. `sneat-datatug-boards`
     // (`BoardsPageComponent`'s own selector) turns out to carry the
     // `.ion-page` class on its OWN host element, not on some wrapper around
     // it — so `activePage(page).locator('sneat-datatug-boards')` (a
@@ -279,21 +279,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
         .locator(
           'ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)',
         )
-        .getByText('1st board'),
+        .getByText('Chinook customer insights'),
     ).toBeVisible({ timeout: 15_000 });
-    // NOT clicking into the board's own detail page here: `goBoard()`
-    // (`DatatugNavService`) navigates via Ionic's `NavController.navigateForward()`,
-    // which constructs `BoardPageComponent` through a DIFFERENT path than
-    // Angular Router's own `loadComponent` resolution — and that path fails
-    // to resolve `Location` (`@angular/common`, needed by the component's own
-    // `QueryParamsService` provider) with `NG0201: No provider found for
-    // \`Location\`. Source: Standalone[_BoardPageComponent]` (confirmed live,
-    // S136, reproduced directly via `NavController.navigateForward()` from
-    // the console — same failure regardless of which page/store triggers
-    // it, so this is a pre-existing, cross-store Ionic/Angular DI interop
-    // gap, not GitHub-specific, and well beyond this task's own "missing
-    // NgModule import" fixes — named here per the brief rather than silently
-    // dropped, not fixed in this task).
+    // Board detail and saved-query navigation are covered by the Boards slice.
 
     // --- Entities (side-menu click) ---------------------------------------
     await page
