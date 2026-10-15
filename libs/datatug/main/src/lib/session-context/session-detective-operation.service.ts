@@ -41,6 +41,7 @@ export interface NativeOperationStore {
   read(key: string): Promise<NativeOperationDraft | undefined>;
   write(key: string, value: NativeOperationDraft): Promise<void>;
   remove(key: string): Promise<void>;
+  scrubRecovery(value: NativeOperationRecovery): Promise<void>;
   readRecovery(id: string): Promise<NativeOperationRecovery | undefined>;
   writeRecovery(value: NativeOperationRecovery): Promise<void>;
 }
@@ -61,6 +62,17 @@ export const NATIVE_OPERATION_STORE = new InjectionToken<NativeOperationStore>(
         },
         remove: async (key) => {
           await (await db).delete('operations', key);
+        },
+        scrubRecovery: async (value) => {
+          const tx = (await db).transaction('operations', 'readwrite');
+          const current: NativeOperationDraft | undefined = await tx.store.get(
+            value.draftKey,
+          );
+          if (current && sameNativeOperation(current, value)) {
+            const { draftKey, ...metadata } = value;
+            await tx.store.put(metadata, draftKey);
+          }
+          await tx.done;
         },
         readRecovery: async (id) =>
           (await db).get('operations', 'recovery:' + id),
@@ -94,6 +106,33 @@ export function nativeOperationDraftKey(
   ]);
 }
 
+/** Compare the operation as well as its complete authority inside the store transaction. */
+export function sameNativeOperation(
+  current: NativeOperationDraft,
+  recovery: NativeOperationRecovery,
+): boolean {
+  return (
+    current.operationId === recovery.operationId &&
+    current.recoveryId === recovery.recoveryId &&
+    nativeOperationDraftKey(
+      current.project,
+      current.actor,
+      current.locator,
+      current.sessionId,
+      current.checkId,
+      current.caseId,
+    ) === recovery.draftKey &&
+    nativeOperationDraftKey(
+      recovery.project,
+      recovery.actor,
+      recovery.locator,
+      recovery.sessionId,
+      recovery.checkId,
+      recovery.caseId,
+    ) === recovery.draftKey
+  );
+}
+
 /** Device persistence is a retry draft, never a native acceptance receipt.
  * Loading or reconciling an operation never invokes its dispatch endpoint. */
 @Injectable()
@@ -105,6 +144,14 @@ export class SessionDetectiveOperationService {
   readonly error = signal('');
   private key = '';
   private generation = 0;
+
+  invalidate(): void {
+    ++this.generation;
+    this.key = '';
+    this.draft.set(undefined);
+    this.error.set('');
+    this.busy.set(false);
+  }
 
   async open(
     project: IProjectRef,

@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -122,6 +123,7 @@ export class SessionDetectiveRecoveryComponent {
     undefined,
   );
   private generation = 0;
+  private requestEpoch = 0;
   protected readonly returnTo = this.router.url;
   protected readonly response = signal<SessionDetectiveResponse | undefined>(
     undefined,
@@ -165,12 +167,18 @@ export class SessionDetectiveRecoveryComponent {
       : '';
   });
   constructor() {
+    inject(DestroyRef).onDestroy(() => { ++this.generation; ++this.requestEpoch; });
     effect(() => {
       const id = this.params().get('recoveryId') || '';
       void this.load(id, this.params().get('storeId'));
     });
     effect(() => {
-      if (this.authorized())
+      const authorized = this.authorized();
+      // Each admission transition invalidates requests from an earlier account epoch.
+      ++this.requestEpoch;
+      this.busy.set(false);
+      this.response.set(undefined);
+      if (authorized)
         untracked(() => {
           void this.refresh(false);
         });
@@ -259,11 +267,13 @@ export class SessionDetectiveRecoveryComponent {
     const draft = this.recovery();
     if (!draft || !this.authorized() || this.busy()) return;
     const generation = this.generation,
+      epoch = this.requestEpoch,
       actor = this.auth()?.user?.uid;
     this.busy.set(true);
     this.error.set('');
     const current = () =>
       generation === this.generation &&
+      epoch === this.requestEpoch &&
       this.recovery() === draft &&
       (!this.cloud() ||
         (this.auth()?.user?.uid === actor && this.authorized()));
@@ -283,8 +293,7 @@ export class SessionDetectiveRecoveryComponent {
       this.response.set(response);
       await this.store.writeRecovery({ ...draft, response });
       if (current() && (response.status.done || response.status.fenceReason)) {
-        const { draftKey, ...metadata } = draft;
-        await this.store.write(draftKey, { ...metadata, response });
+        await this.store.scrubRecovery({ ...draft, response });
       }
     } catch (error) {
       if (!current()) return;
@@ -294,8 +303,7 @@ export class SessionDetectiveRecoveryComponent {
         this.cloud() &&
         actor === draft.actor
       ) {
-        const { draftKey, ...metadata } = draft;
-        await this.store.write(draftKey, metadata);
+        await this.store.scrubRecovery({ ...draft, response: undefined });
       }
       if (!current()) return;
       if (

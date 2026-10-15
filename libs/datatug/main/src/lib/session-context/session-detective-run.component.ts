@@ -3,6 +3,7 @@ import { nativeRecoveryHref } from './session-detective-recovery-link';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -316,6 +317,7 @@ export class SessionDetectiveRunComponent {
   );
 
   constructor() {
+    inject(DestroyRef).onDestroy(() => this.operation.invalidate());
     effect(() => {
       const caps = this.workspace.capabilities(),
         project = this.project(),
@@ -333,6 +335,7 @@ export class SessionDetectiveRunComponent {
           check.id,
           this.caseId(),
         );
+      else this.operation.invalidate();
     });
   }
   protected mapInput(name: string, value: string): void {

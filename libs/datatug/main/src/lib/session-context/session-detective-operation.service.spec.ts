@@ -183,6 +183,23 @@ describe('native Detective operation recovery', () => {
     expect(service.draft()).toBeUndefined();
     expect(service.busy()).toBe(false);
   });
+  it('invalidates a pending dispatch on capability loss or component destruction', async () => {
+    await service.open(project, caps, request.sessionId, request.checkId);
+    const waiting = deferred<SessionDetectiveResponse>();
+    api.nativeDetective.mockReturnValue(waiting.promise);
+    const start = service.start(project, caps, request);
+    await vi.waitFor(() =>
+      expect(api.nativeDetective).toHaveBeenCalledTimes(1),
+    );
+    service.invalidate();
+    waiting.resolve(response(true));
+    await start;
+    expect(service.draft()).toBeUndefined();
+    expect(service.busy()).toBe(false);
+    expect([...stored.values()][0].request).toEqual(request);
+    await service.retry(caps);
+    expect(api.nativeDetective).toHaveBeenCalledTimes(1);
+  });
   it('does not start with a default-off native capability', async () => {
     await service.open(project, caps, request.sessionId, request.checkId);
     await service.start(project, { ...caps, nativeDetective: false }, request);
