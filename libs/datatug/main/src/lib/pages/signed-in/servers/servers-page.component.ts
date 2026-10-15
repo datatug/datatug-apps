@@ -115,6 +115,7 @@ const isGithubStoreId = (storeId: string): boolean =>
   ],
 })
 export class ServersPageComponent implements OnDestroy {
+  protected readonly getDbServerId = getDbServerId;
   private readonly projectContextService = inject(ProjectContextService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly modalCtrl = inject(ModalController);

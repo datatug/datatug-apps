@@ -80,6 +80,8 @@ import { EntityService } from '../../../services/unsorted/entity.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
+import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
+import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 
 @Component({
@@ -96,6 +98,8 @@ import { projectPageHref } from '../../../nav/project-page-href';
     DatatugServicesUnsortedModule,
     DatatugFolderComponent,
     DemoDbConnectionsComponent,
+    ProjectQueriesPreviewComponent,
+    ProjectDatabaseServersPreviewComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
@@ -168,8 +172,15 @@ export class ProjectPageComponent
     'loading' | 'available' | 'unavailable'
   >('loading');
   protected readonly activeTab = signal<
-    'overview' | 'environments' | 'entities'
-  >('overview');
+    'boards' | 'queries' | 'environments' | 'entities' | 'databases'
+  >('boards');
+  protected readonly overviewTabs = [
+    { id: 'boards', label: 'Boards' },
+    { id: 'queries', label: 'Queries' },
+    { id: 'environments', label: 'Environments' },
+    { id: 'entities', label: 'Entities' },
+    { id: 'databases', label: 'Databases' },
+  ] as const;
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
@@ -217,7 +228,7 @@ export class ProjectPageComponent
         store: { ref: parseDatatugStoreRef(ref.storeId) },
       });
       this.metadataState.set('loading');
-      this.activeTab.set('overview');
+      this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
       this.environments.set(undefined);
       this.entities.set(undefined);
       this.environmentError.set(false);
@@ -321,7 +332,9 @@ export class ProjectPageComponent
     this.datatugNavService.goEnvironment(this.project(), projEnv);
   }
 
-  protected selectTab(tab: 'overview' | 'environments' | 'entities'): void {
+  protected selectTab(
+    tab: 'boards' | 'queries' | 'environments' | 'entities' | 'databases',
+  ): void {
     this.activeTab.set(tab);
   }
 

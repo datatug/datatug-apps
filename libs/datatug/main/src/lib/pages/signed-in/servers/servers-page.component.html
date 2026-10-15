@@ -62,7 +62,12 @@
     @if (tab === 'db') {
       <ion-list>
         @if (filteredDbServers(); as servers) {
-          @for (dbServer of servers; track dbServer) {
+          @for (
+            dbServer of servers;
+            track dbServer.dbServer.driver +
+              ':' +
+              getDbServerId(dbServer.dbServer)
+          ) {
             <ion-item tappable (click)="goDbServer(dbServer)">
               <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
               <ion-badge color="medium">{{

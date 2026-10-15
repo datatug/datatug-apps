@@ -132,6 +132,7 @@ describe('ProjectPage', () => {
         spaceID?: string;
       }): void;
       sandboxHref(): string | undefined;
+      activeTab(): string;
     };
     page.setProjRef({
       storeId: 'github.com',
@@ -140,6 +141,7 @@ describe('ProjectPage', () => {
     expect(page.sandboxHref()).toBe(
       '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/demo-db-sandbox',
     );
+    expect(page.activeTab()).toBe('queries');
     page.setProjRef({
       storeId: 'github.com',
       projectId: 'datatug-demo-project@datatug@other',
@@ -311,6 +313,29 @@ describe('ProjectPage rendering a local-agent store project', () => {
       expect(doubles.logError).not.toHaveBeenCalled();
     },
   );
+
+  it('shows one set of five overview tabs and opens the selected content', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('.overview-tabs button'),
+    ) as HTMLButtonElement[];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Boards',
+      'Queries',
+      'Environments',
+      'Entities',
+      'Databases',
+    ]);
+    expect(fixture.nativeElement.querySelector('ion-segment')).toBeNull();
+    buttons[1].click();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        'sneat-datatug-project-queries-preview',
+      ),
+    ).not.toBeNull();
+  });
 
   it('settles the Boards folder card out of its loading state (no folder on a local agent = empty list, not a spinner)', async () => {
     const fixture = await createPage('localhost:8989');

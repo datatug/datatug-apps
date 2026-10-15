@@ -107,34 +107,20 @@
       }
     </section>
     <nav class="overview-tabs" aria-label="Project overview sections">
-      <button
-        type="button"
-        [class.active]="activeTab() === 'overview'"
-        [attr.aria-pressed]="activeTab() === 'overview'"
-        (click)="selectTab('overview')"
-      >
-        Overview
-      </button>
-      <button
-        type="button"
-        [class.active]="activeTab() === 'environments'"
-        [attr.aria-pressed]="activeTab() === 'environments'"
-        (click)="selectTab('environments')"
-      >
-        Environments
-      </button>
-      <button
-        type="button"
-        [class.active]="activeTab() === 'entities'"
-        [attr.aria-pressed]="activeTab() === 'entities'"
-        (click)="selectTab('entities')"
-      >
-        Entities
-      </button>
+      @for (tab of overviewTabs; track tab.id) {
+        <button
+          type="button"
+          [class.active]="activeTab() === tab.id"
+          [attr.aria-pressed]="activeTab() === tab.id"
+          (click)="selectTab(tab.id)"
+        >
+          {{ tab.label }}
+        </button>
+      }
     </nav>
   }
 
-  @if (!project()?.ref?.spaceID && activeTab() === 'overview') {
+  @if (!project()?.ref?.spaceID) {
     @if (sandboxHref(); as href) {
       <ion-card class="sandbox-summary" data-testid="overview-sandbox-summary">
         <ion-card-header>
@@ -152,7 +138,6 @@
         </ion-card-content>
       </ion-card>
     }
-    <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
   }
 
   <!--	<sneat-datatug-card-list [projItemType]="DbModel"-->
@@ -197,8 +182,22 @@
         >
       }
     </ion-card>
-  } @else if (activeTab() === 'overview') {
-    <sneat-datatug-folder [path]="'~'" [projectRef]="project()?.ref" />
+  } @else if (activeTab() === 'boards') {
+    <sneat-datatug-folder
+      [path]="'~'"
+      [projectRef]="project()?.ref"
+      [hideTabs]="true"
+    />
+  } @else if (activeTab() === 'queries') {
+    <sneat-datatug-project-queries-preview [projectRef]="project()?.ref" />
+  } @else if (activeTab() === 'databases') {
+    @if (sandboxHref()) {
+      <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
+    } @else {
+      <sneat-datatug-project-database-servers-preview
+        [projectRef]="project()?.ref"
+      />
+    }
   } @else if (activeTab() === 'environments') {
     <ion-card>
       <ion-list>

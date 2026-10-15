@@ -37,9 +37,11 @@
   display: flex;
   gap: 4px;
   margin: 0 16px 12px;
+  overflow-x: auto;
   border-bottom: 1px solid var(--ion-color-light-shade);
 
   button {
+    flex: 0 0 auto;
     padding: 12px;
     border: 0;
     border-bottom: 2px solid transparent;
