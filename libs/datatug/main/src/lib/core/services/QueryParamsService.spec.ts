@@ -5,13 +5,7 @@ import { QueryParamsService } from './QueryParamsService';
 describe('QueryParamsService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
-      providers: [
-        QueryParamsService,
-        {
-          provide: Location,
-          useValue: { href: 'http://localhost/' },
-        },
-      ],
+      providers: [QueryParamsService],
     });
   });
 

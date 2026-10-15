@@ -158,6 +158,10 @@ export const datatugRoutes: Routes = [
           (segments.length === 8 &&
             ['checks', 'detective'].includes(segments[6].path) &&
             /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
+          (segments.length === 9 &&
+            segments[6].path === 'detective' &&
+            segments[7].path === 'scenario' &&
+            /^[A-Za-z0-9_-]+$/.test(segments[8].path)) ||
           (segments.length === 8 &&
             segments[6].path === 'query' &&
             /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path)) ||
@@ -220,6 +224,13 @@ export const datatugRoutes: Routes = [
       {
         path: 'detective',
         children: [
+          {
+            path: 'scenario/:scenarioId',
+            loadComponent: () =>
+              import('../detective/scenario-detail-page.component').then(
+                (m) => m.ScenarioDetailPageComponent,
+              ),
+          },
           {
             path: '',
             loadComponent: () =>

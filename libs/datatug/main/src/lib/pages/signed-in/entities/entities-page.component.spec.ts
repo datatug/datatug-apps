@@ -12,6 +12,7 @@ import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { IProjectContext } from '../../../nav/nav-models';
+import { parseProjectUrl } from '../../../nav/nav-models';
 
 describe('EntitiesPage', () => {
   let component: EntitiesPageComponent;
@@ -107,6 +108,7 @@ describe('EntitiesPage', () => {
  */
 describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', () => {
   let fixture: ComponentFixture<EntitiesPageComponent>;
+  let component: EntitiesPageComponent;
   let currentProject$: Subject<IProjectContext | undefined>;
   let getAllEntities$: Subject<IRecord<IEntity>[]>;
 
@@ -177,6 +179,7 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
       .compileComponents();
 
     fixture = TestBed.createComponent(EntitiesPageComponent);
+    component = fixture.componentInstance;
   });
 
   it('replaces the Loading... placeholder with the entity list once it arrives, with no explicit detectChanges()', async () => {
@@ -200,5 +203,139 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     expect(fixture.nativeElement.innerHTML).not.toContain('Loading...');
     expect(fixture.nativeElement.innerHTML).toContain('Customer');
     expect(fixture.nativeElement.innerHTML).toContain('Order');
+  });
+
+  it('filters entity titles and IDs as the visitor types, then restores the list when cleared', async () => {
+    fixture.detectChanges();
+    currentProject$.next({ ref: { projectId: 'p1', storeId: 'firestore' } });
+    getAllEntities$.next([
+      { id: 'customer', dbo: { title: 'Customers', fields: [] } as IEntity },
+      { id: 'order', dbo: { title: 'Orders', fields: [] } as IEntity },
+    ]);
+    await fixture.whenStable();
+
+    const input = fixture.nativeElement.querySelector('ion-input');
+    const type = async (value: string) => {
+      input.dispatchEvent(new CustomEvent('ionInput', { detail: { value } }));
+      await fixture.whenStable();
+    };
+
+    await type('  CUSTOMER  ');
+    expect(fixture.nativeElement.innerHTML).toContain('Customers');
+    expect(fixture.nativeElement.innerHTML).not.toContain('Orders');
+
+    await type('missing');
+    expect(fixture.nativeElement.innerHTML).toContain('No matching entities.');
+
+    await type('');
+    expect(fixture.nativeElement.innerHTML).toContain('Customers');
+    expect(fixture.nativeElement.innerHTML).toContain('Orders');
+  });
+
+  it('hides unsupported entity mutations in a GitHub project while keeping the list readable', async () => {
+    fixture.detectChanges();
+    currentProject$.next({ ref: { projectId: 'demo', storeId: 'github.com' } });
+    getAllEntities$.next([{ id: 'Album', dbo: { id: 'Album', fields: [] } }]);
+    await fixture.whenStable();
+
+    const html: string = fixture.nativeElement.innerHTML;
+    expect(html).toContain('Album');
+    expect(html).not.toContain('New entity');
+    expect(html).not.toContain('Delete entity');
+    expect(fixture.nativeElement.querySelector('ion-button')).toBeNull();
+  });
+
+  it('shows entities in the public HEAD demo route', async () => {
+    const parsed = parseProjectUrl(
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/entities',
+    );
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error('Public demo route must parse');
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as unknown as ReturnType<typeof vi.fn>;
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: { storeId: parsed.storeId, projectId: parsed.projectId },
+    });
+    getAllEntities$.next([{ id: 'Album', dbo: { id: 'Album', fields: [] } }]);
+    await fixture.whenStable();
+
+    expect(getAllEntities).toHaveBeenCalledWith({
+      storeId: parsed.storeId,
+      projectId: parsed.projectId,
+    });
+    expect(component.unsupportedProject()).toBe(false);
+    expect(fixture.nativeElement.innerHTML).toContain('Album');
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'Entities are unavailable for this project connection or branch.',
+    );
+  });
+
+  it('shows write actions only for a local agent project, not Firestore', async () => {
+    fixture.detectChanges();
+    currentProject$.next({ ref: { projectId: 'demo', storeId: 'firestore' } });
+    getAllEntities$.next([{ id: 'Album', dbo: { id: 'Album', fields: [] } }]);
+    await fixture.whenStable();
+    expect(component.canMutateEntities()).toBe(false);
+    expect(fixture.nativeElement.innerHTML).not.toContain('New entity');
+
+    currentProject$.next({
+      ref: { projectId: 'demo', storeId: 'http-localhost:8989' },
+    });
+    getAllEntities$.next([{ id: 'Album', dbo: { id: 'Album', fields: [] } }]);
+    await fixture.whenStable();
+    expect(component.canMutateEntities()).toBe(true);
+    expect(fixture.nativeElement.innerHTML).toContain('New entity');
+    expect(fixture.nativeElement.innerHTML).toContain('Delete entity');
+  });
+
+  it('does not show legacy-store entities for a branch-qualified project', async () => {
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as unknown as ReturnType<typeof vi.fn>;
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: {
+        projectId: 'demo',
+        storeId: 'http-localhost:8989',
+        branch: 'work',
+      },
+    });
+    await fixture.whenStable();
+
+    expect(component.unsupportedProject()).toBe(true);
+    expect(component.canMutateEntities()).toBe(false);
+    expect(getAllEntities).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Entities are unavailable for this project connection or branch.',
+    );
+    expect(fixture.nativeElement.innerHTML).not.toContain('Loading...');
+    expect(fixture.nativeElement.innerHTML).not.toContain('New entity');
+    expect(fixture.nativeElement.innerHTML).not.toContain('Delete entity');
+  });
+
+  it('ignores a previous project response after switching projects', async () => {
+    const previousEntities$ = new Subject<IRecord<IEntity>[]>();
+    const nextEntities$ = new Subject<IRecord<IEntity>[]>();
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as unknown as ReturnType<typeof vi.fn>;
+    getAllEntities
+      .mockReturnValueOnce(previousEntities$.asObservable())
+      .mockReturnValueOnce(nextEntities$.asObservable());
+
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: { projectId: 'previous', storeId: 'github.com' },
+    });
+    currentProject$.next({ ref: { projectId: 'next', storeId: 'github.com' } });
+    nextEntities$.next([{ id: 'Next', dbo: { id: 'Next', fields: [] } }]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.innerHTML).toContain('Next');
+
+    previousEntities$.next([
+      { id: 'Previous', dbo: { id: 'Previous', fields: [] } },
+    ]);
+    await fixture.whenStable();
+    expect(component.entities()?.map((entity) => entity.id)).toEqual(['Next']);
+    expect(fixture.nativeElement.innerHTML).not.toContain('Previous');
   });
 });

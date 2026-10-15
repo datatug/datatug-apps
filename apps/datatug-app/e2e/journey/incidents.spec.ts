@@ -47,8 +47,8 @@ async function addNamedOverlay(
   const projectUrl = `/store/${agentStoreId}/project/${DEMO_PROJECT_ID}`;
   await page.goto(`${projectUrl}/env/${DEMO_ENV_ID}`);
   await expect(
-    activePage(page).getByRole('heading', { name: 'Servers', exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+    activePage(page).getByTestId('environment-identity'),
+  ).toContainText(`Environment ID: ${DEMO_ENV_ID}`, { timeout: 15_000 });
   await page.goto(`${projectUrl}/variables`);
   await expect(
     activePage(page).getByText('Add a context variable', { exact: true }),
@@ -96,8 +96,8 @@ async function addCondition(
   // no environment, so an added variable is not stored and the list stays empty.
   await page.goto(`${projectUrl}/env/${DEMO_ENV_ID}`);
   await expect(
-    activePage(page).getByRole('heading', { name: 'Servers', exact: true }),
-  ).toBeVisible({ timeout: 15_000 });
+    activePage(page).getByTestId('environment-identity'),
+  ).toContainText(`Environment ID: ${DEMO_ENV_ID}`, { timeout: 15_000 });
   await page.goto(`${projectUrl}/variables`);
   await expect(
     activePage(page).getByText('Add a context variable', { exact: true }),
@@ -262,7 +262,9 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
           .startsWith(`${agentOrigin}/datatug/incidents/INC-1/events?`) &&
         response.ok(),
     );
-    await detailPage.locator('ion-button', { hasText: 'Resolution Record' }).click();
+    await detailPage
+      .locator('ion-button', { hasText: 'Resolution Record' })
+      .click();
     await recordDetailResponse;
     await recordEventsResponse;
     await expect(page).toHaveURL(
@@ -271,13 +273,19 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     await expect(
       recordPage.locator('ion-title', { hasText: 'Resolution Record' }),
     ).toBeVisible();
-    await expect(recordPage.getByRole('heading', { name: title })).toBeVisible();
+    await expect(
+      recordPage.getByRole('heading', { name: title }),
+    ).toBeVisible();
 
-    await recordPage.locator('ion-button', { hasText: 'Back to incident' }).click();
+    await recordPage
+      .locator('ion-button', { hasText: 'Back to incident' })
+      .click();
     await expect(page).toHaveURL(
       new RegExp(`/incidents/${DEMO_PROJECT_ID}/INC-1\\?`),
     );
-    await expect(detailPage.getByRole('heading', { name: title })).toBeVisible();
+    await expect(
+      detailPage.getByRole('heading', { name: title }),
+    ).toBeVisible();
 
     const coldDetailResponse = page.waitForResponse(
       (response) =>

@@ -281,7 +281,7 @@ test('unknown domain onboarding activates SSO and reuses the existing Firebase/S
 
   await expect(page).toHaveURL('http://127.0.0.1:4200/');
   await expect(
-    page.getByRole('heading', { name: 'Your data workbench' }),
+    page.getByTestId('home-hero').getByRole('heading', { level: 1 }),
   ).toBeVisible();
   const completed = (await (
     await fetch(`${ssoBase}/__test/state`)

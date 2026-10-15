@@ -58,6 +58,7 @@ const isGithubStoreId = (storeId: string): boolean =>
 @Component({
   selector: 'sneat-datatug-servers',
   templateUrl: './servers-page.component.html',
+  styleUrls: ['./servers-page.component.scss'],
   imports: [
     // `ProjectContextService` (injected below) and `DbServerService`
     // (injected below, itself needing `ProjectContextService`/
@@ -115,6 +116,7 @@ const isGithubStoreId = (storeId: string): boolean =>
   ],
 })
 export class ServersPageComponent implements OnDestroy {
+  protected readonly getDbServerId = getDbServerId;
   private readonly projectContextService = inject(ProjectContextService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly modalCtrl = inject(ModalController);
@@ -134,6 +136,7 @@ export class ServersPageComponent implements OnDestroy {
   protected readonly dbServers = signal<IProjDbServerSummary[] | undefined>(
     undefined,
   );
+  protected readonly filterText = signal('');
 
   // The project's real environment list (S153: the "Local"/"PROD" checkboxes
   // used to be hard-coded text with no binding at all — they matched neither
@@ -161,35 +164,49 @@ export class ServersPageComponent implements OnDestroy {
   // read this same signal's `.length`, so — unlike the hard-coded `2` badge
   // this replaces — they can never disagree with each other or with the
   // rows actually shown (S153, the founder's "numbers mismatch" ruling).
-  protected readonly filteredDbServers = computed(():
-    | IProjDbServerSummary[]
-    | undefined => {
-    const servers = this.dbServers();
-    if (!servers) {
-      return undefined;
-    }
-    const selected = this.selectedEnvironmentIds();
-    return servers
-      .map((server) => {
-        if (!server.environments) {
-          return server;
-        }
-        const environments = server.environments.filter((e) =>
-          selected.has(e.envId),
+  protected readonly filteredDbServers = computed(
+    (): IProjDbServerSummary[] | undefined => {
+      const servers = this.dbServers();
+      if (!servers) {
+        return undefined;
+      }
+      const selected = this.selectedEnvironmentIds();
+      const query = this.filterText().trim().toLocaleLowerCase();
+      return servers
+        .map((server) => {
+          if (!server.environments) {
+            return server;
+          }
+          const environments = server.environments.filter((e) =>
+            selected.has(e.envId),
+          );
+          return {
+            ...server,
+            databasesCount: environments.reduce(
+              (sum, e) => sum + e.databasesCount,
+              0,
+            ),
+            environments,
+          };
+        })
+        .filter(
+          (server) => !server.environments || server.environments.length > 0,
+        )
+        .filter(
+          (server) =>
+            !query ||
+            [
+              server.dbServer.driver,
+              this.serverLabel(server.dbServer),
+              server.dbServer.port,
+            ].some((value) =>
+              String(value ?? '')
+                .toLocaleLowerCase()
+                .includes(query),
+            ),
         );
-        return {
-          ...server,
-          databasesCount: environments.reduce(
-            (sum, e) => sum + e.databasesCount,
-            0,
-          ),
-          environments,
-        };
-      })
-      .filter(
-        (server) => !server.environments || server.environments.length > 0,
-      );
-  });
+    },
+  );
 
   private readonly destroyed = new Subject<void>();
   // Written from the same `.subscribe()` callback as `dbServers` above.
@@ -243,6 +260,16 @@ export class ServersPageComponent implements OnDestroy {
       }
       return next;
     });
+  }
+
+  protected selectAllEnvironments(): void {
+    this.selectedEnvironmentIds.set(
+      new Set(this.environments()?.map((environment) => environment.id) ?? []),
+    );
+  }
+
+  protected clearEnvironments(): void {
+    this.selectedEnvironmentIds.set(new Set());
   }
 
   /** The row label for one DB server: its `host` when the project actually
@@ -393,9 +420,7 @@ export class ServersPageComponent implements OnDestroy {
     environments$.subscribe({
       next: (environments) => {
         this.environments.set(environments);
-        this.selectedEnvironmentIds.set(
-          new Set(environments.map((e) => e.id)),
-        );
+        this.selectedEnvironmentIds.set(new Set(environments.map((e) => e.id)));
       },
       error: (err) =>
         this.errorLogger.logError(err, 'Failed to load project environments'),

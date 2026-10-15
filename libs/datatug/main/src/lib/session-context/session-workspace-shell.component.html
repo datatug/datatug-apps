@@ -13,7 +13,7 @@
   <ion-item lines="full" class="session-summary">
     <ion-buttons slot="start">
       <ion-button (click)="chooserOpen.set(true)">All sessions</ion-button>
-      <ion-button (click)="beginCreate()" [disabled]="!workspace.capabilities() || workspace.busy()">New session</ion-button>
+      <ion-button (click)="beginCreate()" [disabled]="!canCreateSession()">New session</ion-button>
     </ion-buttons>
     @if (workspace.session(); as session) {
       <ion-button fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
@@ -143,19 +143,44 @@
 
 <ion-modal [isOpen]="chooserOpen()" (didDismiss)="chooserOpen.set(false)">
   <ng-template>
-    <ion-header><ion-toolbar><ion-title>All sessions</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-header><ion-toolbar><ion-title>Open a session</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>
       @if (workspace.authRequired()) {
         <ion-item lines="full"><ion-label><h2>Sign in required</h2><p>Your saved sessions are available after you sign in. Signing in will return you to this project.</p></ion-label></ion-item>
         <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" initialMode="sign-in" />
+      } @else if (showInitialLoading()) {
+        <ion-item role="status"><ion-spinner slot="start" /><ion-label>Loading sessions for this project…</ion-label></ion-item>
+      } @else if (showInitialLoadError()) {
+        <ion-item color="danger" role="alert"><ion-label><h2>Sessions could not be loaded</h2><p>{{ workspace.error() }}</p></ion-label></ion-item>
       } @else {
+        <ion-item lines="none"><ion-label>Sessions belong to this project. Open a loaded session from the list.</ion-label></ion-item>
+        @if (workspace.error()) {
+          <ion-item color="danger" role="alert"><ion-label>{{ workspace.error() }}</ion-label></ion-item>
+        }
+        @if (!workspace.busy() && workspace.capabilities() && !canCreateSession()) {
+          <ion-item lines="none"><ion-note>
+            @if (!workspace.capabilities()?.actions?.includes('createSession')) {
+              Session creation is not available for this project.
+            } @else {
+              No environment is admitted for session creation in this project yet.
+            }
+          </ion-note></ion-item>
+        }
         <ion-item><ion-input label="Search" [ngModel]="sessionSearch()" (ngModelChange)="sessionSearch.set($event)" /></ion-item>
         <ion-item><ion-select label="State" [value]="sessionFilter()" (ionChange)="sessionFilter.set($event.detail.value)"><ion-select-option value="all">All</ion-select-option><ion-select-option value="active">Running</ion-select-option><ion-select-option value="stopped">Stopped</ion-select-option><ion-select-option value="archived">Archived</ion-select-option></ion-select></ion-item>
         @for (session of visibleSessions(); track session.id) {
           <ion-item button (click)="openSession(session)"><ion-label><h2>{{ session.title }}</h2><p>{{ session.state }} · {{ session.databaseId }}</p></ion-label></ion-item>
-        } @empty { <ion-item><ion-label>No saved sessions match.</ion-label></ion-item> }
+        } @empty {
+          <ion-item><ion-label>
+            @if (sessionSearch() || sessionFilter() !== 'all') {
+              No loaded sessions match. Load more sessions to search additional results, or change the search and state filter.
+            } @else {
+              No sessions are loaded for this project yet.
+            }
+          </ion-label></ion-item>
+        }
         @if (workspace.hasMore()) { <ion-item><ion-button (click)="workspace.loadMore()" [disabled]="workspace.loading()">Load more sessions</ion-button></ion-item> }
-        <ion-item><ion-button (click)="beginCreate()" [disabled]="!workspace.capabilities()">New session</ion-button></ion-item>
+        <ion-item><ion-button (click)="beginCreate()" [disabled]="!canCreateSession()">New session</ion-button></ion-item>
         <ion-item><ion-button fill="outline" (click)="beginLegacyImport()" [disabled]="!workspace.capabilities()?.actions?.includes('importLegacy')">Import from this browser…</ion-button></ion-item>
       }
     </ion-content>

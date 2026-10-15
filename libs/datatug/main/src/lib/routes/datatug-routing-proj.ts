@@ -85,6 +85,13 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    path: 'detective/scenario/:scenarioId',
+    loadComponent: () =>
+      import('../detective/scenario-detail-page.component').then(
+        (m) => m.ScenarioDetailPageComponent,
+      ),
+  },
+  {
     path: 'detective/:caseId',
     loadComponent: () =>
       import('../detective/cases-page.component').then(

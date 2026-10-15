@@ -1,0 +1,23 @@
+// Shared by the records and record pages a card's link opens.
+.link-grid {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9em;
+
+  th,
+  td {
+    padding: 4px 8px;
+    border-bottom: 1px solid var(--ion-color-light-shade, #ddd);
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+  }
+
+  th {
+    font-weight: 600;
+  }
+}
+
+.link-grid-scroll {
+  overflow-x: auto;
+}

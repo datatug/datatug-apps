@@ -472,6 +472,11 @@ export class CasesPageComponent {
   protected caseUrl(id: string): string {
     return this.sessionPageHref(['detective', id]);
   }
+  protected scenarioUrl(id: string): UrlTree {
+    return this.router.parseUrl(
+      projectPageHref(this.scope.ref(), ['detective', 'scenario', id]),
+    );
+  }
   protected checkUrl(id: string): string {
     return this.sessionPageHref(['checks', id]);
   }

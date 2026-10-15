@@ -1,0 +1,49 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button defaultHref="datatug" />
+    </ion-buttons>
+    <ion-title>{{ title() }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+<ion-content>
+  @let s = state();
+  @if (s.kind === 'loading') {
+    <ion-card>
+      <ion-card-content><ion-text color="medium">Loading records…</ion-text></ion-card-content>
+    </ion-card>
+  } @else if (s.kind === 'problem') {
+    <ion-card>
+      <ion-card-content data-testid="link-problem">
+        <ion-text color="danger">The records cannot be shown: {{ s.problem }}</ion-text>
+      </ion-card-content>
+    </ion-card>
+  } @else {
+    <ion-card>
+      <ion-card-content>
+        <p data-testid="records-summary">{{ s.rows.rows.length }} rows (at most {{ limit() }}), read-only</p>
+        <div class="link-grid-scroll">
+          <table class="link-grid" data-testid="records-grid">
+            <thead>
+              <tr>
+                @for (col of s.rows.columns; track $index) {
+                  <th>{{ col }}</th>
+                }
+              </tr>
+            </thead>
+            <tbody>
+              @for (row of s.rows.rows; track $index) {
+                <tr>
+                  @for (cell of row; track $index) {
+                    <td>{{ cell }}</td>
+                  }
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </ion-card-content>
+    </ion-card>
+  }
+</ion-content>

@@ -126,3 +126,37 @@ describe('HomePage header & footer (UX brief §1/§2/§14)', () => {
     ).toBeNull();
   });
 });
+
+describe('HomePage composition', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('uses a compact value proposition and the standard full-width card header', () => {
+    const fixture = configure('notAuthenticated');
+    const hero = fixture.nativeElement.querySelector(
+      '[data-testid="home-hero"]',
+    );
+    expect(hero.querySelector('h1')?.textContent).toContain(
+      'Ask better questions of your data.',
+    );
+    expect(hero.querySelector('.hero-copy')?.textContent).toContain(
+      'connected data, and saved queries together',
+    );
+    expect(
+      hero.querySelector('ion-list[lines="full"] ion-item[color="light"]'),
+    ).toBeTruthy();
+  });
+
+  it('keeps the Detective promotion honest about its private demo flow', () => {
+    const fixture = configure('notAuthenticated');
+    const headings = Array.from(
+      fixture.nativeElement.querySelectorAll('h2') as NodeListOf<Element>,
+    ).map((heading) => heading.textContent?.trim());
+    expect(headings).toContain('Start a private Detective demo');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Try Detective with real checks',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Explore the public demo',
+    );
+  });
+});

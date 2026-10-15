@@ -1,4 +1,19 @@
-import { Component, inject, input } from '@angular/core';
+import {
+  Component,
+  DestroyRef,
+  OnChanges,
+  SimpleChanges,
+  inject,
+  input,
+  signal,
+} from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
 import {
   IonBadge,
   IonButton,
@@ -9,12 +24,14 @@ import {
   IonSelect,
   IonSelectOption,
   IonText,
-  PopoverController,
 } from '@ionic/angular';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IProjectContext } from '../nav/nav-models';
+import { IProjEnv } from '../models/definition/project';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
+import { EnvironmentService } from '../services/unsorted/environment.service';
+import { of, Subject } from 'rxjs';
+import { catchError, map, switchMap } from 'rxjs/operators';
 
 @Component({
   selector: 'sneat-datatug-menu-env-selector',
@@ -31,24 +48,66 @@ import { DatatugNavService } from '../services/nav/datatug-nav.service';
     IonSelectOption,
   ],
 })
-export class MenuEnvSelectorComponent {
+export class MenuEnvSelectorComponent implements OnChanges {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly popoverController = inject(PopoverController);
   private readonly nav = inject(DatatugNavService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
+  private readonly environmentService = inject(EnvironmentService);
+  private readonly destroyRef = inject(DestroyRef);
 
   // TODO: Skipped for migration because:
   //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
   //  and migrating would break narrowing currently.
   readonly project = input<IProjectContext>();
   readonly currentEnvId = input<string>();
+  readonly environments = signal<IProjEnv[]>([]);
+  private readonly projectChanges = new Subject<IProjectContext | undefined>();
+
+  constructor() {
+    this.projectChanges
+      .pipe(
+        switchMap((project) => {
+          this.environments.set([]);
+          if (!project?.ref.projectId) return of([] as IProjEnv[]);
+          const storeId = project.ref.storeId;
+          if (
+            storeId !== STORE_ID_GITHUB_COM &&
+            storeId !== STORE_TYPE_GITHUB
+          ) {
+            return of([...(project.summary?.environments ?? [])]);
+          }
+          return this.environmentService
+            .listEnvironments(project.ref.projectId)
+            .pipe(
+              map((environments) =>
+                environments.map(({ id, title }) => ({ id, title })),
+              ),
+              catchError((error: unknown) => {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to list project environments',
+                );
+                return of([] as IProjEnv[]);
+              }),
+            );
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe((environments) => this.environments.set(environments));
+  }
+
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['project']) {
+      this.projectChanges.next(this.project());
+    }
+  }
 
   public clearEnv(): void {
     // Called from template
     try {
-      this.datatugNavContextService.setCurrentEnvironment(undefined);
+      this.datatugNavContextService.clearCurrentEnvironment();
       const project = this.project();
-      if (project?.ref && project?.summary?.id) {
+      if (project?.ref?.projectId) {
         this.nav.goProject(project);
       }
     } catch (e: unknown) {
@@ -59,7 +118,10 @@ export class MenuEnvSelectorComponent {
   switchEnv(event: CustomEvent): void {
     try {
       const envId = event.detail.value as string;
-      if (envId !== this.currentEnvId()) {
+      if (
+        envId !== this.currentEnvId() &&
+        this.environments().some((env) => env.id === envId)
+      ) {
         this.datatugNavContextService.setCurrentEnvironment(envId);
         const project = this.project();
         if (project?.ref) {

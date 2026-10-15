@@ -126,6 +126,50 @@ function setup(bodies: Record<string, string> = {}) {
 const first = <T>(o: Parameters<typeof firstValueFrom<T>>[0]) => firstValueFrom(o);
 
 describe('GithubProjectReaderService', () => {
+  it.each(['missing', 'null'])('uses a neutral fallback for an existing environment folder with %s metadata', async (mode) => {
+    const { service, gh } = setup();
+    const files = demoFiles();
+    const path = 'demo-project-1/environments/local/local.env.json';
+    if (mode === 'missing') delete files[path];
+    else files[path] = 'null';
+    gh.addRepo(REPO, SHA, files);
+    expect(await first(service.getEnvironmentSummary(PROJECT_ID, 'local'))).toMatchObject({ id: 'local', title: 'local' });
+  });
+
+  it('rejects an unknown environment instead of inventing an empty one', async () => {
+    const { service } = setup();
+    await expect(first(service.getEnvironmentSummary(PROJECT_ID, 'typo'))).rejects.toThrow('was not found');
+  });
+
+  it('preserves presentation and edition references without inventing catalog servers', async () => {
+    const { service } = setup({
+      'demo-project-1/environments/QA/QA.env.json': JSON.stringify({
+        id: 'different-file-id',
+        dbServers: [],
+        presentation: {
+          label: 'Quality assurance',
+          icon: 'flask-outline',
+          tone: 'warning',
+        },
+        editionConnections: ['chinook-postgresql', 'northwind-postgresql'],
+      }),
+    });
+    expect(
+      await first(service.getEnvironmentSummary(PROJECT_ID, 'QA')),
+    ).toEqual({
+      id: 'QA',
+      title: 'QA',
+      dbServers: [],
+      presentation: {
+        label: 'Quality assurance',
+        icon: 'flask-outline',
+        tone: 'warning',
+      },
+      editionConnections: ['chinook-postgresql', 'northwind-postgresql'],
+    });
+  });
+
+
   describe('parseGithubProjectId / buildGithubRawUrl', () => {
     it('splits repo@org@folder and defaults folder to "datatug"', () => {
       expect(parseGithubProjectId('my-repo@my-org')).toEqual({

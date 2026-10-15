@@ -9,35 +9,28 @@
     <!--		<ion-segment value="boards">-->
     <!--			<ion-segment-button value="boards">Databoards</ion-segment-button>-->
     <!--		</ion-segment>-->
-
-    <ion-buttons slot="end">
-      <ion-button (click)="newBoard()">
-        <ion-icon color="primary" slot="start" name="add" />
-        <ion-label color="primary">New</ion-label>
-      </ion-button>
-    </ion-buttons>
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
-  <sneat-card-list
-    [isLoading]="!boards()"
-    [noItemsText]="noItemsText"
-    [items]="boards()"
-    itemIcon="easel-outline"
-    [tab]="tab"
-    [tabs]="[
-      { id: 'shared', title: 'shared' },
-      { id: 'favorite', title: 'Favorite' },
-    ]"
-    (tabChanged)="tabChanged($event)"
-    [isFilterable]="boards() && boards()!.length > 7"
-    [getRouterLink]="getLinkToBoard"
-    (itemClick)="goBoard($event)"
-  />
-
-  <ion-button class="ion-margin" (click)="newBoard()">
-    <ion-icon slot="start" name="add" />
-    <ion-label>New board</ion-label>
-  </ion-button>
+  @if (unsupportedProject()) {
+    <p class="ion-padding" role="status">
+      Boards are unavailable for this project connection or branch.
+    </p>
+  } @else if (loadError()) {
+    <div class="ion-padding">
+      <p role="alert">{{ loadError() }}</p>
+      <ion-button (click)="retryLoad()">Retry loading boards</ion-button>
+    </div>
+  } @else {
+    <sneat-card-list
+      [isLoading]="!boards()"
+      noItemsText="No boards yet"
+      [items]="boards()"
+      itemIcon="easel-outline"
+      [isFilterable]="boards() && boards()!.length > 7"
+      [getRouterLink]="getLinkToBoard"
+      (itemClick)="goBoard($event)"
+    />
+  }
 </ion-content>

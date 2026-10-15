@@ -41,6 +41,10 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'checks', 'invoice-check'])).toBe(true);
     expect(matches([...base, 'detective'])).toBe(true);
     expect(matches([...base, 'detective', 'invoice-case'])).toBe(true);
+    expect(matches([...base, 'detective', 'scenario', 'invoice-review'])).toBe(
+      true,
+    );
+    expect(matches([...base, 'detective', 'scenario', 'bad.id'])).toBe(false);
     expect(matches([...base, 'query', 'genre-mix'])).toBe(true);
     expect(matches([...base, 'sessions'])).toBe(true);
     expect(matches([...base, 'sessions', 's1', 'composer'])).toBe(true);
@@ -62,6 +66,25 @@ describe('datatugRoutes', () => {
   it('places metadata recovery routes before content-guarded project routes', () => {
     expect(datatugRoutes.slice(0, 2).map(route => route.path)).toEqual(['native-check-status/:recoveryId', 'store/:storeId/native-check-status/:recoveryId']);
     for (const route of datatugRoutes.slice(0, 2)) { expect(route.canActivate).toBeUndefined(); expect(route.canMatch).toBeUndefined(); }
+  });
+  it('resolves a cold scenario URL before the Case detail route', async () => {
+    const project = datatugRoutes.find(
+      (candidate) =>
+        candidate.path === 'space/:spaceId/store/:storeId/project/:projectId',
+    );
+    const detective = project?.children?.find(
+      (candidate) => candidate.path === 'detective',
+    );
+    expect(detective?.children?.map((child) => child.path)).toEqual([
+      'scenario/:scenarioId',
+      '',
+      ':caseId',
+    ]);
+    const detail = detective?.children?.[0];
+    const component = await detail?.loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'ScenarioDetailPageComponent',
+    );
   });
   it('redirects signed-out to the home page', () => {
     expect(datatugRoutes).toContainEqual({
