@@ -309,6 +309,11 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(activePage(page).getByText('Title')).toBeVisible({
       timeout: 15_000,
     });
+    await expect(
+      activePage(page).getByText(
+        'No preview source is configured for this entity.',
+      ),
+    ).toBeVisible();
 
     // --- Environments (side-menu click) ------------------------------------
     await page
