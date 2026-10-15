@@ -28,6 +28,9 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     {
       name: 'mobile-webkit',
+      // The test budget includes first-page initialization, which can take
+      // over 15 seconds on CI before the multi-navigation journey begins.
+      timeout: 60_000,
       use: { ...devices['iPhone 13'], browserName: 'webkit' },
     },
   ],
