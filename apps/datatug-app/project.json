@@ -66,6 +66,11 @@
             "output": "./assets"
           },
           {
+            "glob": "sqlite3.wasm",
+            "input": "node_modules/@sqlite.org/sqlite-wasm/dist",
+            "output": "."
+          },
+          {
             "glob": "**/*.svg",
             "input": "node_modules/ionicons/dist/ionicons/svg",
             "output": "./svg"
@@ -200,6 +205,16 @@
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-handoff-e2e"],
       "options": {
         "command": "pnpm e2e:demo-handoff"
+      }
+    },
+    "e2e-demo-sqlite": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-e2e"
+      ],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --forbid-only"
       }
     },
     "e2e-error-dialog": {

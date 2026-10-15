@@ -17,7 +17,7 @@ export default defineConfig({
   // analytics, so it has its own config (playwright.demo-handoff.config.ts).
   // Deployed-provider checks require their explicit opt-in config, dedicated
   // identity and disabled sensitive artifacts; never discover them here.
-  testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts'],
+  testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'demo-sqlite.spec.ts'],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
   reporter: [
@@ -69,7 +69,7 @@ export default defineConfig({
       // 'error-dialog.spec.ts' and adds 'journey/**' — journey/ has its own
       // project below (real agent, no interception) and must not also run
       // under this default project.
-      testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'journey/**'],
+      testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'demo-sqlite.spec.ts', 'journey/**'],
       use: { ...devices['Desktop Chrome'] },
     },
     {
