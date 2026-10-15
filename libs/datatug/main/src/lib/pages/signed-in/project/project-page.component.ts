@@ -156,6 +156,10 @@ export class ProjectPageComponent
   // no-template-rewrite case). A signal write notifies change detection
   // directly, per this repo's own zoneless convention (AGENTS.md).
   protected readonly project = signal<IProjectContext | undefined>(undefined);
+  protected readonly projectItemsUnsupported = computed(() => {
+    const ref = this.project()?.ref;
+    return !!(ref?.spaceID || ref?.projectApi || ref?.branch);
+  });
 
   /**
    * The read-only "Store" field shows this instead of the raw
@@ -233,7 +237,9 @@ export class ProjectPageComponent
       this.entities.set(undefined);
       this.environmentError.set(false);
       this.entityError.set(false);
-      if (!ref.spaceID) {
+      // These readers use only the store and project IDs. A qualified ref
+      // would silently return a different branch or connection's content.
+      if (!ref.spaceID && !ref.projectApi && !ref.branch) {
         const github =
           ref.storeId === STORE_ID_GITHUB_COM ||
           ref.storeId === STORE_TYPE_GITHUB;

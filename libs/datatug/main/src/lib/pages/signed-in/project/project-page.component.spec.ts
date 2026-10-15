@@ -353,6 +353,13 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(
       fixture.nativeElement.querySelector('sneat-datatug-folder'),
     ).not.toBeNull();
+    const getFull = TestBed.inject(ProjectService).getFull as ReturnType<
+      typeof vi.fn
+    >;
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as ReturnType<typeof vi.fn>;
+    const fullReads = getFull.mock.calls.length;
+    const entityReads = getAllEntities.mock.calls.length;
 
     const page = fixture.componentInstance as unknown as {
       setProjRef(ref: {
@@ -369,6 +376,8 @@ describe('ProjectPage rendering a local-agent store project', () => {
       branch: 'feature',
     });
     await fixture.whenStable();
+    expect(getFull).toHaveBeenCalledTimes(fullReads);
+    expect(getAllEntities).toHaveBeenCalledTimes(entityReads);
 
     expect(
       fixture.nativeElement.querySelector('sneat-datatug-folder'),
@@ -376,6 +385,22 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(
       fixture.nativeElement.querySelector('[role="status"]')?.textContent,
     ).toContain('Boards are unavailable');
+
+    for (const [tab, label] of [
+      [2, 'Environments'],
+      [3, 'Entities'],
+      [4, 'Databases'],
+    ] as const) {
+      (
+        fixture.nativeElement.querySelectorAll('.overview-tabs button')[
+          tab
+        ] as HTMLButtonElement
+      ).click();
+      await fixture.whenStable();
+      expect(
+        fixture.nativeElement.querySelector('[role="status"]')?.textContent,
+      ).toContain(`${label} are unavailable`);
+    }
   });
 });
 
