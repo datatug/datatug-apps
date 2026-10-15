@@ -25,7 +25,12 @@ import {
   ViewDidLeave,
 } from '@ionic/angular';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
 import { IRecord } from '@sneat/data';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntity } from '../../../models/definition/metapedia/entity';
@@ -119,6 +124,14 @@ export class EntitiesPageComponent
       : entities;
   });
   readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly canMutateEntities = computed(() => {
+    const storeId = this.project()?.ref.storeId;
+    return (
+      !!storeId &&
+      storeId !== STORE_ID_GITHUB_COM &&
+      storeId !== STORE_TYPE_GITHUB
+    );
+  });
   private readonly destroyed = new Subject<void>();
 
   constructor() {
@@ -177,6 +190,9 @@ export class EntitiesPageComponent
   goNewEntity(event: Event): void {
     event.preventDefault();
     event.stopPropagation();
+    if (!this.canMutateEntities()) {
+      return;
+    }
     this.datatugNavService.goProjPage('new-entity', this.project());
   }
 
@@ -192,7 +208,7 @@ export class EntitiesPageComponent
     event?.stopPropagation();
     event?.preventDefault();
     const project = this.project();
-    if (!project?.ref) {
+    if (!project?.ref || !this.canMutateEntities()) {
       return;
     }
     this.entityService.deleteEntity(project.ref, entity.id).subscribe({

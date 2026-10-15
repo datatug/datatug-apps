@@ -5,12 +5,14 @@
       <ion-back-button />
     </ion-buttons>
     <sneat-datatug-page-title pageTitle="Entities" />
-    <ion-buttons slot="end">
-      <ion-button routerLink="../new-entity">
-        <ion-icon name="add" />
-        <ion-label>New</ion-label>
-      </ion-button>
-    </ion-buttons>
+    @if (canMutateEntities()) {
+      <ion-buttons slot="end">
+        <ion-button routerLink="../new-entity">
+          <ion-icon name="add" />
+          <ion-label>New</ion-label>
+        </ion-button>
+      </ion-buttons>
+    }
   </ion-toolbar>
 </ion-header>
 
@@ -69,17 +71,19 @@
                 {{ entity.dbo.fields.length === 1 ? 'field' : 'fields' }}
               </ion-badge>
             }
-            <ion-buttons>
-              <ion-button
-                title="Delete entity"
-                class="delete-button"
-                [disabled]="entity.state && entity.state !== 'changed'"
-                color="medium"
-                (click)="deleteEntity($event, entity)"
-              >
-                <ion-icon name="trash" />
-              </ion-button>
-            </ion-buttons>
+            @if (canMutateEntities()) {
+              <ion-buttons>
+                <ion-button
+                  title="Delete entity"
+                  class="delete-button"
+                  [disabled]="entity.state && entity.state !== 'changed'"
+                  color="medium"
+                  (click)="deleteEntity($event, entity)"
+                >
+                  <ion-icon name="trash" />
+                </ion-button>
+              </ion-buttons>
+            }
           </ion-item>
         } @empty {
           <ion-item class="last-child-no-border">
@@ -100,8 +104,10 @@
     </ion-list>
   </ion-card>
 
-  <ion-button class="ion-margin" (click)="goNewEntity($event)">
-    <ion-icon slot="start" name="add" />
-    <ion-label>New entity</ion-label>
-  </ion-button>
+  @if (canMutateEntities()) {
+    <ion-button class="ion-margin" (click)="goNewEntity($event)">
+      <ion-icon slot="start" name="add" />
+      <ion-label>New entity</ion-label>
+    </ion-button>
+  }
 </ion-content>

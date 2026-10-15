@@ -228,4 +228,17 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     expect(fixture.nativeElement.innerHTML).toContain('Customers');
     expect(fixture.nativeElement.innerHTML).toContain('Orders');
   });
+
+  it('hides unsupported entity mutations in a GitHub project while keeping the list readable', async () => {
+    fixture.detectChanges();
+    currentProject$.next({ ref: { projectId: 'demo', storeId: 'github.com' } });
+    getAllEntities$.next([{ id: 'Album', dbo: { id: 'Album', fields: [] } }]);
+    await fixture.whenStable();
+
+    const html: string = fixture.nativeElement.innerHTML;
+    expect(html).toContain('Album');
+    expect(html).not.toContain('New entity');
+    expect(html).not.toContain('Delete entity');
+    expect(fixture.nativeElement.querySelector('ion-button')).toBeNull();
+  });
 });

@@ -75,9 +75,8 @@ describe('EntityPage', () => {
  * entityService.getEntity() -> http.get()). This app runs
  * `provideZonelessChangeDetection()` (apps/datatug-app/src/main.ts), so a
  * plain-field write from an async callback never schedules a repaint on
- * its own — the page's own template has a literal "Loading..." placeholder
- * (`@if (!sourceData())`) that, before this fix, would never be replaced
- * once the real source data arrived.
+ * its own. The page now has explicit missing, loading, ready, and error
+ * preview states, all driven by signals.
  *
  * Uses `Subject`s, not `of(...)`, so the values arrive strictly after the
  * initial render — matching real HTTP timing — and never calls
@@ -85,8 +84,9 @@ describe('EntityPage', () => {
  * `fixture.whenStable()` to prove the signal writes alone re-render the
  * page with no manual intervention.
  */
-describe('EntityPage replaces "Loading..." once the source data arrives (zoneless)', () => {
+describe('EntityPage source preview states (zoneless)', () => {
   let fixture: ComponentFixture<EntityPageComponent>;
+  let component: EntityPageComponent;
   let paramMap$: Subject<{ get: (key: string) => string | null }>;
   let getEntity$: Subject<IRecord<IEntity>>;
   let httpGet$: Subject<unknown[][]>;
@@ -130,7 +130,10 @@ describe('EntityPage replaces "Loading..." once the source data arrives (zoneles
         },
         {
           provide: HttpClient,
-          useValue: { get: vi.fn(() => httpGet$.asObservable()), post: vi.fn() },
+          useValue: {
+            get: vi.fn(() => httpGet$.asObservable()),
+            post: vi.fn(),
+          },
         },
       ],
     })
@@ -149,11 +152,14 @@ describe('EntityPage replaces "Loading..." once the source data arrives (zoneles
       .compileComponents();
 
     fixture = TestBed.createComponent(EntityPageComponent);
+    component = fixture.componentInstance;
   });
 
-  it('replaces the Loading... placeholder with the source grid once it arrives, with no explicit detectChanges()', async () => {
+  it('renders the source row count once data arrives, with no explicit detectChanges()', async () => {
     fixture.detectChanges(); // initial render — nothing has arrived yet
-    expect(fixture.nativeElement.innerHTML).toContain('Loading...');
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'No preview source is configured',
+    );
 
     const entity: IRecord<IEntity> = {
       id: 'customer',
@@ -183,6 +189,140 @@ describe('EntityPage replaces "Loading..." once the source data arrives (zoneles
     httpGet$.next([['region', 'alpha-2', 'alpha-3', 'name']]);
     await fixture.whenStable();
 
-    expect(fixture.nativeElement.innerHTML).not.toContain('Loading...');
+    expect(fixture.nativeElement.innerHTML).toContain('1 row in source');
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'Loading source preview',
+    );
+  });
+
+  it('shows a stable read-only name and a clear missing-preview state for a demo entity', async () => {
+    fixture.detectChanges();
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId'
+          ? 'github.com'
+          : key === 'projectId'
+            ? 'demo'
+            : 'Album',
+    });
+    getEntity$.next({
+      id: 'Album',
+      dbo: { id: 'Album', fields: [{ id: 'Title', type: 'string' }] },
+    });
+    await fixture.whenStable();
+
+    const html: string = fixture.nativeElement.innerHTML;
+    expect(html).toContain('No preview source is configured for this entity.');
+    expect(html).toContain('Title');
+    expect(html).not.toContain('Loading source preview');
+    expect(fixture.nativeElement.querySelector('ion-input')).toBeNull();
+    expect(fixture.nativeElement.querySelector('ion-button')).toBeNull();
+  });
+
+  it('cancels the old preview on source and entity changes', async () => {
+    const first$ = new Subject<unknown>();
+    const second$ = new Subject<unknown>();
+    const get = TestBed.inject(HttpClient).get as unknown as ReturnType<
+      typeof vi.fn
+    >;
+    get
+      .mockReset()
+      .mockReturnValueOnce(first$.asObservable())
+      .mockReturnValueOnce(second$.asObservable());
+
+    fixture.detectChanges();
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId' ? 'agent' : key === 'projectId' ? 'demo' : 'Country',
+    });
+    getEntity$.next({
+      id: 'Country',
+      dbo: {
+        id: 'Country',
+        fields: [],
+        options: {
+          sources: [
+            { contentType: 'json', url: '/one', source: 'first', mapping: {} },
+            { contentType: 'json', url: '/two', source: 'second', mapping: {} },
+          ],
+        },
+      },
+    });
+    expect(component.sourceState()).toBe('loading');
+    component.selectSource(1);
+    expect(get).toHaveBeenCalledTimes(2);
+    first$.next([{ stale: true }]);
+    expect(component.sourceData()).toEqual([]);
+    second$.next([{ name: 'Ireland' }, { name: 'France' }]);
+    await fixture.whenStable();
+    expect(component.sourceData()).toHaveLength(2);
+    expect(fixture.nativeElement.innerHTML).toContain('2 rows in source');
+
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId' ? 'agent' : key === 'projectId' ? 'demo' : 'Album',
+    });
+    getEntity$.next({ id: 'Album', dbo: { id: 'Album', fields: [] } });
+    second$.next([{ stale: true }]);
+    await fixture.whenStable();
+    expect(component.sourceData()).toEqual([]);
+    expect(component.sourceState()).toBe('missing');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'No preview source is configured',
+    );
+  });
+
+  it('distinguishes an empty source from a failed source', async () => {
+    const empty$ = new Subject<unknown>();
+    const failed$ = new Subject<unknown>();
+    const get = TestBed.inject(HttpClient).get as unknown as ReturnType<
+      typeof vi.fn
+    >;
+    get
+      .mockReset()
+      .mockReturnValueOnce(empty$.asObservable())
+      .mockReturnValueOnce(failed$.asObservable());
+    fixture.detectChanges();
+    paramMap$.next({
+      get: (key) =>
+        key === 'storeId' ? 'agent' : key === 'projectId' ? 'demo' : 'Country',
+    });
+    getEntity$.next({
+      id: 'Country',
+      dbo: {
+        id: 'Country',
+        fields: [],
+        options: {
+          sources: [
+            {
+              contentType: 'json',
+              url: '/empty',
+              source: 'empty',
+              mapping: {},
+            },
+            {
+              contentType: 'json',
+              url: '/failed',
+              source: 'failed',
+              mapping: {},
+            },
+          ],
+        },
+      },
+    });
+    empty$.next([]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.innerHTML).toContain('0 rows in source');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'No rows in this source.',
+    );
+
+    component.selectSource(1);
+    failed$.error(new Error('network'));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Could not load the source preview.',
+    );
+    expect(fixture.nativeElement.innerHTML).not.toContain('0 rows in source');
   });
 });
