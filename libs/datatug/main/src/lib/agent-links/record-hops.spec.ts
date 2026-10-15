@@ -1,4 +1,6 @@
 import { AgentForeignKey, AgentTableRef } from './agent-link-api.service';
+import { DefaultUrlSerializer } from '@angular/router';
+import { lookupKey, parseKeyObject, pkOfFragment } from './record-key';
 import { recordHops } from './record-hops';
 
 const REF: AgentTableRef = {
@@ -43,6 +45,38 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
       { type: 'integer', text: '7' },
     ]);
     expect(JSON.parse(hop.fragment.slice('pk='.length))).toEqual({ PlaylistId: 7, TrackCode: 'a"&b' });
+  });
+
+  it('round-trips & " # % and non-ASCII through the router and the record page reader', () => {
+    const [hop] = recordHops(REF, [COMPOSITE], ['TCode', 'PId'], [
+      { type: 'string', text: 'a&b"#%26 ü' },
+      { type: 'integer', text: '9007199254740993' },
+    ]);
+    // As the router writes the address bar and the record page then reads location.hash.
+    const serializer = new DefaultUrlSerializer();
+    const tree = serializer.parse('/x');
+    tree.fragment = hop.fragment; // as routerLink's [fragment] sets it
+    const url = serializer.serialize(tree);
+    const key = parseKeyObject(pkOfFragment(url.slice(url.indexOf('#'))) ?? '');
+    expect(key).toBeDefined();
+    expect(
+      lookupKey(key!, {
+        columns: [
+          { name: 'PlaylistId', type: 'int' },
+          { name: 'TrackCode', type: 'string' },
+        ],
+        primaryKey: ['PlaylistId', 'TrackCode'],
+        referencedBy: [],
+        foreignKeys: [],
+      }),
+    ).toEqual({ PlaylistId: '9007199254740993', TrackCode: 'a&b"#%26 ü' });
+  });
+
+  it('has no hop for a string over 256 bytes', () => {
+    expect(recordHops(REF, [COMPOSITE], ['TCode', 'PId'], [
+      { type: 'string', text: 'ü'.repeat(129) },
+      { type: 'integer', text: '1' },
+    ])).toEqual([]);
   });
 
   it.each([

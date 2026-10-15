@@ -15,11 +15,20 @@ export interface RecordHop {
 
 const INTEGER_TEXT = /^-?(?:0|[1-9]\d*)$/;
 
+/**
+ * A JSON string literal with `&` written as `\u0026`: the router serializes the fragment with encodeURI, which
+ * leaves `&` bare, and a bare `&` would split the fragment's `pk=` part. JSON decodes the escape back to `&`.
+ */
+function jsonText(value: string): string {
+  return JSON.stringify(value).replace(/&/g, '\\u0026');
+}
+
 /** A typed cell as a JSON key value: an integer as its exact digits (never through a number), a string as JSON. */
 function keyLiteral(cell: AgentCell | undefined): string | undefined {
   if (!cell) return undefined;
   if (cell.type === 'integer' && INTEGER_TEXT.test(cell.text) && cell.text !== '-0') return cell.text;
-  if (cell.type === 'string' && cell.text.length <= 256) return JSON.stringify(cell.text);
+  // At most 256 bytes, as the agent's lookup counts them.
+  if (cell.type === 'string' && new TextEncoder().encode(cell.text).length <= 256) return jsonText(cell.text);
   return undefined; // null, decimal, date, bytes…: the record lookup takes integer and string keys only
 }
 
@@ -40,7 +49,7 @@ export function recordHops(
     for (let i = 0; i < fk.columns.length; i++) {
       const literal = keyLiteral(cells[columns.indexOf(fk.columns[i])]);
       if (literal === undefined) break;
-      parts.push(`${JSON.stringify(fk.refColumns[i])}:${literal}`);
+      parts.push(`${jsonText(fk.refColumns[i])}:${literal}`);
     }
     if (parts.length !== fk.columns.length) continue;
     hops.push({
