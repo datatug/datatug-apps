@@ -8,7 +8,7 @@ import { buildAgentUrl } from '../services/repo/agent-url';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { projectApiQuery } from '../nav/project-api-routing';
 import {
-  ContextCapabilities, ContextCommand, ContextReceipt, ContextSessionPage,
+  ContextCapabilities, ContextCommand, ContextReceipt, ContextSessionPage, SessionScope,
   ContextSnapshot, contextOpaqueId, readContextSnapshot,
   ContextInputSnapshot, ContextEntryRevision, ContextRun, ContextMessage,
 } from './session-context-contract';
@@ -106,9 +106,12 @@ export class SessionContextApiService {
     const params = new HttpParams({ fromObject: {
       ...(reference instanceof Promise ? await reference : reference), databaseId: capabilities.databaseId, projectId: capabilities.projectId,
     } });
+    // Capabilities enrich scopes with presentation/source metadata. Core's strict
+    // mutation schema accepts only the two authoritative identity fields.
+    const wireScope = (scope: SessionScope): SessionScope => ({ environmentId: scope.environmentId, identityDomain: scope.identityDomain });
     const commandBody = command.action === 'importLegacy'
-      ? { opId: command.opId, action: command.action, legacyImport: command.legacyImport }
-      : command;
+      ? { opId: command.opId, action: command.action, legacyImport: command.legacyImport ? { ...command.legacyImport, scope: wireScope(command.legacyImport.scope) } : undefined }
+      : { ...command, ...(command.scope ? { scope: wireScope(command.scope) } : {}) };
     const body = { ...commandBody, databaseId: capabilities.databaseId, projectId: capabilities.projectId };
     const result = ['github', 'github.com', 'firestore'].includes(ref.storeId)
       ? await firstValueFrom(this.api.post<{ receipt: ContextReceipt }>(
