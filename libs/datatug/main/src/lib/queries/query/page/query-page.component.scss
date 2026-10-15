@@ -41,8 +41,6 @@
 }
 .author-card-title-row {
   --min-height: 2.75rem;
-  --padding-start: 0.75rem;
-  --inner-padding-end: 0.75rem;
   --background: transparent;
   min-width: 0;
 }
@@ -58,20 +56,13 @@
 .author-card-title-row ion-buttons {
   margin-inline: 0;
 }
-.author-mode-switch {
-  width: fit-content;
-  margin: 0;
-}
-.author-context-tabs {
+.workspace-main-tabs {
   width: 100%;
   min-width: 0;
-  grid-template-columns: repeat(3, max-content);
-  justify-content: space-between;
 }
-.author-context-tabs ion-segment-button {
-  min-width: 0;
-  --padding-start: 0;
-  --padding-end: 0;
+.workspace-main-tabs ion-segment-button {
+  flex: 0 0 auto;
+  min-height: 3rem;
 }
 .author-context-sticky-header {
   position: sticky;
@@ -79,19 +70,21 @@
   z-index: 2;
   background: var(--ion-background-color);
 }
-.author-context-tabs ion-label {
-  display: flex;
+.workspace-main-tabs ion-label {
+  display: inline-flex;
   align-items: center;
   white-space: nowrap;
   margin-block: 0;
 }
-.author-context-tabs ion-chip {
+.workspace-main-tabs ion-chip {
   flex: none;
   justify-content: center;
+  margin-inline-start: 0.25rem;
   min-height: 1.25rem;
   padding: 0 0.125rem;
   font-size: 0.6875rem;
   line-height: 1;
+  position: relative;
   top: -0.1875rem;
 }
 .author-run-readiness {
@@ -111,14 +104,12 @@
   gap: 0.3rem;
   margin: 0;
 }
-.query-view-switch ion-button.is-active,
-.author-mode-option.is-active {
+.query-view-switch ion-button.is-active {
   border-bottom: 2px solid var(--ion-color-primary);
   --color: var(--ion-color-primary);
   font-weight: 650;
 }
-.query-view-switch ion-button:focus-visible,
-.author-mode-option:focus-visible {
+.query-view-switch ion-button:focus-visible {
   outline: 2px solid var(--ion-color-primary);
   outline-offset: 2px;
 }
@@ -175,17 +166,6 @@
   .author-code-overflow {
     display: inline-flex;
   }
-  .author-mode-switch {
-    display: flex;
-    width: 100%;
-    min-width: 0;
-  }
-  .author-mode-switch ion-button {
-    flex: 1 1 0;
-    min-width: 0;
-    white-space: normal;
-    overflow-wrap: normal;
-  }
 }
 :host ::ng-deep .author-customer-cell {
   display: flex;
@@ -226,8 +206,7 @@
   }
 }
 @media (forced-colors: active) {
-  .query-view-switch ion-button.is-active,
-  .author-mode-option.is-active {
+  .query-view-switch ion-button.is-active {
     border-color: Highlight;
   }
 }

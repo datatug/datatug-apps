@@ -147,20 +147,13 @@ what was tried (see `fixtures/agent-server.ts`, `resolveBinary()` /
 `.github/workflows/ci.yml`'s `journey` job (needs: `build`) is what actually
 runs this suite in CI. It:
 
-1. Checks out this repo, plus `datatug/datatug-cli` at a **pinned release
-   tag** (`env.DATATUG_CLI_REF` at the top of the job — currently
-   `v0.46.0`) and `datatug/datatug-demo-project` at `main`, both nested
-   under the workspace (`actions/checkout`'s `path:` cannot escape the
+1. Checks out this repo, plus `datatug/datatug-demo-project` at `main`
+   nested under the workspace (`actions/checkout`'s `path:` cannot escape the
    primary checkout).
-2. Sets up Go from `datatug-cli/go.mod` and builds `datatug` from the CLI
-   repo root (`go build -o "$RUNNER_TEMP/datatug-bin/datatug" .` —
-   `CGO_ENABLED=0`; the root package is `main.go`, not
-   `apps/datatugapp/`), then sets `DATATUG_BIN` to that path. This is a
-   **build-from-source-at-a-pinned-tag** strategy, not a downloaded release
-   binary: `datatug-cli` publishes release binaries too (GitHub Releases,
-   plus a Homebrew cask named `datatug`), but pinning a source tag and
-   building it keeps the Go toolchain step reproducible and version-pinned
-   in one place (`DATATUG_CLI_REF`) without a separate binary-download step.
+2. Downloads the prebuilt `datatug` CLI binary from `datatug/datatug` at a
+   **pinned release tag** (`env.DATATUG_CLI_REF` at the top of the job —
+   currently `v0.78.0`), verifies its SHA256 checksum against the published
+   checksums file, and sets `DATATUG_BIN` to that path.
 3. Fetches the Chinook SQLite fixture directly, keylessly, to
    `~/datatug/dbs/chinook-local.sqlite` — the exact path
    `environments/local/catalogs/chinook-local/chinook-local.db.json`

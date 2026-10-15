@@ -4,6 +4,7 @@ import { provideRouter } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
+import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { ProjectMenuComponent } from './project-menu.component';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { QueriesUiService } from '../../../queries/queries-ui.service';
@@ -135,11 +136,14 @@ describe('shared project menu refuses active-query tab', () => {
           provide: DatatugNavContextService,
           useValue: {
             currentProject: of(project),
+            currentStoreId: of(undefined),
+            currentEnv: of(undefined),
             currentFolder: of('overview'),
           },
         },
         { provide: DatatugNavService, useValue: nav },
         { provide: DatatugUserService, useValue: { datatugUserState: of({}) } },
+        { provide: PRODUCT_PROFILE, useValue: PRODUCT_PROFILES.datatug },
         {
           provide: ErrorLogger,
           useValue: {
@@ -162,7 +166,12 @@ describe('shared project menu refuses active-query tab', () => {
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
     const items = [...host.querySelectorAll('ion-item')];
-    expect(items).toHaveLength(5);
+    // Incidents joined the project menu in this profile (UX brief §13):
+    // 5 metadata-only destinations + the incidents link.
+    expect(items).toHaveLength(6);
+    expect(
+      host.querySelector('[data-testid="incidents-project-menu-item"]'),
+    ).toBeTruthy();
     expect(nav.goProjPage).not.toHaveBeenCalled();
     expect(queryActions.openNewQuery).not.toHaveBeenCalled();
     expect(queryState.setCurrentQuery).not.toHaveBeenCalled();

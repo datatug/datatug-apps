@@ -1,5 +1,5 @@
 import { AsyncPipe } from '@angular/common';
-import { Component, OnDestroy, inject, signal } from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { NavigationEnd, Router, RouterLink } from '@angular/router';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
@@ -22,12 +22,18 @@ import {
 } from '../../../services/nav/datatug-nav.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { IProjectSummary } from '../../../models/definition/project';
-import { IProjectContext, parseProjectUrl } from '../../../nav/nav-models';
+import {
+  IEnvContext,
+  IProjectContext,
+  parseProjectUrl,
+} from '../../../nav/nav-models';
+import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
+import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { addIcons } from 'ionicons';
-import { chatbubblesOutline } from 'ionicons/icons';
+import { chatbubblesOutline, warningOutline } from 'ionicons/icons';
 
-addIcons({ chatbubblesOutline });
+addIcons({ chatbubblesOutline, warningOutline });
 
 interface IProjectTopLevelPage {
   path: ProjectTopLevelPage;
@@ -68,6 +74,42 @@ export class ProjectMenuTopComponent implements OnDestroy {
   private readonly router = inject(Router, { optional: true });
   readonly inSessionWorkspace = signal(false);
   private readonly userService = inject(DatatugUserService);
+
+  // Incidents moved from a standalone side-panel card into project
+  // navigation (UX brief §13). Read declaratively from the profile
+  // (REQ:profile-config-is-declarative): fixed `true` for `datatug`
+  // (founder, 2026-09-11: "DataTug app should always have Incidents menu
+  // item"), `false` for profiles whose home already is the incidents list.
+  // The icon follows the standard non-colored project-menu style.
+  private readonly profile = inject(PRODUCT_PROFILE);
+  protected readonly showIncidents = computed(
+    () => this.profile.showIncidentsMenuItem,
+  );
+  private readonly currentStoreId = signal<string | undefined>(undefined);
+  private readonly currentEnvironment = signal<IEnvContext | undefined>(
+    undefined,
+  );
+  // Signal mirror of the plain `project` field so the computed above
+  // recomputes on context change (zoneless: plain fields notify nothing).
+  private readonly currentProjectId = signal<string | undefined>(undefined);
+  // Context carry-over from the retired sidebar card: link the incident list
+  // to the active store/project/environment scope when all three are known.
+  protected readonly incidentQueryParams = computed(() => {
+    const agentStoreId = this.currentStoreId();
+    const project = this.currentProjectId();
+    const environment = this.currentEnvironment()?.id;
+    if (!agentStoreId || !project || !environment) {
+      return undefined;
+    }
+    return incidentContextQueryParams({
+      agentStoreId,
+      scope: {
+        storeId: project,
+        project,
+        environment,
+      },
+    });
+  });
 
   // Widgets, Tags and DB models are empty-shell pages — see
   // ENABLE_EMPTY_SHELL_PAGES. Left out of the menu entirely while the flag
@@ -194,11 +236,20 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   constructor() {
     const syncSession = () => {
-      const parsed = this.router ? parseProjectUrl(this.router.url.split('?')[0]) : undefined;
-      this.inSessionWorkspace.set(!!parsed?.ok && /^\/sessions\/[^/]+(?:\/|$)/.test(parsed.rest));
+      const parsed = this.router
+        ? parseProjectUrl(this.router.url.split('?')[0])
+        : undefined;
+      this.inSessionWorkspace.set(
+        !!parsed?.ok && /^\/sessions\/[^/]+(?:\/|$)/.test(parsed.rest),
+      );
     };
     syncSession();
-    this.router?.events.pipe(filter((event) => event instanceof NavigationEnd), takeUntil(this.destroyed)).subscribe(syncSession);
+    this.router?.events
+      .pipe(
+        filter((event) => event instanceof NavigationEnd),
+        takeUntil(this.destroyed),
+      )
+      .subscribe(syncSession);
     const datatugNavContextService = this.datatugNavContextService;
 
     this.datatugNavContextService.currentProject
@@ -209,11 +260,28 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'ProjectMenuTopComponent failed to retrieve project context from ProjectTracker',
         ),
       });
+    this.datatugNavContextService.currentStoreId
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (storeId) => this.currentStoreId.set(storeId),
+        error: this.errorLogger.logErrorHandler(
+          'ProjectMenuTopComponent failed to track current store',
+        ),
+      });
+    this.datatugNavContextService.currentEnv
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (env) => this.currentEnvironment.set(env),
+        error: this.errorLogger.logErrorHandler(
+          'ProjectMenuTopComponent failed to track current environment',
+        ),
+      });
     this.currentFolder = datatugNavContextService.currentFolder;
   }
 
   private setProject = (project?: IProjectContext) => {
     this.project = project;
+    this.currentProjectId.set(project?.ref.projectId);
     this.metadataOnly.set(project?.ref.spaceID !== undefined);
     // Keep the writable sandbox entry scoped to the canonical public DemoDB
     // project. The API independently enforces authenticated per-user access.
@@ -238,7 +306,9 @@ export class ProjectMenuTopComponent implements OnDestroy {
     if (
       (this.cliBridgeChat && page !== 'chat') ||
       (this.metadataOnly() &&
-        !['overview', 'queries', 'checks', 'detective', 'sessions'].includes(page))
+        !['overview', 'queries', 'checks', 'detective', 'sessions'].includes(
+          page,
+        ))
     )
       return false;
     const project = this.project;

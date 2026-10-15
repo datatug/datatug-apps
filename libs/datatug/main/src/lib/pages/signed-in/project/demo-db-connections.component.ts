@@ -1,4 +1,5 @@
 import { Component, Input, inject, signal } from '@angular/core';
+import { RouterLink } from '@angular/router';
 import { IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import type { IProjectRef } from '../../../core/project-context';
@@ -100,7 +101,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
 @Component({
   selector: 'sneat-datatug-demodb-connections',
   standalone: true,
-  imports: [IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList],
+  imports: [RouterLink, IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList],
   template: `
     @if (catalog()) {
       <ion-card>
@@ -117,7 +118,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
                   · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
                 }
                 @if (edition.storage === 'sqlite') {
-                  <p>Copy to local Dev will be available after the browser database update.</p>
+                  · <a [routerLink]="['/demo', 'sqlite', edition.dataset]" [attr.data-testid]="'explore-local-' + edition.dataset">Explore SQLite in DataTug (editable copy in this browser)</a>
                 }
               </ion-label>
             </ion-item>

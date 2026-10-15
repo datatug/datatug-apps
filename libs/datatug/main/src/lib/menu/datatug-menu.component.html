@@ -1,17 +1,25 @@
-<ion-card>
-  <sneat-datatug-menu-store-selector
-    [datatugUser]="datatugUserState()?.record"
-  />
-  @if (currentStoreId()) {
-    <sneat-datatug-menu-project-selector
+<!--
+  Home page keeps the panel mostly empty on purpose (UX brief §2): the Store
+  selector, Incidents card and build-info card are project/footer chrome —
+  duplicating them here was the "redundant controls" the brief called out.
+  Incidents now lives in the project menu (project-menu-top).
+-->
+@if (!isHomePage()) {
+  <ion-card>
+    <sneat-datatug-menu-store-selector
       [datatugUser]="datatugUserState()?.record"
-      (projectChanged)="onProjectChanged($event)"
     />
-  }
-  @if (currentProject() && currentProject()?.ref?.spaceID === undefined) {
-    <sneat-datatug-menu-env-selector />
-  }
-</ion-card>
+    @if (currentStoreId()) {
+      <sneat-datatug-menu-project-selector
+        [datatugUser]="datatugUserState()?.record"
+        (projectChanged)="onProjectChanged($event)"
+      />
+    }
+    @if (currentProject() && currentProject()?.ref?.spaceID === undefined) {
+      <sneat-datatug-menu-env-selector />
+    }
+  </ion-card>
+}
 
 <!--<sneat-datatug-context-card *ngIf="currentProjectId" [projectId]="currentProjectId"/>-->
 
@@ -22,29 +30,16 @@
   />
 }
 
-@if (!isLoginPage()) {
+@if (showAuthCard()) {
   <ion-card>
     <sneat-datatug-auth-menu-item />
   </ion-card>
 }
 
-@if (profile.showIncidentsMenuItem) {
+@if (!isHomePage()) {
   <ion-card>
-    <ion-item
-      routerLink="/incidents"
-      [queryParams]="incidentQueryParams()"
-      button
-      detail="false"
-      data-testid="incidents-menu-item"
-    >
-      <ion-icon slot="start" name="warning-outline" color="danger" />
-      <ion-label>Incidents</ion-label>
-    </ion-item>
+    <sneat-app-version />
   </ion-card>
-}
-
-<ion-card>
-  <sneat-app-version />
   @if (profile.showPoweredByDalgo) {
     <p class="powered-by">
       <a
@@ -57,4 +52,4 @@
       >
     </p>
   }
-</ion-card>
+}

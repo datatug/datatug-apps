@@ -29,7 +29,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
-import { parseTugQL, resolveTugQL } from '@dalgo/core';
+import { parseDTQL, parseTugQL, resolveTugQL } from '@dalgo/core';
 import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import {
@@ -55,6 +55,7 @@ import { IQueryEditorState, IQueryState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
 import type { IProjectFull } from '../../../models/definition/project';
 import type { IProjectRef } from '../../../core/project-context';
+import type { IParameterDef } from '../../../models/definition/parameter';
 import {
   IQueryDef,
   IHttpQueryRequest,
@@ -895,10 +896,11 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       blocked: true,
       action: 'code',
     });
-    component.authorContextTab.set('related');
+    component.authorContextTabChanged('related');
     component.recoverAuthorRun();
     expect(component.authorMode()).toBe('code');
-    expect(component.activeAuthorContextTab()).toBe('related');
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
   });
 
   it('allows a fresh explicit preview after editing a pending draft and fences the old finally', async () => {
@@ -936,6 +938,68 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     await pendingNew;
     expect(component.authorPreviewLoading()).toBe(false);
     expect(component.authorPlan()).toBe(currentPlan);
+  });
+
+  it('keeps equivalent-definition Preview success and failure current but discards edit-and-revert', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.authorCustomerId.set('1');
+    let resolveFirst!: (plan: PublicSqliteQueryPreview) => void;
+    let rejectSecond!: (error: Error) => void;
+    let resolveThird!: (plan: PublicSqliteQueryPreview) => void;
+    vi.spyOn(TestBed.inject(PublicSqliteQueryService), 'prepareTugQL')
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveFirst = resolve; }))
+      .mockImplementationOnce(() => new Promise((_, reject) => { rejectSecond = reject; }))
+      .mockImplementationOnce(() => new Promise((resolve) => { resolveThird = resolve; }));
+
+    const pendingFirst = component.previewTugql();
+    const previousDefinition = component.queryDef();
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+    // The unit's editor-state service is stubbed, so deliver the emitted
+    // state to the real page handler. It rebuilds the effective definition.
+    (component as unknown as {
+      onQueryEditorStateChanged: (state: IQueryEditorState) => void;
+    }).onQueryEditorStateChanged({
+      currentQueryId: component.queryState.id,
+      activeQueries: [{ ...component.queryState, def: previousDefinition }],
+    } as IQueryEditorState);
+    expect(component.queryDef()).not.toBe(previousDefinition);
+    expect(component.queryDef()).toEqual(previousDefinition);
+    const currentPlan = comparisonPreview(component.authorDraftRevision());
+    resolveFirst(currentPlan);
+    await pendingFirst;
+    expect(component.authorPlan()).toBe(currentPlan);
+    expect(component.authorRunReadiness().blocked).toBe(false);
+
+    const pendingSecond = component.previewTugql();
+    const currentDefinition = component.queryDef();
+    component.authorCustomerIdChanged(
+      new CustomEvent('ionInput', { detail: { value: '1' } }),
+    );
+    (component as unknown as {
+      onQueryEditorStateChanged: (state: IQueryEditorState) => void;
+    }).onQueryEditorStateChanged({
+      currentQueryId: component.queryState.id,
+      activeQueries: [{ ...component.queryState, def: currentDefinition }],
+    } as IQueryEditorState);
+    expect(component.queryDef()).not.toBe(currentDefinition);
+    expect(component.queryDef()).toEqual(currentDefinition);
+    rejectSecond(new Error('current preview failure'));
+    await pendingSecond;
+    expect(component.authorError()).toContain('current preview failure');
+    expect(component.authorPlan()).toBeUndefined();
+
+    const pendingThird = component.previewTugql();
+    component.authorCodeChanged(`${authorSource}\n`);
+    component.authorCodeChanged(authorSource);
+    resolveThird(comparisonPreview(component.authorDraftRevision()));
+    await pendingThird;
+    expect(component.authorPlan()).toBeUndefined();
+    expect(component.authorRunReadiness()).toMatchObject({
+      blocked: true,
+      action: 'preview',
+    });
   });
 
   it('keeps the inspected marker and sheet on the latest raw row, closes on replacement and restores caller focus', async () => {
@@ -1108,7 +1172,7 @@ select i.InvoiceId
 from Invoice as i
 select (
 `);
-    component.authorContextTab.set('parameters');
+    component.authorContextTabChanged('parameters');
     await settleQueryPage();
 
     expect(component.authorParameterDeclarationCount()).toBeUndefined();
@@ -1141,6 +1205,7 @@ select (
 
   it('requires explicit source metadata refresh after editing a valid draft in Sources', async () => {
     component = await createTugQLAuthor(authorSource);
+    await settleQueryPage();
     const discovery = vi
       .spyOn(
         TestBed.inject(PublicSqliteQueryService),
@@ -1155,12 +1220,13 @@ select (
       TestBed.inject(PublicSqliteQueryService),
       'prepareTugQL',
     );
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
     expect(discovery).toHaveBeenCalledTimes(1);
+    expect(component.workspaceTab()).toBe('sources');
 
     component.queryTextChanged(
       new CustomEvent('ionInput', {
@@ -1203,6 +1269,33 @@ select (
     expect(prepare).not.toHaveBeenCalled();
   });
 
+  it('cancels late Sources discovery on tab exit and reads again only when Sources is reopened', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const sqlite = TestBed.inject(PublicSqliteQueryService);
+    let completeFirst!: (value: typeof sourceDiscovery) => void;
+    const discovery = vi.spyOn(sqlite, 'discoverInvoiceCustomerSources')
+      .mockImplementationOnce(() => new Promise((resolve) => { completeFirst = resolve; }))
+      .mockResolvedValue(sourceDiscovery);
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
+    expect(discovery).toHaveBeenCalledTimes(1);
+    expect(component.authorSourceLoading()).toBe(true);
+
+    component.setAuthorMode('code');
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
+    expect(component.authorSourceLoading()).toBe(false);
+    completeFirst(sourceDiscovery);
+    await settleQueryPage();
+    expect(component.authorSourceMetadata()).toBeUndefined();
+    expect(discovery).toHaveBeenCalledTimes(1);
+
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
+    await vi.waitFor(() => expect(component.authorSourceMetadata()).toBe(sourceDiscovery));
+    expect(discovery).toHaveBeenCalledTimes(2);
+  });
+
   it('does not request or expose the Chinook catalog for a schema-qualified Invoice source', async () => {
     component = await createTugQLAuthor(`from other.Invoice as i
 join Customer as c
@@ -1233,7 +1326,7 @@ select i.InvoiceId
       TestBed.inject(PublicSqliteQueryService),
       'discoverInvoiceCustomerSources',
     );
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
 
     component.authorSourcesToggled(true);
 
@@ -1287,7 +1380,7 @@ select i.InvoiceId
     );
     expect(component.currentAuthorResultRow()?.row).toBe(relatedRow);
 
-    component.authorContextTab.set('related');
+    component.authorContextTabChanged('related');
     expect(component.currentAuthorResultRow()?.row).toBe(relatedRow);
     expect(component.authorResultSnapshotKey()).toBe(relatedSnapshotKey);
 
@@ -2504,7 +2597,7 @@ select i.InvoiceId
     };
     component.runResult.set(priorResult as never);
     expect(component.authorRelatedSourceCount()).toBeUndefined();
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
@@ -2519,10 +2612,9 @@ select i.InvoiceId
     expect(reviewed?.after).toContain('c.FirstName');
 
     await component.applyAuthorRelationshipReview();
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(3));
-    await vi.waitFor(() =>
-      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
-    );
+    expect(discovery).toHaveBeenCalledTimes(2);
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
 
     const definition = component.queryDef();
     expect((definition?.request as ITextQueryRequest | undefined)?.text).toBe(
@@ -2567,7 +2659,7 @@ select i.InvoiceId
     const update = vi.spyOn(editor, 'updateQueryState');
     const priorResult = historyResultFor(queryDef);
     component.runResult.set(priorResult);
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
@@ -2575,12 +2667,9 @@ select i.InvoiceId
 
     expect(component.authorCanJoinRelationship()).toBe(true);
     await component.joinAuthorRelationship();
-    await vi.waitFor(() =>
-      expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3),
-    );
-    await vi.waitFor(() =>
-      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
-    );
+    expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(2);
+    expect(component.workspaceTab()).toBe('tugql');
+    expect(component.activeAuthorContextTab()).toBeUndefined();
 
     expect(component.queryBodyText()).toContain('join Customer as c');
     expect(component.queryBodyText()).not.toContain('c.FirstName');
@@ -2596,12 +2685,13 @@ select i.InvoiceId
     expect(prepare).not.toHaveBeenCalled();
 
     component.undoAuthorTugQLFormat();
-    await vi.waitFor(() =>
-      expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(4),
-    );
+    expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(2);
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
+    expect(sqlite.discoverInvoiceCustomerSources).toHaveBeenCalledTimes(3);
 
     expect(component.queryBodyText()).toBe(authorSource);
     expect(component.queryDef()?.relationshipBindings).toBeUndefined();
@@ -2633,7 +2723,7 @@ select i.InvoiceId
     const priorResult = historyResultFor(queryDef);
     component.runResult.set(priorResult);
 
-    component.authorContextTab.set('sources');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
@@ -2646,8 +2736,11 @@ select i.InvoiceId
     ]);
     expect(component.isChanged).toBe(true);
 
+    expect(discovery).toHaveBeenCalledTimes(2);
+    expect(component.workspaceTab()).toBe('tugql');
+    component.authorContextTabChanged('sources');
     component.authorSourcesToggled(true);
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(4));
+    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(3));
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
@@ -2664,10 +2757,8 @@ select i.InvoiceId
     await vi.waitFor(() =>
       expect(component.queryBodyText()).not.toContain('join Customer'),
     );
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(6));
-    await vi.waitFor(() =>
-      expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
-    );
+    expect(discovery).toHaveBeenCalledTimes(4);
+    expect(component.workspaceTab()).toBe('tugql');
     expect(component.queryBodyText()).not.toContain('c.FirstName');
     expect(component.queryBodyText()).toContain('order by i.InvoiceId');
     expect(component.queryDef()?.relationshipBindings).toEqual([]);
@@ -2679,10 +2770,13 @@ select i.InvoiceId
     expect(component.canUndoAuthorFormat()).toBe(true);
 
     component.undoAuthorTugQLFormat();
-    await vi.waitFor(() => expect(discovery).toHaveBeenCalledTimes(7));
+    expect(discovery).toHaveBeenCalledTimes(4);
+    component.authorContextTabChanged('sources');
+    component.authorSourcesToggled(true);
     await vi.waitFor(() =>
       expect(component.authorSourceMetadata()).toBe(sourceDiscovery),
     );
+    expect(discovery).toHaveBeenCalledTimes(5);
     expect(component.queryBodyText()).toBe(joinedText);
     expect(component.queryDef()?.relationshipBindings).toEqual([
       sourceDiscovery.relationship,
@@ -2928,11 +3022,16 @@ select (
   });
 
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
-    component = await createComponent();
+    const savedDefinition: IQueryDef = {
+      ...queryDef,
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: Invoice\n' } as ITextQueryRequest,
+      parameters: [],
+    };
+    component = await createComponent({}, savedDefinition);
     component.project = {
       ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
     };
-    const savedDefinition = { ...queryDef, parameters: [] };
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
     component.queryDef.set(savedDefinition);
     component.queryState = {
       ...component.queryState,
@@ -3213,6 +3312,7 @@ select (
       component.queryDef.set({
         ...queryDef,
         connectionId: 'chinook-sqlite',
+        parameters: [],
         request: {
           queryType: QueryType.SQL,
           text: 'SELECT 1',
@@ -3414,6 +3514,7 @@ select (
     component.queryDef.set({
       ...queryDef,
       connectionId: 'chinook-sqlite',
+      parameters: [],
       request: {
         queryType: QueryType.SQL,
         text: 'SELECT 1',
@@ -3470,6 +3571,7 @@ select (
       const definition = {
         ...queryDef,
         connectionId: 'chinook-sqlite',
+        parameters: [],
         request: {
           queryType: QueryType.SQL,
           text: 'SELECT 1',
@@ -3651,6 +3753,8 @@ select (
     };
     component = await createComponent({}, definition);
 
+    expect(component.authorMode()).toBe('code');
+    component.setAuthorMode('compose');
     expect(component.authorMode()).toBe('compose');
     component.setAuthorMode('code');
     component.authorComposeTextChanged(source.replace('limit 100', 'limit 90'));
@@ -3789,7 +3893,7 @@ select (
     expect(component.authorPreviewSyntaxDiagnostic()).toBeUndefined();
   });
 
-  it('does not expose a location for a parser sentinel and discards an obsolete async Preview error', async () => {
+  it('does not expose a location for a parser sentinel and discards a Preview error after edit-and-revert', async () => {
     component = await createTugQLAuthor('select x');
     await component.previewTugql();
     expect(component.authorError()).toBeTruthy();
@@ -3797,8 +3901,6 @@ select (
 
     const validSource = 'from Invoice as i\nlimit 10\nselect i.InvoiceId';
     component.authorCodeChanged(validSource);
-    const definition = component.queryDef();
-    if (!definition) throw new Error('Expected the current saved definition');
     let rejectPreview!: (error: Error) => void;
     vi.spyOn(
       TestBed.inject(PublicSqliteQueryService),
@@ -3811,7 +3913,8 @@ select (
     );
 
     const pending = component.previewTugql();
-    component.queryDef.set({ ...definition });
+    component.authorCodeChanged(`${validSource}\n`);
+    component.authorCodeChanged(validSource);
     rejectPreview(new Error('obsolete preview failure'));
     await pending;
 
@@ -4476,7 +4579,7 @@ select (
       activeQueries: [{ ...loadingState, def: definition }],
     });
 
-    expect(component.authorMode()).toBe('compose');
+    expect(component.authorMode()).toBe('code');
   });
 
   it('reselects the cold mode after a same-query security scope change', async () => {
@@ -4496,13 +4599,13 @@ select (
       request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
-    component.setAuthorMode('code');
-    expect(component.authorMode()).toBe('code');
+    component.setAuthorMode('compose');
+    expect(component.authorMode()).toBe('compose');
 
     agentContext.securityContextId.set('sctx-2');
     await runFixture.whenStable();
 
-    expect(component.authorMode()).toBe('compose');
+    expect(component.authorMode()).toBe('code');
   });
 
   it('cancels a scheduled lookup focus when the destination scope is superseded', async () => {
@@ -8769,6 +8872,39 @@ select (
     expect(component.runError()).toBeUndefined();
   });
 
+  it('keeps a loaded legacy YAML DTQL source on the admitted agent execution path', async () => {
+    const yaml = 'from:\n  name: Invoice\n  alias: i\nwhere:\n  op: ==\n  left:\n    field: CustomerId\n  right:\n    param: CustomerId\n';
+    const definition: IQueryDef = {
+      ...queryDef,
+      request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+    };
+    component = await createComponent({}, definition);
+    component.project = project;
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+    investigationContext.addValue({
+      entityField: { entity: 'Customer', field: 'ID' },
+      value: 7,
+      label: 'Customer.ID = 7',
+      source: 'grid',
+    });
+    TestBed.tick();
+    const response = {
+      recordset: { columns: [{ name: 'InvoiceId', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'chinook', mode: 'live', observedAt: '2026-10-14T00:00:00Z', executionProfile: 'protected' },
+    };
+    runQueryMock.mockReturnValue(of(response));
+    component.runQuery();
+    expect(runQueryMock).toHaveBeenCalledWith(expect.objectContaining({
+      queryId: definition.id,
+      parameters: { CustomerId: { type: 'integer', value: '7' } },
+    }));
+    expect(component.runResult()).toEqual(response);
+    expect(component.queryBodyText()).toBe(yaml);
+  });
+
   it('records a persisted local execution as the pending Scenario query step and fences a late route response', async () => {
     component = await createComponent({});
     component.project = project;
@@ -9870,15 +10006,15 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ),
       'utf8',
     );
-    const section = template.indexOf('<!-- Saved query text is editable');
-    const start = template.indexOf('<ion-card-content>', section);
-    const end = template.indexOf('</ion-card-content>', start);
-    if (section < 0 || start < 0 || end < 0) {
+    const card = template.indexOf('data-testid="unified-text-workspace"');
+    const start = template.indexOf('@if (isNativeSqlWorkspace()) {', card);
+    const end = template.indexOf('@if (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) {', start);
+    if (card < 0 || start < 0 || end < 0) {
       throw new Error(
         'Could not locate the maintained query text editor fragment.',
       );
     }
-    return template.slice(start, end + '</ion-card-content>'.length);
+    return `<ion-card-content>${template.slice(start, end)}</ion-card-content>`;
   }
   beforeEach(() => {
     sessionStorage.clear();
@@ -9891,9 +10027,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ),
       'utf8',
     );
-    const sqlBranch = template.indexOf(
-      '@if (queryDef()?.request.queryType === sqlQueryType)',
-    );
+    const sqlBranch = template.indexOf('@if (isNativeSqlWorkspace()) {', template.indexOf('data-testid="unified-text-workspace"'));
     const sqlEditor = template.indexOf('<sneat-datatug-sql', sqlBranch);
     const fallbackTextarea = template.indexOf('<ion-textarea', sqlEditor);
 
@@ -9951,6 +10085,213 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     );
     fixture.detectChanges();
     expect(component.queryBodyText()).toBe('from:\n  name: Artist\n');
+  });
+
+  it('keeps a loaded legacy DTQL query in its native source pane even while the draft changes', async () => {
+    component = await createComponent(dtqlDef);
+    expect(component.isTextQueryWorkspace()).toBe(true);
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+    component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'FROM Invoice\nSELECT (InvoiceId)' } }));
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+  });
+
+  it('keeps malformed saved TugQL in CodeMirror and its bounded execution guard', async () => {
+    const malformed: IQueryDef = {
+      ...dtqlDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
+    };
+    component = await createComponent(malformed);
+    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlAuthorJourney()).toBe(true);
+    expect(component.workspaceTab()).toBe('tugql');
+    component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'from:\n  name: Invoice\n' } }));
+    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlAuthorJourney()).toBe(true);
+  });
+
+  it.each([
+    ['document marker', '---\nfrom:\n  name: Invoice\nlimit: 1\n'],
+    ['leading offset', 'offset: 0\nfrom:\n  name: Invoice\nlimit: 1\n'],
+    ['flow mapping', '{from: {name: Invoice}, limit: 1}'],
+  ])('keeps valid %s YAML DTQL in its native source pane', async (_shape, yaml) => {
+    expect(() => parseDTQL(yaml, { tables: [{ name: 'Invoice', fields: ['InvoiceId'] }] })).not.toThrow();
+    const definition: IQueryDef = {
+      ...dtqlDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+    };
+    component = await createComponent(definition);
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlAuthorJourney()).toBe(false);
+    expect(component.workspaceTab()).toBe('dtql');
+    expect(component.queryBodyText()).toBe(yaml);
+  });
+
+  it('reclassifies the same query ID only after a saved loading placeholder and new definition', async () => {
+    const state = new BehaviorSubject({
+      currentQueryId: dtqlDef.id,
+      activeQueries: [{ id: dtqlDef.id, queryType: QueryType.DTQL, request: dtqlDef.request, def: dtqlDef }],
+    } as IQueryEditorState);
+    component = await createComponent(dtqlDef, '', [], state);
+    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    const reloaded: IQueryDef = {
+      ...dtqlDef,
+      connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
+    };
+    state.next({ currentQueryId: dtqlDef.id, activeQueries: [{ id: dtqlDef.id, queryType: QueryType.SQL, request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest, isLoading: true }] } as IQueryEditorState);
+    state.next({ currentQueryId: dtqlDef.id, activeQueries: [{ id: dtqlDef.id, queryType: QueryType.DTQL, request: reloaded.request, def: reloaded }] } as IQueryEditorState);
+    await fixture.whenStable();
+    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlAuthorJourney()).toBe(true);
+    expect(component.workspaceTab()).toBe('tugql');
+  });
+
+  it('resolves explicitly edited optional SQL declarations without inventing metadata or changing source', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const sqlWithParameters: IQueryDef = {
+      ...legacySqlDef,
+      parameters: [
+        albumId,
+        { id: 'ArtistId', type: 'integer' },
+      ],
+    };
+    component = await createComponent(sqlWithParameters);
+    expect(component.authorParameterDeclarationCount()).toBe(2);
+    expect(component.bindings().map((item) => item.parameterId)).toEqual(['AlbumId', 'ArtistId']);
+    expect(component.effectiveBindings()).toEqual([]);
+    component.setNativeParameterInput(albumId, '12');
+    expect(component.effectiveBindings()).toMatchObject([{ parameterId: 'AlbumId', value: { type: 'integer', value: '12' }, origin: 'user' }]);
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    component.setNativeParameterInput(albumId, '012');
+    expect(component.nativeParameterError('AlbumId')).toContain('valid integer');
+    expect(component.hasBlockedBindings()).toBe(true);
+    expect(component.effectiveBindings()).toEqual([]);
+    component.clearNativeParameter('AlbumId');
+    expect(component.nativeParameterError('AlbumId')).toBeUndefined();
+    expect(component.effectiveBindings()).toEqual([]);
+  });
+
+  it('blocks direct Run for invalid optional SQL input before agent dispatch and accepts lossless signed integers', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      parameters: [albumId],
+    };
+    const agentProject: IProjectContext = {
+      ref: { storeId: 'http://localhost:8080', projectId: 'album-test' },
+    };
+    component = await createComponent(definition, '', [], undefined, agentProject);
+    component.project = agentProject;
+    component.envId = 'local';
+    const run = TestBed.inject(SemanticApiService).runQuery as ReturnType<typeof vi.fn>;
+
+    for (const invalid of ['abc', '9007199254740992', '-9007199254740992']) {
+      component.setNativeParameterInput(albumId, invalid);
+      expect(component.nativeParameterError('AlbumId')).toContain('valid integer');
+      expect(component.hasBlockedBindings()).toBe(true);
+      component.runQuery();
+      expect(component.runError()).toContain('Correct or clear invalid parameter');
+      expect(run).not.toHaveBeenCalled();
+    }
+
+    for (const valid of ['0', '-5', '9007199254740991']) {
+      component.setNativeParameterInput(albumId, valid);
+      expect(component.nativeParameterError('AlbumId')).toBeUndefined();
+      expect(component.effectiveBindings()).toMatchObject([
+        { parameterId: 'AlbumId', value: { type: 'integer', value: valid } },
+      ]);
+    }
+    component.clearNativeParameter('AlbumId');
+    expect(component.hasBlockedBindings()).toBe(false);
+    expect(component.effectiveBindings()).toEqual([]);
+    expect(run).not.toHaveBeenCalled();
+    expect(component.queryBodyText()).toBe(legacySqlText);
+  });
+
+  it('uses the existing admitted browser SQLite executor only for the complete declared SQL bindings', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const artistId: IParameterDef = { id: 'ArtistId', type: 'integer' };
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      connectionId: 'chinook-sqlite',
+      parameters: [albumId, artistId],
+    };
+    component = await createComponent(definition);
+    component.project = project;
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const unbound = vi.spyOn(service, 'run').mockImplementation(() => new Promise<FederatedQueryResult>(() => undefined));
+    const parameterized = vi.spyOn(service, 'runParameterized').mockImplementation(() => new Promise<FederatedQueryResult>(() => undefined));
+
+    component.setNativeParameterInput(albumId, '0');
+    component.runQuery();
+    expect(component.runError()).toContain('requires a value for every declared parameter');
+    expect(unbound).not.toHaveBeenCalled();
+    expect(parameterized).not.toHaveBeenCalled();
+
+    component.setNativeParameterInput(artistId, '9007199254740992');
+    component.runQuery();
+    expect(component.nativeParameterError('ArtistId')).toContain('valid integer');
+    expect(unbound).not.toHaveBeenCalled();
+    expect(parameterized).not.toHaveBeenCalled();
+
+    component.setNativeParameterInput(artistId, '-5');
+    component.runQuery();
+    expect(unbound).not.toHaveBeenCalled();
+    expect(parameterized).toHaveBeenCalledOnce();
+    expect(parameterized).toHaveBeenCalledWith(
+      project.ref,
+      definition,
+      {
+        AlbumId: { type: 'integer', value: '0' },
+        ArtistId: { type: 'integer', value: '-5' },
+      },
+      expect.any(Function),
+    );
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    expect(component.queryDef()).toEqual(definition);
+  });
+
+  it('keeps exact browser SQL inputs and client origins with the prior result after a draft binding edit', async () => {
+    const albumId: IParameterDef = { id: 'AlbumId', type: 'integer' };
+    const artistId: IParameterDef = { id: 'ArtistId', type: 'integer' };
+    const definition: IQueryDef = {
+      ...legacySqlDef,
+      connectionId: 'chinook-sqlite',
+      parameters: [albumId, artistId],
+    };
+    component = await createComponent(definition);
+    component.project = project;
+    const service = TestBed.inject(PublicSqliteQueryService);
+    const result = {
+      recordset: { columns: [{ name: 'AlbumId', type: 'unknown' }], rows: [[{ type: 'integer', value: '0' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'Pinned public Chinook SQLite fixture', queryId: definition.id, mode: 'snapshot', observedAt: '2026-10-14T00:00:00Z', executionProfile: 'protected' },
+    } as FederatedQueryResult;
+    const parameterized = vi.spyOn(service, 'runParameterized').mockResolvedValue(result);
+
+    component.setNativeParameterInput(albumId, '0');
+    component.setNativeParameterInput(artistId, '-5');
+    component.runQuery();
+    await vi.waitFor(() => expect(component.runResult()).toBeDefined());
+    expect(parameterized).toHaveBeenCalledOnce();
+    expect(component.runResult()?.bindingsApplied).toEqual([
+      { parameterId: 'AlbumId', value: { type: 'integer', value: '0' }, origin: 'manual', originEvidence: 'client-reported' },
+      { parameterId: 'ArtistId', value: { type: 'integer', value: '-5' }, origin: 'manual', originEvidence: 'client-reported' },
+    ]);
+    expect(component.displayedResultIsPreviousRun()).toBe(false);
+    component.setNativeParameterInput(albumId, '7');
+    expect(component.displayedResultIsPreviousRun()).toBe(true);
+    expect(component.runResult()?.bindingsApplied.map((binding) => binding.value)).toEqual([
+      { type: 'integer', value: '0' }, { type: 'integer', value: '-5' },
+    ]);
+    expect(component.queryBodyText()).toBe(legacySqlText);
+    expect(component.queryDef()).toEqual(definition);
   });
   it('a direct-URL-loaded legacy SQL query (no parameters/recordsets metadata) exposes its own text and, from a FROM/JOIN scan, the tables it references', async () => {
     component = await createComponent(legacySqlDef);

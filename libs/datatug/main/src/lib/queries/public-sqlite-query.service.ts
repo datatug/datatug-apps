@@ -60,6 +60,100 @@ function abortError(): Error {
   return error;
 }
 
+type SqliteScalar = string | number | null;
+
+/** Prepare only declared SQLite named inputs; values never enter SQL text. */
+function prepareDeclaredSqlBindings(
+  sql: string,
+  declared: readonly { readonly id: string }[],
+  values: ReadonlyMap<string, SqliteScalar>,
+  positionalBindings: readonly SqliteScalar[],
+): { readonly sql: string; readonly bindings: readonly SqliteScalar[] } {
+  const parts: string[] = [];
+  const bindings: SqliteScalar[] = [];
+  const names = new Set(declared.map((parameter) => parameter.id));
+  if (names.size !== declared.length)
+    throw new Error('Declared SQLite input IDs must be unique.');
+  const usedNames = new Set<string>();
+  let start = 0;
+  let named = false;
+  let positionalCount = 0;
+  for (let i = 0; i < sql.length; i++) {
+    const char = sql[i];
+    const next = sql[i + 1];
+    if (char === '-' && next === '-') {
+      const end = sql.indexOf('\n', i + 2);
+      if (end < 0) break;
+      i = end;
+      continue;
+    }
+    if (char === '/' && next === '*') {
+      const end = sql.indexOf('*/', i + 2);
+      if (end < 0) throw new Error('The SQL input has an unfinished comment.');
+      i = end + 1;
+      continue;
+    }
+    if (char === "'" || char === '"' || char === '`' || char === '[') {
+      const close = char === '[' ? ']' : char;
+      let closed = false;
+      for (i++; i < sql.length; i++) {
+        if (sql[i] !== close) continue;
+        if (char !== '[' && sql[i + 1] === close) { i++; continue; }
+        closed = true;
+        break;
+      }
+      if (!closed) throw new Error('The SQL input has an unfinished quoted value or identifier.');
+      continue;
+    }
+    if (/[A-Za-z_]/u.test(char ?? '') || char.charCodeAt(0) > 127) {
+      // SQLite admits `$` inside an unquoted identifier. It is not a
+      // placeholder prefix there (for example, Album$Archive). SQLite also
+      // treats non-ASCII characters as identifier characters.
+      while (/[A-Za-z0-9_$]/u.test(sql[i + 1] ?? '') ||
+        (sql[i + 1]?.charCodeAt(0) ?? 0) > 127) i++;
+      continue;
+    }
+    if (char === '?') {
+      if (/\d/u.test(next ?? ''))
+        throw new Error('Numbered SQLite placeholders are unavailable for declared inputs.');
+      positionalCount++;
+      continue;
+    }
+    if (char !== '@' && char !== ':' && char !== '$') continue;
+    if (!/[A-Za-z_]/u.test(next ?? ''))
+      throw new Error('This SQLite placeholder shape is unavailable for declared inputs.');
+    let end = i + 2;
+    while (/[A-Za-z0-9_]/u.test(sql[end] ?? '')) end++;
+    if ((sql.charCodeAt(end) > 127) || /[A-Za-z0-9_$]/u.test(sql[end] ?? '') ||
+      (char === '$' && (sql[end] === ':' || sql[end] === '(')))
+      throw new Error('This SQLite placeholder shape is unavailable for declared inputs.');
+    const name = sql.slice(i + 1, end);
+    if (!names.has(name) || !values.has(name))
+      throw new Error(`SQL input ${name} is not a complete declared binding.`);
+    const value = values.get(name);
+    if (value === undefined)
+      throw new Error(`SQL input ${name} is not a complete declared binding.`);
+    named = true;
+    usedNames.add(name);
+    parts.push(sql.slice(start, i), '?');
+    bindings.push(value);
+    i = end - 1;
+    start = end;
+  }
+  if (named && positionalCount)
+    throw new Error('Mixing named and positional SQLite inputs is unavailable.');
+  if (named) {
+    if (usedNames.size !== names.size)
+      throw new Error('Each declared SQLite input must appear in the SQL source.');
+    return { sql: parts.join('') + sql.slice(start), bindings };
+  }
+  if (!positionalCount)
+    throw new Error('The SQL source has no placeholders for its declared inputs.');
+  if (positionalCount !== positionalBindings.length)
+    throw new Error('The SQL source must have one positional placeholder per declared input.');
+  return { sql, bindings: positionalBindings };
+}
+
 function firstValueFromAbortable<T>(
   source: Observable<T>,
   signal?: AbortSignal,
@@ -992,24 +1086,37 @@ export class PublicSqliteQueryService {
     if (definition.request.queryType !== QueryType.SQL || !definition.connectionId || definition.federation ||
       !definition.parameters?.length || Object.keys(values).length !== definition.parameters.length)
       throw new Error('This query requires its exact declared scalar inputs.');
-    const bindings = definition.parameters.map((parameter): string | number | null => {
+    const scalarValues = new Map<string, SqliteScalar>();
+    const bindings = definition.parameters.map((parameter): SqliteScalar => {
       const value = decodeTypedValue(values[parameter.id]);
       if (parameter.isMultiValue || value.type !== parameter.type)
         throw new Error(`Input ${parameter.id} has an incompatible type or cardinality.`);
+      let scalar: SqliteScalar;
       if (value.type === 'integer') {
         const number = Number(value.value);
         if (!Number.isSafeInteger(number) || BigInt(value.value) !== BigInt(number)) throw new Error('This SQLite input cannot represent that integer losslessly.');
-        return number;
+        scalar = number;
+      } else if (value.type === 'string' || value.type === 'date' || value.type === 'datetime') {
+        scalar = value.value;
+      } else if (value.type === 'boolean') {
+        scalar = value.value ? 1 : 0;
+      } else {
+        throw new Error('This browser SQLite binding requires a losslessly supported scalar type.');
       }
-      if (value.type === 'string' || value.type === 'date' || value.type === 'datetime') return value.value;
-      if (value.type === 'boolean') return value.value ? 1 : 0;
-      throw new Error('This browser SQLite binding requires a losslessly supported scalar type.');
+      scalarValues.set(parameter.id, scalar);
+      return scalar;
     });
-    return this.runBoundSql(project, definition, bindings, onDispatched);
+    const prepared = prepareDeclaredSqlBindings(
+      (definition.request as ITextQueryRequest).text,
+      definition.parameters,
+      scalarValues,
+      bindings,
+    );
+    return this.runBoundSql(project, definition, prepared.bindings, onDispatched, prepared.sql);
   }
 
   private async runBoundSql(
-    project: IProjectRef, definition: IQueryDef, bindings: readonly (string | number | null)[], onDispatched?: () => void,
+    project: IProjectRef, definition: IQueryDef, bindings: readonly SqliteScalar[], onDispatched?: () => void, preparedSql?: string,
   ): Promise<FederatedQueryResult> {
     const deadline = Date.now() + RUN_TIMEOUT_MS;
     const catalog = await firstValueFrom(
@@ -1035,7 +1142,7 @@ export class PublicSqliteQueryService {
     admitPublicSqliteSource(catalog, definition.connectionId ?? '');
     if (typeof Worker === 'undefined')
       throw new Error('This browser does not support SQLite query workers.');
-    const sql = (definition.request as ITextQueryRequest).text;
+    const sql = preparedSql ?? (definition.request as ITextQueryRequest).text;
     const worker = new Worker(
       new URL('./public-sqlite-query.worker.ts', import.meta.url),
       { type: 'module' },

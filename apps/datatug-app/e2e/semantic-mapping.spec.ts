@@ -20,6 +20,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   ]);
   await page.goto(queryURL);
   const author = activePage(page);
+  await author.getByTestId('workspace-parameters-tab').click();
   await author.getByTestId('author-customer-id').locator('input').fill('1');
   await author.getByTestId('author-preview-tab').click();
   await author.getByTestId('author-preview').click();
@@ -87,6 +88,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
       exact: true,
     }),
   ).not.toContainText('Needs review');
+  await activePage(page).getByTestId('workspace-parameters-tab').click();
   await expect(
     activePage(page).getByTestId('author-customer-id').locator('input'),
   ).toHaveValue('1');
@@ -118,6 +120,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   );
   await expect(page.getByRole('link', { name: 'Edit query Validators' })).toHaveCount(0);
   const reopened = activePage(page);
+  await reopened.getByTestId('workspace-parameters-tab').click();
   await reopened.getByTestId('author-customer-id').locator('input').fill('1');
   await reopened.getByTestId('author-preview-tab').click();
   await reopened.getByTestId('author-preview').click();
@@ -178,7 +181,8 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .getByRole('button', { name: 'Export MeaningGraph', exact: true })
     .click();
   const download = await downloadPromise;
-  await download.saveAs('coverage/apps/datatug-app-e2e/query.meaning.json');
+  const meaningExportPath = 'coverage/apps/datatug-app-e2e/query.meaning.json';
+  await download.saveAs(meaningExportPath);
   const modelDownloadPromise = page.waitForEvent('download');
   await editor
     .getByRole('button', { name: 'Export ModelSpec', exact: true })
@@ -186,7 +190,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await (
     await modelDownloadPromise
   ).saveAs('coverage/apps/datatug-app-e2e/query.modelspec.json');
-  const exported = JSON.parse(await readFile((await download.path())!, 'utf8'));
+  const exported = JSON.parse(await readFile(meaningExportPath, 'utf8'));
   expect(exported.format).toBe('meaning/draft-2');
   expect(
     exported.concepts.find(
@@ -281,6 +285,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   const firstPersonalURL = page.url();
   await page.goto(queryURL);
   const independent = activePage(page);
+  await independent.getByTestId('workspace-parameters-tab').click();
   await independent
     .getByTestId('author-customer-id')
     .locator('input')
@@ -318,6 +323,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   const importedPersonalURL = page.url();
   await page.goto(queryURL);
   const direct = activePage(page);
+  await direct.getByTestId('workspace-parameters-tab').click();
   await direct.getByTestId('author-customer-id').locator('input').fill('1');
   await direct.getByTestId('author-preview-tab').click();
   await direct.getByTestId('author-preview').click();
@@ -360,6 +366,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   for (const sourceURL of [firstPersonalURL, importedPersonalURL]) {
     await page.goto(sourceURL);
     const unchangedSource = activePage(page);
+    await unchangedSource.getByTestId('workspace-parameters-tab').click();
     await unchangedSource
       .getByTestId('author-customer-id')
       .locator('input')

@@ -23,3 +23,13 @@ runs:
     - name: Install dependencies
       run: pnpm install
       shell: sh
+      env:
+        # GitHub-pinned dependencies (@dalgo/*, @openvaultdb/inprocess) are
+        # built on install by a nested `pnpm install` inside their own
+        # repositories, whose packageManager pins another pnpm version. The
+        # nested pnpm then tries to switch versions and fails on the runner
+        # ("Failed to switch pnpm to v11.20.0 ... CLI is missing"). Run the
+        # nested installs with the pnpm already set up instead. The workspace
+        # pnpm-workspace.yaml does not reach the nested install; the
+        # environment does.
+        PNPM_CONFIG_PM_ON_FAIL: ignore

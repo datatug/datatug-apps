@@ -26,6 +26,24 @@
 @import '@ionic/angular/css/text-transformation.css';
 @import '@ionic/angular/css/flex-utils.css';
 
+:root {
+  --ion-background-color: #ffffff;
+  --ion-background-color-rgb: 255, 255, 255;
+  --ion-text-color: #000000;
+  --ion-text-color-rgb: 0, 0, 0;
+  color-scheme: light;
+}
+
+html,
+body,
+ion-split-pane {
+  background-color: var(--ion-background-color);
+}
+
+.ion-palette-dark {
+  color-scheme: dark;
+}
+
 // Padding-less grid for page layout (`.ion-grid-layout`): the grid, its rows
 // and its columns add no padding or margin, so cards placed in the columns
 // line up with sibling cards rendered directly in <ion-content>. Shared
@@ -849,4 +867,12 @@ datatug-cli-chat-page {
       max-width: 95%;
     }
   }
+}
+
+// Narrow layouts render the shell's compact application header
+// (datatug-app.component, UX brief §1) which owns the menu affordance, so
+// per-page ion-menu-button bars would double it — hide the page-level ones
+// while the compact header is shown.
+ion-app.compact-header-mode ion-menu-button:not(.app-level-menu-button) {
+  display: none;
 }

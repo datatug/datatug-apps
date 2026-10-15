@@ -5,6 +5,7 @@ import {
   Router,
   Routes,
   UrlSegment,
+  UrlMatchResult,
   UrlSegmentGroup,
   UrlTree,
 } from '@angular/router';
@@ -262,6 +263,22 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
   return decision.kind === 'page';
 };
 
+/**
+ * `/demo/sqlite[/<dataset>[/table/<table>]]`: DemoDB.dev's "Explore SQLite in DataTug" opens a writable local copy
+ * of the dataset in this browser (DemoSqlitePageComponent). The literal segments match case-insensitively, as the
+ * dataset id does (an unknown id gets the page's "no such dataset" list); the table name keeps its case.
+ */
+export const demoSqliteMatcher = (segments: UrlSegment[], group: UrlSegmentGroup): UrlMatchResult | null => {
+  if (hasOutletGroup(group)) return null;
+  const names = segments.map((segment) => segment.path.toLowerCase());
+  if (names[0] !== 'demo' || names[1] !== 'sqlite') return null;
+  if (segments.length === 2) return { consumed: segments };
+  if (segments.length === 3) return { consumed: segments, posParams: { dataset: segments[2] } };
+  if (segments.length === 5 && names[3] === 'table')
+    return { consumed: segments, posParams: { dataset: segments[2], table: segments[4] } };
+  return null;
+};
+
 export const checkoutOrRoot: CanMatchFn = () =>
   datatugProfileOnly() ? true : inject(Router).parseUrl('/');
 
@@ -320,6 +337,13 @@ export const routes: Routes = [
     data: { checkoutReturn: path === 'pricing/return' },
     loadComponent: loadProCheckoutPage,
   })),
+  {
+    matcher: demoSqliteMatcher,
+    // DataTug profile only: app.incidentius.com serves the same bundle and has no demo.
+    canMatch: [checkoutOrRoot],
+    loadComponent: () =>
+      import('@sneat/datatug-main').then((m) => m.loadDemoSqlitePage()),
+  },
   {
     matcher: legacyChinookDemoMatcher,
     canMatch: [redirectLegacyChinookDemo],

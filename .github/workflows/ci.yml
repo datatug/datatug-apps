@@ -159,7 +159,7 @@ jobs:
         run: |
           browsers=(chromium)
           if [[ "${{ steps.affected-app.outputs.datatug_app }}" == "true" ]]; then
-            browsers+=(webkit)
+            browsers+=(webkit firefox)
           fi
           pnpm exec playwright install --with-deps "${browsers[@]}"
 
@@ -217,6 +217,26 @@ jobs:
             coverage/apps/datatug-query-mobile/results
           if-no-files-found: ignore
 
+      # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
+      # in the browser. Runs the built app in Chromium, Firefox and WebKit against the real demodb.dev files
+      # (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
+      # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
+      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
+      # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
+      # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the live demodb.dev pages).
+      - name: nx e2e-demo-sqlite affected
+        run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Upload demo SQLite e2e report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-sqlite-e2e-playwright-report
+          path: |
+            coverage/apps/datatug-app-demo-sqlite-e2e/report
+            coverage/apps/datatug-app-demo-sqlite-e2e/results
+          if-no-files-found: ignore
+
       # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
       # project chat, and proof that the visitor's question reaches no analytics or error report. It needs the
       # PRODUCTION build (real Sentry DSN and analytics: playwright.demo-handoff.config.ts serves
@@ -256,32 +276,33 @@ jobs:
     needs: build
     env:
       GH_TOKEN: ${{ github.token }}
-      # Pinned datatug-cli release tag (not `main`) so this job is
+      # Pinned datatug release tag (not `main`) so this job is
       # reproducible. Bump by checking the newest `vX.Y.Z` tag:
-      #   git ls-remote --tags https://github.com/datatug/datatug-cli.git
+      #   gh release list --repo datatug/datatug
       # See apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
-      DATATUG_CLI_REF: v0.46.0
+      DATATUG_CLI_REF: v0.78.0
     steps:
       - name: Checkout datatug-apps
         uses: actions/checkout@v6
 
-      # Public repo (datatug/datatug-cli), pinned release tag. actions/checkout
-      # refuses a `path` that escapes the primary checkout's directory, so this
-      # nests it inside the datatug-apps checkout instead of beside it. Nothing
-      # here needs a true sibling: DATATUG_BIN points straight at the built
-      # binary, and this repo's pnpm workspace is a single package at '.'
-      # (pnpm-workspace.yaml), so an extra unrelated Go repo directory
-      # alongside it doesn't get pulled into `pnpm install`.
-      - name: Checkout datatug-cli (${{ env.DATATUG_CLI_REF }})
-        uses: actions/checkout@v6
-        with:
-          repository: datatug/datatug-cli
-          ref: ${{ env.DATATUG_CLI_REF }}
-          path: datatug-cli
+      # Download prebuilt datatug binary from public datatug/datatug releases.
+      - name: Download and verify pinned datatug CLI (${{ env.DATATUG_CLI_REF }})
+        run: |
+          mkdir -p "$RUNNER_TEMP/datatug-bin" "$RUNNER_TEMP/datatug-dl"
+          gh release download "${{ env.DATATUG_CLI_REF }}" \
+            --repo datatug/datatug \
+            --pattern "datatug_*_linux_amd64.tar.gz" \
+            --pattern "datatug_*_checksums.txt" \
+            --dir "$RUNNER_TEMP/datatug-dl"
+          cd "$RUNNER_TEMP/datatug-dl"
+          grep "linux_amd64.tar.gz" datatug_*_checksums.txt | sha256sum --check
+          tar -xzf datatug_*_linux_amd64.tar.gz -C "$RUNNER_TEMP/datatug-bin" datatug
+          chmod +x "$RUNNER_TEMP/datatug-bin/datatug"
+          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
       # Public repo (datatug/datatug-demo-project), main branch — the demo
       # project the journey suite drives the agent against. Same nested-path
-      # reasoning as datatug-cli above.
+      # reasoning as datatug-apps checkout above.
       - name: Checkout datatug-demo-project (main)
         uses: actions/checkout@v6
         with:
@@ -290,26 +311,6 @@ jobs:
           path: datatug-demo-project
 
       - uses: ./.github/actions/pnpm
-
-      - name: Set up Go (version from datatug-cli's go.mod)
-        uses: actions/setup-go@v7
-        with:
-          go-version-file: datatug-cli/go.mod
-          cache: true
-          cache-dependency-path: datatug-cli/go.sum
-
-      # CGO_ENABLED=0 builds a working `datatug serve` binary: datatug-cli's
-      # main.go still blank-imports the cgo-only github.com/mattn/go-sqlite3
-      # driver, but without cgo that import compiles to an inert stub rather
-      # than failing the build (verified locally against v0.20.6, go1.27.1).
-      # Required setup step: no continue-on-error — a build failure here must
-      # fail the job, not be silently skipped.
-      - name: Build datatug CLI (CGO_ENABLED=0, from repo root)
-        working-directory: datatug-cli
-        run: |
-          mkdir -p "$RUNNER_TEMP/datatug-bin"
-          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/datatug-bin/datatug" .
-          echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
       # The journey fixture (e2e/journey/fixtures/agent-server.ts) spawns
       # `datatug serve` itself; it does not fetch this dependency. `datatug

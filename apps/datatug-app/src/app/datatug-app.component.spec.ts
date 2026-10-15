@@ -4,8 +4,29 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router } from '@angular/router';
 import { MenuController } from '@ionic/angular/menu-controller';
 import { ErrorLogger } from '@sneat/core';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { of } from 'rxjs';
 import { ResizableMenuDirective } from '@sneat/ui';
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
+
+// The shell reads auth status to decide whether the compact header shows
+// its Sign-in affordance and whether the signed-out home page hides the
+// side panel; `authenticated` keeps the pre-existing brand/menu assertions
+// independent of it (the compact header only renders on narrow viewports,
+// where jsdom/happy-dom matchMedia reports no match anyway).
+const authMock = (
+  status: 'authenticated' | 'notAuthenticated' | undefined = 'authenticated',
+) => ({
+  provide: SneatAuthStateService,
+  useValue: { authStatus: of(status) },
+});
+
+interface ShellInternals {
+  homePanelHidden(): boolean;
+  paneWhen(): boolean | string;
+}
+const peek = (c: DatatugAppComponent): ShellInternals =>
+  c as unknown as ShellInternals;
 
 import { DatatugAppComponent } from './datatug-app.component';
 
@@ -21,6 +42,7 @@ describe('AppComponent', () => {
       providers: [
         provideRouter([]),
         { provide: MenuController, useValue: menuCtrl },
+        authMock(),
         {
           provide: ErrorLogger,
           useValue: {
@@ -42,12 +64,14 @@ describe('AppComponent', () => {
   it('enables the shared resizable menu with DataTug-specific width storage', () => {
     fixture.detectChanges();
 
-    const menu = fixture.debugElement.query(By.directive(ResizableMenuDirective));
+    const menu = fixture.debugElement.query(
+      By.directive(ResizableMenuDirective),
+    );
 
     expect(menu).toBeTruthy();
-    expect(menu.injector.get(ResizableMenuDirective).sneatResizableMenuStorageKey).toBe(
-      'datatug.menu.width',
-    );
+    expect(
+      menu.injector.get(ResizableMenuDirective).sneatResizableMenuStorageKey,
+    ).toBe('datatug.menu.width');
   });
 
   it('renders the brand as a link to the home route', () => {
@@ -91,6 +115,50 @@ describe('AppComponent', () => {
   });
 });
 
+describe('DatatugAppComponent shell — signed-out home panel hidden (founder 2026-10-14)', () => {
+  const render = async (status: 'authenticated' | 'notAuthenticated') => {
+    await TestBed.configureTestingModule({
+      imports: [DatatugAppComponent],
+      providers: [
+        provideRouter([
+          { path: 'home', children: [] },
+          { path: '**', children: [] },
+        ]),
+        { provide: MenuController, useValue: { close: vi.fn() } },
+        authMock(status),
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+      ],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DatatugAppComponent);
+    // The panel-hiding rule keys off the profile's start page (/home for
+    // datatug), not the '/' redirect pass-through — navigate there first.
+    await TestBed.inject(Router).navigateByUrl('/home');
+    fixture.detectChanges();
+    return fixture;
+  };
+
+  it('signed out on the start page: panel hidden at every width', async () => {
+    const fixture = await render('notAuthenticated');
+    const c = fixture.componentInstance;
+    expect(peek(c).homePanelHidden()).toBe(true);
+    expect(peek(c).paneWhen()).toBe(false);
+  });
+
+  it('signed in on the start page: panel returns', async () => {
+    const fixture = await render('authenticated');
+    const c = fixture.componentInstance;
+    expect(peek(c).homePanelHidden()).toBe(false);
+    expect(peek(c).paneWhen()).toBe('(min-width: 992px)');
+  });
+});
+
 // The shared app shell (brand header) rendered under each product-profile
 // token this build serves (hub `product-profiles` REQ:profile-config-is-declarative:
 // "a screen can be rendered under every profile token that build serves in
@@ -110,6 +178,7 @@ describe('DatatugAppComponent shell — rendered under each profile token', () =
       providers: [
         provideRouter([]),
         { provide: MenuController, useValue: menuCtrl },
+        authMock(),
         {
           provide: ErrorLogger,
           useValue: {

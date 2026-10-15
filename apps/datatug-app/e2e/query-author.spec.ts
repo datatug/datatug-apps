@@ -17,6 +17,8 @@ const CTE_GRAPH_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
 const PLAYLIST_SQL_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=local';
+const LEGACY_DTQL_URL =
+  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices&editor=text&env=local';
 const LONG_HEADER_QUERY_TITLE =
   '請求書・顧客向けの長いタイトル — Invoice Author 🚀 東京';
 const LONG_HEADER_PROJECT_TITLE =
@@ -29,8 +31,13 @@ const COMPLETION_INTERACTION_DELAY_MS = 75;
 // Playwright resolves ControlOrMeta from the host OS, but CodeMirror treats
 // iPhone/iPad/iPod UAs as Mac and binds Mod to Meta.
 const generateAuthorPreview = async (author: Locator): Promise<void> => {
-  await author.getByTestId('author-preview-tab').click();
-  await author.getByTestId('author-preview').click();
+  const previewTab = author.getByTestId('author-preview-tab');
+  await previewTab.click();
+  await expect(previewTab).toHaveClass(/segment-button-checked/u);
+  const nativeButton = author.getByTestId('author-preview').locator('button');
+  await expect(nativeButton).toBeVisible();
+  await nativeButton.scrollIntoViewIfNeeded();
+  await nativeButton.click();
 };
 
 const openEditorActions = async (
@@ -145,10 +152,14 @@ const expectAuthorMode = async (
   const selectedTab = author.getByTestId(
     mode === 'preview' ? 'author-preview-tab' : `author-${mode}-tab`,
   );
-  await expect(selectedTab.getByRole('button')).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  await expect(selectedTab).toHaveClass(/segment-button-checked/u);
+};
+
+const openCustomerId = async (author: Locator): Promise<Locator> => {
+  await author.getByTestId('workspace-parameters-tab').click();
+  const input = author.getByTestId('author-customer-id').locator('input:not(.cloned-input)');
+  await expect(input).toBeVisible();
+  return input;
 };
 
 const expectIonicButtonDisabled = async (
@@ -196,6 +207,9 @@ const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
     ),
     'utf8',
   );
+
+const savedLegacyDtqlSource = (repository = DEMO_REPO): string =>
+  readFileSync(join(repository ?? '', 'demo-project-1', 'queries', 'customers', 'customer-invoices.query.dtql'), 'utf8');
 
 const installLongHeaderMetadataVariant = async (page: Page): Promise<void> => {
   if (!DEMO_REPO) throw new Error('The canonical DemoDB fixture is required');
@@ -658,7 +672,7 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   expect(selectedBeforeLayout).toBe('x');
 
   const sourceDiscovery = author.getByTestId('author-source-discovery');
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
   await expect(sourceDiscovery).toContainText('Invoice', { timeout: 20_000 });
@@ -675,27 +689,22 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
   const originalViewport = page.viewportSize();
   const codeTabGeometry = async () =>
     author.evaluate((element) => {
-      const tab = element.querySelector(
-        'sneat-author-code-editor [data-testid="author-code-tab"]',
-      );
-      const item = element.querySelector(
-        'sneat-author-code-editor .author-code-header',
-      );
-      const itemNative = item?.shadowRoot?.querySelector('.item-native');
+      const tab = element.querySelector('[data-testid="author-code-tab"]');
+      const segment = element.querySelector('[data-testid="author-view-tabs"]');
       const range = document.createRange();
-      if (tab) range.selectNodeContents(tab);
+      const label = tab?.querySelector('ion-label');
+      if (label) range.selectNodeContents(label);
       const text = range.getBoundingClientRect();
-      const content = itemNative?.getBoundingClientRect();
-      const header = item?.getBoundingClientRect();
+      const content = segment?.getBoundingClientRect();
+      const tabBounds = tab?.getBoundingClientRect();
       return {
         textLeft: text.left,
         textRight: text.right,
         contentLeft: content?.left ?? 0,
         contentRight: content?.right ?? 0,
-        headerLeft: header?.left ?? 0,
-        headerRight: header?.right ?? 0,
-        itemLeft: item?.getBoundingClientRect().left ?? 0,
-        tabWidth: tab?.getBoundingClientRect().width ?? 0,
+        tabLeft: tabBounds?.left ?? 0,
+        tabRight: tabBounds?.right ?? 0,
+        tabWidth: tabBounds?.width ?? 0,
         visibleTitleCount: element.querySelectorAll(
           'sneat-author-code-editor .author-code-label',
         ).length,
@@ -714,10 +723,10 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
     .toBe(true);
   const desktopCodeTabBounds = await codeTabGeometry();
   expect(
-    desktopCodeTabBounds.textLeft - desktopCodeTabBounds.headerLeft,
+    desktopCodeTabBounds.textLeft - desktopCodeTabBounds.tabLeft,
   ).toBeGreaterThanOrEqual(8);
   expect(desktopCodeTabBounds.textRight).toBeLessThanOrEqual(
-    desktopCodeTabBounds.headerRight - 8,
+    desktopCodeTabBounds.tabRight - 8,
   );
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
@@ -731,9 +740,9 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
       })
       .toBe(true);
     const mobileCodeTab = await codeTabGeometry();
-    expect(mobileCodeTab.textLeft - mobileCodeTab.headerLeft).toBeGreaterThanOrEqual(8);
+    expect(mobileCodeTab.textLeft - mobileCodeTab.tabLeft).toBeGreaterThanOrEqual(8);
     expect(mobileCodeTab.textRight).toBeLessThanOrEqual(
-      mobileCodeTab.headerRight - 8,
+      mobileCodeTab.tabRight - 8,
     );
     expect(mobileCodeTab.visibleTitleCount).toBe(0);
     expect(mobileCodeTab.tabWidth).toBeGreaterThanOrEqual(80);
@@ -744,10 +753,10 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
     await expect(page.locator('#author-results-heading')).toBeFocused();
     const mobileHeader = await author.evaluate((element) => {
       const tab = element.querySelector(
-        'sneat-author-code-editor [data-testid="author-code-tab"]',
+        '[data-testid="author-code-tab"]',
       );
       const tabs = element.querySelectorAll(
-        'sneat-author-code-editor .author-code-header [author-editor-tabs] ion-button',
+        '[data-testid="author-view-tabs"] ion-segment-button',
       );
       const resultHeading = document.querySelector('.author-results-heading');
       return {
@@ -766,9 +775,9 @@ test('TugQL and SQL coloring preserves editable source, keyboard undo, and reada
     });
     expect(mobileHeader.codeTabWidth).toBeGreaterThanOrEqual(80);
     expect(mobileHeader.resultHeadingWidth).toBeGreaterThanOrEqual(60);
-    expect(mobileHeader.buttons).toHaveLength(3);
+    expect(mobileHeader.buttons).toHaveLength(6);
     for (const button of mobileHeader.buttons) {
-      expect(button.label).toMatch(/Compose|TugQL Query|Preview SQL/u);
+      expect(button.label).toMatch(/Compose|TugQL Query|Preview SQL|Parameters|Sources|Related/u);
       expect(button.width).toBeGreaterThan(0);
       expect(button.textWidth).toBeLessThanOrEqual(button.textClientWidth + 1);
     }
@@ -1080,7 +1089,7 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
   await expect(rows).toHaveCount(11, { timeout: 45_000 });
   const genericGridViewport = page.locator('.result-grid-viewport');
   await expect(genericGridViewport).toHaveCount(1);
-  await expect(genericGridViewport).toHaveCSS('height', '420px');
+  await expect(genericGridViewport).toHaveCSS('height', '360px');
   const genericGridPadding = genericGridViewport.locator(
     'xpath=ancestor::div[contains(@class, "ion-padding-horizontal")][1]',
   );
@@ -1151,6 +1160,163 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
   expect(errors).toEqual([]);
   expect(pageErrors).toEqual([]);
 });
+
+// query-workspace#ac:shared-text-workspace — read-only structural transfer never changes the SQL request.
+test('native SQL keeps one reachable workspace row and a read-only TugQL representation of a fully parsed draft', async ({ page }, testInfo) => {
+  test.setTimeout(60_000);
+  const writes: string[] = [];
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
+  page.on('request', (request) => {
+    if (/^https:\/\/api\.github\.com\//u.test(request.url()) && !['GET', 'OPTIONS'].includes(request.method()))
+      writes.push(request.url());
+  });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(PLAYLIST_SQL_URL);
+  const workspace = page.getByTestId('unified-text-workspace');
+  const tabs = workspace.getByTestId('author-view-tabs');
+  const sourceTab = tabs.locator('ion-segment-button[value="sql"]');
+  const editor = workspace.getByTestId('query-body-text').locator('.cm-content');
+  const saved = savedSqlSource('chinook-playlist-composition');
+  await expect(editor).toBeVisible({ timeout: 20_000 });
+  await expectEditorSource(page, editor, saved);
+  await expect(tabs.locator('ion-segment-button')).toHaveCount(7);
+  await expect(tabs).toHaveClass(/\bmd\b/u);
+  await expect(sourceTab).toHaveClass(/\bmd\b/u);
+  await expect(tabs.locator('ion-segment-button[value="parameters"] ion-chip')).toHaveText('0');
+  await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('…');
+  await expect.poll(() => tabs.evaluate((segment) => {
+    const selected = segment.querySelector('ion-segment-button[value="sql"]');
+    if (!selected) return false;
+    const viewport = segment.getBoundingClientRect();
+    const button = selected.getBoundingClientRect();
+    return button.left >= viewport.left - 1 && button.right <= viewport.right + 1 &&
+      button.height >= 44 && segment.getBoundingClientRect().height <= 56 &&
+      document.documentElement.scrollWidth <= innerWidth + 1;
+  })).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath('unified-sql-390.png') });
+  testInfo.annotations.push({ type: 'screenshot', description: 'unified-sql-390.png: expected the initially selected SQL source tab fully visible within one 48px scrollable Ionic row; observed it in view with the editable saved SQL below and no page overflow.' });
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect.poll(() => tabs.evaluate((segment) => segment.getBoundingClientRect().width)).toBeGreaterThan(800);
+  const content = page.locator('sneat-datatug-sql-editor ion-content');
+  const verticalBefore = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
+    return scroll.scrollTop;
+  });
+  expect(verticalBefore).toBeGreaterThan(20);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect.poll(() => tabs.evaluate((segment) => {
+    const selected = segment.querySelector('ion-segment-button[value="sql"]');
+    if (!selected) return false;
+    const viewport = segment.getBoundingClientRect();
+    const button = selected.getBoundingClientRect();
+    return button.left >= viewport.left - 1 && button.right <= viewport.right + 1 &&
+      button.height >= 44 &&
+      document.documentElement.scrollWidth <= innerWidth + 1;
+  })).toBe(true);
+  const verticalAfterResize = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    return scroll.scrollTop;
+  });
+  expect(verticalAfterResize).toBeGreaterThan(20);
+  // Responsive reflow can preserve the visible anchor with a different scrollTop.
+  // Isolate the tab reveal at a fixed viewport to catch vertical scrolling by it.
+  const verticalBeforeReveal = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
+    return scroll.scrollTop;
+  });
+  expect(verticalBeforeReveal).toBeGreaterThan(20);
+  const selectedWasOffscreen = await tabs.evaluate((segment) => {
+    segment.scrollLeft = 0;
+    const selected = segment.querySelector('ion-segment-button[value="sql"]');
+    if (!selected) return false;
+    return selected.getBoundingClientRect().right > segment.getBoundingClientRect().right + 1;
+  });
+  expect(selectedWasOffscreen).toBe(true);
+  await page.evaluate(() => window.dispatchEvent(new Event('resize')));
+  await expect.poll(() => tabs.evaluate((segment) => {
+    const selected = segment.querySelector('ion-segment-button[value="sql"]');
+    if (!selected) return false;
+    const viewport = segment.getBoundingClientRect();
+    const button = selected.getBoundingClientRect();
+    return button.left >= viewport.left - 1 && button.right <= viewport.right + 1;
+  })).toBe(true);
+  const verticalAfterReveal = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    return scroll.scrollTop;
+  });
+  expect(Math.abs(verticalAfterReveal - verticalBeforeReveal)).toBeLessThanOrEqual(2);
+  await expectEditorSource(page, editor, saved);
+
+  await tabs.locator('ion-segment-button[value="tugql"]').click();
+  await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText('unavailable');
+  await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/function|subquery|expression/iu);
+  await sourceTab.click();
+  const simple = 'SELECT AlbumId, Title FROM Album ORDER BY AlbumId LIMIT 10;';
+  const editorElement = workspace.getByTestId('query-body-text').locator('.cm-editor');
+  await editorElement.evaluate((element) => {
+    (window as unknown as { __sqlWorkspaceEditor?: Element }).__sqlWorkspaceEditor = element;
+  });
+  await pasteCode(page, editor, simple);
+  await expectEditorSource(page, editor, simple);
+  await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('1');
+  await tabs.locator('ion-segment-button[value="tugql"]').click();
+  const derived = workspace.getByTestId('workspace-derived-tugql');
+  await expect(derived).toContainText('Read-only TugQL representation');
+  await expect(derived.locator('pre')).toContainText('FROM Album');
+  await expect(derived.locator('pre')).toContainText('LIMIT 10');
+  await expect(workspace.getByTestId('workspace-sql-pane')).toBeHidden();
+  await sourceTab.click();
+  expect(await editorElement.evaluate((element) => element === (window as unknown as { __sqlWorkspaceEditor?: Element }).__sqlWorkspaceEditor)).toBe(true);
+  await expectEditorSource(page, editor, simple);
+  const mod = await codeMirrorMod(page);
+  await editor.focus();
+  await editor.press(`${mod}+Z`);
+  await expectEditorSource(page, editor, saved);
+  await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('…');
+  expect(workersStarted).toBe(0);
+  expect(writes).toEqual([]);
+  await expect(page.getByRole('grid')).toHaveCount(0);
+});
+
+// query-workspace#ac:shared-text-workspace — the saved YAML form remains the authoritative editable source.
+test('legacy DTQL YAML opens in its native source pane through a cold link and refresh', async ({ page }) => {
+  const source = savedLegacyDtqlSource();
+  const writes: string[] = [];
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
+  page.on('request', (request) => {
+    if (/^https:\/\/api\.github\.com\//u.test(request.url()) && !['GET', 'OPTIONS'].includes(request.method()))
+      writes.push(request.url());
+  });
+  await page.goto(LEGACY_DTQL_URL);
+  const workspace = page.getByTestId('unified-text-workspace');
+  const tabs = workspace.getByTestId('author-view-tabs');
+  const sourceTab = tabs.locator('ion-segment-button[value="dtql"]');
+  const editor = workspace.getByTestId('query-body-text');
+  const textarea = editor.locator('textarea:not(.cloned-input)');
+  await expect(editor).toBeVisible({ timeout: 20_000 });
+  await expect(sourceTab).toHaveClass(/segment-button-checked/u);
+  await expect(textarea).toHaveValue(source);
+  await expect(tabs.locator('ion-segment-button[value="parameters"] ion-chip')).toHaveText('1');
+  await page.reload();
+  await expect(editor).toBeVisible({ timeout: 20_000 });
+  await expect(sourceTab).toHaveClass(/segment-button-checked/u);
+  await expect(textarea).toHaveValue(source);
+  await tabs.locator('ion-segment-button[value="parameters"]').click();
+  await expect(workspace.getByRole('textbox', { name: 'CustomerId value' })).toBeVisible();
+  await tabs.locator('ion-segment-button[value="tugql"]').click();
+  await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/DTQL source uses the legacy representation.*TugQL import is unavailable/iu);
+  await sourceTab.click();
+  await textarea.fill(`${source}limit: 2\n`);
+  await expect(textarea).toHaveValue(`${source}limit: 2\n`);
+  await expect(sourceTab).toHaveClass(/segment-button-checked/u);
+  expect(workersStarted).toBe(0);
+  expect(writes).toEqual([]);
+});
+
 test('TugQL suggestions are explicit, source-safe, and touch reachable', async ({
   page,
 }, testInfo) => {
@@ -1173,9 +1339,35 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
     await page.locator('#workspace-back-to-editor').click();
   }
 
-  const customerId = author.getByTestId('author-customer-id').locator('input');
+  const customerId = await openCustomerId(author);
   await customerId.fill('1');
+  // Ionic relocates the focused input while scroll assist moves content above
+  // the keyboard. Wait until that move finishes before tapping the Preview tab.
+  if (isMobile) {
+    await expect
+      .poll(() =>
+        author.getByTestId('author-customer-id').evaluate(async (host) => {
+          const tab = document.querySelector('[data-testid="author-preview-tab"]');
+          const content = document.querySelector('sneat-datatug-sql-editor ion-content');
+          const scroller = content?.shadowRoot?.querySelector('[part="scroll"]');
+          const input = host.querySelector<HTMLInputElement>('input:not(.cloned-input)') ??
+            host.shadowRoot?.querySelector<HTMLInputElement>('input:not(.cloned-input)');
+          if (!tab || !scroller || !input ||
+            (host as HTMLElement).style.pointerEvents === 'none' || input.style.transform) return false;
+          const beforeTop = tab.getBoundingClientRect().top;
+          const beforeScroll = scroller.scrollTop;
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+          return (host as HTMLElement).style.pointerEvents !== 'none' &&
+            !input.style.transform &&
+            Math.abs(tab.getBoundingClientRect().top - beforeTop) < 1 &&
+            Math.abs(scroller.scrollTop - beforeScroll) < 1;
+        }),
+      )
+      .toBe(true);
+  }
   await generateAuthorPreview(author);
+  await expect(author.getByTestId('author-preview-pane')).toContainText('CustomerId');
   await expectIonicButtonDisabled(runButton, false);
   await author.getByTestId('author-run').click();
   if (isMobile) await page.locator('#workspace-jump-to-results').click();
@@ -1439,6 +1631,7 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   await expect(author).toBeVisible({ timeout: 20_000 });
 
   const original = savedQuerySource('chinook-customer-invoice-count');
+  await author.getByTestId('author-compose-tab').click();
   const rowLimit = author
     .getByTestId('author-compose-row-limit')
     .locator('input:not(.cloned-input)');
@@ -1495,7 +1688,7 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   await expect(author.getByTestId('author-execution-receipt')).toHaveCount(0);
   expect(await queryExecutionMessages()).toBe(0);
 
-  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await author.getByTestId('author-run').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
@@ -1535,7 +1728,7 @@ test('Customer count CTE previews without values and runs against the pinned fix
   await expect(preview.locator('pre')).not.toContainText('= 1');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
 
-  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await author.getByTestId('author-run').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
@@ -1615,7 +1808,7 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
   await expect(preview.locator('pre')).not.toContainText('= 1');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
 
-  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await author.getByTestId('author-run').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
@@ -1770,7 +1963,7 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
   await expect(preview).toContainText('Required · unset');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
 
-  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await author.getByTestId('author-run').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
@@ -1835,40 +2028,41 @@ test('mobile editor actions format, undo, and open completion without executing'
     expect(moreBounds.height).toBeGreaterThanOrEqual(44);
     expect(moreBounds.x + moreBounds.width).toBeLessThanOrEqual(viewportWidth + 1);
 
-    const tabs = author.getByTestId('author-view-tabs').locator('ion-button');
-    await expect(tabs).toHaveCount(3);
+    const tabs = author.getByTestId('author-view-tabs').locator('ion-segment-button');
+    await expect(tabs).toHaveCount(6);
     for (const tab of await tabs.all()) {
+      await tab.click();
+      await expect(tab).toHaveClass(/segment-button-checked/u);
       const textGeometry = await tab.evaluate((host) => {
-        const nativeButton = host.shadowRoot?.querySelector('button');
+        const segment = host.parentElement;
         const range = document.createRange();
-        range.selectNodeContents(host);
+        range.selectNodeContents(host.querySelector('ion-label') ?? host);
         const textBounds = range.getBoundingClientRect();
         const hostBounds = host.getBoundingClientRect();
+        const segmentBounds = segment?.getBoundingClientRect();
         return {
           label: host.textContent?.trim() ?? '',
           hostLeft: hostBounds.left,
           hostRight: hostBounds.right,
+          hostHeight: hostBounds.height,
+          segmentLeft: segmentBounds?.left ?? 0,
+          segmentRight: segmentBounds?.right ?? 0,
           textLeft: textBounds.left,
           textRight: textBounds.right,
-          overflowWrap: nativeButton
-            ? getComputedStyle(nativeButton).overflowWrap
-            : '',
-          textScrollWidth: nativeButton?.scrollWidth ?? 0,
-          textClientWidth: nativeButton?.clientWidth ?? 0,
         };
       });
-      expect(textGeometry.label).toMatch(/Compose|TugQL Query|Preview SQL/u);
+      expect(textGeometry.label).toMatch(/Compose|TugQL Query|Preview SQL|Parameters|Sources|Related/u);
+      expect(textGeometry.hostHeight).toBeGreaterThanOrEqual(44);
+      expect(textGeometry.hostLeft).toBeGreaterThanOrEqual(textGeometry.segmentLeft - 1);
+      expect(textGeometry.hostRight).toBeLessThanOrEqual(textGeometry.segmentRight + 1);
       expect(textGeometry.textLeft).toBeGreaterThanOrEqual(
         textGeometry.hostLeft - 1,
       );
       expect(textGeometry.textRight).toBeLessThanOrEqual(
         textGeometry.hostRight + 1,
       );
-      expect(textGeometry.overflowWrap).not.toBe('anywhere');
-      expect(textGeometry.textScrollWidth).toBeLessThanOrEqual(
-        textGeometry.textClientWidth + 1,
-      );
     }
+    await author.getByTestId('author-code-tab').click();
 
     await clickEditorAction(page, author, 'Format TugQL');
     await expect(author.getByTestId('author-format-status')).toHaveText(
@@ -1957,7 +2151,7 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   const preview = author.getByTestId('author-sql-preview');
   await expect(preview).toContainText('Preview · Not executed');
   expect(await queryExecutionMessages()).toBe(0);
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="parameters"]')
     .click();
   const customerId = author
@@ -2095,6 +2289,8 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
   await expect(author.getByTestId('author-preview-tab')).toBeVisible();
+  await expectAuthorMode(author, 'code');
+  await author.getByTestId('author-compose-tab').click();
   await expectAuthorMode(author, 'compose');
   await expect(author.locator('sneat-author-compose-controls')).toBeVisible();
   await expect(author.getByTestId('query-body-text')).toHaveCount(1);
@@ -2157,7 +2353,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   );
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
 
-  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await author.getByTestId('author-run').click();
   const joinReceipt = page.getByTestId('author-execution-receipt');
   await expect(joinReceipt).toContainText('Executed');
@@ -2173,7 +2369,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
     .first()
     .elementHandle();
   expect(firstRunAction).not.toBeNull();
-  await author.getByTestId('author-customer-id').locator('input').fill('2');
+  await (await openCustomerId(author)).fill('2');
   await expect(
     page.getByRole('button', { name: 'Look up invoices for Customer ID 1' }),
   ).toHaveCount(0);
@@ -2201,7 +2397,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
     button.click();
   });
   await expect(page).toHaveURL(/id=chinook-customer-invoice-join/u);
-  await author.getByTestId('author-customer-id').locator('input').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await joinReceipt.getByText('Execution details', { exact: true }).click();
   await joinReceipt.getByText('Advanced receipt', { exact: true }).click();
   const executionId = joinReceipt.getByTestId('author-receipt-worker-id');
@@ -2304,7 +2500,7 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await page.goto(COUNT_AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  const customerId = author.getByTestId('author-customer-id').locator('input');
+  const customerId = await openCustomerId(author);
   await expect(customerId).toBeVisible();
   await customerId.fill('');
   await generateAuthorPreview(author);
@@ -2328,13 +2524,14 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(preparedMetadata).not.toContainText('Declared relationship');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await author.getByTestId('author-code-tab').click();
-  await expect(customerId).toBeVisible();
+  await expect(customerId).toBeHidden();
   const editor = author.getByTestId('query-body-text').locator('.cm-content');
   await expect(editor).toContainText(/count\(\*\) >= 7/u);
   const thresholdSql = await preview.locator('pre').textContent();
   expect(thresholdSql).toContain('GROUP BY "i"."CustomerId"');
   expect(thresholdSql).toContain('HAVING COUNT(*) >= ?');
   expect(thresholdSql).not.toContain('>= 7');
+  await openCustomerId(author);
   await customerId.fill('1');
   await expect(preview.locator('pre')).toHaveText(thresholdSql ?? '');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
@@ -2356,10 +2553,8 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await composeTab.click();
   await expectAuthorMode(author, 'compose');
   await expect(editor).toBeHidden();
-  await expect(composeTab).toHaveAttribute('aria-pressed', 'true');
-  await expect(codeTab).toHaveAttribute('aria-pressed', 'false');
-  await expect(composeTab).toHaveClass(/is-active/u);
-  await expect(composeTab).toHaveCSS('border-bottom-width', '2px');
+  await expect(composeTab).toHaveClass(/segment-button-checked/u);
+  await expect(codeTab).not.toHaveClass(/segment-button-checked/u);
   await page.evaluate(
     () =>
       new Promise<void>((resolve) =>
@@ -2469,17 +2664,17 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   }
   expect(workersStarted).toBe(0);
 
-  const author = page.getByTestId('tugql-author');
+  const author = invoiceAuthorPage.getByTestId('tugql-author');
   const expectContextCount = async (
     value: 'parameters' | 'sources' | 'related',
     count: number,
     accessibleName: string,
   ): Promise<void> => {
-    const tab = author.getByTestId('author-context-tabs')
+    const tab = author.getByTestId('author-view-tabs')
       .locator(`ion-segment-button[value="${value}"]`);
     await expect(tab.locator('ion-chip')).toHaveCount(1);
     await expect(tab.locator('ion-chip')).toHaveText(String(count));
-    await expect(tab.locator('ion-chip')).toHaveAttribute('aria-label', accessibleName);
+    await expect(tab.locator('button')).toHaveAccessibleName(`${value[0].toUpperCase()}${value.slice(1)}, ${accessibleName}`);
   };
   await expect(author).toBeVisible({ timeout: 20_000 });
   await expect(author.getByTestId('author-compose-tab')).toBeVisible();
@@ -2531,27 +2726,23 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     .getByTestId('query-body-text')
     .locator('.cm-content');
   await expect(coldEditor).toBeVisible();
-  await expect(author.getByTestId('author-code-tab')).toHaveClass(/is-active/u);
-  await expect(author.getByTestId('author-code-tab')).toHaveCSS(
-    'border-bottom-width',
-    '2px',
-  );
+  await expect(author.getByTestId('author-code-tab')).toHaveClass(/segment-button-checked/u);
   await expectEditorSource(page, coldEditor, originalDraft);
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await expect(page.getByTestId('query-view-author')).toHaveClass(/is-active/u);
   await author.getByTestId('author-compose-tab').click();
-  const editorPane = page.locator('#workspace-editor-pane');
-  const resultsPane = page.locator('#workspace-results-pane');
+  const editorPane = invoiceAuthorPage.locator('#workspace-editor-pane');
+  const resultsPane = invoiceAuthorPage.locator('#workspace-results-pane');
   if (isMobile) {
-    await page.locator('#workspace-jump-to-results').click();
-    await expect(page.getByTestId('author-results-empty')).toBeVisible();
+    await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
+    await expect(invoiceAuthorPage.getByTestId('author-results-empty')).toBeVisible();
     await expect(resultsPane).toBeVisible();
     await expect(editorPane).toBeVisible();
-    await page.locator('#workspace-back-to-editor').click();
+    await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
     await expect(editorPane).toBeVisible();
     await expect(resultsPane).toBeVisible();
   } else {
-    await expect(page.getByTestId('author-results-empty')).toBeVisible();
+    await expect(invoiceAuthorPage.getByTestId('author-results-empty')).toBeVisible();
     await expect(editorPane).toBeVisible();
     await expect(resultsPane).toBeVisible();
   }
@@ -2570,7 +2761,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   await author.getByTestId('author-code-tab').click();
   const sourceDiscovery = author.getByTestId('author-source-discovery');
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="sources"]')
     .click();
   const sourceInventory = author.getByTestId('author-participating-sources');
@@ -2582,7 +2773,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     .toContainText('InvoiceId');
   await expect(sourceInventory.getByTestId('author-participating-source-details'))
     .toContainText(/integer/iu);
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
   await expect(sourceDiscovery.getByTestId('author-related-customer')).toBeVisible({ timeout: 20_000 });
@@ -2620,13 +2811,16 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await sourceDiscovery.getByTestId('author-related-join').click();
   await expect(editor).toContainText(/join Customer as c/u);
   await expectContextCount('sources', 2, '2 participating sources');
+  await expectAuthorMode(author, 'code');
+  await expect(author.getByTestId('workspace-related-tab').locator('ion-chip')).toHaveText('…');
+  await author.getByTestId('workspace-related-tab').click();
   await expectContextCount('related', 0, '0 available related sources');
   await expect(sourceDiscovery.getByTestId('author-related-empty')).toBeVisible();
   await expect(editor).not.toContainText(/c\.FirstName/u);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   expect(workersStarted).toBe(0);
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="sources"]')
     .click();
   const joinedInvoiceSource = sourceInventory
@@ -2637,25 +2831,32 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   }
   await expect(sourceInventory.getByTestId('author-participating-source-details'))
     .toContainText('InvoiceId');
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
+  await author.getByTestId('author-code-tab').click();
   await clickEditorAction(page, author, 'Undo');
   await expectEditorSource(page, editor, originalSource);
   await expectContextCount('sources', 1, '1 participating source');
+  await author.getByTestId('workspace-related-tab').click();
   await expectContextCount('related', 1, '1 available related source');
-  const contextHeaderVisibleAfterScroll = await author.evaluate((element) => {
-    const sidebar = element.querySelector('.author-code-sidebar-row') as HTMLElement | null;
-    const stickyHeader = element.querySelector(
-      '[data-testid="author-context-sticky-header"]',
-    ) as HTMLElement | null;
-    if (!sidebar || !stickyHeader) return false;
-    sidebar.scrollTop = sidebar.scrollHeight;
-    const viewport = sidebar.getBoundingClientRect();
-    const header = stickyHeader.getBoundingClientRect();
-    return header.top >= viewport.top && header.bottom <= viewport.bottom;
+  const relatedPaneGeometry = await author.evaluate((element) => {
+    const card = element as HTMLElement;
+    const panel = card.querySelector('[data-testid="author-related-panel"]') as HTMLElement | null;
+    const discovery = card.querySelector('[data-testid="author-source-discovery"]') as HTMLElement | null;
+    const cardBounds = card.getBoundingClientRect();
+    const panelBounds = panel?.getBoundingClientRect();
+    return {
+      panelInsideCard: !!panelBounds && panelBounds.bottom <= cardBounds.bottom + 1,
+      noInternalScroll: !!discovery && discovery.scrollHeight <= discovery.clientHeight + 1,
+      noPageOverflow: document.documentElement.scrollWidth <= document.documentElement.clientWidth + 1,
+    };
   });
-  expect(contextHeaderVisibleAfterScroll).toBe(true);
+  expect(relatedPaneGeometry).toEqual({
+    panelInsideCard: true,
+    noInternalScroll: true,
+    noPageOverflow: true,
+  });
   await sourceDiscovery.getByTestId('author-source-review').click();
   const review = sourceDiscovery.getByTestId('author-source-review-panel');
   await expect(review).toBeVisible();
@@ -2678,6 +2879,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(author.getByTestId('author-format-status'))
     .toContainText('Applied the admitted join with FirstName outputs', { timeout: 20_000 });
   await expectContextCount('sources', 2, '2 participating sources');
+  await expectAuthorMode(author, 'code');
+  await author.getByTestId('workspace-related-tab').click();
   await expectContextCount('related', 0, '0 available related sources');
   await author.getByTestId('author-code-tab').click();
   await expect(editor).toContainText(/join Customer as c/u);
@@ -2722,7 +2925,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expectEditorSource(page, editor, limitedWithDate);
   expect(workersStarted).toBe(0);
 
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="parameters"]')
     .click();
   const customerId = author
@@ -2875,6 +3078,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(preview.locator('pre')).toHaveText(expectedPreviewSql);
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
 
+  await openCustomerId(author);
   await customerId.fill('1.5');
   await expect(preview).toContainText('Invalid · enter a whole number');
   await expect(
@@ -2887,7 +3091,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(preview.locator('pre')).toHaveText(previewSql ?? '');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-jump-to-results').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toBeVisible({ timeout: 20_000 });
   await expect(receipt).toContainText('Executed');
@@ -2927,8 +3131,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await rows.nth(1).getByRole('gridcell').first().click();
   await page.keyboard.press('ArrowDown');
   await expect(currentRow).toContainText('Position 2 of 7');
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
-  await author.getByTestId('author-context-tabs')
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="sources"]')
     .click();
   const participatingSources = author.getByTestId('author-participating-sources');
@@ -2944,7 +3148,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   );
   await expect(joinedCustomerDetails).toContainText(/FirstName · string/iu);
   await expect(joinedCustomerDetails).toContainText('Database: default · Schema: main');
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
   const relatedSources = author.getByTestId('author-source-discovery');
@@ -2953,11 +3157,11 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(author.getByTestId('author-related-parameter-status')).toHaveCount(0);
   expect(workersStarted).toBe(workerCountBeforeInspection);
   if (isMobile) {
-    await page.locator('#workspace-jump-to-results').click();
+    await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
     await expect(currentRow).toContainText('Position 2 of 7');
   }
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
-  await author.getByTestId('author-context-tabs')
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="parameters"]')
     .click();
   await expect(author.getByTestId('author-customer-id')).toBeVisible();
@@ -2967,7 +3171,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await executionDetails.click();
     await expect(
       receipt.locator('ion-accordion[value="execution"]'),
-    ).not.toHaveClass(/accordion-expanded/u);
+    ).toHaveClass(/accordion-collapsed/u);
     const originalViewport = page.viewportSize();
     await page.setViewportSize({ width: 1280, height: 720 });
     await activePage(page).evaluate((active) => {
@@ -2986,7 +3190,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(author.getByTestId('author-compose-tab')).toHaveCount(1);
     await expect(author.getByTestId('author-code-tab')).toHaveCount(1);
     await expect(author.locator('.cm-editor')).toHaveCount(1);
-    await expect(page.locator('#author-results-heading')).toHaveCount(1);
+    await expect(invoiceAuthorPage.locator('#author-results-heading')).toHaveCount(1);
     const firstRowBounds = await rows.nth(1).evaluate((row) => {
       const bounds = row.getBoundingClientRect();
       return { top: bounds.top, bottom: bounds.bottom };
@@ -2999,7 +3203,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   }
   expect(errors).toEqual([]);
 
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-compose-tab').click();
   await expect(joinedLimit).toHaveValue('75');
   await joinedLimit.fill('3');
@@ -3007,10 +3211,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await author.getByTestId('author-code-tab').click();
   const reducedSource = limitedWithDate.replace('limit 75', 'limit 3');
   await expectEditorSource(page, editor, reducedSource);
-  if (isMobile) await page.locator('#workspace-jump-to-results').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
   await expect(receipt).toBeVisible();
   await expect(receipt).toContainText('7 rows');
-  if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
   await expect(author.getByTestId('author-run')).toHaveAttribute(
     'disabled',
     '',
@@ -3027,7 +3231,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(reducedPreviewSql).toContain('"c"."FirstName"');
   expect(workersStarted).toBe(1);
   await author.getByTestId('author-run').click();
-  if (isMobile) await page.locator('#workspace-jump-to-results').click();
+  if (isMobile) await invoiceAuthorPage.locator('#workspace-jump-to-results').click();
   await expect(receipt).toContainText('Executed', { timeout: 20_000 });
   await expect(receipt).toContainText('3 rows');
   await expect.poll(() => workersStarted).toBe(2);
@@ -3041,21 +3245,21 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
 
   for (const width of [390, 320]) {
     await page.setViewportSize({ width, height: 844 });
-    const resultsView = page.locator('#workspace-jump-to-results');
+    const resultsView = invoiceAuthorPage.locator('#workspace-jump-to-results');
     await resultsView.click();
-    await expect(page.locator('#author-results-heading')).toBeFocused();
-    await expect(page.locator('#workspace-results-pane')).toBeVisible();
-    await expect(page.locator('#workspace-editor-pane')).toBeVisible();
+    await expect(invoiceAuthorPage.locator('#author-results-heading')).toBeFocused();
+    await expect(invoiceAuthorPage.locator('#workspace-results-pane')).toBeVisible();
+    await expect(invoiceAuthorPage.locator('#workspace-editor-pane')).toBeVisible();
     await expect(receipt).toBeVisible();
     const retainedReceiptText = await receipt.textContent();
     const retainedRows = await page
       .getByRole('grid')
       .getByRole('row')
       .allTextContents();
-    const editorView = page.locator('#workspace-back-to-editor');
+    const editorView = invoiceAuthorPage.locator('#workspace-back-to-editor');
     await editorView.click();
     await expect(author.locator('[data-workspace-heading]')).toBeFocused();
-    await expect(page.locator('#workspace-results-pane')).toBeVisible();
+    await expect(invoiceAuthorPage.locator('#workspace-results-pane')).toBeVisible();
     await expect(author).toBeVisible();
     const currentPreview = author.getByTestId('author-sql-preview');
     await expect(currentPreview).toBeVisible();
@@ -3194,7 +3398,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const workersBeforeSecondEmailApply = workersStarted;
   expect(workersBeforeSecondEmailApply).toBe(2);
   const secondDiscovery = secondAuthor.getByTestId('author-source-discovery');
-  await secondAuthor.getByTestId('author-context-tabs')
+  await secondAuthor.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
   await expect(secondDiscovery).toContainText('Email', {
@@ -3222,7 +3426,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   const secondPreviewSql = await secondPreview.locator('pre').textContent();
   expect(secondPreviewSql).toContain('"c"."Email"');
   expect(workersStarted).toBe(workersBeforeSecondEmailApply);
-  await secondAuthor.getByTestId('author-context-tabs')
+  await secondAuthor.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="parameters"]')
     .click();
   await secondAuthor
@@ -3244,14 +3448,24 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     .toBe(workersBeforeSecondEmailApply + 1);
   const secondRows = page.getByRole('grid').getByRole('row');
   await expect(secondRows).toHaveCount(8);
+  const secondInvoiceIds = page.getByRole('grid')
+    .locator('[role="gridcell"][col-id="result_0"]');
+  const expectedSecondInvoiceIds = ['98', '121', '143', '195', '316', '327', '382'];
+  // InvoiceId uses a custom cell renderer. Its cells may exist before their
+  // values render, so capture the preservation baseline only once all are ready.
+  await expect(secondInvoiceIds).toHaveText(expectedSecondInvoiceIds);
   await expect(secondRows.nth(1)).toContainText('2022-03-11 00:00:00');
   await expect(secondRows.nth(1)).toContainText('luisg@embraer.com.br');
   const secondReceipt = page.getByTestId('author-execution-receipt');
+  const secondExecutionId = (await secondReceipt.textContent())?.match(
+    /execution ID ([0-9a-f-]{36})/iu,
+  )?.[1];
+  expect(secondExecutionId).toBeTruthy();
   const secondRowsBeforeRemoval = await secondRows.allTextContents();
   const secondEditor = secondAuthor.getByTestId('query-body-text').locator('.cm-content');
   const emailSource = await copyEditorSource(page, secondEditor);
   await secondAuthor.getByTestId('author-code-tab').click();
-  await secondAuthor.getByTestId('author-context-tabs')
+  await secondAuthor.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="sources"]')
     .click();
   const sources = secondAuthor.getByTestId('author-participating-sources');
@@ -3277,13 +3491,70 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   expect(unjoinedEmailSource).not.toContain('c.Email');
   expect(unjoinedEmailSource).toContain('@CustomerId integer required');
   await expect(secondReceipt).toContainText('7 rows');
+  await expect(secondReceipt).toContainText(`execution ID ${secondExecutionId}`);
+  await expect(secondInvoiceIds).toHaveText(expectedSecondInvoiceIds);
   expect(await secondRows.allTextContents()).toEqual(secondRowsBeforeRemoval);
   expect(workersStarted).toBe(3);
   await clickEditorAction(page, secondAuthor, 'Undo');
   await expectEditorSource(page, secondEditor, emailSource);
   await expect(secondReceipt).toContainText('7 rows');
+  await expect(secondReceipt).toContainText(`execution ID ${secondExecutionId}`);
   expect(workersStarted).toBe(3);
   expect(errors).toEqual([]);
+});
+
+test('related count arriving later keeps the focused workspace tab and native keyboard navigation', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 390, height: 844 });
+  let releaseMetadata!: () => void;
+  let metadataRequested!: () => void;
+  const metadataGate = new Promise<void>((resolve) => { releaseMetadata = resolve; });
+  const requestSeen = new Promise<void>((resolve) => { metadataRequested = resolve; });
+  await page.route(
+    (url) => url.hostname === 'raw.githubusercontent.com' &&
+      url.pathname.endsWith('/dbmodels/chinook/chinook.refs.json'),
+    async (route) => {
+      metadataRequested();
+      await metadataGate;
+      await route.fallback();
+    },
+  );
+  let workersStarted = 0;
+  page.on('worker', () => workersStarted++);
+  await page.goto(AUTHOR_URL);
+  const author = activePage(page).getByTestId('tugql-author');
+  await expect(author).toBeVisible({ timeout: 20_000 });
+  const source = author.getByTestId('query-body-text').locator('.cm-content');
+  const originalSource = await source.textContent();
+  const related = author.getByTestId('workspace-related-tab');
+  await related.click();
+  await requestSeen;
+  const nativeRelated = related.locator('button');
+  await nativeRelated.focus();
+  await expect(nativeRelated).toBeFocused();
+  await expect(nativeRelated).toHaveAccessibleName('Related, Related source count unavailable');
+  releaseMetadata();
+  await expect(related.locator('ion-chip')).toHaveText('1');
+  await expect(nativeRelated).toHaveAccessibleName('Related, 1 available related source');
+  await expect(nativeRelated).toBeFocused();
+  await expect(related).toHaveClass(/segment-button-checked/u);
+  await expect.poll(() => related.evaluate((tab) => {
+    const bounds = tab.getBoundingClientRect();
+    const viewport = tab.parentElement?.getBoundingClientRect();
+    return !!viewport && bounds.left >= viewport.left - 1 && bounds.right <= viewport.right + 1;
+  })).toBe(true);
+  await nativeRelated.press('ArrowLeft');
+  const sources = author.getByTestId('workspace-sources-tab');
+  await expect(sources.locator('button')).toBeFocused();
+  await sources.locator('button').press('Space');
+  await expect(sources).toHaveClass(/segment-button-checked/u);
+  await sources.locator('button').press('ArrowRight');
+  await expect(nativeRelated).toBeFocused();
+  await nativeRelated.press('Space');
+  await expect(related).toHaveClass(/segment-button-checked/u);
+  expect(await source.textContent()).toBe(originalSource);
+  expect(workersStarted).toBe(0);
+  await expect(activePage(page).getByTestId('author-results-empty')).toBeVisible();
 });
 
 test('Preview syntax errors navigate to the exact unchanged draft without running it', async ({
@@ -3305,6 +3576,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   const compactSource = savedQuerySource('chinook-invoice-author');
   expect(compactSource).toMatch(/select i\.InvoiceId, i\.InvoiceDate\s*$/u);
   await expectEditorSource(page, editor, compactSource);
+  await openCustomerId(author);
   await customerId.fill('');
   await expect(customerId).toHaveValue('');
   // Finish the input interaction before clicking an action: Ionic's mobile
@@ -3320,6 +3592,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
     'Preview · Not executed',
   );
   expect(workersStarted).toBe(0);
+  await openCustomerId(author);
   await customerId.fill('1');
   await generateAuthorPreview(author);
   await author.getByTestId('author-run').click();
@@ -3478,6 +3751,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
     await page.getByRole('grid').getByRole('row').allTextContents(),
   ).toEqual(retainedRows);
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
+  await openCustomerId(author);
   await customerId.fill('');
   await author.getByTestId('author-code-tab').click();
 
@@ -3596,7 +3870,7 @@ test('query workspace clarity shows the cold Related Join action inside the desk
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
   await author.getByTestId('author-code-tab').click();
-  await author.getByTestId('author-context-tabs')
+  await author.getByTestId('author-view-tabs')
     .locator('ion-segment-button[value="related"]')
     .click();
   const join = author.getByTestId('author-related-join');
@@ -3643,16 +3917,17 @@ test('query context counts stay inline through two digits and unavailable drafts
   );
   expect(twelveParameters).not.toBe(source);
   await pasteCode(page, editor, twelveParameters);
-  const tabs = author.getByTestId('author-context-tabs');
+  const tabs = author.getByTestId('author-view-tabs');
   const parameters = tabs.locator('ion-segment-button[value="parameters"]');
   const parameterCount = parameters.locator('ion-chip');
   await expect(parameterCount).toHaveText('12');
-  await expect(parameterCount).toHaveAttribute('aria-label', '12 parameters');
+  await expect(parameters.locator('button')).toHaveAccessibleName('Parameters, 12 parameters');
   const contextTabGeometry = () =>
     tabs.evaluate((element) => {
       const segment = element.getBoundingClientRect();
+      const allButtons = Array.from(element.querySelectorAll('ion-segment-button'));
       const buttons = Array.from(
-        element.querySelectorAll('ion-segment-button'),
+        element.querySelectorAll('ion-segment-button[value="parameters"], ion-segment-button[value="sources"], ion-segment-button[value="related"]'),
       );
       const tabGeometry = buttons.map((button) => {
         const value = button.getAttribute('value');
@@ -3677,7 +3952,8 @@ test('query context counts stay inline through two digits and unavailable drafts
           oneLine: range.getClientRects().length === 1,
           touchTarget: Math.round(tab.height) >= 48,
           horizontalAdjacency:
-            count.left >= words.right - 1 && count.left - words.right <= 4,
+            count.left - words.right >= 3.5 && count.left - words.right <= 6,
+          mutedCount: chip.querySelector('ion-text')?.getAttribute('color') === 'medium',
           raisedWithOverlap:
             (count.top + count.bottom) / 2 < (row.top + row.bottom) / 2 &&
             count.top < words.bottom &&
@@ -3691,8 +3967,6 @@ test('query context counts stay inline through two digits and unavailable drafts
             count.right <= tab.right + 1 &&
             count.top >= tab.top - 1 &&
             count.bottom <= tab.bottom + 1,
-          insideSegment:
-            tab.left >= segment.left - 1 && tab.right <= segment.right + 1,
         };
         return {
           value,
@@ -3716,7 +3990,10 @@ test('query context counts stay inline through two digits and unavailable drafts
       });
       const checks = {
         threeTabs: buttons.length === 3,
-        oneRow: segment.height <= 56,
+        sixMainTabs: allButtons.length === 6,
+        oneRow: segment.height <= 56 && allButtons.every((button) =>
+          Math.abs(button.getBoundingClientRect().top - allButtons[0].getBoundingClientRect().top) <= 1),
+        allTouchTargets: allButtons.every((button) => button.getBoundingClientRect().height >= 44),
         segmentInViewport: segment.right <= innerWidth + 1,
         noPageOverflow: document.documentElement.scrollWidth <= innerWidth + 1,
       };
@@ -3765,17 +4042,30 @@ test('query context counts stay inline through two digits and unavailable drafts
   for (const { width, height } of [
     { width: 320, height: 720 },
     { width: 390, height: 844 },
+    // 720 CSS px covers the layout budget of a 1440 px window at 200% zoom;
+    // this is viewport emulation, not a claim that browser chrome zoom changed.
+    { width: 720, height: 720 },
     { width: 1100, height: 720 },
     { width: 1280, height: 720 },
+    { width: 1440, height: 900 },
   ]) {
     await page.setViewportSize({ width, height });
     await expectContextTabGeometry(`12 parameters remain inline at ${width}px`);
+    for (const value of ['parameters', 'sources', 'related']) {
+      const button = tabs.locator(`ion-segment-button[value="${value}"]`);
+      await button.click();
+      await expect.poll(() => button.evaluate((selected) => {
+        const viewport = selected.closest('ion-segment')?.getBoundingClientRect();
+        const tab = selected.getBoundingClientRect();
+        return !!viewport && tab.left >= viewport.left - 1 && tab.right <= viewport.right + 1;
+      })).toBe(true);
+    }
     await page.screenshot({
       path: testInfo.outputPath(`context-inline-12-${width}.png`),
     });
     testInfo.annotations.push({
       type: 'screenshot',
-      description: `context-inline-12-${width}.png: expected full Parameters, Sources and Related tabs with a raised two-digit count in one 48px row; observed the count and label overlap vertically inside the tab, with all three tabs inside the segment and no page overflow.`,
+      description: `context-inline-12-${width}.png: expected one scrollable Ionic tab row with full context labels, muted raised counts, and 48px targets; observed every context tab selectable and fully visible when selected, with no page overflow.`,
     });
   }
 
@@ -3809,9 +4099,10 @@ test('query context counts stay inline through two digits and unavailable drafts
     .replace(/where i\.CustomerId = @CustomerId\r?\n/u, '');
   expect(noParameters).not.toBe(source);
   await page.setViewportSize({ width: 320, height: 720 });
+  await author.getByTestId('author-code-tab').click();
   await pasteCode(page, editor, noParameters);
   await expect(parameterCount).toHaveText('0');
-  await expect(parameterCount).toHaveAttribute('aria-label', '0 parameters');
+  await expect(parameters.locator('button')).toHaveAccessibleName('Parameters, 0 parameters');
   await expectContextTabGeometry('Zero parameters remain inline at 320px');
   await page.screenshot({
     path: testInfo.outputPath('context-inline-0-320.png'),
@@ -3819,14 +4110,12 @@ test('query context counts stay inline through two digits and unavailable drafts
   testInfo.annotations.push({
     type: 'screenshot',
     description:
-      'context-inline-0-320.png: expected full context labels and zero count in one 48px row; observed all three tabs contained within the 320px viewport.',
+      'context-inline-0-320.png: expected full context labels and zero count in one scrollable 48px row; observed complete label and chip within each tab, with selection scroll available and no page overflow.',
   });
+  await author.getByTestId('author-code-tab').click();
   await pasteCode(page, editor, '');
   await expect(parameterCount).toHaveText('…');
-  await expect(parameterCount).toHaveAttribute(
-    'aria-label',
-    'Parameter count unavailable',
-  );
+  await expect(parameters.locator('button')).toHaveAccessibleName('Parameters, Parameter count unavailable');
   await expectContextTabGeometry(
     'Unavailable parameter count remains inline at 320px',
   );
@@ -3836,7 +4125,7 @@ test('query context counts stay inline through two digits and unavailable drafts
   testInfo.annotations.push({
     type: 'screenshot',
     description:
-      'context-inline-unavailable-320.png: expected full context labels and unavailable count in one 48px row; observed all three tabs contained within the 320px viewport.',
+      'context-inline-unavailable-320.png: expected full context labels and unavailable count in one scrollable 48px row; observed complete label and chip within each tab, with selection scroll available and no page overflow.',
   });
   expect(await executionCount()).toBe(0);
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
@@ -3850,7 +4139,7 @@ test('query workspace clarity preserves active context, inspected row and explic
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
   await author.getByTestId('author-code-tab').click();
-  const tabs = author.getByTestId('author-context-tabs');
+  const tabs = author.getByTestId('author-view-tabs');
   await tabs.locator('ion-segment-button[value="related"]').click();
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await author.getByTestId('author-run').click();
@@ -3861,6 +4150,8 @@ test('query workspace clarity preserves active context, inspected row and explic
   await tabs.locator('ion-segment-button[value="related"]').click();
   await author.getByTestId('author-related-join').click();
   await expect(tabs.locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('2');
+  await expectAuthorMode(author, 'code');
+  await tabs.locator('ion-segment-button[value="related"]').click();
   await expect(author.getByTestId('author-related-empty')).toContainText('Customer is already included');
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
   await expect(author.getByTestId('author-related-metadata-details')).toContainText(/Cross-source cost\s*unknown/u);
@@ -3883,8 +4174,13 @@ test('query workspace clarity preserves active context, inspected row and explic
   await expect(page.getByRole('grid').locator('.ag-row[row-index="0"]')).toHaveAttribute('aria-selected', 'false');
   await page.locator('#author-results-heading').focus();
   await expect(page.locator('.author-inspected-row-marker')).toHaveAttribute('aria-label', 'Current row, position 2');
-  const retainedSource = await author.locator('.cm-content').innerText();
+  const retainedSource = await copyEditorSource(page, author.locator('.cm-content'));
   const retainedReceipt = await receipt.locator('.author-receipt-summary').innerText();
+  await tabs.locator('ion-segment-button[value="related"]').click();
+  await receipt.scrollIntoViewIfNeeded();
+  await expect(receipt).toBeInViewport();
+  await page.setViewportSize({ width: 1100, height: 720 });
+  await expect(receipt).toBeInViewport();
   const widths = [320, 1100, 1280, 390, 1440, 1024];
   for (const width of widths) {
     await page.setViewportSize({ width, height: width === 1024 ? 560 : 720 });
@@ -3892,6 +4188,8 @@ test('query workspace clarity preserves active context, inspected row and explic
     await tabs.scrollIntoViewIfNeeded();
     for (const value of ['parameters', 'sources', 'related']) {
       const tab = tabs.locator(`ion-segment-button[value="${value}"]`);
+      await tab.click();
+      await expect(tab).toHaveClass(/segment-button-checked/u);
       await expect(tab.locator('ion-chip')).toBeVisible();
       const fits = await tab.evaluate((element) => {
         const segmentElement = element.parentElement;
@@ -3906,28 +4204,25 @@ test('query workspace clarity preserves active context, inspected row and explic
         const textBounds = range.getBoundingClientRect();
         const count = chip.getBoundingClientRect();
         const tab = element.getBoundingClientRect();
-        const fits = textBounds.left >= segment.left - 1 && textBounds.right <= segment.right + 1 &&
+        const fits = tab.left >= segment.left - 1 && tab.right <= segment.right + 1 &&
           textBounds.left >= tab.left - 1 && textBounds.right <= tab.right + 1 &&
           textBounds.top >= tab.top - 1 && textBounds.bottom <= tab.bottom + 1 &&
-          textBounds.top >= segment.top - 1 && textBounds.bottom <= segment.bottom + 1 &&
           range.getClientRects().length === 1 &&
           count.left >= tab.left - 1 && count.right <= tab.right + 1 &&
           count.top >= tab.top - 1 && count.bottom <= tab.bottom + 1 &&
-          count.top >= segment.top - 1 && count.bottom <= segment.bottom + 1 &&
           count.left >= textBounds.right && count.top < textBounds.bottom && count.bottom > textBounds.top &&
           tab.height >= 44 && segment.height <= 56 && segment.right <= innerWidth + 1 &&
           document.documentElement.scrollWidth <= innerWidth + 1;
         return { fits, text: textBounds.toJSON(), count: count.toJSON(), tab: tab.toJSON(), segment: segment.toJSON(), lines: range.getClientRects().length, font: getComputedStyle(label).font, padding: getComputedStyle(element.shadowRoot?.querySelector('button') ?? element).padding };
       });
-      if (!fits.fits) console.log('context clipping', width, value, fits);
-      expect(fits.fits, `${value} label and count fit at ${width}px`).toBe(true);
+      expect(fits.fits, `${value} label and count are fully visible in the selected tab at ${width}px: ${JSON.stringify(fits)}`).toBe(true);
     }
     await expect(inlineRow).toContainText('Position 2 of 7');
-    expect(await author.locator('.cm-content').innerText()).toBe(retainedSource);
+    expect(await copyEditorSource(page, author.locator('.cm-content'))).toBe(retainedSource);
     expect(await receipt.locator('.author-receipt-summary').innerText()).toBe(retainedReceipt);
     expect(await executionCount()).toBe(1);
     await page.screenshot({ path: testInfo.outputPath(`clarity-reflow-${width}.png`) });
-    testInfo.annotations.push({ type: 'screenshot', description: `clarity-reflow-${width}.png: expected Parameters, Sources and active Related labels/counts to fit; observed all three text/count bounds inside the segment and viewport, retained draft/receipt/row and one explicit execution.` });
+    testInfo.annotations.push({ type: 'screenshot', description: `clarity-reflow-${width}.png: expected all three context tabs reachable in the one-row scroller; observed each selected label/count wholly visible, retained draft/receipt/row, and one explicit execution.` });
   }
   await page.setViewportSize({ width: 1280, height: 720 });
   await activePage(page).evaluate(active => {
@@ -3941,9 +4236,11 @@ test('query workspace clarity preserves active context, inspected row and explic
   });
   console.log('clarity first row geometry', geometry);
   await page.screenshot({ path: testInfo.outputPath('clarity-desktop.png') });
-  testInfo.annotations.push({ type: 'screenshot', description: `clarity-desktop.png: expected all context labels/counts and first result row visible at1280x720; observed first row top${geometry.top}/bottom${geometry.bottom}, labels/counts fit in the preceding bounds assertions.` });
+  testInfo.annotations.push({ type: 'screenshot', description: `clarity-desktop.png: expected the selected Related tab and first result row visible at1280x720; observed first row top${geometry.top}/bottom${geometry.bottom}, with every context tab reachable in the preceding bounds assertions.` });
   await expect(firstRow).toBeInViewport({ ratio: 0.999 });
+  await tabs.locator('ion-segment-button[value="tugql"]').click();
   expect(await author.locator('.cm-scroller').evaluate(element => element.clientHeight)).toBeGreaterThan(160);
+  await tabs.locator('ion-segment-button[value="related"]').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#workspace-jump-to-results').click();
   const open = page.getByTestId('author-row-details-open');
@@ -3997,17 +4294,17 @@ test('expanding source metadata grows the author card without scrolling the cont
     const author = page.getByTestId('tugql-author');
     await expect(author).toBeVisible({ timeout: 20_000 });
     await author.getByTestId('author-code-tab').click();
-    await author.getByTestId('author-context-tabs')
+    await author.getByTestId('author-view-tabs')
       .locator('ion-segment-button[value="sources"]')
       .click();
     const source = author.getByTestId('author-participating-source').first();
     await expect(source).toContainText('Invoice');
     await expect(source).toHaveAttribute('aria-expanded', 'false');
     const editor = author.locator('.cm-content');
-    const originalSource = await editor.innerText();
+    const originalSource = await copyEditorSource(page, editor);
     const saveState = await page.locator('.query-save-state').innerText();
     const collapsedHeight = await author.evaluate(element => element.getBoundingClientRect().height);
-    const collapsedEditorHeight = await author.locator('.cm-editor').evaluate(element => element.getBoundingClientRect().height);
+    await expect(author.getByTestId('query-body-text').locator('.cm-editor')).toBeHidden();
 
     await source.click();
     await expect(source).toHaveAttribute('aria-expanded', 'true');
@@ -4035,20 +4332,17 @@ test('expanding source metadata grows the author card without scrolling the cont
     });
     if (!geometry) throw new Error('Expected expanded source geometry.');
     expect(geometry.cardHeight).toBeGreaterThan(collapsedHeight + 24);
-    if (width === 1280) {
-      expect(geometry.editorHeight).toBeGreaterThan(collapsedEditorHeight + 24);
-      expect(Math.abs(geometry.editorHeight - geometry.paneHeight)).toBeLessThanOrEqual(2);
-    }
+    expect(geometry.editorHeight).toBe(0);
     expect(geometry.fieldsBottom).toBeLessThanOrEqual(geometry.cardBottom + 1);
     expect(geometry.fieldsBottom).toBeLessThanOrEqual(geometry.paneBottom + 1);
     expect(geometry.paneScrollHeight).toBeLessThanOrEqual(geometry.paneClientHeight + 1);
     expect(geometry.pageScrollWidth).toBeLessThanOrEqual(geometry.viewportWidth + 1);
-    expect(await editor.innerText()).toBe(originalSource);
+    expect(await copyEditorSource(page, editor)).toBe(originalSource);
     expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
     await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
     expect(await executionCount()).toBe(0);
     await page.screenshot({ path: testInfo.outputPath(`expanded-source-${viewport.label}.png`), fullPage: true });
-    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-${viewport.label}.png: expected Invoice metadata inside the naturally taller author card, desktop editor stretched beside it, no sidebar clipping or page horizontal overflow; observed card height ${geometry.cardHeight}, editor height ${geometry.editorHeight}, field bottom ${geometry.fieldsBottom} within card bottom ${geometry.cardBottom}.` });
+    testInfo.annotations.push({ type: 'screenshot', description: `expanded-source-${viewport.label}.png: expected Invoice metadata inside the naturally taller full-card Sources pane, with the Code editor retained but hidden and no horizontal overflow; observed card height ${geometry.cardHeight}, field bottom ${geometry.fieldsBottom} within card bottom ${geometry.cardBottom}.` });
     await details.locator('ion-item').last().scrollIntoViewIfNeeded();
     await expect(details.locator('ion-item').last()).toBeInViewport({ ratio: 0.98 });
     await page.screenshot({ path: testInfo.outputPath(`expanded-source-fields-${viewport.label}.png`) });
@@ -4058,13 +4352,15 @@ test('expanding source metadata grows the author card without scrolling the cont
     await expect(source).toHaveAttribute('aria-expanded', 'false');
     await expect(details).toHaveCount(0);
     const restoredHeight = await author.evaluate(element => element.getBoundingClientRect().height);
-    const restoredEditorHeight = await author.locator('.cm-editor').evaluate(element => element.getBoundingClientRect().height);
+    await expect(author.getByTestId('query-body-text').locator('.cm-editor')).toBeHidden();
     expect(restoredHeight).toBeLessThan(geometry.cardHeight - 24);
     expect(Math.abs(restoredHeight - collapsedHeight)).toBeLessThanOrEqual(2);
-    expect(Math.abs(restoredEditorHeight - collapsedEditorHeight)).toBeLessThanOrEqual(2);
-    expect(await editor.innerText()).toBe(originalSource);
+    expect(await copyEditorSource(page, editor)).toBe(originalSource);
     expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
     expect(await executionCount()).toBe(0);
+    await author.getByTestId('author-code-tab').click();
+    await expect(author.getByTestId('query-body-text')).toBeVisible();
+    expect(await copyEditorSource(page, editor)).toBe(originalSource);
   }
 });
 
@@ -4085,6 +4381,10 @@ test('Run validates a missing Customer ID only after an explicit attempt, withou
   const input = author.getByTestId('author-customer-id').locator('input:not(.cloned-input)');
   const codeSurface = author.locator('.author-code-surface');
   const composeControls = author.locator('sneat-author-compose-controls');
+  await expect(codeSurface).toBeVisible();
+  await expect(composeControls).toHaveCount(0);
+  const source = await copyEditorSource(page, author.getByTestId('query-body-text').locator('.cm-content'));
+  await author.getByTestId('author-compose-tab').click();
   await expect(composeControls).toBeVisible();
   await expect(codeSurface).toBeHidden();
   await author.getByTestId('author-code-tab').click();
@@ -4093,10 +4393,10 @@ test('Run validates a missing Customer ID only after an explicit attempt, withou
   await author.getByTestId('author-preview-tab').click();
   await expect(codeSurface).toBeHidden();
   await expect(author.getByTestId('author-preview-empty')).toBeVisible();
-  await author.getByTestId('author-compose-tab').click();
-  await expect(composeControls).toBeVisible();
+  await author.getByTestId('workspace-parameters-tab').click();
+  await expect(composeControls).toHaveCount(0);
   await expect(codeSurface).toBeHidden();
-  const source = await author.getByTestId('query-body-text').locator('.cm-content').innerText();
+  await expect(input).toBeVisible();
   const saveState = await page.locator('.query-save-state').innerText();
   await expect(warning).toHaveCount(0);
   await expectIonicButtonDisabled(run, false);
@@ -4110,7 +4410,7 @@ test('Run validates a missing Customer ID only after an explicit attempt, withou
   await expect(author.getByTestId('author-sql-preview')).toHaveCount(0);
   expect(await executionCount()).toBe(0);
   expect(githubWrites).toEqual([]);
-  expect(await author.getByTestId('query-body-text').locator('.cm-content').innerText()).toBe(source);
+  expect(await copyEditorSource(page, author.getByTestId('query-body-text').locator('.cm-content'))).toBe(source);
   expect(await page.locator('.query-save-state').innerText()).toBe(saveState);
   await page.screenshot({ path: testInfo.outputPath('run-missing-binding-warning.png') });
   testInfo.annotations.push({ type: 'screenshot', description: 'run-missing-binding-warning.png: expected no cold warning until Run, then native Ionic warning color and Set parameter action; observed warning only after the click, with no SQL preview, execution message, GitHub write or draft change.' });
@@ -4148,6 +4448,7 @@ test('query workspace clarity keeps inspected row visible through horizontal pan
   await page.goto(CTE_AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
+  await author.getByTestId('workspace-parameters-tab').click();
   await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
   await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').press('Tab');
   await generateAuthorPreview(author);
@@ -4188,10 +4489,10 @@ test('query workspace six polish filters a verified InvoiceId through explicit P
   await page.goto(AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
-  await author.getByTestId('author-context-tabs').locator('ion-segment-button[value="related"]').click();
+  await (await openCustomerId(author)).fill('1');
+  await author.getByTestId('author-view-tabs').locator('ion-segment-button[value="related"]').click();
   await author.getByTestId('author-related-join').click();
-  await expect(author.getByTestId('author-context-tabs').locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('2');
+  await expect(author.getByTestId('author-view-tabs').locator('ion-segment-button[value="sources"] ion-chip')).toHaveText('2');
   await generateAuthorPreview(author);
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   expect(await executionCount()).toBe(0);
@@ -4238,8 +4539,11 @@ test('query workspace six polish filters untouched plain Invoice results without
   await page.goto(AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await generateAuthorPreview(author);
+  await expect(author.getByTestId('author-preview-pane')).toBeVisible();
+  await expect(author.getByTestId('author-preview-pane').locator('pre'))
+    .toContainText('WHERE "i"."CustomerId" = ?');
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
   await author.getByTestId('author-run').click();
   if (mobile) await page.locator('#workspace-jump-to-results').click();
@@ -4288,7 +4592,7 @@ test('Undo clears the Current row filter confirmation when it restores the draft
   await page.goto(AUTHOR_URL);
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });
-  await author.getByTestId('author-customer-id').locator('input:not(.cloned-input)').fill('1');
+  await (await openCustomerId(author)).fill('1');
   await generateAuthorPreview(author);
   await author.getByTestId('author-run').click();
   await expect(page.getByTestId('author-execution-receipt')).toContainText('7 rows', { timeout: 20_000 });
