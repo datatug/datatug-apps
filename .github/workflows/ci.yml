@@ -220,7 +220,10 @@ jobs:
       # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
       # in the browser. Runs the built app in Chromium, Firefox and WebKit against the real demodb.dev files
       # (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
-      # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here.
+      # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
+      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
+      # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
+      # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the live demodb.dev pages).
       - name: nx e2e-demo-sqlite affected
         run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
 
