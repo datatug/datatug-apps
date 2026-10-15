@@ -360,6 +360,7 @@ describe('ProjectPage rendering a local-agent store project', () => {
       .getAllEntities as ReturnType<typeof vi.fn>;
     const fullReads = getFull.mock.calls.length;
     const entityReads = getAllEntities.mock.calls.length;
+    const summaryReads = doubles.watchProjectSummary.mock.calls.length;
 
     const page = fixture.componentInstance as unknown as {
       setProjRef(ref: {
@@ -378,13 +379,32 @@ describe('ProjectPage rendering a local-agent store project', () => {
     await fixture.whenStable();
     expect(getFull).toHaveBeenCalledTimes(fullReads);
     expect(getAllEntities).toHaveBeenCalledTimes(entityReads);
+    expect(doubles.watchProjectSummary).toHaveBeenCalledTimes(summaryReads);
+    expect(
+      (
+        fixture.nativeElement.querySelector('ion-input') as HTMLElement & {
+          value?: string;
+        }
+      ).value,
+    ).toBe('Project unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Project metadata is unavailable for this connection or branch.',
+    );
+    expect(
+      fixture.nativeElement.querySelector(
+        '[aria-label="Loading environments"]',
+      ),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Environment shortcuts are unavailable',
+    );
 
     expect(
       fixture.nativeElement.querySelector('sneat-datatug-folder'),
     ).toBeNull();
-    expect(
-      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
-    ).toContain('Boards are unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Boards are unavailable',
+    );
 
     for (const [tab, label] of [
       [2, 'Environments'],
@@ -397,9 +417,9 @@ describe('ProjectPage rendering a local-agent store project', () => {
         ] as HTMLButtonElement
       ).click();
       await fixture.whenStable();
-      expect(
-        fixture.nativeElement.querySelector('[role="status"]')?.textContent,
-      ).toContain(`${label} are unavailable`);
+      expect(fixture.nativeElement.textContent).toContain(
+        `${label} are unavailable`,
+      );
     }
   });
 });

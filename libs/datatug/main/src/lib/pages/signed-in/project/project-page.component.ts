@@ -160,6 +160,12 @@ export class ProjectPageComponent
     const ref = this.project()?.ref;
     return !!(ref?.spaceID || ref?.projectApi || ref?.branch);
   });
+  protected readonly summaryUnsupported = computed(() => {
+    const ref = this.project()?.ref;
+    return (
+      !!ref && ref.projectApi !== 'cloud' && !!(ref.projectApi || ref.branch)
+    );
+  });
 
   /**
    * The read-only "Store" field shows this instead of the raw
@@ -280,6 +286,12 @@ export class ProjectPageComponent
               items?.toSorted((a, b) => a.id.localeCompare(b.id)),
             ),
           );
+      }
+      // The local/legacy summary reader sends only a project ID. A selected
+      // branch would otherwise receive the unqualified project's title.
+      if (this.summaryUnsupported()) {
+        this.metadataState.set('unavailable');
+        return;
       }
       this.projectService
         .watchProjectSummary(ref)
