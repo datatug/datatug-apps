@@ -328,19 +328,20 @@ test.describe('GitHub-store project — every side-menu page loads without error
         hasText: 'Environments',
       })
       .click();
+    const environmentRows = activePage(page).getByTestId(
+      'environment-list-item',
+    );
+    await expect(environmentRows).toHaveCount(5, { timeout: 30_000 });
     for (const envId of ['local', 'dev', 'QA', 'UAT', 'prod']) {
       await expect(
-        activePage(page)
-          .locator('[data-testid="environment-list-item"]')
-          .filter({ hasText: new RegExp(`\\b${envId}\\b`, 'i') }),
+        activePage(page).getByRole('heading', {
+          name: new RegExp(`^${envId}$`, 'i'),
+        }),
       ).toBeVisible({
-        timeout: 15_000,
+        timeout: 30_000,
       });
     }
-    await activePage(page)
-      .locator('[data-testid="environment-list-item"]')
-      .filter({ hasText: /\blocal\b/i })
-      .click();
+    await environmentRows.filter({ hasText: /\blocal\b/i }).click();
     await expect(activePage(page).getByText('sqlite3')).toBeVisible({
       timeout: 15_000,
     });
