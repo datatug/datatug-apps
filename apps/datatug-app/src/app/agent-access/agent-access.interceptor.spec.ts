@@ -41,8 +41,14 @@ function setup(code?: AgentLinkCode) {
 }
 
 describe('agentAccessInterceptor', () => {
-  beforeEach(() => localStorage.clear());
-  afterEach(() => localStorage.clear());
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
+  afterEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+  });
 
   it('exchanges the code once, then sends the token only to that agent', () => {
     const { http, ctrl } = setup({ origin: AGENT, code: 'v1.c' });
@@ -75,14 +81,43 @@ describe('agentAccessInterceptor', () => {
     ctrl.verify();
   });
 
-  it('reuses a token held from an earlier page, so a spent code still opens the page', () => {
+  it('falls back to a token held from an earlier page when the code is spent (a second click)', () => {
     localStorage.setItem(TOKEN_KEY, 'tok-held');
     const { http, ctrl } = setup({ origin: AGENT, code: 'v1.spent' });
     http.post(SCHEMA_URL, {}).subscribe();
-    ctrl.expectNone(AGENT + AGENT_SESSION_EXCHANGE_PATH);
+    ctrl
+      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
+      .flush({ error: 'link-expired' }, { status: 401, statusText: 'Unauthorized' });
     expect(
       ctrl.expectOne(SCHEMA_URL).request.headers.get('Authorization'),
     ).toBe('Bearer tok-held');
+  });
+
+  it('exchanges a fresh code instead of sending a token held from before the agent restarted', () => {
+    localStorage.setItem(TOKEN_KEY, 'tok-before-restart');
+    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.fresh' });
+    http.post(SCHEMA_URL, {}).subscribe();
+    ctrl.expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH).flush({ token: 'tok-new' });
+    expect(
+      ctrl.expectOne(SCHEMA_URL).request.headers.get('Authorization'),
+    ).toBe('Bearer tok-new');
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('tok-new');
+  });
+
+  it('keeps an unspent code across a reload of the tab, and drops it once spent', () => {
+    let first = setup({ origin: AGENT, code: 'v1.c' });
+    first.http.post(SCHEMA_URL, {}).subscribe({ error: () => undefined });
+    first.ctrl
+      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
+      .error(new ProgressEvent('error'), { status: 0 });
+    TestBed.resetTestingModule();
+    // The reloaded page has no code in its address any more.
+    first = setup(undefined);
+    first.http.post(SCHEMA_URL, {}).subscribe();
+    const exchange = first.ctrl.expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH);
+    expect(exchange.request.body).toEqual({ code: 'v1.c' });
+    exchange.flush({ token: 'tok-3' });
+    expect(sessionStorage.length).toBe(0);
   });
 
   it('turns a refused code into a 401 and does not send the request', () => {

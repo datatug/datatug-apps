@@ -57,6 +57,10 @@ export function scrubText(text: string, dropQuery: boolean): string {
     .replace(LINK_FRAGMENT_PARTS, '');
 }
 
+/** Attributes that hold only the query or the fragment of an address (Sentry's fetch and XHR spans and
+ * breadcrumbs set `http.query` and `http.fragment`). */
+const QUERY_OR_FRAGMENT_KEYS = new Set(['http.query', 'http.fragment']);
+
 /** Deepest level of a telemetry payload that is walked; anything deeper is dropped. */
 const MAX_DEPTH = 10;
 
@@ -76,6 +80,9 @@ export function scrubDeep<T>(value: T, dropQuery: boolean, depth = 0): T {
   }
   const out: Record<string, unknown> = {};
   for (const [key, item] of Object.entries(value as Record<string, unknown>)) {
+    if (QUERY_OR_FRAGMENT_KEYS.has(key)) {
+      continue; // the bare `?…`/`#…` of an address, which scrubText cannot recognise as one
+    }
     out[key] = scrubDeep(item, dropQuery, depth + 1);
   }
   return out as T;

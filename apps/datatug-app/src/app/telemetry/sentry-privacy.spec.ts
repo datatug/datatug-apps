@@ -106,8 +106,13 @@ describe('withSentryLinkPrivacy', () => {
     expectNothingSecret(sent(options.beforeSendTransaction?.(transaction, {})));
     const span = options.beforeSendSpan?.({
       description: `POST ${AGENT_SELECT}`,
-      data: { 'http.url': AGENT_SELECT },
+      data: {
+        'http.url': AGENT_SELECT,
+        'http.query': `?db=chinook&where=AlbumId%3D${KEY}`,
+        'http.fragment': `#code=${CODE}&pk=${KEY}`,
+      },
     } as never);
+    expect(Object.keys((span as { data: object }).data)).toEqual(['http.url']);
     expectNothingSecret(sent(span));
   });
 
