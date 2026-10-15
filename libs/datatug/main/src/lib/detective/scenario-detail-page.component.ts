@@ -8,7 +8,7 @@ import {
   signal,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
@@ -59,6 +59,7 @@ import { DetectiveState } from './models';
 })
 export class ScenarioDetailPageComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly client = inject(DetectiveClientService);
   protected readonly scope = useDetectivePageContext();
   private readonly params = toSignal(this.route.paramMap, {
@@ -67,8 +68,11 @@ export class ScenarioDetailPageComponent {
   protected readonly scenarioId = computed(() =>
     this.params().get('scenarioId'),
   );
-  protected readonly casesUrl = computed(() =>
+  protected readonly casesHref = computed(() =>
     projectPageHref(this.scope.ref(), 'detective'),
+  );
+  protected readonly casesUrl = computed(() =>
+    this.router.parseUrl(this.casesHref()),
   );
   protected readonly state = signal<DetectiveState | undefined>(undefined);
   protected readonly loading = signal(false);

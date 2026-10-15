@@ -1,12 +1,15 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  RouterLink,
 } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { AgentContextService } from '@sneat/datatug-semantic';
 import { BehaviorSubject, of, Subject } from 'rxjs';
+import { IProjectRef } from '../core/project-context';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DetectiveClientService } from './detective-client.service';
 import { DetectiveState } from './models';
@@ -52,9 +55,23 @@ describe('ScenarioDetailPageComponent', () => {
   );
   const response = new Subject<DetectiveState>();
   const client = { state: vi.fn(() => response.asObservable()) };
+  const project = new BehaviorSubject({
+    ref: {
+      storeId: 'firestore',
+      spaceID: 'space-1',
+      projectId: 'project-1',
+    } as IProjectRef,
+  });
 
   beforeEach(async () => {
     params.next(convertToParamMap({ scenarioId: 'invoice-review' }));
+    project.next({
+      ref: {
+        storeId: 'firestore',
+        spaceID: 'space-1',
+        projectId: 'project-1',
+      },
+    });
     client.state.mockClear();
     await TestBed.configureTestingModule({
       imports: [ScenarioDetailPageComponent],
@@ -64,17 +81,16 @@ describe('ScenarioDetailPageComponent', () => {
         {
           provide: DatatugNavContextService,
           useValue: {
-            currentProject: new BehaviorSubject({
-              ref: {
-                storeId: 'firestore',
-                spaceID: 'space-1',
-                projectId: 'project-1',
-              },
-            }),
+            currentProject: project,
             currentEnv: of(undefined),
           },
         },
-        { provide: AgentContextService, useValue: {} },
+        {
+          provide: AgentContextService,
+          useValue: {
+            contextFor: () => ({ securityContextId: () => 'session-1' }),
+          },
+        },
         {
           provide: SneatAuthStateService,
           useValue: { authState: of({ user: { uid: 'actor-1' } }) },
@@ -118,6 +134,32 @@ describe('ScenarioDetailPageComponent', () => {
       'Scenario missing was not found',
     );
     expect(fixture.nativeElement.textContent).toContain('Back to Detective');
+  });
+
+  it('keeps qualified local context on the Back to Detective link', async () => {
+    project.next({
+      ref: {
+        storeId: 'http-localhost:8989',
+        projectId: 'demo',
+        projectApi: 'local',
+        branch: 'feature/demo',
+      },
+    });
+    params.next(convertToParamMap({ scenarioId: 'missing' }));
+    const fixture = TestBed.createComponent(ScenarioDetailPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    response.next(state);
+    fixture.detectChanges();
+    const back = fixture.debugElement.query(By.directive(RouterLink));
+    const tree = back?.injector.get(RouterLink).urlTree;
+    expect(tree?.root.children['primary'].segments.at(-1)?.path).toBe(
+      'detective',
+    );
+    expect(tree?.queryParams).toEqual({
+      projectApi: 'local',
+      branch: 'feature/demo',
+    });
   });
 
   it('ignores an old response after navigating to another Scenario', async () => {

@@ -372,21 +372,25 @@
               <h3>Relevant Scenarios</h3>
               <ion-list>
                 @for (scenario of relevantScenarios(); track scenario.id) {
-                  <ion-item button [routerLink]="scenarioUrl(scenario.id)"
-                    ><ion-label
-                      ><h3>{{ scenario.title }}</h3>
-                      <p>
-                        {{ scenario.description }} ·
-                        {{ scenario.steps.length }} manual steps
-                      </p></ion-label
+                  <ion-item
+                    ><ion-label>
+                      <a
+                        class="scenario-link"
+                        [routerLink]="scenarioUrl(scenario.id)"
+                        [attr.aria-label]="'View Scenario ' + scenario.title"
+                      >
+                        <h3>{{ scenario.title }}</h3>
+                        <p>
+                          {{ scenario.description }} ·
+                          {{ scenario.steps.length }} manual steps
+                        </p>
+                      </a> </ion-label
                     ><ion-button
                       slot="end"
                       fill="outline"
                       size="small"
                       [disabled]="busy() || item.status === 'archived'"
-                      (click)="
-                        $event.stopPropagation(); attachScenario(scenario)
-                      "
+                      (click)="attachScenario(scenario)"
                       >Apply</ion-button
                     ></ion-item
                   >
@@ -1317,20 +1321,25 @@
         <ion-card-content>
           <ion-list>
             @for (scenario of scenarios(); track scenario.id) {
-              <ion-item button [routerLink]="scenarioUrl(scenario.id)"
-                ><ion-label
-                  ><h3>{{ scenario.title }}</h3>
-                  <p>
-                    {{ scenario.id }} · {{ scenario.steps.length }} steps · v{{
-                      scenario.version
-                    }}
-                  </p></ion-label
-                >
+              <ion-item
+                ><ion-label>
+                  <a
+                    class="scenario-link"
+                    [routerLink]="scenarioUrl(scenario.id)"
+                    [attr.aria-label]="'View Scenario ' + scenario.title"
+                  >
+                    <h3>{{ scenario.title }}</h3>
+                    <p>
+                      {{ scenario.id }} · {{ scenario.steps.length }} steps ·
+                      v{{ scenario.version }}
+                    </p>
+                  </a>
+                </ion-label>
                 <ion-button
                   slot="end"
                   fill="clear"
                   [disabled]="!state()?.capabilities?.canWrite"
-                  (click)="$event.stopPropagation(); editScenario(scenario)"
+                  (click)="editScenario(scenario)"
                   >Edit</ion-button
                 ></ion-item
               >

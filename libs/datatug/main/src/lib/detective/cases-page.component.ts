@@ -10,7 +10,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, UrlTree } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
@@ -462,8 +462,10 @@ export class CasesPageComponent {
   protected caseUrl(id: string): string {
     return projectPageHref(this.scope.ref(), ['detective', id]);
   }
-  protected scenarioUrl(id: string): string {
-    return projectPageHref(this.scope.ref(), ['detective', 'scenario', id]);
+  protected scenarioUrl(id: string): UrlTree {
+    return this.router.parseUrl(
+      projectPageHref(this.scope.ref(), ['detective', 'scenario', id]),
+    );
   }
   protected checkUrl(id: string): string {
     return projectPageHref(this.scope.ref(), ['checks', id]);

@@ -13,6 +13,7 @@ import {
 } from '@sneat/datatug-semantic';
 import { signal } from '@angular/core';
 import { BehaviorSubject, of } from 'rxjs';
+import { IProjectRef } from '../core/project-context';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { CasesPageComponent } from './cases-page.component';
 import { DetectiveClientService } from './detective-client.service';
@@ -45,7 +46,7 @@ const state: DetectiveState = {
 };
 
 describe('Detective Scenario list navigation', () => {
-  it('links a saved Scenario row to its project-scoped detail page', async () => {
+  async function scenarioLink(ref: IProjectRef) {
     await TestBed.configureTestingModule({
       imports: [CasesPageComponent],
       providers: [
@@ -57,17 +58,16 @@ describe('Detective Scenario list navigation', () => {
         {
           provide: DatatugNavContextService,
           useValue: {
-            currentProject: new BehaviorSubject({
-              ref: {
-                storeId: 'firestore',
-                spaceID: 'space-1',
-                projectId: 'project-1',
-              },
-            }),
+            currentProject: new BehaviorSubject({ ref }),
             currentEnv: of(undefined),
           },
         },
-        { provide: AgentContextService, useValue: {} },
+        {
+          provide: AgentContextService,
+          useValue: {
+            contextFor: () => ({ securityContextId: signal('session-1') }),
+          },
+        },
         {
           provide: SneatAuthStateService,
           useValue: { authState: of({ user: { uid: 'actor-1' } }) },
@@ -93,11 +93,52 @@ describe('Detective Scenario list navigation', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
-    const links = fixture.debugElement
+    return fixture.debugElement
       .queryAll(By.directive(RouterLink))
-      .map((element) => element.injector.get(RouterLink).urlTree?.toString());
-    expect(links).toContain(
+      .find(
+        (element) =>
+          element.nativeElement.getAttribute('aria-label') ===
+          'View Scenario Review invoice totals',
+      );
+  }
+
+  it('links a saved Scenario row to its shared project detail page', async () => {
+    const link = await scenarioLink({
+      storeId: 'firestore',
+      spaceID: 'space-1',
+      projectId: 'project-1',
+    });
+    expect(link?.injector.get(RouterLink).urlTree?.toString()).toBe(
       '/space/space-1/store/firestore/project/project-1/detective/scenario/invoice-review',
     );
+    expect(link?.nativeElement.tagName).toBe('A');
+    expect(
+      link?.nativeElement.closest('ion-item')?.hasAttribute('button'),
+    ).toBe(false);
+  });
+
+  it('keeps local project qualifiers as query params on the actual link', async () => {
+    const link = await scenarioLink({
+      storeId: 'http-localhost:8989',
+      projectId: 'demo',
+      projectApi: 'local',
+      branch: 'feature/demo',
+    });
+    const tree = link?.injector.get(RouterLink).urlTree;
+    expect(
+      tree?.root.children['primary'].segments
+        .slice(-3)
+        .map((segment) => segment.path),
+    ).toEqual(['detective', 'scenario', 'invoice-review']);
+    expect(tree?.queryParams).toEqual({
+      projectApi: 'local',
+      branch: 'feature/demo',
+    });
+    expect(link?.nativeElement.getAttribute('href')).toContain(
+      '?projectApi=local&branch=feature%2Fdemo',
+    );
+    expect(
+      link?.nativeElement.closest('ion-item')?.hasAttribute('button'),
+    ).toBe(false);
   });
 });
