@@ -13,13 +13,20 @@
 </ion-header>
 
 <ion-content color="light">
-  <sneat-card-list
-    [isLoading]="!boards()"
-    noItemsText="No boards yet"
-    [items]="boards()"
-    itemIcon="easel-outline"
-    [isFilterable]="boards() && boards()!.length > 7"
-    [getRouterLink]="getLinkToBoard"
-    (itemClick)="goBoard($event)"
-  />
+  @if (loadError()) {
+    <div class="ion-padding">
+      <p role="alert">{{ loadError() }}</p>
+      <ion-button (click)="retryLoad()">Retry loading boards</ion-button>
+    </div>
+  } @else {
+    <sneat-card-list
+      [isLoading]="!boards()"
+      noItemsText="No boards yet"
+      [items]="boards()"
+      itemIcon="easel-outline"
+      [isFilterable]="boards() && boards()!.length > 7"
+      [getRouterLink]="getLinkToBoard"
+      (itemClick)="goBoard($event)"
+    />
+  }
 </ion-content>

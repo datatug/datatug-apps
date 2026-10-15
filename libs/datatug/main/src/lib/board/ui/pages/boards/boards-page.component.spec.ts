@@ -196,10 +196,12 @@ describe('BoardsPage project switching', () => {
     const projects = new Subject<IProjectContext>();
     const firstFolder = new Subject<IFolder | null>();
     const secondFolder = new Subject<IFolder | null>();
+    const thirdFolder = new Subject<IFolder | null>();
     const watchFolder = vi
       .fn()
       .mockReturnValueOnce(firstFolder.asObservable())
-      .mockReturnValueOnce(secondFolder.asObservable());
+      .mockReturnValueOnce(secondFolder.asObservable())
+      .mockReturnValueOnce(thirdFolder.asObservable());
 
     await TestBed.configureTestingModule({
       imports: [BoardsPageComponent],
@@ -235,7 +237,14 @@ describe('BoardsPage project switching', () => {
     firstFolder.next({ id: '~', boards: { first: { name: 'First board' } } });
     expect(page.boards()).toEqual([{ id: 'first', title: 'First board' }]);
 
-    projects.next({ ref: { storeId: 'firestore', projectId: 'shared-id' } });
+    projects.next({
+      ref: {
+        storeId: 'http-localhost:8989',
+        projectId: 'shared-id',
+        projectApi: 'local',
+        branch: 'main',
+      },
+    });
     expect(page.boards()).toBeUndefined();
     firstFolder.next({ id: '~', boards: { stale: { name: 'Stale board' } } });
     expect(page.boards()).toBeUndefined();
@@ -246,10 +255,94 @@ describe('BoardsPage project switching', () => {
 
     expect(page.boards()).toEqual([{ id: 'second', title: 'Second board' }]);
     expect(watchFolder).toHaveBeenNthCalledWith(2, {
-      storeId: 'firestore',
+      storeId: 'http-localhost:8989',
       projectId: 'shared-id',
+      projectApi: 'local',
+      branch: 'main',
+      id: '~',
+    });
+
+    projects.next({
+      ref: {
+        storeId: 'http-localhost:8989',
+        projectId: 'shared-id',
+        projectApi: 'local',
+        branch: 'feature',
+      },
+    });
+    expect(page.boards()).toBeUndefined();
+    secondFolder.next({ id: '~', boards: { stale: { name: 'Stale branch' } } });
+    expect(page.boards()).toBeUndefined();
+    thirdFolder.next({ id: '~', boards: { third: { name: 'Feature board' } } });
+    expect(page.boards()).toEqual([{ id: 'third', title: 'Feature board' }]);
+    expect(watchFolder).toHaveBeenNthCalledWith(3, {
+      storeId: 'http-localhost:8989',
+      projectId: 'shared-id',
+      projectApi: 'local',
+      branch: 'feature',
       id: '~',
     });
     fixture.destroy();
+  });
+});
+
+describe('BoardsPage read errors', () => {
+  it('shows a retry instead of an empty list, then renders a genuinely empty folder', async () => {
+    const project$ = new Subject<IProjectContext>();
+    const failedFolder = new Subject<IFolder | null>();
+    const retryFolder = new Subject<IFolder | null>();
+    const logError = vi.fn();
+    const watchFolder = vi
+      .fn()
+      .mockReturnValueOnce(failedFolder.asObservable())
+      .mockReturnValueOnce(retryFolder.asObservable());
+
+    await TestBed.configureTestingModule({
+      imports: [BoardsPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        { provide: ErrorLogger, useValue: { logError } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject: project$.asObservable() },
+        },
+        {
+          provide: DatatugNavService,
+          useValue: { projectPageUrl: vi.fn(), goBoard: vi.fn() },
+        },
+        { provide: DatatugFoldersService, useValue: { watchFolder } },
+      ],
+    })
+      .overrideComponent(BoardsPageComponent, {
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(BoardsPageComponent);
+    fixture.detectChanges();
+    project$.next({ ref: { storeId: 'github.com', projectId: 'demo' } });
+    failedFolder.error(new Error('read failed'));
+    await fixture.whenStable();
+
+    expect(logError).toHaveBeenCalledOnce();
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]').textContent,
+    ).toContain('Boards could not be loaded');
+    expect(fixture.nativeElement.querySelector('sneat-card-list')).toBeNull();
+
+    (fixture.nativeElement.querySelector('ion-button') as HTMLElement).click();
+    await fixture.whenStable();
+    expect(watchFolder).toHaveBeenCalledTimes(2);
+    const list = fixture.nativeElement.querySelector('sneat-card-list') as
+      | (HTMLElement & { isLoading: boolean; items: unknown[] })
+      | null;
+    expect(list?.isLoading).toBe(true);
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+
+    retryFolder.next({ id: '~', boards: {} });
+    await fixture.whenStable();
+    expect(list?.isLoading).toBe(false);
+    expect(list?.items).toEqual([]);
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
   });
 });

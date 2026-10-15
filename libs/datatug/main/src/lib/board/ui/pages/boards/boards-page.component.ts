@@ -1,6 +1,7 @@
 import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonContent,
   IonHeader,
@@ -9,7 +10,7 @@ import {
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { BehaviorSubject, combineLatest, of, Subject } from 'rxjs';
 import {
   catchError,
   distinctUntilChanged,
@@ -19,7 +20,7 @@ import {
   tap,
 } from 'rxjs/operators';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
-import { projectRefToString } from '../../../../core/project-context';
+import { equalProjectRef } from '../../../../core/project-context';
 import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
 import {
   folderItemsAsList,
@@ -66,6 +67,7 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
     IonHeader,
     IonButtons,
     IonBackButton,
+    IonButton,
     IonMenuButton,
     IonToolbar,
     IonContent,
@@ -87,45 +89,58 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   // pages/signed-in/project/project-page.component.ts (PR #95) for the
   // established pattern.
   readonly boards = signal<IProjBoard[] | undefined>(undefined);
+  readonly loadError = signal<string | undefined>(undefined);
   defaultHref?: string;
   readonly project = signal<IProjectContext | undefined>(undefined);
 
   folderPath = '~';
 
   private readonly destroyed = new Subject<void>();
+  private readonly refresh = new BehaviorSubject(0);
 
   constructor() {
-    this.datatugNavContextService.currentProject
+    combineLatest([this.datatugNavContextService.currentProject, this.refresh])
       .pipe(
-        tap((currentProject) => {
-          if (
-            projectRefToString(currentProject?.ref) !==
-            projectRefToString(this.project()?.ref)
-          ) {
+        tap(([currentProject]) => {
+          if (!equalProjectRef(currentProject?.ref, this.project()?.ref)) {
             this.boards.set(undefined);
+            this.loadError.set(undefined);
           }
           this.project.set(currentProject);
         }),
-        map((currentProject) => currentProject?.ref),
+        map(([currentProject, refresh]) => ({
+          ref: currentProject?.ref,
+          refresh,
+        })),
         distinctUntilChanged(
-          (a, b) => projectRefToString(a) === projectRefToString(b),
+          (a, b) => a.refresh === b.refresh && equalProjectRef(a.ref, b.ref),
         ),
-        switchMap((ref) =>
-          ref
+        switchMap(({ ref }) => {
+          this.boards.set(undefined);
+          this.loadError.set(undefined);
+          return ref
             ? this.foldersService
                 .watchFolder({ ...ref, id: this.folderPath })
                 .pipe(
+                  map((folder) => ({ status: 'success' as const, folder })),
                   catchError((err: unknown) => {
                     this.errorLogger.logError(err, 'Failed to load boards');
-                    return of(null);
+                    return of({ status: 'error' as const });
                   }),
                 )
-            : of(null),
-        ),
+            : of({ status: 'success' as const, folder: null });
+        }),
         takeUntil(this.destroyed),
       )
       .subscribe({
-        next: (folder) => this.onFolderReceived(this.folderPath, folder),
+        next: (result) => {
+          if (result.status === 'error') {
+            this.boards.set(undefined);
+            this.loadError.set('Boards could not be loaded. Please try again.');
+          } else {
+            this.onFolderReceived(this.folderPath, result.folder);
+          }
+        },
         error: (err) =>
           this.errorLogger.logError(
             err,
@@ -137,6 +152,11 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.destroyed.next();
     this.destroyed.complete();
+    this.refresh.complete();
+  }
+
+  retryLoad(): void {
+    if (this.project()?.ref) this.refresh.next(this.refresh.value + 1);
   }
 
   private onFolderReceived = (path: string, folder?: IFolder | null): void => {
@@ -150,7 +170,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     // list this page's own template feeds `[items]="boards()"` into) reads
     // `.title`, not `.name`, and silently falls back to showing the board's
     // own `.id` when `.title` is `undefined` (confirmed live, S136: GitHub's
-    // `board1` — title "1st board" per its own `board.json`/the parent
+    // `board1` — title "Chinook customer insights" in the demo project
     // `datatug-project.json` summary — rendered as the id "board1" in the
     // list). Pre-existing and not GitHub-specific: any store's board list
     // goes through this same `IFolder`/`folderItemsAsList()` path
