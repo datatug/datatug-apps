@@ -1,30 +1,27 @@
 <ion-item class="ion-no-padding">
-  <ion-buttons slot="start" class="ion-no-margin">
-    <ion-button>
-      <ion-icon name="globe-outline" />
-    </ion-button>
-  </ion-buttons>
+  <ion-icon name="globe-outline" slot="start" aria-hidden="true" />
   <ion-label>
     @if (currentEnvId()) {
-      Environment
+      Env
     } @else {
-      Environments
+      Envs
     }
-    @if (!currentEnvId() && project()?.summary?.environments) {
+    @if (!currentEnvId() && environments().length) {
       <ion-badge color="light" class="ion-margin-start">
         <ion-text color="medium" style="font-weight: normal"
-          >{{ project()?.summary?.environments?.length }}
+          >{{ environments().length }}
         </ion-text>
       </ion-badge>
     }
   </ion-label>
-  @if (project()?.summary?.environments?.length) {
+  @if (environments().length) {
     <ion-select
+      aria-label="Environment"
       [value]="currentEnvId()"
       interface="popover"
       (ionChange)="switchEnv($event)"
     >
-      @for (env of project()!.summary!.environments!; track env) {
+      @for (env of environments(); track env.id) {
         <ion-select-option [value]="env.id"
           >{{ env.title || env.id }}
         </ion-select-option>
@@ -37,7 +34,11 @@
       class="ion-no-margin ion-no-padding"
       style="margin-right: -1em"
     >
-      <ion-button color="medium" (click)="clearEnv()">
+      <ion-button
+        color="medium"
+        (click)="clearEnv()"
+        aria-label="Clear environment"
+      >
         <ion-icon name="close-outline" />
       </ion-button>
     </ion-buttons>

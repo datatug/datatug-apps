@@ -1,18 +1,20 @@
-<ion-segment [(ngModel)]="tab" class="ion-padding-horizontal">
-  @for (t of tabs; track t) {
-    <ion-segment-button [value]="t">
-      <ion-label class="no-text-transform">
-        <!--			<ion-icon slot="start" name="clipboard-outline" class="ion-margin-end"></ion-icon>-->
-        {{ t | titlecase }}
-        @if (numberOf(t); as numOf) {
-          <ion-badge color="light">
-            <ion-text color="medium">{{ numOf }}</ion-text>
-          </ion-badge>
-        }
-      </ion-label>
-    </ion-segment-button>
-  }
-</ion-segment>
+@if (!hideTabs()) {
+  <ion-segment [(ngModel)]="tab" class="ion-padding-horizontal">
+    @for (t of tabs; track t) {
+      <ion-segment-button [value]="t">
+        <ion-label class="no-text-transform">
+          <!--			<ion-icon slot="start" name="clipboard-outline" class="ion-margin-end"></ion-icon>-->
+          {{ t | titlecase }}
+          @if (numberOf(t); as numOf) {
+            <ion-badge color="light">
+              <ion-text color="medium">{{ numOf }}</ion-text>
+            </ion-badge>
+          }
+        </ion-label>
+      </ion-segment-button>
+    }
+  </ion-segment>
+}
 
 @switch (tab) {
   @case ('entities') {

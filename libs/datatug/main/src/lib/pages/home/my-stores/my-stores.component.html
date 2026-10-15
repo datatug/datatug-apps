@@ -1,62 +1,72 @@
 <ion-card>
-  <ion-item color="light" lines="full">
-    <ion-label><h2>Project stores</h2></ion-label>
-    <ion-buttons slot="end">
-      @if (stores) {
-        <ion-button color="medium">
-          <ion-icon name="add" slot="start" color="primary" />
-          <ion-label>Add</ion-label>
-        </ion-button>
-      }
-    </ion-buttons>
-  </ion-item>
+  <ion-list lines="full">
+    <ion-item color="light">
+      <ion-label><h2>Project stores</h2></ion-label>
+    </ion-item>
+  </ion-list>
 
-  <ion-item>
-    <ion-label>
-      <p>You can store projects at:</p>
-      <ul>
-        <li>local computer or company server using DataTug agent</li>
-        <li>At source control services like GitHub</li>
-        <li>In DataTug cloud</li>
-      </ul>
-    </ion-label>
-  </ion-item>
+  <ion-card-content>
+    <p class="store-intro">
+      Choose where project files live. Each store keeps the project connected to
+      its data and query history.
+    </p>
+    <ul class="store-options" aria-label="Project store benefits">
+      <li>
+        <ion-icon name="cloud-outline" aria-hidden="true" />
+        <div>
+          <h3>DataTug Cloud</h3>
+          <p>Fastest setup, with live updates from Cloud storage.</p>
+        </div>
+      </li>
+      <li>
+        <ion-icon name="logo-github" aria-hidden="true" />
+        <div>
+          <h3>GitHub</h3>
+          <p>
+            Keep control in your repository, with version history and branches.
+          </p>
+        </div>
+      </li>
+      <li>
+        <ion-icon name="terminal-outline" aria-hidden="true" />
+        <div>
+          <h3>Local / DataTug CLI</h3>
+          <p>Work locally for fast access and offline use where supported.</p>
+        </div>
+      </li>
+    </ul>
+  </ion-card-content>
 
-  @if (stores) {
-    @if (stores.length) {
-      @for (store of stores || []; track store.id) {
-        <ion-item tappable (click)="goStore(store)">
-          <ion-icon [name]="storeIcon(store.type)" slot="start" />
-          {{ store.title }}
-          <ion-badge color="light" slot="end" style="font-weight: normal">
-            <ion-text color="primary">{{ store.url }}</ion-text>
-          </ion-badge>
-          <ion-badge color="light" slot="end" style="font-weight: normal">
-            <ion-text color="medium">{{ store.type }}</ion-text>
-          </ion-badge>
-        </ion-item>
+  @if (authStatus() === 'authenticated') {
+    <ion-list lines="full">
+      <ion-item-divider>
+        <ion-label><h3>Connected stores</h3></ion-label>
+      </ion-item-divider>
+
+      @if (stores()) {
+        @for (store of stores() || []; track store.id) {
+          <ion-item button (click)="goStore(store)">
+            <ion-icon [name]="storeIcon(store.type)" slot="start" />
+            <ion-label>
+              <h3>{{ store.title }}</h3>
+              <p>{{ store.type }} · {{ store.url }}</p>
+            </ion-label>
+            <ion-icon name="chevron-forward" slot="end" aria-hidden="true" />
+          </ion-item>
+        } @empty {
+          <ion-item>
+            <ion-label color="medium"
+              >No connected stores yet. Explore the public demo
+              above.</ion-label
+            >
+          </ion-item>
+        }
+      } @else {
+        <sneat-datatug-loading-items
+          [authStatus]="authStatus()"
+          title="Loading user stores..."
+        />
       }
-    } @else {
-      <ion-item>
-        <ion-label color="medium"
-          >No private repositories have been added yet</ion-label
-        >
-        <ion-buttons slot="end">
-          <ion-button
-            color="primary"
-            href="https://datatug.app/agent"
-            target="_blank"
-            (click)="openHelp($event, 'private-repos')"
-          >
-            <ion-icon name="information-circle-outline" />
-          </ion-button>
-        </ion-buttons>
-      </ion-item>
-    }
-  } @else {
-    <sneat-datatug-loading-items
-      [authStatus]="authStatus"
-      title="Loading user stores..."
-    />
+    </ion-list>
   }
 </ion-card>

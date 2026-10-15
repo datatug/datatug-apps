@@ -69,10 +69,17 @@ describe('DatatugNavContextService — environment persists across a reload with
     TestBed.configureTestingModule({
       providers: [
         DatatugNavContextService,
-        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: AppContextService,
+          useValue: { currentApp: of({ appCode: 'datatug' }) },
+        },
         {
           provide: ProjectContextService,
-          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+          useValue: {
+            current: undefined,
+            setCurrent: vi.fn(),
+            current$: of(undefined),
+          },
         },
         { provide: Router, useValue: { events: of(), navigate: vi.fn() } },
         {
@@ -88,7 +95,10 @@ describe('DatatugNavContextService — environment persists across a reload with
         },
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
         },
       ],
     });
@@ -143,6 +153,35 @@ describe('DatatugNavContextService — environment persists across a reload with
 
     expect(envId).toBeUndefined();
   });
+
+  it('forgets the persisted environment when the user clears it', () => {
+    window.history.replaceState(
+      {},
+      '',
+      `/store/${storeId}/project/${projectId}/env/local`,
+    );
+    const service = configureAndCreate();
+    const key = `datatug:lastEnv:${storeId}:${projectId}`;
+    expect(sessionStorage.getItem(key)).toBe('local');
+
+    service.clearCurrentEnvironment();
+
+    expect(sessionStorage.getItem(key)).toBeNull();
+    let clearedEnvId: string | undefined = 'local';
+    service.currentEnv.subscribe((env) => (clearedEnvId = env?.id));
+    expect(clearedEnvId).toBeUndefined();
+
+    TestBed.resetTestingModule();
+    window.history.replaceState(
+      {},
+      '',
+      `/store/${storeId}/project/${projectId}/query/customer-purchases-by-genre?id=customer-purchases-by-genre`,
+    );
+    const reloaded = configureAndCreate();
+    let reloadedEnvId: string | undefined = 'local';
+    reloaded.currentEnv.subscribe((env) => (reloadedEnvId = env?.id));
+    expect(reloadedEnvId).toBeUndefined();
+  });
 });
 
 /**
@@ -160,18 +199,34 @@ describe('DatatugNavContextService — a /project/ address with no /store/ segme
     TestBed.configureTestingModule({
       providers: [
         DatatugNavContextService,
-        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: AppContextService,
+          useValue: { currentApp: of({ appCode: 'datatug' }) },
+        },
         {
           provide: ProjectContextService,
-          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+          useValue: {
+            current: undefined,
+            setCurrent: vi.fn(),
+            current$: of(undefined),
+          },
         },
         { provide: Router, useValue: { events: of(), navigate: vi.fn() } },
         {
           provide: ProjectService,
-          useValue: { watchProjectSummary: vi.fn(() => of(undefined)), getFull },
+          useValue: {
+            watchProjectSummary: vi.fn(() => of(undefined)),
+            getFull,
+          },
         },
-        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of(undefined)) } },
-        { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
+        {
+          provide: EnvironmentService,
+          useValue: { getEnvSummary: vi.fn(() => of(undefined)) },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
+        },
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);
@@ -184,7 +239,9 @@ describe('DatatugNavContextService — a /project/ address with no /store/ segme
   }
 
   it('has no current project and logs no error', () => {
-    const { logError, seen } = at('/project/github.com/datatug/chinook-demo/chat');
+    const { logError, seen } = at(
+      '/project/github.com/datatug/chinook-demo/chat',
+    );
     expect(logError).not.toHaveBeenCalled();
     expect(seen['project']).toBeUndefined();
   });
@@ -202,20 +259,25 @@ describe('DatatugNavContextService — a /project/ address with no /store/ segme
     '/project/github.com/store/x/chat;a=1',
     '/%70roject/github.com/store/x/chat',
     'http://localhost:3000/project/github.com/store/x/chat',
-  ])('%s names no store, project, environment or table, and logs no error', (url) => {
-    const { logError, getFull, seen } = at(url);
-    expect(logError).not.toHaveBeenCalled();
-    expect(getFull).not.toHaveBeenCalled();
-    expect(seen['store']).toBeUndefined();
-    expect(seen['project']).toBeUndefined();
-    expect(seen['env']).toBeUndefined();
-    expect(seen['table']).toBeUndefined();
-  });
+  ])(
+    '%s names no store, project, environment or table, and logs no error',
+    (url) => {
+      const { logError, getFull, seen } = at(url);
+      expect(logError).not.toHaveBeenCalled();
+      expect(getFull).not.toHaveBeenCalled();
+      expect(seen['store']).toBeUndefined();
+      expect(seen['project']).toBeUndefined();
+      expect(seen['env']).toBeUndefined();
+      expect(seen['table']).toBeUndefined();
+    },
+  );
 
   it('still reads a real store and project address as before', () => {
     const { seen } = at('/store/localhost:8989/project/p1/env/local');
     expect(seen['store']).toBe('localhost:8989');
-    expect(seen['project']).toMatchObject({ ref: { projectId: 'p1', storeId: 'localhost:8989' } });
+    expect(seen['project']).toMatchObject({
+      ref: { projectId: 'p1', storeId: 'localhost:8989' },
+    });
     expect(seen['env']).toMatchObject({ id: 'local' });
   });
 });
@@ -232,7 +294,9 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
     snapshot: {
       root: {
         firstChild: {
-          firstChild: { paramMap: { get: (name: string) => params[name] ?? null } },
+          firstChild: {
+            paramMap: { get: (name: string) => params[name] ?? null },
+          },
         },
       },
     },
@@ -245,10 +309,17 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
     TestBed.configureTestingModule({
       providers: [
         DatatugNavContextService,
-        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: AppContextService,
+          useValue: { currentApp: of({ appCode: 'datatug' }) },
+        },
         {
           provide: ProjectContextService,
-          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+          useValue: {
+            current: undefined,
+            setCurrent: vi.fn(),
+            current$: of(undefined),
+          },
         },
         {
           provide: Router,
@@ -258,9 +329,18 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
             ...(params ? { routerState: stateWith(params) } : {}),
           },
         },
-        { provide: ProjectService, useValue: { watchProjectSummary, getFull: vi.fn() } },
-        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of(undefined)) } },
-        { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
+        {
+          provide: ProjectService,
+          useValue: { watchProjectSummary, getFull: vi.fn() },
+        },
+        {
+          provide: EnvironmentService,
+          useValue: { getEnvSummary: vi.fn(() => of(undefined)) },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
+        },
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);
@@ -276,26 +356,43 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
   it.each([
     ['/project/github.com/datatug/chinook-demo', 'chinook-demo@datatug@'],
     ['/project/github.com/datatug/chinook-demo/chat', 'chinook-demo@datatug@'],
-    ['/project/github.com/o/r/tree/HEAD/demo-project-1/-/queries?tab=shared', 'r@o@demo-project-1'],
+    [
+      '/project/github.com/o/r/tree/HEAD/demo-project-1/-/queries?tab=shared',
+      'r@o@demo-project-1',
+    ],
     ['/project/github.com/o/r/tree/v1.0.0/-/chat', 'r@o@@v1.0.0'],
     ['http://localhost:3000/project/github.com/o/r/tree/HEAD/datatug', 'r@o'],
   ])('%s is the project %s of the GitHub store', (url, projectId) => {
-    const { logError, watchProjectSummary, seen } = at(url, { storeId: 'github.com', projectId });
+    const { logError, watchProjectSummary, seen } = at(url, {
+      storeId: 'github.com',
+      projectId,
+    });
     expect(logError).not.toHaveBeenCalled();
     expect(seen['store']).toBe('github.com');
-    expect(seen['project']).toMatchObject({ ref: { storeId: 'github.com', projectId } });
-    expect(watchProjectSummary).toHaveBeenCalledWith({ storeId: 'github.com', projectId });
+    expect(seen['project']).toMatchObject({
+      ref: { storeId: 'github.com', projectId },
+    });
+    expect(watchProjectSummary).toHaveBeenCalledWith({
+      storeId: 'github.com',
+      projectId,
+    });
   });
 
   it('reads an environment of the project from the page, as at the old address', () => {
-    const { seen } = at('/project/github.com/o/r/env/local', { storeId: 'github.com', projectId: 'r@o@' });
+    const { seen } = at('/project/github.com/o/r/env/local', {
+      storeId: 'github.com',
+      projectId: 'r@o@',
+    });
     expect(seen['store']).toBe('github.com');
     expect(seen['env']).toMatchObject({ id: 'local' });
   });
 
   it('reads the same project as the old address of it', () => {
     const projectId = 'chinook-demo@datatug@';
-    const short = at('/project/github.com/datatug/chinook-demo/chat', { storeId: 'github.com', projectId });
+    const short = at('/project/github.com/datatug/chinook-demo/chat', {
+      storeId: 'github.com',
+      projectId,
+    });
     const shortProject = short.seen['project'];
     TestBed.resetTestingModule();
     const old = at('/store/github.com/project/chinook-demo@datatug@/chat');
@@ -304,12 +401,24 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
   });
 
   it.each([
-    ['no route has opened it (the holding page answers this address)', undefined],
-    ['the route that opened it is for another project', { storeId: 'github.com', projectId: 'other@o@' }],
-    ['the route that opened it is for another store', { storeId: 'localhost:8989', projectId: 'r@o@' }],
+    [
+      'no route has opened it (the holding page answers this address)',
+      undefined,
+    ],
+    [
+      'the route that opened it is for another project',
+      { storeId: 'github.com', projectId: 'other@o@' },
+    ],
+    [
+      'the route that opened it is for another store',
+      { storeId: 'localhost:8989', projectId: 'r@o@' },
+    ],
     ['the route that opened it has no project', {}],
   ])('names nothing when %s', (_name, params) => {
-    const { logError, watchProjectSummary, seen } = at('/project/github.com/o/r/chat', params);
+    const { logError, watchProjectSummary, seen } = at(
+      '/project/github.com/o/r/chat',
+      params,
+    );
     expect(logError).not.toHaveBeenCalled();
     expect(watchProjectSummary).not.toHaveBeenCalled();
     expect(seen['store']).toBeUndefined();
@@ -317,7 +426,10 @@ describe('DatatugNavContextService — a short GitHub project address opened by 
   });
 
   it('names nothing for a /project/ address that is not a project at all', () => {
-    const { logError, seen } = at('/project/github.com/o', { storeId: 'github.com', projectId: 'o@' });
+    const { logError, seen } = at('/project/github.com/o', {
+      storeId: 'github.com',
+      projectId: 'o@',
+    });
     expect(logError).not.toHaveBeenCalled();
     expect(seen['project']).toBeUndefined();
   });
@@ -335,10 +447,17 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
     TestBed.configureTestingModule({
       providers: [
         DatatugNavContextService,
-        { provide: AppContextService, useValue: { currentApp: of({ appCode: 'datatug' }) } },
+        {
+          provide: AppContextService,
+          useValue: { currentApp: of({ appCode: 'datatug' }) },
+        },
         {
           provide: ProjectContextService,
-          useValue: { current: undefined, setCurrent: vi.fn(), current$: of(undefined) },
+          useValue: {
+            current: undefined,
+            setCurrent: vi.fn(),
+            current$: of(undefined),
+          },
         },
         {
           provide: Router,
@@ -351,7 +470,9 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
                     snapshot: {
                       root: {
                         firstChild: {
-                          paramMap: { get: (name: string) => params[name] ?? null },
+                          paramMap: {
+                            get: (name: string) => params[name] ?? null,
+                          },
                         },
                       },
                     },
@@ -363,11 +484,20 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
         {
           provide: ProjectService,
           // A table's project is never answered: the lookup of its metadata is no part of reading the address.
-          useValue: { watchProjectSummary: vi.fn(() => of(undefined)), getFull: vi.fn(() => NEVER) },
+          useValue: {
+            watchProjectSummary: vi.fn(() => of(undefined)),
+            getFull: vi.fn(() => NEVER),
+          },
         },
         // An environment's summary is never answered: reading it is no part of reading the address.
-        { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => NEVER) } },
-        { provide: ErrorLogger, useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) } },
+        {
+          provide: EnvironmentService,
+          useValue: { getEnvSummary: vi.fn(() => NEVER) },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
+        },
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);
@@ -386,31 +516,55 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
     // [address, store, project, environment, database, table]
     [
       '/store/localhost:8989/project/p1/env/local/db/chinook-local/table/main.Customer',
-      'localhost:8989', 'p1', 'local', 'chinook-local', { schema: 'main', name: 'Customer' },
+      'localhost:8989',
+      'p1',
+      'local',
+      'chinook-local',
+      { schema: 'main', name: 'Customer' },
     ],
     [
       // The query string and the fragment are no part of the table.
       '/store/localhost:8989/project/p1/env/local/db/chinook-local/table/main.Customer?tab=1#x',
-      'localhost:8989', 'p1', 'local', 'chinook-local', { schema: 'main', name: 'Customer' },
+      'localhost:8989',
+      'p1',
+      'local',
+      'chinook-local',
+      { schema: 'main', name: 'Customer' },
     ],
     [
       // The whole URL, as `location.href` has it.
       'http://localhost:3000/store/http-localhost:8989/project/p1/env/local?x=1',
-      'http-localhost:8989', 'p1', 'local', '', undefined,
+      'http-localhost:8989',
+      'p1',
+      'local',
+      '',
+      undefined,
     ],
     [
       // The project, when its id needs percent-encoding, is the project the route carries.
       '/store/localhost:8989/project/my%20project/env/local',
-      'localhost:8989', 'my project', 'local', '', undefined,
+      'localhost:8989',
+      'my project',
+      'local',
+      '',
+      undefined,
     ],
     [
       // An old-form GitHub address is the project at its one id.
       '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1/env/local/db/chinook/table/main.Album',
-      'github.com', 'datatug-demo-projects@datatug@demo-project-1', 'local', 'chinook', { schema: 'main', name: 'Album' },
+      'github.com',
+      'datatug-demo-projects@datatug@demo-project-1',
+      'local',
+      'chinook',
+      { schema: 'main', name: 'Album' },
     ],
     [
       '/store/github.com/project/Repo@Org@datatug/env/local',
-      'github.com', 'repo@org', 'local', '', undefined,
+      'github.com',
+      'repo@org',
+      'local',
+      '',
+      undefined,
     ],
   ])('%s', (url, storeId, projectId, envId, dbId, table) => {
     const { logError, seen } = at(url);
@@ -419,7 +573,9 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
     expect(seen['project']).toMatchObject({ ref: { storeId, projectId } });
     expect(seen['env']).toMatchObject({ id: envId });
     expect(seen['db']).toEqual({ id: dbId });
-    expect(seen['table']).toEqual(table ? expect.objectContaining(table) : undefined);
+    expect(seen['table']).toEqual(
+      table ? expect.objectContaining(table) : undefined,
+    );
   });
 
   it('reads the page of a short GitHub address, as at the old address of the project', () => {
@@ -428,7 +584,9 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
       { storeId: 'github.com', projectId: 'r@o@d' },
     );
     expect(seen['store']).toBe('github.com');
-    expect(seen['project']).toMatchObject({ ref: { storeId: 'github.com', projectId: 'r@o@d' } });
+    expect(seen['project']).toMatchObject({
+      ref: { storeId: 'github.com', projectId: 'r@o@d' },
+    });
     expect(seen['env']).toMatchObject({ id: 'local' });
     expect(seen['db']).toEqual({ id: 'chinook' });
     expect(seen['table']).toMatchObject({ schema: 'main', name: 'Album' });
@@ -450,16 +608,21 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
     expect(seen['project']).toBeUndefined();
   });
 
-  it.each(['/', '/my', '/incidents', '/store', '/store/', '/storefront/x', '/chat'])(
-    '%s names no store, project, environment or table',
-    (url) => {
-      const { logError, seen } = at(url);
-      expect(logError).not.toHaveBeenCalled();
-      expect(seen['store']).toBeUndefined();
-      expect(seen['project']).toBeUndefined();
-      expect(seen['table']).toBeUndefined();
-    },
-  );
+  it.each([
+    '/',
+    '/my',
+    '/incidents',
+    '/store',
+    '/store/',
+    '/storefront/x',
+    '/chat',
+  ])('%s names no store, project, environment or table', (url) => {
+    const { logError, seen } = at(url);
+    expect(logError).not.toHaveBeenCalled();
+    expect(seen['store']).toBeUndefined();
+    expect(seen['project']).toBeUndefined();
+    expect(seen['table']).toBeUndefined();
+  });
 });
 
 describe('Space-scoped navigation metadata lifecycle', () => {

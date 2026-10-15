@@ -26,7 +26,12 @@
   <!--	</ion-segment>-->
   <ion-card>
     <ion-item>
-      <ion-input placeholder="Filter" />
+      <ion-input
+        aria-label="Filter entities"
+        placeholder="Filter entities"
+        [value]="filterText()"
+        (ionInput)="filterText.set($event.detail.value || '')"
+      />
       <!--			<ion-buttons slot="end">-->
       <!--				<ion-button title="Many-to-many" color="medium">-->
       <!--					<ion-icon name="code-working-outline"></ion-icon>-->
@@ -48,20 +53,20 @@
     <!--			</ion-segment-button>-->
     <!--		</ion-segment>-->
     <ion-list class="last-child-no-border">
-      @if (entities()) {
-        @for (entity of entities(); track entity.id) {
+      @if (filteredEntities(); as visibleEntities) {
+        @for (entity of visibleEntities; track entity.id) {
           <ion-item
             [routerLink]="entityUrl(entity)"
             (click)="goEntity(entity)"
             class="last-child-no-border"
           >
             <ion-label [class.deleting-list-item]="entity.state === 'deleting'">
-              {{ entity.dbo?.title || entity.dbo?.id }}
+              {{ entity.dbo?.title || entity.dbo?.id || entity.id }}
             </ion-label>
             @if (entity.dbo?.fields?.length) {
               <ion-badge color="light" class="badge-count">
                 {{ entity.dbo.fields.length }}
-                {{ entity.dbo.fields.length === 1 ? "field" : "fields" }}
+                {{ entity.dbo.fields.length === 1 ? 'field' : 'fields' }}
               </ion-badge>
             }
             <ion-buttons>
@@ -79,7 +84,11 @@
         } @empty {
           <ion-item class="last-child-no-border">
             <ion-label color="medium"
-              >No entities has been created yet.
+              >{{
+                filterText().trim()
+                  ? 'No matching entities.'
+                  : 'No entities have been created yet.'
+              }}
             </ion-label>
           </ion-item>
         }

@@ -45,35 +45,31 @@
 <ion-content>
   <!-- Card-header standard (brief §1; founder 2026-10-14): grayish full-width
        header divider in the side-panel chrome family, boundary before content. -->
-  <ion-card>
-    <ion-item color="light" lines="full">
-      <ion-label>
-        <h2>Your data workbench</h2>
-      </ion-label>
-    </ion-item>
+  <ion-card class="home-hero" data-testid="home-hero">
+    <ion-list lines="full">
+      <ion-item color="light">
+        <ion-label>
+          <p class="hero-eyebrow">DataTug.app</p>
+          <h1>Ask better questions of your data.</h1>
+        </ion-label>
+      </ion-item>
+    </ion-list>
     <ion-card-content>
-      <ul>
-        <li>Feel the power of context</li>
-        <li>Do not repeat yourself</li>
-        <li>Collaborative work</li>
-      </ul>
-    </ion-card-content>
-  </ion-card>
-
-  <sneat-datatug-platform-block />
-
-  <ion-card>
-    <ion-item color="light" lines="full">
-      <ion-label>
-        <h2>Try Detective with real checks</h2>
-      </ion-label>
-    </ion-item>
-    <ion-card-content>
-      <p>
-        Explore the public demo, then create a private Case and run Checks in
-        your Personal Space. No local agent or purchase is needed.
-      </p>
-      <sneat-datatug-detective-demo-starter destination="detective" />
+      <div class="hero-layout">
+        <p class="hero-copy">
+          Keep project structure, connected data, and saved queries together.
+          Explore the context, ask a question, and follow the result back to its
+          source.
+        </p>
+        <div class="hero-visual" aria-hidden="true">
+          <div class="visual-source">
+            <span></span><span></span><span></span>
+          </div>
+          <div class="visual-link"></div>
+          <div class="visual-query"><i></i><i></i><i></i></div>
+          <div class="visual-result"><b></b><b></b><b></b></div>
+        </div>
+      </div>
     </ion-card-content>
   </ion-card>
 
@@ -87,6 +83,25 @@
       </ion-col>
     </ion-row>
   </ion-grid>
+
+  <sneat-datatug-platform-block />
+
+  <ion-card>
+    <ion-list lines="full">
+      <ion-item color="light">
+        <ion-label>
+          <h2>Start a private Detective demo</h2>
+        </ion-label>
+      </ion-item>
+    </ion-list>
+    <ion-card-content>
+      <p>
+        Sign in to create a server-managed Detective demo project and explore
+        its case workflow. No local agent or purchase is needed.
+      </p>
+      <sneat-datatug-detective-demo-starter destination="detective" />
+    </ion-card-content>
+  </ion-card>
 
   <!--
   Consolidated footer (UX brief §2/§14): one copyright/version block in main
