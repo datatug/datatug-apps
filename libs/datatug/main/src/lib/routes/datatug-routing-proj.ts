@@ -307,7 +307,7 @@ export const datatugProjectRoutes: Routes = [
 // valid; adding this parent preserves folder-qualified ?id= and every query page.
 export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter((route) =>
   ['chat', 'overview', 'board/:board', 'boards', 'entities', 'entity/:entityId',
-    'env/:environmentId', 'query', 'queries', 'servers'].includes(route.path ?? ''),
+    'env/:environmentId', 'query', 'queries', 'servers', 'checks', 'checks/:checkId', 'detective', 'detective/:caseId'].includes(route.path ?? ''),
 );
 sessionWorkspacePages.push({ path: 'invoice-overview', loadComponent: () => import('../session-context/invoice-dashboard.component').then((m) => m.InvoiceDashboardComponent) });
 sessionWorkspacePages.push({ path: 'invoice-explorer', loadComponent: () => import('../session-context/invoice-explorer.component').then((m) => m.InvoiceExplorerComponent) });

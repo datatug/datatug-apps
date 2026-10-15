@@ -179,7 +179,7 @@ export class SessionWorkspaceShellComponent {
       if (project) await this.router.navigateByUrl(projectPageHref(project, 'sessions'));
     }
   }
-  async openWorkspacePage(page: 'invoice-overview' | 'invoice-explorer' | 'composer'): Promise<void> {
+  async openWorkspacePage(page: 'invoice-overview' | 'invoice-explorer' | 'composer' | 'checks' | 'detective'): Promise<void> {
     const id = this.workspace.focusedSessionId();
     const project = this.project();
     if (!id || !project || !(await this.workspace.flushDraft())) return;

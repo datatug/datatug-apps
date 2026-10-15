@@ -1,6 +1,6 @@
 import { AsyncPipe } from '@angular/common';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
-import { NavigationEnd, Router, RouterLink } from '@angular/router';
+import { NavigationEnd, Router, RouterLink, UrlTree } from '@angular/router';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import {
   IonButton,
@@ -227,7 +227,9 @@ export class ProjectMenuTopComponent implements OnDestroy {
     return pages.sort((left, right) => left.title.localeCompare(right.title));
   }
 
-  project?: IProjectContext;
+  private readonly projectState = signal<IProjectContext | undefined>(undefined);
+  get project(): IProjectContext | undefined { return this.projectState(); }
+  set project(value: IProjectContext | undefined) { this.projectState.set(value); }
   readonly isDemoDbProject = signal(false);
   readonly metadataOnly = signal(false);
   public currentFolder: Observable<string | undefined>;
@@ -298,6 +300,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   projectPageUrl(page: ProjectTopLevelPage): string {
     return projectPageHref(this.project?.ref, page, this.router?.url);
+  }
+
+  projectPageRoute(page: ProjectTopLevelPage): UrlTree | string {
+    const href = this.projectPageUrl(page);
+    return this.router ? this.router.parseUrl(href) : href;
   }
 
   goProjPage(event: Event, page: ProjectTopLevelPage): boolean {

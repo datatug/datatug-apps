@@ -443,8 +443,12 @@ export class SessionWorkspaceService {
     const slot = this.slotFor(snapshot, scope);
     return slot?.bagId ? slot : undefined;
   }
-  appliedForEnvironment(environmentId: string): AppliedContextSlot | undefined {
-    const scopes = this.capabilities()?.environments.filter((scope) => scope.environmentId === environmentId) ?? [];
+  private admittedScopes(scope: string | SessionScope): readonly SessionScope[] {
+    return this.capabilities()?.environments.filter(candidate => typeof scope === 'string'
+      ? candidate.environmentId === scope : sameContextScope(candidate, scope)) ?? [];
+  }
+  appliedForEnvironment(environmentId: string | SessionScope): AppliedContextSlot | undefined {
+    const scopes = this.admittedScopes(environmentId);
     return scopes.length === 1 ? this.appliedFor(scopes[0]) : undefined;
   }
   snapshotFor(sessionId: string): ContextSnapshot | undefined { return this.snapshots()[sessionId]; }
@@ -452,9 +456,9 @@ export class SessionWorkspaceService {
     return this.snapshots()[sessionId]?.session.state === 'active' && this.pending()?.command.sessionId !== sessionId && !this.draftError();
   }
   /** Only pinned revisions in the exact admitted environment/identity domain become facts. */
-  appliedFactsFor(sessionId: string, environmentId: string): readonly Fact[] {
+  appliedFactsFor(sessionId: string, environmentId: string | SessionScope): readonly Fact[] {
     const snapshot = this.snapshotFor(sessionId);
-    const scopes = this.capabilities()?.environments.filter((scope) => scope.environmentId === environmentId) ?? [];
+    const scopes = this.admittedScopes(environmentId);
     if (!snapshot?.contextSet.enabled || scopes.length !== 1) return [];
     const slot = this.slotFor(snapshot, scopes[0]);
     if (!slot?.bagId) return [];
@@ -469,9 +473,9 @@ export class SessionWorkspaceService {
       return [];
     });
   }
-  bindingScopeKey(sessionId: string, environmentId: string): string | undefined {
+  bindingScopeKey(sessionId: string, environmentId: string | SessionScope): string | undefined {
     const snapshot = this.snapshotFor(sessionId);
-    const scopes = this.capabilities()?.environments.filter((scope) => scope.environmentId === environmentId) ?? [];
+    const scopes = this.admittedScopes(environmentId);
     return snapshot && scopes.length === 1 ? JSON.stringify([snapshot.session.databaseId, snapshot.session.projectId, sessionId, contextScopeKey(scopes[0]), snapshot.contextSet.id]) : undefined;
   }
   revision(ref: ContextEntryRef): ContextSnapshot['revisions'][number] | undefined {

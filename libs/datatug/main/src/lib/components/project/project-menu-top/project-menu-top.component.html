@@ -24,7 +24,7 @@
     <ion-menu-toggle autoHide="false">
       <ion-item
         button
-        [routerLink]="projectPageUrl(page.path)"
+        [routerLink]="projectPageRoute(page.path)"
         routerDirection="root"
         [disabled]="!project?.ref || (cliBridgeChat && page.path !== 'chat')"
       >

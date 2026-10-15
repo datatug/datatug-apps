@@ -25,6 +25,10 @@
         <ion-button (click)="openWorkspacePage('invoice-explorer')">Explorer</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-overview')">Invoice overview</ion-button>
         <ion-button (click)="openWorkspacePage('composer')">Composer</ion-button>
+        @if (workspace.capabilities()?.nativeDetective === true) {
+          <ion-button (click)="openWorkspacePage('checks')">Checks</ion-button>
+          <ion-button (click)="openWorkspacePage('detective')">Cases</ion-button>
+        }
         <ion-button (click)="openRunHistory()">Run history</ion-button>
         @if (session.state === 'active') {
           <ion-button (click)="workspace.transition('stop')" [disabled]="workspace.busy()">Stop</ion-button>

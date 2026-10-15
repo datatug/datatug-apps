@@ -341,8 +341,7 @@
                 @for (check of relevantChecks(); track check.id) {
                   <ion-item
                     button
-                    [routerLink]="checkUrl(check.id)"
-                    [queryParams]="{ caseId: item.id }"
+                    [routerLink]="pageRoute(checkUrl(check.id), { caseId: item.id })"
                     ><ion-label
                       ><h3>{{ check.title }}</h3>
                       <p>
@@ -425,8 +424,7 @@
                         <ion-button
                           slot="end"
                           fill="clear"
-                          [routerLink]="checkUrl(step.ref)"
-                          [queryParams]="{ caseId: item.id }"
+                          [routerLink]="pageRoute(checkUrl(step.ref), { caseId: item.id })"
                           >Open Check</ion-button
                         >
                       } @else {
@@ -1248,7 +1246,7 @@
             /></ion-item>
             <ion-list>
               @for (item of cases(); track item.id) {
-                <ion-item button [routerLink]="caseUrl(item.id)"
+                <ion-item button [routerLink]="pageRoute(caseUrl(item.id))"
                   ><ion-label
                     ><h2>{{ item.title }}</h2>
                     <p>

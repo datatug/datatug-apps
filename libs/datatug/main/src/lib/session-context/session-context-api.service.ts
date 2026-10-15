@@ -13,6 +13,8 @@ import {
   ContextInputSnapshot, ContextEntryRevision, ContextRun, ContextMessage,
 } from './session-context-contract';
 
+import { DetectiveOperationScope, SessionDetectiveRequest, SessionDetectiveResponse, readSessionDetectiveResponse, validDetectiveOperationScope } from './session-detective-contract';
+
 /** All authority lives at the admitted server's transaction owner, never in this client. */
 @Injectable({ providedIn: 'root' })
 export class SessionContextApiService {
@@ -79,7 +81,8 @@ export class SessionContextApiService {
     const value = await this.get<ContextCapabilities>(ref, 'capabilities');
     if (value?.schemaVersion !== 1 || !value.actorId || !value.databaseId || !value.projectId ||
       !Array.isArray(value.environments) || !Array.isArray(value.actions) ||
-      value.environments.some((scope) => !scope.environmentId || !scope.identityDomain))
+      value.environments.some((scope) => !scope.environmentId || !scope.identityDomain) ||
+      (value.nativeDetective === true && (!validDetectiveOperationScope(value.operationScope) || value.operationScope.databaseId !== value.databaseId || value.operationScope.projectId !== value.projectId)))
       throw new Error('This server does not support session Context Bags.');
     return value;
   }
@@ -118,6 +121,44 @@ export class SessionContextApiService {
         : result.receipt.sessionId !== command.sessionId))
       throw new Error('The server did not confirm this operation. Retry with the same operation ID.');
     return result.receipt;
+  }
+
+  private async nativeRequest(ref: IProjectRef, scope: DetectiveOperationScope, operationId: string, body?: SessionDetectiveRequest | { operationId: string }, reconcile = false): Promise<SessionDetectiveResponse> {
+    if (!validDetectiveOperationScope(scope) || !contextOpaqueId(operationId)) throw new Error('Native operation scope is unavailable.');
+    if (!isValidProjectRef(ref)) throw new Error('Invalid original project authority.');
+    let reference: Record<string, string>;
+    if (ref.spaceID !== undefined) {
+      if (!isSharedProjectRef(ref)) throw new Error('Invalid original shared project authority.');
+      reference = { storage: 'firestore', project: ref.projectId, spaceID: ref.spaceID };
+    } else if (['github', 'github.com'].includes(ref.storeId)) {
+      const address = readGithubProjectId(ref.projectId);
+      if (!address.ok) throw new Error('Invalid original GitHub authority.');
+      reference = { storage: 'github.com', project: formatGithubProjectApiKey(address.id) };
+    } else {
+      reference = { storage: ref.storeId === 'firestore' ? 'firestore' : 'local', project: ref.projectId };
+    }
+    if (reference['storage'] !== scope.storage || reference['project'] !== scope.project || (reference['spaceID'] || '') !== (scope.spaceID || ''))
+      throw new Error('This native operation belongs to a different project authority.');
+    const params = new HttpParams({ fromObject: { ...scope } });
+    const path = body ? (reconcile ? 'detective/reconcile' : 'detective') : `detective/operations/${operationId}`;
+    const cloud = ['github', 'github.com', 'firestore'].includes(ref.storeId);
+    const response = body
+      ? await firstValueFrom(cloud ? this.api.post<SessionDetectiveResponse>(`datatug/session-context/${path}`, body, { params })
+        : this.http.post<SessionDetectiveResponse>(buildAgentUrl(ref.storeId, `/session-context/${path}`), body, { params }))
+      : await firstValueFrom(cloud ? this.api.get<SessionDetectiveResponse>(`datatug/session-context/${path}`, params)
+        : this.http.get<SessionDetectiveResponse>(buildAgentUrl(ref.storeId, `/session-context/${path}`), { params }));
+    return readSessionDetectiveResponse(response, operationId, scope);
+  }
+  nativeDetective(ref: IProjectRef, capabilities: ContextCapabilities, request: SessionDetectiveRequest): Promise<SessionDetectiveResponse> {
+    if (capabilities.nativeDetective !== true || !validDetectiveOperationScope(capabilities.operationScope))
+      throw new Error('This server has not enabled native session Checks.');
+    return this.nativeRequest(ref, capabilities.operationScope, request.operationId, request);
+  }
+  nativeDetectiveOperation(ref: IProjectRef, scope: DetectiveOperationScope, operationId: string): Promise<SessionDetectiveResponse> {
+    return this.nativeRequest(ref, scope, operationId);
+  }
+  reconcileNativeDetective(ref: IProjectRef, scope: DetectiveOperationScope, operationId: string): Promise<SessionDetectiveResponse> {
+    return this.nativeRequest(ref, scope, operationId, { operationId }, true);
   }
 
   async operation(ref: IProjectRef, capabilities: ContextCapabilities, opId: string): Promise<ContextReceipt> {

@@ -1,4 +1,5 @@
-import { provideRouter, Router } from '@angular/router';
+import { By } from '@angular/platform-browser';
+import { provideRouter, Router, RouterLink } from '@angular/router';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
@@ -269,4 +270,16 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
     const internals = fixture.componentInstance as unknown as IncidentInternals;
     expect(internals.incidentQueryParams()).toBeUndefined();
   });
+  it('renders GitHub Sessions navigation with real query parameters, never encoded pathname text', async () => {
+    const fixture = render(PRODUCT_PROFILES.datatug);
+    storeId$.next('github.com');
+    project$.next({ ref: { storeId: 'github.com', projectId: 'repo@owner@datatug', projectApi: 'cloud', branch: 'release/context' } });
+    await fixture.whenStable();
+    const item = fixture.debugElement.queryAll(By.directive(RouterLink)).find(item => item.nativeElement.textContent.includes('Sessions'));
+    if (!item) throw new Error('Missing rendered Sessions link.');
+    const tree = item.injector.get(RouterLink).urlTree;
+    expect(tree?.queryParams).toMatchObject({ projectApi: 'cloud', branch: 'release/context' });
+    expect(tree?.toString()).not.toContain('%3F');
+  });
+
 });
