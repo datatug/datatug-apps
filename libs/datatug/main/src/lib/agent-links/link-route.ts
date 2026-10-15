@@ -42,3 +42,18 @@ export function linkTableRef(
     ),
   };
 }
+
+/** The `limit` query parameter of a records page. */
+export const LIMIT_QUERY_PARAM = 'limit';
+/** The `daemon url` bounds of `limit` (REQ:ui-routes): default 50, at most 1000. */
+export const DEFAULT_RECORDS_LIMIT = 50;
+export const MAX_RECORDS_LIMIT = 1000;
+
+/** How many rows a records page reads: the `limit` query parameter when it is a whole number from 1, at most
+ * {@link MAX_RECORDS_LIMIT}; {@link DEFAULT_RECORDS_LIMIT} for anything else. */
+export function recordsLimit(param: string | null | undefined): number {
+  if (!param || !/^\d+$/.test(param)) return DEFAULT_RECORDS_LIMIT;
+  const n = Number(param);
+  if (n < 1) return DEFAULT_RECORDS_LIMIT;
+  return Math.min(n, MAX_RECORDS_LIMIT);
+}
