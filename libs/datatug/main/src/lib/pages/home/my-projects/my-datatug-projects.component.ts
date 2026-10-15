@@ -6,15 +6,16 @@ import {
   inject,
   input,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
 import {
   IonButton,
   IonButtons,
   IonCard,
+  IonCardContent,
   IonIcon,
   IonItem,
   IonItemDivider,
   IonLabel,
+  IonList,
 } from '@ionic/angular';
 import {
   allUserProjectsAsFlatList,
@@ -36,20 +37,29 @@ import { DEMO_PROJECT_REF } from '../../../nav/github-project-address';
 import { IProjectContext } from '../../../nav/nav-models';
 import { LoadingItemsComponent } from '../loading-items-component';
 
+interface DemoProjectOption {
+  readonly project: IDatatugProjectBriefWithIdAndStoreRef;
+  readonly provider: string;
+  readonly summary: string;
+  readonly highlights: readonly string[];
+}
+
 @Component({
   selector: 'sneat-datatug-my-projects',
   templateUrl: './my-datatug-projects.component.html',
+  styleUrl: './my-datatug-projects.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LoadingItemsComponent,
     IonCard,
+    IonCardContent,
     IonItem,
     IonLabel,
     IonButtons,
     IonButton,
-    RouterLink,
     IonIcon,
     IonItemDivider,
+    IonList,
   ],
 })
 export class MyDatatugProjectsComponent implements OnDestroy {
@@ -76,7 +86,22 @@ export class MyDatatugProjectsComponent implements OnDestroy {
       id: DEMO_PROJECT_REF.projectId,
       access: 'public',
       store: { ref: { type: STORE_TYPE_GITHUB, id: 'github.com' } },
-      title: 'DataTug Demo Project @ GitHub',
+      title: 'DataTug public demo',
+    },
+  ];
+
+  // Add another option here when a real hosted demo is ready. Each slot owns
+  // its provider label, honest capabilities, and the existing project target.
+  public readonly demoOptions: readonly DemoProjectOption[] = [
+    {
+      project: this.demoProjects[0],
+      provider: 'GitHub',
+      summary:
+        'Explore the project structure and inspect three saved Chinook SQL examples.',
+      highlights: [
+        'Browse project files and data context',
+        'See how the saved Chinook queries are organized',
+      ],
     },
   ];
 

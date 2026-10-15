@@ -96,8 +96,9 @@ function installErrorLoggerWatch(page: Page): string[] {
  */
 function getQueryBodyText(page: Page): Promise<string | undefined> {
   return page.locator('sneat-datatug-sql-editor').evaluate((el) => {
-    const ng = (window as unknown as { ng?: { getComponent(el: Element): unknown } })
-      .ng;
+    const ng = (
+      window as unknown as { ng?: { getComponent(el: Element): unknown } }
+    ).ng;
     const comp = ng?.getComponent(el) as
       | { queryState?: { request?: { text?: string } } }
       | undefined;
@@ -111,7 +112,11 @@ function watchGithubRequests(page: Page): string[] {
   page.on('request', (request) => {
     const { hostname } = new URL(request.url());
     if (
-      ['api.github.com', 'raw.githubusercontent.com', 'cdn.jsdelivr.net'].includes(hostname)
+      [
+        'api.github.com',
+        'raw.githubusercontent.com',
+        'cdn.jsdelivr.net',
+      ].includes(hostname)
     ) {
       urls.push(request.url());
     }
@@ -127,7 +132,8 @@ function watchGithubRequests(page: Page): string[] {
  * nothing of GitHub at all.
  */
 test.describe('GitHub-store project — request budget (G-A2)', () => {
-  const SHA_IN_URL = /^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/([0-9a-f]{40})\//;
+  const SHA_IN_URL =
+    /^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/([0-9a-f]{40})\//;
 
   async function cachedFileCount(page: Page): Promise<number> {
     return page.evaluate(
@@ -166,14 +172,24 @@ test.describe('GitHub-store project — request budget (G-A2)', () => {
     await expect(
       activePage(page).getByRole('tab', { name: 'Boards' }),
     ).toBeVisible({ timeout: 20_000 });
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' }).click();
-    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Entities',
+      })
+      .click();
+    await expect(
+      activePage(page).getByText('Album', { exact: true }),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
     const api = github.filter((u) => new URL(u).hostname === 'api.github.com');
-    const raw = github.filter((u) => new URL(u).hostname === 'raw.githubusercontent.com');
-    console.log(`cold: api.github.com=${api.length} raw=${raw.length} requests=${github.length}`);
+    const raw = github.filter(
+      (u) => new URL(u).hostname === 'raw.githubusercontent.com',
+    );
+    console.log(
+      `cold: api.github.com=${api.length} raw=${raw.length} requests=${github.length}`,
+    );
     expect(api.length).toBeLessThanOrEqual(2);
     expect(api.some((u) => u.includes('/commits/HEAD'))).toBe(true);
     expect(api.filter((u) => u.includes('/git/trees/'))).toHaveLength(1);
@@ -183,7 +199,9 @@ test.describe('GitHub-store project — request budget (G-A2)', () => {
     expect(commits.size).toBe(1);
     expect(commits.has(undefined)).toBe(false);
     // The listing was read at that very commit, never at a branch.
-    expect(api.find((u) => u.includes('/git/trees/'))).toContain(`/git/trees/${[...commits][0]}?`);
+    expect(api.find((u) => u.includes('/git/trees/'))).toContain(
+      `/git/trees/${[...commits][0]}?`,
+    );
     // Each file at most once.
     expect(new Set(raw).size).toBe(raw.length);
 
@@ -198,8 +216,14 @@ test.describe('GitHub-store project — request budget (G-A2)', () => {
     await expect(
       activePage(page).getByRole('tab', { name: 'Boards' }),
     ).toBeVisible({ timeout: 20_000 });
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' }).click();
-    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Entities',
+      })
+      .click();
+    await expect(
+      activePage(page).getByText('Album', { exact: true }),
+    ).toBeVisible({
       timeout: 15_000,
     });
     console.log(`warm: requests=${github.length}`);
@@ -235,7 +259,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(page.locator('sneat-datatug-project-menu-top')).toBeVisible();
 
     // --- Boards (side-menu click) ----------------------------------------
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
+      .click();
     // NOT `activePage(page).getByText('1st board')`: the project page
     // asserted above ALSO embeds a `sneat-datatug-folder` (`DatatugFolderComponent`)
     // whose own default tab is 'boards' — the SAME "1st board" text — and on
@@ -255,7 +281,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // elements, not search inside it.
     await expect(
       page
-        .locator('ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)')
+        .locator(
+          'ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)',
+        )
         .getByText('1st board'),
     ).toBeVisible({ timeout: 15_000 });
     // NOT clicking into the board's own detail page here: `goBoard()`
@@ -273,17 +301,38 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // dropped, not fixed in this task).
 
     // --- Entities (side-menu click) ---------------------------------------
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' }).click();
-    for (const entityId of ['Album', 'Artist', 'Country', 'Customer', 'Invoice', 'InvoiceLine', 'Person', 'Track']) {
-      await expect(activePage(page).getByText(entityId, { exact: true })).toBeVisible({
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Entities',
+      })
+      .click();
+    for (const entityId of [
+      'Album',
+      'Artist',
+      'Country',
+      'Customer',
+      'Invoice',
+      'InvoiceLine',
+      'Person',
+      'Track',
+    ]) {
+      await expect(
+        activePage(page).getByText(entityId, { exact: true }),
+      ).toBeVisible({
         timeout: 15_000,
       });
     }
     await activePage(page).getByText('Album', { exact: true }).click();
-    await expect(activePage(page).getByText('Title')).toBeVisible({ timeout: 15_000 });
+    await expect(activePage(page).getByText('Title')).toBeVisible({
+      timeout: 15_000,
+    });
 
     // --- Environments (side-menu click) ------------------------------------
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Environments' }).click();
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Environments',
+      })
+      .click();
     for (const envId of ['local', 'dev', 'QA', 'UAT', 'prod']) {
       await expect(
         activePage(page).locator('[data-testid="environment-list-item"]')
@@ -296,33 +345,62 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .filter({ hasText: /\blocal\b/i }).click();
     await expect(activePage(page).getByText('sqlite3')).toBeVisible({ timeout: 15_000 });
     await activePage(page).getByText('chinook-local').click();
-    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+    await expect(
+      activePage(page).getByText('Album', { exact: true }),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
     // --- Servers (side-menu click) -----------------------------------------
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Servers' }).click();
-    await expect(activePage(page).locator('ion-title', { hasText: 'Servers' })).toBeVisible({
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Servers',
+      })
+      .click();
+    await expect(
+      activePage(page).locator('ion-title', { hasText: 'Servers' }),
+    ).toBeVisible({
       timeout: 15_000,
     });
-    await expect(activePage(page).getByText('sqlite3')).toBeVisible({ timeout: 15_000 });
+    await expect(activePage(page).getByText('sqlite3')).toBeVisible({
+      timeout: 15_000,
+    });
 
     // --- Queries (side-menu click) ------------------------------------------
-    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Queries' }).click();
-    for (const folder of ['albums', 'artists', 'customers', 'invoices', 'reference', 'tracks']) {
-      await expect(activePage(page).getByText(folder, { exact: true })).toBeVisible({
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Queries',
+      })
+      .click();
+    for (const folder of [
+      'albums',
+      'artists',
+      'customers',
+      'invoices',
+      'reference',
+      'tracks',
+    ]) {
+      await expect(
+        activePage(page).getByText(folder, { exact: true }),
+      ).toBeVisible({
         timeout: 15_000,
       });
     }
 
     // The whole walk of the side menu, read at ONE commit: 2 calls to the API (the commit, the listing), every
     // file once, no mirror (design 4.5).
-    const raw = github.filter((u) => u.startsWith('https://raw.githubusercontent.com/'));
+    const raw = github.filter((u) =>
+      u.startsWith('https://raw.githubusercontent.com/'),
+    );
     console.log(
       `full walk: api.github.com=${github.filter((u) => u.startsWith('https://api.github.com/')).length} raw=${raw.length}`,
     );
-    expect(github.filter((u) => u.startsWith('https://api.github.com/'))).toHaveLength(2);
-    expect(github.filter((u) => u.startsWith('https://cdn.jsdelivr.net/'))).toEqual([]);
+    expect(
+      github.filter((u) => u.startsWith('https://api.github.com/')),
+    ).toHaveLength(2);
+    expect(
+      github.filter((u) => u.startsWith('https://cdn.jsdelivr.net/')),
+    ).toEqual([]);
     expect(new Set(raw).size).toBe(raw.length);
     expect(new Set(raw.map((u) => u.split('/')[5])).size).toBe(1);
 
@@ -360,12 +438,27 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // --- Queries page, direct ?tab=personal navigation ----------------------
     await page.goto(`${PAGES_URL}/queries?tab=personal`);
     // Personal queries are now real full-query copies persisted on this device.
-    await expect(activePage(page).locator('input[placeholder="Filter"]')).toBeVisible({ timeout: 15_000 });
-    await expect(activePage(page).getByText('personal queries need a DataTug agent', { exact: false })).not.toBeVisible();
+    await expect(
+      activePage(page).locator('input[placeholder="Filter"]'),
+    ).toBeVisible({ timeout: 15_000 });
+    await expect(
+      activePage(page).getByText('personal queries need a DataTug agent', {
+        exact: false,
+      }),
+    ).not.toBeVisible();
     // The Personal tab must NOT fall back to the Shared tab's real folder
     // tree (the exact bug this follow-up fixes).
-    for (const folder of ['albums', 'artists', 'customers', 'invoices', 'reference', 'tracks']) {
-      await expect(activePage(page).getByText(folder, { exact: true })).not.toBeVisible();
+    for (const folder of [
+      'albums',
+      'artists',
+      'customers',
+      'invoices',
+      'reference',
+      'tracks',
+    ]) {
+      await expect(
+        activePage(page).getByText(folder, { exact: true }),
+      ).not.toBeVisible();
     }
 
     expect(errors).toEqual([]);
@@ -388,9 +481,13 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // this suite already does.
     await page.goto(PROJECT_URL);
     await page
-      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Queries' })
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Queries',
+      })
       .click();
-    await activePage(page).locator('ion-item', { hasText: 'customers' }).click();
+    await activePage(page)
+      .locator('ion-item', { hasText: 'customers' })
+      .click();
     await activePage(page)
       .locator('ion-item', { hasText: 'Customer invoices' })
       .getByTitle('Edit')
@@ -412,9 +509,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // definition JSON (which never carries `text` for the folder-list view).
     // See `getQueryBodyText()`'s own doc comment for why this reads
     // component state instead of DOM text.
-    await expect.poll(() => getQueryBodyText(page), { timeout: 15_000 }).toMatch(
-      /from:/,
-    );
+    await expect
+      .poll(() => getQueryBodyText(page), { timeout: 15_000 })
+      .toMatch(/from:/);
     // NOT exercising the "Run" button on this particular query: it declares
     // a required `Customer.ID` parameter with no value supplied, so `[disabled]`
     // on the button is `true` regardless of store type — a correct, unrelated
@@ -435,7 +532,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // comment for why.
     await page.goto(PROJECT_URL);
     await page
-      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Queries' })
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Queries',
+      })
       .click();
     await activePage(page).locator('ion-item', { hasText: 'albums' }).click();
     await activePage(page)
@@ -456,9 +555,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .toBe('Albums by title');
     // See `getQueryBodyText()`'s own doc comment: this query type has no
     // body editor UI at all currently, so read component state instead.
-    await expect.poll(() => getQueryBodyText(page), { timeout: 15_000 }).toMatch(
-      /SELECT/,
-    );
+    await expect
+      .poll(() => getQueryBodyText(page), { timeout: 15_000 })
+      .toMatch(/SELECT/);
 
     // Both of this query's own parameters are optional (no value required),
     // so — unlike the DTQL query in the previous test — "Run" is enabled and
@@ -545,7 +644,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
    * the id ALREADY split into two segments, the exact shape the redirect
    * produces — without needing a redirect-capable server in this suite.
    */
-  test('a direct navigation to a folder-qualified query id already split across two real path segments (the shape this app\'s own Cloudflare redirect produces) still loads the query page, not NG04002', async ({
+  test("a direct navigation to a folder-qualified query id already split across two real path segments (the shape this app's own Cloudflare redirect produces) still loads the query page, not NG04002", async ({
     page,
   }) => {
     const errors = installErrorLoggerWatch(page);
@@ -578,7 +677,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // NG04002 surfaces as Angular's own internal `console.error`, not
     // through `ErrorLoggerService.logError` (the `errors` watch above) —
     // check for it directly.
-    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual([]);
+    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual(
+      [],
+    );
     // The founder's own report: the app ending up on the bare "/" store
     // route with an empty outlet, not on the query page at all.
     expect(new URL(page.url()).pathname).toContain('/query/');
@@ -616,9 +717,13 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     await page.goto(PROJECT_URL);
     await page
-      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Servers' })
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Servers',
+      })
       .click();
-    await expect(activePage(page).locator('ion-title', { hasText: 'Servers' })).toBeVisible({
+    await expect(
+      activePage(page).locator('ion-title', { hasText: 'Servers' }),
+    ).toBeVisible({
       timeout: 15_000,
     });
 
@@ -692,9 +797,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     // the mechanism at the unit level). Fixed by combining both streams so
     // `loadData()` only runs once both are known. `GITHUB_DBSERVER_DETAIL_MESSAGE`
     // (`db-server.service.ts`) now renders in both cards instead.
-    await expect(
-      dbServerPage.getByText('Loading...'),
-    ).toHaveCount(0, { timeout: 10_000 });
+    await expect(dbServerPage.getByText('Loading...')).toHaveCount(0, {
+      timeout: 10_000,
+    });
     const readOnlyNotices = dbServerPage.getByText(
       /live database details need a DataTug agent/,
     );
@@ -704,7 +809,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(readOnlyNotices).toHaveCount(2);
 
     expect(errors).toEqual([]);
-    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual([]);
+    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual(
+      [],
+    );
   });
 });
 
@@ -751,12 +858,16 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
     expect(pathOf(page)).toBe(OLD_PROJECT_URL);
 
     await page
-      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' })
+      .locator('sneat-datatug-project-menu-top ion-item', {
+        hasText: 'Entities',
+      })
       .click();
     await expect
       .poll(() => pathOf(page), { timeout: 15_000 })
       .toBe(`${PAGES_URL}/entities`);
-    await expect(activePage(page).getByText('Album', { exact: true })).toBeVisible({
+    await expect(
+      activePage(page).getByText('Album', { exact: true }),
+    ).toBeVisible({
       timeout: 15_000,
     });
     expect(errors).toEqual([]);
@@ -766,33 +877,54 @@ test.describe('GitHub-store project — addresses (G-A1c)', () => {
     page,
   }) => {
     await page.goto('/');
-    await page.getByText('DataTug Demo Project @ GitHub').click();
+    const openDemo = page.getByTestId('open-demo-github');
+    await expect(openDemo).toBeVisible();
+    await openDemo.click();
     await expect
       .poll(() => pathOf(page), { timeout: 15_000 })
       .toBe(PROJECT_URL);
   });
 
-  test('the published short folder link shows the 18 storage connections and any hosted editions in its catalogue', async ({ page }) => {
-    await page.goto('/project/github.com/datatug/datatug-demo-project/demo-project-1');
-    await expect.poll(() => pathOf(page), { timeout: 15_000 }).toBe(PROJECT_URL);
-    const connections = activePage(page).locator('sneat-datatug-demodb-connections ion-card').first();
-    await expect(connections.getByText('Database connections')).toBeVisible({ timeout: 15_000 });
+  test('the published short folder link shows the 18 storage connections and any hosted editions in its catalogue', async ({
+    page,
+  }) => {
+    await page.goto(
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1',
+    );
+    await expect
+      .poll(() => pathOf(page), { timeout: 15_000 })
+      .toBe(PROJECT_URL);
+    const connections = activePage(page)
+      .locator('sneat-datatug-demodb-connections ion-card')
+      .first();
+    await expect(connections.getByText('Database connections')).toBeVisible({
+      timeout: 15_000,
+    });
     await expect(connections.locator('ion-item')).toHaveCount(18);
     await expect(connections.getByText('chinook / sqlite')).toBeVisible();
     await expect(connections.getByText('employees / ingitdb')).toBeVisible();
 
     // Older cached v1 catalogues have no `bigQueryEditions` field. The UI
     // keeps those working while newer catalogues add six hosted cards.
-    const hosted = activePage(page).locator('sneat-datatug-demodb-connections ion-card', {
-      hasText: 'Hosted BigQuery editions',
-    });
+    const hosted = activePage(page).locator(
+      'sneat-datatug-demodb-connections ion-card',
+      {
+        hasText: 'Hosted BigQuery editions',
+      },
+    );
     const hostedCount = await hosted.count();
     expect(hostedCount).toBeLessThanOrEqual(1);
     if (hostedCount === 1) {
       await expect(hosted.locator('ion-item')).toHaveCount(6);
-      await expect(hosted.getByText('chinook · 11 tables · 15,607 rows')).toBeVisible();
-      await expect(hosted.getByText('employees · 6 tables · 13,584 rows')).toBeVisible();
-      await expect(hosted.locator('a[href="https://console.cloud.google.com/bigquery"]')).toHaveCount(6);
+      await expect(
+        hosted.getByText('chinook · 11 tables · 15,607 rows'),
+      ).toBeVisible();
+      await expect(
+        hosted.getByText('employees · 6 tables · 13,584 rows'),
+      ).toBeVisible();
+      await expect(
+        hosted.locator('a[href="https://console.cloud.google.com/bigquery"]'),
+      ).toHaveCount(6);
     }
   });
 });

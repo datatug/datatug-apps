@@ -1,28 +1,28 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import {
-  IonBadge,
-  IonButton,
-  IonButtons,
+  ChangeDetectionStrategy,
+  Component,
+  OnDestroy,
+  inject,
+  signal,
+} from '@angular/core';
+import {
   IonCard,
+  IonCardContent,
   IonIcon,
   IonItem,
+  IonItemDivider,
   IonLabel,
-  IonText,
+  IonList,
 } from '@ionic/angular';
 import {
   allUserStoresAsFlatList,
   DatatugProjStoreType,
   IDatatugStoreBriefWithId,
 } from '../../../models/interfaces';
-import {
-  AgentStateService,
-  IAgentState,
-} from '../../../services/repo/agent-state.service';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
-import { NavController } from '@ionic/angular';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { AuthStatus } from '@sneat/auth-core';
 import {
@@ -30,59 +30,54 @@ import {
   parseDatatugStoreRef,
 } from '../../../nav/nav-models';
 import { LoadingItemsComponent } from '../loading-items-component';
+import { addIcons } from 'ionicons';
+import { cloudOutline, chevronForward } from 'ionicons/icons';
+
+addIcons({ 'cloud-outline': cloudOutline, 'chevron-forward': chevronForward });
 
 @Component({
   selector: 'sneat-datatug-my-stores',
   templateUrl: './my-stores.component.html',
+  styleUrl: './my-stores.component.scss',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     LoadingItemsComponent,
     IonCard,
+    IonCardContent,
     IonItem,
+    IonItemDivider,
     IonLabel,
-    IonButtons,
-    IonButton,
     IonIcon,
-    IonBadge,
-    IonText,
+    IonList,
   ],
 })
-export class MyStoresComponent implements OnInit, OnDestroy {
+export class MyStoresComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly navController = inject(NavController);
-  readonly agentStateService = inject(AgentStateService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly datatugUserService = inject(DatatugUserService);
 
-  public authStatus?: AuthStatus;
-  public userRecordLoaded = false;
+  public readonly authStatus = signal<AuthStatus | undefined>(undefined);
+  public readonly userRecordLoaded = signal(false);
 
-  public stores?: IDatatugStoreBriefWithId[];
-
-  public agentState?: IAgentState;
+  public readonly stores = signal<IDatatugStoreBriefWithId[] | undefined>(
+    undefined,
+  );
 
   private readonly destroyed = new Subject<void>();
 
-  ngOnInit(): void {
-    this.agentStateService
-      .getAgentInfo('localhost:8989')
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (agentState) => {
-          this.agentState = agentState;
-        },
-        error: this.errorLogger.logErrorHandler('failed to get agent state'),
-      });
+  constructor() {
     this.datatugUserService.datatugUserState
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (datatugUserState) => {
           // console.log('MyStoresComponent => datatugUserState:', datatugUserState);
-          this.authStatus = datatugUserState?.status;
-          this.userRecordLoaded =
-            !!datatugUserState?.record || datatugUserState.record === null;
+          this.authStatus.set(datatugUserState?.status);
+          this.userRecordLoaded.set(
+            !!datatugUserState?.record || datatugUserState.record === null,
+          );
           const { record } = datatugUserState;
           if (record || record == null) {
-            this.stores = allUserStoresAsFlatList(record?.datatug?.stores);
+            this.stores.set(allUserStoresAsFlatList(record?.datatug?.stores));
           }
         },
         error: this.errorLogger.logErrorHandler(
@@ -99,7 +94,7 @@ export class MyStoresComponent implements OnInit, OnDestroy {
   storeIcon(storeType: DatatugProjStoreType): string {
     switch (storeType) {
       case 'firestore':
-        return 'boat-outline';
+        return 'cloud-outline';
       case 'github':
         return 'logo-github';
       default:
@@ -116,19 +111,5 @@ export class MyStoresComponent implements OnInit, OnDestroy {
       brief,
     };
     this.datatugNavService.goStore(store);
-  }
-
-  public checkAgent(event: Event): void {
-    event.preventDefault();
-    event.stopPropagation();
-  }
-
-  public openHelp(
-    event: Event,
-    path: 'agent' | 'cloud' | 'github.com' | 'private-repos',
-  ): void {
-    event.preventDefault();
-    event.stopPropagation();
-    window.open('https://datatug.app/' + path, '_blank');
   }
 }
