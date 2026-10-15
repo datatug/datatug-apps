@@ -462,6 +462,9 @@ export class CasesPageComponent {
   protected caseUrl(id: string): string {
     return projectPageHref(this.scope.ref(), ['detective', id]);
   }
+  protected scenarioUrl(id: string): string {
+    return projectPageHref(this.scope.ref(), ['detective', 'scenario', id]);
+  }
   protected checkUrl(id: string): string {
     return projectPageHref(this.scope.ref(), ['checks', id]);
   }

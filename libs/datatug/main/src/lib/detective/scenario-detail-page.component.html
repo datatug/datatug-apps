@@ -1,0 +1,106 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button [defaultHref]="casesUrl()" />
+    </ion-buttons>
+    <ion-title>Scenario</ion-title>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content color="light">
+  <div class="detective-page">
+    @if (scope.unsupported()) {
+      <ion-card>
+        <ion-card-content role="status">
+          Detective is unavailable for this project reference.
+        </ion-card-content>
+      </ion-card>
+    } @else if (!scope.context()) {
+      <ion-card>
+        <ion-card-content role="status"
+          >Connecting to the project store…</ion-card-content
+        >
+      </ion-card>
+    } @else {
+      @if (loading()) {
+        <div class="busy-line" role="status">
+          <ion-spinner name="dots" /> Loading Scenario…
+        </div>
+      }
+      @if (error()) {
+        <p class="feedback error" role="alert">{{ error() }}</p>
+      }
+      @if (scenario(); as item) {
+        <ion-card>
+          <ion-list lines="full">
+            <ion-item color="light" lines="full">
+              <ion-label class="ion-text-wrap">
+                <h1>{{ item.title }}</h1>
+                <p>{{ item.id }} · v{{ item.version }}</p>
+              </ion-label>
+            </ion-item>
+          </ion-list>
+          <ion-card-content>
+            @if (item.description) {
+              <p>{{ item.description }}</p>
+            }
+            <p>
+              This reusable Scenario has {{ item.steps.length }} manual
+              {{ item.steps.length === 1 ? 'step' : 'steps' }}. Apply it from a
+              compatible Case to record progress.
+            </p>
+            @if (item.inputs.length) {
+              <h2>Required context</h2>
+              <ion-list>
+                @for (input of item.inputs; track input.name) {
+                  <ion-item>
+                    <ion-label>
+                      <strong>{{ input.name }}</strong>
+                      <p>
+                        {{ input.type }} · {{ input.cardinality }}
+                        @if (input.required) {
+                          · required
+                        }
+                      </p>
+                    </ion-label>
+                  </ion-item>
+                }
+              </ion-list>
+            }
+            <h2>Manual steps</h2>
+            <ion-list>
+              @for (step of item.steps; track step.id; let index = $index) {
+                <ion-item>
+                  <ion-label>
+                    <h3>{{ index + 1 }}. {{ step.ref }}</h3>
+                    <p>Step {{ step.id }}</p>
+                    @for (binding of step.bindings || []; track $index) {
+                      <p>
+                        {{ binding.input }} ←
+                        {{ binding.fromInput || binding.fromColumn }}
+                        @if (binding.part) {
+                          ({{ binding.part }})
+                        }
+                      </p>
+                    }
+                  </ion-label>
+                  <ion-badge slot="end" color="medium">{{
+                    step.kind
+                  }}</ion-badge>
+                </ion-item>
+              }
+            </ion-list>
+          </ion-card-content>
+        </ion-card>
+      } @else if (state() && !loading()) {
+        <ion-card>
+          <ion-card-content role="alert">
+            Scenario {{ scenarioId() }} was not found.
+            <a [routerLink]="casesUrl()">Back to Detective</a>
+          </ion-card-content>
+        </ion-card>
+      }
+    }
+  </div>
+</ion-content>
