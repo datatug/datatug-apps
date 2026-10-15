@@ -9,7 +9,11 @@ const port = process.env['DATATUG_E2E_SQLITE_PORT'] || '4333';
 
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'demo-sqlite.spec.ts',
+  testMatch: [
+    'demo-sqlite.spec.ts',
+    'demo-sqlite-datasets.spec.ts',
+    'demo-sqlite-journey.spec.ts',
+  ],
   outputDir: '../../coverage/apps/datatug-app-demo-sqlite-e2e/results',
   fullyParallel: false,
   workers: 1,
