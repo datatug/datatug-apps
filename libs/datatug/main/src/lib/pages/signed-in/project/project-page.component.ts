@@ -1,8 +1,14 @@
 import { Component, OnDestroy, ViewChild, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { race, Subject } from 'rxjs';
-import { skip, takeUntil } from 'rxjs/operators';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
+import { race, Subject, of } from 'rxjs';
+import { catchError, map, skip, takeUntil } from 'rxjs/operators';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
+import { IRecord } from '@sneat/data';
 import { ActivatedRoute } from '@angular/router';
 import {
   IonBackButton,
@@ -11,9 +17,12 @@ import {
   IonContent,
   IonHeader,
   IonInput,
+  IonIcon,
   IonItem,
   IonLabel,
+  IonList,
   IonMenuButton,
+  IonSkeletonText,
   IonSelect,
   IonSelectOption,
   IonTitle,
@@ -25,6 +34,9 @@ import {
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import { IEnvironmentFull } from '../../../models/definition/environments';
+import { environmentPresentation } from '../../../models/definition/environment-presentation';
+import { IEntity } from '../../../models/definition/metapedia/entity';
 import { DatatugFolderComponent } from '../../../folders/ui/datatug-folder.component';
 import {
   IProjBoard,
@@ -60,6 +72,7 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 @Component({
   selector: 'sneat-datatug-project',
   templateUrl: './project-page.component.html',
+  styleUrls: ['./project-page.component.scss'],
   imports: [
     FormsModule,
     DatatugCoreModule,
@@ -80,8 +93,11 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
     IonItem,
     IonLabel,
     IonInput,
+    IonIcon,
     IonSelect,
     IonSelectOption,
+    IonList,
+    IonSkeletonText,
   ],
 })
 export class ProjectPageComponent
@@ -133,6 +149,19 @@ export class ProjectPageComponent
   protected readonly metadataState = signal<
     'loading' | 'available' | 'unavailable'
   >('loading');
+  protected readonly activeTab = signal<
+    'overview' | 'environments' | 'entities'
+  >('overview');
+  protected readonly environments = signal<IEnvironmentFull[] | undefined>(
+    undefined,
+  );
+  protected readonly environmentError = signal(false);
+  protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
+    undefined,
+  );
+  protected readonly entityError = signal(false);
+  protected readonly environmentPresentation = environmentPresentation;
+  private readonly scopeChanged = new Subject<void>();
 
   protected destroyed = new Subject<boolean>();
   @ViewChild(IonInput, { static: false }) addInput?: IonInput;
@@ -158,11 +187,59 @@ export class ProjectPageComponent
 
   private setProjRef = (ref: IProjectRef) => {
     try {
+      this.scopeChanged.next();
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },
       });
       this.metadataState.set('loading');
+      this.activeTab.set('overview');
+      this.environments.set(undefined);
+      this.entities.set(undefined);
+      this.environmentError.set(false);
+      this.entityError.set(false);
+      if (!ref.spaceID) {
+        const github =
+          ref.storeId === STORE_ID_GITHUB_COM ||
+          ref.storeId === STORE_TYPE_GITHUB;
+        const cancel$ = race([this.scopeChanged, this.destroyed]);
+        const environments$ = github
+          ? this.environmentService.listEnvironments(ref.projectId)
+          : this.projectService
+              .getFull(ref)
+              .pipe(map((full) => full.environments || []));
+        environments$
+          .pipe(
+            takeUntil(cancel$),
+            catchError((error) => {
+              this.environmentError.set(true);
+              this.errorLogger.logError(
+                error,
+                'Failed to load overview environments',
+              );
+              return of(undefined);
+            }),
+          )
+          .subscribe((items) => this.environments.set(items));
+        this.entityService
+          .getAllEntities(ref)
+          .pipe(
+            takeUntil(cancel$),
+            catchError((error) => {
+              this.entityError.set(true);
+              this.errorLogger.logError(
+                error,
+                'Failed to load overview entities',
+              );
+              return of(undefined);
+            }),
+          )
+          .subscribe((items) =>
+            this.entities.set(
+              items?.toSorted((a, b) => a.id.localeCompare(b.id)),
+            ),
+          );
+      }
       this.projectService
         .watchProjectSummary(ref)
         .pipe(
@@ -200,6 +277,8 @@ export class ProjectPageComponent
   }
 
   ngOnDestroy(): void {
+    this.scopeChanged.next();
+    this.scopeChanged.complete();
     this.destroyed.next(true);
     this.destroyed.complete();
   }
@@ -218,6 +297,10 @@ export class ProjectPageComponent
     this.datatugNavService.goEnvironment(this.project(), projEnv);
   }
 
+  protected selectTab(tab: 'overview' | 'environments' | 'entities'): void {
+    this.activeTab.set(tab);
+  }
+
   // noinspection JSUnusedGlobalSymbols
   protected goProjFolder(projItemType: ProjectItemType): void {
     const project = this.project();
@@ -228,7 +311,10 @@ export class ProjectPageComponent
       );
       return;
     }
-    const url = tryProjectUrl(project.ref, projItemType === 'query' ? 'queries' : `${projItemType}s`);
+    const url = tryProjectUrl(
+      project.ref,
+      projItemType === 'query' ? 'queries' : `${projItemType}s`,
+    );
     if (typeof url !== 'string') {
       this.errorLogger.logError(
         new Error(`no exact address for the project (${url.reason})`),

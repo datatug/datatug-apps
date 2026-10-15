@@ -15,7 +15,7 @@
 </ion-header>
 
 <ion-content color="light">
-  <ion-card>
+  <ion-card class="project-context-card">
     <ion-item>
       <ion-input
         style="font-weight: bold"
@@ -62,7 +62,81 @@
     }
   </ion-card>
 
-  <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
+  @if (!project()?.ref?.spaceID) {
+    <section class="overview-environments" aria-label="Project environments">
+      <h2>Environments</h2>
+      @if (environmentError()) {
+        <p role="status">
+          Environments could not be loaded. Refresh to try again.
+        </p>
+      } @else if (environments(); as items) {
+        <div class="environment-strip">
+          @for (environment of items; track environment.id) {
+            <button
+              type="button"
+              class="environment-shortcut"
+              (click)="goEnvironment(environment)"
+              [attr.aria-label]="
+                'Open ' +
+                environmentPresentation(environment).label +
+                ' environment'
+              "
+            >
+              <ion-icon
+                [icon]="environmentPresentation(environment).icon"
+                aria-hidden="true"
+              />
+              <span>{{ environmentPresentation(environment).label }}</span>
+              @if (
+                environmentPresentation(environment).safetyLabel;
+                as safety
+              ) {
+                <small>{{ safety }}</small>
+              }
+            </button>
+          } @empty {
+            <p>No environments have been configured yet.</p>
+          }
+        </div>
+      } @else {
+        <ion-skeleton-text
+          animated
+          style="width: 12rem"
+          aria-label="Loading environments"
+        />
+      }
+    </section>
+    <nav class="overview-tabs" aria-label="Project overview sections">
+      <button
+        type="button"
+        [class.active]="activeTab() === 'overview'"
+        [attr.aria-pressed]="activeTab() === 'overview'"
+        (click)="selectTab('overview')"
+      >
+        Overview
+      </button>
+      <button
+        type="button"
+        [class.active]="activeTab() === 'environments'"
+        [attr.aria-pressed]="activeTab() === 'environments'"
+        (click)="selectTab('environments')"
+      >
+        Environments
+      </button>
+      <button
+        type="button"
+        [class.active]="activeTab() === 'entities'"
+        [attr.aria-pressed]="activeTab() === 'entities'"
+        (click)="selectTab('entities')"
+      >
+        Entities
+      </button>
+    </nav>
+  }
+
+  @if (!project()?.ref?.spaceID && activeTab() === 'overview') {
+    <sneat-datatug-demodb-connections [projectRef]="project()?.ref" />
+  }
 
   <!--	<sneat-datatug-card-list [projItemType]="DbModel"-->
   <!--					   title="DB models"-->
@@ -86,7 +160,9 @@
     <ion-card>
       <ion-item><ion-label>Shared project</ion-label></ion-item>
       @if (metadataState() === 'available') {
-        <ion-item button (click)="goProjFolder('query')"><ion-label>Queries</ion-label></ion-item>
+        <ion-item button (click)="goProjFolder('query')"
+          ><ion-label>Queries</ion-label></ion-item
+        >
         <ion-item
           ><ion-label>Space: {{ project()?.ref?.spaceID }}</ion-label></ion-item
         >
@@ -104,8 +180,89 @@
         >
       }
     </ion-card>
-  } @else {
+  } @else if (activeTab() === 'overview') {
     <sneat-datatug-folder [path]="'~'" [projectRef]="project()?.ref" />
+  } @else if (activeTab() === 'environments') {
+    <ion-card>
+      <ion-list>
+        @if (environmentError()) {
+          <ion-item
+            ><ion-label color="danger"
+              >Environments could not be loaded. Refresh to try
+              again.</ion-label
+            ></ion-item
+          >
+        } @else if (environments(); as items) {
+          @for (environment of items; track environment.id) {
+            <ion-item
+              button
+              detail
+              (click)="goEnvironment(environment)"
+              data-testid="overview-environment-item"
+            >
+              <ion-icon
+                slot="start"
+                [icon]="environmentPresentation(environment).icon"
+                aria-hidden="true"
+              />
+              <ion-label
+                ><h3>{{ environmentPresentation(environment).label }}</h3>
+                @if (
+                  environmentPresentation(environment).label !== environment.id
+                ) {
+                  <p>Environment ID: {{ environment.id }}</p>
+                }
+                @if (
+                  environmentPresentation(environment).safetyLabel;
+                  as safety
+                ) {
+                  <p>{{ safety }}</p>
+                }
+              </ion-label>
+            </ion-item>
+          } @empty {
+            <ion-item
+              ><ion-label
+                >No environments have been configured yet.</ion-label
+              ></ion-item
+            >
+          }
+        } @else {
+          <ion-item><ion-label>Loading environments…</ion-label></ion-item>
+        }
+      </ion-list>
+    </ion-card>
+  } @else {
+    <ion-card>
+      <ion-list>
+        @if (entityError()) {
+          <ion-item
+            ><ion-label color="danger"
+              >Entities could not be loaded. Refresh to try again.</ion-label
+            ></ion-item
+          >
+        } @else if (entities(); as items) {
+          @for (entity of items; track entity.id) {
+            <ion-item
+              button
+              detail
+              (click)="goEntity(entity)"
+              data-testid="overview-entity-item"
+            >
+              <ion-label>{{ entity.dbo?.title || entity.id }}</ion-label>
+            </ion-item>
+          } @empty {
+            <ion-item
+              ><ion-label
+                >No entities have been created yet.</ion-label
+              ></ion-item
+            >
+          }
+        } @else {
+          <ion-item><ion-label>Loading entities…</ion-label></ion-item>
+        }
+      </ion-list>
+    </ion-card>
   }
   <!--	<sneat-datatug-card-list [projItemType]="Agent"-->
   <!--							 title="Agents"-->

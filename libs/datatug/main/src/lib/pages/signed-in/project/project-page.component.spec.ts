@@ -6,7 +6,7 @@ import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { ProjectPageComponent } from './project-page.component';
 import { DatatugBoardService } from '../../../board/core/datatug-board.service';
@@ -68,12 +68,21 @@ function baseProviders(
       provide: ProjectService,
       useValue: {
         watchProjectSummary: doubles.watchProjectSummary,
-        getFull: vi.fn(),
+        getFull: vi.fn(() => of({ environments: [] })),
       },
     },
     { provide: SchemaService, useValue: {} },
-    { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
-    { provide: EntityService, useValue: {} },
+    {
+      provide: EnvironmentService,
+      useValue: {
+        getEnvSummary: vi.fn(),
+        listEnvironments: vi.fn(() => of([])),
+      },
+    },
+    {
+      provide: EntityService,
+      useValue: { getAllEntities: vi.fn(() => of([])) },
+    },
     {
       provide: NavController,
       useValue: {
@@ -130,8 +139,16 @@ describe('ProjectPage', () => {
       ).project.set({ ref });
 
     it.each([
-      ['an agent project', { storeId: 'localhost:8989', projectId: 'p1' }, '/store/localhost:8989/project/p1/entitys'],
-      ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo/entitys'],
+      [
+        'an agent project',
+        { storeId: 'localhost:8989', projectId: 'p1' },
+        '/store/localhost:8989/project/p1/entitys',
+      ],
+      [
+        'a GitHub project',
+        { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
+        '/project/github.com/datatug/chinook-demo/entitys',
+      ],
     ])('opens the folder of %s at its address', (_name, ref, address) => {
       const navController = TestBed.inject(NavController) as unknown as {
         navigateForward: ReturnType<typeof vi.fn>;
@@ -168,9 +185,15 @@ describe('ProjectPage', () => {
 
       expect(navController.navigateForward).not.toHaveBeenCalled();
       expect(
-        (TestBed.inject(ErrorLogger) as unknown as { logError: ReturnType<typeof vi.fn> }).logError,
+        (
+          TestBed.inject(ErrorLogger) as unknown as {
+            logError: ReturnType<typeof vi.fn>;
+          }
+        ).logError,
       ).toHaveBeenCalledWith(
-        expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+        expect.objectContaining({
+          message: expect.stringContaining('no exact address'),
+        }),
         'Failed to navigate to project item page: entity',
       );
     });
@@ -251,6 +274,11 @@ describe('ProjectPage rendering a local-agent store project', () => {
         'ion-input',
       ) as HTMLElement & { value?: string };
       expect(title.value).toBe('DataTug Demo Project 1');
+      const context = fixture.nativeElement.querySelector(
+        '.project-context-card',
+      ) as HTMLElement;
+      expect(context).toBeTruthy();
+      expect(context.querySelector('ion-select')).toBeTruthy();
       expect(doubles.logError).not.toHaveBeenCalled();
     },
   );
@@ -348,5 +376,126 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
 
     expect(title.value).toBe('DataTug Demo Project 1');
     expect(doubles.logError).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectPage overview lists', () => {
+  it('settles empty environments and reports an entity read error without leaving a spinner', async () => {
+    const logError = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        ...baseProviders({ logError, watchProjectSummary: vi.fn(() => of()) }),
+        {
+          provide: EnvironmentService,
+          useValue: { listEnvironments: vi.fn(() => of([])) },
+        },
+        {
+          provide: EntityService,
+          useValue: {
+            getAllEntities: vi.fn(() => throwError(() => new Error('offline'))),
+          },
+        },
+      ],
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    const page = TestBed.createComponent(ProjectPageComponent)
+      .componentInstance as unknown as {
+      setProjRef(ref: { storeId: string; projectId: string }): void;
+      environments: { (): { id: string }[] | undefined };
+      entities: { (): { id: string }[] | undefined };
+      entityError: { (): boolean };
+      environmentError: { (): boolean };
+    };
+    page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
+    expect(page.environments()).toEqual([]);
+    expect(page.environmentError()).toBe(false);
+    expect(page.entities()).toBeUndefined();
+    expect(page.entityError()).toBe(true);
+    expect(logError).toHaveBeenCalledWith(
+      expect.any(Error),
+      'Failed to load overview entities',
+    );
+  });
+
+  it('drops delayed data from the previous project and navigates using the current project', async () => {
+    const oldEnvironments = new Subject<{ id: string; title: string }[]>();
+    const oldEntities = new Subject<{ id: string; dbo: { title: string } }[]>();
+    const listEnvironments = vi.fn((projectId: string) =>
+      projectId === 'old'
+        ? oldEnvironments.asObservable()
+        : of([{ id: 'qa', title: 'QA' }]),
+    );
+    const getAllEntities = vi.fn((ref: { projectId: string }) =>
+      ref.projectId === 'old'
+        ? oldEntities.asObservable()
+        : of([{ id: 'Album', dbo: { title: 'Album' } }]),
+    );
+    const nav = {
+      goEnvironment: vi.fn(),
+      goEntity: vi.fn(),
+      goBoard: vi.fn(),
+      goProjPage: vi.fn(),
+      goProject: vi.fn(),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        ...baseProviders({
+          logError: vi.fn(),
+          watchProjectSummary: vi.fn(() => of()),
+        }),
+        { provide: EnvironmentService, useValue: { listEnvironments } },
+        { provide: EntityService, useValue: { getAllEntities } },
+        { provide: DatatugNavService, useValue: nav },
+      ],
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    const page = TestBed.createComponent(ProjectPageComponent)
+      .componentInstance as unknown as {
+      setProjRef(ref: { storeId: string; projectId: string }): void;
+      environments: { (): { id: string }[] | undefined };
+      entities: { (): { id: string }[] | undefined };
+      goEnvironment(value: { id: string }): void;
+      goEntity(value: { id: string }): void;
+    };
+    page.setProjRef({ storeId: 'github.com', projectId: 'old' });
+    page.setProjRef({ storeId: 'github.com', projectId: 'new' });
+    oldEnvironments.next([{ id: 'stale', title: 'Stale' }]);
+    oldEntities.next([{ id: 'Stale', dbo: { title: 'Stale' } }]);
+    expect(page.environments()?.map((value) => value.id)).toEqual(['qa']);
+    expect(page.entities()?.map((value) => value.id)).toEqual(['Album']);
+    page.goEnvironment({ id: 'qa' });
+    page.goEntity({ id: 'Album' });
+    expect(nav.goEnvironment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ref: { storeId: 'github.com', projectId: 'new' },
+      }),
+      { id: 'qa' },
+    );
+    expect(nav.goEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ref: { storeId: 'github.com', projectId: 'new' },
+      }),
+      { id: 'Album' },
+    );
   });
 });
