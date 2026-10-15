@@ -1,3 +1,4 @@
+import { takeAgentLinkCode } from './app/agent-access/agent-link-code';
 import { provideCheckoutPurchaseRecovery } from './app/checkout/checkout-purchase-recovery';
 import { provideSubscriptionSettings } from './app/checkout/subscription-settings-provider';
 import { bootstrapApplication } from '@angular/platform-browser';
@@ -48,11 +49,35 @@ import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
 import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
+import {
+  agentAccessInterceptor,
+  provideAgentAccessForModuleClients,
+} from './app/agent-access/agent-access.interceptor';
+import { provideAgentLinkCode } from './app/agent-access/agent-access.service';
+import {
+  provideLinkTelemetryPrivacy,
+  withPosthogLinkPrivacy,
+} from './app/telemetry/link-telemetry-privacy';
+import { withSentryLinkPrivacy } from './app/telemetry/sentry-privacy';
 
-const datatugAppEnvironmentConfig = withoutDataTugTracking(environmentConfig, {
+// First: take the one-time code of a card's link out of the address before Sentry, PostHog or the router read it.
+const agentLinkCode = takeAgentLinkCode(location, history);
+
+const trackedEnvironmentConfig = withoutDataTugTracking(environmentConfig, {
   hostname: location.hostname,
   queryProfile: new URLSearchParams(location.search).get('profile'),
 });
+// REQ:ui-no-context-telemetry (claude-mod-web-links): no fragment, key, row or loopback agent request data reaches
+// PostHog or Sentry, whichever code starts them.
+const datatugAppEnvironmentConfig = {
+  ...trackedEnvironmentConfig,
+  posthog: trackedEnvironmentConfig.posthog
+    ? withPosthogLinkPrivacy(trackedEnvironmentConfig.posthog)
+    : undefined,
+  sentry: trackedEnvironmentConfig.sentry
+    ? withSentryLinkPrivacy(trackedEnvironmentConfig.sentry)
+    : undefined,
+};
 
 captureCliChatCapability();
 
@@ -73,7 +98,12 @@ bootstrapApplication(DatatugAppComponent, {
     provideDatatugBusinessCheckoutLiveEnabled(
       datatugBusinessCheckoutLiveEnabled,
     ),
-    provideHttpClient(withInterceptors([cliChatProjectInterceptor])),
+    provideHttpClient(
+      withInterceptors([agentAccessInterceptor, cliChatProjectInterceptor]),
+    ),
+    provideAgentLinkCode(agentLinkCode),
+    provideAgentAccessForModuleClients(),
+    provideLinkTelemetryPrivacy(),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },

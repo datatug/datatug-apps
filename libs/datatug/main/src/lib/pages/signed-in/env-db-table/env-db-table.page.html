@@ -18,7 +18,7 @@
     </ion-buttons>
     <sneat-datatug-page-title
       [pageTitle]="
-        'Table: ' + (table?.schema || '') + '.' + (table?.name || '')
+        'Table: ' + (table?.schema ? table?.schema + '.' : '') + (table?.name || '')
       "
     />
   </ion-toolbar>
@@ -59,6 +59,11 @@
     </ion-segment-button>
   </ion-segment>
 
+  @if (tab === 'columns') {
+    @if (tableRef(); as ref) {
+      <sneat-datatug-table-metadata [tableRef]="ref" />
+    }
+  }
   @if (tab === 'keys') {
   <ion-card>
     <ion-card-header>

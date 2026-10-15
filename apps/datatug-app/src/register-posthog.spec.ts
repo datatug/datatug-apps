@@ -38,7 +38,7 @@ it('drops manual and autocapture events and stops recordings for this document a
     event: '$pageview',
     properties: { $current_url: 'https://datatug.app/' },
   };
-  expect(config.before_send(event)).toBe(event);
+  expect(config.before_send(event)).toEqual(event);
   disableCheckoutAnalytics(
     '/subscribe?plan=pro&period=monthly&checkout=test',
     target,

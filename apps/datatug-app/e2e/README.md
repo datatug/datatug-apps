@@ -114,6 +114,27 @@ dev server build. (If a future change to that resolution ever breaks this,
 the fallback is a one-line env var read in `environment.ts`'s
 `agents` map — do not add it speculatively.)
 
+## Card links (real `datatug daemon`)
+
+`agent-links/` opens the pages a DataTug Claude Code mod card links to (a table's metadata, its records, one
+record) against a real `datatug daemon start`, with links minted by `datatug daemon url`. The fixture runs the daemon
+with a temporary HOME that registers only the demo project, and stops it afterwards. The agent admits pages only
+from `https://datatug.app` and `datatug.localhost`, so this suite serves the app at
+`http://datatug.localhost:4312` (not `localhost`) and has its own config. It needs a CLI with the read-only
+`records/schema` and `records/lookup` routes (datatug-cli #399), the demo project and the Chinook fixture, as the
+journey suite does:
+
+```sh
+DATATUG_BIN=/path/to/datatug \
+DATATUG_DEMO_DIR=~/projects/datatug/datatug-demo-project/demo-project-1 \
+  pnpm nx run datatug-app:e2e-agent-links
+```
+
+Without `DATATUG_BIN` or `DATATUG_CLI_DIR` every test is skipped. CI runs it in the `agent-links` job once the
+repository variable `DATATUG_LINKS_CLI_REF` names a datatug release that has those routes. It refuses to run when
+another DataTug API already listens on port 8989 (the daemon would adopt it). The https-to-loopback path of the
+hosted UI is not exercised here; that is the reach script of the plan.
+
 ## Running the journey suite
 
 ```sh
