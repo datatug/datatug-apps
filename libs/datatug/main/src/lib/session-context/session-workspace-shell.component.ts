@@ -90,6 +90,7 @@ export class SessionWorkspaceShellComponent {
     return !!capabilities && capabilities.actions.includes('createSession') &&
       capabilities.environments.length > 0 && !this.workspace.busy();
   });
+  readonly showInitialLoading = computed(() => this.workspace.loading() && !this.workspace.capabilities());
   readonly showInitialLoadError = computed(() => !!this.workspace.error() && !this.workspace.capabilities());
   readonly availableSubjects = computed(() => {
     const scope = this.workspace.selectedBag()?.scope;

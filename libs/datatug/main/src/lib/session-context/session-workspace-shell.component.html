@@ -144,7 +144,7 @@
       @if (workspace.authRequired()) {
         <ion-item lines="full"><ion-label><h2>Sign in required</h2><p>Your saved sessions are available after you sign in. Signing in will return you to this project.</p></ion-label></ion-item>
         <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" initialMode="sign-in" />
-      } @else if (workspace.loading()) {
+      } @else if (showInitialLoading()) {
         <ion-item role="status"><ion-spinner slot="start" /><ion-label>Loading sessions for this project…</ion-label></ion-item>
       } @else if (showInitialLoadError()) {
         <ion-item color="danger" role="alert"><ion-label><h2>Sessions could not be loaded</h2><p>{{ workspace.error() }}</p></ion-label></ion-item>

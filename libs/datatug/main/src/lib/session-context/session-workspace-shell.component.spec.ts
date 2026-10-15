@@ -148,10 +148,12 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     };
     workspace.capabilities.set(caps);
     workspace.sessions.set([session]);
+    workspace.loading.set(true);
     workspace.error.set('The next page could not be loaded.');
     workspace.authRequired.set(false);
 
     expect(fixture.componentInstance.visibleSessions()).toEqual([session]);
+    expect(fixture.componentInstance.showInitialLoading()).toBe(false);
     expect(fixture.componentInstance.showInitialLoadError()).toBe(false);
   });
 });
