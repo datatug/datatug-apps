@@ -236,16 +236,16 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // --- Boards (side-menu click) ----------------------------------------
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
-    // NOT `activePage(page).getByText('1st board')`: the project page
+    // NOT `activePage(page).getByText('Chinook customer insights')`: the project page
     // asserted above ALSO embeds a `sneat-datatug-folder` (`DatatugFolderComponent`)
-    // whose own default tab is 'boards' — the SAME "1st board" text — and on
+    // whose own default tab is 'boards' — the SAME board title — and on
     // a slower runner (confirmed failing in CI, passing every time locally)
     // that page is still present, un-hidden, alongside the dedicated Boards
     // page once this navigates: `document.querySelectorAll('ion-router-outlet
     // > .ion-page')` shows BOTH `sneat-datatug-project` and
     // `sneat-datatug-boards` without `.ion-page-hidden` at the same time
-    // (confirmed live, S136). That made `activePage(page).getByText('1st
-    // board')` strict-mode-fail with 2 matches. `sneat-datatug-boards`
+    // (confirmed live, S136). That made the unscoped board title
+    // strict-mode-fail with 2 matches. `sneat-datatug-boards`
     // (`BoardsPageComponent`'s own selector) turns out to carry the
     // `.ion-page` class on its OWN host element, not on some wrapper around
     // it — so `activePage(page).locator('sneat-datatug-boards')` (a
@@ -256,21 +256,8 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(
       page
         .locator('ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)')
-        .getByText('1st board'),
+        .getByText('Chinook customer insights'),
     ).toBeVisible({ timeout: 15_000 });
-    // NOT clicking into the board's own detail page here: `goBoard()`
-    // (`DatatugNavService`) navigates via Ionic's `NavController.navigateForward()`,
-    // which constructs `BoardPageComponent` through a DIFFERENT path than
-    // Angular Router's own `loadComponent` resolution — and that path fails
-    // to resolve `Location` (`@angular/common`, needed by the component's own
-    // `QueryParamsService` provider) with `NG0201: No provider found for
-    // \`Location\`. Source: Standalone[_BoardPageComponent]` (confirmed live,
-    // S136, reproduced directly via `NavController.navigateForward()` from
-    // the console — same failure regardless of which page/store triggers
-    // it, so this is a pre-existing, cross-store Ionic/Angular DI interop
-    // gap, not GitHub-specific, and well beyond this task's own "missing
-    // NgModule import" fixes — named here per the brief rather than silently
-    // dropped, not fixed in this task).
 
     // --- Entities (side-menu click) ---------------------------------------
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Entities' }).click();
@@ -322,6 +309,57 @@ test.describe('GitHub-store project — every side-menu page loads without error
     expect(new Set(raw).size).toBe(raw.length);
     expect(new Set(raw.map((u) => u.split('/')[5])).size).toBe(1);
 
+    expect(errors).toEqual([]);
+  });
+
+  test('public demo Boards opens two saved-query cards and keeps the project context', async ({
+    page,
+  }) => {
+    const errors = installErrorLoggerWatch(page);
+    await page.goto(PROJECT_URL);
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
+      .click();
+
+    const boardsPage = page.locator(
+      'ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)',
+    );
+    await boardsPage
+      .getByText('Chinook customer insights', { exact: true })
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`${PAGES_URL}/board/board1`);
+
+    const boardPage = page.locator('sneat-datatug-board-page');
+    await expect(
+      boardPage.getByRole('heading', { name: 'Chinook customer insights' }),
+    ).toBeVisible();
+    const board = boardPage.locator('sneat-datatug-board');
+    await expect(
+      board.getByText('Top customer spend', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      board.getByText('Playlist composition', { exact: true }),
+    ).toBeVisible();
+    await expect(
+      board.getByRole('button', { name: 'Open saved query' }),
+    ).toHaveCount(2);
+
+    await board
+      .locator('ion-card', { hasText: 'Top customer spend' })
+      .getByRole('button', { name: 'Open saved query' })
+      .click();
+    await expect
+      .poll(() => new URL(page.url()).pathname)
+      .toBe(`${PAGES_URL}/query/demodb%2Fchinook-top-customer-spend`);
+    expect(new URL(page.url()).searchParams.get('id')).toBe(
+      'demodb/chinook-top-customer-spend',
+    );
+    await expect(activePage(page).locator('sneat-datatug-page-title')).toContainText(
+      'Top Customer Spend',
+      { timeout: 20_000 },
+    );
     expect(errors).toEqual([]);
   });
 
