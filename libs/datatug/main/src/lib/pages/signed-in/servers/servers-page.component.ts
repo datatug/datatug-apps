@@ -58,6 +58,7 @@ const isGithubStoreId = (storeId: string): boolean =>
 @Component({
   selector: 'sneat-datatug-servers',
   templateUrl: './servers-page.component.html',
+  styleUrls: ['./servers-page.component.scss'],
   imports: [
     // `ProjectContextService` (injected below) and `DbServerService`
     // (injected below, itself needing `ProjectContextService`/
@@ -259,6 +260,16 @@ export class ServersPageComponent implements OnDestroy {
       }
       return next;
     });
+  }
+
+  protected selectAllEnvironments(): void {
+    this.selectedEnvironmentIds.set(
+      new Set(this.environments()?.map((environment) => environment.id) ?? []),
+    );
+  }
+
+  protected clearEnvironments(): void {
+    this.selectedEnvironmentIds.set(new Set());
   }
 
   /** The row label for one DB server: its `host` when the project actually

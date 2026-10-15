@@ -546,6 +546,24 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     expect(rowLabelText()).toBe('(no host)');
     expect(dbTabBadgeText()).toBe('1');
   });
+
+  it('clears and restores all environment selections from the header actions', async () => {
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    fixture.nativeElement
+      .querySelector('[data-testid="clear-environments"]')
+      .click();
+    fixture.detectChanges();
+    expect(dbTabBadgeText()).toBe('0');
+
+    fixture.nativeElement
+      .querySelector('[data-testid="select-all-environments"]')
+      .click();
+    fixture.detectChanges();
+    expect(dbTabBadgeText()).toBe('1');
+    expect(rowDatabasesBadgeText()).toBe('5 databases');
+  });
 });
 
 /**
