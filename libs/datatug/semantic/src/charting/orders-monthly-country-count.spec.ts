@@ -124,6 +124,11 @@ describe('transformOrdersMonthlyCountryCount', () => {
     expect(transformOrdersMonthlyCountryCount({ ...valid, limitations: [{ policy: 'restricted', rowsFiltered: true, hiddenColumns: [] }] }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, sourceRights: undefined }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, rowsReturned: 2 } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, sourceRowsReturned: 830, publicApiReceipt: { ...valid.publicApiReceipt, rowsReturned: 830 } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(prepareBarRace({ ...valid, sourceRowsReturned: 830, publicApiReceipt: { ...valid.publicApiReceipt, rowsReturned: 830 } }, {
+      kind: 'bar-race', periodColumn: 'OrderDate', categoryColumn: 'ShipCountry', measureColumn: 'OrderID',
+      onDuplicate: 'reject', mode: 'period', topN: 21,
+    })).toMatchObject({ ok: false, code: 'SOURCE_RIGHTS_UNAVAILABLE' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, executionSources: [{ database: databaseId, collection: 'Orders' }] } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, rightsPublication: undefined } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, sourceRights: [{ ...rights[0], evidenceOrigin: 'legacy-metadata' }] }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });

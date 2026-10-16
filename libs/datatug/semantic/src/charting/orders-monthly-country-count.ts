@@ -1,5 +1,5 @@
 import type { TypedValue } from '../contract/types';
-import { chartEvidenceError, type ChartLineage, type ChartRecordset } from './bar-race';
+import { chartEvidenceError, deriveChartRecordset, type ChartLineage, type ChartRecordset } from './bar-race';
 
 export interface OrdersMonthlyCountryCountSpec {
   readonly name: 'orders-monthly-country-count';
@@ -126,19 +126,15 @@ export function transformOrdersMonthlyCountryCount(
     { output: 'category', input: `${collection}.${spec.countryColumn}`, operation: 'identity' },
     { output: 'value', input: `${collection}.${spec.orderIdColumn}`, operation: 'distinct-count' },
   ];
-  const recordset: ChartRecordset = {
-    ...input,
-    lineage,
-    sourceRowsReturned: input.sourceRowsReturned ?? input.recordset.rows.length,
-    recordset: {
+  const recordset = deriveChartRecordset(input, {
       columns: [
         { name: 'period', type: 'string' },
         { name: 'category', type: 'string' },
         { name: 'value', type: 'number' },
       ],
       rows,
-    },
-  };
+    }, lineage);
+  if (!recordset) return fail('RIGHTS', 'The raw API receipt must match its actual row count before charting.');
   return {
     ok: true,
     data: {

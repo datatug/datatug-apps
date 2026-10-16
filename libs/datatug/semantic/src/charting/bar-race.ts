@@ -138,6 +138,7 @@ export type BarRacePreparation =
 
 const palette = ['#2563eb', '#dc2626', '#059669', '#9333ea', '#d97706', '#0891b2', '#be185d', '#4f46e5'] as const;
 const MAX_FRAMES = 240;
+const derivedRecordsets = new WeakSet<object>();
 
 function compare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -176,6 +177,8 @@ function error(code: ChartEligibilityErrorCode, message: string): BarRacePrepara
 
 /** Presentation consistency only. The dispatcher must authenticate the API and rights artifact first. */
 export function chartEvidenceError(result: ChartRecordset): string | undefined {
+  if (result.sourceRowsReturned !== undefined && !derivedRecordsets.has(result))
+    return 'An original API row count may only be attached by an admitted chart transform.';
   let rights;
   try {
     rights = decodeSourceRightsEvidence(result as unknown as Record<string, unknown>);
@@ -222,6 +225,23 @@ export function chartEvidenceError(result: ChartRecordset): string | undefined {
       right.pins.some((pin) => pin.role === 'provider' && pin.sha256 === publication.providerSourceSha256)))
     return 'The publisher rights artifact does not bind this physical public API source.';
   return undefined;
+}
+
+/** Preserve the admitted raw receipt while replacing rows in a reviewed presentation transform. */
+export function deriveChartRecordset(
+  input: ChartRecordset,
+  recordset: ChartRecordset['recordset'],
+  lineage: readonly ChartLineage[],
+): ChartRecordset | undefined {
+  if (input.sourceRowsReturned !== undefined || chartEvidenceError(input)) return undefined;
+  const derived: ChartRecordset = {
+    ...input,
+    sourceRowsReturned: input.recordset.rows.length,
+    lineage,
+    recordset,
+  };
+  derivedRecordsets.add(derived);
+  return derived;
 }
 
 /** Include every calendar month between the observed endpoints, with a fixed work bound. */
