@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { join } from 'node:path';
-import { test, expect } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
 const queryURL =

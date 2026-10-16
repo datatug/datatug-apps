@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 // Founder request (2026-09-11): "On every page DataTug.app in header should
 // lead to main page/screen". The brand title lives in the app shell's side

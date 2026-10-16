@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 test('home composition introduces DataTug, the public demo, and two other entry points', async ({
   page,

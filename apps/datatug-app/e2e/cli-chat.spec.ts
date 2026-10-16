@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { readFileSync } from 'node:fs';
 
 test('CLI chat deep link restores, sends, and follows terminal updates', async ({ page }) => {

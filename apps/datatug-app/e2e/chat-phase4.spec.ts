@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 test('Bookmarks migrate, preserve scoped snapshots, and support cross-session follow-ups', async ({ page }) => {
   test.setTimeout(120_000);

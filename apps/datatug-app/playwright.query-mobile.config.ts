@@ -10,6 +10,7 @@ export default defineConfig({
   outputDir: '../../coverage/apps/datatug-query-mobile/results',
   reporter: [
     ['list'],
+    ['./e2e/helpers/demodb-request-reporter.ts'],
     [
       'html',
       {

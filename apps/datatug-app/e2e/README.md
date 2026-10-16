@@ -9,7 +9,8 @@ or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 a
 | Lane (job) | pull_request / merge_group / push | nightly `schedule` | In `deploy-gate` | Live hosts |
 | --- | --- | --- | --- | --- |
 | `build`, `test` | yes | yes | yes | none |
-| `e2e-checkout`, `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | yes | none (fake GitHub, stubbed agent) |
+| `e2e-checkout` | yes, `nx affected` | yes | yes | none |
+| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
 | `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | yes | none: pinned files from local fixtures |
 | `e2e-demo-handoff` | yes, `nx affected` | yes | yes | none (local build, third parties stubbed) |
 | `journey e2e (real datatug-cli agent)` | yes, always | yes | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
@@ -25,11 +26,14 @@ out of `needs`.
 
 ### DemoDB fixtures (`e2e-demo-sqlite`)
 
-`helpers/demodb-guard.ts` answers every `*.demodb.dev` request of the demo-sqlite specs from `tmp/demodb-fixtures`
-(`DEMODB_FIXTURE_DIR`), filled by `node scripts/fetch-demodb-fixtures.mjs`: the pinned SQLite files (SHA-256 checked
-against `demo-sqlite-catalog.ts`), `corpus.json` and the dataset home pages. A valid file is never requested again, so
-a warm cache sends 0 requests and a cold one at most 1 per distinct file (5 SQLite + 1 registry + 6 pages = 12).
-CI caches the directory by the hash of the catalog and the script.
+`helpers/demodb-guard.ts` (every spec imports `test` from it; it is an automatic fixture) answers every `*.demodb.dev`
+request from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's globalSetup running
+`node scripts/fetch-demodb-fixtures.mjs`. A valid file is never requested again, so a warm cache sends 0 requests and
+a cold one at most 1 per distinct file. Scope `sqlite` (e2e-app, e2e-query-mobile): the 5 pinned SQLite files, taken
+from the public `demo-db/<dataset>` GitHub repositories and accepted only when size and SHA-256 equal the catalog pin,
+so zero requests to demodb.dev. Scope `full` (e2e-demo-sqlite): also `corpus.json` and the 6 dataset home pages, which
+exist only on the live DemoDB hosts (7 requests on a cold cache; follow-up: commit them as repository fixtures).
+CI caches the directory by the hash of the catalog and the script (restore, then save even when tests fail).
 
 * Fixture mode (default): the live request budget is 0; a test that sends one fails, and a demodb.dev URL with no
   fixture is aborted.

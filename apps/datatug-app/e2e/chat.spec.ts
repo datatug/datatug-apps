@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { type Locator } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 async function scrollGridToLastRow(grid: Locator): Promise<void> {
   await grid.evaluate((host: HTMLElement) => {

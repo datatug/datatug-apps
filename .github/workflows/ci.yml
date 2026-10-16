@@ -246,6 +246,17 @@ jobs:
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
+      # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
+      # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
+      # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
+      # (scripts/fetch-demodb-fixtures.mjs --scope sqlite) downloads each missing file once, with no retry and a stop on HTTP 429.
+      - name: Restore DemoDB fixtures (sqlite)
+        id: demodb-fixtures
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: demodb-fixtures-sqlite-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+
       - name: Smoke query context count geometry on Chromium
         if: steps.affected-app.outputs.datatug_app == 'true'
         env:
@@ -258,6 +269,13 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Save DemoDB fixtures
+        if: always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
       - name: Upload app Playwright report and traces
         if: failure()
@@ -305,11 +323,27 @@ jobs:
       - name: Install mobile WebKit browser
         run: pnpm exec playwright install --with-deps webkit
 
+      # DemoDB fixtures: the app downloads chinook.sqlite itself; the tests serve it from this cached local copy (see the
+      # e2e-app job and apps/datatug-app/e2e/helpers/demodb-guard.ts). No request to demodb.dev.
+      - name: Restore DemoDB fixtures (sqlite)
+        id: demodb-fixtures
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: demodb-fixtures-sqlite-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+
       - name: nx query mobile WebKit e2e affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Save DemoDB fixtures
+        if: always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
       - name: Upload query mobile WebKit Playwright report and traces
         if: failure()
@@ -352,40 +386,19 @@ jobs:
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
 
-      - name: Find affected datatug-app project
-        id: affected-app
-        run: |
-          projects="$(pnpm exec nx show projects --affected --json)"
-          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
-          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
-
-      - name: Install demo SQLite browsers
-        run: pnpm exec playwright install --with-deps chromium firefox webkit
-
-      # The pinned DemoDB files are served to the browsers from LOCAL fixtures, never from the live demodb.dev hosts
-      # (the 2026-10-16 incident: ~25,500 requests for one file rate limited the whole zone). The fixtures are cached
-      # by the catalog's SHA-256 pins; on a miss scripts/fetch-demodb-fixtures.mjs downloads each distinct file ONCE
-      # (SHA-256 verified, no retries, HTTP 429 stops it), and the cache is saved even if a later step fails. Skipped
-      # when the lane has nothing to run (datatug-app not affected). The nightly run refreshes the cache on the
-      # default branch, which every pull request can read.
-      - name: Restore DemoDB fixtures
+      # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
+      # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
+      # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
+      # (scripts/fetch-demodb-fixtures.mjs --scope full) downloads each missing file once, with no retry and a stop on HTTP 429.
+      - name: Restore DemoDB fixtures (full)
         id: demodb-fixtures
-        if: github.event_name == 'schedule' || steps.affected-app.outputs.datatug_app == 'true'
         uses: actions/cache/restore@v5
         with:
           path: tmp/demodb-fixtures
-          key: demodb-fixtures-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+          key: demodb-fixtures-full-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
-      - name: Fetch DemoDB fixtures (a cache miss costs one request per distinct file; a hit costs none)
-        if: github.event_name == 'schedule' || steps.affected-app.outputs.datatug_app == 'true'
-        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/fetch-demodb-fixtures.mjs
-
-      - name: Save DemoDB fixtures
-        if: (github.event_name == 'schedule' || steps.affected-app.outputs.datatug_app == 'true') && steps.demodb-fixtures.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v5
-        with:
-          path: tmp/demodb-fixtures
-          key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
+      - name: Install demo SQLite browsers
+        run: pnpm exec playwright install --with-deps chromium firefox webkit
 
       # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
       # in the browser. Runs the built app in Chromium, Firefox and WebKit against the pinned DemoDB files served from
@@ -402,6 +415,13 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+
+      - name: Save DemoDB fixtures
+        if: always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != ''
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
       - name: Upload demo SQLite e2e report
         if: failure()

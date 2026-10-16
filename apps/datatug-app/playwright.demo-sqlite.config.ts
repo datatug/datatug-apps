@@ -9,6 +9,7 @@ import { defineConfig, devices } from '@playwright/test';
 // (HTTP 429 above all: a rate limit must never be retried).
 // Nothing here replaces the OVDB server, the worker or the database. WebKit's default Playwright context has
 // no OPFS, so there the suite asserts the in-memory behaviour instead (see demo-sqlite.spec.ts).
+process.env['DEMODB_FIXTURE_SCOPE'] ??= 'full';
 const LIVE = process.env['DEMODB_E2E_MODE'] === 'live';
 const port = process.env['DATATUG_E2E_SQLITE_PORT'] || '4333';
 
