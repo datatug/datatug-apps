@@ -121,10 +121,17 @@ test('a Board card runs an arbitrary pinned SQLite edition with its own schema',
     const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Country ledger' });
     await expect(card).toBeVisible();
     await card.getByRole('button', { name: 'Run on board' }).click();
-    await expect(card.getByText('3 rows returned.')).toBeVisible({ timeout: 25_000 });
+    // #358 renders every browser-SQLite result in the shared result explorer, whose header reads "N rows · M columns"
+    // (the board card's own "N rows returned." status is for runtimes that do not hold a browser snapshot).
+    await expect(card.getByText('3 rows · 2 columns')).toBeVisible({ timeout: 25_000 });
     await expect(card.locator('table tbody')).toContainText('Alpha');
     await expect(card.locator('table tbody')).toContainText('Gamma');
-    await expect(card).toContainText('Browser SQLite snapshot (Country ledger)');
+    // The held result's own receipt names the edition (source = its connection id) and the exact fixture it ran on; the
+    // pre-#358 "Browser SQLite snapshot (<title>)" source label no longer exists.
+    await expect(card).toContainText('Sourceedition-v42');
+    await expect(card).toContainText(
+      `Verified SQLite snapshot · ${fixture.byteLength} bytes · SHA-256 ${createHash('sha256').update(fixture).digest('hex')}`,
+    );
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -507,7 +514,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     });
     await topSpendCard.getByRole('button', { name: 'Run on board' }).click();
     await expect(topSpendCard).toContainText('Environment: dev');
-    await expect(topSpendCard.getByText(/rows returned/)).toBeVisible({
+    await expect(topSpendCard.getByText(/\d+ rows · \d+ columns/)).toBeVisible({
       timeout: 25_000,
     });
     await expect(topSpendCard.locator('table tbody tr').first()).toBeVisible();

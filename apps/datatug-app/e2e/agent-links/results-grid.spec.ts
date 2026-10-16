@@ -17,6 +17,9 @@ import {
  */
 const DB_REF = `datatug://${DEMO_PROJECT}/${DEMO_DB}?env=${DEMO_ENV}`;
 
+/** The first release whose results carry the column type metadata the grid aligns numbers by (0.102.1 unless a lower one is proven). */
+const COLUMN_TYPES_CLI = '0.102.1';
+
 /** The first release whose results carry the table's column order and no `$key` (datatug-cli#435). */
 const COLUMN_ORDER_CLI = '0.102.1';
 const INVOICE_COLUMNS = [
@@ -129,14 +132,18 @@ test.describe('results grid toolbar', () => {
         (await headerNames(customer)).slice(0, CUSTOMER_COLUMNS.length),
       )
       .toEqual(CUSTOMER_COLUMNS);
-    expect(await headerNames(customer)).not.toContain('$key');
-    expect(await headerNames(customer)).not.toContain('id');
+    await expect.poll(() => headerNames(customer)).not.toContain('$key');
+    await expect.poll(() => headerNames(customer)).not.toContain('id');
   });
 
   test('right-aligns numeric columns (InvoiceId, CustomerId, Total) and leaves text columns left', async ({
     page,
     linkDaemon,
   }) => {
+    test.skip(
+      !linkDaemon.cliAtLeast(COLUMN_TYPES_CLI),
+      `Right-aligned numeric columns need the column types of datatug ${COLUMN_TYPES_CLI} or later (this one is ${linkDaemon.cliVersion || 'unknown'}).`,
+    );
     const grid = await open(page, linkDaemon, 'e2e-align');
     await expect
       .poll(async () => (await headerNames(grid)).length)
@@ -202,7 +209,7 @@ test.describe('results grid toolbar', () => {
     await expect(chooser).toBeVisible();
     const items = chooser.locator('.dt-rg-chooser-item');
     // The chooser lists the data columns only: no row number, checkbox column or internal key.
-    expect(await items.count()).toBe(original.length);
+    await expect(items).toHaveCount(original.length);
 
     // Hide the second column, then move the fourth one up above the third (a visible neighbour).
     const hidden = original[1];
@@ -232,7 +239,8 @@ test.describe('results grid toolbar', () => {
 
     await page.reload();
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
-    expect(await headerNames(grid)).toEqual(expected);
+    // The remembered order is applied a moment after the rows, so wait for it.
+    await expect.poll(() => headerNames(grid)).toEqual(expected);
 
     // Show all brings the hidden column back (at its place in the remembered order); Reset restores the table order.
     await grid.getByTestId('results-grid-columns-button').click();
@@ -249,7 +257,7 @@ test.describe('results grid toolbar', () => {
       .not.toContain('cols');
     await page.reload();
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
-    expect(await headerNames(grid)).toEqual(original);
+    await expect.poll(() => headerNames(grid)).toEqual(original);
   });
 
   test('remembers a resized column and the sort, and autosize fits the columns', async ({
@@ -304,7 +312,9 @@ test.describe('results grid toolbar', () => {
       .toBeGreaterThan(0);
     await page.reload();
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
-    expect(Math.abs((await width()) - widened)).toBeLessThanOrEqual(2);
+    await expect
+      .poll(async () => Math.abs((await width()) - widened))
+      .toBeLessThanOrEqual(2);
     await expect(
       grid.locator(
         `.ag-header-cell:not(.ag-floating-filter)[col-id="${colId}"]`,
@@ -399,7 +409,7 @@ test.describe('results grid toolbar', () => {
     const comfortable = await rowHeight();
     await grid.getByTestId('results-grid-density').click();
     await expect.poll(rowHeight).toBeLessThan(comfortable);
-    expect(await rowHeight()).toBeLessThanOrEqual(30);
+    await expect.poll(rowHeight).toBeLessThanOrEqual(30);
     await expect
       .poll(async () =>
         (await gridStorage(page)).map((s) => JSON.parse(s.value).density),
@@ -465,7 +475,7 @@ test.describe('results grid toolbar', () => {
     expect(next).not.toBe('');
     expect(next).not.toBe(start);
     await page.keyboard.press('ArrowRight');
-    expect(await focusedCol()).not.toBe(next);
+    await expect.poll(focusedCol).not.toBe(next);
     // Space checks and unchecks the row of the focused cell.
     await page.keyboard.press('Space');
     await expect(grid.getByTestId('results-grid-count')).toContainText(

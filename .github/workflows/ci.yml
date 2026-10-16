@@ -11,6 +11,9 @@ on:
   merge_group:
   schedule:
     - cron: '17 3 * * *'
+  # Manual run of the card-link e2e (agent-links) only; every other schedule-gated
+  # job stays nightly-only. A dispatch is never a push, so deploy.yml's gate skips it.
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -41,8 +44,8 @@ jobs:
           GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
         run: |
-          if [ "$EVENT_NAME" = schedule ]; then
-            echo '::notice::Scheduled nightly validation always runs the full application suites.'
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo '::notice::Scheduled or manual validation always runs the full application suites.'
             echo 'mode=full' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -835,7 +838,7 @@ jobs:
   # read-only records/schema and records/lookup routes (datatug-cli #399).
   agent-links:
     name: card-link e2e (real datatug daemon)
-    if: ${{ always() && github.event_name == 'schedule' && vars.DATATUG_LINKS_CLI_REF != '' }}
+    if: ${{ always() && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch') && vars.DATATUG_LINKS_CLI_REF != '' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
