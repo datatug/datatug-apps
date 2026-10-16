@@ -66,8 +66,31 @@ export interface BrowserPublicApiChartRecordset extends ChartRecordsetBase {
   readonly publicApiReceipt: PublicApiChartReceipt;
 }
 
-/** Presentation input; neither arm belongs in durable board JSON. */
-export type ChartRecordset = ServerChartRecordset | BrowserPublicApiChartRecordset;
+/** Browser execution evidence for an exact hash-verified immutable SQLite snapshot. */
+export interface BrowserSqliteChartRecordset extends ChartRecordsetBase {
+  readonly runtime: 'browser-sqlite';
+  readonly provenance: {
+    readonly source: string;
+    readonly collection: string;
+    readonly queryId: string;
+    readonly mode: 'snapshot';
+    readonly observedAt: string;
+    readonly executionProfile?: never;
+  };
+  readonly execution?: never;
+  readonly publicApiReceipt?: never;
+  readonly sqliteReceipt: {
+    readonly fixtureSha256: string;
+    readonly fixtureBytes: number;
+    readonly sourceId: string;
+    readonly queryId: string;
+    readonly rowsReturned: number;
+    readonly observedAt: string;
+  };
+}
+
+/** Presentation input; no arm belongs in durable board JSON. */
+export type ChartRecordset = ServerChartRecordset | BrowserPublicApiChartRecordset | BrowserSqliteChartRecordset;
 
 export interface ChartField {
   readonly column: string;
@@ -123,6 +146,7 @@ interface BarRaceDataBase {
 export type BarRaceData = BarRaceDataBase & (
   | Pick<ServerChartRecordset, 'runtime' | 'execution'> & { readonly source: ServerChartRecordset['provenance']; readonly publicApiReceipt?: never }
   | Pick<BrowserPublicApiChartRecordset, 'runtime' | 'publicApiReceipt'> & { readonly source: BrowserPublicApiChartRecordset['provenance']; readonly execution?: never }
+  | Pick<BrowserSqliteChartRecordset, 'runtime' | 'sqliteReceipt'> & { readonly source: BrowserSqliteChartRecordset['provenance']; readonly execution?: never; readonly publicApiReceipt?: never }
 );
 
 export type ChartEligibilityErrorCode =
@@ -194,6 +218,36 @@ export function chartEvidenceError(result: ChartRecordset): string | undefined {
   if (!rights.usedSourceIds?.length || !rights.sourceRights?.length ||
     rights.usedSourceIds.some((id) => !rights.sourceRights?.some((right) => right.sourceId === id && right.evidenceOrigin !== 'legacy-metadata')))
     return 'Current publisher or server source-rights evidence is required for every used chart source.';
+  if (result.runtime === 'browser-sqlite') {
+    const receipt = result.sqliteReceipt;
+    if (
+      !receipt ||
+      !/^[a-f0-9]{64}$/.test(receipt.fixtureSha256) ||
+      !Number.isSafeInteger(receipt.fixtureBytes) ||
+      receipt.fixtureBytes < 1 ||
+      receipt.queryId !== result.provenance.queryId ||
+      receipt.observedAt !== result.provenance.observedAt ||
+      receipt.rowsReturned !==
+        (result.sourceRowsReturned ?? result.recordset.rows.length) ||
+      rights.usedSourceIds.length !== 1 ||
+      rights.usedSourceIds[0] !== receipt.sourceId ||
+      !rights.sourceRights.some(
+        (right) =>
+          right.sourceId === receipt.sourceId &&
+          right.evidenceOrigin === 'publisher-verified' &&
+          right.source.databaseId === result.provenance.source &&
+          right.source.recordset === result.provenance.collection &&
+          right.pins.some(
+            (pin) =>
+              pin.role === 'provider' &&
+              pin.sha256 === receipt.fixtureSha256 &&
+              pin.bytes === receipt.fixtureBytes,
+          ),
+      )
+    )
+      return 'The browser SQLite receipt does not match its pinned snapshot, source or rows.';
+    return undefined;
+  }
   if (result.runtime !== 'browser-public-api') return undefined;
   const receipt = result.publicApiReceipt;
   try {
@@ -381,5 +435,7 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
   };
   return result.runtime === 'server'
     ? { ok: true, data: { ...shared, runtime: 'server', source: result.provenance, execution: result.execution } }
-    : { ok: true, data: { ...shared, runtime: 'browser-public-api', source: result.provenance, publicApiReceipt: result.publicApiReceipt } };
+    : result.runtime === 'browser-sqlite'
+      ? { ok: true, data: { ...shared, runtime: 'browser-sqlite', source: result.provenance, sqliteReceipt: result.sqliteReceipt } }
+      : { ok: true, data: { ...shared, runtime: 'browser-public-api', source: result.provenance, publicApiReceipt: result.publicApiReceipt } };
 }

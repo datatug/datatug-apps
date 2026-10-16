@@ -13,6 +13,7 @@ import {
   SourceRightsNoticeComponent,
   type Result,
   type BrowserPublicApiChartRecordset,
+  type BrowserSqliteChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
 
@@ -118,6 +119,7 @@ export class HeldResultPresentationComponent implements OnChanges {
     | Result
     | FederatedQueryResult
     | BrowserPublicApiChartRecordset
+    | BrowserSqliteChartRecordset
     | null = null;
   @Input() fields: CategoryBarFields | null = null;
   @Input() defaultView: 'chart' | 'grid' = 'chart';
@@ -131,6 +133,14 @@ export class HeldResultPresentationComponent implements OnChanges {
       'runtime' in this.result &&
       this.result.runtime === 'browser-public-api'
       ? this.result.publicApiReceipt
+      : null;
+  }
+
+  get sqliteReceipt() {
+    return this.result &&
+      'runtime' in this.result &&
+      this.result.runtime === 'browser-sqlite'
+      ? this.result.sqliteReceipt
       : null;
   }
 

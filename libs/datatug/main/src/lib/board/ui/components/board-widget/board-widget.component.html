@@ -111,7 +111,7 @@
       } @else if (definition()) {
         <p>
           Environment:
-          {{ boardContext()?.environment || 'select an environment' }}. Runtime:
+          {{ boardContext()?.environment || (publicQuery() ? 'dev' : 'select an environment') }}. Runtime:
           {{
             selectedRuntimeId() === 'snapshot'
               ? projectRuntimeLabel()

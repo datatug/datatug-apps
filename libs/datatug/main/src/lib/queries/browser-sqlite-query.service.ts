@@ -5,6 +5,19 @@ import type { ITextQueryRequest } from '../models/definition/query-def';
 import { QueryType } from '../models/definition/query-def';
 import { QueryDispatchError, type QueryDispatchPlan, type QueryDispatchRequest } from './query-dispatch';
 import { prepareDeclaredSqlBindings, type SqliteScalar } from './sql-bindings';
+/** Only these shipped application assets may use the current origin, including local previews. */
+const BUNDLED_FIXTURES: Readonly<
+  Record<string, { bytes: number; sha256: string }>
+> = {
+  '/assets/showcase/northwind.sqlite': {
+    bytes: 602112,
+    sha256: '279b34136771aee75d802094b3329515a2b01da65d2a20a4a9e3b58c29b4fd20',
+  },
+  '/assets/showcase/chinook.sqlite': {
+    bytes: 1007616,
+    sha256: '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
+  },
+};
 const MAX_FIXTURE_BYTES = 10 * 1024 * 1024;
 const FIXTURE_READ_TIMEOUT_MS = 10_000;
 const WORKER_TIMEOUT_MS = 10_000;
@@ -44,6 +57,9 @@ function normalizeFixture(connection: NonNullable<QueryDispatchPlan['connection'
   const fixture = declared && typeof declared.url === 'string' && typeof declared.bytes === 'number'
     ? { url: declared.url, bytes: declared.bytes, sha256: connection.fixtureSha256 ?? '' }
     : undefined;
+  const bundled = fixture && BUNDLED_FIXTURES[fixture.url];
+  if (bundled && bundled.bytes === fixture.bytes && bundled.sha256 === fixture.sha256)
+    return Object.freeze({ ...fixture, url: new URL(fixture.url, location.origin).href });
   if (!fixture || !/^https:\/\//u.test(fixture.url) || fixture.bytes < 1 || !Number.isSafeInteger(fixture.bytes) ||
     fixture.bytes > MAX_FIXTURE_BYTES || !/^[a-f0-9]{64}$/u.test(fixture.sha256)) {
     if (fixture && fixture.bytes > MAX_FIXTURE_BYTES)

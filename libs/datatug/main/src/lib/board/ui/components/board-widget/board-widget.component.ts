@@ -35,6 +35,7 @@ import {
   transformOrdersMonthlyCountryCount,
   SourceRightsNoticeComponent,
   type BrowserPublicApiChartRecordset,
+  type BrowserSqliteChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
 import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
@@ -48,6 +49,11 @@ import {
   executeSavedPublicInspectQuery,
   isSavedPublicInspectQueryId,
 } from '../../../../queries/public-data/public-chart-query';
+import { BrowserSqliteQueryService } from '../../../../queries/browser-sqlite-query.service';
+import {
+  executeBrowserShowcaseQuery,
+  isBrowserShowcaseQueryId,
+} from '../../../../queries/public-data/browser-showcase-query';
 import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { BoardChoicesService } from '../../../core/board-choices.service';
@@ -61,7 +67,10 @@ import { MAX_NESTED_TAB_DEPTH, widgetAtTabPath } from './nested-tab-path';
 
 export interface BoardResultSnapshot {
   readonly queryId: string;
-  readonly result: FederatedQueryResult | BrowserPublicApiChartRecordset;
+  readonly result:
+    | FederatedQueryResult
+    | BrowserPublicApiChartRecordset
+    | BrowserSqliteChartRecordset;
   readonly identity?: string;
   readonly previous?: BoardResultSnapshot;
 }
@@ -91,6 +100,7 @@ export class BoardWidgetComponent {
   });
   private readonly queries = inject(QueriesService);
   private readonly dispatcher = inject(QueryDispatchService);
+  private readonly browserSqlite = inject(BrowserSqliteQueryService);
   private readonly destroyRef = inject(DestroyRef);
   private activeRun?: AbortController;
   private activeIdentity?: string;
@@ -162,7 +172,8 @@ export class BoardWidgetComponent {
     return (
       this.showcase() &&
       !!id &&
-      (isSavedPublicChartQueryId(id) ||
+      (isBrowserShowcaseQueryId(id) ||
+        isSavedPublicChartQueryId(id) ||
         (this.widgetDef()?.name === 'SQL' && isSavedPublicInspectQueryId(id)))
     );
   });
@@ -202,7 +213,10 @@ export class BoardWidgetComponent {
     const widget = this.chartWidgetDef();
     const result = this.result();
     if (widget?.chart?.type !== 'bar-race' || !result) return {};
-    if (!('runtime' in result) || result.runtime !== 'browser-public-api')
+    if (
+      !('runtime' in result) ||
+      !['browser-public-api', 'browser-sqlite'].includes(result.runtime)
+    )
       return { error: 'This race requires an admitted public chart result.' };
     const transform = widget.sources[0]?.transform;
     const transformed = transform
@@ -473,7 +487,9 @@ export class BoardWidgetComponent {
         return 'OVDB connection';
       default:
         return this.publicQuery()
-          ? 'Verified public API'
+          ? isBrowserShowcaseQueryId(this.queryId() ?? '')
+            ? 'Pinned browser SQLite snapshot'
+            : 'Verified public API'
           : 'Published browser snapshot';
     }
   }
@@ -676,13 +692,21 @@ export class BoardWidgetComponent {
         (!context?.executionTarget ||
           context.executionTarget.kind === 'browser-sqlite') &&
         !context?.runtimeBinding
-          ? isSavedPublicInspectQueryId(queryId)
-            ? await executeSavedPublicInspectQuery(queryId, definition, {
+          ? isBrowserShowcaseQueryId(queryId)
+            ? await executeBrowserShowcaseQuery(this.browserSqlite, {
+                projectRef: ref,
+                definition,
+                queryId,
+                environment: context?.environment,
                 signal: controller.signal,
               })
-            : await executeSavedPublicChartQuery(queryId, definition, {
-                signal: controller.signal,
-              })
+            : isSavedPublicInspectQueryId(queryId)
+              ? await executeSavedPublicInspectQuery(queryId, definition, {
+                  signal: controller.signal,
+                })
+              : await executeSavedPublicChartQuery(queryId, definition, {
+                  signal: controller.signal,
+                })
           : await this.dispatcher.execute({
               projectRef: ref,
               definition,
