@@ -27,6 +27,10 @@ import {
 } from '../../core/project-context';
 import { IProjectFull, IProjectSummary } from '../../models/definition/project';
 import { buildAgentUrl } from '../repo/agent-url';
+import {
+  formatGithubProjectId,
+  readGithubProjectId,
+} from '@datatug/project-address';
 import { SharedProjectSummaryService } from './shared-project-summary.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 import type { ProjectBillingIntent } from './project-query-api.service';
@@ -133,13 +137,20 @@ export class ProjectService {
   }
 
   public getFull(projectRef: IProjectRef): Observable<IProjectFull> {
-    if (projectRef?.spaceID !== undefined || projectRef?.projectApi === 'cloud')
-      return throwError(
-        () => new Error('Shared project full reads are unavailable'),
-      );
     if (!projectRef) {
       throw new Error('target is a required parameter for getFull()');
     }
+    if (
+      projectRef.spaceID !== undefined ||
+      projectRef.projectApi !== undefined ||
+      projectRef.branch !== undefined
+    )
+      return throwError(
+        () =>
+          new Error(
+            'Project full reads are unavailable for this connection or branch',
+          ),
+      );
     const cacheKey = JSON.stringify([
       projectRef.storeId,
       projectRef.projectId,
@@ -184,6 +195,22 @@ export class ProjectService {
       storeId === STORE_TYPE_GITHUB ||
       storeId.startsWith(GITLAB_REPO_PREFIX)
     ) {
+      let projectId = projectRef.projectId;
+      if (projectRef.branch) {
+        const address = readGithubProjectId(projectId);
+        if (!address.ok)
+          return throwError(
+            () => new Error('Invalid GitHub project reference'),
+          );
+        if (address.id.ref && address.id.ref !== projectRef.branch)
+          return throwError(
+            () => new Error('Project branch conflicts with its GitHub address'),
+          );
+        projectId = formatGithubProjectId({
+          ...address.id,
+          ref: projectRef.branch,
+        });
+      }
       const storeService =
         this.datatugStoreServiceFactory.getDatatugStoreService(storeId);
       return storeService.getProjectSummary(projectId);
@@ -191,7 +218,10 @@ export class ProjectService {
     return this.http.get<IProjectSummary>(
       buildAgentUrl(storeId, '/projects/project_summary'),
       {
-        params: { id: projectId },
+        params: {
+          id: projectId,
+          ...(projectRef.branch ? { branch: projectRef.branch } : {}),
+        },
       },
     );
   }

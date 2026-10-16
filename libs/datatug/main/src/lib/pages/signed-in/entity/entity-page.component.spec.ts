@@ -402,8 +402,7 @@ describe('EntityPage source preview states (zoneless)', () => {
     await fixture.whenStable();
 
     expect(getEntity).toHaveBeenCalledWith(
-      parsed.storeId,
-      parsed.projectId,
+      { storeId: parsed.storeId, projectId: parsed.projectId },
       'Album',
     );
     expect(component.entityLoadState()).toBe('ready');
@@ -465,7 +464,7 @@ describe('EntityPage source preview states (zoneless)', () => {
     );
   });
 
-  it('fences branch-qualified entity reads and clears data when query context changes', async () => {
+  it('reads branch-qualified entities and clears stale source data when context changes', async () => {
     const getEntity = TestBed.inject(EntityService)
       .getEntity as unknown as ReturnType<typeof vi.fn>;
     fixture.detectChanges();
@@ -502,19 +501,25 @@ describe('EntityPage source preview states (zoneless)', () => {
         key === 'projectApi' ? 'local' : key === 'branch' ? 'work' : null,
     });
     httpGet$.next([['stale']]);
+    getEntity$.next({ id: 'Country', dbo: { id: 'Country', fields: [] } });
     await fixture.whenStable();
-    expect(component.entityLoadState()).toBe('unsupported');
+    expect(component.entityLoadState()).toBe('ready');
     expect(component.sourceData()).toEqual([]);
-    expect(getEntity).toHaveBeenCalledTimes(1);
-    expect(fixture.nativeElement.innerHTML).toContain(
-      'Entity details are unavailable for this project connection or branch.',
+    expect(getEntity).toHaveBeenCalledTimes(2);
+    expect(getEntity).toHaveBeenLastCalledWith(
+      {
+        storeId: 'http-localhost:8989',
+        projectId: 'demo',
+        projectApi: 'local',
+        branch: 'work',
+      },
+      'Country',
     );
-    expect(fixture.nativeElement.innerHTML).not.toContain('Loading entity');
 
     queryParamMap$.next({ get: () => null });
     getEntity$.next({ id: 'Country', dbo: { id: 'Country', fields: [] } });
     await fixture.whenStable();
-    expect(getEntity).toHaveBeenCalledTimes(2);
+    expect(getEntity).toHaveBeenCalledTimes(3);
     expect(component.entityLoadState()).toBe('ready');
   });
 

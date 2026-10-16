@@ -289,7 +289,7 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
     expect(fixture.nativeElement.innerHTML).toContain('Delete entity');
   });
 
-  it('does not show legacy-store entities for a branch-qualified project', async () => {
+  it('shows branch-qualified entities without exposing write actions', async () => {
     const getAllEntities = TestBed.inject(EntityService)
       .getAllEntities as unknown as ReturnType<typeof vi.fn>;
     fixture.detectChanges();
@@ -300,14 +300,16 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
         branch: 'work',
       },
     });
+    getAllEntities$.next([]);
     await fixture.whenStable();
 
-    expect(component.unsupportedProject()).toBe(true);
+    expect(component.unsupportedProject()).toBe(false);
     expect(component.canMutateEntities()).toBe(false);
-    expect(getAllEntities).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.innerHTML).toContain(
-      'Entities are unavailable for this project connection or branch.',
-    );
+    expect(getAllEntities).toHaveBeenCalledWith({
+      projectId: 'demo',
+      storeId: 'http-localhost:8989',
+      branch: 'work',
+    });
     expect(fixture.nativeElement.innerHTML).not.toContain('Loading...');
     expect(fixture.nativeElement.innerHTML).not.toContain('New entity');
     expect(fixture.nativeElement.innerHTML).not.toContain('Delete entity');

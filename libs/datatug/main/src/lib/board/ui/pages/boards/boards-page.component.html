@@ -23,6 +23,19 @@
       <ion-button (click)="retryLoad()">Retry loading boards</ion-button>
     </div>
   } @else {
+    @if (favoriteBoards().length) {
+      <section class="ion-padding" aria-label="Favorite boards">
+        <h2>Favorites</h2>
+        <p>Saved in this browser.</p>
+        @for (board of favoriteBoards(); track board.id) {
+          <p>
+            <a [routerLink]="boardLink(board.id)">{{
+              board.title || board.id
+            }}</a>
+          </p>
+        }
+      </section>
+    }
     <sneat-card-list
       [isLoading]="!boards()"
       noItemsText="No boards yet"

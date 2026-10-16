@@ -7,7 +7,7 @@ const hasControlCharacter = (value: string): boolean =>
   });
 
 export function projectApiQuery(ref: IProjectRef): string {
-  if (!ref.projectApi) return '';
+  if (ref.projectApi === undefined) return '';
   if (
     !['cloud', 'local'].includes(ref.projectApi) ||
     !ref.branch ||

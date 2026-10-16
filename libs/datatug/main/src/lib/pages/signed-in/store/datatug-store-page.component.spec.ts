@@ -592,13 +592,18 @@ describe('StorePageComponent', () => {
       expect(f.nativeElement.querySelector('h3')).toBeNull();
     });
 
-    it('anonymous + agent store: still shows "Please sign in to see projects" (current behaviour preserved)', () => {
+    it('anonymous + explicit loopback CLI: displays its authorized project list', () => {
       authState.next({ status: 'notAuthenticated', record: undefined });
-
-      const f = render('http-localhost:8989', undefined);
-
-      expect(html(f)).toContain('Please sign in to see projects');
+      const f = render('http-localhost:8989', [{ id: 'local-project', title: 'Local project', access: 'private' }]);
+      expect(html(f)).not.toContain('Please sign in to see projects');
       expect(html(f)).not.toContain('Open a GitHub project');
+      expect(f.nativeElement.querySelector('h3')?.textContent).toBe('Local project');
+    });
+
+    it.each(['http-agent.example:8989', 'http-localhost.evil.example:8989', 'http-localhost:8989@evil.example', 'http-localhost:99999', 'unknown-store'])('anonymous + %s retains the cloud sign-in gate', (storeId) => {
+      authState.next({ status: 'notAuthenticated', record: undefined });
+      const f = render(storeId, undefined);
+      expect(html(f)).toContain('Please sign in to see projects');
       expect(f.nativeElement.querySelector('h3')).toBeNull();
     });
 

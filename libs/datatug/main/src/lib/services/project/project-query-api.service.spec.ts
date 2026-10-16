@@ -34,6 +34,7 @@ describe('ProjectQueryApiService', () => {
   };
   beforeEach(() => {
     vi.clearAllMocks();
+    api.get.mockImplementation(() => of({}));
     TestBed.configureTestingModule({
       providers: [
         ProjectQueryApiService,
@@ -127,9 +128,72 @@ describe('ProjectQueryApiService', () => {
     expect(params.get('branch')).toBe('work');
     expect(http.get).not.toHaveBeenCalled();
   });
+  it('rejects a branch qualifier that conflicts with the branch embedded in the project address', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    await expect(
+      firstValueFrom(
+        service.boards({
+          storeId: 'github.com',
+          projectId: 'repo@owner@folder@old',
+          projectApi: 'cloud',
+          branch: 'new',
+        }),
+      ),
+    ).rejects.toThrow('conflicts');
+    expect(api.get).not.toHaveBeenCalled();
+    expect(http.get).not.toHaveBeenCalled();
+  });
+  it('routes fixed asset reads through the full-ref transport', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    const ref = {
+      storeId: 'github.com',
+      projectId: 'demo@buyer@project',
+      projectApi: 'cloud' as const,
+      branch: 'topic',
+    };
+    await firstValueFrom(service.boards(ref));
+    await firstValueFrom(service.board(ref, 'board_1'));
+    await firstValueFrom(service.entities(ref));
+    await firstValueFrom(service.entity(ref, 'Entity_1'));
+    await firstValueFrom(service.environments(ref));
+    expect(api.get.mock.calls.map((call) => call[0])).toEqual([
+      'datatug/boards/all_boards',
+      'datatug/boards/board',
+      'datatug/entities/all_entities',
+      'datatug/entities/entity',
+      'datatug/environments/all_environments',
+    ]);
+    for (const [, params] of api.get.mock.calls.slice(0, 5)) {
+      expect((params as HttpParams).get('branch')).toBe('topic');
+      expect((params as HttpParams).get('project')).toBe('demo@buyer@project');
+    }
+    expect((api.get.mock.calls[1][1] as HttpParams).get('id')).toBe('board_1');
+    expect((api.get.mock.calls[3][1] as HttpParams).get('id')).toBe('Entity_1');
+  });
+  it('surfaces private asset authorization denial on the shared denial stream', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    const denied: unknown[] = [];
+    service.authorityDenied.subscribe((ref) => denied.push(ref));
+    api.get.mockImplementation(() => throwError(() => ({ status: 403 })));
+    const ref = {
+      storeId: 'github.com',
+      projectId: 'demo@buyer@project',
+      projectApi: 'cloud' as const,
+      branch: 'topic',
+    };
+    await expect(firstValueFrom(service.entities(ref))).rejects.toMatchObject({
+      status: 403,
+    });
+    expect(denied).toEqual([ref]);
+    expect(http.get).not.toHaveBeenCalled();
+  });
   it('uses the authenticated Space-qualified transport for shared query read, catalogue and save', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
-    const ref = { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' };
+    const ref = {
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_1',
+    };
     await firstValueFrom(service.folder(ref));
     await firstValueFrom(service.read(ref, 'q'));
     await firstValueFrom(service.connectionCatalog(ref));
@@ -140,13 +204,19 @@ describe('ProjectQueryApiService', () => {
       expect(params.get('project')).toBe('project_1');
       expect(params.has('branch')).toBe(false);
     }
-    await firstValueFrom(service.save(ref, {
-      operationId: 'operation_1', ifNoneMatch: true,
-      query: toProjectQueryWire(createHostedDemoDbQuery('q')),
-    }));
+    await firstValueFrom(
+      service.save(ref, {
+        operationId: 'operation_1',
+        ifNoneMatch: true,
+        query: toProjectQueryWire(createHostedDemoDbQuery('q')),
+      }),
+    );
     expect(api.post.mock.calls[0][1]).toMatchObject({
-      storage: 'firestore', spaceID: 'space_1', project: 'project_1',
-      operationId: 'operation_1', ifNoneMatch: true,
+      storage: 'firestore',
+      spaceID: 'space_1',
+      project: 'project_1',
+      operationId: 'operation_1',
+      ifNoneMatch: true,
     });
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('branch');
     expect(http.get).not.toHaveBeenCalled();

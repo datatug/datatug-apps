@@ -342,6 +342,75 @@ describe('SqlEditorPage', () => {
     component.queryFolderPath = 'sales';
     expect(component.queriesBackHref).toBe('/?folder=sales');
   });
+
+  it('does not normalize after Back when another project has the same Query URL', () => {
+    const router = TestBed.inject(Router) as unknown as {
+      navigate: ReturnType<typeof vi.fn>;
+      routerState: { root: { children: unknown[] } };
+    };
+    const cachedQueryRoute = TestBed.inject(ActivatedRoute);
+    const replacementQueryRoute = {
+      snapshot: { ...cachedQueryRoute.snapshot },
+      children: [],
+    } as unknown as ActivatedRoute;
+    const differentIdQueryRoute = {
+      snapshot: {
+        ...cachedQueryRoute.snapshot,
+        queryParamMap: convertToParamMap({ id: 'query-b' }),
+        paramMap: convertToParamMap({ queryId: 'query-b' }),
+      },
+      children: [],
+    } as unknown as ActivatedRoute;
+    router.routerState = {
+      root: {
+        children: [
+          { children: [replacementQueryRoute] },
+          { children: [differentIdQueryRoute] },
+        ],
+      },
+    };
+
+    component.ionViewDidEnter();
+
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('does not normalize while a navigation is in flight', () => {
+    const router = TestBed.inject(Router) as unknown as {
+      currentNavigation: ReturnType<typeof vi.fn>;
+      navigate: ReturnType<typeof vi.fn>;
+      routerState: { root: { children: unknown[] } };
+    };
+    router.routerState = {
+      root: { children: [TestBed.inject(ActivatedRoute)] },
+    };
+    router.currentNavigation.mockReturnValue({ id: 2 });
+
+    component.ionViewWillEnter();
+    component.ionViewDidEnter();
+
+    expect(router.navigate).not.toHaveBeenCalled();
+  });
+
+  it('normalizes the URL when the Query route is active again on reentry', () => {
+    const componentRoute = TestBed.inject(ActivatedRoute);
+    const activeRouteProxy = {
+      snapshot: componentRoute.snapshot,
+      children: [],
+    } as unknown as ActivatedRoute;
+    const router = TestBed.inject(Router) as unknown as {
+      navigate: ReturnType<typeof vi.fn>;
+      routerState: { root: { children: unknown[] } };
+    };
+    router.routerState = {
+      root: { children: [activeRouteProxy] },
+    };
+
+    component.ionViewWillEnter();
+    component.ionViewDidEnter();
+
+    expect(router.navigate).toHaveBeenCalledOnce();
+  });
 });
 
 describe('QueryPageComponent — new SQL draft navigation', () => {

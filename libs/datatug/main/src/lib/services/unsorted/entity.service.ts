@@ -1,77 +1,60 @@
+import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { catchError, Observable, of, take } from 'rxjs';
-import { map, mergeMap, tap } from 'rxjs/operators';
-import { HttpClient } from '@angular/common/http';
+import { map, switchMap, tap } from 'rxjs/operators';
 import { IEntity } from '../../models/definition/metapedia/entity';
 import { StoreApiService } from '../repo/store-api.service';
 import { ProjectItemsByAgent } from './caching';
 import { IRecord, mapToRecord } from '@sneat/data';
-import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
-import { IHttpRequestOptions } from '@sneat/api';
 import { IProjectRef } from '../../core/project-context';
-import { GithubProjectReaderService } from '../repo/github/github-project-reader.service';
-
-const isGithubStoreId = (storeId: string): boolean =>
-  storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
+import { ProjectAssetsReadService } from '../project/project-assets-read.service';
 
 @Injectable()
 export class EntityService {
   private readonly agentProvider = inject(StoreApiService);
   private readonly http = inject(HttpClient);
-  private readonly githubReader = inject(GithubProjectReaderService);
+  private readonly assets = inject(ProjectAssetsReadService);
 
   private cache = new ProjectItemsByAgent<IRecord<IEntity>>();
 
   public getEntity = (
-    store: string,
-    project: string,
+    ref: IProjectRef,
     entityId: string,
-  ): Observable<IRecord<IEntity>> => {
-    switch (store) {
-      case STORE_ID_GITHUB_COM:
-      case STORE_TYPE_GITHUB:
-        return this.getEntityFromGithub(project, entityId);
-      default: {
-        const options: IHttpRequestOptions = {
-          params: { project, id: entityId },
-        };
-        const $ = this.agentProvider.get<IEntity>(
-          store,
-          '/entities/entity',
-          options,
-        );
-        return $.pipe(mapToRecord<IEntity>());
-      }
-    }
-  };
-
-  // Routed through `GithubProjectReaderService.getEntity()` (which reads
-  // `entities/<id>/<id>.entity.json`, respecting `projectId`'s full
-  // `"repo@org@folder"` form) rather than this method's own old ad hoc
-  // `project.split('@')` — that used to destructure only the first two
-  // parts, silently dropping a third `@folder` segment (e.g.
-  // `demo-project-1` in `datatug-demo-projects@datatug@demo-project-1`) and
-  // building a URL one directory level too shallow, a 404 on every real
-  // entity in this project.
-  private getEntityFromGithub(
-    project: string,
-    entityId: string,
-  ): Observable<IRecord<IEntity>> {
-    return this.githubReader.getEntity(project, entityId).pipe(
-      mergeMap((data) => {
-        const entity = data as unknown as IEntity;
-        if (!entity.extends?.def) {
-          return of(entity);
-        }
-        return this.http.get<IEntity>(entity.extends.def).pipe(
-          map((def) => ({
-            ...entity,
-            fields: def.fields,
-            options: def.options,
-          })),
-        );
-      }),
+  ): Observable<IRecord<IEntity>> =>
+    this.assets.entity(ref, entityId).pipe(
+      switchMap((entity) => this.withInheritedDefinition(entity)),
       mapToRecord<IEntity>(),
+    );
+
+  private withInheritedDefinition(entity: IEntity): Observable<IEntity> {
+    const source = entity.extends?.def;
+    if (!source) return of(entity);
+    let url: URL;
+    try {
+      url = new URL(source);
+    } catch {
+      return of(entity);
+    }
+    if (
+      url.protocol !== 'https:' ||
+      url.hostname !== 'raw.githubusercontent.com' ||
+      url.username ||
+      url.password ||
+      url.port ||
+      url.search ||
+      url.hash ||
+      url.pathname.length > 2048
+    ) {
+      return of(entity);
+    }
+    return this.http.get<Partial<IEntity>>(url.toString()).pipe(
+      map((definition) => ({
+        ...entity,
+        fields: Array.isArray(definition.fields)
+          ? definition.fields
+          : entity.fields,
+        options: definition.options ?? entity.options,
+      })),
     );
   }
 
@@ -79,37 +62,34 @@ export class EntityService {
     from: IProjectRef,
     forceReload?: boolean,
   ): Observable<IRecord<IEntity>[]> => {
-    let o = this.cache.getItems$(from);
-    if (!o || forceReload) {
-      const entities$ = this.cache.byRepo$[from.storeId]?.[from.projectId];
-      const records = entities$?.getValue();
-      const withState = (entities: { id: string }[]) =>
+    if (
+      from.projectApi ||
+      from.branch ||
+      from.spaceID ||
+      from.storeId === 'firestore'
+    ) {
+      return this.assets.entities(from).pipe(
+        map((entities) =>
+          entities.map((entity) => ({
+            id: entity.id,
+            dbo: entity as IEntity,
+          })),
+        ),
+      );
+    }
+    const cached = this.cache.getItems$(from);
+    if (cached && !forceReload) return cached;
+    const previous = this.cache.getSubject(from)?.getValue() ?? [];
+    const loaded = this.assets.entities(from).pipe(
+      map((entities) =>
         entities.map((entity) => ({
           id: entity.id,
           dbo: entity as IEntity,
-          state: records?.find((v) => v.id === entity.id)?.state,
-        }));
-      o = isGithubStoreId(from.storeId)
-        ? this.githubReader.listEntityIds(from.projectId).pipe(
-            map((ids) => withState(ids.map((id) => ({ id })))),
-          )
-        : this.agentProvider
-            .get<IEntity[]>(from.storeId, '/entities/all_entities', {
-              params: { project: from.projectId },
-            })
-            .pipe(
-              map((entities) => {
-                for (const entity of entities) {
-                  if (!entity.id) {
-                    throw 'entity is missing required attribute: id';
-                  }
-                }
-                return withState(entities as { id: string }[]);
-              }),
-            );
-      o = this.cache.setItems$(from, o);
-    }
-    return o;
+          state: previous.find((item) => item.id === entity.id)?.state,
+        })),
+      ),
+    );
+    return this.cache.setItems$(from, loaded);
   };
 
   public createEntity = (
@@ -117,7 +97,7 @@ export class EntityService {
     entity: IEntity,
   ): Observable<IRecord<IEntity>> => {
     const { storeId, projectId } = projectRef;
-    const entities$ = this.cache.byRepo$[storeId][projectId];
+    const entities$ = this.cache.getSubject(projectRef);
     return this.agentProvider
       .post<IRecord<IEntity>>(storeId, '/entities/create_entity', entity, {
         params: { project: projectId },
@@ -128,7 +108,10 @@ export class EntityService {
           if (!id) {
             throw new Error('entity has no ID');
           }
-          entities$.next([...entities$.getValue(), { id, dbo: entity }]);
+          entities$?.next([
+            ...(entities$?.getValue() ?? []),
+            { id, dbo: entity },
+          ]);
         }),
       );
   };
@@ -146,10 +129,10 @@ export class EntityService {
     from: IProjectRef,
     entityId: string,
   ): Observable<void> => {
-    const entities$ = this.cache.byRepo$[from.storeId][from.projectId];
+    const entities$ = this.cache.getSubject(from);
     const hasEntity = (entities: { id: string }[]) =>
       entities.some((v) => v.id === entityId);
-    entities$.pipe(take(1)).subscribe((entities) => {
+    entities$?.pipe(take(1)).subscribe((entities) => {
       if (hasEntity(entities)) {
         entities$.next(
           entities.map((entity) =>
@@ -171,7 +154,7 @@ export class EntityService {
       .pipe(
         // delay(1000),
         tap(() => {
-          entities$.pipe(take(1)).subscribe((entities) => {
+          entities$?.pipe(take(1)).subscribe((entities) => {
             if (hasEntity(entities)) {
               entities$.next(
                 entities.filter((entity) => entity.id !== entityId),
@@ -180,7 +163,7 @@ export class EntityService {
           });
         }),
         catchError((err /*, caught*/) => {
-          entities$.pipe(take(1)).subscribe((entities) => {
+          entities$?.pipe(take(1)).subscribe((entities) => {
             if (hasEntity(entities)) {
               entities$.next(
                 entities.map((entity) => {
