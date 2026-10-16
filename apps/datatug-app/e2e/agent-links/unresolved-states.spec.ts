@@ -45,20 +45,27 @@ test.describe('links the agent cannot resolve', () => {
     expect(writes).toEqual([]);
   });
 
-  test('a stopped agent is agent-unreachable; after it starts again, the spent secret makes the link expired', async ({
+  test('a stopped agent is agent-unreachable; after it restarts, the old session is link-expired; a fresh link opens', async ({
     page,
     linkDaemon,
   }) => {
     test.setTimeout(90_000);
     const writes = watchWrites(page, linkDaemon.port);
+    // Open a link while the agent runs: the page now holds its session token.
     const link = linkDaemon.link({ table: 'Album', records: true, limit: 3 });
+    await page.goto(link);
+    await expect(page.getByTestId('records-grid').locator('tbody tr')).toHaveCount(3, { timeout: 30_000 });
+    // A code is never replayed after an exchange attempt (#327), so the agent going away is seen with the token.
     linkDaemon.stop();
     try {
-      await expectState(page, link, 'agent-unreachable', 'datatug daemon start');
+      await page.reload();
+      const card = page.locator('[data-testid="link-problem"][data-problem="agent-unreachable"]');
+      await expect(card).toBeVisible({ timeout: 30_000 });
+      await expect(card).toContainText('datatug daemon start');
     } finally {
       linkDaemon.start();
     }
-    // The code was minted from the old agent's secret: Check again exchanges it with the new agent, which refuses.
+    // The restarted agent has a new secret: Check again sends the old token, which it refuses.
     await page.getByTestId('link-check-again').click();
     await expect(page.locator('[data-testid="link-problem"][data-problem="link-expired"]')).toBeVisible({
       timeout: 30_000,
