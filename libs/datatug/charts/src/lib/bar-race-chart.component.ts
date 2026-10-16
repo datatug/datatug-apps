@@ -78,6 +78,9 @@ export class BarRaceChartComponent
   implements AfterViewInit, OnChanges, OnDestroy
 {
   @Input() views: BarRaceChartViews | null = null;
+  @Input() initialMode: 'period' | 'cumulative' = 'period';
+  @Input() initialTopN = 10;
+  @Input() active = true;
   @Input() loading = false;
   @Input() error: string | null = null;
   @Input() inspectable = false;
@@ -156,12 +159,22 @@ export class BarRaceChartComponent
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['views']) {
       this.stop();
-      this.mode.set('period');
+      this.mode.set(
+        this.initialMode === 'cumulative' ? 'cumulative' : 'period',
+      );
       this.frameIndex.set(0);
       this.validationError.set(this.validateViews());
-      this.topN.set(Math.min(10, this.maxTopN));
+      this.topN.set(
+        Math.max(
+          1,
+          Math.min(
+            Number.isSafeInteger(this.initialTopN) ? this.initialTopN : 10,
+            this.maxTopN,
+          ),
+        ),
+      );
     }
-    if (this.loading || this.error) this.stop();
+    if (this.loading || this.error || !this.active) this.stop();
     this.render();
   }
 
@@ -321,7 +334,14 @@ export class BarRaceChartComponent
           description: `Bar chart for ${this.frame?.period}. The synchronized table lists exact values.`,
         },
       },
-      grid: { left: 12, right: 42, top: 8, bottom: 22, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
+      grid: {
+        left: 12,
+        right: 42,
+        top: 8,
+        bottom: 22,
+        outerBoundsMode: 'same',
+        outerBoundsContain: 'axisLabel',
+      },
       xAxis: {
         type: 'value',
         min: entries.some((entry) => entry.value < 0) ? 'dataMin' : 0,

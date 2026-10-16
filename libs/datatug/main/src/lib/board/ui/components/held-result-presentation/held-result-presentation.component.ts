@@ -120,6 +120,7 @@ export class HeldResultPresentationComponent implements OnChanges {
     | BrowserPublicApiChartRecordset
     | null = null;
   @Input() fields: CategoryBarFields | null = null;
+  @Input() defaultView: 'chart' | 'grid' = 'chart';
   @Input() loading = false;
   @Input() error: string | null = null;
 
@@ -186,12 +187,14 @@ export class HeldResultPresentationComponent implements OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['result'] || changes['fields']) {
+    if (changes['result'] || changes['fields'] || changes['defaultView']) {
       this.prepared =
         this.result && this.fields
           ? prepareCategoryBars(this.result, this.fields)
           : null;
-      this.view.set(this.prepared?.ok ? 'chart' : 'grid');
+      this.view.set(
+        this.prepared?.ok && this.defaultView !== 'grid' ? 'chart' : 'grid',
+      );
       this.topN.set(
         Math.min(
           10,

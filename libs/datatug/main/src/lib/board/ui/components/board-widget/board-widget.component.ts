@@ -116,6 +116,7 @@ export class BoardWidgetComponent {
       card: this.cardId(),
       query: this.queryId(),
       definition: this.definition(),
+      bindings: this.chartWidgetDef()?.sources?.[0]?.parameters,
       context: this.boardContext(),
       actor: this.choices.actor(),
       runtime: this.selectedRuntimeId(),
@@ -134,12 +135,23 @@ export class BoardWidgetComponent {
     }
     return undefined;
   });
-  readonly showcase = computed(() =>
-    isShowcaseTutorialBoard(this.projectRef(), {
-      id: this.boardId() ?? '',
-      title: '',
-    }),
-  );
+  readonly showcase = computed(() => {
+    const ref = this.projectRef();
+    if (
+      !ref ||
+      !['github', 'github.com'].includes(ref.storeId) ||
+      ref.projectApi
+    )
+      return false;
+    try {
+      return isShowcaseTutorialBoard(ref, {
+        id: this.boardId() ?? '',
+        title: '',
+      });
+    } catch {
+      return false;
+    }
+  });
   readonly publicQuery = computed(() => {
     const id = this.queryId();
     return (
@@ -155,6 +167,14 @@ export class BoardWidgetComponent {
       ? (this.widgetDef()?.data as ChartWidgetDef)
       : undefined,
   );
+  readonly raceInitialMode = computed(() => {
+    const chart = this.chartWidgetDef()?.chart;
+    return chart?.type === 'bar-race' ? chart.mode : 'period';
+  });
+  readonly raceInitialTopN = computed(() => {
+    const chart = this.chartWidgetDef()?.chart;
+    return chart?.type === 'bar-race' ? chart.topN : 10;
+  });
   readonly barFields = computed<CategoryBarFields | null>(() => {
     const widget = this.chartWidgetDef();
     return widget?.chart?.type === 'bar'
@@ -574,6 +594,17 @@ export class BoardWidgetComponent {
         return;
       const context = this.boardContext();
       const parameters = this.typedParameters(definition);
+      if (
+        this.publicQuery() &&
+        this.selectedRuntimeId() === 'snapshot' &&
+        (!context?.executionTarget ||
+          context.executionTarget.kind === 'browser-sqlite') &&
+        !context?.runtimeBinding &&
+        Object.keys(parameters).length
+      )
+        throw new QueryDispatchError(
+          'This pinned public query does not support chart parameter bindings. Open the saved query to choose a parameterized runtime.',
+        );
       const selectedRuntimeId = this.selectedRuntimeId();
       if (
         selectedRuntimeId !== 'snapshot' &&
@@ -587,10 +618,6 @@ export class BoardWidgetComponent {
       if (JSON.stringify(definition) !== JSON.stringify(this.definition()))
         throw new Error(
           'This saved query changed. Reopen the board before running it.',
-        );
-      if (this.widgetDef()?.name === 'chart' && !this.publicQuery())
-        throw new Error(
-          'This chart source is not admitted for public chart execution.',
         );
       if (
         this.publicQuery() &&
@@ -726,8 +753,93 @@ export class BoardWidgetComponent {
   ): Readonly<Record<string, TypedValue>> {
     const supplied = this.boardContext()?.parameters ?? {};
     const values: Record<string, TypedValue> = {};
+    const chartSource = this.chartWidgetDef()?.sources?.[0];
+    const bindings = chartSource?.parameters;
+    const boundValues = new Map<string, unknown>();
+    if (bindings !== undefined) {
+      if (!Array.isArray(bindings))
+        throw new QueryDispatchError(
+          'This chart has malformed parameter bindings.',
+        );
+      for (const binding of bindings) {
+        if (
+          !binding ||
+          typeof binding !== 'object' ||
+          typeof binding.id !== 'string' ||
+          !binding.id ||
+          binding.id.trim() !== binding.id ||
+          boundValues.has(binding.id) ||
+          !definition.parameters?.some(
+            (parameter) => parameter.id === binding.id,
+          )
+        )
+          throw new QueryDispatchError(
+            'This chart has an unknown or duplicate parameter binding.',
+          );
+        const hasValue = Object.prototype.hasOwnProperty.call(binding, 'value');
+        const hasBoardParameter = Object.prototype.hasOwnProperty.call(
+          binding,
+          'boardParameterId',
+        );
+        if (hasValue && hasBoardParameter)
+          throw new QueryDispatchError(
+            'This chart parameter has conflicting bindings.',
+          );
+        if (hasBoardParameter) {
+          const id = binding.boardParameterId;
+          if (
+            typeof id !== 'string' ||
+            !id ||
+            id.trim() !== id ||
+            supplied[id]?.value === undefined
+          )
+            throw new QueryDispatchError(
+              'This chart parameter references an unavailable board parameter.',
+            );
+          boundValues.set(binding.id, supplied[id].value);
+        } else if (hasValue) {
+          if (binding.value === undefined)
+            throw new QueryDispatchError(
+              'This chart parameter has no constant value.',
+            );
+          boundValues.set(binding.id, binding.value);
+        } else {
+          const parameter = definition.parameters?.find(
+            (parameter) => parameter.id === binding.id,
+          );
+          boundValues.set(
+            binding.id,
+            (parameter as { defaultValue?: unknown } | undefined)?.defaultValue,
+          );
+        }
+      }
+    }
     for (const parameter of definition.parameters ?? []) {
-      const raw = supplied[parameter.id]?.value;
+      if (
+        chartSource &&
+        ![
+          'integer',
+          'number',
+          'float',
+          'money',
+          'boolean',
+          'bit',
+          'date',
+          'datetime',
+          'string',
+          'text',
+          'UUID',
+          'GUID',
+        ].includes(parameter.type)
+      )
+        throw new QueryDispatchError(
+          `The chart parameter type for ${parameter.title ?? parameter.id} is unsupported.`,
+        );
+      const raw = chartSource
+        ? boundValues.has(parameter.id)
+          ? boundValues.get(parameter.id)
+          : (parameter as { defaultValue?: unknown }).defaultValue
+        : supplied[parameter.id]?.value;
       if (raw === undefined) {
         if (parameter.isRequired !== false)
           throw new Error(
@@ -741,6 +853,15 @@ export class BoardWidgetComponent {
         );
       switch (parameter.type) {
         case 'integer':
+          if (
+            !(
+              (typeof raw === 'number' && Number.isSafeInteger(raw)) ||
+              (typeof raw === 'string' && /^-?(0|[1-9][0-9]*)$/.test(raw))
+            )
+          )
+            throw new QueryDispatchError(
+              `The value for ${parameter.title ?? parameter.id} is invalid.`,
+            );
           values[parameter.id] = { type: 'integer', value: String(raw) };
           break;
         case 'number':

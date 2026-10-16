@@ -63,23 +63,28 @@
             Source rows
           </button>
         </div>
-        @if (chartView() === 'chart') {
+        <div [hidden]="chartView() !== 'chart'">
           <datatug-bar-race-chart
             [views]="preparedRace().views ?? null"
+            [initialMode]="raceInitialMode()"
+            [initialTopN]="raceInitialTopN()"
+            [active]="chartView() === 'chart'"
             [loading]="running()"
             [error]="preparedRace().error ?? runError() ?? null"
           />
-        } @else {
+        </div>
+        <div [hidden]="chartView() !== 'grid'">
           <sneat-datatug-held-result-presentation
             [result]="result() ?? null"
             [loading]="running()"
             [error]="runError() ?? null"
           />
-        }
+        </div>
       } @else {
         <sneat-datatug-held-result-presentation
           [result]="result() ?? null"
           [fields]="barFields()"
+          [defaultView]="chartWidgetDef()?.defaultView ?? 'chart'"
           [loading]="running()"
           [error]="runError() ?? null"
         />

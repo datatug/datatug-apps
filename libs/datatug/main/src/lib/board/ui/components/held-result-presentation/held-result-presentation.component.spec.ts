@@ -121,4 +121,19 @@ describe('held result presentation', () => {
       'Source restrictions apply to this result.',
     );
   });
+  it('honors a saved grid default while retaining the held chart data', async () => {
+    await TestBed.configureTestingModule({
+      imports: [HeldResultPresentationComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+    fixture.componentRef.setInput('fields', fields);
+    fixture.componentRef.setInput('defaultView', 'grid');
+    fixture.componentRef.setInput('result', result(rows));
+    fixture.detectChanges();
+    expect(fixture.componentInstance.view()).toBe('grid');
+    expect(fixture.nativeElement.querySelector('.table-scroll')).not.toBeNull();
+    fixture.componentInstance.view.set('chart');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.bars[0].category).toBe('Germany');
+  });
 });

@@ -1,11 +1,15 @@
-import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, PLATFORM_ID, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { Board, BoardWidget } from '@datatug/board-models';
-import { executeSavedPublicChartQuery, executeSavedPublicInspectQuery } from '../../../../queries/public-data/public-chart-query';
+import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
+import {
+  executeSavedPublicChartQuery,
+  executeSavedPublicInspectQuery,
+} from '../../../../queries/public-data/public-chart-query';
 import { HeldResultPresentationComponent } from '../held-result-presentation/held-result-presentation.component';
 
 vi.mock('../../../../queries/public-data/public-chart-query', () => ({
@@ -63,6 +67,7 @@ describe('BoardWidgetComponent', () => {
     await TestBed.configureTestingModule({
       imports: [BoardWidgetComponent],
       providers: [
+        { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
         {
           provide: SneatAuthStateService,
@@ -1052,8 +1057,12 @@ describe('BoardWidgetComponent', () => {
     const { readBoard } = configureShowcase();
     vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
     fixture.detectChanges();
-    await vi.waitFor(() => expect(fixture.componentInstance.running()).toBe(false));
-    await vi.waitFor(() => expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.running()).toBe(false),
+    );
+    await vi.waitFor(() =>
+      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+    );
     await fixture.whenStable();
     expect(readBoard).toHaveBeenCalledTimes(1);
     expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
@@ -1080,7 +1089,11 @@ describe('BoardWidgetComponent', () => {
       },
     };
     fixture.detectChanges();
-    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('This board card changed.'));
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.runError()).toContain(
+        'This board card changed.',
+      ),
+    );
     expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
     expect(fixture.componentInstance.runError()).toContain(
       'This board card changed.',
@@ -1125,7 +1138,9 @@ describe('BoardWidgetComponent', () => {
     configureShowcase(widget);
     vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
     fixture.detectChanges();
-    await vi.waitFor(() => expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+    );
     await fixture.whenStable();
     const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
       .componentInstance as TabsWidgetComponent;
@@ -1154,18 +1169,30 @@ describe('BoardWidgetComponent', () => {
   });
   it('uses the verified public API when the selected environment has a browser default target', async () => {
     configureShowcase();
-    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'browser-sqlite' } });
+    fixture.componentRef.setInput('boardContext', {
+      environment: 'dev',
+      executionTarget: { kind: 'browser-sqlite' },
+    });
     vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
     fixture.detectChanges();
-    await vi.waitFor(() => expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+    );
     expect(run).not.toHaveBeenCalled();
   });
 
   it('rejects an incompatible explicit target without silently dispatching a public chart elsewhere', async () => {
     configureShowcase();
-    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'hosted-cloud' } });
+    fixture.componentRef.setInput('boardContext', {
+      environment: 'dev',
+      executionTarget: { kind: 'hosted-cloud' },
+    });
     fixture.detectChanges();
-    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('requires the public API runtime'));
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.runError()).toContain(
+        'requires the public API runtime',
+      ),
+    );
     expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
   });
@@ -1173,19 +1200,238 @@ describe('BoardWidgetComponent', () => {
   it('runs the PostgreSQL inspector independently with no SQLite rights or bar controls', async () => {
     const queryId = 'demodb/northwind-shipping-country-count-postgresql';
     configureShowcase({ name: 'SQL', data: { sql: { queryId } } });
-    getQuery.mockReturnValue(of({ id: queryId, title: 'PostgreSQL countries', connectionId: 'northwind-postgresql', request: { queryType: QueryType.DTQL, text: 'saved postgres DTQL' } }));
-    vi.mocked(executeSavedPublicInspectQuery).mockResolvedValue({ ...countryResult(), sourceRights: [],
-      usedSourceIds: ['postgresql-orders'], rightsStatus: 'unavailable', rightsUnavailableReason: 'No verified publisher source rights are available for this PostgreSQL result.' });
+    getQuery.mockReturnValue(
+      of({
+        id: queryId,
+        title: 'PostgreSQL countries',
+        connectionId: 'northwind-postgresql',
+        request: { queryType: QueryType.DTQL, text: 'saved postgres DTQL' },
+      }),
+    );
+    vi.mocked(executeSavedPublicInspectQuery).mockResolvedValue({
+      ...countryResult(),
+      sourceRights: [],
+      usedSourceIds: ['postgresql-orders'],
+      rightsStatus: 'unavailable',
+      rightsUnavailableReason:
+        'No verified publisher source rights are available for this PostgreSQL result.',
+    });
     fixture.detectChanges();
-    await vi.waitFor(() => expect(executeSavedPublicInspectQuery).toHaveBeenCalledTimes(1));
-    await vi.waitFor(() => expect(fixture.componentInstance.running()).toBe(false));
+    await vi.waitFor(() =>
+      expect(executeSavedPublicInspectQuery).toHaveBeenCalledTimes(1),
+    );
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.running()).toBe(false),
+    );
     await fixture.whenStable();
-    const presentation = fixture.debugElement.query(By.directive(HeldResultPresentationComponent)).componentInstance as HeldResultPresentationComponent;
+    const presentation = fixture.debugElement.query(
+      By.directive(HeldResultPresentationComponent),
+    ).componentInstance as HeldResultPresentationComponent;
     expect(presentation.fields).toBeNull();
     expect(presentation.view()).toBe('grid');
-    expect(fixture.nativeElement.textContent).toContain('Source usage rights are unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Source usage rights are unavailable',
+    );
     expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('keeps the same race instance and playback choices across chart/source row switches', async () => {
+    configureShowcase({
+      name: 'chart',
+      data: {
+        sources: [{ id: 'source', queryId: publicQueryId }],
+        chart: {
+          type: 'bar-race',
+          periodColumn: 'period',
+          categoryColumn: 'category',
+          valueColumn: 'value',
+          unit: 'orders',
+          onDuplicate: 'reject',
+          grain: 'month',
+          mode: 'cumulative',
+          topN: 15,
+        },
+      },
+    });
+    const frame = (period: string) => ({
+      period,
+      entries: [{ category: 'France', value: 4, rank: 1, color: '#123456' }],
+    });
+    const mode = (mode: 'period' | 'cumulative') => ({
+      runtime: 'browser-public-api',
+      limitations: [],
+      bindingsApplied: [],
+      truncated: false,
+      spec: { kind: 'bar-race', mode, topN: 20 },
+      frames: [frame('2026-01'), frame('2026-02')],
+    });
+    vi.spyOn(fixture.componentInstance, 'preparedRace').mockReturnValue({
+      views: {
+        period: mode('period'),
+        cumulative: mode('cumulative'),
+      } as unknown as BarRaceChartViews,
+    });
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    const chart = fixture.debugElement.query(
+      By.directive(BarRaceChartComponent),
+    ).componentInstance as BarRaceChartComponent;
+    expect(chart.mode()).toBe('cumulative');
+    expect(chart.topN()).toBe(15);
+    chart.next();
+    chart.topN.set(7);
+    fixture.componentInstance.chartView.set('grid');
+    fixture.detectChanges();
+    expect(chart.active).toBe(false);
+    fixture.componentInstance.chartView.set('chart');
+    fixture.detectChanges();
+    expect(
+      fixture.debugElement.query(By.directive(BarRaceChartComponent))
+        .componentInstance,
+    ).toBe(chart);
+    expect(chart.frameIndex()).toBe(1);
+    expect(chart.mode()).toBe('cumulative');
+    expect(chart.topN()).toBe(7);
+    await vi.waitFor(() =>
+      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+    );
+  });
+
+  function configureBoundChart(bindings: unknown, countryType = 'string') {
+    const queryId = 'reports/bound';
+    const definition = {
+      id: queryId,
+      title: 'Bound query',
+      connectionId: 'custom-connection',
+      request: { queryType: QueryType.SQL, text: 'select :country, :limit' },
+      parameters: [
+        { id: 'country', type: countryType },
+        { id: 'limit', type: 'integer' },
+      ],
+    };
+    getQuery.mockReturnValue(of(definition));
+    const widget = {
+      name: 'chart',
+      data: {
+        sources: [{ id: 'source', queryId, parameters: bindings }],
+        chart: {
+          type: 'bar',
+          categoryColumn: 'ShipCountry',
+          valueColumn: 'orders',
+        },
+      },
+    };
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'localhost:8989',
+      projectId: 'demo',
+      projectApi: 'local',
+      branch: 'main',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'bound');
+    fixture.componentRef.setInput('widgetDef', widget);
+    fixture.componentRef.setInput('boardContext', {
+      executionTarget: { kind: 'local-agent', agentStoreId: 'localhost:8989' },
+      parameters: { selectedCountry: { type: 'string', value: 'France' } },
+    });
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [{ cards: [{ id: 'bound', widget }] }],
+      }),
+    );
+    run.mockResolvedValue(countryResult());
+    fixture.detectChanges();
+  }
+
+  it('resolves source constants and explicitly named board parameters for dispatcher execution', async () => {
+    configureBoundChart([
+      { id: 'country', boardParameterId: 'selectedCountry' },
+      { id: 'limit', value: 5 },
+    ]);
+    await fixture.componentInstance.run();
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parameters: {
+          country: { type: 'string', value: 'France' },
+          limit: { type: 'integer', value: '5' },
+        },
+        target: { kind: 'local-agent', agentStoreId: 'localhost:8989' },
+      }),
+    );
+  });
+
+  it.each([
+    [{ id: 'country', value: 'France', boardParameterId: 'selectedCountry' }],
+    [{ id: 'country', boardParameterId: 'missing' }],
+    [{ id: 'unknown', value: 'France' }],
+    [
+      { id: 'country', value: 'France' },
+      { id: 'country', value: 'Germany' },
+    ],
+    [
+      { id: 'country', value: 'France' },
+      { id: 'limit', value: 1.5 },
+    ],
+    [{ id: 'country', value: undefined }],
+    [],
+  ])(
+    'fails closed on malformed or missing source parameter bindings %j',
+    async (...bindings) => {
+      configureBoundChart(bindings);
+      await fixture.componentInstance.run();
+      expect(run).not.toHaveBeenCalled();
+      expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+      expect(fixture.componentInstance.runError()).toBeTruthy();
+    },
+  );
+
+  it('rejects parameterized pinned public execution before requesting an unbound query', async () => {
+    configureShowcase({
+      name: 'chart',
+      data: {
+        ...(countryWidget.data as object),
+        sources: [
+          {
+            id: 'source',
+            queryId: publicQueryId,
+            parameters: [{ id: 'limit', value: 5 }],
+          },
+        ],
+      },
+    });
+    getQuery.mockReturnValue(
+      of({
+        id: publicQueryId,
+        title: 'Bound public query',
+        connectionId: 'northwind-sqlite',
+        request: { queryType: QueryType.DTQL, text: 'saved DTQL' },
+        parameters: [{ id: 'limit', type: 'integer' }],
+      }),
+    );
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.runError()).toContain(
+        'does not support chart parameter bindings',
+      ),
+    );
+    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+  it('rejects unsupported chart parameter types rather than relabeling them as strings', async () => {
+    configureBoundChart(
+      [
+        { id: 'country', value: 'bytes' },
+        { id: 'limit', value: 5 },
+      ],
+      'binary',
+    );
+    await fixture.componentInstance.run();
+    expect(run).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.runError()).toContain(
+      'chart parameter type',
+    );
+  });
 });

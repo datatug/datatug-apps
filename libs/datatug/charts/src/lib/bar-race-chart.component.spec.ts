@@ -81,6 +81,50 @@ describe('BarRaceChartComponent presentation controls', () => {
     expect(views.period.frames[0].entries[0].value).toBe(3);
   });
 
+  it('honors saved initial cumulative mode and Top N, then preserves controls when hidden', () => {
+    const chart = new BarRaceChartComponent('server' as unknown as object);
+    chart.initialMode = 'cumulative';
+    chart.initialTopN = 15;
+    chart.views = {
+      period: view('period', 20),
+      cumulative: view('cumulative', 20),
+    };
+    chart.ngOnChanges({
+      views: {
+        currentValue: chart.views,
+        previousValue: null,
+        firstChange: true,
+        isFirstChange: () => true,
+      },
+    });
+    expect(chart.mode()).toBe('cumulative');
+    expect(chart.topN()).toBe(15);
+    chart.next();
+    chart.topN.set(7);
+    chart.active = false;
+    chart.ngOnChanges({
+      active: {
+        currentValue: false,
+        previousValue: true,
+        firstChange: false,
+        isFirstChange: () => false,
+      },
+    });
+    chart.active = true;
+    chart.ngOnChanges({
+      active: {
+        currentValue: true,
+        previousValue: false,
+        firstChange: false,
+        isFirstChange: () => false,
+      },
+    });
+    expect(chart.frameIndex()).toBe(1);
+    expect(chart.mode()).toBe('cumulative');
+    expect(chart.topN()).toBe(7);
+    expect(chart.playing()).toBe(false);
+  });
+
   it('caps Top N at the prepared capacity and exposes matching table entries', () => {
     const chart = component({
       period: view('period', 2),
@@ -198,13 +242,11 @@ describe('BarRaceChartComponent presentation controls', () => {
   });
 
   it('creates and rebinds the real SVG chart as async data, loading and error replace the plot', () => {
-    const matchMedia = vi
-      .fn()
-      .mockReturnValue({
-        matches: false,
-        addEventListener: vi.fn(),
-        removeEventListener: vi.fn(),
-      });
+    const matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+    });
     vi.stubGlobal('matchMedia', matchMedia);
     const observed: HTMLElement[] = [];
     const disconnected = vi.fn();
