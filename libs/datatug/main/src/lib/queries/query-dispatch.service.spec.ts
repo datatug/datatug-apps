@@ -196,6 +196,33 @@ describe('QueryDispatchService transport boundary', () => {
     expect(globalThis.fetch).not.toBe(fetch);
   });
 
+  it('uses an explicitly bound OVDB copy from shared Firestore storage without routing to hosted execution', async () => {
+    const pin = 'b'.repeat(64);
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      records: [{ key: 'customers/42', data: { Name: 'edited shared copy' } }],
+    }), { headers: { 'Content-Type': 'application/json' } }));
+    const runtimeBinding: OvdbConnection = {
+      id: 'native-copy-42', title: 'Open shared copy', baseUrl: 'https://local.ovdb.invalid', databaseId: 'copy-42', fetch,
+      descriptor: { id: 'copy-42', capabilities: { query: true },
+        canonical: { url: 'https://fixtures.example/paid.sqlite', sha256: pin, bytes: 128 },
+        schemas: { collections: { customers: { fields: { Name: { type: 'string' } } } } },
+      },
+    };
+    catalog.mockReturnValue(of({ connections: [{ id: 'paid-logical-connection', storage: 'sqlite', fixtureSha256: pin }] }));
+    const output = await service.execute({
+      projectRef: { storeId: 'firestore', projectId: 'paid-project', spaceID: 'shared-space' },
+      definition: { ...sqlDefinition(), connectionId: 'paid-logical-connection',
+        request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 1\n' } as ITextQueryRequest },
+      queryId: 'reports/customer-copy', environment: 'production', runtimeBinding,
+    });
+    expect(output.recordset.rows[0][0]).toEqual({ type: 'string', value: 'edited shared copy' });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(catalog).toHaveBeenCalledOnce();
+    expect(hosted).not.toHaveBeenCalled();
+    expect(browser).not.toHaveBeenCalled();
+    http.expectNone((call) => call.url.includes('/exec/run_query'));
+  });
+
   it('runs an explicitly selected registered working copy and observes its changed rows', async () => {
     const pin = 'd'.repeat(64);
     let currentName = 'before edit';

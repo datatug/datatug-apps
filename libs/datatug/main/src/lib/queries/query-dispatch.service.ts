@@ -148,7 +148,8 @@ export class QueryDispatchService {
     let hostedResponse: Promise<HostedQueryResponse> | undefined;
     let result: Promise<FederatedQueryResult>;
     if (request.target?.kind === 'hosted-cloud' ||
-      !request.target && request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID) {
+      !request.target && !request.runtimeBinding && !request.runtimeSelectionId &&
+        request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID) {
       hostedResponse = this.plan(ownedRequest).then(({ request: captured, plan }) => {
         if (terminal || controller.signal.aborted) throw abortError();
         return this.executeHosted(plan, captured);
