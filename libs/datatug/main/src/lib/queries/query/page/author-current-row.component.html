@@ -35,7 +35,9 @@
           </ion-label>
           <ion-buttons slot="end">
             <ion-button fill="clear" [attr.aria-label]="'Copy ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' value'" [attr.title]="'Copy ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' value'" (click)="copyValue($index)"><ion-icon slot="icon-only" name="copy-outline" /></ion-button>
-            <ion-button fill="clear" [attr.aria-label]="'Use ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' as filter'" [attr.title]="'Use ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' as filter'" (click)="requestFilter($index)"><ion-icon slot="icon-only" name="funnel-outline" /></ion-button>
+            @if (showFilter()) {
+              <ion-button fill="clear" [attr.aria-label]="'Use ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' as filter'" [attr.title]="'Use ' + column.name + (duplicateColumnName($index) ? ' column ' + ($index + 1) : '') + ' as filter'" (click)="requestFilter($index)"><ion-icon slot="icon-only" name="funnel-outline" /></ion-button>
+            }
           </ion-buttons>
         </ion-item>
       }

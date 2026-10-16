@@ -48,6 +48,7 @@ export function linkProblemText(
   problem: LinkProblem,
   ref: AgentTableRef | undefined,
   blockingBrowser: boolean,
+  storeId: string | undefined = ref?.storeId,
 ): LinkProblemText {
   const table = ref ? qualifiedTableName(ref.table) : 'the table of this link';
   const db = ref?.source ?? 'the database of this link';
@@ -56,7 +57,7 @@ export function linkProblemText(
   switch (problem) {
     case 'agent-unreachable':
       return {
-        title: `The DataTug agent at ${agentAddress(ref?.storeId)} cannot be reached.`,
+        title: `The DataTug agent at ${agentAddress(storeId)} cannot be reached.`,
         hints: [
           'Start it with: datatug daemon start, then press Check again. A started agent may not accept this link any more; then press Check again on the card in Claude Code for a fresh link.',
           blockingBrowser
@@ -96,6 +97,30 @@ export function linkProblemText(
         title: `The key in this link is not a primary key of ${table}.`,
         hints: ['Press Check again on the card in Claude Code for a fresh link.'],
       };
+    case 'result-not-found':
+      return {
+        title: 'These results expired or are no longer on this computer.',
+        hints: ['Run the query again in Claude Code for fresh results and a fresh link.'],
+      };
+    case 'result-incomplete':
+      return {
+        title: 'These results are incomplete: a file of the saved result is missing or was changed.',
+        hints: ['Run the query again in Claude Code for fresh results and a fresh link.'],
+      };
+    case 'result-refused':
+      return {
+        title: 'The DataTug agent refused to read these results.',
+        hints: [
+          'The folder of the saved result is a link or belongs to another user. Run the query again in Claude Code.',
+        ],
+      };
+    case 'version-unsupported':
+      return {
+        title: 'These results were saved in a format this version of DataTug cannot read.',
+        hints: [
+          'Reload this page for the latest DataTug web app, and update the DataTug CLI (brew upgrade datatug), then press Check again.',
+        ],
+      };
     default:
       return {
         title: 'The DataTug agent could not read this view.',
@@ -132,11 +157,18 @@ export function linkProblemText(
 export class LinkProblemComponent {
   readonly problem = input.required<LinkProblem>();
   readonly tableRef = input<AgentTableRef | undefined>(undefined);
+  /** The agent's store id when the page names no table (a stored query result). */
+  readonly storeId = input<string | undefined>(undefined);
   readonly checkAgain = output<void>();
 
   private readonly blockingBrowser = browserMayBlockLoopback();
 
   readonly text = computed(() =>
-    linkProblemText(this.problem(), this.tableRef(), this.blockingBrowser),
+    linkProblemText(
+      this.problem(),
+      this.tableRef(),
+      this.blockingBrowser,
+      this.tableRef()?.storeId ?? this.storeId(),
+    ),
   );
 }

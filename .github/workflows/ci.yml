@@ -1,12 +1,12 @@
 name: CI
 
 on:
+  # No paths-ignore on push: every commit on main must get a CI run so the
+  # deploy workflow (deploy.yml, which deploys only after this run's
+  # `deploy-gate` is green for the same commit) always has a verdict for main's tip.
   push:
     branches:
       - main
-    paths-ignore:
-      - 'docs/**'
-      - '.git-hooks/**'
   pull_request:
     paths-ignore:
       - 'docs/**'
@@ -435,6 +435,8 @@ jobs:
           path: coverage/apps/datatug-app-demo-handoff-e2e/report
           if-no-files-found: ignore
 
+  # `e2e` is the strict aggregate: EVERY lane, including the live-API
+  # PostgreSQL lane. It is not what gates production; `deploy-gate` below is.
   # Keep the existing required check name. `always()` makes the gate run even
   # when build fails and GitHub skips its dependent lanes; every lane must
   # actually succeed, so a skipped or cancelled lane cannot pass this check.
@@ -459,6 +461,53 @@ jobs:
               exit 1
             fi
           done
+
+  # Production deploy gate (deploy.yml requires this job's conclusion to be
+  # `success` for the commit it deploys; also safe to make a required check).
+  # Gates on every lane that proves the shipped app, and deliberately NOT on
+  # e2e-demo-postgresql: that lane drives the real cloud.openvaultdb.com API, so
+  # an outage of that third party would otherwise stop all production deploys.
+  # It stays visible (its own red check, the `e2e` aggregate, and a warning
+  # below). `always()` + exact `success` per lane: a failed, skipped or
+  # cancelled lane (including lanes skipped because `build` failed) fails the
+  # gate. agent-links alone may be `skipped`, because it only runs once the
+  # DATATUG_LINKS_CLI_REF repository variable is set. Add new lanes here.
+  deploy-gate:
+    name: deploy-gate
+    if: always()
+    runs-on: ubuntu-latest
+    needs:
+      - build
+      - test
+      - e2e-checkout
+      - e2e-app
+      - e2e-query-mobile
+      - e2e-demo-sqlite
+      - e2e-demo-handoff
+      - journey
+      - agent-links
+      - e2e-demo-postgresql
+    steps:
+      - name: Require every gating lane
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          set -euo pipefail
+          bad=0
+          for lane in build test e2e-checkout e2e-app e2e-query-mobile e2e-demo-sqlite e2e-demo-handoff journey agent-links; do
+            result="$(jq -r --arg l "$lane" '.[$l].result // "missing"' <<<"$NEEDS_JSON")"
+            if [[ "$result" == success || ( "$lane" == agent-links && "$result" == skipped ) ]]; then
+              echo "ok      $lane: $result"
+            else
+              echo "::error title=deploy-gate::$lane ended with: $result"
+              bad=1
+            fi
+          done
+          pg="$(jq -r '.["e2e-demo-postgresql"].result // "missing"' <<<"$NEEDS_JSON")"
+          if [[ "$pg" != success ]]; then
+            echo "::warning title=advisory lane red::e2e-demo-postgresql ended with: $pg (live API; does not block deploy)"
+          fi
+          exit "$bad"
 
   # Walks user journeys J1-J4 (apps/datatug-app/e2e/journey/**, project
   # "journey" in playwright.config.ts) against a REAL `datatug serve` agent

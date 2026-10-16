@@ -3,6 +3,7 @@ import { Injectable, inject } from '@angular/core';
 import { Observable, catchError, map, throwError } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import { KeyValue } from './record-key';
+import { ResultVersionError, StoredResult, decodeStoredResult } from './query-result/query-result';
 import { TableIdentity, qualifiedTableName } from './table-identity';
 
 /**
@@ -85,7 +86,13 @@ export type LinkProblem =
   | 'table-not-found'
   | 'record-not-found'
   | 'bad-key'
-  | 'read-failed';
+  | 'read-failed'
+  // A stored query result (`GET results/<id>`): absent or expired, missing a file, refused by the agent's link and
+  // owner checks, or saved in a metadata version this page or the agent does not read.
+  | 'result-not-found'
+  | 'result-incomplete'
+  | 'result-refused'
+  | 'version-unsupported';
 
 /** An agent request that failed, classified; the agent's own message is never kept. */
 export class LinkProblemError extends Error {
@@ -239,6 +246,47 @@ export class AgentLinkApiService {
         catchError(rethrowClassified),
       );
   }
+  /**
+   * `GET /datatug/results/<id>`: a query result stored by `datatug query run --result-id`, its metadata and rows. The
+   * agent opens no database and runs no query for it. The id is only ever in this path (telemetry replaces it).
+   */
+  storedResult(storeId: string, id: string): Observable<StoredResult> {
+    return this.http
+      .get<unknown>(buildAgentUrl(storeId, '/results/' + encodeURIComponent(id)))
+      .pipe(
+        map((response) => decodeStoredResult(response)),
+        catchError((err: unknown) =>
+          throwError(() => new LinkProblemError(classifyResultError(err))),
+        ),
+      );
+  }
+}
+
+/**
+ * A failed `results/<id>` read, by the reason code the agent answers (`error.message`, never an id or a path):
+ * `result-not-found` (absent or expired), `result-incomplete`, `result-refused` (the result's folder is a link or not
+ * the user's) and `result-version-unsupported`; an id outside the grammar is not found. Anything else is classified
+ * as for every agent read (unreachable, expired link, read failed).
+ */
+export function classifyResultError(err: unknown): LinkProblem {
+  if (err instanceof ResultVersionError) return 'version-unsupported';
+  if (err instanceof HttpErrorResponse && err.status !== 0 && err.status !== 401) {
+    const body = (err.error ?? {}) as { error?: { message?: unknown; field?: unknown } };
+    const reason = typeof body.error?.message === 'string' ? body.error.message : '';
+    switch (reason) {
+      case 'result-not-found':
+      case 'bad-result-id':
+        return 'result-not-found';
+      case 'result-incomplete':
+        return 'result-incomplete';
+      case 'result-refused':
+        return 'result-refused';
+      case 'result-version-unsupported':
+        return 'version-unsupported';
+    }
+  }
+  const problem = classifyAgentError(err);
+  return problem === 'record-not-found' || problem === 'bad-key' ? 'read-failed' : problem;
 }
 
 function rethrowClassified(err: unknown): Observable<never> {
