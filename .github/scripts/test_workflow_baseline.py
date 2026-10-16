@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import unittest
 from unittest.mock import patch
+import urllib.request
 import zipfile
 
 
@@ -17,6 +18,30 @@ SPEC.loader.exec_module(baseline)
 
 
 class BaselineTest(unittest.TestCase):
+    def test_artifact_redirect_scopes_authorization_to_github_origin(self):
+        source = urllib.request.Request(
+            "https://api.github.com/repos/datatug/datatug-apps/actions/artifacts/3/zip",
+            headers={"Authorization": "Bearer fixture-token", "Accept": "application/zip"},
+        )
+        handler = baseline.ScopedAuthorizationRedirectHandler()
+        same = handler.redirect_request(source, None, 302, "Found", {}, "https://api.github.com/next")
+        self.assertEqual(same.get_header("Authorization"), "Bearer fixture-token")
+        cross = handler.redirect_request(source, None, 302, "Found", {}, "https://blob.example.com/signed-archive")
+        self.assertIsNone(cross.get_header("Authorization"))
+        self.assertEqual(cross.get_header("Accept"), "application/zip")
+        self.assertEqual(source.get_header("Authorization"), "Bearer fixture-token")
+        with self.assertRaises(ValueError):
+            handler.redirect_request(source, None, 302, "Found", {}, "http://blob.example.com/archive")
+
+    def test_api_installs_scoped_redirect_handler(self):
+        with patch.dict(os.environ, {"GITHUB_REPOSITORY": "datatug/datatug-apps", "GH_TOKEN": "fixture-token"}), \
+             patch.object(baseline.urllib.request, "build_opener") as build_opener:
+            build_opener.return_value.open.return_value.__enter__.return_value.read.return_value = b"receipt"
+            self.assertEqual(baseline.api("/actions/artifacts/3/zip"), b"receipt")
+            self.assertIsInstance(build_opener.call_args.args[0], baseline.ScopedAuthorizationRedirectHandler)
+            request = build_opener.return_value.open.call_args.args[0]
+            self.assertEqual(request.get_header("Authorization"), "Bearer fixture-token")
+
     def test_ci_uses_previous_verified_success_not_failed_code_commit(self):
         sha = "a" * 40
 

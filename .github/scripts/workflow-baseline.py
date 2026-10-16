@@ -8,7 +8,27 @@ import os
 import re
 import sys
 import urllib.request
+from urllib.parse import urlsplit
 import zipfile
+
+
+def https_origin(url):
+    parts = urlsplit(url)
+    if parts.scheme.lower() != "https" or not parts.hostname or parts.username or parts.password:
+        raise ValueError("artifact redirect must use HTTPS without URL credentials")
+    return parts.hostname.lower(), parts.port or 443
+
+
+class ScopedAuthorizationRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, response, code, message, headers, newurl):
+        redirected = super().redirect_request(request, response, code, message, headers, newurl)
+        if redirected is None:
+            return None
+        source_origin = https_origin(request.full_url)
+        target_origin = https_origin(redirected.full_url)
+        if source_origin != target_origin:
+            redirected.remove_header("Authorization")
+        return redirected
 
 
 def api(path, accept="application/vnd.github+json"):
@@ -16,7 +36,7 @@ def api(path, accept="application/vnd.github+json"):
         "https://api.github.com/repos/" + os.environ["GITHUB_REPOSITORY"] + path,
         headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"], "Accept": accept},
     )
-    with urllib.request.urlopen(request, timeout=15) as response:
+    with urllib.request.build_opener(ScopedAuthorizationRedirectHandler()).open(request, timeout=15) as response:
         return response.read()
 
 
