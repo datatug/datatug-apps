@@ -135,6 +135,19 @@ describe('createLocalDemoDbRuntime', () => {
     expect(large.options()).toMatchObject({ memoryFallback: 'forbid', storagePolicy: 'single-copy' });
   });
 
+  it('pins a chunked dataset by its manifest URL as a gzip stream, keeping the decoded SQLite pin', () => {
+    const { deps, options } = fakeDeps();
+    const chunked = demoSqliteCatalog.adventureworks;
+    createLocalDemoDbRuntime(deps, { entry: chunked, onProgress: vi.fn() });
+    expect(options().pin).toEqual({
+      dataset: 'adventureworks',
+      url: 'https://adventureworks.demodb.dev/data/adventureworks.sqlite.parts.json',
+      sha256: chunked.sha256,
+      bytes: chunked.bytes,
+      compression: 'gzip',
+    });
+  });
+
   it('maps the worker phases to the download bar and install steps', () => {
     const { deps, options } = fakeDeps();
     const onProgress = vi.fn();
@@ -187,6 +200,8 @@ describe('classifyOpenFailure', () => {
 
   it('classifies download and integrity failures, and leaves other errors alone', () => {
     expect(kindOf(new CanonicalFetchError('HTTP 503', 503))).toBe('download');
+    expect(kindOf(new CanonicalFetchError('HTTP 429', 429))).toBe('rate-limited');
+    expect(kindOf(reviveError(serializeError(new CanonicalFetchError('HTTP 429', 429))))).toBe('rate-limited');
     expect(kindOf(new CanonicalIntegrityError('bad sha'))).toBe('integrity');
     const other = new Error('boom');
     expect(classifyOpenFailure(other)).toBe(other);

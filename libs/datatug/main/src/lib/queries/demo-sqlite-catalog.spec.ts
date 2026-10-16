@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   demoSqliteCatalog,
   demoSqliteDatasetIds,
+  demoSqliteDownloadBytes,
   demoSqliteStorageBytes,
   findDemoSqliteDataset,
   formatMegabytes,
@@ -9,12 +10,18 @@ import {
 } from './demo-sqlite-catalog';
 
 describe('demoSqliteCatalog', () => {
-  it('pins every DemoDB dataset to its plain decoded file URL', () => {
+  it('pins every DemoDB dataset to its file URL, or AdventureWorks to its chunked manifest', () => {
     expect(Object.keys(demoSqliteCatalog).sort()).toEqual([...demoSqliteDatasetIds].sort());
     for (const id of demoSqliteDatasetIds) {
       const entry = demoSqliteCatalog[id];
       expect(entry.dataset).toBe(id);
-      expect(entry.url).toBe(`https://${id}.demodb.dev/data/${id}.sqlite`);
+      // Above DemoDB's 25 MiB static-asset limit a dataset is served only as gzip parts.
+      expect(entry.source).toBe(id === 'adventureworks' ? 'chunked' : 'file');
+      expect(entry.url).toBe(
+        entry.source === 'chunked'
+          ? `https://${id}.demodb.dev/data/${id}.sqlite.parts.json`
+          : `https://${id}.demodb.dev/data/${id}.sqlite`,
+      );
       expect(entry.sha256).toMatch(/^[0-9a-f]{64}$/);
       expect(Number.isSafeInteger(entry.bytes) && entry.bytes > 0).toBe(true);
       // SQLite files are whole pages.
@@ -24,7 +31,7 @@ describe('demoSqliteCatalog', () => {
       expect(entry.storagePolicy).toBe(id === 'adventureworks' ? 'single-copy' : 'working-and-pristine');
       expect(entry.title.length).toBeGreaterThan(0);
       expect(Object.keys(entry).sort()).toEqual(
-        ['bytes', 'dataset', 'sha256', 'storagePolicy', 'title', 'transferBytes', 'url'],
+        ['bytes', 'dataset', 'sha256', 'source', 'storagePolicy', 'title', 'transferBytes', 'url'],
       );
     }
     expect(new Set(demoSqliteDatasetIds.map((id) => demoSqliteCatalog[id].sha256)).size)
@@ -59,5 +66,10 @@ describe('demoSqliteCatalog', () => {
     expect(demoSqliteStorageBytes({ ...demoSqliteCatalog.adventureworks, storagePolicy: 'working-and-pristine' }))
       .toBe(253640704);
     expect(formatMegabytes(253640704)).toBe('253.6 MB');
+  });
+
+  it('falls back to the gzip parts size for a chunked download bar and the decoded size for a file', () => {
+    expect(demoSqliteDownloadBytes(demoSqliteCatalog.adventureworks)).toBe(35367459);
+    expect(demoSqliteDownloadBytes(demoSqliteCatalog.sakila)).toBe(4915200);
   });
 });

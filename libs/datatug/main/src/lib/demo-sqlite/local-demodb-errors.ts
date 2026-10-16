@@ -14,6 +14,8 @@ export type LocalDemoDbFailureKind =
   /** The copy could not be written or opened for another storage reason. */
   | 'storage'
   | 'download'
+  /** DemoDB answered HTTP 429: the download stopped at once and is not retried automatically. */
+  | 'rate-limited'
   | 'integrity';
 
 export class LocalDemoDbOpenError extends Error {
