@@ -11,7 +11,7 @@ export default defineConfig({
   retries: 0,
   fullyParallel: false,
   webServer: {
-    command: 'pnpm nx run datatug-app:serve:development --host localhost --port 4275',
+    command: 'pnpm nx run datatug-app:serve:development --host datatug.localhost --port 4275',
     url: origin,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,
