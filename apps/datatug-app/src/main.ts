@@ -67,6 +67,7 @@ import {
   withPosthogLinkPrivacy,
 } from './app/telemetry/link-telemetry-privacy';
 import { withSentryLinkPrivacy } from './app/telemetry/sentry-privacy';
+import { testProjectPreviewInterceptor } from './app/test-project-preview.interceptor';
 
 // First: take the one-time code of a card's link out of the address before Sentry, PostHog or the router read it.
 const agentLinkCode = takeAgentLinkCode(location, history);
@@ -111,7 +112,11 @@ bootstrapApplication(DatatugAppComponent, {
       datatugBusinessCheckoutLiveEnabled,
     ),
     provideHttpClient(
-      withInterceptors([agentAccessInterceptor, cliChatProjectInterceptor]),
+      withInterceptors([
+        testProjectPreviewInterceptor,
+        agentAccessInterceptor,
+        cliChatProjectInterceptor,
+      ]),
     ),
     provideAgentLinkCode(agentLinkCode),
     {

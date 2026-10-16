@@ -769,6 +769,32 @@ describe('New project through authenticated common API', () => {
     h.component.create();
     expect(h.create.mock.calls[0][0]).toMatchObject({ spaceID: 'fresh-space' });
   });
+  it('creates and selects a company Space for Business GitHub project setup', async () => {
+    const h = await harness(true, { billingIntent: 'space_business' });
+    h.select();
+    await h.fixture.whenStable();
+
+    expect(h.component['billingIntent']()).toBe('space_business');
+    h.component.spaceTitle.set('Business Space');
+    h.component.createSpace();
+    expect(h.createSpace).toHaveBeenCalledWith({
+      type: 'company',
+      title: 'Business Space',
+    });
+
+    h.spaceResult.next({
+      id: 'business-space',
+      dbo: { title: 'Business Space' },
+    });
+    await h.fixture.whenStable();
+    expect(h.component.spaceID()).toBe('business-space');
+
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({
+      spaceID: 'business-space',
+      billingIntent: 'space_business',
+    });
+  });
   it('shows a recoverable Space creation error without issuing a project write', async () => {
     const h = await harness(true);
     h.component.store.set('github');
