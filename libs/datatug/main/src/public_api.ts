@@ -28,3 +28,7 @@ export { IncidentClientService } from './lib/incidents/incident-client.service';
 // A loader, not a re-export, so the page, the OVDB client and the local DemoDB service stay in their own lazy chunk.
 export const loadDemoSqlitePage = () =>
   import('./lib/pages/demo-sqlite/demo-sqlite-page.component').then((m) => m.DemoSqlitePageComponent);
+
+// DemoDB.dev "Explore PostgreSQL in DataTug": the app routes /demo/ovdb/:database to this page (datatug-app-routes.ts).
+export const loadDemoOvdbPage = () =>
+  import('./lib/pages/demo-ovdb/demo-ovdb-page.component').then((m) => m.DemoOvdbPageComponent);

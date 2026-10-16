@@ -119,6 +119,27 @@ describe('shared project database connections', () => {
     fixture.detectChanges();
     expect(fixture.componentInstance['catalog']()).toBeDefined();
     expect(fixture.nativeElement.querySelectorAll('a[href*="chinook-postgresql-artist-tracks"]').length).toBe(1);
+    // Each public edition opens in DataTug through OVDB; a pending one has no such link.
+    for (const dataset of datasets) {
+      const link = fixture.nativeElement.querySelector(`[data-testid="explore-postgresql-${dataset}"]`);
+      expect(link.getAttribute('href')).toBe(`/demo/ovdb/${dataset}-postgresql`);
+      expect(link.textContent).toContain('read-only via OpenVaultDB');
+    }
+  });
+
+  it('offers no DataTug link for a PostgreSQL edition that is still pending', async () => {
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: entries,
+      bigQueryEditions, bigQueryPlans: plans }));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('[data-testid^="explore-postgresql-"]')).toBeNull();
   });
 
   it('rejects an active PostgreSQL declaration with a different endpoint', async () => {

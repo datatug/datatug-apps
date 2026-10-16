@@ -75,15 +75,15 @@ export function ovdbFormFields(
   return names.map((name): OvdbFormField => {
     const field = schema?.fields?.[name];
     const kind = kindOf(field, record[name]);
-    const key = primaryKey.includes(name) || (field?.primaryKeyPosition ?? 0) > 0;
-    const declaredType = field?.declaredType ?? field?.type ?? '';
+    const key = primaryKey.includes(name) || (field?.primaryKeyPosition ?? 0) > 0 || field?.primaryKey === true;
+    const declaredType = field?.declaredType ?? field?.nativeType ?? field?.type ?? '';
     const lockedReason = key ? 'Primary key fields cannot be edited.' : kind === 'blob' ? 'Binary values cannot be edited here.' : undefined;
     const scale = kind === 'decimal' ? scaleOf(declaredType) : undefined;
     return {
       name,
       kind,
       declaredType,
-      nullable: field?.notNull !== true && !key,
+      nullable: field?.notNull !== true && field?.required !== true && !key,
       key,
       editable: !lockedReason,
       ...(lockedReason ? { lockedReason } : {}),
