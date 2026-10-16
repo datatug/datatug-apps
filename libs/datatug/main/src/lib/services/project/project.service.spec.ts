@@ -345,7 +345,9 @@ describe('ProjectService local summary HTTP context', () => {
         version,
         uptimeMinutes: 3,
       });
-      await expect(request).rejects.toThrow(/v0\.97\.0 or later.*restart/i);
+      await expect(request).rejects.toThrow(
+        /update DataTug CLI to v0\.97\.0 or later.*restart/i,
+      );
       http.expectNone((item) => item.url.includes('/projects/project_summary'));
       http.verify();
     },

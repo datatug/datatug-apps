@@ -51,7 +51,24 @@ export const DATATUG_DEMO_PROJECT_TEMPLATE = {
 
 const MIN_QUALIFIED_READ_CLI_VERSION = [0, 97, 0] as const;
 const QUALIFIED_READ_CLI_UPDATE_MESSAGE =
-  'Selected-branch project reads require DataTug CLI v0.97.0 or later. Update the CLI and restart its agent, then retry.';
+  'To load the selected project branch, update DataTug CLI to v0.97.0 or later, restart its agent, and retry.';
+
+/** A safe, actionable client message for agents that predate branch-qualified reads. */
+export class QualifiedLocalReadVersionError extends Error {
+  constructor() {
+    super(QUALIFIED_READ_CLI_UPDATE_MESSAGE);
+    this.name = 'QualifiedLocalReadVersionError';
+  }
+}
+
+/** Only this client-created error is safe to show verbatim in the UI. */
+export function qualifiedLocalReadVersionGuidance(
+  error: unknown,
+): string | undefined {
+  return error instanceof QualifiedLocalReadVersionError
+    ? QUALIFIED_READ_CLI_UPDATE_MESSAGE
+    : undefined;
+}
 
 function supportsQualifiedLocalReads(version: unknown): boolean {
   if (typeof version !== 'string') return false;
@@ -159,7 +176,7 @@ export class ProjectQueryApiService {
             ? info.version
             : undefined;
         if (!supportsQualifiedLocalReads(version))
-          return throwError(() => new Error(QUALIFIED_READ_CLI_UPDATE_MESSAGE));
+          return throwError(() => new QualifiedLocalReadVersionError());
         return read();
       }),
     );

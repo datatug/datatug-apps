@@ -19,6 +19,7 @@ import { SchemaService } from '../../../services/unsorted/schema.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
+import { QualifiedLocalReadVersionError } from '../../../services/project/project-query-api.service';
 
 interface TestDoubles {
   readonly logError: ReturnType<typeof vi.fn>;
@@ -245,6 +246,71 @@ describe('ProjectPage', () => {
       goProjFolder('entity');
       expect(navController.navigateForward).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ProjectPage qualified summary errors', () => {
+  it('renders trusted CLI guidance and clears it when the project ref changes', async () => {
+    const lateFirstSummary$ = new Subject<IProjectSummary>();
+    let repeatedRefCalls = 0;
+    const watchProjectSummary = vi.fn((ref: { projectId: string }) => {
+      if (ref.projectId === 'old')
+        return throwError(() => new QualifiedLocalReadVersionError());
+      if (ref.projectId === 'repeat' && repeatedRefCalls++ === 0)
+        return lateFirstSummary$.asObservable();
+      return of({ id: ref.projectId, title: 'Current project' });
+    });
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: baseProviders({ logError: vi.fn(), watchProjectSummary }),
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: {
+          imports: [],
+          template: '<p role="alert">{{ metadataReadError() || "" }}</p>',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(ProjectPageComponent);
+    const page = fixture.componentInstance as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        branch?: string;
+      }): void;
+    };
+    page.setProjRef({
+      storeId: 'localhost:8989',
+      projectId: 'old',
+      branch: 'feature',
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toMatch(
+      /update DataTug CLI to v0\.97\.0 or later.*restart its agent/i,
+    );
+
+    page.setProjRef({ storeId: 'github.com', projectId: 'new' });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('v0.97.0');
+
+    page.setProjRef({
+      storeId: 'localhost:8989',
+      projectId: 'repeat',
+      branch: 'feature',
+    });
+    page.setProjRef({ storeId: 'github.com', projectId: 'latest' });
+    page.setProjRef({
+      storeId: 'localhost:8989',
+      projectId: 'repeat',
+      branch: 'feature',
+    });
+    lateFirstSummary$.error(new QualifiedLocalReadVersionError());
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain('v0.97.0');
   });
 });
 
