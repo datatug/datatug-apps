@@ -98,9 +98,9 @@
   @if (workspace.notice()) { <ion-item slot="top" lines="none" role="status"><ion-label>{{ workspace.notice() }}</ion-label></ion-item> }
 </ion-tabs>
 
-<ion-modal [isOpen]="drawerOpen()" (didDismiss)="drawerOpen.set(false)" cssClass="context-bag-drawer">
+<ion-modal [isOpen]="drawerOpen()" (didDismiss)="drawerOpen.set(false); onMappedFieldPickerDismiss()" cssClass="context-bag-drawer">
   <ng-template>
-    <ion-header><ion-toolbar><ion-title>Context Bag</ion-title><ion-buttons slot="end"><ion-button (click)="drawerOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
+    <ion-header><ion-toolbar><ion-title>Context Bag</ion-title><ion-buttons slot="end"><ion-button (click)="drawerOpen.set(false)" [disabled]="!canDismissContextBag()">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>
       @if (workspace.snapshot(); as snapshot) {
         <ion-item lines="full"><ion-label><h2>{{ snapshot.session.title }}</h2><p>{{ snapshot.session.databaseId }} · {{ snapshot.session.state }}</p></ion-label></ion-item>
@@ -121,7 +121,7 @@
           @if (workspace.canExecute()) {
             <ion-item lines="full"><ion-label><h2>{{ entryEditing() ? 'Edit entry' : 'Add entry' }}</h2><p>Save creates a revision. Apply controls workspace binding.</p></ion-label></ion-item>
             @if (availableSubjects().length) {
-              <ion-item><ion-select label="Mapped field" [value]="subjectChoice()" (ionChange)="subjectChanged($event.detail.value)">
+              <ion-item><ion-select label="Mapped field" [value]="subjectChoice()" (click)="onMappedFieldPickerOpen()" (ionDismiss)="onMappedFieldPickerDismiss()" (ionChange)="subjectChanged($event.detail.value)">
                 @for (subject of availableSubjects(); track subject.id) { <ion-select-option [value]="subject.id">{{ subject.label }}</ion-select-option> }
               </ion-select></ion-item>
             } @else {
@@ -135,7 +135,7 @@
             <ion-item><ion-select label="Type" [value]="valueType()" (ionChange)="valueType.set($event.detail.value)">@for (type of types; track type) { <ion-select-option [value]="type">{{ type }}</ion-select-option> }</ion-select></ion-item>
             <ion-item><ion-textarea label="Value" labelPlacement="stacked" [autoGrow]="true" [ngModel]="valueDraft()" (ngModelChange)="valueDraft.set($event)" /></ion-item>
             @if (entryError()) { <ion-item color="danger" role="alert"><ion-label>{{ entryError() }}</ion-label></ion-item> }
-            <ion-item><ion-button (click)="saveEntry()" [disabled]="workspace.busy()">{{ entryEditing() ? 'Save revision' : 'Add entry' }}</ion-button></ion-item>
+            <ion-item><ion-button (click)="saveEntry()" [disabled]="workspace.busy() || mappedFieldPickerOpen()">{{ entryEditing() ? 'Save revision' : 'Add entry' }}</ion-button></ion-item>
           }
           <ion-item lines="none"><ion-button color="danger" fill="outline" (click)="clearOpen.set(true)" [disabled]="!workspace.canExecute() || !bag.entryIds.length">Clear context</ion-button></ion-item>
         }
@@ -147,7 +147,7 @@
         }
       }
     </ion-content>
-    <ion-footer><ion-toolbar><ion-note class="ion-padding-start">{{ workspace.hasPendingSelection() ? 'Changes not applied' : 'Applied selection is current' }}</ion-note><ion-buttons slot="end"><ion-button fill="solid" (click)="workspace.apply()" [disabled]="!workspace.canExecute() || !workspace.hasPendingSelection()">Apply Context</ion-button></ion-buttons></ion-toolbar></ion-footer>
+    <ion-footer><ion-toolbar><ion-note class="ion-padding-start">{{ workspace.hasPendingSelection() ? 'Changes not applied' : 'Applied selection is current' }}</ion-note><ion-buttons slot="end"><ion-button fill="solid" (click)="workspace.apply()" [disabled]="mappedFieldPickerOpen() || !workspace.canExecute() || !workspace.hasPendingSelection()">Apply Context</ion-button></ion-buttons></ion-toolbar></ion-footer>
   </ng-template>
 </ion-modal>
 
@@ -200,14 +200,22 @@
             }
           </ion-note></ion-item>
         }
-        <ion-item><ion-input label="Search" [ngModel]="sessionSearch()" (ngModelChange)="sessionSearch.set($event)" /></ion-item>
+        <ion-item><ion-input label="Search loaded sessions" [ngModel]="sessionSearch()" (ngModelChange)="onSessionSearchChange($event)" /></ion-item>
+        @if (workspace.searchAllError()) { <ion-item color="danger" role="alert"><ion-label>{{ workspace.searchAllError() }}</ion-label></ion-item> }
+        @if (workspace.searchAllLoading()) {
+          <ion-item><ion-label>Searching all sessions · {{ workspace.searchAllProgress() }} loaded</ion-label><ion-button slot="end" fill="outline" (click)="workspace.cancelSearchAll()">Cancel search</ion-button></ion-item>
+        } @else if (workspace.hasMore() && sessionSearch().trim()) {
+          <ion-item><ion-label>Search covers loaded sessions only.</ion-label><ion-button slot="end" (click)="workspace.searchAllSessions()">Search all sessions</ion-button></ion-item>
+        } @else if (!workspace.hasMore() && sessionSearch().trim()) {
+          <ion-item><ion-label>Search covers all available sessions.</ion-label></ion-item>
+        }
         <ion-item><ion-select label="State" [value]="sessionFilter()" (ionChange)="sessionFilter.set($event.detail.value)"><ion-select-option value="all">All</ion-select-option><ion-select-option value="active">Running</ion-select-option><ion-select-option value="stopped">Stopped</ion-select-option><ion-select-option value="archived">Archived</ion-select-option></ion-select></ion-item>
         @for (session of visibleSessions(); track session.id) {
           <ion-item button (click)="openSession(session)"><ion-label><h2>{{ session.title }}</h2><p>{{ session.state }} · {{ session.databaseId }}</p></ion-label></ion-item>
         } @empty {
           <ion-item><ion-label>
             @if (sessionSearch() || sessionFilter() !== 'all') {
-              No loaded sessions match. Load more sessions to search additional results, or change the search and state filter.
+              @if (workspace.hasMore()) { No loaded sessions match. Search all sessions to include the remaining pages, or change the search and state filter. } @else { No sessions match. Change the search or state filter. }
             } @else {
               No sessions are loaded for this project yet.
             }

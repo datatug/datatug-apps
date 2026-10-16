@@ -77,6 +77,9 @@ export default defineConfig({
       // `datatug serve` agent, no route interception. See e2e/README.md.
       name: 'journey',
       testDir: './e2e/journey',
+      // Session context was added after the pinned v0.78.0 CLI used by J1-J4.
+      // It has a separate config and runs against the modern CLI in the same CI job.
+      testIgnore: ['session-continuity.spec.ts'],
       use: { ...devices['Desktop Chrome'] },
     },
   ],

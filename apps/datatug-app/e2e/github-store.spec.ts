@@ -435,6 +435,37 @@ test.describe('GitHub-store project — every side-menu page loads without error
       board.getByRole('link', { name: 'Open saved query' }),
     ).toHaveCount(2);
 
+    const topSpendCard = board.locator('ion-card', {
+      hasText: 'Top customer spend',
+    });
+    await topSpendCard.getByRole('button', { name: 'Run on board' }).click();
+    await expect(topSpendCard.getByText(/rows returned/)).toBeVisible({
+      timeout: 25_000,
+    });
+    await expect(topSpendCard.locator('table tbody tr').first()).toBeVisible();
+    await boardPage.getByRole('button', { name: 'Add to favorites' }).click();
+    await expect(
+      boardPage.getByRole('button', { name: 'Remove from favorites' }),
+    ).toBeVisible();
+    await page
+      .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
+      .click();
+    const reopenedBoards = page.locator(
+      'ion-router-outlet > sneat-datatug-boards.ion-page:not(.ion-page-hidden)',
+    );
+    await expect(
+      reopenedBoards.getByRole('region', { name: 'Favorite boards' }),
+    ).toBeVisible();
+    await reopenedBoards
+      .getByRole('region', { name: 'Favorite boards' })
+      .getByRole('link', { name: 'Chinook customer insights' })
+      .click();
+    await expect(
+      page
+        .locator('sneat-datatug-board-page.ion-page:not(.ion-page-hidden)')
+        .getByText('Last selected from this board in this browser'),
+    ).toBeVisible();
+
     await board
       .locator('ion-card', { hasText: 'Top customer spend' })
       .getByRole('link', { name: 'Open saved query' })

@@ -30,7 +30,7 @@ import {
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { closeOutline, linkOutline } from 'ionicons/icons';
-import { Subject } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 import { takeUntil } from 'rxjs/operators';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
@@ -53,6 +53,7 @@ import {
   tryDecodeErrorEnvelope,
   unifyInListTypes,
 } from '@sneat/datatug-semantic';
+import { projectRefToString } from '../../../core/project-context';
 import { IProjectContext, tryProjectUrl } from '../../../nav/nav-models';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { IEntityFieldDef } from '../../../models/definition/metapedia/entity';
@@ -258,6 +259,8 @@ export class InvestigationContextPageComponent implements OnDestroy {
   private readonly project = signal<IProjectContext | undefined>(undefined);
   private readonly environment = signal<string | undefined>(undefined);
   private readonly destroyed = new Subject<void>();
+  private entityListSubscription?: Subscription;
+  private fieldsSubscription?: Subscription;
 
   // --- "Add a context variable" form (S156, founder ruling 2026-09-10) ---
 
@@ -362,6 +365,13 @@ export class InvestigationContextPageComponent implements OnDestroy {
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (currentProject) => {
+          const previousRef = projectRefToString(this.project()?.ref);
+          const nextRef = projectRefToString(currentProject?.ref);
+          if (previousRef !== nextRef) {
+            this.entityListSubscription?.unsubscribe();
+            this.fieldsSubscription?.unsubscribe();
+            this.entities.set([]);
+          }
           this.project.set(currentProject);
           // A new project means the previous one's entity/field selection (if any) no
           // longer applies — reset the form before loading the new project's entities.
@@ -421,6 +431,8 @@ export class InvestigationContextPageComponent implements OnDestroy {
   }
 
   ngOnDestroy(): void {
+    this.entityListSubscription?.unsubscribe();
+    this.fieldsSubscription?.unsubscribe();
     this.destroyed.next();
     this.destroyed.complete();
   }
@@ -615,16 +627,20 @@ export class InvestigationContextPageComponent implements OnDestroy {
   }
 
   private loadEntities(project: IProjectContext | undefined): void {
+    this.entityListSubscription?.unsubscribe();
     if (!project) {
       this.entities.set([]);
       return;
     }
-    this.entityService
+    const refKey = projectRefToString(project.ref);
+    this.entityListSubscription = this.entityService
       .getAllEntities(project.ref)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
-        next: (records) =>
-          this.entities.set(records.map((record) => record.id).toSorted()),
+        next: (records) => {
+          if (projectRefToString(this.project()?.ref) !== refKey) return;
+          this.entities.set(records.map((record) => record.id).toSorted());
+        },
         error: (err) =>
           this.errorLogger.logError(
             err,
@@ -634,18 +650,24 @@ export class InvestigationContextPageComponent implements OnDestroy {
   }
 
   private loadFields(entityId: string): void {
+    this.fieldsSubscription?.unsubscribe();
+    this.fields.set([]);
     const project = this.project();
     if (!project) {
       return;
     }
-    this.entityService
-      .getEntity(project.ref.storeId, project.ref.projectId, entityId)
+    const refKey = projectRefToString(project.ref);
+    this.fieldsSubscription = this.entityService
+      .getEntity(project.ref, entityId)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (record) => {
           // Discard a late response for an entity the user has since changed away from
           // (same "late response discarded" shape as this page's own scope guards).
-          if (this.selectedEntity() !== entityId) {
+          if (
+            this.selectedEntity() !== entityId ||
+            projectRefToString(this.project()?.ref) !== refKey
+          ) {
             return;
           }
           this.fields.set(record.dbo?.fields ?? []);

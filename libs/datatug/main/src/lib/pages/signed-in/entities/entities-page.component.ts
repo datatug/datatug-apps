@@ -123,7 +123,7 @@ export class EntitiesPageComponent
   readonly project = signal<IProjectContext | undefined>(undefined);
   readonly unsupportedProject = computed(() => {
     const ref = this.project()?.ref;
-    return !!(ref?.projectApi || ref?.branch);
+    return !!ref?.spaceID;
   });
   readonly canMutateEntities = computed(() => {
     const ref = this.project()?.ref;
