@@ -106,7 +106,7 @@ export function prepareCategoryBars(
 
 /** Bar view and row inspection share the exact same Result input and never refetch. */
 @Component({
-  selector: 'datatug-held-result-presentation',
+  selector: 'sneat-datatug-held-result-presentation',
   standalone: true,
   imports: [LimitationHeaderComponent, SourceRightsNoticeComponent],
   templateUrl: './held-result-presentation.component.html',

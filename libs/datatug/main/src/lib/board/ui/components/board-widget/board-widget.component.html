@@ -25,7 +25,12 @@
         <p role="alert">{{ error }}</p>
       }
       <ion-button
-        [disabled]="running() || definitionLoading() || !definition() || !!unsupportedReason()"
+        [disabled]="
+          running() ||
+          definitionLoading() ||
+          !definition() ||
+          !!unsupportedReason()
+        "
         (click)="run()"
         >{{ running() ? 'Running…' : 'Refresh chart' }}</ion-button
       >
@@ -65,14 +70,14 @@
             [error]="preparedRace().error ?? runError() ?? null"
           />
         } @else {
-          <datatug-held-result-presentation
+          <sneat-datatug-held-result-presentation
             [result]="result() ?? null"
             [loading]="running()"
             [error]="runError() ?? null"
           />
         }
       } @else {
-        <datatug-held-result-presentation
+        <sneat-datatug-held-result-presentation
           [result]="result() ?? null"
           [fields]="barFields()"
           [loading]="running()"
@@ -141,7 +146,7 @@
       }
       @if (result(); as answer) {
         @if (publicQuery()) {
-          <datatug-held-result-presentation [result]="answer" />
+          <sneat-datatug-held-result-presentation [result]="answer" />
         } @else {
           @if (!answer.recordset.rows.length) {
             <p role="status">Query completed with no rows.</p>

@@ -140,14 +140,15 @@ export class BoardWidgetComponent {
       title: '',
     }),
   );
-  readonly publicQuery = computed(
-    () =>
+  readonly publicQuery = computed(() => {
+    const id = this.queryId();
+    return (
       this.showcase() &&
-      !!this.queryId() &&
-      (isSavedPublicChartQueryId(this.queryId()!) ||
-        (this.widgetDef()?.name === 'SQL' &&
-          isSavedPublicInspectQueryId(this.queryId()!))),
-  );
+      !!id &&
+      (isSavedPublicChartQueryId(id) ||
+        (this.widgetDef()?.name === 'SQL' && isSavedPublicInspectQueryId(id)))
+    );
+  });
   readonly chartView = signal<'chart' | 'grid'>('chart');
   readonly chartWidgetDef = computed(() =>
     this.widgetDef()?.name === 'chart'
@@ -591,13 +592,21 @@ export class BoardWidgetComponent {
         throw new Error(
           'This chart source is not admitted for public chart execution.',
         );
-      if (this.publicQuery() && selectedRuntimeId === 'snapshot' &&
-        (context?.runtimeBinding || context?.executionTarget && context.executionTarget.kind !== 'browser-sqlite'))
-        throw new QueryDispatchError('This saved public source requires the public API runtime. Choose the public board runtime to run it.');
+      if (
+        this.publicQuery() &&
+        selectedRuntimeId === 'snapshot' &&
+        (context?.runtimeBinding ||
+          (context?.executionTarget &&
+            context.executionTarget.kind !== 'browser-sqlite'))
+      )
+        throw new QueryDispatchError(
+          'This saved public source requires the public API runtime. Choose the public board runtime to run it.',
+        );
       const result =
         this.publicQuery() &&
         selectedRuntimeId === 'snapshot' &&
-        (!context?.executionTarget || context.executionTarget.kind === 'browser-sqlite') &&
+        (!context?.executionTarget ||
+          context.executionTarget.kind === 'browser-sqlite') &&
         !context?.runtimeBinding
           ? isSavedPublicInspectQueryId(queryId)
             ? await executeSavedPublicInspectQuery(queryId, definition, {
@@ -637,7 +646,12 @@ export class BoardWidgetComponent {
           path,
         )
       ) {
-        this.snapshotStore().set({ queryId, result, identity, previous: this.retainSnapshots(previous, identity) });
+        this.snapshotStore().set({
+          queryId,
+          result,
+          identity,
+          previous: this.retainSnapshots(previous, identity),
+        });
         this.rememberChoice();
       }
     } catch (error) {
@@ -685,16 +699,26 @@ export class BoardWidgetComponent {
   }
 
   /** At most one held result per identity, with a small card-local history. */
-  private retainSnapshots(previous: BoardResultSnapshot | undefined, identity: string): BoardResultSnapshot | undefined {
+  private retainSnapshots(
+    previous: BoardResultSnapshot | undefined,
+    identity: string,
+  ): BoardResultSnapshot | undefined {
     const snapshots: BoardResultSnapshot[] = [];
     const seen = new Set([identity]);
-    for (let current = previous; current && snapshots.length < 12; current = current.previous) {
+    for (
+      let current = previous;
+      current && snapshots.length < 12;
+      current = current.previous
+    ) {
       const key = current.identity ?? current.queryId;
       if (seen.has(key)) continue;
       seen.add(key);
       snapshots.push(current);
     }
-    return snapshots.reduceRight<BoardResultSnapshot | undefined>((previous, current) => ({ ...current, previous }), undefined);
+    return snapshots.reduceRight<BoardResultSnapshot | undefined>(
+      (previous, current) => ({ ...current, previous }),
+      undefined,
+    );
   }
 
   private typedParameters(
