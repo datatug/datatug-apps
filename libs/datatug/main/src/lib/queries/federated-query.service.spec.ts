@@ -229,7 +229,7 @@ describe('federated query worker boundary', () => {
       const bounded = {
         ...definition,
         federation: {
-          ovdbBaseUrl: 'https://demodb.dev/ovdb',
+          ovdbBaseUrl: 'https://ovdb.demodb.dev',
           tables: [],
           bounds: {
             userRows: 100,

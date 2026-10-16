@@ -1,6 +1,12 @@
+import { DEMODB_OVDB_BASE_URL, currentDemoDbOvdbUrl } from './demodb-ovdb';
 import { QueryType, type IQueryDef, type ITextQueryRequest } from '../models/definition/query-def';
 
-export const HOSTED_DEMO_DB_OVDB_BASE_URL = 'https://demodb.dev/ovdb';
+/** The hosted DemoDB OVDB API (see demodb-ovdb.ts). Saved queries on the legacy base are recognised too. */
+export const HOSTED_DEMO_DB_OVDB_BASE_URL = DEMODB_OVDB_BASE_URL;
+
+function isHostedBase(base: string | undefined): boolean {
+  return base !== undefined && currentDemoDbOvdbUrl(base) === HOSTED_DEMO_DB_OVDB_BASE_URL;
+}
 
 export interface HostedDemoDbSource {
   readonly id: string;
@@ -74,7 +80,7 @@ export function hostedDemoDbSourceId(definition: IQueryDef | undefined): string 
   const tables = definition?.federation?.tables;
   if (tables?.length !== 1) return undefined;
   const table = tables[0];
-  if (!definition || !table || definition.federation?.ovdbBaseUrl !== HOSTED_DEMO_DB_OVDB_BASE_URL) return undefined;
+  if (!definition || !table || !isHostedBase(definition.federation?.ovdbBaseUrl)) return undefined;
   return HOSTED_DEMO_DB_SOURCES.find((source) =>
     source.database === table.database &&
     source.name === table.name &&
@@ -99,7 +105,7 @@ export function isHostedDemoDbStarterQuery(definition: IQueryDef | undefined): b
   const table = federation?.tables[0];
   return !!federation &&
     Object.keys(federation).sort().join(',') === 'ovdbBaseUrl,tables' &&
-    federation.ovdbBaseUrl === HOSTED_DEMO_DB_OVDB_BASE_URL &&
+    isHostedBase(federation.ovdbBaseUrl) &&
     federation.tables.length === 1 &&
     !!table &&
     Object.keys(table).sort().join(',') === 'database,fields,name' &&

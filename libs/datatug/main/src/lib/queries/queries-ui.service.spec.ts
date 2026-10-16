@@ -75,7 +75,7 @@ describe('QueriesUiService', () => {
       queryType: 'DTQL',
       request: { queryType: 'DTQL' },
       federation: {
-        ovdbBaseUrl: 'https://demodb.dev/ovdb',
+        ovdbBaseUrl: 'https://ovdb.demodb.dev',
         tables: [{ database: 'chinook', name: 'Customer' }],
       },
     });

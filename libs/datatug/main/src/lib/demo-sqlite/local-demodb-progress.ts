@@ -15,7 +15,11 @@ export interface DemoDbProgressEventLike {
 export type DemoDbInstallStep = 'verify' | 'importPristine' | 'importWorking' | 'open';
 
 export type DemoDbProgress =
-  /** `loaded` counts decoded bytes (after the browser undid gzip); `total` is absent when unknown. */
+  /**
+   * `loaded` counts the bytes read: decoded bytes for a `file` dataset (after the browser
+   * undid any Content-Encoding), the gzip parts' bytes for a `chunked` one. `total` is
+   * absent when unknown.
+   */
   | { readonly phase: 'download'; readonly loaded: number; readonly total?: number }
   | { readonly phase: 'install'; readonly step: DemoDbInstallStep };
 

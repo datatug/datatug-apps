@@ -1,3 +1,4 @@
+import { currentDemoDbOvdbUrl } from '../demodb-ovdb';
 import { Injectable } from '@angular/core';
 import {
   NATIVE_GRAPH_PUBLICATION_BLOCKER,
@@ -46,6 +47,9 @@ import {
   savedPinChanges,
   type SavedPlanRevalidation,
 } from './saved-plan-revalidation';
+
+/** A directory `apiUrl` published before the DemoDB OVDB API moved names the legacy base. */
+const currentApiUrl = (value: unknown): unknown => (typeof value === 'string' ? currentDemoDbOvdbUrl(value) : value);
 
 export interface PublicDataDiscovery {
   readonly indexes: CanonicalIndexes;
@@ -554,9 +558,9 @@ export class PublicDataService {
     );
     const base = PUBLIC_DATA_OVDB_BASES.find(
       (value) =>
-        sourceProvider['apiUrl'] ===
+        currentApiUrl(sourceProvider['apiUrl']) ===
           `${value}/v1/databases/${sourceDatabase}` &&
-        suggestion.provider['apiUrl'] ===
+        currentApiUrl(suggestion.provider['apiUrl']) ===
           `${value}/v1/databases/${targetDatabase}`,
     );
     if (!base)
@@ -765,7 +769,7 @@ export class PublicDataService {
     );
     const targetBase = PUBLIC_DATA_OVDB_BASES.find(
       (value) =>
-        suggestion.provider['apiUrl'] ===
+        currentApiUrl(suggestion.provider['apiUrl']) ===
         `${value}/v1/databases/${publicDatabase}`,
     );
     if (!targetBase)
@@ -799,7 +803,7 @@ export class PublicDataService {
       const provider = providers[0],
         driver = recordset(provider, source.entity);
       database = string(provider['localId'], 'source database');
-      if (provider['apiUrl'] !== `${targetBase}/v1/databases/${database}`)
+      if (currentApiUrl(provider['apiUrl']) !== `${targetBase}/v1/databases/${database}`)
         throw new Error('No jointly approved bounded native OVDB route.');
       name = string(driver['name'], 'source recordset');
       rawField = source.property;

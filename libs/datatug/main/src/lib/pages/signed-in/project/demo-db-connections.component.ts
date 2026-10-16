@@ -1,3 +1,4 @@
+import { isDemoDbOvdbDatabaseUrl } from '../../../queries/demodb-ovdb';
 import { Component, Input, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList } from '@ionic/angular';
@@ -73,7 +74,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
       Array.isArray(entry.tags) && entry.tags.includes(dataset) && entry.tags.includes(storage) &&
       Array.isArray(entry.environments) &&
       (storage !== 'sqlite' || (entry.readiness === 'public-api' &&
-        entry.source === `https://demodb.dev/ovdb/v1/databases/${dataset}`)) &&
+        isDemoDbOvdbDatabaseUrl(entry.source, dataset))) &&
       (storage !== 'postgresql' ||
         (entry.readiness === 'hosted-api-pending' && entry.query === 'setup-required' &&
           entry.source === `https://demodb.dev/${dataset}/`) ||

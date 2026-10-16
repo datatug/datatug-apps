@@ -1,3 +1,4 @@
+import { currentDemoDbOvdbUrl } from '../demodb-ovdb';
 import {
   chartEvidenceError,
   type BrowserPublicApiChartRecordset,
@@ -233,10 +234,12 @@ export async function executeSavedPublicChartQuery(
   const pin = NORTHWIND_ORDERS_PIN;
   const publication = await fetchOrdersRightsPublication(options);
   cancelled(options.signal);
+  // The request goes to the current OVDB host; the receipt keeps the pinned (published)
+  // endpoint, which must stay under the publication's serverId.
   const execution = await executePublicDtql(
     text,
     {
-      endpoint: pin.endpoint,
+      endpoint: currentDemoDbOvdbUrl(pin.endpoint),
       databaseId: pin.databaseId,
       collectionId: pin.recordset,
       requireExecutionSource: false,

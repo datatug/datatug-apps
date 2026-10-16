@@ -111,13 +111,15 @@ describe('DemoSqlitePageComponent', () => {
     vi.useFakeTimers();
     q('demo-sqlite-continue')?.click();
     await vi.waitFor(() => expect(runtimes).toHaveLength(1));
-    runtimes[0].progress({ phase: 'download', loaded: 12_400_000, total: 126_820_352 });
+    // AdventureWorks is chunked: the bar counts its compressed gzip parts.
+    runtimes[0].progress({ phase: 'download', loaded: 12_400_000, total: 35_367_459 });
     await settle();
     expect(q('demo-sqlite-progress')).toBeNull(); // not before ~400 ms
     vi.advanceTimersByTime(400);
     await settle();
     expect(q('demo-sqlite-progress')?.textContent).toContain('Preparing local copy (126.8 MB)');
-    expect(q('demo-sqlite-progress')?.textContent).toContain('Downloading 12.4 of 126.8 MB (unpacked size)');
+    expect(q('demo-sqlite-progress')?.textContent).toContain('Downloading 12.4 of 35.4 MB');
+    expect(q('demo-sqlite-progress')?.textContent).not.toContain('unpacked size');
     runtimes[0].progress({ phase: 'install', step: 'verify' });
     await settle();
     expect(q('demo-sqlite-progress')?.textContent).toContain('Verifying the download');

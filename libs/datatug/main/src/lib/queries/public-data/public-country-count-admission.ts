@@ -1,3 +1,4 @@
+import { currentDemoDbOvdbUrl } from '../demodb-ovdb';
 import { decodeSourceRightsEvidence, type SourceRightsEvidence } from '@sneat/datatug-semantic';
 import { strictJson } from './strict-json';
 
@@ -16,6 +17,7 @@ export interface CountryCountPin {
   readonly collectionId: string;
 }
 
+// `endpoint`/`serverId` are as published (legacy base); requests use currentDemoDbOvdbUrl(endpoint).
 export const NORTHWIND_COUNTRY_COUNT_PIN: CountryCountPin = Object.freeze({
   publicationUrl: 'https://raw.githubusercontent.com/demo-db/northwind/76fe0a1ccc82b6c0c5a035d76c9df7522713d618/artifacts/hosting-imports/shipping-country-count-rights.json',
   publicationSha256: 'fd88fdf5a029e94ee2566cb9196cec09fa3b7dbe0cd074fbc1f1baadb878f823',
@@ -192,7 +194,7 @@ export async function executePublishedCountryCounts(
     }), signal);
     if (await sha256(publication) !== pin.publicationSha256)
       return reject('The country-count rights publication differs from the pinned artifact.');
-    response = await bounded(await transport(pin.endpoint, {
+    response = await bounded(await transport(currentDemoDbOvdbUrl(pin.endpoint), {
       method: 'POST', headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
       body: JSON.stringify({ query }), credentials: 'omit', cache: 'no-store', redirect: 'error', signal,
     }), signal);
