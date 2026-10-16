@@ -37,6 +37,7 @@ describe('query dispatch planning', () => {
 
   it('rejects a descriptor outside the selected environment', () => {
     expect(() => resolveQueryDispatchPlan(request({ environment: 'prod' }), catalog)).toThrow(/unavailable in this environment/u);
+    expect(() => resolveQueryDispatchPlan(request({ environment: undefined }), catalog)).toThrow(/Select an environment/u);
   });
 
   it('requires an explicit target when the catalog does not declare a browser runtime', () => {

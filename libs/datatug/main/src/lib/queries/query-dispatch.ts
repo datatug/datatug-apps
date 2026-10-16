@@ -184,6 +184,8 @@ function validateRuntimeTarget(
   if (request.definition.federation && target.kind !== 'ovdb-federation' && target.kind !== 'hosted-cloud' && target.kind !== 'local-agent')
     throw new QueryDispatchError('This saved query is a federation plan and cannot be sent to this browser runtime.');
   if (connection) {
+    if (!request.environment && (connection.environment !== undefined || connection.environments !== undefined))
+      throw new QueryDispatchError('Select an environment for this saved connection before running the query.');
     const member = connection.environment === undefined
       ? connection.environments === undefined || !!request.environment && connection.environments.includes(request.environment)
       : connection.environment === request.environment;
