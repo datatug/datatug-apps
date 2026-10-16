@@ -40,6 +40,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
 
 type Entities = IRecord<IEntity>[];
 
@@ -106,6 +107,7 @@ export class EntitiesPageComponent
   // established pattern.
   readonly entities = signal<Entities | undefined>(undefined);
   readonly filterText = signal('');
+  readonly entitiesLoadError = signal<string | undefined>(undefined);
   readonly filteredEntities = computed(() => {
     const entities = this.entities();
     if (!entities) {
@@ -235,6 +237,7 @@ export class EntitiesPageComponent
   private loadEntities(): void {
     this.entitiesRequest()?.unsubscribe();
     this.entities.set(undefined);
+    this.entitiesLoadError.set(undefined);
     const project = this.project();
     if (!project || this.unsupportedProject()) {
       return;
@@ -245,8 +248,13 @@ export class EntitiesPageComponent
         .pipe(takeUntil(this.destroyed))
         .subscribe({
           next: (entities) => this.setEntities(entities),
-          error: (err) =>
-            this.errorLogger.logError(err, 'Failed to load project entities'),
+          error: (err) => {
+            this.entitiesLoadError.set(
+              qualifiedLocalReadVersionGuidance(err) ??
+                'Entities could not be loaded. Refresh to try again.',
+            );
+            this.errorLogger.logError(err, 'Failed to load project entities');
+          },
         }),
     );
   }

@@ -2,7 +2,7 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { BoardPageComponent } from './board-page.component';
 import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
@@ -12,6 +12,7 @@ import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-c
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { Board } from '@datatug/board-models';
 import { IProjectContext } from '../../../../nav/nav-models';
+import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
 
 describe('BoardPage', () => {
   let component: BoardPageComponent;
@@ -137,6 +138,93 @@ describe('BoardPage - currentProject navigation', () => {
       'b1',
     );
     expect(logError).not.toHaveBeenCalled();
+  });
+});
+
+describe('BoardPage - qualified read errors', () => {
+  async function renderLoadError(error: unknown): Promise<string> {
+    const project = {
+      ref: {
+        storeId: 'http-localhost:8989',
+        projectId: 'demo',
+        branch: 'feature/demo',
+      },
+      brief: { title: 'Demo' },
+    };
+    await TestBed.configureTestingModule({
+      imports: [BoardPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: ProjectAssetsReadService,
+          useValue: { board: vi.fn(() => throwError(() => error)) },
+        },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            queryParamMap: of({ get: () => null }),
+            paramMap: of({
+              get: (key: string) => (key === routingParamBoard ? 'b1' : null),
+            }),
+            snapshot: { paramMap: { get: () => 'b1' } },
+          },
+        },
+        {
+          provide: ParameterLookupService,
+          useValue: { lookupParameterValue: vi.fn() },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(project),
+            currentEnv: of(undefined),
+            setCurrentEnvironment: vi.fn(),
+          },
+        },
+        {
+          provide: QueryParamsService,
+          useValue: { setQueryParameter: vi.fn() },
+        },
+      ],
+    })
+      .overrideComponent(BoardPageComponent, {
+        set: {
+          imports: [],
+          template: '<p role="alert">{{ loadError() }}</p>',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    return fixture.nativeElement.textContent.trim();
+  }
+
+  it('renders the update and restart guidance for an old CLI', async () => {
+    expect(await renderLoadError(new QualifiedLocalReadVersionError())).toMatch(
+      /update DataTug CLI to v0\.97\.0 or later.*restart its agent/i,
+    );
+  });
+
+  it('keeps unexpected server text out of the rendered error', async () => {
+    const rendered = await renderLoadError(
+      new Error('private server response: internal token abc123'),
+    );
+    expect(rendered).toBe(
+      'This board could not be loaded. Try opening it again from Boards.',
+    );
+    expect(rendered).not.toContain('abc123');
   });
 });
 

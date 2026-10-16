@@ -51,6 +51,7 @@ import { DatatugServicesNavModule } from '../../../../services/nav/datatug-servi
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
+import { qualifiedLocalReadVersionGuidance } from '../../../../services/project/project-query-api.service';
 import { BoardComponent } from '../../components/board/board.component';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 import { BoardChoicesService } from '../../../core/board-choices.service';
@@ -218,7 +219,8 @@ export class BoardPageComponent implements OnInit, OnDestroy {
             catchError((err: unknown) => {
               this.errorLogger.logError(err, 'Failed to get board');
               this.loadError.set(
-                'This board could not be loaded. Try opening it again from Boards.',
+                qualifiedLocalReadVersionGuidance(err) ??
+                  'This board could not be loaded. Try opening it again from Boards.',
               );
               this.loading.set(false);
               return EMPTY;

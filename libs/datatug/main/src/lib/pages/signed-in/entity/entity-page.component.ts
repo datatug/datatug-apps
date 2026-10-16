@@ -40,6 +40,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
 
 @Component({
   selector: 'sneat-datatug-entity',
@@ -95,6 +96,7 @@ export class EntityPageComponent implements OnDestroy {
   readonly entityId = signal<string | undefined>(undefined);
   readonly projEntity = signal<IProjEntity>(history.state.entity);
   readonly entity = signal<IEntity | undefined>(undefined);
+  readonly entityLoadError = signal<string | undefined>(undefined);
   readonly entityLoadState = signal<
     'loading' | 'ready' | 'error' | 'unsupported'
   >('loading');
@@ -123,6 +125,7 @@ export class EntityPageComponent implements OnDestroy {
         this.entityRequest()?.unsubscribe();
         this.sourceRequest()?.unsubscribe();
         this.entity.set(undefined);
+        this.entityLoadError.set(undefined);
         this.sourceIndex.set(undefined);
         this.sourceData.set([]);
         this.sourceCols.set(undefined);
@@ -130,6 +133,7 @@ export class EntityPageComponent implements OnDestroy {
         this.entityLoadState.set('loading');
         if (!storeId || !projectId || !entityId) {
           this.entityLoadState.set('error');
+          this.entityLoadError.set('Could not load this entity.');
           return;
         }
         const projectApi = queryParams.get('projectApi');
@@ -156,6 +160,10 @@ export class EntityPageComponent implements OnDestroy {
             },
             error: (err) => {
               this.entityLoadState.set('error');
+              this.entityLoadError.set(
+                qualifiedLocalReadVersionGuidance(err) ??
+                  'Could not load this entity.',
+              );
               this.errorLogger.logError(err, 'Failed to get entity by id');
             },
           }),

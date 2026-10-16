@@ -62,7 +62,11 @@
       <!--			</ion-segment-button>-->
       <!--		</ion-segment>-->
       <ion-list class="last-child-no-border">
-        @if (filteredEntities(); as visibleEntities) {
+        @if (entitiesLoadError(); as error) {
+          <ion-item>
+            <ion-label color="danger" role="alert">{{ error }}</ion-label>
+          </ion-item>
+        } @else if (filteredEntities(); as visibleEntities) {
           @for (entity of visibleEntities; track entity.id) {
             <ion-item
               [routerLink]="entityUrl(entity)"
