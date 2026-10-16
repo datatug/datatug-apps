@@ -63,6 +63,26 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
 import { ResultsGridComponent } from '../../../components/results-grid/results-grid.component';
+import {
+  AgentLinkApiService,
+  LinkProblemError,
+} from '../../../agent-links/agent-link-api.service';
+import { isLoopbackStore, routeParam } from '../../../agent-links/link-route';
+import {
+  RESULT_QUERY_PARAM,
+  StoredResult,
+  validResultId,
+} from '../../../agent-links/query-result/query-result';
+import {
+  ResultEditorMode,
+  ResultEditorPlan,
+  resultEditorPlan,
+} from '../../../agent-links/query-result/result-editor';
+import {
+  SavedResultBannerComponent,
+  SavedResultBannerState,
+} from '../../../agent-links/query-result/saved-result-banner.component';
+import { routingParamStoreId } from '../../../core/datatug-routing-params';
 import { resultColumnDef } from '../../../components/results-grid/results-grid-columns';
 import { addIcons } from 'ionicons';
 import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
@@ -334,7 +354,7 @@ const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
   diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil, filter, take } from 'rxjs/operators';
-import { firstValueFrom, map, Subject } from 'rxjs';
+import { firstValueFrom, map, Subject, Subscription } from 'rxjs';
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -740,6 +760,7 @@ let queryParameterEditorId = 0;
     DatatugExecutorModule,
     FormsModule,
     ResultsGridComponent,
+    SavedResultBannerComponent,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,
@@ -4957,6 +4978,159 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly availableTargets = signal<readonly CandidateTarget[]>([]);
   public readonly selectedSource = signal<string | undefined>(undefined);
 
+  // ---- Opened from a stored query result: `store/:storeId/project/:projectId/query?result=<id>` ----
+
+  /** What the strip above the editor says about the saved result the editor was opened from. */
+  public readonly savedResultBanner = signal<SavedResultBannerState | undefined>(
+    undefined,
+  );
+  public readonly savedResultStoreId = signal('');
+  public readonly savedResultId = signal('');
+  private openedResultKey = '';
+  /** The query the result opened: the new draft's id, or the saved query's. */
+  private resultQueryId?: string;
+  private resultMode?: ResultEditorMode;
+  private pendingResultDisplay?: {
+    readonly queryId: string;
+    readonly plan: ResultEditorPlan;
+  };
+  private resultSubscription?: Subscription;
+  /**
+   * The saved rows of the stored result while they are what the grid shows. A cold load resolves the project and the
+   * security context after the result was read, and each of those clears the displayed result (a scope change); the
+   * saved rows do not depend on that scope, so {@link invalidateHistoryScope} puts them back until another result is
+   * shown (a run, a history entry) or another query is opened.
+   */
+  private savedRowsShown?: FederatedQueryResult;
+
+  /** Reads the stored result again (Check again on the banner). */
+  public reloadSavedResult(): void {
+    const id = this.savedResultId();
+    this.openedResultKey = '';
+    if (id) this.openFromResult(id);
+  }
+
+  /**
+   * Opens the editor from a result stored by the local agent: reads it once (`GET results/<id>`, loopback agents only,
+   * through the same service and session as the result page), fills the editor from its query, selects its database
+   * and environment, and shows its saved rows without running anything. The id is never logged.
+   */
+  private openFromResult(resultId: string): void {
+    const storeId =
+      routeParam(this.route.snapshot, routingParamStoreId) ??
+      this.project?.ref.storeId ??
+      '';
+    const key = `${storeId}\n${resultId}`;
+    if (key === this.openedResultKey) return;
+    this.openedResultKey = key;
+    this.resultSubscription?.unsubscribe();
+    this.pendingResultDisplay = undefined;
+    this.savedResultStoreId.set(storeId);
+    this.savedResultId.set(resultId);
+    if (!isLoopbackStore(storeId)) {
+      // Results live on this computer only: no other address is ever asked for one.
+      this.savedResultBanner.set({ kind: 'problem', problem: 'agent-unreachable' });
+      return;
+    }
+    if (!validResultId(resultId)) {
+      this.savedResultBanner.set({ kind: 'problem', problem: 'result-not-found' });
+      return;
+    }
+    this.savedResultBanner.set({ kind: 'loading' });
+    this.resultSubscription = this.injector
+      .get(AgentLinkApiService)
+      .storedResult(storeId, resultId)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (result) => this.applyStoredResult(result),
+        error: (err: unknown) =>
+          this.savedResultBanner.set({
+            kind: 'problem',
+            problem: err instanceof LinkProblemError ? err.problem : 'read-failed',
+          }),
+      });
+  }
+
+  private applyStoredResult(result: StoredResult): void {
+    try {
+      let plan = resultEditorPlan(result, this.randomIdService.newRandomId());
+      const here = this.project?.ref.projectId;
+      if (plan.ids && here && plan.ids.project !== here) {
+        // An address that names another project than the result's: its query and database are not this project's.
+        plan = {
+          ...plan,
+          mode: 'rows-only',
+          definition: undefined,
+          savedQueryId: undefined,
+          ids: undefined,
+          parameters: [],
+          notice:
+            'This result was saved for another project than this one, so the editor has no query for it. The saved rows are shown below.',
+        };
+      }
+      const env = plan.ids?.env;
+      // Before the rows: a change of environment clears a displayed result.
+      if (env) this.datatugNavContextService.setCurrentEnvironment(env);
+      this.selectedSource.set(plan.ids?.source);
+      this.resultMode = plan.mode;
+      this.resultQueryId = plan.definition?.id ?? plan.savedQueryId;
+      this.savedResultBanner.set({
+        kind: 'shown',
+        mode: plan.mode,
+        savedAt: plan.savedAt,
+        rowsKept: plan.rowsKept,
+        hasMore: plan.hasMore,
+        ...(plan.notice ? { notice: plan.notice } : {}),
+        summary: plan.summary,
+        skippedParameters: plan.parameters.filter((p) => !p.value).map((p) => p.id),
+        ...(result.prompt ? { prompt: result.prompt } : {}),
+      });
+      const definition = plan.definition;
+      if (plan.mode === 'draft' && definition) {
+        this.queryEditorStateService.newQuery({
+          id: definition.id,
+          title: definition.title,
+          queryType: definition.request.queryType,
+          request: definition.request,
+          def: definition,
+          isNew: true,
+        });
+        this.showSavedRows(plan.displayed);
+        this.bindResultParameters(plan, new Set(plan.parameters.map((p) => p.id)));
+      } else if (plan.mode === 'saved' && plan.savedQueryId) {
+        // The saved query opens by id as it does from the queries list; its rows follow once it is loaded.
+        this.pendingResultDisplay = { queryId: plan.savedQueryId, plan };
+        this.queryEditorStateService.openQuery(plan.savedQueryId);
+      } else {
+        this.showSavedRows(plan.displayed);
+      }
+    } catch (e) {
+      this.errorLogger.logError(e, 'Failed to open the saved result in the editor');
+      this.savedResultBanner.set({ kind: 'problem', problem: 'read-failed' });
+    }
+  }
+
+  private showSavedRows(rows: FederatedQueryResult): void {
+    this.showAttemptResult(rows);
+    this.savedRowsShown = rows;
+  }
+
+  private bindResultParameters(plan: ResultEditorPlan, declared: ReadonlySet<string>): void {
+    for (const p of plan.parameters) {
+      if (p.value && declared.has(p.id)) this.editBinding(p.id, p.value);
+    }
+  }
+
+  private closeSavedResult(): void {
+    this.resultSubscription?.unsubscribe();
+    this.pendingResultDisplay = undefined;
+    this.openedResultKey = '';
+    this.resultQueryId = undefined;
+    this.resultMode = undefined;
+    this.savedRowsShown = undefined;
+    this.savedResultBanner.set(undefined);
+  }
+
   /** api-contract.md "Bounded lookups and HTTP" — a live run failed with
    * `SOURCE_UNAVAILABLE`; the user must explicitly choose a labeled snapshot (never a
    * silent fallback) via {@link runSnapshot}. */
@@ -5419,6 +5593,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.setDisplayedResult(semanticCopy.result);
         this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition, undefined, false);
       }
+      const pendingResult = this.pendingResultDisplay;
+      if (
+        pendingResult &&
+        queryState.id === pendingResult.queryId &&
+        queryState.def &&
+        !queryState.isLoading
+      ) {
+        // A saved query opened from a stored result: its rows are shown once the query itself is loaded.
+        this.pendingResultDisplay = undefined;
+        this.showSavedRows(pendingResult.plan.displayed);
+        this.bindResultParameters(
+          pendingResult.plan,
+          new Set((queryState.def.parameters ?? []).map((p) => p.id)),
+        );
+      }
     } catch (e) {
       this.errorLogger.logError(
         e,
@@ -5428,6 +5617,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.resultSubscription?.unsubscribe();
     this.workspaceTabResizeObserver?.disconnect();
     if (this.workspaceTabRevealFrame !== undefined)
       cancelAnimationFrame(this.workspaceTabRevealFrame);
@@ -5774,9 +5964,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private trackQueryParams(): void {
     this.route.queryParamMap.subscribe({
       next: (queryParams) => {
+        // Names only: a value may be a stored result's id.
         console.log(
           'QueryPageComponent.trackQueryParams(): queryParams:',
-          queryParams,
+          queryParams.keys,
         );
 
         // `id` BEFORE `env` (S155 fix — was the other way round): on a
@@ -5815,6 +6006,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         const envId = queryParams.get('env');
         if (envId) {
           this.setActiveEnv(envId);
+        }
+        const resultId = queryParams.get(RESULT_QUERY_PARAM);
+        if (resultId) {
+          this.openFromResult(resultId);
+        } else if (
+          parameterId &&
+          this.resultQueryId !== undefined &&
+          parameterId !== this.resultQueryId
+        ) {
+          this.closeSavedResult();
         }
       },
     });
@@ -6086,10 +6287,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   updateUrl(): void {
     if (!this.authorViewActive || !this.isCurrentRoute()) return;
     // TODO: make sure not clashes with SqlQueryEditComponent
+    // A draft opened from a stored result has no saved id to put in the address: `result` reopens it after a refresh.
+    // Once the draft is saved it has an id of its own and `result` is dropped.
+    const fromResult =
+      this.resultQueryId !== undefined && this.resultQueryId === this.queryId;
+    // A result with no query to edit leaves the editor with no query of its own either.
+    const unsavedResultDraft =
+      (fromResult && this.queryState.isNew === true) ||
+      this.resultMode === 'rows-only';
+    const savedResultDraft =
+      fromResult && this.resultMode === 'draft' && this.queryState.isNew !== true;
     const queryParams: Params = {
-      id: this.queryId,
+      id: unsavedResultDraft ? undefined : this.queryId,
       editor: this.editorTab,
       env: this.queryState.activeEnv?.id,
+      ...(savedResultDraft ? { [RESULT_QUERY_PARAM]: undefined } : {}),
     };
     this.router
       .navigate([], {
@@ -6728,6 +6940,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private showAttemptResult(result: FederatedQueryResult): void {
+    if (result !== this.savedRowsShown) this.savedRowsShown = undefined;
     this.selectedHistoricalResult.set(undefined);
     this.historicalDefinition.set(undefined);
     this.relatedResultSet.set('affiliations');
@@ -8063,6 +8276,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.localResults.set([]);
     this.resultPageIndex.set(0);
     this.relatedResultSet.set('affiliations');
+    const saved = this.savedRowsShown;
+    if (saved && !this.running()) this.showSavedRows(saved);
   }
 
   /** Selecting history is a local read. It never invokes metadata, a Worker or a provider. */

@@ -69,6 +69,17 @@ import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
 import { ProjectService } from '../../../services/project/project.service';
 import { QueryEditorStateService } from '../../query-editor-state-service';
+import {
+  AgentLinkApiService,
+  LinkProblemError,
+} from '../../../agent-links/agent-link-api.service';
+import { decodeStoredResult } from '../../../agent-links/query-result/query-result';
+import {
+  DTQL_TEXT,
+  PROMPT_TEXT,
+  editorReadyResult,
+  invoiceCustomerResult,
+} from '../../../agent-links/query-result/query-result.spec-helper';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
 import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
@@ -6723,6 +6734,204 @@ select (
       '[overlayNoRowsTemplate]="resultGridNoRowsTemplate"',
     );
     expect(template).not.toContain('<table');
+  });
+
+  describe('opened from a stored query result (?result=)', () => {
+    type ResultOpener = {
+      openFromResult(id: string): void;
+      onQueryEditorStateChanged(state: unknown): void;
+    };
+    const LOOPBACK = 'http-127.0.0.1:8989';
+    const storedResult = vi.fn();
+
+    async function openerWith(
+      response: unknown,
+      navigation?: Parameters<typeof createComponent>[3],
+    ) {
+      storedResult.mockReset();
+      storedResult.mockImplementation(() =>
+        response instanceof Error
+          ? throwError(() => response)
+          : of(decodeStoredResult(response)),
+      );
+      TestBed.overrideProvider(AgentLinkApiService, {
+        useValue: { storedResult },
+      });
+      const created = await createComponent({}, queryDef, undefined, navigation);
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'demo' } };
+      return { created, opener: created as unknown as ResultOpener };
+    }
+
+    it('reads the result from the loopback agent and fills a new draft with its query, database, environment and parameters', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-1');
+      expect(storedResult).toHaveBeenCalledWith(LOOPBACK, 'rid-1');
+      expect(TestBed.inject(QueryEditorStateService).newQuery).toHaveBeenCalledWith(
+        expect.objectContaining({
+          id: 'test-id',
+          isNew: true,
+          request: { queryType: QueryType.DTQL, text: DTQL_TEXT },
+        }),
+      );
+      expect(created.selectedSource()).toBe('chinook');
+      expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).toHaveBeenCalledWith('local');
+      // the saved rows are shown right away, as a snapshot, without a run
+      expect(created.runResult()?.provenance).toMatchObject({ mode: 'snapshot', source: 'chinook' });
+      expect(created.runResult()?.recordset.rows).toHaveLength(2);
+      expect(created.running()).toBe(false);
+      expect(created.savedResultBanner()).toMatchObject({
+        kind: 'shown',
+        mode: 'draft',
+        rowsKept: 2,
+        skippedParameters: ['Countries'],
+        prompt: { text: PROMPT_TEXT, truncated: false },
+      });
+      expect(created.savedResultId()).toBe('rid-1');
+      expect(created.savedResultStoreId()).toBe(LOOPBACK);
+      // a second emission of the same address does not read it again; Check again does
+      opener.openFromResult('rid-1');
+      expect(storedResult).toHaveBeenCalledTimes(1);
+      created.reloadSavedResult();
+      expect(storedResult).toHaveBeenCalledTimes(2);
+    });
+
+    it('opens a saved query by its id, then shows the rows once it is loaded', async () => {
+      const { created, opener } = await openerWith(
+        editorReadyResult({ query: { kind: 'saved', savedQueryId: 'folder/q1', language: 'sql', text: 'select 1' } }),
+      );
+      opener.openFromResult('rid-2');
+      expect(TestBed.inject(QueryEditorStateService).openQuery).toHaveBeenCalledWith('folder/q1');
+      expect(TestBed.inject(QueryEditorStateService).newQuery).not.toHaveBeenCalled();
+      expect(created.runResult()).toBeUndefined();
+      const def = { ...queryDef, id: 'folder/q1', parameters: [{ id: 'CustomerId', type: 'integer' as const }] };
+      const state = (isLoading: boolean) => ({
+        currentQueryId: 'folder/q1',
+        activeQueries: [{ id: 'folder/q1', queryType: QueryType.SQL, request: def.request, def, isLoading }],
+      });
+      opener.onQueryEditorStateChanged(state(true));
+      expect(created.runResult()).toBeUndefined();
+      opener.onQueryEditorStateChanged(state(false));
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+      expect(created.savedResultBanner()).toMatchObject({ kind: 'shown', mode: 'saved' });
+    });
+
+    it('leaves the editor empty with a named message for an older result, and still shows the rows', async () => {
+      const { created, opener } = await openerWith(invoiceCustomerResult());
+      opener.openFromResult('rid-3');
+      expect(TestBed.inject(QueryEditorStateService).newQuery).not.toHaveBeenCalled();
+      expect(TestBed.inject(QueryEditorStateService).openQuery).not.toHaveBeenCalled();
+      expect(created.runResult()?.recordset.rows).toHaveLength(2);
+      const banner = created.savedResultBanner();
+      expect(banner).toMatchObject({ kind: 'shown', mode: 'rows-only' });
+      expect(banner?.kind === 'shown' && banner.notice).toMatch(/older DataTug/);
+      expect(banner?.kind === 'shown' && banner.prompt).toBeUndefined();
+    });
+
+    it('puts the saved rows back when the project scope settles after them, until another result is shown', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-11');
+      const saved = created.runResult();
+      expect(saved?.provenance.mode).toBe('snapshot');
+      const invalidate = () => (created as unknown as { invalidateHistoryScope(): void }).invalidateHistoryScope();
+      invalidate();
+      expect(created.runResult()).toBe(saved);
+      expect((created as unknown as { resultPageRows(): unknown[] }).resultPageRows()).toHaveLength(2);
+      // a run's result supersedes them for good
+      const runResult = { ...saved, provenance: { ...saved?.provenance, mode: 'live' } } as unknown as FederatedQueryResult;
+      (created as unknown as { showAttemptResult(r: FederatedQueryResult): void }).showAttemptResult(runResult);
+      invalidate();
+      expect(created.runResult()).toBeUndefined();
+      // and so does opening another query
+      opener.openFromResult('rid-12');
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      invalidate();
+      expect(created.runResult()).toBeUndefined();
+    });
+
+    it('does not fill the editor from a result saved for another project', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'someone-elses' } };
+      opener.openFromResult('rid-10');
+      expect(TestBed.inject(QueryEditorStateService).newQuery).not.toHaveBeenCalled();
+      expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).not.toHaveBeenCalled();
+      expect(created.runResult()?.recordset.rows).toHaveLength(2);
+      const banner = created.savedResultBanner();
+      expect(banner).toMatchObject({ kind: 'shown', mode: 'rows-only' });
+      expect(banner?.kind === 'shown' && banner.notice).toMatch(/another project/);
+    });
+
+    it('asks no agent that is not a local one', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      created.project = { ref: { storeId: 'github.com', projectId: 'demo' } };
+      opener.openFromResult('rid-4');
+      expect(storedResult).not.toHaveBeenCalled();
+      expect(created.savedResultBanner()).toEqual({ kind: 'problem', problem: 'agent-unreachable' });
+    });
+
+    it('names an id outside the grammar as not found, without a request', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('../x');
+      expect(storedResult).not.toHaveBeenCalled();
+      expect(created.savedResultBanner()).toEqual({ kind: 'problem', problem: 'result-not-found' });
+    });
+
+    it('names a failed read, and keeps the editor as it was', async () => {
+      const failed = await openerWith(new LinkProblemError('link-expired'));
+      failed.opener.openFromResult('rid-5');
+      expect(failed.created.savedResultBanner()).toEqual({ kind: 'problem', problem: 'link-expired' });
+      expect(TestBed.inject(QueryEditorStateService).newQuery).not.toHaveBeenCalled();
+      expect(failed.created.runResult()).toBeUndefined();
+      TestBed.resetTestingModule();
+      const other = await openerWith(new Error('boom'));
+      other.opener.openFromResult('rid-6');
+      expect(other.created.savedResultBanner()).toEqual({ kind: 'problem', problem: 'read-failed' });
+    });
+
+    it('is started by the result address parameter, and never logs it', async () => {
+      const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+      const { created } = await openerWith(
+        editorReadyResult({ query: { dbRef: 'datatug://demo-project/chinook?env=local' } }),
+        {
+        project: of(project),
+        queryParams: of(convertToParamMap({ result: 'rid-secret-7', env: 'local' })),
+        },
+      );
+      // the store of the route's project is a local agent: the id of the address is read from it
+      expect(storedResult).toHaveBeenCalledWith('localhost:8989', 'rid-secret-7');
+      expect(created.savedResultBanner()).toMatchObject({ kind: 'shown', mode: 'draft' });
+      expect(JSON.stringify(log.mock.calls)).not.toContain('rid-secret-7');
+      log.mockRestore();
+    });
+
+    it('keeps an unsaved draft out of the address id, and drops the result parameter once it is saved', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-8');
+      const navigate = vi.mocked(TestBed.inject(Router).navigate);
+      navigate.mockClear();
+      (created as unknown as { authorViewActive: boolean }).authorViewActive = true;
+      vi.spyOn(created as unknown as { isCurrentRoute(): boolean }, 'isCurrentRoute').mockReturnValue(true);
+      created.queryState = { id: 'test-id', isNew: true, queryType: QueryType.DTQL };
+      created.updateUrl();
+      expect(navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined } });
+      expect(navigate.mock.calls.at(-1)?.[1]?.queryParams).not.toHaveProperty('result');
+      created.queryState = { id: 'test-id', isNew: false, queryType: QueryType.DTQL };
+      created.updateUrl();
+      expect(navigate.mock.calls.at(-1)?.[1]?.queryParams).toMatchObject({ id: 'test-id', result: undefined });
+      expect(navigate.mock.calls.at(-1)?.[1]?.queryParams).toHaveProperty('result');
+    });
+
+    it('keeps the address id out too while the editor has no query to edit', async () => {
+      const { created, opener } = await openerWith(invoiceCustomerResult());
+      opener.openFromResult('rid-9');
+      const navigate = vi.mocked(TestBed.inject(Router).navigate);
+      navigate.mockClear();
+      (created as unknown as { authorViewActive: boolean }).authorViewActive = true;
+      vi.spyOn(created as unknown as { isCurrentRoute(): boolean }, 'isCurrentRoute').mockReturnValue(true);
+      created.queryState = { id: 'some-blank-id', queryType: QueryType.SQL };
+      created.updateUrl();
+      expect(navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined } });
+    });
   });
 
   it('types the result grid columns like the shared results grid and keeps a NULL as null', async () => {

@@ -7,7 +7,10 @@ import {
   output,
   signal,
 } from '@angular/core';
-import { AgGridReadyDirective, agGridEnterpriseEnabled } from '@datatug/ag-grid';
+import {
+  AgGridReadyDirective,
+  agGridEnterpriseEnabled,
+} from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
 import type {
   CellFocusedEvent,
@@ -194,7 +197,8 @@ export class ResultsGridComponent {
   readonly rowData = input<GridRow[]>([]);
   readonly loading = input(false);
   readonly headerHeight = input<number | undefined>(undefined);
-  readonly rowSelection = input<GridOptions<GridRow>['rowSelection']>(undefined);
+  readonly rowSelection =
+    input<GridOptions<GridRow>['rowSelection']>(undefined);
   readonly rowClassRules = input<RowClassRules | undefined>(undefined);
   readonly overlayNoRowsTemplate = input(NO_ROWS);
   readonly showToolbar = input(true);

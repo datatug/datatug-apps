@@ -17,18 +17,29 @@ export type GridCell = string | null;
 /** A row as the grid holds it: one cell per column id. */
 export type GridRow = Readonly<Record<string, GridCell>>;
 
-export type ColumnKind = 'number' | 'date' | 'datetime' | 'boolean' | 'json' | 'text';
+export type ColumnKind =
+  | 'number'
+  | 'date'
+  | 'datetime'
+  | 'boolean'
+  | 'json'
+  | 'text';
 
 /** The kind of a contract column type (`integer`, `decimal`, `number`, `boolean`, `date`, `datetime`, ...). */
 export function columnKind(type: string | undefined | null): ColumnKind {
   const t = (type ?? '').trim().toLowerCase();
-  if (/^(?:integer|int\d*|bigint|smallint|tinyint|decimal|numeric|number|float\d*|double|real|money)\b/.test(t)) {
+  if (
+    /^(?:integer|int\d*|bigint|smallint|tinyint|decimal|numeric|number|float\d*|double|real|money)\b/.test(
+      t,
+    )
+  ) {
     return 'number';
   }
   if (t === 'boolean' || t === 'bool' || t === 'bit') return 'boolean';
   if (t === 'date') return 'date';
   if (/^(?:datetime|timestamp|timestamptz|time)/.test(t)) return 'datetime';
-  if (t === 'json' || t === 'jsonb' || t === 'object' || t === 'array') return 'json';
+  if (t === 'json' || t === 'jsonb' || t === 'object' || t === 'array')
+    return 'json';
   return 'text';
 }
 
@@ -37,7 +48,12 @@ export function columnKind(type: string | undefined | null): ColumnKind {
  * wire), otherwise the value as text.
  */
 export function gridCell(value: TypedValue | undefined): GridCell {
-  if (!value || value.type === 'null' || value.value === null || value.value === undefined) {
+  if (
+    !value ||
+    value.type === 'null' ||
+    value.value === null ||
+    value.value === undefined
+  ) {
     return null;
   }
   return String(value.value);
@@ -48,7 +64,8 @@ export const NULL_TEXT = 'null';
 
 /** A number for sorting and filtering; undefined when the text is not a finite number. */
 export function cellNumber(cell: GridCell | undefined): number | undefined {
-  if (cell === null || cell === undefined || cell.trim() === '') return undefined;
+  if (cell === null || cell === undefined || cell.trim() === '')
+    return undefined;
   const n = Number(cell);
   return Number.isFinite(n) ? n : undefined;
 }
@@ -57,7 +74,10 @@ export function cellNumber(cell: GridCell | undefined): number | undefined {
  * Numeric order for text cells that hold numbers (an integer wider than 2^53 compares exactly as BigInt), nulls
  * last: AG Grid calls it with `isDescending`, and nulls stay last in both directions through its own handling.
  */
-export function compareNumberCells(a: GridCell | undefined, b: GridCell | undefined): number {
+export function compareNumberCells(
+  a: GridCell | undefined,
+  b: GridCell | undefined,
+): number {
   const x = cellNumber(a);
   const y = cellNumber(b);
   if (x === undefined || y === undefined) {
@@ -94,7 +114,10 @@ export function compactJson(text: string): string {
 }
 
 /** A cell as display text for its column kind: locale dates, ✓/✗ booleans, compact JSON, a dimmed-able `null`. */
-export function formatCell(cell: GridCell | undefined, kind: ColumnKind): string {
+export function formatCell(
+  cell: GridCell | undefined,
+  kind: ColumnKind,
+): string {
   if (cell === null || cell === undefined) return NULL_TEXT;
   switch (kind) {
     case 'date': {
@@ -119,13 +142,16 @@ export function formatCell(cell: GridCell | undefined, kind: ColumnKind): string
   }
 }
 
-const cellOf = (p: ValueGetterParams | ValueFormatterParams): GridCell | undefined => {
+const cellOf = (
+  p: ValueGetterParams | ValueFormatterParams,
+): GridCell | undefined => {
   const field = p.colDef?.field;
   const data = p.data as GridRow | undefined;
   return field && data ? data[field] : (p as ValueFormatterParams).value;
 };
 
-const isNullCell = (p: { value?: unknown }): boolean => p.value === null || p.value === undefined;
+const isNullCell = (p: { value?: unknown }): boolean =>
+  p.value === null || p.value === undefined;
 
 /** Column types of the grid, keyed by {@link ColumnKind}-based names; the grid passes them as `columnTypes`. */
 export const RESULTS_GRID_COLUMN_TYPES: Record<string, ColDef> = {
@@ -140,7 +166,8 @@ export const RESULTS_GRID_COLUMN_TYPES: Record<string, ColDef> = {
     filter: 'agDateColumnFilter',
     filterValueGetter: (p) => cellDate(cellOf(p)) ?? null,
     comparator: (a: GridCell, b: GridCell) =>
-      (cellDate(a)?.getTime() ?? -Infinity) - (cellDate(b)?.getTime() ?? -Infinity) || 0,
+      (cellDate(a)?.getTime() ?? -Infinity) -
+        (cellDate(b)?.getTime() ?? -Infinity) || 0,
   },
   dtBoolean: {
     headerClass: 'dt-rg-center-header',
@@ -188,7 +215,8 @@ export function resultColumnDef(
 export const ROW_NUMBER_COLUMN: ColDef<GridRow> = {
   colId: '__row',
   headerName: '#',
-  valueGetter: (p) => (p.node?.rowIndex != null ? String(p.node.rowIndex + 1) : ''),
+  valueGetter: (p) =>
+    p.node?.rowIndex != null ? String(p.node.rowIndex + 1) : '',
   width: 64,
   minWidth: 48,
   maxWidth: 96,

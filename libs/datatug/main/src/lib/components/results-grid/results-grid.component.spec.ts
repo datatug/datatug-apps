@@ -48,13 +48,17 @@ class GridStubComponent {
   readonly modelUpdated = output<unknown>();
 }
 
-async function mount(rows: Record<string, string | null>[] = [{ c0: '1' }, { c0: null }]) {
+async function mount(
+  rows: Record<string, string | null>[] = [{ c0: '1' }, { c0: null }],
+) {
   TestBed.overrideComponent(ResultsGridComponent, {
     remove: { imports: [AgGridAngular] },
     add: { imports: [GridStubComponent] },
   });
   const fixture = TestBed.createComponent(ResultsGridComponent);
-  fixture.componentRef.setInput('columnDefs', [resultColumnDef({ name: 'N', type: 'integer' }, 'c0')]);
+  fixture.componentRef.setInput('columnDefs', [
+    resultColumnDef({ name: 'N', type: 'integer' }, 'c0'),
+  ]);
   fixture.componentRef.setInput('rowData', rows);
   fixture.detectChanges();
   await ensureAgGrid();
@@ -97,28 +101,45 @@ describe('ResultsGridComponent', () => {
       expect(grid?.cellSelection()).toBeUndefined();
       expect(grid?.enableCharts()).toBe(false);
       const def = grid?.defaultColDef() ?? {};
-      expect(def).toMatchObject({ resizable: true, sortable: true, filter: true, floatingFilter: true });
+      expect(def).toMatchObject({
+        resizable: true,
+        sortable: true,
+        filter: true,
+        floatingFilter: true,
+      });
       expect(def).not.toHaveProperty('enableRowGroup');
       expect(def).not.toHaveProperty('enablePivot');
       expect(grid?.enableCellTextSelection()).toBe(true);
       expect(grid?.autoSizeStrategy()).toEqual({ type: 'fitCellContents' });
-      const ids = (grid?.columnDefs() as { colId: string }[]).map((c) => c.colId);
+      const ids = (grid?.columnDefs() as { colId: string }[]).map(
+        (c) => c.colId,
+      );
       expect(ids).toEqual(['__row', 'c0']);
     });
 
     it('has no Excel button', async () => {
       await ensureAgGrid(community);
       const { el } = await mount();
-      expect(el.querySelector('[data-testid="results-grid-export-excel"]')).toBeNull();
-      expect(el.querySelector('[data-testid="results-grid-export-csv"]')).not.toBeNull();
+      expect(
+        el.querySelector('[data-testid="results-grid-export-excel"]'),
+      ).toBeNull();
+      expect(
+        el.querySelector('[data-testid="results-grid-export-csv"]'),
+      ).not.toBeNull();
     });
 
     it('exports CSV, never Excel', async () => {
       await ensureAgGrid(community);
       const { el, cmp, grid } = await mount();
       (grid as unknown as GridStubComponent).gridReady.emit({ api });
-      (el.querySelector('[data-testid="results-grid-export-csv"]') as HTMLElement).click();
-      expect(api.exportDataAsCsv).toHaveBeenCalledWith({ fileName: 'results.csv' });
+      (
+        el.querySelector(
+          '[data-testid="results-grid-export-csv"]',
+        ) as HTMLElement
+      ).click();
+      expect(api.exportDataAsCsv).toHaveBeenCalledWith({
+        fileName: 'results.csv',
+      });
       cmp.exportExcel();
       expect(api.exportDataAsExcel).not.toHaveBeenCalled();
     });
@@ -127,8 +148,12 @@ describe('ResultsGridComponent', () => {
       await ensureAgGrid(community);
       const { fixture, el, grid, cmp } = await mount();
       expect(grid?.quickFilterText()).toBe('');
-      expect(el.querySelector('[data-testid="results-grid-count"]')?.textContent).toContain('2 rows');
-      const input = el.querySelector('[data-testid="results-grid-quick-filter"]') as HTMLInputElement;
+      expect(
+        el.querySelector('[data-testid="results-grid-count"]')?.textContent,
+      ).toContain('2 rows');
+      const input = el.querySelector(
+        '[data-testid="results-grid-quick-filter"]',
+      ) as HTMLInputElement;
       input.value = 'abc';
       input.dispatchEvent(new Event('input'));
       fixture.detectChanges();
@@ -154,7 +179,11 @@ describe('ResultsGridComponent', () => {
       await ensureAgGrid();
       await fixture.whenStable();
       fixture.detectChanges();
-      expect((fixture.nativeElement as HTMLElement).querySelector('[data-testid="results-grid-toolbar"]')).toBeNull();
+      expect(
+        (fixture.nativeElement as HTMLElement).querySelector(
+          '[data-testid="results-grid-toolbar"]',
+        ),
+      ).toBeNull();
       expect(fixture.componentInstance.defs()).toEqual([]);
       const clicked = vi.fn();
       fixture.componentInstance.rowClicked.subscribe(clicked);
@@ -183,10 +212,20 @@ describe('ResultsGridComponent', () => {
       expect(grid?.rowGroupPanelShow()).toBe('onlyWhenGrouping');
       expect(grid?.cellSelection()).toBe(true);
       expect(grid?.enableCharts()).toBe(true);
-      expect(grid?.defaultColDef()).toMatchObject({ enableRowGroup: true, enablePivot: true, enableValue: true });
+      expect(grid?.defaultColDef()).toMatchObject({
+        enableRowGroup: true,
+        enablePivot: true,
+        enableValue: true,
+      });
       (grid as unknown as GridStubComponent).gridReady.emit({ api });
-      (el.querySelector('[data-testid="results-grid-export-excel"]') as HTMLElement).click();
-      expect(api.exportDataAsExcel).toHaveBeenCalledWith({ fileName: 'results.xlsx' });
+      (
+        el.querySelector(
+          '[data-testid="results-grid-export-excel"]',
+        ) as HTMLElement
+      ).click();
+      expect(api.exportDataAsExcel).toHaveBeenCalledWith({
+        fileName: 'results.xlsx',
+      });
     });
   });
 });

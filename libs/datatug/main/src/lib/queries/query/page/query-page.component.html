@@ -48,6 +48,14 @@
   @if (project?.ref; as projectRef) {
     <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
   }
+  @if (savedResultBanner(); as savedResult) {
+    <sneat-datatug-saved-result-banner
+      [state]="savedResult"
+      [storeId]="savedResultStoreId()"
+      [resultId]="savedResultId()"
+      (checkAgain)="reloadSavedResult()"
+    />
+  }
   <ng-template #personalQueries>
       @if (semanticPersonalCopies().length) {
         <ion-item lines="none">

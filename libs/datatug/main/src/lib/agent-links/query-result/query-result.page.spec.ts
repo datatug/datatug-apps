@@ -275,6 +275,47 @@ describe('QueryResultPageComponent', () => {
     expect(m.page.row()).toBe(2);
   });
 
+  describe('the Table view is the query editor', () => {
+    it('replaces the page by the editor of the project, opened from this result, when the address names the table', async () => {
+      const m = mount('t4', { view: 'table' });
+      answer(m);
+      await m.render();
+      expect(m.navigate).toHaveBeenCalledOnce();
+      const [commands, extras] = m.navigate.mock.calls[0] as [string[], Record<string, unknown>];
+      expect(commands.join('/')).toContain('project');
+      expect(commands.join('/')).toMatch(/\/query$/);
+      expect(commands.join('/')).toContain(encodeURIComponent('demo'));
+      // no history entry, so Back goes where it went before; the id travels as the one `result` parameter
+      expect(extras).toEqual({ queryParams: { result: 't4' }, replaceUrl: true });
+    });
+
+    it('stays on the page for the other views, for an address without a view, and for a project the agent does not know', async () => {
+      for (const query of [{ view: 'record' }, { view: 'columns' }, { view: 'sources' }, {}] as Record<string, string>[]) {
+        const m = mount('t4', query);
+        answer(m);
+        await m.render();
+        expect(m.navigate).not.toHaveBeenCalled();
+        TestBed.inject(HttpTestingController).verify();
+        TestBed.resetTestingModule();
+      }
+      const unknown = mount('t4', { view: 'table' }, of(undefined));
+      answer(unknown);
+      await unknown.render();
+      expect(unknown.navigate).not.toHaveBeenCalled();
+      expect(unknown.el().querySelector('[data-testid="result-table"]')).not.toBeNull();
+    });
+
+    it('also leaves for the editor when the Table view is picked later', async () => {
+      const m = mount('t4', { view: 'record' });
+      answer(m);
+      await m.render();
+      expect(m.navigate).not.toHaveBeenCalled();
+      setQuery(m, { view: 'table' });
+      expect(m.navigate).toHaveBeenCalledOnce();
+      expect(m.navigate.mock.calls[0][1]).toEqual({ queryParams: { result: 't4' }, replaceUrl: true });
+    });
+  });
+
   it('selects a row from the table by its position', async () => {
     const m = mount('t4');
     answer(m);
