@@ -904,6 +904,7 @@
               </ion-button>
           </ion-item>
           <ng-container *ngTemplateOutlet="workspaceTabs" />
+          <ng-container *ngTemplateOutlet="executionRuntime" />
         </ion-card-header>
         <ion-card-content>
           @if (isNativeSqlWorkspace()) {
@@ -1288,16 +1289,33 @@
           <ion-note color="danger" class="ion-padding-horizontal" role="alert">{{ agentRunEnvironmentsError() }}</ion-note>
         }
       }
+  </ng-template>
+  <ng-template #executionRuntime>
       @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
         <p class="ion-padding-horizontal">
-          Selected source: {{ connectionId }}. Run checks its public SQLite fixture
-          and integrity pin before showing results.
+          Selected source: {{ connectionId }}. The selected runtime is checked against this connection before Run.
         </p>
+        @if (!isTugqlAuthorJourney()) {
+          <ion-item lines="none">
+            <ion-label>Execution runtime</ion-label>
+            <select aria-label="Execution runtime" [value]="selectedWorkingCopy()" (change)="selectWorkingCopy($any($event.target).value)">
+              <option value="project">Project runtime</option>
+              @for (runtime of workingCopyOptions(); track runtime.selectionId) {
+                <option [value]="runtime.selectionId">{{ runtime.title }} · working copy</option>
+              }
+            </select>
+          </ion-item>
+          <ion-button class="ion-margin-horizontal" fill="clear" size="small" [disabled]="workingCopyLoading()" (click)="loadWorkingCopies()">
+            {{ workingCopyLoading() ? 'Checking working copies…' : 'Find open working copies' }}
+          </ion-button>
+          @if (workingCopyError(); as error) { <ion-note color="danger" role="alert">{{ error }}</ion-note> }
+        }
       }
   </ng-template>
   @if (!isTextQueryWorkspace()) {
     <ion-card>
       <ng-container *ngTemplateOutlet="nativeParameters" />
+      <ng-container *ngTemplateOutlet="executionRuntime" />
       <ion-item lines="none"><ion-buttons>
         <ion-button fill="solid" color="primary"
           [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"

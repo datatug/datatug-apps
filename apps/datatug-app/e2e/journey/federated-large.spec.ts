@@ -302,23 +302,10 @@ columns:
       { type: 'string', value: 'Beta' },
       { type: 'number', value: 200 },
     ]);
-    await page.evaluate(async () => {
-      const debug = (
-        globalThis as typeof globalThis & {
-          ng?: {
-            getComponent: (element: Element) => {
-              federatedQuery: { dispose: () => Promise<void> };
-            };
-          };
-        }
-      ).ng;
-      const element = document.querySelector('sneat-datatug-sql-editor');
-      if (!debug || !element)
-        throw new Error('The query component is unavailable for cleanup.');
-      await debug.getComponent(element).federatedQuery.dispose();
-    });
-    expect(
-      await page.evaluate(async () =>
+    await page.getByRole('button', { name: 'Back to queries' }).click();
+    await expect(page).toHaveURL(/\/queries(?:\?|$)/);
+    await expect.poll(
+      () => page.evaluate(async () =>
         (await indexedDB.databases()).filter(
           (database) =>
             // Personal queries are persistent user work, not transient result stores.

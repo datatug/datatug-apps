@@ -3,8 +3,10 @@ import {
   OnDestroy,
   OnInit,
   computed,
+  effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -41,6 +43,8 @@ import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { IProjectRef, equalProjectRef } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { IBoardContext } from '../../../../models/definition/board/board';
+import { AgentContextService } from '@sneat/datatug-semantic';
+import { agentBaseUrl } from '../../../../services/repo/agent-url';
 import {
   IParameterDef,
   IParamWithDefAndValue,
@@ -108,6 +112,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
+  private readonly agentContext = inject(AgentContextService);
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts) — every one of these is
@@ -171,6 +176,17 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly destroyed$ = new Subject<void>();
 
   constructor() {
+    effect(() => {
+      const ref = this.projectRef();
+      const local = ref?.projectApi === 'local' && !['github', 'github.com', 'firestore'].includes(ref.storeId);
+      const hosted = ref?.storeId === 'firestore' && !!ref.spaceID;
+      const securityContextId = local ? this.agentContext.contextFor(agentBaseUrl(ref.storeId)).securityContextId() : undefined;
+      untracked(() => this.boardContext.update((context) => ({
+        ...context,
+        securityContextId,
+        executionTarget: local ? { kind: 'local-agent', agentStoreId: ref.storeId } : hosted ? { kind: 'hosted-cloud' } : undefined,
+      })));
+    });
     this.route.queryParamMap.pipe(takeUntil(this.destroyed$)).subscribe({
       next: (queryParamMap) => {
         const envId = queryParamMap.get('env');
@@ -184,6 +200,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (env) => {
           this.envId.set(env?.id);
+          this.boardContext.update((context) => ({ ...context, environment: env?.id ?? undefined }));
           if (env?.id) this.queryParamsService.setQueryParameter('env', env.id);
         },
         error: (err) =>
