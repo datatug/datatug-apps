@@ -1,11 +1,20 @@
 import type { Result, TypedValue } from '../contract/types';
-import { decodeSourceRightsEvidence } from '../contract/source-rights';
+import { decodeSourceRightsEvidence, safeTermsUrl } from '../contract/source-rights';
+
+export interface ChartLineage {
+  readonly output: string;
+  readonly input: string;
+  readonly operation: 'calendar-month' | 'identity' | 'distinct-count';
+}
 
 /** Execution admission and page completeness are supplied by the dispatcher. */
 interface ChartRecordsetBase extends Pick<Result,
   'recordset' | 'limitations' | 'bindingsApplied' | 'truncated' | 'sourceRights' | 'usedSourceIds'> {
   readonly complete: boolean;
   readonly hasMore: boolean;
+  readonly lineage?: readonly ChartLineage[];
+  /** Original admitted API row count when this recordset contains derived rows. */
+  readonly sourceRowsReturned?: number;
 }
 
 export interface ServerChartRecordset extends ChartRecordsetBase {
@@ -18,10 +27,21 @@ export interface ServerChartRecordset extends ChartRecordsetBase {
 export interface PublicApiChartReceipt {
   readonly endpoint: string;
   readonly databaseId: string;
-  readonly collection: string;
+  /** Human-facing collection mapped by the admitted saved query. */
+  readonly logicalCollection: string;
+  /** Physical collection from the live execution.sources response. */
+  readonly collectionId: string;
   readonly queryId: string;
   readonly rowsReturned: number;
   readonly observedAt: string;
+  readonly executionSources: readonly { readonly database: string; readonly collection: string }[];
+  /** Supplied only after the runtime fetches and hashes a publisher-owned artifact. */
+  readonly rightsPublication?: {
+    readonly url: string;
+    readonly sha256: string;
+    readonly sourceId: string;
+    readonly providerSourceSha256: string;
+  };
 }
 
 export interface BrowserPublicApiChartRecordset extends ChartRecordsetBase {
@@ -86,6 +106,8 @@ interface BarRaceDataBase {
   readonly usedSourceIds: Result['usedSourceIds'];
   readonly complete: boolean;
   readonly hasMore: boolean;
+  readonly lineage?: readonly ChartLineage[];
+  readonly sourceRowsReturned?: number;
   readonly spec: BarRaceSpec;
   readonly dimensions: readonly ChartField[];
   readonly measures: readonly ChartField[];
@@ -152,6 +174,56 @@ function error(code: ChartEligibilityErrorCode, message: string): BarRacePrepara
   return { ok: false, code, message };
 }
 
+/** Presentation consistency only. The dispatcher must authenticate the API and rights artifact first. */
+export function chartEvidenceError(result: ChartRecordset): string | undefined {
+  let rights;
+  try {
+    rights = decodeSourceRightsEvidence(result as unknown as Record<string, unknown>);
+  } catch {
+    return 'Chart source-rights evidence is malformed.';
+  }
+  if (!rights.usedSourceIds?.length || !rights.sourceRights?.length ||
+    rights.usedSourceIds.some((id) => !rights.sourceRights?.some((right) => right.sourceId === id && right.evidenceOrigin !== 'legacy-metadata')))
+    return 'Current publisher or server source-rights evidence is required for every used chart source.';
+  if (result.runtime !== 'browser-public-api') return undefined;
+  const receipt = result.publicApiReceipt;
+  let host: string;
+  try {
+    safeTermsUrl(receipt.endpoint);
+    host = new URL(receipt.endpoint).hostname;
+  } catch {
+    return 'The public API endpoint is not an admitted HTTPS URL.';
+  }
+  if (receipt.endpoint !== result.provenance.endpoint ||
+    receipt.databaseId !== result.provenance.databaseId ||
+    receipt.databaseId !== result.provenance.source ||
+    receipt.logicalCollection !== result.provenance.collection ||
+    receipt.queryId !== result.provenance.queryId ||
+    receipt.observedAt !== result.provenance.observedAt ||
+    receipt.rowsReturned !== (result.sourceRowsReturned ?? result.recordset.rows.length) ||
+    receipt.executionSources.length !== 1 ||
+    receipt.executionSources[0].database !== receipt.databaseId ||
+    receipt.executionSources[0].collection !== receipt.collectionId)
+    return 'The public API receipt does not match the observed query, rows or physical source.';
+  const publication = receipt.rightsPublication;
+  if (!publication || !/^[a-f0-9]{64}$/.test(publication.sha256) ||
+    !/^[a-f0-9]{64}$/.test(publication.providerSourceSha256))
+    return 'A verified publisher rights artifact is required for this public API source.';
+  try {
+    safeTermsUrl(publication.url);
+  } catch {
+    return 'The publisher rights artifact must have an HTTPS URL.';
+  }
+  if (rights.usedSourceIds.length !== 1 || rights.usedSourceIds[0] !== publication.sourceId ||
+    !rights.sourceRights.some((right) =>
+      right.sourceId === publication.sourceId && right.evidenceOrigin === 'publisher-verified' &&
+      right.source.serverId === host && right.source.databaseId === receipt.databaseId &&
+      right.source.recordset === receipt.collectionId &&
+      right.pins.some((pin) => pin.role === 'provider' && pin.sha256 === publication.providerSourceSha256)))
+    return 'The publisher rights artifact does not bind this physical public API source.';
+  return undefined;
+}
+
 /** Include every calendar month between the observed endpoints, with a fixed work bound. */
 function calendarMonths(first: string, last: string): string[] | undefined {
   const start = Number(first.slice(0, 4)) * 12 + Number(first.slice(5, 7)) - 1;
@@ -167,14 +239,8 @@ function calendarMonths(first: string, last: string): string[] | undefined {
 export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRacePreparation {
   if (!result.complete || result.hasMore || result.truncated || result.limitations.some((item) => item.rowsFiltered))
     return error('INCOMPLETE', 'A complete, unrestricted result is required for a bar race.');
-  try {
-    const rights = decodeSourceRightsEvidence(result as unknown as Record<string, unknown>);
-    if (!rights.usedSourceIds?.length || !rights.sourceRights?.length ||
-      rights.usedSourceIds.some((id) => !rights.sourceRights?.some((right) => right.sourceId === id)))
-      return error('SOURCE_RIGHTS_UNAVAILABLE', 'Source-rights evidence is required for every used chart source.');
-  } catch {
-    return error('SOURCE_RIGHTS_UNAVAILABLE', 'Chart source-rights evidence is malformed.');
-  }
+  const evidenceError = chartEvidenceError(result);
+  if (evidenceError) return error('SOURCE_RIGHTS_UNAVAILABLE', evidenceError);
   if (spec.kind !== 'bar-race') return error('INVALID_SPEC', 'Chart kind must be bar-race.');
   if (!Number.isInteger(spec.topN) || spec.topN < 1 || spec.topN > 100)
     return error('INVALID_SPEC', 'Top N must be a whole number from 1 to 100.');
@@ -263,6 +329,8 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
     usedSourceIds: result.usedSourceIds,
     complete: result.complete,
     hasMore: result.hasMore,
+    lineage: result.lineage,
+    sourceRowsReturned: result.sourceRowsReturned,
     spec,
     dimensions: [
       { column: spec.periodColumn, type: result.recordset.columns[periodIndex].type },

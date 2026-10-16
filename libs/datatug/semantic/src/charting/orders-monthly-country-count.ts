@@ -1,18 +1,11 @@
 import type { TypedValue } from '../contract/types';
-import { decodeSourceRightsEvidence } from '../contract/source-rights';
-import type { ChartRecordset } from './bar-race';
+import { chartEvidenceError, type ChartLineage, type ChartRecordset } from './bar-race';
 
 export interface OrdersMonthlyCountryCountSpec {
   readonly name: 'orders-monthly-country-count';
   readonly orderIdColumn: string;
   readonly dateColumn: string;
   readonly countryColumn: string;
-}
-
-export interface ChartLineage {
-  readonly output: 'period' | 'category' | 'value';
-  readonly input: string;
-  readonly operation: 'calendar-month' | 'identity' | 'distinct-count';
 }
 
 export interface OrdersMonthlyCountryCount {
@@ -73,16 +66,8 @@ export function transformOrdersMonthlyCountryCount(
     return fail('INCOMPLETE', 'The complete, unrestricted Orders result is required to count every order.');
   if (input.recordset.rows.length > MAX_ORDERS)
     return fail('LIMIT', `The Orders transform accepts at most ${MAX_ORDERS} rows.`);
-  if (input.runtime === 'browser-public-api' && input.publicApiReceipt.rowsReturned !== input.recordset.rows.length)
-    return fail('INCOMPLETE', 'The public API receipt does not match the returned Orders rows.');
-  try {
-    const rights = decodeSourceRightsEvidence(input as unknown as Record<string, unknown>);
-    if (!rights.usedSourceIds?.length || !rights.sourceRights?.length ||
-      rights.usedSourceIds.some((id) => !rights.sourceRights?.some((right) => right.sourceId === id)))
-      return fail('RIGHTS', 'Publisher source-rights evidence is required for every used Orders source.');
-  } catch {
-    return fail('RIGHTS', 'Orders source-rights evidence is malformed.');
-  }
+  const evidenceError = chartEvidenceError(input);
+  if (evidenceError) return fail('RIGHTS', evidenceError);
   if (spec.name !== 'orders-monthly-country-count') return fail('SHAPE', 'Unknown Orders transform.');
   if (!input.provenance.collection?.trim()) return fail('SHAPE', 'The Orders source collection must be identified.');
   const selectors = [spec.orderIdColumn, spec.dateColumn, spec.countryColumn];
@@ -135,8 +120,16 @@ export function transformOrdersMonthlyCountryCount(
       ]);
     }
   }
+  const collection = input.provenance.collection;
+  const lineage: ChartLineage[] = [
+    { output: 'period', input: `${collection}.${spec.dateColumn}`, operation: 'calendar-month' },
+    { output: 'category', input: `${collection}.${spec.countryColumn}`, operation: 'identity' },
+    { output: 'value', input: `${collection}.${spec.orderIdColumn}`, operation: 'distinct-count' },
+  ];
   const recordset: ChartRecordset = {
     ...input,
+    lineage,
+    sourceRowsReturned: input.sourceRowsReturned ?? input.recordset.rows.length,
     recordset: {
       columns: [
         { name: 'period', type: 'string' },
@@ -146,7 +139,6 @@ export function transformOrdersMonthlyCountryCount(
       rows,
     },
   };
-  const collection = input.provenance.collection;
   return {
     ok: true,
     data: {
@@ -154,11 +146,7 @@ export function transformOrdersMonthlyCountryCount(
       orderCount: ids.size,
       months,
       countries: sortedCountries.length,
-      lineage: [
-        { output: 'period', input: `${collection}.${spec.dateColumn}`, operation: 'calendar-month' },
-        { output: 'category', input: `${collection}.${spec.countryColumn}`, operation: 'identity' },
-        { output: 'value', input: `${collection}.${spec.orderIdColumn}`, operation: 'distinct-count' },
-      ],
+      lineage,
     },
   };
 }

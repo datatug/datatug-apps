@@ -11,14 +11,26 @@ const spec: OrdersMonthlyCountryCountSpec = {
   dateColumn: 'OrderDate',
   countryColumn: 'ShipCountry',
 };
+const endpoint = 'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/dtql';
+const databaseId = 'northwind-postgresql';
+const collectionId = 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM';
+const sourceId = `ovdb:cloud.openvaultdb.com/${databaseId}/${collectionId}`;
+const providerSourceSha256 = '279b34136771aee75d802094b3329515a2b01da65d2a20a4a9e3b58c29b4fd20';
 const rights = [{
-  sourceId: 'ovdb:northwind-postgresql/pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM',
-  source: { serverId: 'northwind-postgresql', databaseId: 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM' },
+  sourceId,
+  source: { serverId: 'cloud.openvaultdb.com', databaseId, recordset: collectionId },
   declaration: { spdx: 'MIT' },
   declarationScope: 'database' as const,
-  declaredAt: { serverId: 'northwind-postgresql', databaseId: 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM' },
+  declaredAt: { serverId: 'cloud.openvaultdb.com', databaseId },
   evidenceOrigin: 'publisher-verified' as const,
-  pins: [],
+  pins: [{
+    role: 'provider' as const,
+    repository: 'https://github.com/demo-db/northwind',
+    revision: 'de7f81c591abccc30fb9a0a58f44be9fd7265cd6',
+    path: 'data-source/source.sqlite',
+    sha256: providerSourceSha256,
+    bytes: 602112,
+  }],
   transformations: [],
 }];
 const input = (rows: readonly (readonly TypedValue[])[]): BrowserPublicApiChartRecordset => ({
@@ -40,16 +52,26 @@ const input = (rows: readonly (readonly TypedValue[])[]): BrowserPublicApiChartR
     queryId: 'northwind-shipping-country-race',
     mode: 'live',
     observedAt: '2026-10-16T12:00:00Z',
-    endpoint: 'https://northwind-postgresql.demodb.dev/dtql',
-    databaseId: 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM',
+    endpoint,
+    databaseId,
   },
   publicApiReceipt: {
-    endpoint: 'https://northwind-postgresql.demodb.dev/dtql',
-    databaseId: 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM',
-    collection: 'Orders',
+    endpoint,
+    databaseId,
+    logicalCollection: 'Orders',
+    collectionId,
     queryId: 'northwind-shipping-country-race',
     rowsReturned: rows.length,
     observedAt: '2026-10-16T12:00:00Z',
+    executionSources: [{ database: databaseId, collection: collectionId }],
+    // Test-only admission fixture. The browser dispatcher must fetch and hash
+    // the actual publisher artifact before constructing this receipt.
+    rightsPublication: {
+      url: 'https://demodb.dev/datasets/northwind/rights.json',
+      sha256: '2f3bf872421d645d8c3f4274b52b2ed8da64a490f1f69dd6812b01157fb61010',
+      sourceId,
+      providerSourceSha256,
+    },
   },
   limitations: [],
   bindingsApplied: [],
@@ -71,6 +93,9 @@ describe('transformOrdersMonthlyCountryCount', () => {
     if (!transformed.ok) return;
     expect([transformed.data.orderCount, transformed.data.months, transformed.data.countries]).toEqual([830, 23, 21]);
     expect(transformed.data.recordset.recordset.rows).toHaveLength(23 * 21);
+    expect(transformed.data.recordset.sourceRowsReturned).toBe(830);
+    expect(transformed.data.recordset.recordset.rows[0][0]).toEqual(text('2016-07'));
+    expect(transformed.data.recordset.recordset.rows.at(-1)?.[0]).toEqual(text('2018-05'));
     const total = transformed.data.recordset.recordset.rows.reduce((sum, row) => sum + (row[2].type === 'number' ? row[2].value : 0), 0);
     expect(total).toBe(830);
     expect(transformed.data.lineage).toEqual([
@@ -87,6 +112,8 @@ describe('transformOrdersMonthlyCountryCount', () => {
     expect(prepared.ok && prepared.data.frames).toHaveLength(23);
     expect(prepared.ok && prepared.data.runtime).toBe('browser-public-api');
     expect(prepared.ok && prepared.data.publicApiReceipt?.rowsReturned).toBe(830);
+    expect(prepared.ok && prepared.data.sourceRowsReturned).toBe(830);
+    expect(prepared.ok && prepared.data.lineage).toEqual(transformed.data.lineage);
   });
 
   it('fails closed for partial pages, filtered rows, missing rights and mismatched API receipts', () => {
@@ -96,7 +123,10 @@ describe('transformOrdersMonthlyCountryCount', () => {
     expect(transformOrdersMonthlyCountryCount({ ...valid, hasMore: true }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, limitations: [{ policy: 'restricted', rowsFiltered: true, hiddenColumns: [] }] }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, sourceRights: undefined }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
-    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, rowsReturned: 2 } }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, rowsReturned: 2 } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, executionSources: [{ database: databaseId, collection: 'Orders' }] } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, rightsPublication: undefined } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, sourceRights: [{ ...rights[0], evidenceOrigin: 'legacy-metadata' }] }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
   });
 
   it('rejects duplicate OrderIDs and invalid calendar dates or countries', () => {

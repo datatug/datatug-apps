@@ -28,7 +28,13 @@ the service/component level. It does not wire into any existing page or route â€
 ## Monthly bar race input
 
 `prepareBarRace` accepts a complete, untruncated, unrestricted chart recordset
-with validated rights for every used source. Its `runtime` discriminant keeps a
+with current rights evidence for every used source. For browser public API data,
+the dispatcher must authenticate the HTTPS response, match its physical
+`execution.sources` to the saved query, fetch and hash the publisher-owned rights
+artifact, and verify its provider pin before constructing the receipt. These pure
+chart helpers check receipt consistency; they do not perform that authentication.
+Until the runtime completes it, the live PostgreSQL Orders result is ineligible.
+The `runtime` discriminant keeps a
 server `Result` and its execution profile distinct from a browser public API
 receipt, which has no server execution profile. Chart results are presentation
 state and are never written into a board definition.
@@ -46,7 +52,7 @@ It fills every missing calendar month between the first and last observed month
 with zero period values or carried cumulative values, up to 240 frames. Typed
 dates and datetimes are rejected until the chart specification declares a time
 grain and its gap policy. The source, execution or public API receipt, rights,
-and limitation metadata stays attached.
+lineage, original source row count and limitation metadata stay attached.
 
 ## Testing
 
