@@ -1284,10 +1284,23 @@ describe('BoardWidgetComponent', () => {
     expect(chart.topN()).toBe(15);
     chart.next();
     chart.topN.set(7);
-    fixture.componentInstance.chartView.set('grid');
+    const switchGroup = fixture.nativeElement.querySelector(
+      '[aria-label="Chart result view"]',
+    ) as HTMLElement;
+    const chartElement = fixture.nativeElement.querySelector(
+      'datatug-bar-race-chart',
+    ) as HTMLElement;
+    expect(
+      switchGroup.compareDocumentPosition(chartElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    (switchGroup.querySelectorAll('button')[1] as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(chart.active).toBe(false);
-    fixture.componentInstance.chartView.set('chart');
+    expect(
+      switchGroup.querySelectorAll('button')[1].getAttribute('aria-pressed'),
+    ).toBe('true');
+    (switchGroup.querySelectorAll('button')[0] as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(
       fixture.debugElement.query(By.directive(BarRaceChartComponent))
@@ -1303,7 +1316,6 @@ describe('BoardWidgetComponent', () => {
       expect(fixture.componentInstance.result()).toBeDefined(),
     );
     fixture.detectChanges();
-    const chartElement = fixture.nativeElement.querySelector('datatug-bar-race-chart') as HTMLElement;
     const terms = fixture.nativeElement.querySelector('details.chart-source-terms') as HTMLDetailsElement;
     expect(chartElement.compareDocumentPosition(terms) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(terms.open).toBe(false);

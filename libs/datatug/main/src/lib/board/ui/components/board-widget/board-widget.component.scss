@@ -7,6 +7,44 @@
   margin-block: 0.75rem;
 }
 
+.chart-heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.chart-heading p {
+  margin-block: 0.5rem;
+}
+
+.chart-view-switch {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.chart-view-switch button {
+  min-height: 2.75rem;
+  padding-inline: 0.75rem;
+  border: 1px solid #a9bad0;
+  border-radius: 0.5rem;
+  background: #f6f9fc;
+  color: #17213a;
+  cursor: pointer;
+}
+
+.chart-view-switch button[aria-pressed='true'] {
+  border-color: #2563eb;
+  background: #eaf1fa;
+  font-weight: 650;
+}
+
+.chart-view-switch button:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+
 .chart-source-terms summary {
   cursor: pointer;
 }
