@@ -157,7 +157,6 @@ export class SessionWorkspaceShellComponent {
       try { id = decodeURIComponent(routeMatch[1]); } catch { this.formError.set('This session address is invalid.'); return; }
     }
     if (!id) {
-      if (routeMatch) this.chooserOpen.set(true);
       return;
     }
     if (!contextOpaqueId(id)) { this.formError.set('This session address is invalid.'); this.chooserOpen.set(false); return; }
