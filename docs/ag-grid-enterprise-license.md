@@ -39,10 +39,36 @@ is a community-only build: no enterprise code is downloaded, no watermark, no co
 5. Verify: open a grid page on the deployed site. In DevTools > Network the lazy `chunk-*.js` of about 3.9 MB loads;
    Console shows no AG Grid license error; the grid shows no "AG Grid Enterprise License" watermark. With the variable
    unset, none of that chunk loads.
-6. Enterprise options are off until a grid opts in via `agGridEnterpriseEnabled()` (separate change: the query-result
-   grid is owned by another work item).
+6. Enterprise options are off until a grid opts in via `agGridEnterpriseEnabled()`. The results grid
+   (`sneat-datatug-results-grid`, below) does, so a configured key turns its enterprise features on with no other change.
 
 To remove: delete the variable; the next build is community-only again.
+
+## The results grid (`sneat-datatug-results-grid`)
+
+One grid component draws query results on the query page and on the query result page
+(`libs/datatug/main/src/lib/components/results-grid/`). Columns come from `resultColumnDef()` (type-aware), cells are text
+or `null`. Without a key it passes AG Grid nothing that needs an enterprise module.
+
+| Feature | Edition |
+| --- | --- |
+| Sorting on every column (numbers by value, dates by time, wide integers exactly) | Community |
+| Column filters by kind (text, number, date) and floating filters | Community |
+| Resize, move, pin and auto-size (column menu); widths fitted to content within min/max | Community |
+| Row-number column (pinned) | Community |
+| Numbers right-aligned; locale dates; check marks for booleans; compact JSON; dimmed `null` | Community |
+| Quick filter box with a "n of m rows" count | Community |
+| CSV export | Community |
+| Native text selection for copy, keyboard navigation, row virtualization, tooltips | Community |
+| Row grouping and aggregation, pivot (enabled per column) | Enterprise |
+| Side bar tool panels (columns, filters) and status bar (row counts, aggregation of a range) | Enterprise |
+| Range (cell) selection | Enterprise |
+| Integrated charts | Enterprise (with `ag-charts-enterprise`) |
+| Excel export (extra toolbar button) | Enterprise |
+
+Verified: no enterprise option is passed to the grid while `agGridEnterpriseEnabled()` is false (unit spec with a mocked
+loader), and the enterprise chunk is requested only when `AG_GRID_LICENSE_KEY` is set. The enterprise side was only
+exercised with a mocked flag; no key has been used.
 
 ## License facts (from ag-grid.com, 2026-10-16; check the EULA before relying on them)
 
