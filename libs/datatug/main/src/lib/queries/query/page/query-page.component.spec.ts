@@ -68,6 +68,7 @@ import { QueryContextSqlService } from '../../query-context-sql.service';
 import { QueriesService } from '../../queries.service';
 import { Coordinator } from '../../../executor/coordinator';
 import { ProjectService } from '../../../services/project/project.service';
+import { PUBLIC_CHINOOK_CUSTOMER_FK } from '../../public-sqlite-tugql';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import {
   AgentLinkApiService,
@@ -6962,6 +6963,58 @@ select (
       created.updateUrl();
       expect(navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined } });
     });
+  });
+
+  it('looks up the customer of the row the button shows, not of the row at its screen position', async () => {
+    component = await createComponent();
+    // The draft/binding currency of the run is not what is under test.
+    vi.spyOn(component, 'publicSqliteRunIsStale').mockReturnValue(false);
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      publicSqliteReceipt: {
+        sql: 'SELECT 1',
+        bindingNames: [],
+        sourceId: 'chinook-sqlite',
+        fixtureSha256: 'f',
+        schemaVersion: 's',
+        draftRevision: 1,
+        executionId: 'execution',
+        relationship: {
+          id: PUBLIC_CHINOOK_CUSTOMER_FK,
+          version: 'v',
+          fromSource: 'i',
+          toSource: 'c',
+          joinType: 'inner',
+          pairs: [{ fromField: 'CustomerId', toField: 'CustomerId' }],
+        },
+        outputColumns: [
+          { name: 'CustomerId', type: 'integer', lineage: [{ source: 'c', field: 'CustomerId' }] },
+        ],
+      },
+      recordset: {
+        columns: [{ name: 'CustomerId', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '11' }], [{ type: 'integer', value: '22' }]],
+      },
+      totalRows: undefined,
+    } as unknown as FederatedQueryResult);
+    const rows = component.resultGridRows();
+    const renderer = component.resultGridColumnDefs()[0].cellRenderer as (p: unknown) => HTMLElement;
+    // Sorted descending: the second result row is on screen at position 0.
+    const cell = renderer({
+      data: rows[1],
+      value: '22',
+      valueFormatted: '22',
+      node: { rowIndex: 0 },
+      column: { getColId: () => 'result_0' },
+      api: {},
+    });
+    const button = cell.querySelector('button');
+    expect(button?.getAttribute('aria-label')).toBe('Look up invoices for Customer ID 22');
+    // A row object the grid was not given is no row of the result: no button.
+    expect(
+      renderer({ data: { result_0: '11' }, value: '11', node: { rowIndex: 0 }, column: { getColId: () => 'result_0' }, api: {} })
+        .querySelector('button'),
+    ).toBeNull();
   });
 
   it('types the result grid columns like the shared results grid and keeps a NULL as null', async () => {

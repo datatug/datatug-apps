@@ -14,6 +14,7 @@ const api = {
   exportDataAsCsv: vi.fn(),
   exportDataAsExcel: vi.fn(),
   getDisplayedRowCount: vi.fn(() => 1),
+  getAllDisplayedColumns: vi.fn(() => [{ getColId: () => '__row' }, { getColId: () => 'c0' }]),
 };
 
 /** The grid as the component drives it: its inputs are recorded, the real grid does not render in this environment. */
@@ -139,6 +140,7 @@ describe('ResultsGridComponent', () => {
       ).click();
       expect(api.exportDataAsCsv).toHaveBeenCalledWith({
         fileName: 'results.csv',
+        columnKeys: ['c0'],
       });
       cmp.exportExcel();
       expect(api.exportDataAsExcel).not.toHaveBeenCalled();

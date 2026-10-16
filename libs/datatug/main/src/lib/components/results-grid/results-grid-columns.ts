@@ -71,8 +71,8 @@ export function cellNumber(cell: GridCell | undefined): number | undefined {
 }
 
 /**
- * Numeric order for text cells that hold numbers (an integer wider than 2^53 compares exactly as BigInt), nulls
- * last: AG Grid calls it with `isDescending`, and nulls stay last in both directions through its own handling.
+ * Numeric order for text cells that hold numbers (an integer wider than 2^53 compares exactly as BigInt). Missing
+ * values (NULL, empty, not a number) are the smallest: first when ascending, last when descending.
  */
 export function compareNumberCells(
   a: GridCell | undefined,

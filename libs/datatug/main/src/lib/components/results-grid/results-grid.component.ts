@@ -258,7 +258,15 @@ export class ResultsGridComponent {
   }
 
   exportCsv(): void {
-    this.api?.exportDataAsCsv({ fileName: `${this.exportName()}.csv` });
+    const columnKeys = this.api
+      ?.getAllDisplayedColumns?.()
+      .map((c) => c.getColId())
+      // The row-number column is a screen aid, not data.
+      .filter((id) => id !== ROW_NUMBER_COLUMN.colId);
+    this.api?.exportDataAsCsv({
+      fileName: `${this.exportName()}.csv`,
+      ...(columnKeys ? { columnKeys } : {}),
+    });
   }
 
   exportExcel(): void {

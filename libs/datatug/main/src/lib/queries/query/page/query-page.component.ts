@@ -2528,12 +2528,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     columnName: string,
   ): HTMLElement {
     const value = document.createElement('span');
-    value.textContent = params.value ?? '';
+    value.textContent = params.valueFormatted ?? params.value ?? '';
+    // The row on screen (sorting and filtering move it) and the row of the result it shows are different things:
+    // the lookup reads the result's own row, found through the snapshot of the grid row.
     const rowIndex = params.node.rowIndex;
+    const snapshot = params.data && this.resultGridRowSnapshots.get(params.data);
+    const dataIndex =
+      snapshot && snapshot.rows === this.visibleResultRows()
+        ? snapshot.rows.indexOf(snapshot.row)
+        : -1;
     const result = this.runResult();
     const current =
       !!result &&
       rowIndex !== null &&
+      dataIndex >= 0 &&
       this.relatedResultSet() === 'affiliations' &&
       !this.selectedHistoricalResult() &&
       !this.displayedResultIsPreviousRun() &&
@@ -2542,9 +2550,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       receipt,
       columnIndex,
       columnName,
-      rowIndex === null
+      dataIndex < 0
         ? undefined
-        : this.visibleResultRows()[rowIndex]?.[columnIndex],
+        : this.visibleResultRows()[dataIndex]?.[columnIndex],
       current,
     );
     if (!customerId) return value;
@@ -2577,11 +2585,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
     button.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (rowIndex !== null && receipt?.executionId) {
+      if (dataIndex >= 0 && receipt?.executionId) {
         this.openAuthorCustomerLookup(
           columnIndex,
           columnName,
-          rowIndex,
+          dataIndex,
           receipt.executionId,
           customerId,
           queryIdentity,
