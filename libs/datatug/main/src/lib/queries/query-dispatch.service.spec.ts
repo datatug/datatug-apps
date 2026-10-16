@@ -12,6 +12,7 @@ import { QueryDispatchError, type QueryDispatchRequest } from './query-dispatch'
 import type { OvdbConnection } from '../ovdb/ovdb-connection';
 import { QueryRuntimeRegistry } from './query-runtime-registry.service';
 import { FederatedQueryService } from './federated-query.service';
+import { createHostedDemoDbQuery } from './hosted-demo-db-query';
 
 const sqlDefinition = (): IQueryDef => ({
   id: 'report', title: 'Report',
@@ -121,6 +122,46 @@ describe('QueryDispatchService transport boundary', () => {
     await session.dispose();
   });
 
+  it('runs a backend-shaped hosted federation with a paid source absent from the demo catalog', async () => {
+    const definition: IQueryDef = { ...createHostedDemoDbQuery('reports/paid-customers'),
+      connectionId: 'paid-source-unknown-to-demo-catalog' };
+    hosted.mockReturnValue(of({ result: {
+      ...result,
+      execution: { storeId: 'firestore', projectId: 'paid-project', executionId: 'run-paid-1' },
+      provenance: { ...result.provenance, queryId: 'reports/paid-customers' },
+    } }));
+    const session = service.start({
+      projectRef: { storeId: 'firestore', projectId: 'paid-project', spaceID: 'shared-space' },
+      definition, queryId: 'reports/paid-customers', environment: 'production',
+      target: { kind: 'hosted-cloud' }, hostedInputs: { CustomerId: { type: 'integer', value: '42' } },
+    });
+    expect((await session.result).execution?.executionId).toBe('run-paid-1');
+    expect(hosted).toHaveBeenCalledExactlyOnceWith(
+      { kind: 'cloud', storage: 'firestore', spaceID: 'shared-space', project: 'paid-project' },
+      'reports/paid-customers', 'production', { CustomerId: { type: 'integer', value: '42' } },
+    );
+    expect(catalog).not.toHaveBeenCalled();
+    expect(github).not.toHaveBeenCalled();
+    expect(browser).not.toHaveBeenCalled();
+    http.expectNone((call) => call.url.includes('/exec/run_query'));
+    await session.dispose();
+  });
+
+  it('lets the local saved-query endpoint admit its source without consulting the browser catalog', async () => {
+    const definition: IQueryDef = { ...createHostedDemoDbQuery('reports/local'), connectionId: 'server-source' };
+    const session = service.start({
+      projectRef: { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local' },
+      definition, queryId: 'reports/local', environment: 'LOCAL', securityContextId: 'sctx',
+      target: { kind: 'local-agent', agentStoreId: 'localhost:8989' },
+    });
+    const pending = await vi.waitFor(() => http.expectOne((call) => call.url.endsWith('/exec/run_query')));
+    pending.flush({ ...result, provenance: { ...result.provenance, queryId: 'reports/local' } });
+    expect((await session.result).provenance.queryId).toBe('reports/local');
+    expect(catalog).not.toHaveBeenCalled();
+    expect(github).not.toHaveBeenCalled();
+    await session.dispose();
+  });
+
   it.each([
     ['inprocess', { query: true }, '/query'],
     ['hosted', { dtql: true }, '/dtql'],
@@ -153,6 +194,33 @@ describe('QueryDispatchService transport boundary', () => {
     expect(output.truncated).toBe(true);
     expect(output.hasMore).toBe(false);
     expect(globalThis.fetch).not.toBe(fetch);
+  });
+
+  it('uses an explicitly bound OVDB copy from shared Firestore storage without routing to hosted execution', async () => {
+    const pin = 'b'.repeat(64);
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      records: [{ key: 'customers/42', data: { Name: 'edited shared copy' } }],
+    }), { headers: { 'Content-Type': 'application/json' } }));
+    const runtimeBinding: OvdbConnection = {
+      id: 'native-copy-42', title: 'Open shared copy', baseUrl: 'https://local.ovdb.invalid', databaseId: 'copy-42', fetch,
+      descriptor: { id: 'copy-42', capabilities: { query: true },
+        canonical: { url: 'https://fixtures.example/paid.sqlite', sha256: pin, bytes: 128 },
+        schemas: { collections: { customers: { fields: { Name: { type: 'string' } } } } },
+      },
+    };
+    catalog.mockReturnValue(of({ connections: [{ id: 'paid-logical-connection', storage: 'sqlite', fixtureSha256: pin }] }));
+    const output = await service.execute({
+      projectRef: { storeId: 'firestore', projectId: 'paid-project', spaceID: 'shared-space' },
+      definition: { ...sqlDefinition(), connectionId: 'paid-logical-connection',
+        request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 1\n' } as ITextQueryRequest },
+      queryId: 'reports/customer-copy', environment: 'production', runtimeBinding,
+    });
+    expect(output.recordset.rows[0][0]).toEqual({ type: 'string', value: 'edited shared copy' });
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(catalog).toHaveBeenCalledOnce();
+    expect(hosted).not.toHaveBeenCalled();
+    expect(browser).not.toHaveBeenCalled();
+    http.expectNone((call) => call.url.includes('/exec/run_query'));
   });
 
   it('runs an explicitly selected registered working copy and observes its changed rows', async () => {
