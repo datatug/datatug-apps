@@ -5,6 +5,7 @@ import {
   DEFAULT_AGENT_STORE_ID,
   GITHUB_STORE_IDS,
   NO_AGENT_BASE_URL,
+  explicitAgentOriginOfPath,
 } from './agent-base-url';
 
 // G-A1c (design `demo-as-github-project.md` 3.4, `main.ts:103`): the base URL of the agent API is read from the
@@ -85,5 +86,19 @@ describe('agentBaseUrlOfPath', () => {
   it('has an address no request can reach, and not an empty one (the semantic client needs a non-empty base)', () => {
     expect(NO_AGENT_BASE_URL).not.toBe('');
     expect(new URL(NO_AGENT_BASE_URL).protocol).toBe('about:');
+  });
+});
+
+describe('explicitAgentOriginOfPath', () => {
+  it.each([
+    ['/store/http-localhost:8989/project/p1', 'http://localhost:8989'],
+    ['/store/http-127.0.0.1:9000/project/p1', 'http://127.0.0.1:9000'],
+    ['/store/https-localhost:8989/project/p1', 'https://localhost:8989'],
+    ['/store/https-agent.example.com/project/p1', undefined],
+    ['/store/github.com/project/p1', undefined],
+    ['/project/github.com/org/repo', undefined],
+    ['/', undefined],
+  ])('%s resolves only an explicitly named loopback agent', (path, origin) => {
+    expect(explicitAgentOriginOfPath(path)).toBe(origin);
   });
 });
