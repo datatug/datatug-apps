@@ -118,12 +118,15 @@ describe('prepareBarRace', () => {
     expect(summed.ok && summed.data.frames[0].entries[0].value).toBe(5);
   });
 
-  it('only sorts canonical month strings or valid typed dates of one kind', () => {
+  it('requires canonical month strings until the spec declares a date grain', () => {
     expect(prepareBarRace(result([[text('Feb 2025'), text('West'), num(1)]]), spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
     expect(prepareBarRace(result([[text('2025-13'), text('West'), num(1)]]), spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
     expect(prepareBarRace(result([[{ type: 'date', value: '2025-02-31' }, text('West'), num(1)]]), spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
     expect(prepareBarRace(result([[text('2025-01'), text('West'), num(1)], [{ type: 'date', value: '2025-02-01' }, text('West'), num(2)]]), spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
-    const dates = prepareBarRace(result([[{ type: 'date', value: '2025-02-01' }, text('West'), num(2)], [{ type: 'date', value: '2025-01-31' }, text('West'), num(1)]]), spec);
-    expect(dates.ok && dates.data.frames.map((frame) => frame.period)).toEqual(['2025-01-31', '2025-02-01']);
+    const dates = result([[{ type: 'date', value: '2025-01-01' }, text('West'), num(1)], [{ type: 'date', value: '2025-03-01' }, text('West'), num(2)]]);
+    expect(prepareBarRace(dates, spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
+    expect(prepareBarRace({ ...dates, recordset: { ...dates.recordset, columns: [
+      { name: 'month', type: 'date' }, { name: 'territory', type: 'string' }, { name: 'orders', type: 'number' },
+    ] } }, spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
   });
 });

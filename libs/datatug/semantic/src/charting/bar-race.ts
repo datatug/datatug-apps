@@ -12,7 +12,7 @@ export interface ChartField {
 
 export interface BarRaceSpec {
   readonly kind: 'bar-race';
-  /** YYYY-MM string or typed date (YYYY-MM-DD); one kind per result. Nulls reject. */
+  /** Canonical YYYY-MM string only. Typed dates need an explicit grain before gap filling. */
   readonly periodColumn: string;
   readonly categoryColumn: string;
   /** Safe integer number/integer values only. Decimal/fractional/null values reject. */
@@ -96,15 +96,9 @@ function measure(value: TypedValue): number | undefined {
   return Number.isSafeInteger(converted) ? converted : undefined;
 }
 
-/** Canonical keys sort chronologically with code-point order. No locale parsing. */
+/** Canonical monthly keys sort chronologically with code-point order. No locale parsing. */
 function periodKey(value: TypedValue): string | undefined {
-  if (value.type === 'string')
-    return /^\d{4}-(0[1-9]|1[0-2])$/.test(value.value) ? value.value : undefined;
-  if (value.type !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(value.value)) return undefined;
-  const [year, month, day] = value.value.split('-').map(Number);
-  const date = new Date(0);
-  date.setUTCFullYear(year, month - 1, day);
-  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day
+  return value.type === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(value.value)
     ? value.value : undefined;
 }
 
@@ -145,13 +139,12 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
   const missing = [spec.periodColumn, spec.categoryColumn, spec.measureColumn].filter((name) => !names.includes(name));
   if (missing.length) return error('MISSING_COLUMN', `The result has no column: ${missing.join(', ')}.`);
   const columns = result.recordset.columns;
-  if (columns[periodIndex].type !== 'string' && columns[periodIndex].type !== 'date')
-    return error('UNSUPPORTED_PERIOD', `Column ${spec.periodColumn} must declare string or date periods.`);
+  if (columns[periodIndex].type !== 'string')
+    return error('UNSUPPORTED_PERIOD', `Column ${spec.periodColumn} must declare YYYY-MM string periods.`);
   if (columns[categoryIndex].type !== 'string' || !['number', 'integer'].includes(columns[measureIndex].type))
     return error('INCOMPATIBLE_VALUE', 'Category must declare string and measure must declare number or integer.');
 
   const byPeriod = new Map<string, Map<string, number>>();
-  let periodKind: 'string' | 'date' | undefined;
   for (const [index, row] of result.recordset.rows.entries()) {
     if (row.length !== names.length)
       return error('INVALID_ROW', `Row ${index + 1} has ${row.length} values; expected ${names.length}.`);
@@ -161,9 +154,8 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
     if ([periodValue, categoryValue, measureValue].some((value) => value.type === 'null'))
       return error('NULL_VALUE', `Row ${index + 1} has a null period, category or measure; choose an explicit missing-value policy before charting.`);
     const period = periodKey(periodValue);
-    if (!period || (periodKind && periodValue.type !== periodKind))
-      return error('UNSUPPORTED_PERIOD', `Row ${index + 1} needs a consistent YYYY-MM string or valid date period.`);
-    periodKind = periodValue.type as 'string' | 'date';
+    if (!period)
+      return error('UNSUPPORTED_PERIOD', `Row ${index + 1} needs a YYYY-MM string period.`);
     const category = categoryLabel(categoryValue);
     if (!category)
       return error('INCOMPATIBLE_VALUE', `Row ${index + 1} needs a nonempty text ${spec.categoryColumn} value.`);
@@ -186,9 +178,9 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
   const cumulative = new Map<string, number>();
   const frames: BarRaceFrame[] = [];
   const observedPeriods = [...byPeriod.keys()].sort(compare);
-  const periods = periodKind === 'string' && observedPeriods.length
+  const periods = observedPeriods.length
     ? calendarMonths(observedPeriods[0], observedPeriods[observedPeriods.length - 1])
-    : observedPeriods.length <= MAX_FRAMES ? observedPeriods : undefined;
+    : [];
   if (!periods)
     return error('UNSUPPORTED_PERIOD', `The chart exceeds ${MAX_FRAMES} frames; choose a shorter range.`);
   for (const period of periods) {
