@@ -433,6 +433,8 @@ jobs:
       #   gh release list --repo datatug/datatug
       # See apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
       DATATUG_CLI_REF: v0.78.0
+      # Session continuity requires the authenticated local Session runtime.
+      DATATUG_SESSION_CLI_REF: v0.93.0
     steps:
       - name: Checkout datatug-apps
         uses: actions/checkout@v6
@@ -495,6 +497,26 @@ jobs:
         env:
           DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
         run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1
+
+      - name: Download and verify Session continuity CLI
+        run: |
+          mkdir -p "$RUNNER_TEMP/datatug-session-bin" "$RUNNER_TEMP/datatug-session-dl"
+          gh release download "${{ env.DATATUG_SESSION_CLI_REF }}" \
+            --repo datatug/datatug \
+            --pattern "datatug_*_linux_amd64.tar.gz" \
+            --pattern "datatug_*_checksums.txt" \
+            --dir "$RUNNER_TEMP/datatug-session-dl"
+          cd "$RUNNER_TEMP/datatug-session-dl"
+          grep "linux_amd64.tar.gz" datatug_*_checksums.txt | sha256sum --check
+          tar -xzf datatug_*_linux_amd64.tar.gz -C "$RUNNER_TEMP/datatug-session-bin" datatug
+          chmod +x "$RUNNER_TEMP/datatug-session-bin/datatug"
+          echo "DATATUG_SESSION_BIN=$RUNNER_TEMP/datatug-session-bin/datatug" >> "$GITHUB_ENV"
+
+      - name: Run real CLI Session continuity
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+          DATATUG_BIN: ${{ env.DATATUG_SESSION_BIN }}
+        run: pnpm exec playwright test -c apps/datatug-app/playwright.session-continuity.config.ts
 
       - name: Upload Playwright report
         if: failure()
