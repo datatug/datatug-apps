@@ -761,7 +761,6 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         repo: setup.name,
         folder: setup.folder,
       }),
-      spaceID: setup.spaceID,
       projectApi: 'cloud' as const,
       branch: setup.branch,
     };
@@ -912,7 +911,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       return;
     }
     this.pendingGithubSetups.update((items) => items.filter((item) => item.operationID !== setup.operationID));
-    this.dismissAndGo({ storeId: 'github.com', projectId, projectApi: 'cloud', branch, spaceID: setup.spaceID });
+    this.dismissAndGo({ storeId: 'github.com', projectId, projectApi: 'cloud', branch });
   }
 
   private loadPendingGithubSetups(actor: string, force = false): void {

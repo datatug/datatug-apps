@@ -3,6 +3,7 @@ import { Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject } from 'rxjs';
 import { IProjectRef } from '../../core/project-context';
+import { readProjectApiQuery } from '../../nav/project-api-routing';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import {
@@ -19,6 +20,13 @@ describe('GitHub reauthorization handoff', () => {
     expect(
       safeGitHubReconnectReturnUrl('/projects/repo?branch=work&code=secret&state=secret'),
     ).toBe('/projects/repo?branch=work');
+    const returnUrl = safeGitHubReconnectReturnUrl('/projects/repo?projectApi=cloud&branch=work&code=secret&state=secret');
+    expect(returnUrl).toBe('/projects/repo?projectApi=cloud&branch=work');
+    expect(readProjectApiQuery(new URL(returnUrl, 'https://datatug.local').searchParams)).toEqual({
+      projectApi: 'cloud',
+      branch: 'work',
+    });
+    expect(safeGitHubReconnectReturnUrl('/projects/repo?projectApi=local&branch=work')).toBe('/');
   });
 
   it('rejects external and callback routes while accepting only the explicit GitHub setup return route', () => {

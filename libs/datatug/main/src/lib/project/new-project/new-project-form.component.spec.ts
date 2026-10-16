@@ -8,6 +8,7 @@ import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
 import type { IProjectRef } from '../../core/project-context';
+import { isValidProjectRef } from '../../core/project-context';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
@@ -246,12 +247,13 @@ describe('New project through authenticated common API', () => {
       expect.objectContaining({ ref: expect.objectContaining({
         storeId: 'github.com',
         projectId: 'repo@owner@datatug',
+        projectApi: 'cloud',
         branch: 'work',
-        spaceID: 'space',
       }) }),
       undefined,
       { replaceUrl: true },
     );
+    expect(isValidProjectRef(h.nav.goProject.mock.calls[0][0].ref)).toBe(true);
     expect(h.component['pendingGithubSetups']()).toEqual([]);
   });
 
@@ -270,6 +272,9 @@ describe('New project through authenticated common API', () => {
       ['repo', 'workflow'],
     );
     expect(h.component['isRefreshingPendingSetup'](pendingSetup)).toBe(false);
+    const reauthRef = h.reportGithubReauthorizationRequired.mock.calls[0][0];
+    expect(isValidProjectRef(reauthRef)).toBe(true);
+    expect(reauthRef).not.toHaveProperty('spaceID');
   });
 
   it('ignores a delayed discovered status after the signed-in actor changes', async () => {

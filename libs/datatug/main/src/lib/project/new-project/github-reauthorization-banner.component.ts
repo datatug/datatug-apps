@@ -176,7 +176,14 @@ export function safeGitHubReconnectReturnUrl(value: string | null | undefined): 
         : '/';
     if (url.pathname.startsWith('/new-project/')) return '/';
     const branch = url.searchParams.get('branch');
-    return `${url.pathname}${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`;
+    const projectApi = url.searchParams.get('projectApi');
+    if (url.searchParams.getAll('branch').length > 1 || url.searchParams.getAll('projectApi').length > 1) return '/';
+    if (projectApi !== null && (projectApi !== 'cloud' || !branch)) return '/';
+    const safeParams = new URLSearchParams();
+    if (projectApi) safeParams.set('projectApi', projectApi);
+    if (branch) safeParams.set('branch', branch);
+    const query = safeParams.toString();
+    return `${url.pathname}${query ? `?${query}` : ''}`;
   } catch {
     return '/';
   }
