@@ -40,6 +40,24 @@ not modify `sneat-co/dashboardius`.
 - `BOARD_MODELS_VERSION` — bump whenever a field is added, renamed or removed
   relative to `boards.go`, so a version-pinned consumer can detect drift.
 
+### Tutorial presentation core
+
+`TutorialBoardSession.openBrowser(savedBoard, projectScope)` builds a session-only
+working copy from a fetched saved board. The normal board route still uses that
+saved board directly. The tutorial starts with its row shell and no cards;
+Previous, Next, Restart, Take Control, Resume, and manual add/remove/move actions
+change only the browser working copy. A compact action log lives in
+`sessionStorage`, so a refresh in the same tab resumes it and a new browser
+session starts fresh. The log contains no query rows, widget data, or card IDs.
+The full saved board is never written back by this API. Use `open` with a
+`TutorialStorage` test double only for tests or browser environments that
+cannot expose `sessionStorage`; do not pass `localStorage`.
+
+A SHA-256 digest of the fetched board invalidates old actions after the saved
+definition changes. The core accepts at most 100 rows, 200 distinct cards,
+and 256 actions. It uses canonical card positions to guide steps and never
+persists another full-board fixture.
+
 ### Scope boundary
 
 `Board` embeds Go's generic `ProjectItem` → `ProjItemBrief` → `ListOfTags`
