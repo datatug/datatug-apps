@@ -1,33 +1,71 @@
-import { HttpParams, provideHttpClient } from '@angular/common/http';
-import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import {
+  HttpErrorResponse,
+  HttpParams,
+  provideHttpClient,
+} from '@angular/common/http';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+} from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { SneatApiService } from '@sneat/api';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
 import { SessionContextApiService } from './session-context-api.service';
-import { ContextCapabilities, ContextCommand, ContextReceipt } from './session-context-contract';
+import { ProjectQueryApiService } from '../services/project/project-query-api.service';
+import {
+  ContextCapabilities,
+  ContextCommand,
+  ContextReceipt,
+} from './session-context-contract';
 
 const localProject = { storeId: 'http-localhost:8989', projectId: 'chinook' };
 const capabilities: ContextCapabilities = {
-  schemaVersion: 1, actorId: 'local-principal', databaseId: 'ops-db', projectId: 'chinook', environments: [], actions: ['createSession'],
+  schemaVersion: 1,
+  actorId: 'local-principal',
+  databaseId: 'ops-db',
+  projectId: 'chinook',
+  environments: [],
+  actions: ['createSession'],
 };
 const command: ContextCommand = {
-  opId: 'op_123', action: 'createSession', sessionId: 'session_123', bagId: 'bag_123',
-  title: 'Imported context', scope: { environmentId: 'local', identityDomain: 'chinook-local' },
+  opId: 'op_123',
+  action: 'createSession',
+  sessionId: 'session_123',
+  bagId: 'bag_123',
+  title: 'Imported context',
+  scope: { environmentId: 'local', identityDomain: 'chinook-local' },
 };
 const receipt: ContextReceipt = {
-  opId: command.opId, actor: 'actor', action: command.action, payloadDigest: 'digest',
-  sessionId: command.sessionId, sessionVersion: 1, at: '2026-10-13T00:00:00.000Z',
+  opId: command.opId,
+  actor: 'actor',
+  action: command.action,
+  payloadDigest: 'digest',
+  sessionId: command.sessionId,
+  sessionVersion: 1,
+  at: '2026-10-13T00:00:00.000Z',
 };
 
 describe('SessionContextApiService command wire boundary', () => {
   it('sends local selector and database identity only as query parameters', async () => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), SessionContextApiService] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        SessionContextApiService,
+      ],
+    });
     const service = TestBed.inject(SessionContextApiService);
     const http = TestBed.inject(HttpTestingController);
     const pending = service.command(localProject, capabilities, command);
-    const request = http.expectOne((candidate) => candidate.url.endsWith('/session-context/commands'));
+    const request = http.expectOne((candidate) =>
+      candidate.url.endsWith('/session-context/commands'),
+    );
     expect(request.request.method).toBe('POST');
-    expect(request.request.body).toEqual({ ...command, databaseId: 'ops-db', projectId: 'chinook' });
+    expect(request.request.body).toEqual({
+      ...command,
+      databaseId: 'ops-db',
+      projectId: 'chinook',
+    });
     expect(request.request.body).not.toHaveProperty('storage');
     expect(request.request.params.get('storage')).toBe('local');
     expect(request.request.params.get('project')).toBe('chinook');
@@ -41,16 +79,33 @@ describe('SessionContextApiService command wire boundary', () => {
   it('uses hosted API query options and keeps the strict command body selector-free', async () => {
     const post = vi.fn(() => of({ receipt }));
     TestBed.configureTestingModule({
-      providers: [provideHttpClient(), provideHttpClientTesting(), SessionContextApiService,
-        { provide: SneatApiService, useValue: { post } }],
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        SessionContextApiService,
+        { provide: SneatApiService, useValue: { post } },
+      ],
     });
     const service = TestBed.inject(SessionContextApiService);
-    await expect(service.command({ storeId: 'firestore', projectId: 'chinook', spaceID: 'space_1' }, capabilities, command))
-      .resolves.toEqual(receipt);
+    await expect(
+      service.command(
+        { storeId: 'firestore', projectId: 'chinook', spaceID: 'space_1' },
+        capabilities,
+        command,
+      ),
+    ).resolves.toEqual(receipt);
     expect(post).toHaveBeenCalledOnce();
-    const [endpoint, body, options] = post.mock.calls[0] as unknown as [string, ContextCommand, { params: HttpParams }];
+    const [endpoint, body, options] = post.mock.calls[0] as unknown as [
+      string,
+      ContextCommand,
+      { params: HttpParams },
+    ];
     expect(endpoint).toBe('datatug/session-context/commands');
-    expect(body).toEqual({ ...command, databaseId: 'ops-db', projectId: 'chinook' });
+    expect(body).toEqual({
+      ...command,
+      databaseId: 'ops-db',
+      projectId: 'chinook',
+    });
     expect(body).not.toHaveProperty('storage');
     expect(body).not.toHaveProperty('spaceID');
     expect(options.params.get('storage')).toBe('firestore');
@@ -61,17 +116,46 @@ describe('SessionContextApiService command wire boundary', () => {
   });
 
   it('imports legacy records with selectors in query and only the command binding in the body', async () => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), SessionContextApiService] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        SessionContextApiService,
+      ],
+    });
     const service = TestBed.inject(SessionContextApiService);
     const http = TestBed.inject(HttpTestingController);
     const importCommand: ContextCommand = {
-      opId: 'op_import', action: 'importLegacy', sessionId: '', scope: { environmentId: 'local', identityDomain: 'local-actor' },
-      legacyImport: { sourceId: 'legacy_0123456789abcdef', scope: { environmentId: 'local', identityDomain: 'local-actor' }, entries: [], messages: [{ id: 'legacy-chat-1', role: 'user', text: 'Find invoice 1' }] },
+      opId: 'op_import',
+      action: 'importLegacy',
+      sessionId: '',
+      scope: { environmentId: 'local', identityDomain: 'local-actor' },
+      legacyImport: {
+        sourceId: 'legacy_0123456789abcdef',
+        scope: { environmentId: 'local', identityDomain: 'local-actor' },
+        entries: [],
+        messages: [
+          { id: 'legacy-chat-1', role: 'user', text: 'Find invoice 1' },
+        ],
+      },
     };
-    const expected: ContextReceipt = { ...receipt, opId: importCommand.opId, action: 'importLegacy', sessionId: 'session_imported' };
+    const expected: ContextReceipt = {
+      ...receipt,
+      opId: importCommand.opId,
+      action: 'importLegacy',
+      sessionId: 'session_imported',
+    };
     const pending = service.command(localProject, capabilities, importCommand);
-    const request = http.expectOne((candidate) => candidate.url.endsWith('/session-context/commands'));
-    expect(request.request.body).toEqual({ opId: 'op_import', action: 'importLegacy', legacyImport: importCommand.legacyImport, databaseId: 'ops-db', projectId: 'chinook' });
+    const request = http.expectOne((candidate) =>
+      candidate.url.endsWith('/session-context/commands'),
+    );
+    expect(request.request.body).toEqual({
+      opId: 'op_import',
+      action: 'importLegacy',
+      legacyImport: importCommand.legacyImport,
+      databaseId: 'ops-db',
+      projectId: 'chinook',
+    });
     expect(request.request.body).not.toHaveProperty('sessionId');
     expect(request.request.body).not.toHaveProperty('scope');
     expect(request.request.params.get('storage')).toBe('local');
@@ -83,15 +167,147 @@ describe('SessionContextApiService command wire boundary', () => {
   });
 
   it('reads the operation endpoint bare receipt before recovering an uncertain command', async () => {
-    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), SessionContextApiService] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        SessionContextApiService,
+      ],
+    });
     const service = TestBed.inject(SessionContextApiService);
     const http = TestBed.inject(HttpTestingController);
     const pending = service.operation(localProject, capabilities, command.opId);
-    const request = http.expectOne((candidate) => candidate.url.endsWith(`/session-context/operations/${command.opId}`));
+    const request = http.expectOne((candidate) =>
+      candidate.url.endsWith(`/session-context/operations/${command.opId}`),
+    );
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('databaseId')).toBe('ops-db');
     request.flush(receipt);
     await expect(pending).resolves.toEqual(receipt);
     http.verify();
   });
+});
+
+describe('SessionContextApiService GitHub branch admission', () => {
+  const github = {
+    storeId: 'github.com',
+    projectId: 'datatug-demo-project@datatug@demo-project-1',
+  };
+  function setup(defaultBranch = 'trunk') {
+    const get = vi.fn((_path: string, _params: HttpParams) => {
+      void _path;
+      void _params;
+      return of(capabilities);
+    });
+    const post = vi.fn(
+      (_path: string, _body: unknown, _options: { params: HttpParams }) => {
+        void _path;
+        void _body;
+        void _options;
+        return of({ receipt });
+      },
+    );
+    const branches = vi.fn(() => of({ branches: [], defaultBranch }));
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        SessionContextApiService,
+        { provide: SneatApiService, useValue: { get, post } },
+        { provide: ProjectQueryApiService, useValue: { branches } },
+      ],
+    });
+    return {
+      service: TestBed.inject(SessionContextApiService),
+      get,
+      post,
+      branches,
+    };
+  }
+  it('resolves a normal HEAD address through authenticated repository metadata and pins it for commands', async () => {
+    const { service, get, post, branches } = setup();
+    const ref = { ...github };
+    await service.capabilities(ref);
+    expect(branches).toHaveBeenCalledWith(ref);
+    expect(get.mock.calls[0][1].get('branch')).toBe('trunk');
+    expect(get.mock.calls[0][1].get('project')).toBe(
+      'datatug-demo-project@datatug@demo-project-1',
+    );
+    branches.mockReturnValue(of({ branches: [], defaultBranch: 'changed' }));
+    await service.command(ref, capabilities, command);
+    expect(post.mock.calls[0][2].params.get('branch')).toBe('trunk');
+    expect(branches).toHaveBeenCalledTimes(1);
+    await service.capabilities({ ...github });
+    expect(branches).toHaveBeenCalledTimes(2);
+    expect(get.mock.calls[1][1].get('branch')).toBe('changed');
+  });
+  it.each([
+    { ...github, projectId: github.projectId + '@main' },
+    { ...github, projectApi: 'cloud' as const, branch: 'main' },
+  ])(
+    'preserves the explicit branch for reads and commands: %j',
+    async (ref) => {
+      const { service, get, post, branches } = setup();
+      await service.capabilities(ref);
+      await service.command(ref, capabilities, command);
+      expect(get.mock.calls[0][1].get('branch')).toBe('main');
+      expect(post.mock.calls[0][2].params.get('branch')).toBe('main');
+      expect(branches).not.toHaveBeenCalled();
+    },
+  );
+  it('rejects conflicting explicit selectors before mutation', async () => {
+    const { service, get, post, branches } = setup();
+    const ref = {
+      ...github,
+      projectId: github.projectId + '@main',
+      branch: 'other',
+    };
+    await expect(service.command(ref, capabilities, command)).rejects.toThrow(
+      'disagree',
+    );
+    expect(get).not.toHaveBeenCalled();
+    expect(post).not.toHaveBeenCalled();
+    expect(branches).not.toHaveBeenCalled();
+  });
+  it('sanitizes lookup failures and permits a later retry with the same project reference', async () => {
+    const { service, branches, get } = setup();
+    const ref = { ...github };
+    branches.mockReturnValueOnce(
+      throwError(() => new Error('private provider diagnostic')),
+    );
+    await expect(service.capabilities(ref)).rejects.toThrow(
+      'The repository default branch could not be resolved. Open this project with an explicit branch.',
+    );
+    expect(get).not.toHaveBeenCalled();
+    await expect(service.capabilities(ref)).resolves.toEqual(capabilities);
+    expect(branches).toHaveBeenCalledTimes(2);
+  });
+  it.each([401, 403, 503])(
+    'retains authoritative admission status %s for workspace handling',
+    async (status) => {
+      const { service, branches, get, post } = setup();
+      const failure = new HttpErrorResponse({ status });
+      branches.mockReturnValue(throwError(() => failure));
+      await expect(service.capabilities({ ...github })).rejects.toBe(failure);
+      await expect(
+        service.command({ ...github }, capabilities, command),
+      ).rejects.toBe(failure);
+      expect(get).not.toHaveBeenCalled();
+      expect(post).not.toHaveBeenCalled();
+    },
+  );
+  it.each(['', 'HEAD', ' main', 'bad\nbranch', '@'])(
+    'blocks unavailable or invalid defaults before a session request: %j',
+    async (branch) => {
+      const { service, get, post } = setup(branch);
+      await expect(service.capabilities({ ...github })).rejects.toThrow(
+        'default branch could not be resolved',
+      );
+      await expect(
+        service.command({ ...github }, capabilities, command),
+      ).rejects.toThrow('default branch could not be resolved');
+      expect(get).not.toHaveBeenCalled();
+      expect(post).not.toHaveBeenCalled();
+    },
+  );
 });

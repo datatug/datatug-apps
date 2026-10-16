@@ -9,10 +9,53 @@
 </ion-header>
 
 <ion-content color="light">
-  <sneat-card-list
-    title="Environments"
-    [isLoading]="!environments"
-    [items]="environments"
-    (itemClick)="goEnvironment($event)"
-  />
+  <ion-card>
+    <ion-list lines="full">
+      <ion-item color="light"
+        ><ion-label><h2>Environments</h2></ion-label></ion-item
+      >
+      @if (loadError()) {
+        <ion-item
+          ><ion-label color="danger"
+            >Could not load environments. Refresh to try again.</ion-label
+          ></ion-item
+        >
+      } @else if (environments(); as items) {
+        @for (environment of items; track environment.id) {
+          <ion-item
+            button
+            detail
+            (click)="goEnvironment(environment)"
+            [color]="presentation(environment).tone"
+            data-testid="environment-list-item"
+          >
+            <ion-icon
+              slot="start"
+              [icon]="presentation(environment).icon"
+              aria-hidden="true"
+            />
+            <ion-label class="ion-text-wrap"
+              ><h3>{{ presentation(environment).label }}</h3>
+              @if (presentation(environment).label !== environment.id) {
+                <p>Environment ID: {{ environment.id }}</p>
+              }
+              @if (presentation(environment).safetyLabel; as safety) {
+                <p>{{ safety }}</p>
+              }
+            </ion-label>
+          </ion-item>
+        } @empty {
+          <ion-item
+            ><ion-label
+              >No environments have been configured yet.</ion-label
+            ></ion-item
+          >
+        }
+      } @else {
+        <ion-item aria-label="Loading environments"
+          ><ion-skeleton-text animated style="width: 60%"
+        /></ion-item>
+      }
+    </ion-list>
+  </ion-card>
 </ion-content>

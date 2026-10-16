@@ -1,3 +1,7 @@
+import {
+  SCHEMA_QUERY_PARAM,
+  tableIdentity,
+} from '../../agent-links/table-identity';
 import { readProjectApiQuery } from '../../nav/project-api-routing';
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Subscription } from 'rxjs';
@@ -298,6 +302,19 @@ export class DatatugNavContextService {
     //}
   }
 
+  /** Explicitly forget this tab's environment choice for the current project. */
+  public clearCurrentEnvironment(): void {
+    const key = this.lastEnvStorageKey();
+    if (key) {
+      try {
+        sessionStorage.removeItem(key);
+      } catch {
+        // The in-memory context can still be cleared when sessionStorage is unavailable.
+      }
+    }
+    this.setCurrentEnvironment(undefined);
+  }
+
   /**
    * What a URL names: its store, project and the page after the project. A short GitHub address that the short project route has
    * opened (the router state has its `storeId` and `projectId`, so a hand-off address that shows the holding page is
@@ -352,7 +369,12 @@ export class DatatugNavContextService {
       }
       this.processEnvironment(where.rest);
       this.processEnvDb(where.rest);
-      this.processEnvDbTable(where.rest);
+      this.processEnvDbTable(
+        where.rest,
+        new URL(rawUrl, 'https://datatug.app').searchParams.get(
+          SCHEMA_QUERY_PARAM,
+        ),
+      );
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process URL');
     }
@@ -481,9 +503,16 @@ export class DatatugNavContextService {
     }
   }
 
-  private processEnvDbTable(url: string): void {
+  private processEnvDbTable(url: string, schemaParam: string | null): void {
     const m = url.match(reTable);
-    const id = m && m[1];
+    let id = m && m[1];
+    if (id) {
+      try {
+        id = decodeURIComponent(id);
+      } catch {
+        // keep the segment as written
+      }
+    }
     // console.log('processEnvDbTable', id);
     if (!id) {
       if (this.$currentEnvDbTable.value) {
@@ -493,11 +522,8 @@ export class DatatugNavContextService {
     }
     const currentTable = this.$currentEnvDbTable.value;
 
-    // eslint-disable-next-line prefer-const
-    let [schema, name] = id.split('.');
-    if (!name) {
-      name = schema;
-    }
+    // REQ:table-identity (claude-mod-web-links): `?schema=` is authoritative; see tableIdentity().
+    const { schema, name } = tableIdentity(id, schemaParam);
     const project = this.$currentProj.value;
     if (currentTable?.name !== name || currentTable?.schema !== schema) {
       this.$currentEnvDbTable.next({ name, schema });

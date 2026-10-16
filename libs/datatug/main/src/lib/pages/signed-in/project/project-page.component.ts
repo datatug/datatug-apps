@@ -1,19 +1,39 @@
-import { Component, OnDestroy, ViewChild, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  ViewChild,
+  computed,
+  inject,
+  signal,
+} from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { race, Subject } from 'rxjs';
-import { skip, takeUntil } from 'rxjs/operators';
-import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { ActivatedRoute } from '@angular/router';
+import { race, Subject, of } from 'rxjs';
+import { catchError, map, skip, takeUntil } from 'rxjs/operators';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
+import { IRecord } from '@sneat/data';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   IonBackButton,
+  IonButton,
   IonButtons,
   IonCard,
+  IonCardContent,
+  IonCardHeader,
+  IonCardTitle,
   IonContent,
   IonHeader,
   IonInput,
+  IonIcon,
   IonItem,
   IonLabel,
+  IonList,
   IonMenuButton,
+  IonSkeletonText,
   IonSelect,
   IonSelectOption,
   IonTitle,
@@ -25,6 +45,10 @@ import {
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
 import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
+import { IEnvironmentFull } from '../../../models/definition/environments';
+import { environmentPresentation } from '../../../models/definition/environment-presentation';
+import { IEntity } from '../../../models/definition/metapedia/entity';
 import { DatatugFolderComponent } from '../../../folders/ui/datatug-folder.component';
 import {
   IProjBoard,
@@ -56,12 +80,17 @@ import { EntityService } from '../../../services/unsorted/entity.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
+import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
+import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
+import { projectPageHref } from '../../../nav/project-page-href';
 
 @Component({
   selector: 'sneat-datatug-project',
   templateUrl: './project-page.component.html',
+  styleUrls: ['./project-page.component.scss'],
   imports: [
     FormsModule,
+    RouterLink,
     DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesProjectModule,
@@ -69,6 +98,8 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
     DatatugServicesUnsortedModule,
     DatatugFolderComponent,
     DemoDbConnectionsComponent,
+    ProjectQueriesPreviewComponent,
+    ProjectDatabaseServersPreviewComponent,
     IonHeader,
     IonToolbar,
     IonButtons,
@@ -77,11 +108,18 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
     IonTitle,
     IonContent,
     IonCard,
+    IonCardContent,
+    IonCardHeader,
+    IonCardTitle,
+    IonButton,
     IonItem,
     IonLabel,
     IonInput,
+    IonIcon,
     IonSelect,
     IonSelectOption,
+    IonList,
+    IonSkeletonText,
   ],
 })
 export class ProjectPageComponent
@@ -118,6 +156,16 @@ export class ProjectPageComponent
   // no-template-rewrite case). A signal write notifies change detection
   // directly, per this repo's own zoneless convention (AGENTS.md).
   protected readonly project = signal<IProjectContext | undefined>(undefined);
+  protected readonly projectItemsUnsupported = computed(() => {
+    const ref = this.project()?.ref;
+    return !!(ref?.spaceID || ref?.projectApi || ref?.branch);
+  });
+  protected readonly summaryUnsupported = computed(() => {
+    const ref = this.project()?.ref;
+    return (
+      !!ref && ref.projectApi !== 'cloud' && !!(ref.projectApi || ref.branch)
+    );
+  });
 
   /**
    * The read-only "Store" field shows this instead of the raw
@@ -133,6 +181,32 @@ export class ProjectPageComponent
   protected readonly metadataState = signal<
     'loading' | 'available' | 'unavailable'
   >('loading');
+  protected readonly activeTab = signal<
+    'boards' | 'queries' | 'environments' | 'entities' | 'databases'
+  >('boards');
+  protected readonly overviewTabs = [
+    { id: 'boards', label: 'Boards' },
+    { id: 'queries', label: 'Queries' },
+    { id: 'environments', label: 'Environments' },
+    { id: 'entities', label: 'Entities' },
+    { id: 'databases', label: 'Databases' },
+  ] as const;
+  protected readonly environments = signal<IEnvironmentFull[] | undefined>(
+    undefined,
+  );
+  protected readonly environmentError = signal(false);
+  protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
+    undefined,
+  );
+  protected readonly entityError = signal(false);
+  protected readonly environmentPresentation = environmentPresentation;
+  protected readonly sandboxHref = computed(() => {
+    const ref = this.project()?.ref;
+    return isCanonicalDemoDbProject(ref)
+      ? projectPageHref(ref, 'demo-db-sandbox')
+      : undefined;
+  });
+  private readonly scopeChanged = new Subject<void>();
 
   protected destroyed = new Subject<boolean>();
   @ViewChild(IonInput, { static: false }) addInput?: IonInput;
@@ -158,11 +232,67 @@ export class ProjectPageComponent
 
   private setProjRef = (ref: IProjectRef) => {
     try {
+      this.scopeChanged.next();
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },
       });
       this.metadataState.set('loading');
+      this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
+      this.environments.set(undefined);
+      this.entities.set(undefined);
+      this.environmentError.set(false);
+      this.entityError.set(false);
+      // These readers use only the store and project IDs. A qualified ref
+      // would silently return a different branch or connection's content.
+      if (!ref.spaceID && !ref.projectApi && !ref.branch) {
+        const github =
+          ref.storeId === STORE_ID_GITHUB_COM ||
+          ref.storeId === STORE_TYPE_GITHUB;
+        const cancel$ = race([this.scopeChanged, this.destroyed]);
+        const environments$ = github
+          ? this.environmentService.listEnvironments(ref.projectId)
+          : this.projectService
+              .getFull(ref)
+              .pipe(map((full) => full.environments || []));
+        environments$
+          .pipe(
+            takeUntil(cancel$),
+            catchError((error) => {
+              this.environmentError.set(true);
+              this.errorLogger.logError(
+                error,
+                'Failed to load overview environments',
+              );
+              return of(undefined);
+            }),
+          )
+          .subscribe((items) => this.environments.set(items));
+        this.entityService
+          .getAllEntities(ref)
+          .pipe(
+            takeUntil(cancel$),
+            catchError((error) => {
+              this.entityError.set(true);
+              this.errorLogger.logError(
+                error,
+                'Failed to load overview entities',
+              );
+              return of(undefined);
+            }),
+          )
+          .subscribe((items) =>
+            this.entities.set(
+              items?.toSorted((a, b) => a.id.localeCompare(b.id)),
+            ),
+          );
+      }
+      // The local/legacy summary reader sends only a project ID. A selected
+      // branch would otherwise receive the unqualified project's title.
+      if (this.summaryUnsupported()) {
+        this.metadataState.set('unavailable');
+        return;
+      }
       this.projectService
         .watchProjectSummary(ref)
         .pipe(
@@ -200,6 +330,8 @@ export class ProjectPageComponent
   }
 
   ngOnDestroy(): void {
+    this.scopeChanged.next();
+    this.scopeChanged.complete();
     this.destroyed.next(true);
     this.destroyed.complete();
   }
@@ -218,6 +350,12 @@ export class ProjectPageComponent
     this.datatugNavService.goEnvironment(this.project(), projEnv);
   }
 
+  protected selectTab(
+    tab: 'boards' | 'queries' | 'environments' | 'entities' | 'databases',
+  ): void {
+    this.activeTab.set(tab);
+  }
+
   // noinspection JSUnusedGlobalSymbols
   protected goProjFolder(projItemType: ProjectItemType): void {
     const project = this.project();
@@ -228,7 +366,10 @@ export class ProjectPageComponent
       );
       return;
     }
-    const url = tryProjectUrl(project.ref, projItemType === 'query' ? 'queries' : `${projItemType}s`);
+    const url = tryProjectUrl(
+      project.ref,
+      projItemType === 'query' ? 'queries' : `${projItemType}s`,
+    );
     if (typeof url !== 'string') {
       this.errorLogger.logError(
         new Error(`no exact address for the project (${url.reason})`),

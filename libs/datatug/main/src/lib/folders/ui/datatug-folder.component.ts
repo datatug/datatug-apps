@@ -86,6 +86,7 @@ export class DatatugFolderComponent implements OnChanges, OnDestroy {
 
   readonly path = input('~');
   readonly projectRef = input<IProjectRef>();
+  readonly hideTabs = input(false);
 
   tab: 'boards' | 'queries' | 'environments' | 'entities' = 'boards';
 

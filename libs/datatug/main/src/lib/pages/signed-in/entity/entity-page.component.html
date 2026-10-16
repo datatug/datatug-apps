@@ -9,76 +9,129 @@
 </ion-header>
 
 <ion-content color="light">
-  <ion-card>
-    <ion-item>
-      <ion-label position="floating" color="medium">Name</ion-label>
-      <ion-input style="font-weight: bold" [value]="entityId()" readonly />
-    </ion-item>
-  </ion-card>
+  @if (entityLoadState() === 'loading') {
+    <ion-card
+      ><ion-card-content role="status"
+        >Loading entity…</ion-card-content
+      ></ion-card
+    >
+  }
 
-  <ion-card>
-    <ion-item>
-      <ion-label color="medium"> Fields</ion-label>
-      <ion-buttons slot="end">
-        <ion-button>
-          <ion-icon name="add" />
-        </ion-button>
-      </ion-buttons>
-    </ion-item>
-    <ion-list class="last-child-no-border">
-      @if (entity()?.fields?.length) {
-        <ion-item-group>
-          @for (field of entity()?.fields || []; track field.id) {
-            <ion-item>
-              <ion-label>
-                {{ field.id }}
-                @if (field.namePattern) {
-                  <p>Name pattern: {{ field.namePattern | json }}</p>
-                }
-              </ion-label>
-              <ion-badge color="light">{{ field.type }}</ion-badge>
-              <ion-buttons slot="end">
-                <ion-button>
-                  <ion-icon name="close-outline" color="medium" />
-                </ion-button>
-              </ion-buttons>
-            </ion-item>
-          }
-        </ion-item-group>
-      }
-    </ion-list>
-  </ion-card>
+  @if (entityLoadState() === 'unsupported') {
+    <ion-card
+      ><ion-card-content role="status"
+        >Entity details are unavailable for this project connection or
+        branch.</ion-card-content
+      ></ion-card
+    >
+  }
 
-  <ion-card>
-    <ion-item>
-      <ion-label color="medium">Source</ion-label>
-      <ion-badge>{{ getEntityContentType() }}</ion-badge>
-      @if (entity()?.options?.sources) {
-        <ion-select
-          [ngModel]="sourceIndex()"
-          (ngModelChange)="sourceIndex.set($event)"
-          interface="popover"
+  @if (entityLoadState() === 'ready') {
+    <ion-card>
+      <ion-item>
+        <ion-label>
+          <p>Name</p>
+          <h2>{{ entity()?.title || entityId() }}</h2>
+        </ion-label>
+      </ion-item>
+    </ion-card>
+  }
+
+  @if (entityLoadState() === 'error') {
+    <ion-card
+      ><ion-card-content role="alert"
+        >Could not load this entity.</ion-card-content
+      ></ion-card
+    >
+  }
+
+  @if (entityLoadState() === 'ready') {
+    <ion-card>
+      <ion-item>
+        <ion-label color="medium"> Fields</ion-label>
+      </ion-item>
+      <ion-list class="last-child-no-border">
+        @if (entity()?.fields?.length) {
+          <ion-item-group>
+            @for (field of entity()?.fields || []; track field.id) {
+              <ion-item>
+                <ion-label>
+                  {{ field.id }}
+                  @if (field.namePattern) {
+                    <p>Name pattern: {{ field.namePattern | json }}</p>
+                  }
+                </ion-label>
+                <ion-badge color="light">{{ field.type }}</ion-badge>
+              </ion-item>
+            }
+          </ion-item-group>
+        }
+      </ion-list>
+    </ion-card>
+
+    <ion-card>
+      <ion-item>
+        <ion-label color="medium">Raw source preview</ion-label>
+        @if (sourceIndex() !== undefined) {
+          <ion-badge>{{ getEntityContentType() }}</ion-badge>
+        }
+        @if (entity()?.options?.sources?.length) {
+          <ion-select
+            [ngModel]="sourceIndex()"
+            (ngModelChange)="selectSource($event)"
+            interface="popover"
+          >
+            @for (
+              source of entity()?.options?.sources || [];
+              track $index;
+              let i = $index
+            ) {
+              <ion-select-option [value]="i">{{
+                source.url
+              }}</ion-select-option>
+            }
+          </ion-select>
+        }
+      </ion-item>
+      @if (sourceState() === 'loading') {
+        <ion-card-content role="status"
+          >Loading source preview…</ion-card-content
         >
+      } @else if (sourceState() === 'missing') {
+        <ion-card-content role="status"
+          >No preview source is configured for this entity.</ion-card-content
+        >
+      } @else if (sourceState() === 'error') {
+        <ion-card-content role="alert"
+          >Could not load the source preview.</ion-card-content
+        >
+      } @else if (sourceState() === 'unsupported') {
+        <ion-card-content role="status"
+          >Preview is not available for CSV or XML sources.</ion-card-content
+        >
+      } @else {
+        <ion-card-content role="status"
+          >{{ sourceData().length }}
+          {{ sourceData().length === 1 ? 'row' : 'rows' }} in
+          source</ion-card-content
+        >
+        @if (sourceData().length) {
+          <!-- Recreate Tabulator per source: replacing columns before tableBuilt can fail. -->
           @for (
-            source of entity()?.options?.sources || [];
-            track $index;
-            let i = $index
+            previewSourceIndex of [sourceIndex()];
+            track previewSourceIndex
           ) {
-            <ion-select-option [value]="i">{{ source.url }}</ion-select-option>
+            <sneat-datagrid
+              layout="fitData"
+              maxHeight="600px"
+              [columns]="sourceCols()"
+              [data]="sourceData()"
+            />
           }
-        </ion-select>
+        } @else {
+          <ion-card-content>No rows in this source.</ion-card-content>
+        }
       }
-    </ion-item>
-    @if (!sourceData()) {
-      <ion-card-content>
-        <p>Loading...</p>
-      </ion-card-content>
-    }
-    <sneat-datagrid
-      layout="fitData"
-      [height]="undefined"
-      [columns]="sourceCols()"
-      [data]="sourceData()"
-    />
-  </ion-card>
+    </ion-card>
+  }
 </ion-content>

@@ -156,9 +156,13 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await page.getByRole('button', { name: 'Tools' }).click();
   await expect(page.getByRole('region', { name: 'Chat tools' })).toContainText('Customers query');
   const tools = page.getByRole('region', { name: 'Chat tools' });
+  const apiQueryRun = tools.locator('.saved-query').filter({ hasText: 'API query' }).getByRole('button', { name: 'Run' });
+  const firstQueryRefresh = page.waitForResponse((response) => response.url().endsWith('/v1/chat/session') && response.request().method() === 'GET');
   await tools.locator('.saved-query').filter({ hasText: 'Customers query' }).getByRole('button', { name: 'Run' }).click();
   await expect.poll(() => ranQueryId).toBe('run_dtql:customers-query');
-  await tools.locator('.saved-query').filter({ hasText: 'API query' }).getByRole('button', { name: 'Run' }).click();
+  await firstQueryRefresh;
+  await expect(apiQueryRun).toBeEnabled();
+  await apiQueryRun.click();
   await expect.poll(() => ranQueryId).toBe('run_http:api-query');
   await tools.getByLabel('HTTP method').selectOption('POST');
   await tools.getByLabel('HTTP URL').fill('https://api.example.test/data');

@@ -48,7 +48,7 @@ test('renders the root page', async ({ page }) => {
   // header brand instead.
   await expect(page.locator('.home-header-brand')).toBeVisible();
   await expect(
-    page.getByRole('heading', { name: 'Your data workbench' }),
+    page.getByTestId('home-hero').getByRole('heading', { level: 1 }),
   ).toBeVisible();
   await expect(page.getByText('My projects')).toBeVisible();
   await expect(page.locator('sneat-datatug-home')).toBeVisible();

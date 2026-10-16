@@ -7,15 +7,18 @@
       [boardContext]="boardContext()"
     />
   }
-  <!--	@case ('SQL') {-->
-  <!--			<sneat-datatug-sql-query-widget-->
-  <!--					*ngSwitchCase="'SQL'"-->
-  <!--					[level]="level"-->
-  <!--					[tab]="cardTab //noinspection InvalidExpressionResultType"-->
-  <!--					[sqlWidgetDef]="sqlWidgetDef()"-->
-  <!--					[boardContext]="boardContext"-->
-  <!--				/>-->
-  <!--	}-->
+  @case ('SQL') {
+    <div class="ion-padding">
+      @if (sqlWidgetDef()?.title) {
+        <p>{{ sqlWidgetDef()?.title }}</p>
+      }
+      @if (queryUrlTree(); as urlTree) {
+        <ion-button [routerLink]="urlTree"> Open saved query </ion-button>
+      } @else {
+        <p role="status">This saved query is unavailable.</p>
+      }
+    </div>
+  }
   @default {
     <div class="ion-margin-top">
       @if (!definition) {

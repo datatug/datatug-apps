@@ -6,7 +6,7 @@ import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { ErrorLogger } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { ProjectPageComponent } from './project-page.component';
 import { DatatugBoardService } from '../../../board/core/datatug-board.service';
@@ -68,12 +68,21 @@ function baseProviders(
       provide: ProjectService,
       useValue: {
         watchProjectSummary: doubles.watchProjectSummary,
-        getFull: vi.fn(),
+        getFull: vi.fn(() => of({ environments: [] })),
       },
     },
     { provide: SchemaService, useValue: {} },
-    { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
-    { provide: EntityService, useValue: {} },
+    {
+      provide: EnvironmentService,
+      useValue: {
+        getEnvSummary: vi.fn(),
+        listEnvironments: vi.fn(() => of([])),
+      },
+    },
+    {
+      provide: EntityService,
+      useValue: { getAllEntities: vi.fn(() => of([])) },
+    },
     {
       provide: NavController,
       useValue: {
@@ -115,6 +124,37 @@ describe('ProjectPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('offers the private sandbox route only for the canonical DemoDB project', () => {
+    const page = component as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        spaceID?: string;
+      }): void;
+      sandboxHref(): string | undefined;
+      activeTab(): string;
+    };
+    page.setProjRef({
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+    });
+    expect(page.sandboxHref()).toBe(
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/demo-db-sandbox',
+    );
+    expect(page.activeTab()).toBe('queries');
+    page.setProjRef({
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@other',
+    });
+    expect(page.sandboxHref()).toBeUndefined();
+    page.setProjRef({
+      storeId: 'firestore',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+      spaceID: 'space-1',
+    });
+    expect(page.sandboxHref()).toBeUndefined();
+  });
+
   // G-A1c: the page of a project's items folder is at the address `projectUrl()` writes (this method has no caller
   // yet; its old path, `project/<id>/<items>`, matched no route).
   describe('goProjFolder', () => {
@@ -130,8 +170,16 @@ describe('ProjectPage', () => {
       ).project.set({ ref });
 
     it.each([
-      ['an agent project', { storeId: 'localhost:8989', projectId: 'p1' }, '/store/localhost:8989/project/p1/entitys'],
-      ['a GitHub project', { storeId: 'github.com', projectId: 'chinook-demo@datatug@' }, '/project/github.com/datatug/chinook-demo/entitys'],
+      [
+        'an agent project',
+        { storeId: 'localhost:8989', projectId: 'p1' },
+        '/store/localhost:8989/project/p1/entitys',
+      ],
+      [
+        'a GitHub project',
+        { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
+        '/project/github.com/datatug/chinook-demo/entitys',
+      ],
     ])('opens the folder of %s at its address', (_name, ref, address) => {
       const navController = TestBed.inject(NavController) as unknown as {
         navigateForward: ReturnType<typeof vi.fn>;
@@ -168,9 +216,15 @@ describe('ProjectPage', () => {
 
       expect(navController.navigateForward).not.toHaveBeenCalled();
       expect(
-        (TestBed.inject(ErrorLogger) as unknown as { logError: ReturnType<typeof vi.fn> }).logError,
+        (
+          TestBed.inject(ErrorLogger) as unknown as {
+            logError: ReturnType<typeof vi.fn>;
+          }
+        ).logError,
       ).toHaveBeenCalledWith(
-        expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+        expect.objectContaining({
+          message: expect.stringContaining('no exact address'),
+        }),
         'Failed to navigate to project item page: entity',
       );
     });
@@ -251,9 +305,37 @@ describe('ProjectPage rendering a local-agent store project', () => {
         'ion-input',
       ) as HTMLElement & { value?: string };
       expect(title.value).toBe('DataTug Demo Project 1');
+      const context = fixture.nativeElement.querySelector(
+        '.project-context-card',
+      ) as HTMLElement;
+      expect(context).toBeTruthy();
+      expect(context.querySelector('ion-select')).toBeTruthy();
       expect(doubles.logError).not.toHaveBeenCalled();
     },
   );
+
+  it('shows one set of five overview tabs and opens the selected content', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const buttons = Array.from(
+      fixture.nativeElement.querySelectorAll('.overview-tabs button'),
+    ) as HTMLButtonElement[];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual([
+      'Boards',
+      'Queries',
+      'Environments',
+      'Entities',
+      'Databases',
+    ]);
+    expect(fixture.nativeElement.querySelector('ion-segment')).toBeNull();
+    buttons[1].click();
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        'sneat-datatug-project-queries-preview',
+      ),
+    ).not.toBeNull();
+  });
 
   it('settles the Boards folder card out of its loading state (no folder on a local agent = empty list, not a spinner)', async () => {
     const fixture = await createPage('localhost:8989');
@@ -263,6 +345,82 @@ describe('ProjectPage rendering a local-agent store project', () => {
     ) as HTMLElement & { isLoading?: boolean; items?: unknown[] };
     expect(boardsCard.isLoading).toBe(false);
     expect(boardsCard.items).toEqual([]);
+  });
+
+  it('does not show an unqualified Boards folder after selecting a branch', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-folder'),
+    ).not.toBeNull();
+    const getFull = TestBed.inject(ProjectService).getFull as ReturnType<
+      typeof vi.fn
+    >;
+    const getAllEntities = TestBed.inject(EntityService)
+      .getAllEntities as ReturnType<typeof vi.fn>;
+    const fullReads = getFull.mock.calls.length;
+    const entityReads = getAllEntities.mock.calls.length;
+    const summaryReads = doubles.watchProjectSummary.mock.calls.length;
+
+    const page = fixture.componentInstance as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        projectApi: 'local';
+        branch: string;
+      }): void;
+    };
+    page.setProjRef({
+      storeId: 'localhost:8989',
+      projectId: summary.id,
+      projectApi: 'local',
+      branch: 'feature',
+    });
+    await fixture.whenStable();
+    expect(getFull).toHaveBeenCalledTimes(fullReads);
+    expect(getAllEntities).toHaveBeenCalledTimes(entityReads);
+    expect(doubles.watchProjectSummary).toHaveBeenCalledTimes(summaryReads);
+    expect(
+      (
+        fixture.nativeElement.querySelector('ion-input') as HTMLElement & {
+          value?: string;
+        }
+      ).value,
+    ).toBe('Project unavailable');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Project metadata is unavailable for this connection or branch.',
+    );
+    expect(
+      fixture.nativeElement.querySelector(
+        '[aria-label="Loading environments"]',
+      ),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Environment shortcuts are unavailable',
+    );
+
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-folder'),
+    ).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Boards are unavailable',
+    );
+
+    for (const [tab, label] of [
+      [2, 'Environments'],
+      [3, 'Entities'],
+      [4, 'Databases'],
+    ] as const) {
+      (
+        fixture.nativeElement.querySelectorAll('.overview-tabs button')[
+          tab
+        ] as HTMLButtonElement
+      ).click();
+      await fixture.whenStable();
+      expect(fixture.nativeElement.textContent).toContain(
+        `${label} are unavailable`,
+      );
+    }
   });
 });
 
@@ -348,5 +506,126 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
 
     expect(title.value).toBe('DataTug Demo Project 1');
     expect(doubles.logError).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectPage overview lists', () => {
+  it('settles empty environments and reports an entity read error without leaving a spinner', async () => {
+    const logError = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        ...baseProviders({ logError, watchProjectSummary: vi.fn(() => of()) }),
+        {
+          provide: EnvironmentService,
+          useValue: { listEnvironments: vi.fn(() => of([])) },
+        },
+        {
+          provide: EntityService,
+          useValue: {
+            getAllEntities: vi.fn(() => throwError(() => new Error('offline'))),
+          },
+        },
+      ],
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    const page = TestBed.createComponent(ProjectPageComponent)
+      .componentInstance as unknown as {
+      setProjRef(ref: { storeId: string; projectId: string }): void;
+      environments: { (): { id: string }[] | undefined };
+      entities: { (): { id: string }[] | undefined };
+      entityError: { (): boolean };
+      environmentError: { (): boolean };
+    };
+    page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
+    expect(page.environments()).toEqual([]);
+    expect(page.environmentError()).toBe(false);
+    expect(page.entities()).toBeUndefined();
+    expect(page.entityError()).toBe(true);
+    expect(logError).toHaveBeenCalledWith(
+      expect.any(Error),
+      'Failed to load overview entities',
+    );
+  });
+
+  it('drops delayed data from the previous project and navigates using the current project', async () => {
+    const oldEnvironments = new Subject<{ id: string; title: string }[]>();
+    const oldEntities = new Subject<{ id: string; dbo: { title: string } }[]>();
+    const listEnvironments = vi.fn((projectId: string) =>
+      projectId === 'old'
+        ? oldEnvironments.asObservable()
+        : of([{ id: 'qa', title: 'QA' }]),
+    );
+    const getAllEntities = vi.fn((ref: { projectId: string }) =>
+      ref.projectId === 'old'
+        ? oldEntities.asObservable()
+        : of([{ id: 'Album', dbo: { title: 'Album' } }]),
+    );
+    const nav = {
+      goEnvironment: vi.fn(),
+      goEntity: vi.fn(),
+      goBoard: vi.fn(),
+      goProjPage: vi.fn(),
+      goProject: vi.fn(),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        ...baseProviders({
+          logError: vi.fn(),
+          watchProjectSummary: vi.fn(() => of()),
+        }),
+        { provide: EnvironmentService, useValue: { listEnvironments } },
+        { provide: EntityService, useValue: { getAllEntities } },
+        { provide: DatatugNavService, useValue: nav },
+      ],
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: {
+          imports: [],
+          template: '',
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    const page = TestBed.createComponent(ProjectPageComponent)
+      .componentInstance as unknown as {
+      setProjRef(ref: { storeId: string; projectId: string }): void;
+      environments: { (): { id: string }[] | undefined };
+      entities: { (): { id: string }[] | undefined };
+      goEnvironment(value: { id: string }): void;
+      goEntity(value: { id: string }): void;
+    };
+    page.setProjRef({ storeId: 'github.com', projectId: 'old' });
+    page.setProjRef({ storeId: 'github.com', projectId: 'new' });
+    oldEnvironments.next([{ id: 'stale', title: 'Stale' }]);
+    oldEntities.next([{ id: 'Stale', dbo: { title: 'Stale' } }]);
+    expect(page.environments()?.map((value) => value.id)).toEqual(['qa']);
+    expect(page.entities()?.map((value) => value.id)).toEqual(['Album']);
+    page.goEnvironment({ id: 'qa' });
+    page.goEntity({ id: 'Album' });
+    expect(nav.goEnvironment).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ref: { storeId: 'github.com', projectId: 'new' },
+      }),
+      { id: 'qa' },
+    );
+    expect(nav.goEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        ref: { storeId: 'github.com', projectId: 'new' },
+      }),
+      { id: 'Album' },
+    );
   });
 });

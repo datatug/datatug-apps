@@ -73,6 +73,8 @@ import { ValidationRunResultsComponent } from './validation-run-results.componen
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
 import { checkConsumers, inspectCheck } from './check-inspection';
+import { PublicDemoChecksComponent } from './public-demo-checks.component';
+import { isPublicChecksProject } from './public-demo-checks.service';
 
 const NEW_CHECK = (): CheckDefinition => ({
   id: '',
@@ -125,6 +127,7 @@ interface QueryInputRow extends CheckInput {
     ValidationRunResultsComponent,
     DetectiveDemoStarterComponent,
     DetectiveAiPanelComponent,
+    PublicDemoChecksComponent,
   ],
 })
 export class ChecksPageComponent {
@@ -139,6 +142,9 @@ export class ChecksPageComponent {
     () =>
       this.scope.ref()?.storeId === 'github.com' &&
       this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
+  );
+  protected readonly publicChecks = computed(() =>
+    isPublicChecksProject(this.scope.ref()),
   );
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,

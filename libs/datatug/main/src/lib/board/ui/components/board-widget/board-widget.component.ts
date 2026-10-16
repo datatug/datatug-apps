@@ -1,6 +1,20 @@
-import { ChangeDetectionStrategy, Component, computed, input } from '@angular/core';
-import { BoardWidget, SQLWidgetDef, TabsWidgetDef } from '@datatug/board-models';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+} from '@angular/core';
+import { Router, RouterLink, UrlTree } from '@angular/router';
+import { IonButton } from '@ionic/angular';
+import {
+  BoardWidget,
+  SQLWidgetDef,
+  TabsWidgetDef,
+} from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
+import { IProjectRef } from '../../../../core/project-context';
+import { projectPageHref } from '../../../../nav/project-page-href';
 import { QueryType } from '../../../../models/definition/query-def';
 import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.component';
 
@@ -8,9 +22,10 @@ import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.componen
   selector: 'sneat-datatug-board-widget',
   templateUrl: './board-widget.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [TabsWidgetComponent],
+  imports: [TabsWidgetComponent, RouterLink, IonButton],
 })
 export class BoardWidgetComponent {
+  private readonly router = inject(Router);
   readonly level = input<number>();
   readonly cardTab = input<QueryType | 'grid' | 'card'>();
   // TODO: Skipped for migration because:
@@ -26,6 +41,18 @@ export class BoardWidgetComponent {
   readonly sqlWidgetDef = computed(
     () => this.widgetDef()?.data as SQLWidgetDef | undefined,
   );
+  readonly queryId = computed(() => this.sqlWidgetDef()?.sql?.queryId?.trim());
+  readonly queryUrlTree = computed<UrlTree | undefined>(() => {
+    const ref = this.projectRef();
+    const id = this.queryId();
+    if (!ref || !id) return undefined;
+    const href = projectPageHref(ref, ['query', id]);
+    if (href === '/') return undefined;
+    const tree = this.router.parseUrl(href);
+    tree.queryParams = { ...tree.queryParams, id };
+    return tree;
+  });
 
   readonly boardContext = input<IBoardContext>();
+  readonly projectRef = input<IProjectRef>();
 }
