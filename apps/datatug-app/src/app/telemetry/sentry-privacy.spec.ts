@@ -1,5 +1,5 @@
 import type { Breadcrumb, ErrorEvent } from '@sentry/browser';
-import { isLinkRoute, scrubText } from './link-privacy';
+import { isLinkRoute, redactResultIds, scrubText } from './link-privacy';
 import { TransactionEvent, withSentryLinkPrivacy } from './sentry-privacy';
 
 const BASE = '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook';
@@ -152,5 +152,65 @@ describe('withSentryLinkPrivacy', () => {
     wrapped.beforeSend?.({ message: `x #pk=${KEY}` } as ErrorEvent, {});
     expect(beforeSend.mock.calls[0][0].message).toBe('x ');
     expect(wrapped.sendDefaultPii).toBe(false);
+  });
+});
+
+describe('the query result page', () => {
+  const RESULT_ID = 'qr-7f3a9c';
+  const PAGE = `/store/http-127.0.0.1:8989/result/${RESULT_ID}`;
+  const AGENT_RESULT = `http://127.0.0.1:8989/datatug/results/${RESULT_ID}`;
+  const expectNoResult = (text: string) => {
+    expectNothingSecret(text);
+    expect(text).not.toContain(RESULT_ID);
+    expect(text).not.toContain('view=');
+    expect(text).not.toContain('row=');
+  };
+
+  it('is a link page, with or without its query', () => {
+    expect(isLinkRoute(PAGE)).toBe(true);
+    expect(isLinkRoute(`${PAGE}?view=sources&row=2#code=${CODE}`)).toBe(true);
+    expect(isLinkRoute('/store/http-127.0.0.1:8989/result')).toBe(false);
+    expect(isLinkRoute(`${PAGE}/other`)).toBe(false);
+  });
+
+  it('replaces the result id in page paths and agent addresses', () => {
+    expect(redactResultIds(`${PAGE} and ${AGENT_RESULT}`)).toBe(
+      '/store/http-127.0.0.1:8989/result/:resultId and http://127.0.0.1:8989/datatug/results/:resultId',
+    );
+    expect(scrubText(`GET /datatug/results/${RESULT_ID}`, false)).toBe('GET /datatug/results/:resultId');
+    expect(scrubText(`https://datatug.app${PAGE}?view=sources#code=${CODE}`, false)).toBe(
+      'https://datatug.app/store/http-127.0.0.1:8989/result/:resultId',
+    );
+  });
+
+  it('an error event, its breadcrumbs and a transaction hold no id, row, code or query', () => {
+    visit(PAGE, `#code=${CODE}`);
+    const event = {
+      message: `Http failure response for ${AGENT_RESULT}: 404`,
+      transaction: PAGE,
+      request: { url: `https://datatug.app${PAGE}?view=record&row=2#code=${CODE}`, query_string: 'view=record&row=2' },
+      extra: { __serialized__: { error: { recordset: { rows: [[{ type: 'string', value: ROW }]] } } } },
+      breadcrumbs: [
+        { category: 'navigation', data: { from: '/', to: `${PAGE}?view=record&row=2` } },
+        { category: 'fetch', data: { method: 'GET', url: AGENT_RESULT, status_code: 200, response_body_size: 9 } },
+        { category: 'console', message: ROW },
+      ],
+    } as unknown as ErrorEvent;
+    const out = options.beforeSend?.(event, {}) as ErrorEvent;
+    expectNoResult(sent(out));
+    expect(out.request?.url).toBe('https://datatug.app/store/http-127.0.0.1:8989/result/:resultId');
+    expect(out.breadcrumbs?.[1].data).toEqual({
+      method: 'GET',
+      status_code: 200,
+      url: 'http://127.0.0.1:8989/datatug/results/:resultId',
+    });
+    const transaction = {
+      type: 'transaction',
+      transaction: PAGE,
+      request: { url: `https://datatug.app${PAGE}?view=table` },
+      spans: [{ description: `GET ${AGENT_RESULT}`, data: { url: AGENT_RESULT, 'url.path': `/datatug/results/${RESULT_ID}` } }],
+    } as unknown as TransactionEvent;
+    expectNoResult(sent(options.beforeSendTransaction?.(transaction, {})));
+    expectNoResult(sent(options.beforeSendSpan?.({ description: `GET ${AGENT_RESULT}`, data: { 'http.url': AGENT_RESULT } } as never)));
   });
 });
