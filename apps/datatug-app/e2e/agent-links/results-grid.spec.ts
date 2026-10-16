@@ -133,6 +133,50 @@ test.describe('results grid toolbar', () => {
     expect(await headerNames(customer)).not.toContain('id');
   });
 
+  test('right-aligns numeric columns (InvoiceId, CustomerId, Total) and leaves text columns left', async ({
+    page,
+    linkDaemon,
+  }) => {
+    const grid = await open(page, linkDaemon, 'e2e-align');
+    await expect
+      .poll(async () => (await headerNames(grid)).length)
+      .toBeGreaterThan(3);
+    /** The first body cell of a column, found by the header name: its class and computed text-align. */
+    const firstCell = async (name: string) => {
+      const colId = await grid
+        .locator('.ag-header-cell')
+        .filter({
+          has: page.locator('[data-testid="header-name"]', { hasText: name }),
+        })
+        .first()
+        .getAttribute('col-id');
+      expect(colId, `col-id of ${name}`).toBeTruthy();
+      const cell = grid.locator(`.ag-cell[col-id="${colId}"]`).first();
+      await expect(cell).toBeVisible();
+      return cell;
+    };
+    const textAlign = (cell: Locator) =>
+      cell.evaluate((el) => getComputedStyle(el).textAlign);
+    for (const name of ['InvoiceId', 'CustomerId', 'Total']) {
+      const cell = await firstCell(name);
+      await expect(cell, `${name} cell class`).toHaveClass(
+        /ag-right-aligned-cell/,
+      );
+      expect(['right', 'end'], `${name} computed text-align`).toContain(
+        await textAlign(cell),
+      );
+    }
+    for (const name of ['BillingCity', 'BillingCountry']) {
+      const cell = await firstCell(name);
+      await expect(cell, `${name} cell class`).not.toHaveClass(
+        /ag-right-aligned-cell/,
+      );
+      expect(['left', 'start'], `${name} computed text-align`).toContain(
+        await textAlign(cell),
+      );
+    }
+  });
+
   test('has the toolbar buttons, and the chooser hides, orders and resets columns; a refresh keeps them', async ({
     page,
     linkDaemon,
