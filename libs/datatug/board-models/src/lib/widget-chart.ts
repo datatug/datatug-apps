@@ -40,15 +40,32 @@ export interface ChartSourceTransform {
   countryColumn: string;
 }
 
-/** Mirrors `ChartSpec` (boards.go) field for field. */
-export interface ChartSpec {
-  type: ChartType;
+/** Mirrors the `bar` branch accepted by `ChartSpec.Validate()` (boards.go). */
+export interface BarChartSpec {
+  type: typeof CHART_TYPE_BAR;
   categoryColumn: string;
   valueColumn: string;
-  periodColumn?: string;
   unit?: string;
-  grain?: 'month';
-  onDuplicate?: 'sum' | 'reject';
-  mode?: 'period' | 'cumulative';
-  topN?: number;
+  periodColumn?: never;
+  grain?: never;
+  onDuplicate?: never;
+  mode?: never;
+  topN?: never;
 }
+
+/** Mirrors the `bar-race` branch accepted by `ChartSpec.Validate()` (boards.go). */
+export interface BarRaceChartSpec {
+  type: typeof CHART_TYPE_BAR_RACE;
+  categoryColumn: string;
+  valueColumn: string;
+  periodColumn: string;
+  unit: string;
+  grain: 'month';
+  onDuplicate: 'sum' | 'reject';
+  mode: 'period' | 'cumulative';
+  /** Core validates this to the inclusive range 1 through 100. */
+  topN: number;
+}
+
+/** Mirrors `ChartSpec` (boards.go), with validated chart variants represented as a discriminated union. */
+export type ChartSpec = BarChartSpec | BarRaceChartSpec;

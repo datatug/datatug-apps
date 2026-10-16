@@ -2,23 +2,34 @@ import { describe, expect, it } from 'vitest';
 import { Board } from './board';
 import boardFixtureJson from './__fixtures__/board.fixture.json';
 import chartBoardFixtureJson from './__fixtures__/chart-board.fixture.json';
+import packageJson from '../../package.json';
 import { BOARD_WIDGET_NAME_TABS } from './board-widget';
 import { HTTPWidgetDef, BOARD_WIDGET_NAME_HTTP } from './widget-http';
 import { SQLWidgetDef, BOARD_WIDGET_NAME_SQL } from './widget-sql';
 import { TabsWidgetDef } from './widget-tabs';
 import { BOARD_MODELS_VERSION } from './version';
-import { ChartWidgetDef, BOARD_WIDGET_NAME_CHART, CHART_TYPE_BAR_RACE } from '../public_api';
+import {
+  ChartWidgetDef,
+  BOARD_WIDGET_NAME_CHART,
+  CHART_TYPE_BAR_RACE,
+  ChartSpec,
+} from '../public_api';
 
 // `boardFixtureJson satisfies Board` is the compile-time half of the
 // round-trip assertion: if a field in board.fixture.json (hand-written from
 // boards.go's struct tags) stops matching the TS shape, `nx build`/`tsc`
 // fails here before any test runs.
-const boardFixture = boardFixtureJson satisfies Board;
+function fixtureAccess(value: string): Board['access'] {
+  if (value === 'private' || value === 'protected' || value === 'public') return value;
+  throw new Error(`Unsupported fixture access: ${value}`);
+}
+const boardFixture = { ...boardFixtureJson, access: fixtureAccess(boardFixtureJson.access) } satisfies Board;
 const chartBoardFixture = chartBoardFixtureJson satisfies Board;
 
 describe('Board JSON shape (fixture derived from boards.go struct tags)', () => {
   it('exposes a semver-ish version constant', () => {
     expect(BOARD_MODELS_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(BOARD_MODELS_VERSION).toBe(packageJson.version);
   });
 
   it('accepts the fixture as a Board and round-trips through JSON losslessly', () => {
@@ -120,21 +131,8 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
     expect(tabsDef.tabs[1].id).toBeUndefined();
     expect(tabsDef.tabs[0].widget?.name).toBe(BOARD_WIDGET_NAME_CHART);
 
-    const chartDef = tabsDef.tabs[0].widget?.data as ChartWidgetDef;
-    expect(chartDef.chart.type).toBe(CHART_TYPE_BAR_RACE);
-    expect(chartDef.sources).toEqual([{
-      id: 'orders',
-      queryId: 'q-orders',
-      parameters: [{ id: 'year', boardParameterId: 'year' }],
-      transform: {
-        name: 'orders-monthly-country-count',
-        orderIdColumn: 'OrderID',
-        dateColumn: 'OrderDate',
-        countryColumn: 'ShipCountry',
-      },
-    }]);
-    expect(chartDef.chart).toEqual({
-      type: 'bar-race',
+    const typedRaceSpec: ChartSpec = {
+      type: CHART_TYPE_BAR_RACE,
       categoryColumn: 'category',
       valueColumn: 'value',
       periodColumn: 'period',
@@ -143,11 +141,30 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
       onDuplicate: 'reject',
       mode: 'cumulative',
       topN: 10,
-    });
-    expect(chartDef).not.toHaveProperty('rows');
-    expect(chartDef).not.toHaveProperty('receipt');
-    expect(chartDef.sources[0]).not.toHaveProperty('rows');
-    expect(chartDef.sources[0]).not.toHaveProperty('receipt');
+    };
+    const typedChartWidget: ChartWidgetDef = {
+      sources: [{
+        id: 'orders',
+        queryId: 'q-orders',
+        parameters: [{ id: 'year', boardParameterId: 'year' }],
+        transform: {
+          name: 'orders-monthly-country-count',
+          orderIdColumn: 'OrderID',
+          dateColumn: 'OrderDate',
+          countryColumn: 'ShipCountry',
+        },
+      }],
+      chart: typedRaceSpec,
+      defaultView: 'chart',
+    };
+    const chartData: unknown = tabsDef.tabs[0].widget?.data;
+    expect(chartData).toEqual(typedChartWidget);
+    expect(chartData).not.toHaveProperty('rows');
+    expect(chartData).not.toHaveProperty('receipt');
+    const chartDef = typedChartWidget;
+    expect(chartDef.chart.type).toBe(CHART_TYPE_BAR_RACE);
+    expect(chartData).not.toHaveProperty('sources.0.rows');
+    expect(chartData).not.toHaveProperty('sources.0.receipt');
 
     const simpleBar: ChartWidgetDef = {
       sources: [{ id: 'revenue', queryId: 'q-revenue' }],
@@ -159,5 +176,12 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
       chart: { type: 'bar', categoryColumn: 'month', valueColumn: 'revenue' },
       defaultView: 'grid',
     });
+
+    // @ts-expect-error Core rejects race-only options on a plain bar chart.
+    const invalidBar: ChartSpec = { type: 'bar', categoryColumn: 'month', valueColumn: 'revenue', grain: 'month' };
+    // @ts-expect-error Core requires all bar-race options.
+    const incompleteRace: ChartSpec = { type: 'bar-race', categoryColumn: 'month', valueColumn: 'revenue' };
+    void invalidBar;
+    void incompleteRace;
   });
 });

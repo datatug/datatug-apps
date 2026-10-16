@@ -18,6 +18,8 @@ export {
   ChartSourceBinding,
   ChartSourceTransform,
   ChartSpec,
+  BarChartSpec,
+  BarRaceChartSpec,
   ChartType,
   ChartDefaultView,
   BOARD_WIDGET_NAME_CHART,
@@ -31,9 +33,7 @@ export {
   SQLWidgetSettings,
   BOARD_WIDGET_NAME_SQL,
 } from './lib/widget-sql';
-// New export for human review — SQLWidgetSettings.parameters now references
-// this type (widget-query-ref, mirrors boards.go WidgetParameterBinding):
-// export { WidgetParameterBinding } from './lib/widget-sql';
+export { WidgetParameterBinding } from './lib/widget-sql';
 export {
   HTTPWidgetDef,
   HTTPRequest,

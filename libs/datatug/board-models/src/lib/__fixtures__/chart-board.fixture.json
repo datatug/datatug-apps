@@ -2,7 +2,7 @@
   "id": "orders-showcase",
   "title": "Orders showcase",
   "parameters": [
-    { "id": "year", "type": "integer", "defaultValue": 2025 }
+    { "id": "year", "type": "integer" }
   ],
   "rows": [
     {
