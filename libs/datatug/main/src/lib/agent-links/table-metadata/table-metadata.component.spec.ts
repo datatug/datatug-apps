@@ -51,6 +51,11 @@ describe('TableMetadataComponent', () => {
       ],
       primaryKey: ['AlbumId'],
       referencedBy: ['Track'],
+      foreignKeys: [
+        { name: 'Album_fk_0', columns: ['ArtistId'], refTable: { schema: 'main', name: 'Artist' }, refColumns: ['ArtistId'] },
+        // Malformed (columns and referenced columns do not line up): not shown.
+        { name: 'bad', columns: ['A', 'B'], refTable: { schema: 'main', name: 'X' }, refColumns: ['A'] },
+      ],
     });
     await fixture.whenStable();
     const el: HTMLElement = fixture.nativeElement;
@@ -60,6 +65,10 @@ describe('TableMetadataComponent', () => {
     }
     expect(el.querySelector('[data-testid="table-metadata-pk"]')?.textContent).toContain('AlbumId');
     expect(el.querySelector('[data-testid="table-metadata-referenced-by"]')?.textContent).toContain('Track');
+    const fks = el.querySelector('[data-testid="table-metadata-foreign-keys"]')?.textContent ?? '';
+    expect(fks).toContain('Album_fk_0');
+    expect(fks).toContain('main.Artist');
+    expect(fks).not.toContain('bad');
     ctrl.verify();
   });
 
@@ -94,6 +103,9 @@ describe('classifyAgentError', () => {
     [err(400, 'key'), 'bad-key'],
     [err(400, 'table'), 'read-failed'],
     [err(500), 'read-failed'],
+    // A reachable agent answers 503 SOURCE_UNAVAILABLE and 504 TIMEOUT on data routes: not unreachable.
+    [err(503, 'source'), 'read-failed'],
+    [err(504), 'read-failed'],
     [new Error('x'), 'read-failed'],
   ])('%# classifies as %s', (e, problem) => {
     expect(classifyAgentError(e)).toBe(problem);

@@ -36,12 +36,34 @@ export interface AgentTableSchema {
   readonly primaryKey: readonly string[];
   /** Names of the tables whose foreign keys reference this table. */
   readonly referencedBy: readonly string[];
+  /** The outgoing foreign keys the principal may follow (datatug-cli #401; empty from an older agent). */
+  readonly foreignKeys: readonly AgentForeignKey[];
 }
 
-/** Rows read through the agent, every value as display text (a typed integer keeps all its digits). */
+/** An outgoing foreign key: `columns[i]` of this table references `refColumns[i]` of `refTable`. */
+export interface AgentForeignKey {
+  readonly name: string;
+  readonly columns: readonly string[];
+  readonly refTable: { readonly schema: string; readonly name: string };
+  readonly refColumns: readonly string[];
+}
+
+/** A typed cell of a looked-up record: the contract type and its value as text (an integer keeps every digit). */
+export interface AgentCell {
+  readonly type: string;
+  readonly text: string;
+}
+
+/**
+ * Rows read through the agent, every value as display text. A `records/lookup` integer keeps all its digits (the
+ * agent sends it as a string); an `exec/select` row arrives as plain JSON numbers, so an integer above 2^53 - 1 is
+ * shown rounded there. The records view links to no record, so no key is taken from that display.
+ */
 export interface AgentRows {
   readonly columns: readonly string[];
   readonly rows: readonly (readonly string[])[];
+  /** `records/lookup` only: the same cells with their contract types, for following a foreign key. */
+  readonly cells?: readonly (readonly AgentCell[])[];
 }
 
 /** A cell as display text: null and undefined are empty, objects are JSON. */
@@ -154,6 +176,7 @@ export class AgentLinkApiService {
             columns,
             primaryKey: stringList(r['primaryKey']),
             referencedBy: stringList(r['referencedBy']),
+            foreignKeys: foreignKeysOf(r['foreignKeys']),
           };
         }),
         catchError(rethrowClassified),
@@ -232,16 +255,47 @@ function contractRows(response: unknown): AgentRows {
         displayText((c as Record<string, unknown> | null)?.['name']),
       )
     : [];
-  const rows = Array.isArray(recordset?.['rows'])
+  const cells: AgentCell[][] = Array.isArray(recordset?.['rows'])
     ? (recordset['rows'] as unknown[]).map((row) =>
         Array.isArray(row)
-          ? row.map((cell) =>
-              displayText((cell as Record<string, unknown> | null)?.['value']),
-            )
+          ? row.map((cell) => {
+              const c = (cell ?? {}) as Record<string, unknown>;
+              return {
+                type: typeof c['type'] === 'string' ? c['type'] : '',
+                text: displayText(c['value']),
+              };
+            })
           : [],
       )
     : [];
-  return { columns, rows };
+  return { columns, rows: cells.map((row) => row.map((c) => c.text)), cells };
+}
+
+/** The `foreignKeys` of `records/schema`, keeping only well-formed keys (as many referenced columns as columns). */
+function foreignKeysOf(value: unknown): AgentForeignKey[] {
+  if (!Array.isArray(value)) return [];
+  const out: AgentForeignKey[] = [];
+  for (const item of value) {
+    const fk = (item ?? {}) as Record<string, unknown>;
+    const ref = (fk['refTable'] ?? {}) as Record<string, unknown>;
+    const columns = stringList(fk['columns']);
+    const refColumns = stringList(fk['refColumns']);
+    if (
+      !columns.length ||
+      columns.length !== refColumns.length ||
+      typeof ref['name'] !== 'string' ||
+      !ref['name']
+    ) {
+      continue;
+    }
+    out.push({
+      name: typeof fk['name'] === 'string' ? fk['name'] : '',
+      columns,
+      refTable: { schema: typeof ref['schema'] === 'string' ? ref['schema'] : '', name: ref['name'] },
+      refColumns,
+    });
+  }
+  return out;
 }
 
 /** The JSON body naming the table: `{project, env, source, schema, table}`. */

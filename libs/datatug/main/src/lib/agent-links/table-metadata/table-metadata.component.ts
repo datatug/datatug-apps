@@ -26,6 +26,7 @@ import {
   LinkProblem,
   classifyAgentError,
 } from '../agent-link-api.service';
+import { LinkProblemComponent } from '../link-problem/link-problem.component';
 
 /**
  * The metadata of a table read live from its registered source through the agent (Feature claude-mod-web-links,
@@ -45,6 +46,7 @@ import {
     IonLabel,
     IonText,
     IonBadge,
+    LinkProblemComponent,
   ],
   template: `
     @if (schema(); as s) {
@@ -78,6 +80,22 @@ import {
       </ion-card>
       <ion-card>
         <ion-card-header>
+          <ion-card-title>Foreign keys</ion-card-title>
+        </ion-card-header>
+        <ion-card-content data-testid="table-metadata-foreign-keys">
+          @for (fk of s.foreignKeys; track fk.name + $index) {
+            <p>
+              {{ fk.name }}: ({{ fk.columns.join(', ') }}) &rarr;
+              {{ fk.refTable.schema ? fk.refTable.schema + '.' : '' }}{{ fk.refTable.name }}
+              ({{ fk.refColumns.join(', ') }})
+            </p>
+          } @empty {
+            <ion-text color="medium">No foreign keys.</ion-text>
+          }
+        </ion-card-content>
+      </ion-card>
+      <ion-card>
+        <ion-card-header>
           <ion-card-title>Referenced by</ion-card-title>
         </ion-card-header>
         <ion-card-content data-testid="table-metadata-referenced-by">
@@ -89,11 +107,11 @@ import {
         </ion-card-content>
       </ion-card>
     } @else if (problem(); as p) {
-      <ion-card>
-        <ion-card-content data-testid="table-metadata-problem">
-          <ion-text color="danger">The table metadata cannot be shown: {{ p }}</ion-text>
-        </ion-card-content>
-      </ion-card>
+      <sneat-datatug-link-problem
+        [problem]="p"
+        [tableRef]="tableRef()"
+        (checkAgain)="reload()"
+      />
     } @else {
       <ion-card>
         <ion-card-content>

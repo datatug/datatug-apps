@@ -1,3 +1,8 @@
+@if (!projectResolved()) {
+  <ion-content color="light"><p role="status">Loading project…</p></ion-content>
+} @else if (publicDemo()) {
+  <sneat-public-demo-investigation-preview section="sessions" />
+} @else {
 <ion-tabs #sessionTabs>
   <div slot="top" class="session-top">
   <ion-tab-bar class="session-tabs" (ionTabButtonClick)="selectSession($event)">
@@ -271,3 +276,4 @@
 <ion-alert [isOpen]="deleteOpen()" (didDismiss)="deleteOpen.set(false)" header="Delete session?" message="This hides the session. Referenced evidence and retained history follow the server retention policy." [buttons]="deleteButtons" />
 <ion-alert [isOpen]="attachAllOpen()" (didDismiss)="attachAllOpen.set(false)" header="Attach all entries?" [message]="'Attach all ' + workspace.selectedEntries().length + ' entries from this bag to the composer? This is independent of the session context master.'" [buttons]="attachAllButtons" />
 <ion-alert [isOpen]="outcomeUnknownConfirmOpen()" (didDismiss)="outcomeUnknownConfirmOpen.set(false)" header="Acknowledge unknown outcome?" message="This records that the browser cannot confirm the accepted run's outcome. Another tab may still be running it. This does not cancel the run or rerun its query. The run remains in session history." [buttons]="outcomeUnknownButtons" />
+}

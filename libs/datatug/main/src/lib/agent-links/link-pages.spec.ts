@@ -6,7 +6,7 @@ import {
 } from '@angular/common/http/testing';
 import { Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { TableRecordPageComponent } from './table-record/table-record.page';
 import { TableRecordsPageComponent } from './table-records/table-records.page';
@@ -61,6 +61,7 @@ function mount<T>(
     providers: [
       provideHttpClient(),
       provideHttpClientTesting(),
+      provideRouter([]),
       { provide: ActivatedRoute, useValue: routeStub(table, query, hash) },
     ],
   });
@@ -169,6 +170,42 @@ describe('record page (AC:record-link-uses-primary-key-in-fragment, AC:record-lo
     expect(text()).toContain('Track');
   });
 
+  it('offers each foreign key as a hop to the referenced record, the key only in the fragment', async () => {
+    const { fixture, ctrl } = mount(
+      TableRecordPageComponent,
+      'Album',
+      { schema: '' },
+      '#pk=' + encodeURIComponent('{"AlbumId":1}'),
+    );
+    ctrl.expectOne(SCHEMA_URL).flush({
+      ...ALBUM_SCHEMA,
+      foreignKeys: [
+        { name: 'Album_fk_0', columns: ['ArtistId'], refTable: { schema: 'main', name: 'Artist' }, refColumns: ['ArtistId'] },
+      ],
+    });
+    ctrl.expectOne(LOOKUP_URL).flush({
+      recordset: {
+        columns: [{ name: 'AlbumId' }, { name: 'ArtistId' }, { name: 'Title' }],
+        rows: [[
+          { type: 'integer', value: '1' },
+          { type: 'integer', value: '9007199254740993' },
+          { type: 'string', value: 'For Those About To Rock' },
+        ]],
+      },
+    });
+    await fixture.whenStable();
+    const hop = fixture.nativeElement.querySelector('[data-testid="record-hop"]') as HTMLAnchorElement;
+    expect(hop.textContent).toContain('Artist');
+    const href = hop.getAttribute('href') ?? '';
+    const [path, fragment] = href.split('#');
+    expect(path).toBe(
+      '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook/table/Artist/record?schema=main',
+    );
+    expect(decodeURIComponent(fragment)).toBe('pk={"ArtistId":9007199254740993}');
+    // No row text in the hop's address.
+    expect(href).not.toContain('Rock');
+  });
+
   it('opens a string key holding & = and #, which the router leaves bare in the address bar', async () => {
     const { ctrl } = mount(
       TableRecordPageComponent,
@@ -229,5 +266,53 @@ describe('record page (AC:record-link-uses-primary-key-in-fragment, AC:record-lo
     notFound(ctrl.expectOne(LOOKUP_URL), 'key');
     await fixture.whenStable();
     expect(text()).toContain('record-not-found');
+  });
+});
+
+describe('named states on the link pages (AC:unresolvable-link-names-the-problem)', () => {
+  it.each([
+    ['project', 'project-not-found'],
+    ['source', 'database-not-found'],
+    ['table', 'table-not-found'],
+  ])('a 404 on %s shows %s and reads no rows', async (field, problem) => {
+    const { fixture, ctrl } = mount(TableRecordsPageComponent, 'Album', { schema: '' });
+    notFound(ctrl.expectOne(SCHEMA_URL), field);
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="link-problem"]')?.getAttribute('data-problem'),
+    ).toBe(problem);
+    ctrl.expectNone((r) => r.url === SELECT_URL);
+  });
+
+  it('shows agent-unreachable when the agent does not answer, and Check again reads again', async () => {
+    const { fixture, ctrl } = mount(
+      TableRecordPageComponent,
+      'Album',
+      { schema: '' },
+      '#pk=' + encodeURIComponent('{"AlbumId":1}'),
+    );
+    ctrl.expectOne(SCHEMA_URL).error(new ProgressEvent('error'), { status: 0 });
+    await fixture.whenStable();
+    const el: HTMLElement = fixture.nativeElement;
+    expect(el.querySelector('[data-testid="link-problem"]')?.getAttribute('data-problem')).toBe(
+      'agent-unreachable',
+    );
+    expect(el.textContent).toContain('datatug daemon start');
+    (el.querySelector('[data-testid="link-check-again"]') as HTMLElement).click();
+    ctrl.expectOne(SCHEMA_URL).flush(ALBUM_SCHEMA);
+    ctrl.expectOne(LOOKUP_URL).flush({
+      recordset: { columns: [{ name: 'AlbumId' }], rows: [[{ type: 'integer', value: '1' }]] },
+    });
+    await fixture.whenStable();
+    expect(el.querySelector('[data-testid="record-fields"]')).not.toBeNull();
+  });
+
+  it('shows link-expired on a 401', async () => {
+    const { fixture, ctrl } = mount(TableRecordsPageComponent, 'Album', { schema: '' });
+    ctrl.expectOne(SCHEMA_URL).flush({}, { status: 401, statusText: 'Unauthorized' });
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="link-problem"]')?.getAttribute('data-problem'),
+    ).toBe('link-expired');
   });
 });
