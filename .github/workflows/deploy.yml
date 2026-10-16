@@ -9,26 +9,88 @@ name: Deploy (Cloudflare)
 #
 # Auth is org-level: CLOUDFLARE_API_TOKEN secret + CLOUDFLARE_ACCOUNT_ID
 # variable (an identifier, not a secret). No per-repo secrets are needed.
+#
+# DEPLOY GATE (fail-closed). cf-deploy runs no tests, so this workflow must
+# never start from a push: it starts when CI finishes (`workflow_run`) and the
+# `gate` job lets the deploy through only if ALL of these hold, else the deploy
+# job is skipped (no deploy):
+#   1. the CI run was a push to main of this repository;
+#   2. the commit CI validated is the commit cf-deploy will check out
+#      (GITHUB_SHA = main's tip at trigger time). If main moved on, the newer
+#      commit deploys after its own CI, so an older commit that finishes CI late
+#      can never overwrite a newer deploy;
+#   3. that CI run's `deploy-gate` job concluded `success`. The lane list lives
+#      in ci.yml next to the lanes. It covers every lane except the live-API
+#      PostgreSQL demo lane (e2e-demo-postgresql: an outage of
+#      cloud.openvaultdb.com must not block shipping, but it still fails the
+#      `e2e` aggregate and its own check, so the outage stays visible). A
+#      missing, skipped, cancelled or failed deploy-gate means no deploy.
+# Logic and its tests: .github/scripts/deploy-gate.sh.
+# Runs are serialised (one deploy at a time, none cancelled mid-publish).
+#
+# Manual `workflow_dispatch` (needs write access) is limited to main's tip and
+# re-checks the same gate for that commit, so it is a redeploy button, not a
+# bypass. For an emergency only: tick `override_ci_gate` and give a reason; the
+# reason and actor are logged in the run summary. Never from another branch.
 on:
-  workflow_dispatch:
-  push:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
     branches: [main]
-    paths:
-      - apps/**
-      - libs/**
-      - wrangler.jsonc
-      - package.json
-      - pnpm-lock.yaml
-      - nx.json
-      - tools/recordsetcompare/**
-      - .github/workflows/deploy.yml
+  workflow_dispatch:
+    inputs:
+      override_ci_gate:
+        description: Emergency only - deploy main's tip without a green CI deploy-gate
+        type: boolean
+        default: false
+      override_reason:
+        description: Required with override_ci_gate (logged in the run summary)
+        type: string
+        default: ''
+
+permissions:
+  contents: read
 
 concurrency:
-  group: deploy-datatug-app-${{ github.ref }}
+  group: deploy-datatug-app
   cancel-in-progress: false
 
 jobs:
+  gate:
+    name: deploy gate
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      deploy: ${{ steps.gate.outputs.deploy }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+      - name: Require a green CI deploy-gate for this exact commit
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          REPO: ${{ github.repository }}
+          REF: ${{ github.ref }}
+          SHA: ${{ github.sha }}
+          ACTOR: ${{ github.actor }}
+          WR_ID: ${{ github.event.workflow_run.id }}
+          WR_SHA: ${{ github.event.workflow_run.head_sha }}
+          WR_EVENT: ${{ github.event.workflow_run.event }}
+          WR_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          WR_HEAD_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+          OVERRIDE: ${{ inputs.override_ci_gate }}
+          REASON: ${{ inputs.override_reason }}
+        run: .github/scripts/deploy-gate.sh
+
   deploy:
+    needs: gate
+    if: needs.gate.outputs.deploy == 'true'
+    permissions:
+      contents: read
     uses: sneat-co/cicd/.github/workflows/cf-deploy.yml@ab513afde830771ff71391cfc3322b6977512594
     with:
       # The Angular app and its wrangler config both live at the repo root,
