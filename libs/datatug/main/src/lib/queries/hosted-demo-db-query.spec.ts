@@ -53,6 +53,11 @@ describe('hosted DemoDB query definitions', () => {
     const reloaded = JSON.parse(JSON.stringify(selected)) as typeof selected;
     if (!reloaded.federation?.tables) throw new Error('Expected reloaded table metadata.');
     expect(hostedDemoDbSourceId(reloaded)).toBe(source.id);
+    // A query saved before the OVDB API moved host is still recognised.
+    if (!reloaded.federation) throw new Error('Expected reloaded federation.');
+    const legacy = { ...reloaded, federation: { ...reloaded.federation, ovdbBaseUrl: 'https://demodb.dev/ovdb' } };
+    expect(hostedDemoDbSourceId(legacy)).toBe(source.id);
+    expect(HOSTED_DEMO_DB_OVDB_BASE_URL).toBe('https://ovdb.demodb.dev');
     const reloadedQuery = parseDTQL(textRequest(reloaded), {
       tables: reloaded.federation.tables,
     });

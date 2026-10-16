@@ -283,9 +283,11 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
       case 'opening':
         return { label: 'Opening the local copy…' };
       case 'download':
-        // Decoded (unpacked) bytes, so this differs from the compressed transfer size shown in the confirmation.
+        // A file dataset counts decoded (unpacked) bytes, so it differs from the compressed transfer size
+        // shown in the confirmation; a chunked dataset counts the compressed parts.
         return {
-          label: `Downloading ${(state.loaded / 1_000_000).toFixed(1)} of ${this.mb(state.total)} (unpacked size)`,
+          label: `Downloading ${(state.loaded / 1_000_000).toFixed(1)} of ${this.mb(state.total)}${
+            this.entry()?.source === 'chunked' ? '' : ' (unpacked size)'}`,
           value: state.total ? Math.min(1, state.loaded / state.total) : undefined,
         };
       case 'install':
