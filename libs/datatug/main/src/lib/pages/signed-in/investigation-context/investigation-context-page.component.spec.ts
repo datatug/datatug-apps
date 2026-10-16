@@ -11,7 +11,7 @@ import {
   MockSemanticApi,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
-import { of, Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 
 import { InvestigationContextPageComponent } from './investigation-context-page.component';
 import {
@@ -56,12 +56,19 @@ function entityServiceStub() {
     }),
   );
   return {
-    getAllEntities: vi.fn(() => of(entityRecords)),
-    getEntity: vi.fn((_ref: IProjectRef, entityId: string) =>
-      of({
-        id: entityId,
-        dbo: { id: entityId, fields: ENTITY_FIELDS[entityId] ?? [] } as IEntity,
-      }),
+    getAllEntities: vi.fn((ref: IProjectRef) => {
+      if (!ref) throw new Error('Expected a project reference');
+      return of(entityRecords);
+    }),
+    getEntity: vi.fn(
+      (_ref: IProjectRef, entityId: string): Observable<IRecord<IEntity>> =>
+        of({
+          id: entityId,
+          dbo: {
+            id: entityId,
+            fields: ENTITY_FIELDS[entityId] ?? [],
+          } as IEntity,
+        }),
     ),
   };
 }
@@ -286,7 +293,7 @@ describe('InvestigationContextPageComponent', () => {
     it('cancels old project list and same-ID field reads when the branch changes', () => {
       const oldList = new Subject<IRecord<IEntity>[]>();
       const oldFields = new Subject<IRecord<IEntity>>();
-      const newFields = of({
+      const newFields: Observable<IRecord<IEntity>> = of({
         id: 'Customer',
         dbo: {
           id: 'Customer',

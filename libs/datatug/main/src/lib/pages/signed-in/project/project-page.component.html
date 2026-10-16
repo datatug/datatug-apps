@@ -60,13 +60,6 @@
         />
       </ion-item>
     }
-    @if (summaryUnsupported()) {
-      <ion-item>
-        <ion-label color="medium" role="status">
-          Project metadata is unavailable for this connection or branch.
-        </ion-label>
-      </ion-item>
-    }
   </ion-card>
 
   @if (!project()?.ref?.spaceID) {

@@ -27,7 +27,14 @@ export class BoardChoicesService {
     return undefined;
   });
 
+  canPersist(ref: IProjectRef | undefined): boolean {
+    // A local agent may represent a different OS/CLI principal in the same
+    // browser profile. Browser auth does not attest that principal.
+    return !!ref && ref.projectApi !== 'local' && ref.storeId !== 'agent';
+  }
+
   private key(ref: IProjectRef, boardId: string): string | undefined {
+    if (!this.canPersist(ref)) return undefined;
     const actor = this.actor();
     if (!actor || !boardId) return undefined;
     return JSON.stringify([

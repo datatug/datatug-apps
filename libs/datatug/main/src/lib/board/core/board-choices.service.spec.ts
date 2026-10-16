@@ -63,4 +63,18 @@ describe('BoardChoicesService', () => {
     );
     expect(service.read(ref, 'board1')).toEqual({ favorite: false });
   });
+
+  it('does not persist choices for a local agent without an attested principal', () => {
+    const local = {
+      storeId: 'agent',
+      projectId: 'personal',
+      projectApi: 'local' as const,
+      branch: 'main',
+    };
+    expect(service.canPersist(local)).toBe(false);
+    expect(service.setFavorite(local, 'board1', true)).toBe(false);
+    expect(service.selectQuery(local, 'board1', 'q')).toBe(false);
+    expect(service.read(local, 'board1')).toEqual({ favorite: false });
+    expect(localStorage.length).toBe(0);
+  });
 });

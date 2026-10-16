@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -15,6 +16,7 @@ import {
 } from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
+import { equalProjectRef } from '../../../../core/project-context';
 import { projectPageHref } from '../../../../nav/project-page-href';
 import { QueryType } from '../../../../models/definition/query-def';
 import { IQueryDef } from '../../../../models/definition/query-def';
@@ -25,10 +27,7 @@ import { FederatedQueryResult } from '../../../../queries/federated-query-execut
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { signal } from '@angular/core';
-import {
-  formatGithubProjectId,
-  readGithubProjectId,
-} from '../../../../nav/github-project-address';
+import { githubProjectAddressForRef } from '../../../../services/project/project-assets-read.service';
 import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.component';
 
 @Component({
@@ -42,8 +41,10 @@ export class BoardWidgetComponent {
   private readonly router = inject(Router);
   private readonly queries = inject(QueriesService);
   private readonly sqlite = inject(PublicSqliteQueryService);
+  private readonly destroyRef = inject(DestroyRef);
   readonly choices = inject(BoardChoicesService);
   private generation = 0;
+  private destroyed = false;
   readonly running = signal(false);
   readonly result = signal<FederatedQueryResult | undefined>(undefined);
   readonly runError = signal<string | undefined>(undefined);
@@ -55,6 +56,9 @@ export class BoardWidgetComponent {
     () =>
       this.choices.read(this.projectRef(), this.boardId()).selectedQueryId ===
       this.queryId(),
+  );
+  readonly canRemember = computed(() =>
+    this.choices.canPersist(this.projectRef()),
   );
   readonly level = input<number>();
   readonly cardTab = input<QueryType | 'grid' | 'card'>();
@@ -86,21 +90,20 @@ export class BoardWidgetComponent {
       !['github', 'github.com'].includes(ref.storeId)
     )
       return ref;
-    const address = readGithubProjectId(ref.projectId);
-    if (!address.ok || (address.id.ref && address.id.ref !== ref.branch))
-      throw new Error('The project branch conflicts with its GitHub address.');
-    return {
-      ...ref,
-      projectId: formatGithubProjectId({ ...address.id, ref: ref.branch }),
-    };
+    return { ...ref, projectId: githubProjectAddressForRef(ref) };
   }
 
   constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.destroyed = true;
+      this.generation++;
+    });
     effect((onCleanup) => {
       const ref = this.projectRef();
       const id = this.queryId();
       this.boardId();
       this.cardId();
+      this.readBoardForRun();
       this.choices.actor();
       this.generation++;
       const generation = this.generation;
@@ -152,6 +155,29 @@ export class BoardWidgetComponent {
     });
   }
 
+  private stillCurrent(
+    generation: number,
+    ref: IProjectRef,
+    boardId: string,
+    cardId: string,
+    queryId: string,
+    actor: string | undefined,
+    readBoard: BoardReadForRun,
+  ): boolean {
+    return (
+      !this.destroyed &&
+      this.generation === generation &&
+      this.projectRef() === ref &&
+      equalProjectRef(this.projectRef(), ref) &&
+      this.boardId() === boardId &&
+      this.cardId() === cardId &&
+      this.queryId() === queryId &&
+      this.widgetDef()?.name === 'SQL' &&
+      this.choices.actor() === actor &&
+      this.readBoardForRun() === readBoard
+    );
+  }
+
   private ineligibleReason(
     definition: IQueryDef,
     id: string,
@@ -194,6 +220,18 @@ export class BoardWidgetComponent {
       const board = await firstValueFrom(
         readBoard(ref, boardId).pipe(timeout(15000)),
       );
+      if (
+        !this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+        )
+      )
+        return;
       const matchingCards = board.rows
         ?.flatMap((row) => row.cards || [])
         .filter((card) => card.id === cardId);
@@ -214,13 +252,57 @@ export class BoardWidgetComponent {
       const definition = await firstValueFrom(
         this.queries.getQuery(queryRef, queryId).pipe(timeout(15000)),
       );
+      if (
+        !this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+        )
+      )
+        return;
       const reason = this.ineligibleReason(definition, queryId);
       if (reason) throw new Error(reason);
+      if (
+        !this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+        )
+      )
+        return;
       const result = await this.sqlite.run(queryRef, definition);
-      if (generation === this.generation && actor === this.choices.actor())
+      if (
+        this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+        )
+      )
         this.result.set(result);
     } catch (error) {
-      if (generation === this.generation)
+      if (
+        this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+        )
+      )
         this.runError.set(
           error instanceof Error &&
             error.message.startsWith('This board card changed.')
@@ -228,7 +310,18 @@ export class BoardWidgetComponent {
             : 'The saved query could not run. Try again or open the saved query to inspect it.',
         );
     } finally {
-      if (generation === this.generation) this.running.set(false);
+      if (
+        this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+        )
+      )
+        this.running.set(false);
     }
   }
 
@@ -236,7 +329,7 @@ export class BoardWidgetComponent {
     const ref = this.projectRef();
     const boardId = this.boardId();
     const queryId = this.queryId();
-    if (ref && boardId && queryId)
+    if (ref && boardId && queryId && this.canRemember())
       this.choiceError.set(
         this.choices.selectQuery(ref, boardId, queryId)
           ? undefined

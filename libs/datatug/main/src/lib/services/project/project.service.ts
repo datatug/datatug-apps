@@ -137,13 +137,20 @@ export class ProjectService {
   }
 
   public getFull(projectRef: IProjectRef): Observable<IProjectFull> {
-    if (projectRef?.spaceID !== undefined || projectRef?.projectApi === 'cloud')
-      return throwError(
-        () => new Error('Shared project full reads are unavailable'),
-      );
     if (!projectRef) {
       throw new Error('target is a required parameter for getFull()');
     }
+    if (
+      projectRef.spaceID !== undefined ||
+      projectRef.projectApi !== undefined ||
+      projectRef.branch !== undefined
+    )
+      return throwError(
+        () =>
+          new Error(
+            'Project full reads are unavailable for this connection or branch',
+          ),
+      );
     const cacheKey = JSON.stringify([
       projectRef.storeId,
       projectRef.projectId,
@@ -211,7 +218,10 @@ export class ProjectService {
     return this.http.get<IProjectSummary>(
       buildAgentUrl(storeId, '/projects/project_summary'),
       {
-        params: { id: projectId },
+        params: {
+          id: projectId,
+          ...(projectRef.branch ? { branch: projectRef.branch } : {}),
+        },
       },
     );
   }

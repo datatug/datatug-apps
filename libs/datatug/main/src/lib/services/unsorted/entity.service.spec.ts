@@ -6,6 +6,7 @@ import { StoreApiService } from '../repo/store-api.service';
 import { ProjectAssetsReadService } from '../project/project-assets-read.service';
 import { firstValueFrom, Observable, of } from 'rxjs';
 import countryDefinition from '../../project-files/fixtures/chinook-demo/entities/Country/Country.entity.json';
+import { IEntity } from '../../models/definition/metapedia/entity';
 
 describe('EntityService', () => {
   let service: EntityService;
@@ -57,7 +58,9 @@ describe('EntityService', () => {
 
   it('hydrates the inherited fields and options of the real Country fixture', async () => {
     const assets = TestBed.inject(ProjectAssetsReadService);
-    vi.mocked(assets.entity).mockReturnValue(of(countryDefinition as never));
+    vi.mocked(assets.entity).mockReturnValue(
+      of(countryDefinition as unknown as IEntity),
+    );
     const http = TestBed.inject(HttpClient);
     vi.mocked(http.get).mockReturnValue(
       of({
@@ -107,7 +110,9 @@ describe('EntityService', () => {
 
   it('cancels an inherited definition request when the full-ref read is unsubscribed', () => {
     const assets = TestBed.inject(ProjectAssetsReadService);
-    vi.mocked(assets.entity).mockReturnValue(of(countryDefinition as never));
+    vi.mocked(assets.entity).mockReturnValue(
+      of(countryDefinition as unknown as IEntity),
+    );
     let cancelled = false;
     const http = TestBed.inject(HttpClient);
     vi.mocked(http.get).mockReturnValue(

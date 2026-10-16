@@ -1,7 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { AlertController } from '@ionic/angular';
 
@@ -13,9 +13,12 @@ import { ProjectAssetsReadService } from '../../../../services/project/project-a
 import { IProjectContext } from '../../../../nav/nav-models';
 import { IFolder } from '../../../../models/definition/folder';
 import { folderItemsAsList } from '../../../../models/definition/folder';
+import { IProjectRef } from '../../../../core/project-context';
 
 const projectAssetsFromFolderReader = (
-  watchFolder: ReturnType<typeof vi.fn>,
+  watchFolder: (
+    ref: IProjectRef & { id: string },
+  ) => Observable<IFolder | null>,
 ) => ({
   boards: (ref: {
     storeId: string;

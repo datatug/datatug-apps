@@ -388,16 +388,22 @@ describe('ProjectPage rendering a local-agent store project', () => {
     await fixture.whenStable();
     expect(getFull).toHaveBeenCalledTimes(fullReads);
     expect(assets.entities).toHaveBeenCalledTimes(entityReads + 1);
-    expect(doubles.watchProjectSummary).toHaveBeenCalledTimes(summaryReads);
+    expect(doubles.watchProjectSummary).toHaveBeenCalledTimes(summaryReads + 1);
+    expect(doubles.watchProjectSummary).toHaveBeenLastCalledWith({
+      storeId: 'localhost:8989',
+      projectId: summary.id,
+      projectApi: 'local',
+      branch: 'feature',
+    });
     expect(
       (
         fixture.nativeElement.querySelector('ion-input') as HTMLElement & {
           value?: string;
         }
       ).value,
-    ).toBe('Project unavailable');
-    expect(fixture.nativeElement.textContent).toContain(
-      'Project metadata is unavailable for this connection or branch.',
+    ).toBe('DataTug Demo Project 1');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Project metadata is unavailable',
     );
     expect(
       fixture.nativeElement.querySelector(

@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, provideHttpClient } from '@angular/common/http';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+} from '@angular/common/http/testing';
 import { ErrorLogger } from '@sneat/core';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
 import { SneatApiService } from '@sneat/api';
@@ -66,6 +70,35 @@ describe('ProjectService', () => {
     expect(http.get).toHaveBeenCalledTimes(2);
     expect(http.get.mock.calls[0][0]).not.toBe(http.get.mock.calls[1][0]);
   });
+
+  it.each([
+    { storeId: 'localhost:8989', projectId: 'demo', branch: 'feature' },
+    {
+      storeId: 'localhost:8989',
+      projectId: 'demo',
+      projectApi: 'local' as const,
+      branch: 'feature',
+    },
+    {
+      storeId: 'github.com',
+      projectId: 'repo@owner',
+      projectApi: 'cloud' as const,
+      branch: 'feature',
+    },
+    { storeId: 'firestore', projectId: 'demo', spaceID: 'space' },
+  ])(
+    'rejects qualified full reads before cache or HTTP: $storeId $branch',
+    async (ref) => {
+      const service = TestBed.inject(ProjectService);
+      await expect(firstValueFrom(service.getFull(ref))).rejects.toThrow(
+        'Project full reads are unavailable',
+      );
+      expect(http.get).not.toHaveBeenCalled();
+      expect(
+        Object.keys((service as unknown as { projects: object }).projects),
+      ).toEqual([]);
+    },
+  );
 
   describe('project summary cache', () => {
     const projectRef: IProjectRef = {
@@ -159,10 +192,16 @@ describe('ProjectService', () => {
     TestBed.overrideProvider(DatatugStoreServiceFactory, {
       useValue: { getDatatugStoreService: vi.fn(() => storeService) },
     });
-    TestBed.inject(ProjectService).watchProjectSummary({
-      storeId: 'github.com', projectId: 'repo@owner@folder', branch: 'work',
-    }).subscribe();
-    expect(storeService.getProjectSummary).toHaveBeenCalledWith('repo@owner@folder@work');
+    TestBed.inject(ProjectService)
+      .watchProjectSummary({
+        storeId: 'github.com',
+        projectId: 'repo@owner@folder',
+        branch: 'work',
+      })
+      .subscribe();
+    expect(storeService.getProjectSummary).toHaveBeenCalledWith(
+      'repo@owner@folder@work',
+    );
   });
 
   // Regression for the NG0203 the founder hit on datatug.app (2026-09-14) when
@@ -228,6 +267,52 @@ describe('ProjectService', () => {
       expect(error).toEqual(new Error('unknown store type: github'));
       expect(sneatApi.post).not.toHaveBeenCalled();
     });
+  });
+});
+
+describe('ProjectService local summary HTTP context', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        { provide: PrivateTokenStoreService, useValue: {} },
+        { provide: SneatApiService, useValue: { post: vi.fn() } },
+        {
+          provide: DatatugStoreServiceFactory,
+          useValue: { getDatatugStoreService: vi.fn() },
+        },
+      ],
+    });
+  });
+
+  it('sends the selected branch to the guarded local project summary endpoint', async () => {
+    const service = TestBed.inject(ProjectService);
+    const request = firstValueFrom(
+      service.getSummary({
+        storeId: 'localhost:8989',
+        projectId: 'demo',
+        projectApi: 'local',
+        branch: 'feature/demo',
+      }),
+    );
+    const http = TestBed.inject(HttpTestingController);
+    const call = http.expectOne((item) =>
+      item.url.includes('/projects/project_summary'),
+    );
+    expect(call.request.params.get('id')).toBe('demo');
+    expect(call.request.params.get('branch')).toBe('feature/demo');
+    call.flush({ id: 'demo', title: 'Feature demo' });
+    expect((await request)?.title).toBe('Feature demo');
+    http.verify();
   });
 });
 

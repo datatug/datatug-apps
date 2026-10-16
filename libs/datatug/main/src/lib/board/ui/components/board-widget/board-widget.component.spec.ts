@@ -3,29 +3,45 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { of } from 'rxjs';
+import { BehaviorSubject, of, Subject } from 'rxjs';
+import { Board } from '@datatug/board-models';
 import { QueriesService } from '../../../../queries/queries.service';
 import { PublicSqliteQueryService } from '../../../../queries/public-sqlite-query.service';
 import { QueryType } from '../../../../models/definition/query-def';
 
 import { BoardWidgetComponent } from './board-widget.component';
 
+type QueryStub = {
+  id: string;
+  title: string;
+  request: { queryType: QueryType; text: string };
+  connectionId: string;
+};
+
 describe('BoardWidgetComponent', () => {
   let fixture: ComponentFixture<BoardWidgetComponent>;
   let router: Router;
   const getQuery = vi.fn();
   const run = vi.fn();
+  let authState: BehaviorSubject<{
+    status: 'notAuthenticated' | 'authenticated';
+    user?: { uid: string };
+  }>;
 
   beforeEach(async () => {
     getQuery.mockReset();
     run.mockReset();
+    authState = new BehaviorSubject<{
+      status: 'notAuthenticated' | 'authenticated';
+      user?: { uid: string };
+    }>({ status: 'notAuthenticated' });
     await TestBed.configureTestingModule({
       imports: [BoardWidgetComponent],
       providers: [
         provideRouter([]),
         {
           provide: SneatAuthStateService,
-          useValue: { authState: of({ status: 'notAuthenticated' }) },
+          useValue: { authState: authState.asObservable() },
         },
         { provide: QueriesService, useValue: { getQuery } },
         { provide: PublicSqliteQueryService, useValue: { run } },
@@ -291,5 +307,146 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Open saved query');
     expect(fixture.nativeElement.textContent).not.toContain('Run on board');
     expect(getQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('never reads or dispatches an old query after a delayed board reply and project switch', async () => {
+    const queryId = 'demodb/chinook-top-customer-spend';
+    const oldRef = { storeId: 'github.com', projectId: 'r@o@@one' };
+    const board$ = new Subject<Board>();
+    fixture.componentRef.setInput('projectRef', oldRef);
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      board$.asObservable(),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
+    fixture.detectChanges();
+    getQuery.mockClear();
+    const pending = fixture.componentInstance.run();
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'r@o@@two',
+    });
+    fixture.detectChanges();
+    board$.next({
+      id: 'board1',
+      title: 'Board',
+      rows: [
+        {
+          cards: [
+            {
+              id: 'top',
+              title: 'Top',
+              widget: { name: 'SQL', data: { sql: { queryId } } },
+            },
+          ],
+        },
+      ],
+    });
+    board$.complete();
+    await pending;
+    expect(getQuery.mock.calls.filter(([ref]) => ref === oldRef)).toHaveLength(
+      0,
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('never dispatches SQLite after a delayed query reply and account switch', async () => {
+    const queryId = 'demodb/chinook-top-customer-spend';
+    const pendingQuery$ = new Subject<QueryStub>();
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'r@o@@one',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'top',
+                title: 'Top',
+                widget: { name: 'SQL', data: { sql: { queryId } } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
+    fixture.detectChanges();
+    getQuery.mockReturnValueOnce(pendingQuery$.asObservable());
+    const pending = fixture.componentInstance.run();
+    await Promise.resolve();
+    authState.next({
+      status: 'authenticated',
+      user: { uid: 'another-person' },
+    });
+    pendingQuery$.next({
+      id: 'chinook-top-customer-spend',
+      title: 'Top',
+      request: { queryType: QueryType.SQL, text: 'select 1' },
+      connectionId: 'chinook-sqlite',
+    });
+    pendingQuery$.complete();
+    await pending;
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('never dispatches SQLite after a delayed query reply and card switch', async () => {
+    const queryId = 'demodb/chinook-top-customer-spend';
+    const pendingQuery$ = new Subject<QueryStub>();
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'r@o@@one',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'top',
+                title: 'Top',
+                widget: { name: 'SQL', data: { sql: { queryId } } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
+    fixture.detectChanges();
+    getQuery.mockReturnValueOnce(pendingQuery$.asObservable());
+    const pending = fixture.componentInstance.run();
+    await Promise.resolve();
+    fixture.componentRef.setInput('cardId', 'different');
+    fixture.detectChanges();
+    pendingQuery$.next({
+      id: 'chinook-top-customer-spend',
+      title: 'Top',
+      request: { queryType: QueryType.SQL, text: 'select 1' },
+      connectionId: 'chinook-sqlite',
+    });
+    pendingQuery$.complete();
+    await pending;
+    expect(run).not.toHaveBeenCalled();
   });
 });

@@ -368,4 +368,40 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       'board-1',
     );
   });
+
+  it('keeps manual parameter entry but never sends a qualified lookup through the legacy unqualified agent API', async () => {
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo',
+        projectApi: 'cloud',
+        branch: 'feature',
+      },
+    });
+    const board: Board = {
+      id: 'board-1',
+      title: 'Qualified board',
+      parameters: [
+        {
+          id: 'customer',
+          title: 'Customer',
+          type: 'string',
+          lookup: { db: 'chinook', sql: 'select 1', keyFields: ['id'] },
+        },
+      ],
+    };
+    getBoard$.next(board);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Enter parameter values manually.',
+    );
+    expect(fixture.nativeElement.querySelector('ion-input')).not.toBeNull();
+    const parameter = fixture.componentInstance.parameters()?.[0];
+    if (!parameter) throw new Error('Expected board parameter');
+    fixture.componentInstance.lookup(parameter);
+    expect(
+      TestBed.inject(ParameterLookupService).lookupParameterValue,
+    ).not.toHaveBeenCalled();
+  });
 });

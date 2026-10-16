@@ -15,6 +15,9 @@
       @if (remembered()) {
         <p role="status">Last selected from this board in this browser</p>
       }
+      @if (!canRemember()) {
+        <p>Choices are not saved for local agent projects.</p>
+      }
       @if (definitionLoading()) {
         <p role="status">Checking saved query…</p>
       } @else if (unsupportedReason(); as reason) {
