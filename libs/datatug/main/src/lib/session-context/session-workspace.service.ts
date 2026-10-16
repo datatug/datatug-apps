@@ -145,7 +145,10 @@ export class SessionWorkspaceService {
       const pending = await this.drafts.readPending(this.pendingKey(project, capabilities));
       if (generation !== this.generation) return;
       this.authRequired.set(false);
-      const actorPending = pending?.capabilities.actorId === capabilities.actorId ? pending : undefined;
+      const actorPending = pending && pending.capabilities.actorId === capabilities.actorId &&
+        pending.capabilities.databaseId === capabilities.databaseId &&
+        pending.capabilities.projectId === capabilities.projectId &&
+        equalProjectRef(pending.project, project) ? pending : undefined;
       this.pending.set(actorPending);
       if (actorPending) this.error.set('An operation with no confirmed receipt was recovered for this local principal. Retry the same operation before making another change.');
       this.sessions.set(page.items.filter((session) => session.state !== 'deleted'));
