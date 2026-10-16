@@ -149,7 +149,8 @@ editor: the column chooser (hide, order, pin, show all, reset), the layout and d
 (localStorage keys of ids only, never a value), Autosize, row checkboxes with "CSV selected" and "Copy selected", the
 keyboard and a 360 px wide screen. Its first test (the grid's columns in the table's order, with no `$key`) needs
 **datatug 0.102.1 or later** (datatug-cli #435) and is skipped against an older binary (the fixture reads `datatug
-version`). For CI to run it, set the repository variable `DATATUG_LINKS_CLI_REF` to `v0.102.1` or later.
+version`). The numeric right-alignment test needs the column type metadata and is likewise skipped
+below **0.102.1** (`COLUMN_TYPES_CLI`). For CI to run them, set the repository variable `DATATUG_LINKS_CLI_REF` to `v0.102.1` or later.
 
 Running the suite on a computer that already has a real daemon on port 8989: the fixture's daemon would adopt it
 (see above). Run the binary through a wrapper that may not connect to that port, so the throwaway daemon picks
