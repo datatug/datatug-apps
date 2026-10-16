@@ -73,7 +73,7 @@
   </ion-segment>
   @if (view() === 'table') {
   <div class="result-grid" data-testid="result-table">
-    <ag-grid-angular
+    <ag-grid-angular *datatugAgGridReady
       class="ag-theme-quartz"
       style="height: 100%; width: 100%"
       [columnDefs]="gridColumns()"

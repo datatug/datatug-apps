@@ -37,11 +37,10 @@ import {
   SemanticApiService,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
-  AllCommunityModule,
   ColDef,
-  ModuleRegistry,
   RowClickedEvent,
 } from 'ag-grid-community';
 import {
@@ -90,7 +89,6 @@ import {
 } from './query-result';
 import { ResultListsComponent } from './result-lists.component';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 
 type ResultState =
   | { readonly kind: 'loading' }
@@ -188,6 +186,7 @@ export function rerunErrorText(err: unknown): string {
     IonSegmentButton,
     IonLabel,
     AgGridAngular,
+    AgGridReadyDirective,
     AuthorCurrentRowComponent,
     LinkProblemComponent,
     ResultListsComponent,

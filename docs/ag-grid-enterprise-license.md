@@ -18,8 +18,7 @@ is a community-only build: no enterprise code is downloaded, no watermark, no co
   - Pages with no grid never trigger any of it, so the enterprise chunk is requested only on a page that creates a grid.
 - `agGridEnterpriseEnabled()` (a readonly signal) flips to `true` after `ensureAgGrid()` resolved with a key. Grids read
   it to switch on enterprise-only options, e.g. `[sideBar]="agGridEnterpriseEnabled() ? 'columns' : false"`.
-- New grids must use `*datatugAgGridReady` on `<ag-grid-angular>`. TODO(shared grid): `query-result.page` (agent-links
-  lane) still registers `AllCommunityModule` itself and has no directive yet, so enterprise is not registered by it.
+- New grids must use `*datatugAgGridReady` on `<ag-grid-angular>`; every current grid (including the query result page) does.
 - The build-time variable is `AG_GRID_LICENSE_KEY`. `tools/stamp-ag-grid-license.mjs` (Nx target
   `datatug-app:stamp-ag-grid-license`, a dependency of `build` and `serve`) writes the gitignored
   `apps/datatug-app/src/ag-grid-license.generated.ts`, which Angular `fileReplacements` swaps in for the committed
