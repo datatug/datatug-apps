@@ -101,18 +101,20 @@ export class AgentAccessService {
           if (token) this.write(pending.origin, token);
         }),
         catchError((err: unknown) => {
-          const status = err instanceof HttpErrorResponse ? err.status : 401;
-          // Any failed response may follow a consumed code; never replay it. A 401 then surfaces as the existing
-          // link-expired/reconnect state, while a held token still preserves the already-supported second-tab flow.
+          const status = err instanceof HttpErrorResponse ? err.status : -1;
+          // Any failed response may follow a consumed code; never replay it. A held token still preserves the
+          // already-supported second-tab flow.
           this.settle();
           if (status === 404) return of(undefined); // Older agents have no exchange endpoint.
           const held = this.read(pending.origin, true);
-          return held
-            ? of(held)
-            : throwError(
-                () =>
-                  new HttpErrorResponse({ status: 401, url: pending.origin }),
-              );
+          if (held) return of(held);
+          return throwError(
+            () =>
+              new HttpErrorResponse({
+                status: exchangeFailureStatus(err, status),
+                url: pending.origin,
+              }),
+          );
         }),
       );
   }
@@ -140,4 +142,29 @@ export class AgentAccessService {
       /* memory is the page fallback */
     }
   }
+}
+
+/**
+ * The status a failed exchange is reported with, so the page names the right state (and never echoes what the agent
+ * said): 401 (`link-expired`) only for the agent's explicit `401 {"error":"link-expired"}`; 0 (`agent-unreachable`)
+ * for no answer at all (the agent is not running, or the browser or an extension blocked the request, which a page
+ * cannot tell apart); 503 (`agent-unreachable`) for a 5xx, as an agent that is stopping answers; 500 (`read-failed`)
+ * for anything else, including a 200 without a token.
+ */
+export function exchangeFailureStatus(err: unknown, status: number): number {
+  if (status === 0) return 0;
+  if (status >= 500) return 503;
+  if (status === 401 && err instanceof HttpErrorResponse && saysLinkExpired(err.error)) return 401;
+  return 500;
+}
+
+function saysLinkExpired(body: unknown): boolean {
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch {
+      return false;
+    }
+  }
+  return !!body && typeof body === 'object' && (body as { error?: unknown }).error === 'link-expired';
 }

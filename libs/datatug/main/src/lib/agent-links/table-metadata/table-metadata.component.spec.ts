@@ -94,6 +94,8 @@ describe('classifyAgentError', () => {
     [err(400, 'key'), 'bad-key'],
     [err(400, 'table'), 'read-failed'],
     [err(500), 'read-failed'],
+    [err(503), 'agent-unreachable'],
+    [err(502), 'agent-unreachable'],
     [new Error('x'), 'read-failed'],
   ])('%# classifies as %s', (e, problem) => {
     expect(classifyAgentError(e)).toBe(problem);

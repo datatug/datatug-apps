@@ -123,7 +123,8 @@ describe('agentAccessInterceptor', () => {
     let status = -1;
     http.post(SCHEMA_URL, {}).subscribe({ error: (e) => (status = e.status) });
     await settleAsync();
-    expect(status).toBe(401);
+    // No answer at all (not running, or blocked by the browser or an extension): agent-unreachable, not expired.
+    expect(status).toBe(0);
     expect(sessionStorage.length).toBe(0);
     TestBed.resetTestingModule();
     const second = setup();
@@ -251,8 +252,9 @@ describe('agentAccessInterceptor', () => {
   });
 
   it('does not send the API request when a code is refused and no held token exists', async () => {
+    // The agent's refusal (datatug-cli session_exchange.go): 401 {"error":"link-expired"}.
     fetchSpy.mockReturnValue(
-      Promise.resolve(new Response('{}', { status: 401 })),
+      Promise.resolve(new Response('{"error":"link-expired"}', { status: 401 })),
     );
     const { http, ctrl } = setup({ origin: AGENT, code: 'v1.refused' });
     let status = -1;
@@ -315,5 +317,25 @@ describe('agentAccessInterceptor', () => {
       'Bearer tok-module',
     );
     ctrl.verify();
+  });
+
+  it.each([
+    ['an explicit 401 link-expired', () => new Response('{"error":"link-expired"}', { status: 401 }), 401],
+    ['a 503 from a stopping agent', () => new Response('stopping', { status: 503 }), 503],
+    ['a 500', () => new Response('{}', { status: 500 }), 503],
+    ['a 401 without link-expired', () => new Response('{}', { status: 401 }), 500],
+    ['a 400', () => new Response('{"error":"bad-request"}', { status: 400 }), 500],
+    ['a 200 without a token', () => new Response('{}', { status: 200 }), 500],
+  ])('reports %s as status %i, and never replays the code', async (_name, response, expected) => {
+    fetchSpy.mockImplementation(() => Promise.resolve(response()));
+    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.c' });
+    let status = -1;
+    http.post(SCHEMA_URL, {}).subscribe({ error: (e) => (status = e.status) });
+    await settleAsync();
+    expect(status).toBe(expected);
+    ctrl.expectNone(SCHEMA_URL);
+    http.post(SCHEMA_URL, {}).subscribe({ error: () => undefined });
+    await settleAsync();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
   });
 });

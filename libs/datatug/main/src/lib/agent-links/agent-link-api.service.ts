@@ -94,7 +94,8 @@ export function classifyAgentError(err: unknown): LinkProblem {
   if (!(err instanceof HttpErrorResponse)) {
     return 'read-failed';
   }
-  if (err.status === 0 || err.status === 403) {
+  // 502-504: an agent that is stopping (a 503 right after `datatug daemon stop`) or a gateway in between.
+  if (err.status === 0 || err.status === 403 || (err.status >= 502 && err.status <= 504)) {
     return 'agent-unreachable';
   }
   if (err.status === 401) {

@@ -76,4 +76,14 @@ test.describe('links the agent cannot resolve', () => {
     await expect(fresh.getByTestId('records-grid').locator('tbody tr')).toHaveCount(3, { timeout: 30_000 });
     expect(writes).toEqual([]);
   });
+
+  test('a fresh link to a stopped agent is agent-unreachable, not link-expired', async ({ page, linkDaemon }) => {
+    const link = linkDaemon.link({ table: 'Album', records: true, limit: 3 });
+    linkDaemon.stop();
+    try {
+      await expectState(page, link, 'agent-unreachable', 'blocked by the browser or an extension');
+    } finally {
+      linkDaemon.start();
+    }
+  });
 });
