@@ -1,16 +1,7 @@
 import type { Result, TypedValue } from '../contract/types';
 
 /** Presentation input from a DataTug result. It is never a durable board field. */
-export type ChartRecordset = Pick<Result, 'recordset' | 'provenance'>;
-
-export interface ChartSourceIdentity {
-  readonly source: string;
-  readonly collection?: string;
-  readonly queryId?: string;
-  readonly mode: Result['provenance']['mode'];
-  readonly snapshotId?: string;
-  readonly observedAt: string;
-}
+export type ChartRecordset = Result;
 
 export interface ChartField {
   readonly column: string;
@@ -21,12 +12,15 @@ export interface ChartField {
 
 export interface BarRaceSpec {
   readonly kind: 'bar-race';
-  /** A sortable period key, preferably ISO year/month/date or datetime. */
+  /** YYYY-MM string or typed date (YYYY-MM-DD); one kind per result. Nulls reject. */
   readonly periodColumn: string;
   readonly categoryColumn: string;
+  /** Safe integer number/integer values only. Decimal/fractional/null values reject. */
   readonly measureColumn: string;
   /** Display unit from a declared dataset/query meaning, never inferred. */
   readonly unit?: string;
+  /** Duplicate period/category rows are never combined implicitly. */
+  readonly onDuplicate: 'sum' | 'reject';
   readonly mode: 'period' | 'cumulative';
   readonly topN: number;
 }
@@ -45,7 +39,14 @@ export interface BarRaceFrame {
 }
 
 export interface BarRaceData {
-  readonly source: ChartSourceIdentity;
+  /** Full source and execution profile; consumers must show limitations/truncation. */
+  readonly source: Result['provenance'];
+  readonly limitations: Result['limitations'];
+  readonly bindingsApplied: Result['bindingsApplied'];
+  readonly truncated: Result['truncated'];
+  readonly execution: Result['execution'];
+  readonly sourceRights: Result['sourceRights'];
+  readonly usedSourceIds: Result['usedSourceIds'];
   readonly spec: BarRaceSpec;
   readonly dimensions: readonly ChartField[];
   readonly measures: readonly ChartField[];
@@ -56,8 +57,12 @@ export type ChartEligibilityErrorCode =
   | 'INVALID_SPEC'
   | 'MISSING_COLUMN'
   | 'DUPLICATE_COLUMN'
+  | 'DUPLICATE_CATEGORY_PERIOD'
   | 'INVALID_ROW'
-  | 'INCOMPATIBLE_VALUE';
+  | 'INCOMPATIBLE_VALUE'
+  | 'NULL_VALUE'
+  | 'UNSUPPORTED_PERIOD'
+  | 'PRECISION_UNSUPPORTED';
 
 export type BarRacePreparation =
   | { readonly ok: true; readonly data: BarRaceData }
@@ -79,22 +84,27 @@ export function barRaceColor(category: string): string {
   return palette[(hash >>> 0) % palette.length];
 }
 
-function label(value: TypedValue): string | undefined {
-  if (value.type === 'null') return undefined;
-  if (value.type === 'string' || value.type === 'date' || value.type === 'datetime') {
-    return value.value.trim() || undefined;
-  }
-  return undefined;
+function categoryLabel(value: TypedValue): string | undefined {
+  return value.type === 'string' && value.value.trim() ? value.value : undefined;
 }
 
 function measure(value: TypedValue): number | undefined {
-  if (value.type === 'null') return 0;
-  if (value.type === 'number') return Number.isFinite(value.value) ? value.value : undefined;
-  if (value.type !== 'integer' && value.type !== 'decimal') return undefined;
+  if (value.type === 'number') return Number.isSafeInteger(value.value) ? value.value : undefined;
+  if (value.type !== 'integer') return undefined;
   const converted = Number(value.value);
-  if (!Number.isFinite(converted)) return undefined;
-  if (value.type === 'integer' && !Number.isSafeInteger(converted)) return undefined;
-  return converted;
+  return Number.isSafeInteger(converted) ? converted : undefined;
+}
+
+/** Canonical keys sort chronologically with code-point order. No locale parsing. */
+function periodKey(value: TypedValue): string | undefined {
+  if (value.type === 'string')
+    return /^\d{4}-(0[1-9]|1[0-2])$/.test(value.value) ? value.value : undefined;
+  if (value.type !== 'date' || !/^\d{4}-\d{2}-\d{2}$/.test(value.value)) return undefined;
+  const [year, month, day] = value.value.split('-').map(Number);
+  const date = new Date(0);
+  date.setUTCFullYear(year, month - 1, day);
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day
+    ? value.value : undefined;
 }
 
 function error(code: ChartEligibilityErrorCode, message: string): BarRacePreparation {
@@ -112,6 +122,8 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
     return error('INVALID_SPEC', 'Period, category and measure must use different columns.');
   if (spec.mode !== 'period' && spec.mode !== 'cumulative')
     return error('INVALID_SPEC', 'Bar race mode must be period or cumulative.');
+  if (spec.onDuplicate !== 'sum' && spec.onDuplicate !== 'reject')
+    return error('INVALID_SPEC', 'Choose sum or reject for duplicate period/category rows.');
   const names = result.recordset.columns.map((column) => column.name);
   if (new Set(names).size !== names.length)
     return error('DUPLICATE_COLUMN', 'The result contains duplicate column names.');
@@ -122,26 +134,34 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
   if (missing.length) return error('MISSING_COLUMN', `The result has no column: ${missing.join(', ')}.`);
 
   const byPeriod = new Map<string, Map<string, number>>();
+  let periodKind: 'string' | 'date' | undefined;
   for (const [index, row] of result.recordset.rows.entries()) {
     if (row.length !== names.length)
       return error('INVALID_ROW', `Row ${index + 1} has ${row.length} values; expected ${names.length}.`);
     const periodValue = row[periodIndex];
     const categoryValue = row[categoryIndex];
-    const period = label(periodValue);
-    const category = label(categoryValue);
-    // Missing dimension/category has no honest bucket. Missing measure is zero.
-    if (periodValue.type !== 'null' && !period)
-      return error('INCOMPATIBLE_VALUE', `Row ${index + 1} needs a text or date ${spec.periodColumn} value.`);
-    if (categoryValue.type !== 'null' && !category)
-      return error('INCOMPATIBLE_VALUE', `Row ${index + 1} needs a text or date ${spec.categoryColumn} value.`);
-    if (!period || !category) continue;
-    const value = measure(row[measureIndex]);
+    const measureValue = row[measureIndex];
+    if ([periodValue, categoryValue, measureValue].some((value) => value.type === 'null'))
+      return error('NULL_VALUE', `Row ${index + 1} has a null period, category or measure; choose an explicit missing-value policy before charting.`);
+    const period = periodKey(periodValue);
+    if (!period || (periodKind && periodValue.type !== periodKind))
+      return error('UNSUPPORTED_PERIOD', `Row ${index + 1} needs a consistent YYYY-MM string or valid date period.`);
+    periodKind = periodValue.type as 'string' | 'date';
+    const category = categoryLabel(categoryValue);
+    if (!category)
+      return error('INCOMPATIBLE_VALUE', `Row ${index + 1} needs a nonempty text ${spec.categoryColumn} value.`);
+    if (measureValue.type === 'decimal' || (measureValue.type === 'number' && !Number.isSafeInteger(measureValue.value)) ||
+      (measureValue.type === 'integer' && measure(measureValue) === undefined))
+      return error('PRECISION_UNSUPPORTED', `Row ${index + 1} needs a safe integer ${spec.measureColumn}; decimal or fractional aggregation requires an explicit precision policy.`);
+    const value = measure(measureValue);
     if (value === undefined)
-      return error('INCOMPATIBLE_VALUE', `Row ${index + 1} needs a finite numeric ${spec.measureColumn} value.`);
+      return error('INCOMPATIBLE_VALUE', `Row ${index + 1} needs a numeric ${spec.measureColumn} value.`);
     const periodValues = byPeriod.get(period) ?? new Map<string, number>();
+    if (spec.onDuplicate === 'reject' && periodValues.has(category))
+      return error('DUPLICATE_CATEGORY_PERIOD', `Row ${index + 1} repeats ${category} in ${period}.`);
     const total = (periodValues.get(category) ?? 0) + value;
-    if (!Number.isFinite(total))
-      return error('INCOMPATIBLE_VALUE', `Aggregating ${spec.measureColumn} produced a non-finite value.`);
+    if (!Number.isSafeInteger(total))
+      return error('PRECISION_UNSUPPORTED', `Aggregating ${spec.measureColumn} exceeded the safe integer range.`);
     periodValues.set(category, total);
     byPeriod.set(period, periodValues);
   }
@@ -152,8 +172,8 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
     const current = byPeriod.get(period) ?? new Map<string, number>();
     for (const [category, value] of current) {
       const total = spec.mode === 'cumulative' ? (cumulative.get(category) ?? 0) + value : 0;
-      if (!Number.isFinite(total))
-        return error('INCOMPATIBLE_VALUE', 'Cumulative chart measure exceeded the finite number range.');
+      if (!Number.isSafeInteger(total))
+        return error('PRECISION_UNSUPPORTED', 'Cumulative chart measure exceeded the safe integer range.');
       cumulative.set(category, total);
     }
     const values = spec.mode === 'cumulative' ? cumulative : new Map(
@@ -167,14 +187,13 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
   return {
     ok: true,
     data: {
-      source: {
-        source: result.provenance.source,
-        collection: result.provenance.collection,
-        queryId: result.provenance.queryId,
-        mode: result.provenance.mode,
-        snapshotId: result.provenance.snapshotId,
-        observedAt: result.provenance.observedAt,
-      },
+      source: result.provenance,
+      limitations: result.limitations,
+      bindingsApplied: result.bindingsApplied,
+      truncated: result.truncated,
+      execution: result.execution,
+      sourceRights: result.sourceRights,
+      usedSourceIds: result.usedSourceIds,
       spec,
       dimensions: [
         { column: spec.periodColumn, type: result.recordset.columns[periodIndex].type },
