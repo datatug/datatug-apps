@@ -5117,7 +5117,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   ionViewDidEnter(): void {
-    this.authorViewActive = true;
+    if (!this.authorViewActive || !this.isCurrentRoute()) return;
     try {
       this.updateUrl(); // If called in constructor breaks back button
       const semanticCopy = QueryPageComponent.pendingSemanticCopy;
@@ -5131,6 +5131,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process ionViewDidEnter event');
     }
+  }
+
+  ionViewWillEnter(): void {
+    this.authorViewActive = true;
   }
 
   private readonly onQueryEditorStateChanged = (
@@ -5996,6 +6000,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   updateUrl(): void {
+    if (!this.authorViewActive || !this.isCurrentRoute()) return;
     // TODO: make sure not clashes with SqlQueryEditComponent
     const queryParams: Params = {
       id: this.queryId,
@@ -6013,6 +6018,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       .catch(
         this.errorLogger.logErrorHandler('Failed to change query parameter'),
       );
+  }
+
+  /** Ionic gives routed pages a proxy, so ownership follows its active snapshot. */
+  private isCurrentRoute(): boolean {
+    if (this.router.currentNavigation?.()) return false;
+    const pending: ActivatedRoute[] = [this.router.routerState.root];
+    while (pending.length) {
+      const route = pending.pop();
+      if (!route) continue;
+      if (route.snapshot === this.route.snapshot) return true;
+      pending.push(...route.children);
+    }
+    return false;
   }
 
   private getQueryState(id: string): IQueryState | undefined {

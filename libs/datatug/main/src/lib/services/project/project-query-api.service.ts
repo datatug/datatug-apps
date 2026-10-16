@@ -77,16 +77,26 @@ export class ProjectQueryApiService {
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
 
-  private reference(ref: IProjectRef): { storage: string; project: string; spaceID?: string } {
-    if (ref.projectApi) projectApiQuery(ref);
+  private reference(ref: IProjectRef): {
+    storage: string;
+    project: string;
+    spaceID?: string;
+  } {
+    if (ref.projectApi !== undefined) projectApiQuery(ref);
     if (ref.spaceID !== undefined) {
       if (!isSharedProjectRef(ref))
         throw new Error('Invalid shared project reference');
-      return { storage: 'firestore', spaceID: ref.spaceID, project: ref.projectId };
+      return {
+        storage: 'firestore',
+        spaceID: ref.spaceID,
+        project: ref.projectId,
+      };
     }
     if (ref.storeId === 'github' || ref.storeId === 'github.com') {
       const address = readGithubProjectId(ref.projectId);
       if (!address.ok) throw new Error('Invalid GitHub project reference');
+      if (ref.branch && address.id.ref && ref.branch !== address.id.ref)
+        throw new Error('Project branch conflicts with its GitHub address');
       return {
         storage: 'github.com',
         project: formatGithubProjectApiKey({
@@ -133,16 +143,67 @@ export class ProjectQueryApiService {
   }
 
   summary(ref: IProjectRef): Observable<IProjectSummary> {
-    return this.get(ref, 'projects/project_summary', ref.branch ? { branch: ref.branch } : undefined);
+    return this.get(
+      ref,
+      'projects/project_summary',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
   }
 
   /** Authenticated, fixed-file catalogue read for private GitHub projects. */
   connectionCatalog<T>(ref: IProjectRef): Observable<T> {
-    return this.get(ref, 'projects/connection_catalog', ref.branch ? { branch: ref.branch } : undefined);
+    return this.get(
+      ref,
+      'projects/connection_catalog',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
+  /** Fixed read-only asset endpoints; all identifiers and refs remain query params. */
+  boards<T>(ref: IProjectRef): Observable<T> {
+    return this.get(
+      ref,
+      'boards/all_boards',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
+  board<T>(ref: IProjectRef, id: string): Observable<T> {
+    return this.get(ref, 'boards/board', {
+      id,
+      ...(ref.branch ? { branch: ref.branch } : {}),
+    });
+  }
+
+  entities<T>(ref: IProjectRef): Observable<T> {
+    return this.get(
+      ref,
+      'entities/all_entities',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
+  entity<T>(ref: IProjectRef, id: string): Observable<T> {
+    return this.get(ref, 'entities/entity', {
+      id,
+      ...(ref.branch ? { branch: ref.branch } : {}),
+    });
+  }
+
+  environments<T>(ref: IProjectRef): Observable<T> {
+    return this.get(
+      ref,
+      'environments/all_environments',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
   }
 
   folder<T>(ref: IProjectRef): Observable<T> {
-    return this.get(ref, 'queries/all_queries', ref.branch ? { branch: ref.branch } : undefined);
+    return this.get(
+      ref,
+      'queries/all_queries',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
   }
 
   capabilities(ref: IProjectRef): Observable<ProjectQueryCapabilities> {

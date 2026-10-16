@@ -152,3 +152,40 @@ for (const width of [1440, 900, 390]) {
     ).toBeVisible();
   });
 }
+
+test('rapid browser Back from a linked query leaves the sample session interactive', async ({
+  page,
+}) => {
+  await page.goto(`${project}/-/sessions/examples/${sessionExample}`);
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: 'Customer coverage investigation',
+    }),
+  ).toBeVisible();
+
+  await page.getByRole('heading', { name: 'Customer inventory' }).click();
+  await expect(
+    page.getByRole('heading', {
+      name: 'Chinook Customer Inventory',
+      exact: true,
+    }),
+  ).toBeVisible();
+
+  // Exercise Back before ionViewDidEnter's editor=text URL normalization.
+  await page.goBack({ waitUntil: 'commit' });
+  await expect(page).toHaveURL(
+    /\/sessions\/examples\/customer-coverage-investigation$/,
+  );
+  await expect(
+    page.getByRole('heading', {
+      level: 1,
+      name: 'Customer coverage investigation',
+    }),
+  ).toBeVisible();
+
+  await page.getByRole('link', { name: 'Back to Sessions' }).click();
+  await expect(
+    page.getByRole('heading', { name: 'Sample Sessions' }),
+  ).toBeVisible();
+});

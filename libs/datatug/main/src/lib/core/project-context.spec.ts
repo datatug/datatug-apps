@@ -12,6 +12,21 @@ describe('project scope identity', () => {
       for (let b = 0; b < 3; b++)
         expect(equalProjectRef(refs[a], refs[b])).toBe(a === b);
   });
+  it('keys project identity by API, branch, store, project, and Space', () => {
+    const refs = [
+      { storeId: 'agent', projectId: 'p' },
+      { storeId: 'agent', projectId: 'p', branch: 'one' },
+      { storeId: 'agent', projectId: 'p', branch: 'two' },
+      {
+        storeId: 'agent',
+        projectId: 'p',
+        projectApi: 'local' as const,
+        branch: 'one',
+      },
+      { storeId: 'agent-2', projectId: 'p', branch: 'one' },
+    ];
+    expect(new Set(refs.map(projectRefToString)).size).toBe(refs.length);
+  });
   it.each(['', '..', 'a/b', '%', 'a'.repeat(129)])(
     'refuses malformed Space %s',
     (spaceID) => expect(isValidProjectRef({ ...p, spaceID })).toBe(false),

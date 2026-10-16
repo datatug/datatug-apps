@@ -4,6 +4,7 @@ import { Board } from '@datatug/board-models';
 import { IProjectRef } from '../../../../core/project-context';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { BoardRowComponent } from '../board-row/board-row.component';
+import { BoardReadForRun } from '../../../core/board-read-for-run';
 
 @Component({
   selector: 'sneat-datatug-board',
@@ -18,4 +19,5 @@ export class BoardComponent {
   readonly boardDef = input<Board>();
   readonly boardContext = input<IBoardContext>();
   readonly projectRef = input<IProjectRef>();
+  readonly readBoardForRun = input<BoardReadForRun>();
 }

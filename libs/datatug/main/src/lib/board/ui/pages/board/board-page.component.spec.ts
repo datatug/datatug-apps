@@ -5,7 +5,7 @@ import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
 import { BoardPageComponent } from './board-page.component';
-import { DatatugBoardService } from '../../../core/datatug-board.service';
+import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
@@ -29,7 +29,7 @@ describe('BoardPage', () => {
             logErrorHandler: vi.fn(() => vi.fn()),
           },
         },
-        { provide: DatatugBoardService, useValue: { getBoard: vi.fn() } },
+        { provide: ProjectAssetsReadService, useValue: { board: vi.fn() } },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -88,7 +88,7 @@ describe('BoardPage - currentProject navigation', () => {
           provide: ErrorLogger,
           useValue: { logError, logErrorHandler: vi.fn(() => vi.fn()) },
         },
-        { provide: DatatugBoardService, useValue: { getBoard } },
+        { provide: ProjectAssetsReadService, useValue: { board: getBoard } },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -131,11 +131,11 @@ describe('BoardPage - currentProject navigation', () => {
 
     TestBed.createComponent(BoardPageComponent);
 
-    // `getBoard()` was previously called with the literal string
-    // 'http://localhost:8989' regardless of the project's actual store
-    // (fixed, S136) — this asserts the real `storeId` ('s1', from
-    // `currentProject`'s own `ref` above) flows through instead.
-    expect(getBoard).toHaveBeenCalledWith('s1', 'p1', 'b1');
+    // The full selected project ref flows to the read facade.
+    expect(getBoard).toHaveBeenCalledWith(
+      { storeId: 's1', projectId: 'p1' },
+      'b1',
+    );
     expect(logError).not.toHaveBeenCalled();
   });
 });
@@ -157,7 +157,7 @@ describe('BoardPage switches board reads with the full project context', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: ErrorLogger, useValue: { logError: vi.fn() } },
-        { provide: DatatugBoardService, useValue: { getBoard } },
+        { provide: ProjectAssetsReadService, useValue: { board: getBoard } },
         {
           provide: ActivatedRoute,
           useValue: {
@@ -217,8 +217,7 @@ describe('BoardPage switches board reads with the full project context', () => {
     expect(page.loading()).toBe(false);
     expect(getBoard).toHaveBeenNthCalledWith(
       2,
-      'github.com',
-      'second@owner@',
+      { storeId: 'github.com', projectId: 'second@owner@' },
       'board1',
     );
     fixture.destroy();
@@ -266,8 +265,8 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
           },
         },
         {
-          provide: DatatugBoardService,
-          useValue: { getBoard: vi.fn(() => getBoard$.asObservable()) },
+          provide: ProjectAssetsReadService,
+          useValue: { board: vi.fn(() => getBoard$.asObservable()) },
         },
         {
           provide: ActivatedRoute,
@@ -339,9 +338,9 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     expect(fixture.nativeElement.innerHTML).toContain('Param 1');
   });
 
-  it('removes a visible board when a qualified branch is selected', async () => {
+  it('requests the selected branch after a qualified branch is selected', async () => {
     fixture.detectChanges();
-    const getBoard = TestBed.inject(DatatugBoardService).getBoard;
+    const getBoard = TestBed.inject(ProjectAssetsReadService).board;
     currentProject$.next({
       ref: { storeId: 'github.com', projectId: 'demo' },
     });
@@ -358,13 +357,51 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       },
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).not.toContain('Demo board');
+    expect(getBoard).toHaveBeenCalledTimes(2);
+    expect(getBoard).toHaveBeenLastCalledWith(
+      {
+        storeId: 'github.com',
+        projectId: 'demo',
+        projectApi: 'cloud',
+        branch: 'feature',
+      },
+      'board-1',
+    );
+  });
+
+  it('keeps manual parameter entry but never sends a qualified lookup through the legacy unqualified agent API', async () => {
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: {
+        storeId: 'github.com',
+        projectId: 'demo',
+        projectApi: 'cloud',
+        branch: 'feature',
+      },
+    });
+    const board: Board = {
+      id: 'board-1',
+      title: 'Qualified board',
+      parameters: [
+        {
+          id: 'customer',
+          title: 'Customer',
+          type: 'string',
+          lookup: { db: 'chinook', sql: 'select 1', keyFields: ['id'] },
+        },
+      ],
+    };
+    getBoard$.next(board);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Enter parameter values manually.',
+    );
+    expect(fixture.nativeElement.querySelector('ion-input')).not.toBeNull();
+    const parameter = fixture.componentInstance.parameters()?.[0];
+    if (!parameter) throw new Error('Expected board parameter');
+    fixture.componentInstance.lookup(parameter);
     expect(
-      fixture.nativeElement.querySelector('sneat-datatug-board'),
-    ).toBeNull();
-    expect(
-      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
-    ).toContain('Board details are unavailable');
-    expect(getBoard).toHaveBeenCalledTimes(1);
+      TestBed.inject(ParameterLookupService).lookupParameterValue,
+    ).not.toHaveBeenCalled();
   });
 });
