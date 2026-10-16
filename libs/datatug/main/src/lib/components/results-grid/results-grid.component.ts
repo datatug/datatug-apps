@@ -47,15 +47,15 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
 /**
  * The one grid of query results (feature: the query page and the query result page show rows the same way).
  *
- * Community features, always on: sorting on every column, a filter per column kind (text, number, date) with
- * floating filters, resizable and movable columns, pinning and auto-size from the column menu, a row-number column,
+ * Community features, always on: sorting on every column (an unsorted column shows its sort indicator too), a filter
+ * per column kind (text, number, date) with floating filters, resizable and movable columns, a row-number column,
  * type-aware cells (right-aligned numbers, locale dates, check marks for booleans, compact JSON, a dimmed `null`),
  * column widths fitted to the content within bounds, a quick filter box, CSV export, native text selection for copy,
  * keyboard navigation and row virtualization.
  *
  * Enterprise features, on only while `agGridEnterpriseEnabled()` is true (a license key was configured at build
- * time; otherwise none of their options is even passed to the grid): row grouping and aggregation, pivot, the side bar
- * tool panels, the status bar, range (cell) selection with clipboard copy, integrated charts and Excel export.
+ * time; otherwise none of their options is even passed to the grid): the column menu (pin, auto-size; its button is
+ * always shown on every header, not only on hover), row grouping and aggregation, pivot, the side bar tool panels, the status bar, range (cell) selection with clipboard copy, integrated charts and Excel export.
  *
  * Rows are objects keyed by column id whose cells are text or `null`; see `results-grid-columns.ts`.
  */
@@ -117,6 +117,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
         [autoSizeStrategy]="autoSize"
         [enableCellTextSelection]="true"
         [tooltipShowDelay]="600"
+        [suppressMenuHide]="true"
         [sideBar]="enterprise() ? sideBar : undefined"
         [statusBar]="enterprise() ? statusBar : undefined"
         [rowGroupPanelShow]="enterprise() ? 'onlyWhenGrouping' : undefined"
@@ -229,6 +230,7 @@ export class ResultsGridComponent {
   readonly defaultColDef = computed<ColDef<GridRow>>(() => ({
     resizable: true,
     sortable: true,
+    unSortIcon: true,
     filter: true,
     floatingFilter: true,
     ...(this.enterprise()

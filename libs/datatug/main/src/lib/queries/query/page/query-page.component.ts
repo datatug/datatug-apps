@@ -63,6 +63,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
 import { ResultsGridComponent } from '../../../components/results-grid/results-grid.component';
 import {
@@ -72,7 +73,9 @@ import {
 import { isLoopbackStore, routeParam } from '../../../agent-links/link-route';
 import {
   RESULT_QUERY_PARAM,
+  ResultMeta,
   StoredResult,
+  pkFirstOrder,
   validResultId,
 } from '../../../agent-links/query-result/query-result';
 import {
@@ -85,7 +88,10 @@ import {
   SavedResultBannerState,
 } from '../../../agent-links/query-result/saved-result-banner.component';
 import { routingParamStoreId } from '../../../core/datatug-routing-params';
-import { resultColumnDef } from '../../../components/results-grid/results-grid-columns';
+import {
+  isInternalKeyColumn,
+  resultColumnDef,
+} from '../../../components/results-grid/results-grid-columns';
 import { addIcons } from 'ionicons';
 import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
 import {
@@ -822,6 +828,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly randomIdService = inject(RandomIdService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
+  private readonly documentTitle = inject(Title);
   private readonly githubProjectActivity = inject(GitHubProjectActivityService);
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
@@ -1034,6 +1041,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const type = this.queryDef()?.request.queryType;
     return type === QueryType.SQL || type === QueryType.DTQL || type === QueryType.TugQL;
   });
+  /** More columns than this and the Current row pane starts closed, so the grid has the width. */
+  public readonly currentRowOpenMaxColumns = 6;
+  /** The person's choice to open or close the Current row pane; undefined until they choose. */
+  private readonly currentRowPaneChoice = signal<boolean | undefined>(undefined);
+  public readonly currentRowPaneOpen = computed(
+    () =>
+      this.currentRowPaneChoice() ??
+      (this.displayedRecordset()?.columns.filter(
+        (c) => !isInternalKeyColumn(c.name),
+      ).length ?? 0) <= this.currentRowOpenMaxColumns,
+  );
+  public toggleCurrentRowPane(): void {
+    this.currentRowPaneChoice.set(!this.currentRowPaneOpen());
+  }
   public readonly isNativeSqlWorkspace = computed(() =>
     this.queryDef()?.request.queryType === QueryType.SQL,
   );
@@ -1711,9 +1732,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public queryFolderPath = '';
+  private readonly backTarget = signal(0);
 
   /** Where the back button goes with no history: the project's queries, in the folder of this query. */
   public get queriesBackHref(): string {
+    // Read so the template binding is re-evaluated when the project or the folder is known later than the first render.
+    this.backTarget();
     const href = projectPageHref(this.project?.ref, 'queries');
     return `${href}${href.includes('?') ? '&' : '?'}folder=${encodeURIComponent(this.queryFolderPath)}`;
   }
@@ -1838,6 +1862,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly resultChartVisible = computed(() =>
     this.resultChartView() === 'chart' && !this.resultChartReason(),
   );
+  /**
+   * What the Results panel says when no chart can be drawn. The saved rows of a stored result are a snapshot read
+   * from a file, with no source usage rights to chart by, so they say when charts become available instead of a
+   * rights error.
+   */
+  public readonly resultChartUnavailableText = computed(() => {
+    const reason = this.resultChartOptions().reason;
+    if (!reason) return '';
+    return this.runResult()?.provenance.mode === 'snapshot' &&
+      this.savedResultBanner()?.kind === 'shown'
+      ? 'Charts are available after running the query.'
+      : `Chart unavailable: ${reason}`;
+  });
   public readonly resultChartHeld = computed(() => {
     const result = this.runResult();
     const recordset = this.displayedRecordset();
@@ -2254,15 +2291,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           };
         },
       );
+      // The columns as the recordset gives them. The saved rows of a stored result put the primary key first when the
+      // saved metadata names it.
+      const meta = this.savedResultMeta();
+      const keyFirst =
+        meta && result?.provenance.mode === 'snapshot'
+          ? pkFirstOrder(meta, this.displayedRecordset()?.columns ?? [])
+          : undefined;
+      const ordered = keyFirst ? keyFirst.map((i) => columns[i]) : columns;
       if (this.activeHostedExecution()?.run?.executionStatus === 'completed')
-        columns.unshift({
+        ordered.unshift({
           colId: 'validation_status',
           field: 'validation_status',
           headerName: 'Validation',
           sortable: true,
           minWidth: 135,
         });
-      return columns;
+      return ordered;
     },
   );
   private readonly resultGridRowSnapshots = new WeakMap<
@@ -5093,6 +5138,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly savedResultStoreId = signal('');
   public readonly savedResultId = signal('');
   private openedResultKey = '';
+  /** The environment the opened result ran in, kept selected while the saved result is open. */
+  private resultEnvId?: string;
+  private resultTargetAdded = false;
+  /** The saved metadata of the opened result: names its primary key, to put the key columns first in the grid. */
+  private readonly savedResultMeta = signal<ResultMeta | undefined>(undefined);
+  /** The document title before the saved result set its own, and the one it set. */
+  private titleBeforeResult?: string;
+  private resultTitle?: string;
   /** The query the result opened: the new draft's id, or the saved query's. */
   private resultQueryId?: string;
   private resultMode?: ResultEditorMode;
@@ -5178,9 +5231,36 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         };
       }
       const env = plan.ids?.env;
+      const knownEnvs = this.project?.summary?.environments;
+      const envUnknown = !!env && !!knownEnvs && !knownEnvs.some((e) => e.id === env);
+      if (envUnknown) {
+        plan = {
+          ...plan,
+          notice: [
+            plan.notice,
+            `Environment ${env} of this result is not in this project, so no environment is selected.`,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        };
+      }
       // Before the rows: a change of environment clears a displayed result.
-      if (env) this.datatugNavContextService.setCurrentEnvironment(env);
+      this.resultEnvId = env && !envUnknown ? env : undefined;
+      if (this.resultEnvId)
+        this.datatugNavContextService.setCurrentEnvironment(this.resultEnvId);
       this.selectedSource.set(plan.ids?.source);
+      // The database that ran the query is shown in the editor's Target field, as for any query with a chosen source.
+      if (this.resultTargetAdded) {
+        this.resultTargetAdded = false;
+        this.availableTargets.set([]);
+      }
+      if (plan.ids && !this.availableTargets().length) {
+        this.availableTargets.set([
+          { source: plan.ids.source, label: plan.ids.source },
+        ]);
+        this.resultTargetAdded = true;
+      }
+      this.savedResultMeta.set(result.meta);
       this.resultMode = plan.mode;
       this.resultQueryId = plan.definition?.id ?? plan.savedQueryId;
       // A result-only URL has no query identity until this read completes.
@@ -5195,10 +5275,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         rowsKept: plan.rowsKept,
         hasMore: plan.hasMore,
         ...(plan.notice ? { notice: plan.notice } : {}),
+        ...(plan.ids
+          ? { database: `${plan.ids.source} · environment ${plan.ids.env}` }
+          : {}),
         summary: plan.summary,
         skippedParameters: plan.parameters.filter((p) => !p.value).map((p) => p.id),
         ...(result.prompt ? { prompt: result.prompt } : {}),
       });
+      this.updateResultTitle();
       const definition = plan.definition;
       if (plan.mode === 'draft' && definition) {
         this.queryEditorStateService.newQuery({
@@ -5244,7 +5328,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.resultQueryId = undefined;
     this.resultMode = undefined;
     this.savedRowsShown = undefined;
+    this.resultEnvId = undefined;
+    if (this.resultTargetAdded) {
+      this.resultTargetAdded = false;
+      this.availableTargets.set([]);
+    }
+    this.savedResultMeta.set(undefined);
     this.savedResultBanner.set(undefined);
+    this.restoreTitle();
+  }
+
+  /** "Query from result · <project>" while the editor shows a stored result; the app's own title otherwise. */
+  private updateResultTitle(): void {
+    if (this.savedResultBanner()?.kind !== 'shown') return;
+    const project = this.project;
+    const name =
+      project?.brief?.title || project?.summary?.title || project?.ref.projectId;
+    const title = name ? `Query from result · ${name}` : 'Query from result';
+    if (this.resultTitle === undefined)
+      this.titleBeforeResult = this.documentTitle.getTitle();
+    this.resultTitle = title;
+    this.documentTitle.setTitle(title);
+  }
+
+  private restoreTitle(): void {
+    if (this.resultTitle === undefined) return;
+    if (this.documentTitle.getTitle() === this.resultTitle)
+      this.documentTitle.setTitle(this.titleBeforeResult ?? 'DataTug.app');
+    this.resultTitle = undefined;
+    this.titleBeforeResult = undefined;
   }
 
   /** api-contract.md "Bounded lookups and HTTP" — a live run failed with
@@ -5760,6 +5872,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   ngOnDestroy(): void {
     this.resultSubscription?.unsubscribe();
+    this.restoreTitle();
     this.workspaceTabResizeObserver?.disconnect();
     if (this.workspaceTabRevealFrame !== undefined)
       cancelAnimationFrame(this.workspaceTabRevealFrame);
@@ -5809,6 +5922,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       .subscribe((currentEnv) => {
         try {
           if (!currentEnv) {
+            this.keepResultEnvironment();
             return;
           }
           const { id } = currentEnv;
@@ -5853,6 +5967,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       });
   }
 
+  /**
+   * An address with no environment (`…/query?result=<id>`) clears the environment a moment after the result selected
+   * it, when the page is opened in a tab that chose none. While the saved result is open the environment it ran in
+   * stays selected (a different environment the person picks is kept; only a cleared one is put back).
+   */
+  private keepResultEnvironment(): void {
+    const env = this.resultEnvId;
+    if (!env || this.savedResultBanner()?.kind !== 'shown') return;
+    queueMicrotask(() => {
+      if (this.resultEnvId === env)
+        this.datatugNavContextService.setCurrentEnvironment(env);
+    });
+  }
+
   private updateQueryState(queryState: IQueryState): void {
     this.queryEditorStateService.updateQueryState(queryState);
   }
@@ -5893,6 +6021,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
+        this.backTarget.update((n) => n + 1);
+        this.updateResultTitle();
         this.refreshHostedProject(currentProject.ref, previousRef);
         this.comparisonAccessProjectRef = currentProject.ref;
         this.comparisonProjectAccess.set(currentProject.summary?.access);
@@ -6283,6 +6413,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? prevProject
       : newProjectContextFromRef(ref);
     this.scheduleEntryRuntimeLoad();
+    this.backTarget.update((n) => n + 1);
     this.refreshHostedProject(ref, prevProject?.ref);
     // A genuinely new route ref arrives before its summary and has no admission.
     // Preserve a summary only when it already belongs to this exact full ref.
@@ -6332,11 +6463,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     if (!id) {
       this.queryFolderPath = '';
+      this.backTarget.update((n) => n + 1);
       return;
     }
     const i = id.lastIndexOf('/');
     if (i >= 0) {
       this.queryFolderPath = id.substring(0, i);
+      this.backTarget.update((n) => n + 1);
     }
     if (!isNew && this.navigationDraft?.query.id !== id) {
       this.queryEditorStateService.openQuery(id);

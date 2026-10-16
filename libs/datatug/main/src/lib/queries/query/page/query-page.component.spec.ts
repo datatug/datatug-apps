@@ -25,7 +25,7 @@ import {
   signal,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { By } from '@angular/platform-browser';
+import { By, Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
@@ -7194,6 +7194,75 @@ select (
       const banner = created.savedResultBanner();
       expect(banner).toMatchObject({ kind: 'shown', mode: 'rows-only' });
       expect(banner?.kind === 'shown' && banner.notice).toMatch(/another project/);
+    });
+
+    it('shows the database that ran the query as the editor Target and names the page for the result', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      const title = TestBed.inject(Title);
+      title.setTitle('DataTug.app');
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'demo' }, summary: { id: 'demo', title: 'Demo project' } } as typeof created.project;
+      opener.openFromResult('rid-20');
+      expect(created.availableTargets()).toEqual([{ source: 'chinook', label: 'chinook' }]);
+      expect(created.savedResultBanner()).toMatchObject({ database: 'chinook · environment local' });
+      expect(created.selectedSource()).toBe('chinook');
+      expect(title.getTitle()).toBe('Query from result · Demo project');
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      expect(created.availableTargets()).toEqual([]);
+      expect(title.getTitle()).toBe('DataTug.app');
+    });
+
+    it('keeps the environment of the result selected when the address clears it, and not when the project has no such environment', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      const select = TestBed.inject(DatatugNavContextService).setCurrentEnvironment as ReturnType<typeof vi.fn>;
+      opener.openFromResult('rid-21');
+      select.mockClear();
+      (created as unknown as { keepResultEnvironment(): void }).keepResultEnvironment();
+      await Promise.resolve();
+      expect(select).toHaveBeenCalledWith('local');
+      // the person picks another environment: it is theirs, only a cleared one is put back
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      select.mockClear();
+      (created as unknown as { keepResultEnvironment(): void }).keepResultEnvironment();
+      await Promise.resolve();
+      expect(select).not.toHaveBeenCalled();
+      created.project = {
+        ref: { storeId: LOOPBACK, projectId: 'demo' },
+        summary: { id: 'demo', environments: [{ id: 'prod' }] },
+      } as typeof created.project;
+      opener.openFromResult('rid-22');
+      expect(select).not.toHaveBeenCalled();
+      const banner = created.savedResultBanner();
+      expect(banner?.kind === 'shown' && banner.notice).toContain(
+        'Environment local of this result is not in this project',
+      );
+    });
+
+    it('says when charts become available instead of a rights error for the saved rows', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-23');
+      expect(created.resultChartUnavailableText()).toBe('Charts are available after running the query.');
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      expect(created.resultChartUnavailableText()).toMatch(/^Chart unavailable: /);
+    });
+
+    it('starts the Current row pane closed for a wide result, one click to open', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-24');
+      expect(created.displayedRecordset()?.columns.length).toBeLessThanOrEqual(created.currentRowOpenMaxColumns);
+      expect(created.currentRowPaneOpen()).toBe(true);
+      const wide = {
+        ...created.runResult(),
+        recordset: {
+          columns: Array.from({ length: 8 }, (_, i) => ({ name: `c${i}`, type: 'string' })),
+          rows: [],
+        },
+      } as unknown as FederatedQueryResult;
+      (created as unknown as { setDisplayedResult(r: FederatedQueryResult): void }).setDisplayedResult(wide);
+      expect(created.currentRowPaneOpen()).toBe(false);
+      created.toggleCurrentRowPane();
+      expect(created.currentRowPaneOpen()).toBe(true);
+      created.toggleCurrentRowPane();
+      expect(created.currentRowPaneOpen()).toBe(false);
     });
 
     it('asks no agent that is not a local one', async () => {

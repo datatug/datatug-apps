@@ -207,6 +207,17 @@ describe('QueryResultPageComponent', () => {
     );
   });
 
+  it('selects the environment of the result when the agent lists no environments to check it against', async () => {
+    const m = mount('t4', {}, of({ id: 'demo' }));
+    answer(m);
+    await m.render();
+    expect(m.selectResultProject).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ ref: { projectId: 'demo', storeId: STORE } }),
+      'local',
+    );
+  });
+
   it.each([
     [
       'a project the agent does not know (error)',

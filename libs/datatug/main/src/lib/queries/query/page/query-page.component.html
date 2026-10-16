@@ -1775,6 +1775,18 @@
           </ion-buttons>
         </ion-item>
       }
+      @if (isTextQueryWorkspace() && displayedRecordset() && !resultChartVisible()) {
+        <div class="author-current-row-toggle">
+          <ion-button
+            size="small"
+            fill="clear"
+            data-testid="author-current-row-toggle"
+            [attr.aria-expanded]="currentRowPaneOpen()"
+            (click)="toggleCurrentRowPane()"
+            >{{ currentRowPaneOpen() ? '▾ Current row' : '▸ Current row' }}</ion-button
+          >
+        </div>
+      }
       @if (
         !resultChartVisible() && (resultTotalRows() > resultPageSize ||
         resultHasMore() ||
@@ -1809,6 +1821,7 @@
         class="result-author-data"
         [class.result-author-data-enabled]="isTextQueryWorkspace()"
         [class.result-chart-hidden]="resultChartVisible()"
+        [class.result-author-data-collapsed]="isTextQueryWorkspace() && !currentRowPaneOpen()"
       >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTextQueryWorkspace()">
         <sneat-datatug-results-grid
@@ -1826,6 +1839,7 @@
         />
       </div>
       @if (isTextQueryWorkspace() && displayedRecordset(); as currentRecordset) {
+        @if (currentRowPaneOpen()) {
         <sneat-author-current-row
           [columns]="currentRecordset.columns"
           [row]="currentAuthorResultRow()?.row"
@@ -1837,11 +1851,12 @@
           (useAsFilter)="useAuthorResultValueAsFilter($event)"
           (copyRequested)="clearAuthorRowFilterStatus()"
         />
+        }
       }
       </div>
     </div>
-    @if (resultChartOptions().reason; as chartUnavailableReason) {
-      <p class="ion-padding-horizontal" role="status">Chart unavailable: {{ chartUnavailableReason }}</p>
+    @if (resultChartUnavailableText(); as chartUnavailable) {
+      <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }
     <div class="ion-padding-horizontal">
       <sneat-datatug-source-rights-notice

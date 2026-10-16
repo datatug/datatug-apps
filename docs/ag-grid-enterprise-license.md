@@ -54,7 +54,8 @@ or `null`. Without a key it passes AG Grid nothing that needs an enterprise modu
 | --- | --- |
 | Sorting on every column (numbers by value, dates by time, wide integers exactly) | Community |
 | Column filters by kind (text, number, date) and floating filters | Community |
-| Resize, move, pin and auto-size (column menu); widths fitted to content within min/max | Community |
+| Resize and move columns; widths fitted to content within min/max; sort indicator on every column | Community |
+| Column menu (pin, auto-size, reset), its button always shown on every header | Enterprise |
 | Row-number column (pinned) | Community |
 | Numbers right-aligned; locale dates; check marks for booleans; compact JSON; dimmed `null` | Community |
 | Quick filter box with a "n of m rows" count | Community |

@@ -28,6 +28,12 @@
       }
     </ion-select>
   }
+  @if (!environments().length && currentEnvId()) {
+    <!-- An agent that lists no environments still names the one in use. -->
+    <ion-note slot="end" data-testid="menu-env-current">{{
+      currentEnvId()
+    }}</ion-note>
+  }
   @if (currentEnvId()) {
     <ion-buttons
       slot="end"
