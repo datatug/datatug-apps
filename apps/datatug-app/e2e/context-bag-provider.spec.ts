@@ -456,6 +456,7 @@ test.describe(`${dryRun ? 'stub-provider' : 'real-provider'} Context Bag journey
         /pinned input ([A-Za-z0-9_-]+)/,
       )?.[1];
       expect(pinnedInputId).toBeTruthy();
+      if (!pinnedInputId) throw new Error('The result receipt omitted its pinned input ID.');
       expect(providerRequestFacts?.inputSnapshotId).toBe(pinnedInputId);
       expect(providerReceipt).toMatch(/^2 rows · pinned input /);
       console.log(
@@ -496,7 +497,7 @@ test.describe(`${dryRun ? 'stub-provider' : 'real-provider'} Context Bag journey
         .fill('2');
       await changedBag.getByRole('button', { name: 'Save revision' }).click();
       await changedBag.getByRole('button', { name: 'Apply Context' }).click();
-      await expect(resultReceipt).toContainText(pinnedInputId!);
+      await expect(resultReceipt).toContainText(pinnedInputId);
       await changedBag.getByRole('button', { name: 'Clear context' }).click();
       const clearAlert = page
         .locator('ion-alert')
@@ -510,7 +511,7 @@ test.describe(`${dryRun ? 'stub-provider' : 'real-provider'} Context Bag journey
       ).toBeVisible();
       await changedBag.getByRole('button', { name: 'Done' }).click();
       await expect(changedBag).toBeHidden();
-      await expect(resultReceipt).toContainText(pinnedInputId!);
+      await expect(resultReceipt).toContainText(pinnedInputId);
 
       await page.reload();
       await expect(

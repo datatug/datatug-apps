@@ -528,12 +528,18 @@ for (const plan of ['pro', 'business'])
             .getByLabel('Business name', { exact: true })
             .fill('New Business');
         await activateBusiness(page);
+        const readyBusinessCheckout = await readyCheckout(page, 'purchase');
         await expect(
-          page.getByRole('heading', { name: 'Your Business space is ready' }),
+          readyBusinessCheckout.getByRole('heading', {
+            name: 'Your Business space is ready',
+          }),
         ).toBeVisible();
         await page.reload();
+        const reloadedBusinessCheckout = await readyCheckout(page, 'purchase');
         await expect(
-          page.getByRole('heading', { name: 'Your Business space is ready' }),
+          reloadedBusinessCheckout.getByRole('heading', {
+            name: 'Your Business space is ready',
+          }),
         ).toBeVisible();
         expect(
           fake.seen.filter((x) => x.path.endsWith('/purchase-setup')),

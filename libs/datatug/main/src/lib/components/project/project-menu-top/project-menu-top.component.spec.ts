@@ -11,14 +11,24 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { datatugProjectRoutes } from '../../../routes/datatug-routing-proj';
+import { DEMO_PROJECT_REF } from '@datatug/project-address';
+import { projectPageHref } from '../../../nav/project-page-href';
 
 describe('ProjectContextMenuComponent', () => {
   let component: ProjectMenuTopComponent;
   let fixture: ComponentFixture<ProjectMenuTopComponent>;
-  let router: { url: string; events: ReturnType<typeof of> };
+  let router: {
+    url: string;
+    events: ReturnType<typeof of>;
+    parseUrl: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
-    router = { url: '/', events: of() };
+    router = {
+      url: '/',
+      events: of(),
+      parseUrl: vi.fn((url: string) => ({ url })),
+    };
     await TestBed.configureTestingModule({
       imports: [ProjectMenuTopComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -264,13 +274,40 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
   it('renders GitHub Sessions navigation with real query parameters, never encoded pathname text', async () => {
     const fixture = render(PRODUCT_PROFILES.datatug);
     storeId$.next('github.com');
-    project$.next({ ref: { storeId: 'github.com', projectId: 'repo@owner@datatug', projectApi: 'cloud', branch: 'release/context' } });
+    project$.next({
+      ref: {
+        storeId: 'github.com',
+        projectId: 'repo@owner@datatug',
+        projectApi: 'cloud',
+        branch: 'release/context',
+      },
+    });
     await fixture.whenStable();
-    const item = fixture.debugElement.queryAll(By.directive(RouterLink)).find(item => item.nativeElement.textContent.includes('Sessions'));
+    const item = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .find((item) => item.nativeElement.textContent.includes('Sessions'));
     if (!item) throw new Error('Missing rendered Sessions link.');
     const tree = item.injector.get(RouterLink).urlTree;
-    expect(tree?.queryParams).toMatchObject({ projectApi: 'cloud', branch: 'release/context' });
+    expect(tree?.queryParams).toMatchObject({
+      projectApi: 'cloud',
+      branch: 'release/context',
+    });
     expect(tree?.toString()).not.toContain('%3F');
   });
 
+  it('uses the project-qualified preview only for the canonical public demo', () => {
+    const fixture = render(PRODUCT_PROFILES.datatug);
+    project$.next({ ref: DEMO_PROJECT_REF });
+    expect(fixture.componentInstance.isDemoProject()).toBe(true);
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
+      projectPageHref(DEMO_PROJECT_REF, 'incidents'),
+    );
+    project$.next({
+      ref: { storeId: 'localhost:8989', projectId: 'shop' },
+    });
+    expect(fixture.componentInstance.isDemoProject()).toBe(false);
+    expect(fixture.componentInstance.incidentsProjectRoute()).toBe(
+      '/incidents',
+    );
+  });
 });
