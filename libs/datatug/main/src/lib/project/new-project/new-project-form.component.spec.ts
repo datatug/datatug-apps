@@ -7,12 +7,14 @@ import { ErrorLogger } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
+import type { IProjectRef } from '../../core/project-context';
 import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { NewProjectFormComponent } from './new-project-form.component';
 import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
+import type { PendingGithubProjectSetup } from '../../services/project/project-query-api.service';
 import {
   saveBusinessGithubContinuation,
   takeBusinessGithubContinuation,
@@ -37,9 +39,27 @@ const created = {
     number: 42,
     headBranch: 'datatug/setup-1',
     baseBranch: 'work',
-    commit: 'setup-commit',
+    commit: 'abcdef0123456789',
     repositoryID: 12,
   },
+};
+const pendingSetup = {
+  operationID: '11111111-1111-4111-8111-111111111111',
+  status: 'initializing' as const,
+  spaceID: 'space',
+  projectID: 'project-id',
+  title: 'Project',
+  repositoryID: 12,
+  owner: 'owner',
+  name: 'repo',
+  folder: 'datatug',
+  branch: 'work',
+  ciEnabled: true,
+  expectedHead: 'abcdef0123456789',
+  templateID: 'demo-project-1',
+  templateCommit: '436350d41371103be11144ffa346c605f85e1342',
+  billingIntent: 'personal_pro' as const,
+  setupPR: undefined,
 };
 async function harness(
   freshUser = false,
@@ -63,6 +83,10 @@ async function harness(
   );
   const createCloud = vi.fn(() => of('cloud-id'));
   const createStatus = vi.fn(() => of({ ...created, status: 'pending_merge' }));
+  const pendingGithubProjectSetups = vi.fn(() => of({ setups: [] as PendingGithubProjectSetup[], truncated: false }));
+  const githubReauthorizationRequired = new Subject<{ ref: IProjectRef; requiredScopes: readonly ('repo' | 'workflow')[] }>();
+  const reportGithubReauthorizationRequired = vi.fn((ref: IProjectRef, requiredScopes: readonly ('repo' | 'workflow')[] = ['repo']) =>
+    githubReauthorizationRequired.next({ ref, requiredScopes }));
   const spaceResult = new Subject<{ id: string; dbo: { title: string } }>();
   const startResult = new Subject<{ authorizationURL: string }>();
   const createSpace = vi.fn(() => spaceResult);
@@ -71,6 +95,10 @@ async function harness(
       initialStatus ?? (authenticated ? 'authenticated' : 'notAuthenticated'),
     user: authenticated ? { uid: actorID } : undefined,
     record: { spaces: spaceRecords },
+  });
+  const authState = new BehaviorSubject({
+    status: authenticated ? 'authenticated' : 'notAuthenticated',
+    user: authenticated ? { uid: actorID } : undefined,
   });
   const nav = { goProject: vi.fn() };
   const router = {
@@ -97,11 +125,14 @@ async function harness(
           create,
           branches,
           createStatus,
+          pendingGithubProjectSetups,
+          reportGithubReauthorizationRequired,
+          githubReauthorizationRequired,
         },
       },
       { provide: ProjectService, useValue: { createNewProject: createCloud } },
       { provide: GithubConnectionService, useValue: connection },
-      { provide: SneatAuthStateService, useValue: { signInWith } },
+      { provide: SneatAuthStateService, useValue: { signInWith, authState } },
       {
         provide: SneatUserService,
         useValue: { userState },
@@ -143,10 +174,14 @@ async function harness(
     branches,
     createCloud,
     createStatus,
+    pendingGithubProjectSetups,
+    reportGithubReauthorizationRequired,
+    githubReauthorizationRequired,
     createSpace,
     spaceResult,
     startResult,
     userState,
+    authState,
     connection,
     signInWith,
     nav,
@@ -156,6 +191,163 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it('rediscovers and replays the same initializing setup after session storage is gone', async () => {
+    const h = await harness();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+    h.component['reloadPendingGithubSetups']();
+    h.fixture.detectChanges();
+
+    expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
+    expect(h.fixture.nativeElement.textContent).toContain('Pending GitHub project setups');
+    expect(h.fixture.nativeElement.textContent).toContain('Resume setup request');
+    h.component['resumePendingSetup'](pendingSetup);
+
+    expect(h.create).toHaveBeenCalledWith({
+      title: 'Project',
+      spaceID: 'space',
+      billingIntent: 'personal_pro',
+      operationID: pendingSetup.operationID,
+      ciEnabled: true,
+      github: {
+        repositoryID: 12,
+        owner: 'owner',
+        name: 'repo',
+        folder: 'datatug',
+        branch: 'work',
+        expectedBranchHead: pendingSetup.expectedHead,
+      },
+      template: { id: 'demo-project-1', commit: '436350d41371103be11144ffa346c605f85e1342' },
+    });
+    expect(h.component['pendingGithubSetups']()[0]).toMatchObject({
+      operationID: pendingSetup.operationID,
+      status: 'pending_merge',
+      setupPR: created.setupPR,
+    });
+  });
+
+  it('checks proof for a rediscovered setup and opens the project only after merged_ready', async () => {
+    const h = await harness();
+    const pending = { ...pendingSetup, status: 'pending_merge' as const, setupPR: created.setupPR };
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pending], truncated: true }));
+    h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready', projectID: 'project-id' }) as never);
+    h.fixture.detectChanges();
+    h.component['reloadPendingGithubSetups']();
+    expect(h.component['pendingGithubSetups']()).toHaveLength(1);
+    h.component['resumePendingSetup'](pending);
+
+    expect(h.component['pendingGithubSetupErrors']()[pending.operationID]).toBeUndefined();
+    expect(h.createStatus).toHaveBeenCalledWith({
+      operationID: pending.operationID,
+      repositoryID: pending.repositoryID,
+      owner: pending.owner,
+      name: pending.name,
+    });
+    expect(h.nav.goProject).toHaveBeenCalledWith(
+      expect.objectContaining({ ref: expect.objectContaining({
+        storeId: 'github.com',
+        projectId: 'repo@owner@datatug',
+        branch: 'work',
+        spaceID: 'space',
+      }) }),
+      undefined,
+      { replaceUrl: true },
+    );
+    expect(h.component['pendingGithubSetups']()).toEqual([]);
+  });
+
+  it('requests combined scopes when replaying a CI setup requires workflow authorization', async () => {
+    const h = await harness();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+    h.create.mockReturnValue(throwError(() => ({
+      status: 409,
+      error: { error: { code: 'workflow_scope_required' } },
+    })) as never);
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](pendingSetup);
+
+    expect(h.reportGithubReauthorizationRequired).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: 'github.com', projectId: 'repo@owner@datatug' }),
+      ['repo', 'workflow'],
+    );
+    expect(h.component['isRefreshingPendingSetup'](pendingSetup)).toBe(false);
+  });
+
+  it('ignores a delayed discovered status after the signed-in actor changes', async () => {
+    const h = await harness();
+    const delayedStatus = new Subject<typeof created>();
+    const pending = { ...pendingSetup, status: 'pending_merge' as const, setupPR: created.setupPR };
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pending], truncated: false }));
+    h.createStatus.mockReturnValue(delayedStatus as never);
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](pending);
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [], truncated: false }));
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    delayedStatus.next({ ...created, status: 'merged_ready', projectID: 'project-id' } as never);
+
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.component['pendingGithubSetups']()).toEqual([]);
+  });
+
+  it('ignores a delayed pending-setup discovery after the signed-in actor changes', async () => {
+    const h = await harness();
+    const delayedList = new Subject<{ setups: PendingGithubProjectSetup[]; truncated: boolean }>();
+    h.pendingGithubProjectSetups.mockReturnValue(delayedList as never);
+    h.component['reloadPendingGithubSetups']();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [], truncated: false }));
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    delayedList.next({ setups: [pendingSetup], truncated: false });
+
+    expect(h.component['pendingGithubSetups']()).toEqual([]);
+  });
+
+  it('ignores a delayed replay result after the signed-in actor changes', async () => {
+    const h = await harness();
+    const delayedCreate = new Subject<typeof created>();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+    h.create.mockReturnValue(delayedCreate as never);
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](pendingSetup);
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [], truncated: false }));
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    delayedCreate.next(created);
+
+    expect(h.component['pendingGithubSetups']()).toEqual([]);
+    expect(h.component['isRefreshingPendingSetup'](pendingSetup)).toBe(false);
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+  });
+
+  it('ignores a delayed replay error after the signed-in actor changes', async () => {
+    const h = await harness();
+    const delayedCreate = new Subject<typeof created>();
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+    h.create.mockReturnValue(delayedCreate as never);
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](pendingSetup);
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [], truncated: false }));
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    delayedCreate.error({ status: 409, error: { error: { code: 'workflow_scope_required' } } });
+
+    expect(h.component['pendingGithubSetupErrors']()).toEqual({});
+    expect(h.reportGithubReauthorizationRequired).not.toHaveBeenCalled();
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+  });
+
   it('preselects a requested checkout Space only when it belongs to the signed-in user', async () => {
     const h = await harness(false, { spaceID: 'space' });
     expect(h.component.spaceID()).toBe('space');

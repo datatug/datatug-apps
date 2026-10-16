@@ -175,6 +175,7 @@ describe('GitHub callback authenticated exchange', () => {
         firebaseUID: 'actor',
         oauthState: 'reconnect-state',
         returnUrl: '/projects/repo?branch=work',
+        requiredScopes: ['repo', 'workflow'],
       }),
     );
     window.__datatugTakeGitHubAuthorization = () => ({
@@ -189,7 +190,7 @@ describe('GitHub callback authenticated exchange', () => {
       'reconnect-code',
       'reconnect-state',
     );
-    h.result.next({ connected: true, actorID: 3860020, login: 'alex', scopes: ['repo'] });
+    h.result.next({ connected: true, actorID: 3860020, login: 'alex', scopes: ['repo', 'workflow'] });
     await fixture.whenStable();
 
     expect(assign).toHaveBeenCalledWith('/projects/repo?branch=work');

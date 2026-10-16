@@ -51,8 +51,11 @@ import {
   ProjectQueryApiService,
   DATATUG_DEMO_PROJECT_TEMPLATE,
   type CreateGithubProject,
+  type GithubProjectCreateStatus,
+  type PendingGithubProjectSetup,
   type ProjectBillingIntent,
 } from '../../services/project/project-query-api.service';
+import { GitHubReauthorizationBannerComponent } from './github-reauthorization-banner.component';
 import { safeNewProjectReturnUrl } from './new-project.service';
 import {
   clearBusinessGithubContinuation,
@@ -104,6 +107,7 @@ const NEW_PROJECT_DRAFT_KEY = 'datatug:new-project:draft';
     IonContent,
     IonCheckbox,
     IonFooter,
+    GitHubReauthorizationBannerComponent,
   ],
 })
 export class NewProjectFormComponent implements ViewDidEnter, OnInit {
@@ -128,9 +132,15 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   readonly branch = signal('');
   readonly githubRepositoryURL = signal('');
   readonly ciEnabled = signal(true);
-  protected readonly setupStatus = signal<'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | 'needs_review' | undefined>(undefined);
+  protected readonly setupStatus = signal<'initializing' | 'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | 'needs_review' | undefined>(undefined);
   protected readonly setupPR = signal<{ url: string; number: number } | undefined>(undefined);
   protected readonly isRefreshingSetup = signal(false);
+  protected readonly pendingGithubSetups = signal<readonly PendingGithubProjectSetup[]>([]);
+  protected readonly pendingGithubSetupsLoading = signal(false);
+  protected readonly pendingGithubSetupsError = signal<string | undefined>(undefined);
+  protected readonly pendingGithubSetupsTruncated = signal(false);
+  protected readonly pendingGithubSetupRefreshes = signal<ReadonlySet<string>>(new Set());
+  protected readonly pendingGithubSetupErrors = signal<Readonly<Record<string, string>>>({});
   protected readonly isCreating = signal(false);
   protected readonly formError = signal<string | undefined>(undefined);
   protected readonly githubReposError = signal<string | undefined>(undefined);
@@ -151,6 +161,9 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   >([]);
   private selectionGeneration = 0;
   private readonly userID = signal<string | undefined>(undefined);
+  private readonly userGeneration = signal(0);
+  private readonly pendingGithubSetupsActor = signal<string | undefined>(undefined);
+  private pendingGithubSetupsRequestGeneration = 0;
   private readonly operationID = signal<string | undefined>(undefined);
   private readonly operationPayload = signal<string | undefined>(undefined);
   private readonly oauthResumePending = signal(false);
@@ -271,6 +284,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
               this.saveDraft();
           }
           this.selectionGeneration++;
+          this.userGeneration.update((generation) => generation + 1);
           this.githubRepos.set([]);
           this.selectedRepo.set(undefined);
           this.branches.set([]);
@@ -284,8 +298,16 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.setupStatus.set(undefined);
           this.setupPR.set(undefined);
           this.isRefreshingSetup.set(false);
+          this.pendingGithubSetups.set([]);
+          this.pendingGithubSetupsError.set(undefined);
+          this.pendingGithubSetupsLoading.set(false);
+          this.pendingGithubSetupRefreshes.set(new Set());
+          this.pendingGithubSetupErrors.set({});
+          this.pendingGithubSetupsActor.set(undefined);
+          this.pendingGithubSetupsTruncated.set(false);
           if (this.store() === 'github') this.loadGithubRepos();
         }
+        if (uid) this.loadPendingGithubSetups(uid);
         this.resolvePendingDraft(uid, state.status);
       });
   }
@@ -731,6 +753,190 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     });
   }
 
+  protected pendingSetupProjectRef(setup: PendingGithubProjectSetup) {
+    return {
+      storeId: 'github.com',
+      projectId: formatGithubProjectApiKey({
+        org: setup.owner,
+        repo: setup.name,
+        folder: setup.folder,
+      }),
+      spaceID: setup.spaceID,
+      projectApi: 'cloud' as const,
+      branch: setup.branch,
+    };
+  }
+
+  protected isRefreshingPendingSetup(setup: PendingGithubProjectSetup): boolean {
+    return this.pendingGithubSetupRefreshes().has(setup.operationID);
+  }
+
+  protected pendingSetupMessage(status: PendingGithubProjectSetup['status']): string {
+    switch (status) {
+      case 'initializing':
+        return 'The server is preparing the setup pull request. Check again shortly.';
+      case 'pending_merge':
+        return 'The setup pull request is ready. Check its status after merging.';
+      case 'needs_review':
+        return 'The merged setup needs repair before DataTug can open this project.';
+      case 'closed_unmerged':
+        return 'The setup pull request closed without merging. Re-enter the project details above and submit a new setup request.';
+      case 'failed':
+        return 'This setup request failed. Re-enter the project details above and submit a new request.';
+    }
+  }
+
+  protected reloadPendingGithubSetups(): void {
+    const actor = this.userID();
+    if (actor) this.loadPendingGithubSetups(actor, true);
+  }
+
+  protected resumePendingSetup(setup: PendingGithubProjectSetup): void {
+    if (setup.status === 'initializing') {
+      this.replayPendingCreate(setup);
+      return;
+    }
+    this.refreshPendingSetup(setup);
+  }
+
+  protected refreshPendingSetup(setup: PendingGithubProjectSetup): void {
+    const actor = this.userID();
+    if (!actor || this.isRefreshingPendingSetup(setup)) return;
+    const generation = this.userGeneration();
+    const current = () => this.userID() === actor && this.userGeneration() === generation &&
+      this.pendingGithubSetups().some((item) => samePendingSetupBinding(item, setup));
+    this.pendingGithubSetupRefreshes.update((set) => new Set([...set, setup.operationID]));
+    this.pendingGithubSetupErrors.update((errors) => {
+      const next = { ...errors };
+      delete next[setup.operationID];
+      return next;
+    });
+    this.queryApi.createStatus({
+      operationID: setup.operationID,
+      repositoryID: setup.repositoryID,
+      owner: setup.owner,
+      name: setup.name,
+    }).subscribe({
+      next: (status) => {
+        if (!current()) return;
+        this.finishPendingSetupRefresh(setup.operationID);
+        if (status.status === 'initializing' || status.status === 'pending_merge' || status.status === 'needs_review' || status.status === 'closed_unmerged' || status.status === 'failed')
+          this.pendingGithubSetups.update((items) => items.map((item) => item.operationID === setup.operationID
+            ? { ...item, status: status.status as PendingGithubProjectSetup['status'], setupPR: status.setupPR ?? item.setupPR }
+            : item));
+        if (status.status === 'merged_ready') this.openDiscoveredReadySetup(setup, status);
+      },
+      error: (error: unknown) => {
+        if (!current()) return;
+        this.finishPendingSetupRefresh(setup.operationID);
+        if (githubOAuthNeedsAuthorization(error)) {
+          this.queryApi.reportGithubReauthorizationRequired(
+            this.pendingSetupProjectRef(setup),
+            githubProjectErrorCode(error) === 'workflow_scope_required' ? ['repo', 'workflow'] : ['repo'],
+          );
+          return;
+        }
+        this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'Setup status could not be checked. Try again.' }));
+      },
+    });
+  }
+
+  private finishPendingSetupRefresh(operationID: string): void {
+    this.pendingGithubSetupRefreshes.update((set) => {
+      const next = new Set(set);
+      next.delete(operationID);
+      return next;
+    });
+  }
+
+  private replayPendingCreate(setup: PendingGithubProjectSetup): void {
+    const actor = this.userID();
+    if (!actor || this.isRefreshingPendingSetup(setup)) return;
+    if (setup.templateID !== DATATUG_DEMO_PROJECT_TEMPLATE.id || setup.templateCommit !== DATATUG_DEMO_PROJECT_TEMPLATE.commit) {
+      this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'This setup uses a different project template version. Refresh the pending setup list before retrying.' }));
+      return;
+    }
+    const generation = this.userGeneration();
+    const current = () => this.userID() === actor && this.userGeneration() === generation &&
+      this.pendingGithubSetups().some((item) => samePendingSetupBinding(item, setup));
+    const request: CreateGithubProject = {
+      title: setup.title,
+      spaceID: setup.spaceID,
+      billingIntent: setup.billingIntent,
+      operationID: setup.operationID,
+      ciEnabled: setup.ciEnabled,
+      github: {
+        repositoryID: setup.repositoryID,
+        owner: setup.owner,
+        name: setup.name,
+        folder: setup.folder,
+        branch: setup.branch,
+        expectedBranchHead: setup.expectedHead,
+      },
+      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+    };
+    this.pendingGithubSetupRefreshes.update((set) => new Set([...set, setup.operationID]));
+    this.pendingGithubSetupErrors.update((errors) => {
+      const next = { ...errors };
+      delete next[setup.operationID];
+      return next;
+    });
+    this.queryApi.create(request).subscribe({
+      next: (result) => {
+        if (!current()) return;
+        this.finishPendingSetupRefresh(setup.operationID);
+        this.pendingGithubSetups.update((items) => items.map((item) => item.operationID === setup.operationID
+          ? { ...item, status: result.status, setupPR: result.setupPR }
+          : item));
+      },
+      error: (error: unknown) => {
+        if (!current()) return;
+        this.finishPendingSetupRefresh(setup.operationID);
+        if (githubOAuthNeedsAuthorization(error)) {
+          this.queryApi.reportGithubReauthorizationRequired(
+            this.pendingSetupProjectRef(setup),
+            githubProjectErrorCode(error) === 'workflow_scope_required' ? ['repo', 'workflow'] : ['repo'],
+          );
+          return;
+        }
+        this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'The same project setup could not be resumed. Check repository access, then try again.' }));
+      },
+    });
+  }
+
+  private openDiscoveredReadySetup(setup: PendingGithubProjectSetup, status: GithubProjectCreateStatus): void {
+    const projectId = formatGithubProjectApiKey({ org: setup.owner, repo: setup.name, folder: setup.folder });
+    const branch = status.setupPR?.baseBranch ?? setup.branch;
+    if (!projectId || !branch) {
+      this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'The setup is ready, but its repository branch could not be restored.' }));
+      return;
+    }
+    this.pendingGithubSetups.update((items) => items.filter((item) => item.operationID !== setup.operationID));
+    this.dismissAndGo({ storeId: 'github.com', projectId, projectApi: 'cloud', branch, spaceID: setup.spaceID });
+  }
+
+  private loadPendingGithubSetups(actor: string, force = false): void {
+    if (!force && this.pendingGithubSetupsActor() === actor) return;
+    this.pendingGithubSetupsActor.set(actor);
+    this.pendingGithubSetupsLoading.set(true);
+    this.pendingGithubSetupsError.set(undefined);
+    const generation = this.userGeneration();
+    const requestGeneration = ++this.pendingGithubSetupsRequestGeneration;
+    this.queryApi.pendingGithubProjectSetups().subscribe({
+      next: (result) => {
+        if (this.userID() !== actor || this.userGeneration() !== generation || this.pendingGithubSetupsRequestGeneration !== requestGeneration) return;
+        this.pendingGithubSetupsLoading.set(false);
+        this.pendingGithubSetups.set(result.setups.filter(isPendingGithubProjectSetup));
+        this.pendingGithubSetupsTruncated.set(result.truncated);
+      },
+      error: () => {
+        if (this.userID() !== actor || this.userGeneration() !== generation || this.pendingGithubSetupsRequestGeneration !== requestGeneration) return;
+        this.pendingGithubSetupsLoading.set(false);
+        this.pendingGithubSetupsError.set('Pending GitHub project setups could not be loaded. Try refreshing this page.');
+      },
+    });
+  }
+
   protected retryClosedSetup(): void {
     if (this.setupStatus() !== 'closed_unmerged' || this.isCreating()) return;
     this.operationID.set(undefined);
@@ -743,9 +949,11 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
 
   protected setupStatusMessage(
-    status: 'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | 'needs_review',
+    status: 'initializing' | 'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | 'needs_review',
   ): string {
     switch (status) {
+      case 'initializing':
+        return 'The server is preparing the setup pull request.';
       case 'pending_merge':
         return 'Setup pull request is open. Project files become active after it merges.';
       case 'merged_ready':
@@ -1090,6 +1298,61 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
   } catch {
     return undefined;
   }
+}
+
+function isPendingGithubProjectSetup(value: unknown): value is PendingGithubProjectSetup {
+  if (!value || typeof value !== 'object') return false;
+  const setup = value as Partial<PendingGithubProjectSetup>;
+  const folder = typeof setup.folder === 'string' ? readNewProjectFolder(setup.folder) : undefined;
+  return (
+    typeof setup.operationID === 'string' && /^[0-9a-f-]{36}$/i.test(setup.operationID) &&
+    (setup.status === 'initializing' || setup.status === 'pending_merge' || setup.status === 'needs_review') &&
+    typeof setup.spaceID === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(setup.spaceID) &&
+    typeof setup.projectID === 'string' && setup.projectID.length > 0 && setup.projectID.length <= 128 &&
+    typeof setup.title === 'string' && setup.title.length >= 2 && setup.title.length <= 100 &&
+    typeof setup.repositoryID === 'number' && Number.isSafeInteger(setup.repositoryID) && setup.repositoryID > 0 &&
+    typeof setup.owner === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(setup.owner) &&
+    typeof setup.name === 'string' && /^[A-Za-z0-9_.-]{1,100}$/.test(setup.name) &&
+    !!folder?.ok &&
+    typeof setup.branch === 'string' && setup.branch.length > 0 && setup.branch.length <= 255 && !Array.from(setup.branch).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) &&
+    typeof setup.ciEnabled === 'boolean' &&
+    typeof setup.expectedHead === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.expectedHead) &&
+    typeof setup.templateID === 'string' && setup.templateID.length <= 100 &&
+    typeof setup.templateCommit === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.templateCommit) &&
+    (setup.billingIntent === 'personal_pro' || setup.billingIntent === 'space_business') &&
+    (setup.setupPR === undefined || isSafeFullSetupPR(setup.setupPR))
+  );
+}
+
+function isSafeFullSetupPR(value: unknown): value is NonNullable<PendingGithubProjectSetup['setupPR']> {
+  if (!value || typeof value !== 'object') return false;
+  const pr = value as Partial<NonNullable<PendingGithubProjectSetup['setupPR']>>;
+  return typeof pr.url === 'string' && /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(pr.url) &&
+    Number.isInteger(pr.number) && (pr.number as number) > 0 &&
+    typeof pr.headBranch === 'string' && pr.headBranch.length <= 255 &&
+    typeof pr.baseBranch === 'string' && pr.baseBranch.length <= 255 &&
+    typeof pr.commit === 'string' && /^[0-9a-f]{7,64}$/i.test(pr.commit) &&
+    typeof pr.repositoryID === 'number' && Number.isSafeInteger(pr.repositoryID) && pr.repositoryID > 0;
+}
+
+function samePendingSetupBinding(
+  left: PendingGithubProjectSetup,
+  right: PendingGithubProjectSetup,
+): boolean {
+  return left.operationID === right.operationID &&
+    left.spaceID === right.spaceID &&
+    left.projectID === right.projectID &&
+    left.title === right.title &&
+    left.repositoryID === right.repositoryID &&
+    left.owner === right.owner &&
+    left.name === right.name &&
+    left.folder === right.folder &&
+    left.branch === right.branch &&
+    left.ciEnabled === right.ciEnabled &&
+    left.expectedHead === right.expectedHead &&
+    left.templateID === right.templateID &&
+    left.templateCommit === right.templateCommit &&
+    left.billingIntent === right.billingIntent;
 }
 
 function clearNewProjectDraft(): void {

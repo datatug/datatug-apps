@@ -74,6 +74,7 @@ export interface CreatedGithubProject {
 export interface GithubProjectCreateStatus {
   readonly operationID: string;
   readonly status:
+    | 'initializing'
     | 'pending_merge'
     | 'merged_ready'
     | 'closed_unmerged'
@@ -84,6 +85,30 @@ export interface GithubProjectCreateStatus {
   readonly errorCode?: string;
 }
 
+export interface PendingGithubProjectSetup {
+  readonly operationID: string;
+  readonly status: 'initializing' | 'pending_merge' | 'needs_review' | 'closed_unmerged' | 'failed';
+  readonly spaceID: string;
+  readonly projectID: string;
+  readonly title: string;
+  readonly repositoryID: number;
+  readonly owner: string;
+  readonly name: string;
+  readonly folder: string;
+  readonly branch: string;
+  readonly ciEnabled: boolean;
+  readonly expectedHead: string;
+  readonly templateID: string;
+  readonly templateCommit: string;
+  readonly billingIntent: ProjectBillingIntent;
+  readonly setupPR?: CreatedGithubProject['setupPR'];
+}
+
+export interface PendingGithubProjectSetupsResponse {
+  readonly setups: readonly PendingGithubProjectSetup[];
+  readonly truncated: boolean;
+}
+
 export interface GithubProjectCreateStatusRequest {
   readonly operationID: string;
   readonly repositoryID: number;
@@ -91,12 +116,17 @@ export interface GithubProjectCreateStatusRequest {
   readonly name: string;
 }
 
+export interface GithubReauthorizationRequest {
+  readonly ref: IProjectRef;
+  readonly requiredScopes: readonly ('repo' | 'workflow')[];
+}
+
 /** Store-specific transport only. Cloud always uses the shared Firebase auth bridge; no provider token or private fallback. */
 @Injectable({ providedIn: 'root' })
 export class ProjectQueryApiService {
   private readonly deniedReads = new Subject<IProjectRef>();
   readonly authorityDenied = this.deniedReads.asObservable();
-  private readonly githubReauthorization = new Subject<IProjectRef>();
+  private readonly githubReauthorization = new Subject<GithubReauthorizationRequest>();
   readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
@@ -164,7 +194,7 @@ export class ProjectQueryApiService {
             )
               this.deniedReads.next(ref);
             if (isGitHub && ([401, 403].includes(status) || requiresReauthorization))
-              this.githubReauthorization.next(ref);
+              this.githubReauthorization.next({ ref, requiredScopes: ['repo'] });
           },
         }),
       );
@@ -289,6 +319,20 @@ export class ProjectQueryApiService {
       'datatug/projects/create_project/status',
       new HttpParams({ fromObject: { ...request, store: 'github.com' } }),
     );
+  }
+
+  pendingGithubProjectSetups(): Observable<PendingGithubProjectSetupsResponse> {
+    return this.api.get<PendingGithubProjectSetupsResponse>(
+      'datatug/github/projects/pending-setups',
+    );
+  }
+
+  reportGithubReauthorizationRequired(
+    ref: IProjectRef,
+    requiredScopes: readonly ('repo' | 'workflow')[] = ['repo'],
+  ): void {
+    this.deniedReads.next(ref);
+    this.githubReauthorization.next({ ref, requiredScopes });
   }
 }
 

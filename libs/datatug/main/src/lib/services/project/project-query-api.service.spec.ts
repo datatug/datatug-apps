@@ -378,7 +378,7 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
     status: 409,
   });
   expect(denied).toEqual([ref]);
-  expect(reconnect).toEqual([ref]);
+  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
 
   get.mockImplementation(() =>
     throwError(() => ({
@@ -390,5 +390,23 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
     status: 409,
   });
   expect(denied).toEqual([ref]);
-  expect(reconnect).toEqual([ref]);
+  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+});
+
+it('discovers pending GitHub setup operations through the authenticated common API', async () => {
+  TestBed.resetTestingModule();
+  const get = vi.fn(() => of({ setups: [], truncated: false }));
+  TestBed.configureTestingModule({
+    providers: [
+      ProjectQueryApiService,
+      { provide: SneatApiService, useValue: { get } },
+      { provide: HttpClient, useValue: {} },
+    ],
+  });
+  const service = TestBed.inject(ProjectQueryApiService);
+  await expect(firstValueFrom(service.pendingGithubProjectSetups())).resolves.toEqual({
+    setups: [],
+    truncated: false,
+  });
+  expect(get).toHaveBeenCalledWith('datatug/github/projects/pending-setups');
 });

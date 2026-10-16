@@ -214,10 +214,10 @@ export class GithubAuthorizationPageComponent {
       )
       .subscribe({
         next: (result) => {
-          if (!result.connected || !result.scopes.includes('repo')) {
+          if (!result.connected || !reconnect.requiredScopes.every((requiredScope) => result.scopes.some((scope) => scope.split(',').includes(requiredScope)))) {
             clearPendingGithubReconnect();
             this.reconnectReturnUrl.set(reconnect.returnUrl);
-            this.message.set('GitHub did not grant repository access. Return to the project and retry reconnect.');
+            this.message.set('GitHub did not grant the requested access. Return to the project and retry reconnect.');
             return;
           }
           clearPendingGithubReconnect();

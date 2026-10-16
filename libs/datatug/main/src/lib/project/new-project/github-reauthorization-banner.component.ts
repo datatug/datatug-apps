@@ -14,6 +14,7 @@ export interface PendingGithubReconnect {
   readonly firebaseUID: string;
   readonly oauthState: string;
   readonly returnUrl: string;
+  readonly requiredScopes: readonly ('repo' | 'workflow')[];
 }
 
 export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
@@ -25,7 +26,7 @@ export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
     @if (required()) {
       <ion-card color="warning" data-testid="github-reauthorization">
         <ion-card-content>
-          <p>GitHub access expired. Reconnect to continue viewing this private project.</p>
+          <p>GitHub access expired. Reconnect to continue. GitHub authorization applies to your account; it is not limited to this repository.</p>
           @if (error()) {
             <p role="alert">{{ error() }}</p>
           }
@@ -39,6 +40,7 @@ export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
 })
 export class GitHubReauthorizationBannerComponent {
   readonly projectRef = input.required<IProjectRef>();
+  readonly returnUrl = input<string | undefined>();
   private readonly requiredRef = signal<IProjectRef | undefined>(undefined);
   readonly required = computed(() => {
     const ref = this.requiredRef();
@@ -46,6 +48,7 @@ export class GitHubReauthorizationBannerComponent {
   });
   readonly reconnecting = signal(false);
   readonly error = signal('');
+  readonly requiredScopes = signal<readonly ('repo' | 'workflow')[]>(['repo']);
 
   private readonly api = inject(ProjectQueryApiService);
   private readonly connection = inject(GithubConnectionService);
@@ -59,8 +62,11 @@ export class GitHubReauthorizationBannerComponent {
   constructor() {
     this.api.githubReauthorizationRequired
       .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((ref) => {
-        if (equalProjectRef(ref, this.projectRef())) this.requiredRef.set(ref);
+      .subscribe((request) => {
+        if (equalProjectRef(request.ref, this.projectRef())) {
+          this.requiredRef.set(request.ref);
+          this.requiredScopes.set(request.requiredScopes);
+        }
       });
     this.auth.authState
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -83,7 +89,7 @@ export class GitHubReauthorizationBannerComponent {
       this.error.set('This project connection cannot be reauthorized here.');
       return;
     }
-    const returnUrl = safeGitHubReconnectReturnUrl(this.router.url);
+    const returnUrl = safeGitHubReconnectReturnUrl(this.returnUrl() ?? this.router.url);
     const generation = this.requestGeneration() + 1;
     this.requestGeneration.set(generation);
     const authGeneration = this.authGeneration();
@@ -101,7 +107,7 @@ export class GitHubReauthorizationBannerComponent {
               operationID,
               owner: address.id.org,
               repository: address.id.repo,
-              requiredScopes: ['repo'],
+              requiredScopes: this.requiredScopes(),
             })
             .pipe(map(({ authorizationURL }) => ({ authorizationURL, firebaseUID, operationID })));
         }),
@@ -135,6 +141,7 @@ export class GitHubReauthorizationBannerComponent {
               firebaseUID,
               oauthState,
               returnUrl,
+              requiredScopes: this.requiredScopes(),
             };
             sessionStorage.setItem(GITHUB_RECONNECT_SESSION_KEY, JSON.stringify(pending));
             window.location.assign(url.href);
@@ -161,14 +168,13 @@ export function safeGitHubReconnectReturnUrl(value: string | null | undefined): 
   if (!value || !value.startsWith('/') || value.startsWith('//')) return '/';
   try {
     const url = new URL(value, 'https://datatug.local');
-    if (
-      url.origin !== 'https://datatug.local' ||
-      url.pathname === '/github/callback' ||
-      url.pathname.startsWith('/github/callback/') ||
-      url.pathname === '/new-project' ||
-      url.pathname.startsWith('/new-project/')
-    )
+    if (url.origin !== 'https://datatug.local' || url.pathname === '/github/callback' || url.pathname.startsWith('/github/callback/'))
       return '/';
+    if (url.pathname === '/new-project')
+      return url.searchParams.get('store') === 'github' && [...url.searchParams.keys()].every((key) => key === 'store')
+        ? '/new-project?store=github'
+        : '/';
+    if (url.pathname.startsWith('/new-project/')) return '/';
     const branch = url.searchParams.get('branch');
     return `${url.pathname}${branch ? `?branch=${encodeURIComponent(branch)}` : ''}`;
   } catch {
@@ -190,6 +196,9 @@ export function readPendingGithubReconnect(returnedState: string): PendingGithub
       typeof pending.oauthState !== 'string' ||
       pending.oauthState !== returnedState ||
       typeof pending.returnUrl !== 'string' ||
+      !Array.isArray(pending.requiredScopes) ||
+      !pending.requiredScopes.includes('repo') ||
+      pending.requiredScopes.some((scope) => scope !== 'repo' && scope !== 'workflow') ||
       safeGitHubReconnectReturnUrl(pending.returnUrl) !== pending.returnUrl
     )
       return undefined;

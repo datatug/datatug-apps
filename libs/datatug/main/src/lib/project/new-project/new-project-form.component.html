@@ -9,6 +9,42 @@
   </ion-toolbar>
 </ion-header>
 <ion-content>
+@if (pendingGithubSetups().length || pendingGithubSetupsLoading() || pendingGithubSetupsError()) {
+  <ion-item-divider>
+    Pending GitHub project setups
+  </ion-item-divider>
+  <ion-item lines="none">
+    <ion-button fill="clear" (click)="reloadPendingGithubSetups()" [disabled]="pendingGithubSetupsLoading()">
+      {{ pendingGithubSetupsLoading() ? 'Checking…' : 'Refresh list' }}
+    </ion-button>
+  </ion-item>
+  @if (pendingGithubSetupsError(); as error) {
+    <ion-item lines="none"><ion-label color="danger" class="ion-text-wrap">{{ error }}</ion-label></ion-item>
+  }
+  @for (setup of pendingGithubSetups(); track setup.operationID) {
+    <ion-item lines="full">
+      <ion-label class="ion-text-wrap">
+        <h2>{{ setup.title }}</h2>
+        <p>{{ setup.owner }}/{{ setup.name }} · {{ pendingSetupMessage(setup.status) }}</p>
+        @if (setup.setupPR; as pr) {
+          <a [href]="pr.url" target="_blank" rel="noopener noreferrer">Open setup pull request #{{ pr.number }}</a>
+        }
+        @if (pendingGithubSetupErrors()[setup.operationID]; as error) {
+          <p role="alert">{{ error }}</p>
+        }
+      </ion-label>
+      @if (setup.status !== 'closed_unmerged' && setup.status !== 'failed') {
+        <ion-button (click)="resumePendingSetup(setup)" [disabled]="isRefreshingPendingSetup(setup)">
+          {{ isRefreshingPendingSetup(setup) ? 'Checking…' : setup.status === 'initializing' ? 'Resume setup request' : 'Check setup status' }}
+        </ion-button>
+      }
+    </ion-item>
+    <sneat-datatug-github-reauthorization-banner [projectRef]="pendingSetupProjectRef(setup)" returnUrl="/new-project?store=github" />
+  }
+  @if (pendingGithubSetupsTruncated()) {
+    <ion-item lines="none"><ion-label class="ion-text-wrap">Some pending setups are not shown. Refresh after completing one to see the next.</ion-label></ion-item>
+  }
+}
 @if (!isSetupLocked()) {
 <ion-item>
   <ion-label>Store</ion-label>

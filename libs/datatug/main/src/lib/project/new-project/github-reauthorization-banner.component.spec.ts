@@ -21,11 +21,12 @@ describe('GitHub reauthorization handoff', () => {
     ).toBe('/projects/repo?branch=work');
   });
 
-  it('rejects external, callback, and new-project return routes', () => {
+  it('rejects external and callback routes while accepting only the explicit GitHub setup return route', () => {
     expect(safeGitHubReconnectReturnUrl('//attacker.example/path')).toBe('/');
     expect(safeGitHubReconnectReturnUrl('https://attacker.example/path')).toBe('/');
     expect(safeGitHubReconnectReturnUrl('/github/callback?code=secret')).toBe('/');
-    expect(safeGitHubReconnectReturnUrl('/new-project?store=github')).toBe('/');
+    expect(safeGitHubReconnectReturnUrl('/new-project?store=github')).toBe('/new-project?store=github');
+    expect(safeGitHubReconnectReturnUrl('/new-project?store=github&returnUrl=https://evil.example')).toBe('/');
   });
 
   it('accepts only the stored OAuth state and a valid operation envelope', () => {
@@ -36,12 +37,14 @@ describe('GitHub reauthorization handoff', () => {
         firebaseUID: 'firebase-actor',
         oauthState: 'state-expected',
         returnUrl: '/projects/repo?branch=work',
+        requiredScopes: ['repo'],
       }),
     );
     expect(readPendingGithubReconnect('different-state')).toBeUndefined();
     expect(readPendingGithubReconnect('state-expected')).toMatchObject({
       firebaseUID: 'firebase-actor',
       returnUrl: '/projects/repo?branch=work',
+      requiredScopes: ['repo'],
     });
   });
 
@@ -54,7 +57,7 @@ describe('GitHub reauthorization handoff', () => {
       branch: 'work',
     };
     const authorizationURL = 'https://github.com/login/oauth/authorize?client_id=client&state=expected-state';
-    const reauthorizationRequired = new Subject<IProjectRef>();
+    const reauthorizationRequired = new Subject<{ ref: IProjectRef; requiredScopes: readonly ('repo' | 'workflow')[] }>();
     const authState = new BehaviorSubject({
       status: 'authenticated',
       user: { uid: 'firebase-actor' },
@@ -72,8 +75,9 @@ describe('GitHub reauthorization handoff', () => {
     });
     const fixture = TestBed.createComponent(GitHubReauthorizationBannerComponent);
     fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('returnUrl', '/new-project?store=github');
     fixture.detectChanges();
-    reauthorizationRequired.next(ref);
+    reauthorizationRequired.next({ ref, requiredScopes: ['repo', 'workflow'] });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Reconnect GitHub');
 
@@ -83,13 +87,14 @@ describe('GitHub reauthorization handoff', () => {
       operationID: expect.stringMatching(/^[0-9a-f-]{36}$/i),
       owner: 'owner',
       repository: 'repo',
-      requiredScopes: ['repo'],
+      requiredScopes: ['repo', 'workflow'],
     });
     expect(assign).toHaveBeenCalledWith(authorizationURL);
     expect(JSON.parse(sessionStorage.getItem(GITHUB_RECONNECT_SESSION_KEY) ?? 'null')).toMatchObject({
       firebaseUID: 'firebase-actor',
       oauthState: 'expected-state',
-      returnUrl: '/projects/repo?branch=work',
+      returnUrl: '/new-project?store=github',
+      requiredScopes: ['repo', 'workflow'],
     });
     assign.mockRestore();
   });
