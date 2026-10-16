@@ -774,6 +774,15 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     operationID: string,
     requiredScopes: readonly ('repo' | 'workflow')[],
   ): void {
+    const actorID = this.userID();
+    const generation = this.selectionGeneration;
+    const intentPayload = this.operationPayload();
+    const isCurrent = () =>
+      this.userID() === actorID &&
+      this.selectionGeneration === generation &&
+      this.operationID() === operationID &&
+      this.operationPayload() === intentPayload;
+    this.isCreating.set(true);
     if (!this.saveDraft()) {
       this.isCreating.set(false);
       this.oauthResumePending.set(false);
@@ -782,6 +791,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     }
     this.connection.startOAuth({ operationID, owner, repository, requiredScopes }).subscribe({
       next: ({ authorizationURL }) => {
+        if (!isCurrent()) return;
         try {
           const url = new URL(authorizationURL);
           if (url.protocol !== 'https:' || url.hostname !== 'github.com' || url.pathname !== '/login/oauth/authorize' || url.username || url.password) throw new Error();
@@ -791,6 +801,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           if (!this.saveDraft()) {
             this.oauthState.set(undefined);
             this.oauthResumePending.set(false);
+            this.isCreating.set(false);
             this.formError.set('Project details could not be saved for the GitHub redirect. Keep this page open and retry after enabling browser session storage.');
             return;
           }
@@ -802,11 +813,16 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.formError.set('GitHub authorization could not be started. Retry the same project request.');
         }
       },
-      error: () => {
+      error: (error: unknown) => {
+        if (!isCurrent()) return;
         this.isCreating.set(false);
         this.oauthResumePending.set(false);
         this.saveDraft();
-        this.formError.set('GitHub authorization could not be started. Retry the same project request.');
+        this.formError.set(
+          githubProjectErrorCode(error) === 'unavailable'
+            ? 'GitHub authorization is not configured for this environment yet. Your project details are saved; try again later.'
+            : 'GitHub authorization could not be started. Retry the same project request.',
+        );
       },
     });
   }
@@ -823,10 +839,15 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   ): void {
     const generation = this.selectionGeneration;
     const actorID = this.userID();
+    const isCurrent = () =>
+      generation === this.selectionGeneration &&
+      this.userID() === actorID &&
+      this.operationID() === operationID &&
+      this.resolvedCreateRequest() === request;
     this.isCreating.set(true);
     this.queryApi.create(request).subscribe({
       next: (created) => {
-        if (generation !== this.selectionGeneration || this.userID() !== actorID) return;
+        if (!isCurrent()) return;
         this.isCreating.set(false);
         this.setupStatus.set(created.status);
         this.setupPR.set({ url: created.setupPR.url, number: created.setupPR.number });
@@ -837,6 +858,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.saveDraft();
       },
       error: (error: unknown) => {
+        if (!isCurrent()) return;
         if (githubProjectErrorCode(error) === 'workflow_scope_required') {
           if (!this.ciEnabled()) {
             this.handleCreateFailure(error);

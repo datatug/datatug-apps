@@ -737,6 +737,90 @@ describe('New project through authenticated common API', () => {
     setItem.mockRestore();
   });
 
+  it('reenables the form when saving the returned OAuth state fails', async () => {
+    const h = await harness();
+    h.select();
+    h.connection.resolveOAuthRepository.mockReturnValue(
+      throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
+    );
+    let writes = 0;
+    const originalSetItem = sessionStorage.setItem.bind(sessionStorage);
+    const setItem = vi.spyOn(sessionStorage, 'setItem').mockImplementation((key, value) => {
+      writes++;
+      if (writes === 4) throw new DOMException('storage blocked', 'SecurityError');
+      originalSetItem(key, value);
+    });
+    h.component.create();
+    h.startResult.next({
+      authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
+    });
+
+    expect(writes).toBe(4);
+    expect(h.component['isCreating']()).toBe(false);
+    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
+    setItem.mockRestore();
+  });
+
+  it('ignores a delayed OAuth start response after the Firebase actor changes', async () => {
+    const h = await harness();
+    h.select();
+    h.connection.resolveOAuthRepository.mockReturnValue(
+      throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
+    );
+    h.component.create();
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    h.startResult.next({
+      authorizationURL: 'https://github.com/login/oauth/authorize?state=secure-state',
+    });
+
+    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['isCreating']()).toBe(false);
+    expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
+  });
+
+  it('keeps the draft and explains when OAuth is not configured for the environment', async () => {
+    const h = await harness();
+    h.select();
+    h.connection.resolveOAuthRepository.mockReturnValue(
+      throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
+    );
+    h.component.create();
+    h.startResult.error({ status: 503, error: { error: { code: 'unavailable' } } });
+
+    expect(h.component['formError']()).toContain('not configured for this environment');
+    expect(h.component['isCreating']()).toBe(false);
+    expect(JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null')).toMatchObject({
+      actorID: 'actor',
+      operationID: expect.any(String),
+      oauthResumePending: false,
+    });
+  });
+
+  it('ignores a delayed workflow-scope create error after the Firebase actor changes', async () => {
+    const h = await harness();
+    h.select();
+    const pendingCreate = new Subject<typeof created>();
+    h.create.mockReturnValue(pendingCreate as never);
+    h.component.create();
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    pendingCreate.error({
+      status: 409,
+      error: { error: { code: 'workflow_scope_required' } },
+    });
+
+    expect(h.connection.startOAuth).not.toHaveBeenCalled();
+    expect(h.component['oauthResumePending']()).toBe(false);
+  });
+
   it('does not navigate from a delayed merged status after the Firebase actor changes', async () => {
     const h = await harness();
     h.select();
