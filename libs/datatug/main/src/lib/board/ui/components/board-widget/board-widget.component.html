@@ -111,7 +111,7 @@
       } @else if (definition()) {
         <p>
           Environment:
-          {{ boardContext()?.environment || (publicQuery() ? 'dev' : 'select an environment') }}. Runtime:
+          {{ boardContext()?.environment || 'connection default' }}. Runtime:
           {{
             selectedRuntimeId() === 'snapshot'
               ? projectRuntimeLabel()
@@ -150,7 +150,7 @@
         <p role="alert">{{ error }}</p>
       }
       @if (result(); as answer) {
-        @if (publicQuery()) {
+        @if (browserSnapshot()) {
           <sneat-datatug-held-result-presentation [result]="answer" />
         } @else {
           @if (!answer.recordset.rows.length) {

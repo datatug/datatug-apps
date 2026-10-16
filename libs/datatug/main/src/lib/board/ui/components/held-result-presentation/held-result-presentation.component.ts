@@ -10,6 +10,7 @@ import {
 } from '@angular/core';
 import {
   LimitationHeaderComponent,
+  chartEvidenceError,
   SourceRightsNoticeComponent,
   type Result,
   type BrowserPublicApiChartRecordset,
@@ -200,7 +201,9 @@ export class HeldResultPresentationComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['result'] || changes['fields'] || changes['defaultView']) {
-      this.prepared =
+      const evidenceError = this.result && 'runtime' in this.result && this.result.runtime === 'browser-sqlite'
+        ? chartEvidenceError(this.result) : undefined;
+      this.prepared = evidenceError && this.fields ? { ok: false, message: evidenceError } :
         this.result && this.fields
           ? prepareCategoryBars(this.result, this.fields)
           : null;

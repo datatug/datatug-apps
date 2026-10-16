@@ -236,7 +236,7 @@ export function chartEvidenceError(result: ChartRecordset): string | undefined {
           right.sourceId === receipt.sourceId &&
           right.evidenceOrigin === 'publisher-verified' &&
           right.source.databaseId === result.provenance.source &&
-          right.source.recordset === result.provenance.collection &&
+          (right.source.recordset === undefined || right.source.recordset === result.provenance.collection) &&
           right.pins.some(
             (pin) =>
               pin.role === 'provider' &&

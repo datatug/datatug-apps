@@ -43,17 +43,6 @@ import {
   HeldResultPresentationComponent,
   type CategoryBarFields,
 } from '../held-result-presentation/held-result-presentation.component';
-import {
-  executeSavedPublicChartQuery,
-  isSavedPublicChartQueryId,
-  executeSavedPublicInspectQuery,
-  isSavedPublicInspectQueryId,
-} from '../../../../queries/public-data/public-chart-query';
-import { BrowserSqliteQueryService } from '../../../../queries/browser-sqlite-query.service';
-import {
-  executeBrowserShowcaseQuery,
-  isBrowserShowcaseQueryId,
-} from '../../../../queries/public-data/browser-showcase-query';
 import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { BoardChoicesService } from '../../../core/board-choices.service';
@@ -100,7 +89,6 @@ export class BoardWidgetComponent {
   });
   private readonly queries = inject(QueriesService);
   private readonly dispatcher = inject(QueryDispatchService);
-  private readonly browserSqlite = inject(BrowserSqliteQueryService);
   private readonly destroyRef = inject(DestroyRef);
   private activeRun?: AbortController;
   private activeIdentity?: string;
@@ -167,15 +155,9 @@ export class BoardWidgetComponent {
       return false;
     }
   });
-  readonly publicQuery = computed(() => {
-    const id = this.queryId();
-    return (
-      this.showcase() &&
-      !!id &&
-      (isBrowserShowcaseQueryId(id) ||
-        isSavedPublicChartQueryId(id) ||
-        (this.widgetDef()?.name === 'SQL' && isSavedPublicInspectQueryId(id)))
-    );
+  readonly browserSnapshot = computed(() => {
+    const result = this.result();
+    return !!result && 'runtime' in result && result.runtime === 'browser-sqlite';
   });
   readonly chartView = signal<'chart' | 'grid'>('chart');
   readonly chartWidgetDef = computed(() =>
@@ -486,11 +468,7 @@ export class BoardWidgetComponent {
       case 'ovdb-connection':
         return 'OVDB connection';
       default:
-        return this.publicQuery()
-          ? isBrowserShowcaseQueryId(this.queryId() ?? '')
-            ? 'Pinned browser SQLite snapshot'
-            : 'Verified public API'
-          : 'Published browser snapshot';
+        return 'Published browser snapshot';
     }
   }
 
@@ -521,7 +499,6 @@ export class BoardWidgetComponent {
     )
       return;
     if (
-      !this.publicQuery() &&
       this.definition()?.request.queryType !== QueryType.SQL &&
       this.selectedRuntimeId() === 'snapshot' &&
       (!this.boardContext()?.executionTarget ||
@@ -651,17 +628,6 @@ export class BoardWidgetComponent {
         return;
       const context = this.boardContext();
       const parameters = this.typedParameters(definition);
-      if (
-        this.publicQuery() &&
-        this.selectedRuntimeId() === 'snapshot' &&
-        (!context?.executionTarget ||
-          context.executionTarget.kind === 'browser-sqlite') &&
-        !context?.runtimeBinding &&
-        Object.keys(parameters).length
-      )
-        throw new QueryDispatchError(
-          'This pinned public query does not support chart parameter bindings. Open the saved query to choose a parameterized runtime.',
-        );
       const selectedRuntimeId = this.selectedRuntimeId();
       if (
         selectedRuntimeId !== 'snapshot' &&
@@ -676,38 +642,7 @@ export class BoardWidgetComponent {
         throw new Error(
           'This saved query changed. Reopen the board before running it.',
         );
-      if (
-        this.publicQuery() &&
-        selectedRuntimeId === 'snapshot' &&
-        (context?.runtimeBinding ||
-          (context?.executionTarget &&
-            context.executionTarget.kind !== 'browser-sqlite'))
-      )
-        throw new QueryDispatchError(
-          'This saved public source requires the public API runtime. Choose the public board runtime to run it.',
-        );
-      const result =
-        this.publicQuery() &&
-        selectedRuntimeId === 'snapshot' &&
-        (!context?.executionTarget ||
-          context.executionTarget.kind === 'browser-sqlite') &&
-        !context?.runtimeBinding
-          ? isBrowserShowcaseQueryId(queryId)
-            ? await executeBrowserShowcaseQuery(this.browserSqlite, {
-                projectRef: ref,
-                definition,
-                queryId,
-                environment: context?.environment,
-                signal: controller.signal,
-              })
-            : isSavedPublicInspectQueryId(queryId)
-              ? await executeSavedPublicInspectQuery(queryId, definition, {
-                  signal: controller.signal,
-                })
-              : await executeSavedPublicChartQuery(queryId, definition, {
-                  signal: controller.signal,
-                })
-          : await this.dispatcher.execute({
+      const result = await this.dispatcher.execute({
               projectRef: ref,
               definition,
               queryId,

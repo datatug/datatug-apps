@@ -1,3 +1,6 @@
+import initSqlJs from 'sql.js';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   PUBLIC_CHINOOK_COMPARISON_TARGETS,
   PublicSqliteComparisonSession,
@@ -8,7 +11,9 @@ import {
   type ComparisonSideObservation,
   type RecordsetComparerModule,
 } from './public-sqlite-comparison';
-import { readComparisonFixture } from './public-sqlite-query.worker';
+import { readComparisonFixture, executePinnedSql } from './public-sqlite-query.worker';
+
+import { PUBLIC_CHINOOK_BUNDLED_CANDIDATE, PUBLIC_CHINOOK_BUNDLED_FIXTURE } from './public-sqlite-source-identity';
 
 const context: ComparisonContextSnapshot = {
   projectRef: 'github.com/datatug/datatug-demo-project:main',
@@ -115,6 +120,50 @@ describe('public SQLite comparison admission', () => {
     ).toThrow();
   });
 
+  it('downloads the exact bundled baseline and candidate and preserves their real SQL differences', async () => {
+    await initSqlJs();
+    const mirrors = [
+      PUBLIC_CHINOOK_BUNDLED_FIXTURE,
+      PUBLIC_CHINOOK_BUNDLED_CANDIDATE,
+    ];
+    const fetchMock = vi.fn(async (url: string) => {
+      const mirror = mirrors.find((entry) => entry.url === url);
+      if (!mirror) throw new Error('Unexpected fixture URL');
+      const bytes = readFileSync(
+        resolve(process.cwd(), 'apps/datatug-app/src', mirror.url.slice(1)),
+      );
+      return new Response(bytes, {
+        headers: { 'content-length': String(bytes.length) },
+      });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    try {
+      const results = [];
+      for (const target of PUBLIC_CHINOOK_COMPARISON_TARGETS) {
+        const fixture = await readComparisonFixture(target);
+        results.push(
+          await executePinnedSql(
+            'SELECT InvoiceId, InvoiceDate FROM Invoice WHERE CustomerId = 1 ORDER BY InvoiceId LIMIT 100',
+            fixture,
+          ),
+        );
+      }
+      expect(results[0]?.rows.map((row) => row[0])).toEqual([
+        98, 121, 143, 195, 316, 327, 382,
+      ]);
+      expect(results[1]?.rows.map((row) => row[0])).toEqual([
+        97, 98, 143, 195, 316, 327, 382,
+      ]);
+      expect(results[0]?.rows[0]?.[1]).toBe('2022-03-11 00:00:00');
+      expect(results[1]?.rows[1]?.[1]).toBe('2022-03-12 00:00:00');
+      expect(fetchMock.mock.calls.map(([url]) => url)).toEqual(
+        mirrors.map((mirror) => mirror.url),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it('refuses changed target identity before fetching and bounds streamed bytes', async () => {
     const fetchMock = vi.fn(async () =>
       new Response(new Uint8Array([1, 2, 3]), { status: 200 }),
@@ -132,7 +181,7 @@ describe('public SQLite comparison admission', () => {
         'size differs from its pin',
       );
       expect(fetchMock).toHaveBeenCalledWith(
-        target.url,
+        PUBLIC_CHINOOK_BUNDLED_CANDIDATE.url,
         expect.objectContaining({
           redirect: 'error',
           credentials: 'omit',
