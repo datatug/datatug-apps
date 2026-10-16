@@ -19,11 +19,7 @@ if (chartStart < 0 || chartEnd < 0) throw new Error('QueryPage chart block is mi
 @Component({
   standalone: true,
   imports: [HeldResultPresentationComponent],
-  template: `
-    <button type="button" (click)="resultChartView.set('grid')">Rows</button>
-    <button type="button" (click)="resultChartView.set('chart')">Chart</button>
-    ${pageTemplate.slice(chartStart, chartEnd)}
-  `,
+  template: '',
 })
 class QueryChartStateHost {
   readonly resultChartView = signal<'chart' | 'grid'>('chart');
@@ -51,7 +47,17 @@ function heldResult(): Result {
 
 describe('QueryPage held chart visibility', () => {
   it('keeps Top N and inspected source row through Chart → Rows → Chart on one result', async () => {
-    await TestBed.configureTestingModule({ imports: [QueryChartStateHost] }).compileComponents();
+    await TestBed.configureTestingModule({ imports: [QueryChartStateHost] })
+      .overrideComponent(QueryChartStateHost, {
+        set: {
+          template: `
+            <button type="button" (click)="resultChartView.set('grid')">Rows</button>
+            <button type="button" (click)="resultChartView.set('chart')">Chart</button>
+            ${pageTemplate.slice(chartStart, chartEnd)}
+          `,
+        },
+      })
+      .compileComponents();
     const fixture = TestBed.createComponent(QueryChartStateHost);
     const held = heldResult();
     fixture.componentInstance.resultChartHeld.set(held);
