@@ -127,8 +127,9 @@ export function resolveQueryDispatchPlan(
   catalog: { readonly connections?: readonly QueryConnectionDescriptor[] } | null | undefined,
 ): QueryDispatchPlan {
   const connectionId = request.definition.connectionId;
-  const matches = connectionId ? catalog?.connections?.filter((connection) => connection.id === connectionId) ?? [] : [];
-  if (connectionId && matches.length !== 1)
+  const serverOwnedTarget = serverOwnsSourceAdmission(request);
+  const matches = !serverOwnedTarget && connectionId ? catalog?.connections?.filter((connection) => connection.id === connectionId) ?? [] : [];
+  if (!serverOwnedTarget && connectionId && matches.length !== 1)
     throw new QueryDispatchError(matches.length ? 'The saved query connection is ambiguous.' : 'The saved query connection is missing from this project.');
   const connection = matches[0];
   const target = request.target ?? inferRuntimeTarget(connection, request);
@@ -144,6 +145,14 @@ export function resolveQueryDispatchPlan(
   });
 }
 
+/** Saved-query servers admit source IDs from their own project/environment bindings. */
+export function serverOwnsSourceAdmission(request: QueryDispatchRequest): boolean {
+  if (request.target) return request.target.kind === 'hosted-cloud' || request.target.kind === 'local-agent';
+  if (request.runtimeBinding || request.runtimeSelectionId) return false;
+  return request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID ||
+    request.projectRef.projectApi === 'local' && !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId);
+}
+
 function inferRuntimeTarget(
   connection: QueryConnectionDescriptor | undefined,
   request: QueryDispatchRequest,
@@ -153,10 +162,12 @@ function inferRuntimeTarget(
     connectionId: request.runtimeBinding.id,
     databaseId: request.runtimeBinding.databaseId,
   };
-  if (request.definition.federation) return { kind: 'ovdb-federation' };
+  if (request.projectRef.storeId === 'firestore' && request.projectRef.spaceID)
+    return { kind: 'hosted-cloud' };
   if (request.projectRef.projectApi === 'local' &&
     !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId))
     return { kind: 'local-agent', agentStoreId: request.projectRef.storeId };
+  if (request.definition.federation) return { kind: 'ovdb-federation' };
   if (connection?.storage === 'sqlite' && connection.browserFixture)
     return { kind: 'browser-sqlite' };
   throw new QueryDispatchError('Choose a supported execution target before running this saved query.');
@@ -170,8 +181,8 @@ function validateRuntimeTarget(
   if (request.definition.targets?.length &&
     (target.kind === 'browser-sqlite' || target.kind === 'ovdb-connection' || target.kind === 'ovdb-federation'))
     throw new QueryDispatchError('This saved query has legacy target settings that this browser runtime cannot apply. Choose its agent runtime.');
-  if (request.definition.federation && target.kind !== 'ovdb-federation')
-    throw new QueryDispatchError('This saved query is an admitted federation plan and cannot be sent to the selected runtime.');
+  if (request.definition.federation && target.kind !== 'ovdb-federation' && target.kind !== 'hosted-cloud' && target.kind !== 'local-agent')
+    throw new QueryDispatchError('This saved query is a federation plan and cannot be sent to this browser runtime.');
   if (connection) {
     const member = connection.environment === undefined
       ? connection.environments === undefined || !!request.environment && connection.environments.includes(request.environment)

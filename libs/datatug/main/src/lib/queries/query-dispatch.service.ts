@@ -11,7 +11,7 @@ import { QueryDispatchError, type
   QueryExecutionSession,
   QueryConnectionDescriptor,
 } from './query-dispatch';
-import { captureQueryDispatchRequest, resolveQueryDispatchPlan } from './query-dispatch';
+import { captureQueryDispatchRequest, resolveQueryDispatchPlan, serverOwnsSourceAdmission } from './query-dispatch';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { githubProjectAddressForRef } from '../services/project/project-assets-read.service';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
@@ -109,7 +109,7 @@ export class QueryDispatchService {
   async plan(request: QueryDispatchRequest): Promise<{ request: QueryDispatchRequest; plan: QueryDispatchPlan }> {
     const captured = captureQueryDispatchRequest(request);
     if (captured.signal?.aborted) throw abortError();
-    const connection = await this.connectionDeclaration(captured);
+    const connection = serverOwnsSourceAdmission(captured) ? undefined : await this.connectionDeclaration(captured);
     if (captured.signal?.aborted) throw abortError();
     const binding = captured.runtimeSelectionId
       ? connection && this.queryRuntimes.resolve(captured.runtimeSelectionId, connection)
@@ -147,7 +147,8 @@ export class QueryDispatchService {
     const ownedRequest = { ...request, signal: controller.signal };
     let hostedResponse: Promise<HostedQueryResponse> | undefined;
     let result: Promise<FederatedQueryResult>;
-    if (request.target?.kind === 'hosted-cloud') {
+    if (request.target?.kind === 'hosted-cloud' ||
+      !request.target && request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID) {
       hostedResponse = this.plan(ownedRequest).then(({ request: captured, plan }) => {
         if (terminal || controller.signal.aborted) throw abortError();
         return this.executeHosted(plan, captured);

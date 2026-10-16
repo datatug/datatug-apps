@@ -87,8 +87,11 @@ import { PUBLIC_CHINOOK_COMPARISON_TARGETS } from '../../public-sqlite-compariso
 import type { ComparisonWorkerObservation } from '../../public-sqlite-comparison';
 import { testAuthorProof } from './author-query-proof.spec-helper';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
-import { DetectiveClientService } from '../../../detective/detective-client.service';
+import { DetectiveClientService, type HostedQueryResponse } from '../../../detective/detective-client.service';
 import { QueryDispatchService } from '../../query-dispatch.service';
+import { ProjectQueryApiService } from '../../../services/project/project-query-api.service';
+import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
+import { BrowserSqliteQueryService } from '../../browser-sqlite-query.service';
 import type { QueryDispatchRequest } from '../../query-dispatch';
 import type { DetectiveState } from '../../../detective/models';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
@@ -3032,6 +3035,48 @@ select (
     });
     expect(component.hostedDetectiveState()?.capabilities.canRead).toBe(true);
     expect(component.hostedEnvironment()).toBe('');
+  });
+
+  it('runs a saved hosted federation with an arbitrary server-admitted source through the real dispatcher', async () => {
+    const ref: IProjectRef = { storeId: 'firestore', spaceID: 'paid-space', projectId: 'paid-project' };
+    const definition: IQueryDef = { ...createHostedDemoDbQuery('reports/paid-customers'),
+      connectionId: 'paid-source-outside-pinned-demo-catalog' };
+    component = await createComponent({}, definition, '<p></p>', {
+      project: of({ ref }), realDispatch: true,
+      queries: { capabilities: vi.fn(() => of({ querySave: true })) },
+    });
+    component.project = { ref };
+    component.queryDef.set(definition);
+    component.queryState = { ...component.queryState, id: definition.id, def: definition,
+      title: definition.title, request: definition.request, isNew: false };
+    component.hostedDetectiveState.set({
+      checks: [], validators: [], queryValidators: [], cases: [], runs: [], scenarios: [], runsHasMore: false,
+      environments: ['production'], capabilities: { localOnly: false, canRead: true, canWrite: true,
+        canRun: true, maxRows: 1000, maxFanout: 100 },
+    });
+    component.hostedEnvironment.set('production');
+    const response = { result: {
+      recordset: { columns: [{ name: 'CustomerId', type: 'integer' }], rows: [[{ type: 'integer', value: '42' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'paid hosted source', queryId: definition.id, mode: 'snapshot',
+        observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
+      execution: { storeId: 'firestore', projectId: 'paid-project', executionId: 'paid-exec-1' },
+    }, queryRevision: 'paid-revision-1', resultFingerprint: 'sha256-paid-1' };
+    const detective = TestBed.inject(DetectiveClientService);
+    vi.mocked(detective.runHostedQuery).mockReturnValue(of(response as unknown as HostedQueryResponse));
+
+    component.runQuery();
+    await runFixture.whenStable();
+
+    expect(detective.runHostedQuery).toHaveBeenCalledExactlyOnceWith(
+      { kind: 'cloud', storage: 'firestore', spaceID: 'paid-space', project: 'paid-project' },
+      definition.id, 'production', {},
+    );
+    expect(component.runResult()?.recordset.rows[0][0]).toEqual({ type: 'integer', value: '42' });
+    expect(TestBed.inject(ProjectQueryApiService).connectionCatalog).not.toHaveBeenCalled();
+    expect(TestBed.inject(GithubProjectReaderService).getRawJson).not.toHaveBeenCalled();
+    expect(TestBed.inject(BrowserSqliteQueryService).execute).not.toHaveBeenCalled();
+    expect(TestBed.inject(HttpClient).post).not.toHaveBeenCalled();
   });
 
   it('loads a cold local Scenario target when the project-specific agent identity resolves', async () => {
@@ -6073,6 +6118,7 @@ select (
       urlQueryId?: string;
       routeRef?: IProjectRef;
       securityContextId?: string | null;
+      realDispatch?: boolean;
     },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
@@ -6207,7 +6253,13 @@ select (
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
         { provide: DetectiveClientService, useValue: detectiveClientStub() },
-        { provide: QueryDispatchService, useValue: queryDispatchTestStub() },
+        ...(navigation?.realDispatch ? [
+          { provide: HttpClient, useValue: { post: vi.fn() } },
+          { provide: ProjectQueryApiService, useValue: { connectionCatalog: vi.fn() } },
+          { provide: GithubProjectReaderService, useValue: { getRawJson: vi.fn() } },
+          { provide: BrowserSqliteQueryService, useValue: { execute: vi.fn() } },
+          { provide: QueryDispatchService, useClass: QueryDispatchService },
+        ] : [{ provide: QueryDispatchService, useValue: queryDispatchTestStub() }]),
         {
           provide: FederatedQueryService,
           useValue: {

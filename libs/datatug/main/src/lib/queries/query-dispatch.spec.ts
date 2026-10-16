@@ -52,7 +52,29 @@ describe('query dispatch planning', () => {
       federation: { ovdbBaseUrl: 'https://db.example', tables: [] },
     });
     expect(resolveQueryDispatchPlan(request({ definition: federated }), catalog).target).toEqual({ kind: 'ovdb-federation' });
-    expect(() => resolveQueryDispatchPlan(request({ definition: federated, target: { kind: 'browser-sqlite' } }), catalog)).toThrow(/admitted federation/u);
+    expect(() => resolveQueryDispatchPlan(request({ definition: federated, target: { kind: 'browser-sqlite' } }), catalog)).toThrow(/federation plan/u);
+  });
+
+  it('delegates hosted federated source admission to the saved-query API without a client catalog', () => {
+    const hosted = request({
+      projectRef: { storeId: 'firestore', projectId: 'paid-project', spaceID: 'space-1' },
+      definition: definition({ connectionId: 'paid-source-unknown-to-demo-catalog',
+        federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [{ database: 'paid-db', name: 'Customers', fields: ['Id'] }] } }),
+      queryId: 'reports/by-region', target: { kind: 'hosted-cloud' },
+    });
+    const plan = resolveQueryDispatchPlan(hosted, undefined);
+    expect(plan.target).toEqual({ kind: 'hosted-cloud' });
+    expect(plan.connection).toBeUndefined();
+    expect(resolveQueryDispatchPlan({ ...hosted, target: undefined }, undefined).target).toEqual({ kind: 'hosted-cloud' });
+  });
+
+  it('lets the local saved-query API admit its own source identity without a browser catalog', () => {
+    const local = request({
+      projectRef: { storeId: 'localhost:8989', projectId: 'paid-project', projectApi: 'local' },
+      definition: definition({ connectionId: 'server-owned-source', federation: { ovdbBaseUrl: 'https://db.example', tables: [] } }),
+      queryId: 'reports/by-region', securityContextId: 'principal-1',
+    });
+    expect(resolveQueryDispatchPlan(local, undefined).target).toEqual({ kind: 'local-agent', agentStoreId: 'localhost:8989' });
   });
 
   it('rejects sending a GitHub branch definition to an unrelated or revision-unaware local agent', () => {
