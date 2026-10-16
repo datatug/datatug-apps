@@ -1,0 +1,134 @@
+<ion-card>
+  <ion-list lines="full"
+    ><ion-item color="light"
+      ><ion-label><h1>Public demo Checks</h1></ion-label></ion-item
+    ></ion-list
+  >
+  <ion-card-content>
+    <p>
+      Browse saved Checks and run them against the pinned Chinook SQLite
+      snapshot in your browser.
+    </p>
+    <p>
+      This demo is read-only. Results stay in this visit; they are not saved or
+      shared. Authoring, inputs, nested Checks and other sources require a
+      connected project store.
+    </p>
+  </ion-card-content>
+</ion-card>
+@if (loading()) {
+  <p class="busy-line" role="status">
+    <ion-spinner name="dots" /> Loading public Checks…
+  </p>
+}
+@if (error()) {
+  <ion-card
+    ><ion-card-content
+      ><p class="feedback error" role="alert">{{ error() }}</p>
+      @if (!busy()) {
+        <ion-button fill="outline" (click)="retry()">Reload Checks</ion-button>
+      }
+    </ion-card-content></ion-card
+  >
+}
+@if (!checkId()) {
+  <ion-card>
+    <ion-list lines="full"
+      ><ion-item color="light"
+        ><ion-label>Sample Checks · {{ checks().length }}</ion-label></ion-item
+      >
+      @for (check of checks(); track check.id) {
+        <ion-item [routerLink]="url(check.id)" detail="true"
+          ><ion-label class="ion-text-wrap"
+            ><h2>{{ check.title }}</h2>
+            <p>{{ check.description }}</p></ion-label
+          ></ion-item
+        >
+      }
+    </ion-list>
+    @if (!loading() && !error() && !checks().length) {
+      <ion-card-content
+        >No public Checks have been published in this demo
+        yet.</ion-card-content
+      >
+    }
+  </ion-card>
+} @else if (current(); as check) {
+  <ion-card [attr.data-public-check]="check.id">
+    <ion-list lines="full"
+      ><ion-item color="light"
+        ><ion-label class="ion-text-wrap"
+          ><h2>{{ check.title }}</h2></ion-label
+        ></ion-item
+      ></ion-list
+    >
+    <ion-card-content>
+      <p>{{ check.description }}</p>
+      <p>
+        Version {{ check.version }} · {{ check.steps.length }} saved-query
+        {{ check.steps.length === 1 ? 'step' : 'steps' }}
+        · {{ expected(check) }}
+      </p>
+      @for (step of check.steps; track step.id) {
+        <p>
+          {{ step.id }} ·
+          <a [routerLink]="queryUrl(step.queryId || '')">{{ step.queryId }}</a>
+        </p>
+      }
+      @if (unsupported()) {
+        <p role="status">{{ unsupported() }}</p>
+      }
+      <ion-button [disabled]="busy() || !!unsupported()" (click)="run()">{{
+        busy() ? 'Running Check…' : 'Run Check'
+      }}</ion-button>
+      <ion-button fill="clear" [routerLink]="url()">All Checks</ion-button>
+      @if (busy()) {
+        <p role="status">Running against the pinned public SQLite fixture…</p>
+      }
+    </ion-card-content>
+  </ion-card>
+  @if (displayedRun(); as run) {
+    <ion-card data-testid="public-check-result">
+      <ion-list lines="full"
+        ><ion-item color="light"
+          ><ion-label
+            >Browser run result · {{ run.outcome }}</ion-label
+          ></ion-item
+        ></ion-list
+      >
+      <ion-card-content>
+        @for (step of run.steps; track step.stepId) {
+          @for (validator of step.validators; track validator.validatorId) {
+            <p role="status">
+              <strong>{{ validator.outcome }}</strong> · {{ validator.message }}
+            </p>
+          }
+        }
+        <sneat-validation-run-results [run]="run"
+      /></ion-card-content>
+    </ion-card>
+  }
+  @if (history().length) {
+    <ion-card
+      ><ion-list lines="full"
+        ><ion-item color="light"
+          ><ion-label>Runs in this page visit</ion-label></ion-item
+        >
+        @for (run of history(); track run.id) {
+          <ion-item button (click)="selectedRun.set(run)"
+            ><ion-label class="ion-text-wrap"
+              >{{ run.startedAt }} · {{ run.outcome }}</ion-label
+            ></ion-item
+          >
+        }
+      </ion-list></ion-card
+    >
+  }
+} @else if (!loading() && !error()) {
+  <ion-card
+    ><ion-card-content
+      ><p>This Check was not found in the public demo.</p>
+      <ion-button [routerLink]="url()">All Checks</ion-button></ion-card-content
+    ></ion-card
+  >
+}
