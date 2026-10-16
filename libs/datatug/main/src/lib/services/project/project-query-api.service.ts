@@ -96,6 +96,8 @@ export interface GithubProjectCreateStatusRequest {
 export class ProjectQueryApiService {
   private readonly deniedReads = new Subject<IProjectRef>();
   readonly authorityDenied = this.deniedReads.asObservable();
+  private readonly githubReauthorization = new Subject<IProjectRef>();
+  readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
 
@@ -141,11 +143,18 @@ export class ProjectQueryApiService {
       return request.pipe(
         tap({
           error: (error) => {
+            const status = error?.status;
+            const errorCode = apiErrorCode(error);
+            const isGitHub = ref.storeId === 'github' || ref.storeId === 'github.com';
+            const requiresReauthorization = errorCode === 'reauthorization_required';
+            const denied = [401, 403].includes(status) || (isGitHub && requiresReauthorization);
             if (
-              (ref.projectApi === 'cloud' || isSharedProjectRef(ref)) &&
-              [401, 403].includes(error?.status)
+              denied &&
+              (ref.projectApi === 'cloud' || isSharedProjectRef(ref))
             )
               this.deniedReads.next(ref);
+            if (isGitHub && ([401, 403].includes(status) || requiresReauthorization))
+              this.githubReauthorization.next(ref);
           },
         }),
       );
@@ -220,4 +229,14 @@ export class ProjectQueryApiService {
       new HttpParams({ fromObject: { ...request, store: 'github.com' } }),
     );
   }
+}
+
+function apiErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = error as {
+    code?: unknown;
+    error?: { code?: unknown; error?: { code?: unknown } };
+  };
+  const code = value.error?.error?.code ?? value.error?.code ?? value.code;
+  return typeof code === 'string' ? code : undefined;
 }

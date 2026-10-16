@@ -83,6 +83,7 @@ import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 
 @Component({
   selector: 'sneat-datatug-project',
@@ -100,6 +101,7 @@ import { projectPageHref } from '../../../nav/project-page-href';
     DemoDbConnectionsComponent,
     ProjectQueriesPreviewComponent,
     ProjectDatabaseServersPreviewComponent,
+    GitHubReauthorizationBannerComponent,
     IonHeader,
     IonToolbar,
     IonButtons,

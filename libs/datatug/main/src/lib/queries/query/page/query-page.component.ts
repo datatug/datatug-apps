@@ -425,6 +425,7 @@ import {
   newProjectContextFromRef,
 } from '../../../nav/nav-models';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { GitHubProjectActivityService } from '../../../services/project/github-project-activity.service';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
@@ -698,6 +699,7 @@ let queryParameterEditorId = 0;
   styleUrl: './query-page.component.scss',
   imports: [
     SemanticMappingDialogComponent,
+    GitHubReauthorizationBannerComponent,
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
     AuthorCodeEditorComponent,

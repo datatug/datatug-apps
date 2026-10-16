@@ -13,6 +13,48 @@ import {
   withHostedDemoDbSource,
 } from './hosted-demo-db-query';
 
+it('clears private GitHub query state on the backend reauthorization authority event', () => {
+  const project = {
+    ref: {
+      storeId: 'github.com',
+      projectId: 'repo@owner@folder',
+      projectApi: 'cloud' as const,
+    },
+    summary: { id: 'repo', title: 'Private project' },
+  };
+  const denied = new Subject<typeof project.ref>();
+  TestBed.resetTestingModule();
+  TestBed.configureTestingModule({
+    providers: [
+      QueryEditorStateService,
+      { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+      {
+        provide: QueriesService,
+        useValue: {
+          authorityDenied: () => denied.asObservable(),
+          authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }),
+        },
+      },
+      { provide: ProjectService, useValue: { getFull: vi.fn() } },
+      { provide: DatatugNavContextService, useValue: { currentProject: of(project), currentEnv: of(undefined) } },
+    ],
+  });
+  const service = TestBed.inject(QueryEditorStateService);
+  service.newQuery({
+    id: 'private-query',
+    title: 'Private query',
+    queryType: QueryType.SQL,
+    request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ITextQueryRequest,
+    def: { id: 'private-query', title: 'Private query', request: { queryType: QueryType.SQL, text: 'SELECT 1' } } as IQueryDef,
+    isNew: false,
+  });
+  expect(service.getQueryState('private-query')).toBeDefined();
+
+  denied.next(project.ref);
+
+  expect(service.getQueryState('private-query')).toBeUndefined();
+});
+
 describe('QueryEditorStateService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({

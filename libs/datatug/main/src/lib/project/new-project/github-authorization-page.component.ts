@@ -16,6 +16,12 @@ import {
   clearBusinessGithubContinuation,
   takeBusinessGithubContinuation,
 } from './business-github-continuation';
+import {
+  clearPendingGithubReconnect,
+  readPendingGithubReconnect,
+  safeGitHubReconnectReturnUrl,
+  type PendingGithubReconnect,
+} from './github-reauthorization-banner.component';
 
 declare global {
   interface Window {
@@ -43,6 +49,9 @@ declare global {
       @if (connected()) {
         <ion-button (click)="newProject()">Create a project</ion-button>
       }
+      @if (reconnectReturnUrl(); as returnUrl) {
+        <ion-button [href]="returnUrl">Return to project</ion-button>
+      }
       <ion-button routerLink="/" fill="clear"
         >Back to projects</ion-button
       ></ion-content
@@ -56,6 +65,7 @@ export class GithubAuthorizationPageComponent {
   readonly message = signal('Checking your DataTug sign-in…');
   readonly connected = signal(false);
   readonly needsSignIn = signal(false);
+  readonly reconnectReturnUrl = signal<string | undefined>(undefined);
   private readonly boundUserID = signal<string | undefined>(undefined);
   private readonly authChanged = new Subject<void>();
 
@@ -73,12 +83,23 @@ export class GithubAuthorizationPageComponent {
       this.message.set('GitHub authorization was canceled. Your project details are saved; retry from the project form.');
       if (hasPendingOAuthProject(authorization.state))
         this.newProjectService.returnFromGithubOAuth('denied');
+      const reconnect = readPendingGithubReconnect(authorization.state);
+      if (reconnect) {
+        clearPendingGithubReconnect();
+        this.reconnectReturnUrl.set(reconnect.returnUrl);
+        this.message.set('GitHub reconnection was canceled. Return to the project and try again when ready.');
+      }
       return;
     }
     // Existing GitHub App callbacks remain supported. Only the explicit
     // operation-bound marker selects the new OAuth project-create flow.
     const isOAuthProjectFlow = hasPendingOAuthProject(authorization.state);
-    this.watchAuthChanges(isOAuthProjectFlow);
+    const reconnect = readPendingGithubReconnect(authorization.state);
+    this.watchAuthChanges(isOAuthProjectFlow, reconnect);
+    if (reconnect) {
+      this.completeGithubReconnect(authorization.code, authorization.state, reconnect);
+      return;
+    }
     if (!isOAuthProjectFlow) {
       this.completeLegacyAuthorization(authorization.code, authorization.state);
       return;
@@ -142,7 +163,10 @@ export class GithubAuthorizationPageComponent {
         },
       });
   }
-  private watchAuthChanges(isOAuthProjectFlow: boolean): void {
+  private watchAuthChanges(
+    isOAuthProjectFlow: boolean,
+    reconnect?: PendingGithubReconnect,
+  ): void {
     this.auth.authState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((auth) => {
@@ -161,7 +185,50 @@ export class GithubAuthorizationPageComponent {
           this.message.set('Your sign-in changed. Start Connect GitHub again.');
           if (isOAuthProjectFlow)
             this.newProjectService.returnFromGithubOAuth('denied');
+          if (reconnect) {
+            clearPendingGithubReconnect();
+            this.reconnectReturnUrl.set(reconnect.returnUrl);
+          }
         }
+      });
+  }
+  private completeGithubReconnect(
+    code: string,
+    state: string,
+    reconnect: PendingGithubReconnect,
+  ): void {
+    this.auth.authState
+      .pipe(
+        filter((auth) => auth.status === 'authenticated' && !!auth.user?.uid),
+        take(1),
+        switchMap((auth) => {
+          const firebaseUID = auth.user?.uid;
+          if (firebaseUID !== reconnect.firebaseUID) {
+            throw new Error('DataTug sign-in changed during GitHub reconnection');
+          }
+          this.boundUserID.set(firebaseUID);
+          return this.connection.completeOAuth(reconnect.operationID, code, state);
+        }),
+        takeUntil(this.authChanged),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (result) => {
+          if (!result.connected || !result.scopes.includes('repo')) {
+            clearPendingGithubReconnect();
+            this.reconnectReturnUrl.set(reconnect.returnUrl);
+            this.message.set('GitHub did not grant repository access. Return to the project and retry reconnect.');
+            return;
+          }
+          clearPendingGithubReconnect();
+          this.message.set('GitHub reconnected. Returning to your project…');
+          window.location.assign(safeGitHubReconnectReturnUrl(reconnect.returnUrl));
+        },
+        error: () => {
+          clearPendingGithubReconnect();
+          this.reconnectReturnUrl.set(reconnect.returnUrl);
+          this.message.set('GitHub could not be reconnected. Return to the project and retry.');
+        },
       });
   }
   private completeLegacyAuthorization(code: string, state: string): void {

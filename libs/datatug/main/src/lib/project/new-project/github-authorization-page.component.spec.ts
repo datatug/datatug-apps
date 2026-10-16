@@ -6,6 +6,7 @@ import { BehaviorSubject, Subject } from 'rxjs';
 import { GithubAuthorizationPageComponent } from './github-authorization-page.component';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { NewProjectService } from './new-project.service';
+import { GITHUB_RECONNECT_SESSION_KEY } from './github-reauthorization-banner.component';
 
 function harness(actorID = 'actor', useRealNewProjectService = false) {
   TestBed.resetTestingModule();
@@ -58,6 +59,7 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
 afterEach(() => {
   delete window.__datatugTakeGitHubAuthorization;
   sessionStorage.removeItem('datatug:new-project:draft');
+  sessionStorage.removeItem(GITHUB_RECONNECT_SESSION_KEY);
 });
 describe('GitHub callback authenticated exchange', () => {
   it('consumes the handoff, waits for Firebase and resumes the saved operation once', async () => {
@@ -162,6 +164,37 @@ describe('GitHub callback authenticated exchange', () => {
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
     expect(h.completeLegacy).toHaveBeenCalledWith('app-code', 'old-app-state');
     expect(h.complete).not.toHaveBeenCalled();
+  });
+  it('completes only the state-bound reconnect operation and returns to the safe project route', async () => {
+    const h = harness();
+    const assign = vi.spyOn(window.location, 'assign').mockImplementation(() => undefined);
+    sessionStorage.setItem(
+      GITHUB_RECONNECT_SESSION_KEY,
+      JSON.stringify({
+        operationID: '33333333-3333-4333-8333-333333333333',
+        firebaseUID: 'actor',
+        oauthState: 'reconnect-state',
+        returnUrl: '/projects/repo?branch=work',
+      }),
+    );
+    window.__datatugTakeGitHubAuthorization = () => ({
+      code: 'reconnect-code',
+      state: 'reconnect-state',
+    });
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
+    expect(h.complete).toHaveBeenCalledWith(
+      '33333333-3333-4333-8333-333333333333',
+      'reconnect-code',
+      'reconnect-state',
+    );
+    h.result.next({ connected: true, actorID: 3860020, login: 'alex', scopes: ['repo'] });
+    await fixture.whenStable();
+
+    expect(assign).toHaveBeenCalledWith('/projects/repo?branch=work');
+    expect(sessionStorage.getItem(GITHUB_RECONNECT_SESSION_KEY)).toBeNull();
+    assign.mockRestore();
   });
   it('restores sign-in state and cancels a delayed legacy completion after the Firebase actor changes', async () => {
     const h = harness();

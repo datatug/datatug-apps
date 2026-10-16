@@ -276,3 +276,49 @@ it('emits explicit private read authority denial without treating a network fail
   });
   expect(denied).toEqual([ref]);
 });
+
+it('clears private GitHub query scope and requests reconnect only for typed reauthorization conflicts', async () => {
+  TestBed.resetTestingModule();
+  const get = vi.fn(() =>
+    throwError(() => ({
+      status: 409,
+      error: { error: { code: 'reauthorization_required' } },
+    })),
+  );
+  TestBed.configureTestingModule({
+    providers: [
+      ProjectQueryApiService,
+      { provide: SneatApiService, useValue: { get } },
+      { provide: HttpClient, useValue: {} },
+    ],
+  });
+  const service = TestBed.inject(ProjectQueryApiService);
+  const ref = {
+    storeId: 'github.com',
+    projectId: 'repo@owner@folder',
+    projectApi: 'cloud' as const,
+    branch: 'work',
+  };
+  const denied: unknown[] = [];
+  const reconnect: unknown[] = [];
+  service.authorityDenied.subscribe((value) => denied.push(value));
+  service.githubReauthorizationRequired.subscribe((value) => reconnect.push(value));
+
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 409,
+  });
+  expect(denied).toEqual([ref]);
+  expect(reconnect).toEqual([ref]);
+
+  get.mockImplementation(() =>
+    throwError(() => ({
+      status: 409,
+      error: { error: { code: 'branch_conflict' } },
+    })),
+  );
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 409,
+  });
+  expect(denied).toEqual([ref]);
+  expect(reconnect).toEqual([ref]);
+});

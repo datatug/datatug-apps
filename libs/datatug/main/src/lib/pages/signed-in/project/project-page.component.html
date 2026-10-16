@@ -69,6 +69,10 @@
     }
   </ion-card>
 
+  @if (project()?.ref; as projectRef) {
+    <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
+  }
+
   @if (!project()?.ref?.spaceID) {
     <section class="overview-environments" aria-label="Project environments">
       <h2>Environments</h2>
