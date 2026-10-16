@@ -6645,7 +6645,7 @@ select (
       await runFixture.whenStable();
       expect(dispatchStart.mock.calls[0][0].definition).toEqual(definition);
       expect(definition.federation?.ovdbBaseUrl).toBe(
-        'https://demodb.dev/ovdb',
+        'https://ovdb.demodb.dev',
       );
       expect(definition.federation?.tables[0].name).toBe(
         source === 'chinook.Customer' ? 'Customer' : 'Person.Person',
@@ -8567,7 +8567,7 @@ select (
     const definition: IQueryDef = {
       ...queryDef,
       id: 'saved-fixture',
-      federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [] },
+      federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [] },
       publicData: saved,
     };
     component = await createComponent({}, definition);

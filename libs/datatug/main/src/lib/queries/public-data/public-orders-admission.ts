@@ -15,7 +15,11 @@ export interface PublishedOrdersPin {
   readonly recordset: string;
 }
 
-/** Reviewed provider/site publication pair. Update only with a new evidence receipt. */
+/**
+ * Reviewed provider/site publication pair. Update only with a new evidence receipt.
+ * `endpoint` and `serverId` name the OVDB API as the SHA-pinned publication does (the legacy
+ * base); requests go to `currentDemoDbOvdbUrl(endpoint)`.
+ */
 export const NORTHWIND_ORDERS_PIN: PublishedOrdersPin = Object.freeze({
   publicationUrl: 'https://raw.githubusercontent.com/demo-db/northwind/83ea600a7eae8b35ad33bf4c53bab6440d697850/artifacts/hosting-imports/source-rights.json',
   publicationSha256: '50454d5f30db615178fcd0c6a846854f9434f4f93bb44835cc75fdad4af52e30',

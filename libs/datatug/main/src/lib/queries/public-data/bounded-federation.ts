@@ -1,3 +1,4 @@
+import { DEMODB_OVDB_BASE_URL } from '../demodb-ovdb';
 import type { FederatedSourceRights } from '../federated-source-rights';
 import {
   readJsonDriver,
@@ -54,7 +55,7 @@ export interface BoundedReadReceipt {
 }
 
 export const PUBLIC_DATA_OVDB_BASES = [
-  'https://demodb.dev/ovdb',
+  DEMODB_OVDB_BASE_URL,
   'https://cloud.openvaultdb.com',
 ] as const;
 const namePattern = /^[A-Za-z][A-Za-z0-9_]*$/;
@@ -128,7 +129,7 @@ export function validateBoundedAdmission(base: string, bounds: BoundedFederation
   validateBounds(bounds);
   if (!(PUBLIC_DATA_OVDB_BASES as readonly string[]).includes(base))
     throw new Error('This OVDB route is outside the public-data allowlist.');
-  if (!bounds.runtime && base !== 'https://demodb.dev/ovdb')
+  if (!bounds.runtime && base !== DEMODB_OVDB_BASE_URL)
     throw new Error('This route requires the explicit immutable read profile.');
 }
 

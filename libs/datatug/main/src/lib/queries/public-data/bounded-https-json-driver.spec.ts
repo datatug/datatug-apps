@@ -9,7 +9,7 @@ import { nativeFixture } from './native-fixture.spec-helper';
 import { PublicDataService } from './public-data.service';
 import { runFederatedQuery } from '../federated-query-executor';
 
-const base = 'https://demodb.dev/ovdb';
+const base = 'https://ovdb.demodb.dev';
 async function setup(
   rows: unknown = [
     { affiliation_id: 'a', ror_id: 'https://ror.org/03yrm5c26' },

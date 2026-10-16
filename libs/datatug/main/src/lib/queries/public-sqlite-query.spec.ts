@@ -50,7 +50,7 @@ const catalog = {
       dataset: 'chinook',
       storage: 'sqlite',
       readiness: 'public-api',
-      source: 'https://demodb.dev/ovdb/v1/databases/chinook',
+      source: 'https://ovdb.demodb.dev/v1/databases/chinook',
       fixtureSha256:
         '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
       browserFixture: {

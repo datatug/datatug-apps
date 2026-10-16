@@ -1,3 +1,4 @@
+import { currentDemoDbOvdbUrl } from './demodb-ovdb';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
 import {
   executeJoinedDTQLQuery,
@@ -261,7 +262,8 @@ function ovdbBaseUrl(raw: string): string {
       'The OVDB base URL must use HTTPS or local HTTP and contain no credentials or query parameters.',
     );
   }
-  return url.href.replace(/\/$/, '');
+  // A query saved before the DemoDB OVDB API moved still runs: the old base only redirects.
+  return currentDemoDbOvdbUrl(url.href.replace(/\/$/, ''));
 }
 
 function nativeDatabase(definition: IQueryDef): { database: string; sources: PlannedNativeSource[] } | undefined {

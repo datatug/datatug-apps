@@ -134,13 +134,13 @@ describe('visible browser query execution', () => {
     const bounds = { userRows: 1000, userOffset: 0, identifierKind: 'place' as const, identifierLimit: 100, resultRows: 5000, bytes: 5242880, timeoutMs: 10000, sources: [{ database: 'user', name: 'Customer', keyField: 'Country' }, { database: 'geo', name: 'Countries', keyField: 'raw', parent: { database: 'user', name: 'Customer', field: 'Country' } }] };
     for (const federation of [
       { ovdbBaseUrl: 'https://untrusted.example', bounds },
-      { ovdbBaseUrl: 'https://demodb.dev.evil.example/ovdb', bounds },
-      { ovdbBaseUrl: 'https://fixture-token@demodb.dev/ovdb', bounds },
-      { ovdbBaseUrl: 'https://demodb.dev/ovdb?secret=fixture-token', bounds },
+      { ovdbBaseUrl: 'https://ovdb.demodb.dev.evil.example', bounds },
+      { ovdbBaseUrl: 'https://fixture-token@ovdb.demodb.dev', bounds },
+      { ovdbBaseUrl: 'https://ovdb.demodb.dev?secret=fixture-token', bounds },
       { ovdbBaseUrl: 'https://cloud.openvaultdb.com', bounds },
-      { ovdbBaseUrl: 'https://demodb.dev/ovdb', bounds: { ...bounds, bytes: 5242881 } },
+      { ovdbBaseUrl: 'https://ovdb.demodb.dev', bounds: { ...bounds, bytes: 5242881 } },
       { ovdbBaseUrl: 'https://cloud.openvaultdb.com', bounds: { ...bounds, runtime: { readProfile: 'invalid', databases: {} } } },
-      { ovdbBaseUrl: 'https://demodb.dev/ovdb', bounds, expectedServerIdentity: { baseUrl: 'https://other.example', serverId: 'fixture-server' } },
+      { ovdbBaseUrl: 'https://ovdb.demodb.dev', bounds, expectedServerIdentity: { baseUrl: 'https://other.example', serverId: 'fixture-server' } },
     ]) {
       const network = vi.fn<typeof fetch>(async () => response({}));
       const definition = { ...query, federation: { ...query.federation, expectedServerIdentity: { baseUrl: federation.ovdbBaseUrl, serverId: 'fixture-server' }, ...federation } } as unknown as IQueryDef;

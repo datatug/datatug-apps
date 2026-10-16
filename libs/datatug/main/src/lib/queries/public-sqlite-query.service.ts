@@ -1,3 +1,4 @@
+import { isDemoDbOvdbDatabaseUrl } from './demodb-ovdb';
 import { Injectable, inject } from '@angular/core';
 import { parseTugQL, resolveTugQL } from '@dalgo/core';
 import {
@@ -109,7 +110,7 @@ export function admitPublicSqliteSource(
     entry.dataset !== 'chinook' ||
     entry.storage !== 'sqlite' ||
     entry.readiness !== 'public-api' ||
-    entry.source !== 'https://demodb.dev/ovdb/v1/databases/chinook' ||
+    !isDemoDbOvdbDatabaseUrl(entry.source, 'chinook') ||
     entry.fixtureSha256 !== FIXTURE_SHA256 ||
     entry.browserFixture?.url !== FIXTURE_URL ||
     entry.browserFixture.bytes !== FIXTURE_BYTES

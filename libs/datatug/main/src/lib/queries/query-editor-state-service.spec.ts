@@ -231,7 +231,7 @@ describe('QueryEditorStateService — hosted DemoDB query creation and save', ()
       id: 'hosted-demodb-save-test',
       request: draft.request,
       federation: {
-        ovdbBaseUrl: 'https://demodb.dev/ovdb',
+        ovdbBaseUrl: 'https://ovdb.demodb.dev',
         tables: [{ database: 'adventureworks', name: 'Person.Person' }],
       },
     });
