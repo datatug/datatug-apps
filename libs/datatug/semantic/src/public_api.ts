@@ -5,6 +5,8 @@
 // The frozen wire contract (types, decoders, wrap/unwrap adapters) — see contract/index.ts.
 export * from './contract';
 export * from './charting/bar-race';
+// Bounded raw-order presentation transform; no query execution or board persistence.
+export * from './charting/orders-monthly-country-count';
 export * from './lib/models/models';
 export * from './lib/tokens/datatug-agent-base-url.token';
 export { SemanticApiService } from './lib/services/semantic-api.service';

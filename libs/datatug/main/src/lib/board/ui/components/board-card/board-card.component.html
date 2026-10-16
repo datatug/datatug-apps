@@ -1,3 +1,36 @@
+@if (tutorialNotice(); as notice) {
+  <section
+    class="tutorial-card-guide"
+    aria-label="Tutorial change in this card"
+  >
+    <h3 tabindex="-1" [attr.data-tutorial-card-heading]="boarCardDef()?.id">
+      {{ notice.title }}
+    </h3>
+    <p>{{ notice.detail }}</p>
+    @if (tutorialRuntime?.state()?.navigation; as navigation) {
+      <p>{{ navigation.cue }}</p>
+      @if (navigation.limitation) {
+        <p role="status">{{ navigation.limitation }}</p>
+      }
+      <nav aria-label="Continue the tutorial from this card">
+        <button
+          type="button"
+          [disabled]="!navigation.canPrevious"
+          (click)="navigation.previous()"
+        >
+          Previous Step
+        </button>
+        <button
+          type="button"
+          [disabled]="!navigation.canNext"
+          (click)="navigation.next()"
+        >
+          Next Step
+        </button>
+      </nav>
+    }
+  </section>
+}
 <ion-card>
   @if (boarCardDef()?.title) {
     <ion-item>

@@ -1726,7 +1726,39 @@
       @if (semanticNotice()) { <ion-note color="warning">{{ semanticNotice() }}</ion-note> }
       @if (queryDef()?.semanticModel) { <ion-note>{{ semanticValidation() === 'checking' ? 'Checking saved meanings for this query output…' : semanticNeedsReview() ? 'Meanings need review: the query or result shape changed. Open each meaning to confirm it.' : 'Column meanings are saved for this query output.' }}</ion-note> }
 
-      @if (isTextQueryWorkspace()) {
+      @if (!resultChartOptions().reason) {
+      <section class="query-result-chart-choice" aria-label="Result chart">
+        <h3>Chart this result</h3>
+        @if (resultChartOptions(); as chartOptions) {
+          @if (chartOptions.categories.length && chartOptions.measures.length) {
+            <label>Category
+              <select aria-label="Chart category column" [value]="resultChartCategory()" (change)="setResultChartCategory($event)">
+                <option value="">Choose a column</option>
+                @for (column of chartOptions.categories; track column) { <option [value]="column">{{ column }}</option> }
+              </select>
+            </label>
+            <label>Count
+              <select aria-label="Chart count column" [value]="resultChartMeasure()" (change)="setResultChartMeasure($event)">
+                <option value="">Choose a column</option>
+                @for (column of chartOptions.measures; track column) { <option [value]="column">{{ column }}</option> }
+              </select>
+            </label>
+          }
+        }
+        <div class="query-result-chart-choice__views" role="group" aria-label="Result display">
+          <button type="button" [attr.aria-pressed]="!resultChartVisible()" (click)="resultChartView.set('grid')">Rows</button>
+          <button type="button" [attr.aria-pressed]="resultChartVisible()" [disabled]="!!resultChartReason()" (click)="resultChartView.set('chart')">Chart</button>
+        </div>
+        @if (resultChartReason(); as reason) { <p role="status">{{ reason }}</p> }
+      </section>
+      }
+      @if (resultChartHeld(); as chartResult) {
+        <div [hidden]="!resultChartVisible()">
+          <sneat-datatug-held-result-presentation [result]="chartResult" [fields]="resultChartFields()" [chartOnly]="true" />
+        </div>
+      }
+
+      @if (isTextQueryWorkspace() && !resultChartVisible()) {
         <ion-item class="author-row-details-shortcut" lines="none">
           <ion-label class="ion-text-wrap">
             @if (currentAuthorResultRow(); as inspected) {
@@ -1741,9 +1773,9 @@
         </ion-item>
       }
       @if (
-        resultTotalRows() > resultPageSize ||
+        !resultChartVisible() && (resultTotalRows() > resultPageSize ||
         resultHasMore() ||
-        resultPageIndex() > 0
+        resultPageIndex() > 0)
       ) {
         <div aria-label="Result pages">
           <ion-button
@@ -1773,6 +1805,7 @@
       <div
         class="result-author-data"
         [class.result-author-data-enabled]="isTextQueryWorkspace()"
+        [class.result-chart-hidden]="resultChartVisible()"
       >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTextQueryWorkspace()">
         <sneat-datatug-results-grid
@@ -1804,6 +1837,9 @@
       }
       </div>
     </div>
+    @if (resultChartOptions().reason; as chartUnavailableReason) {
+      <p class="ion-padding-horizontal" role="status">Chart unavailable: {{ chartUnavailableReason }}</p>
+    }
     <div class="ion-padding-horizontal">
       <sneat-datatug-source-rights-notice
         [evidence]="result"

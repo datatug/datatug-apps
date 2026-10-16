@@ -448,7 +448,7 @@ test.describe('Epilogue B — share/replay', () => {
     );
     expect(canadianRunBody.provenance?.executionProfile).toBe('protected');
     await expect(
-      activePage(supportColleaguePage).locator('sneat-datatug-limitation-header'),
+      activePage(supportColleaguePage).locator('.author-results > sneat-datatug-limitation-header'),
     ).toBeVisible({ timeout: 10_000 });
 
     // Customer 1 (Brazilian) can never appear in this grid under `--as

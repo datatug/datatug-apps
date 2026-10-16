@@ -373,6 +373,36 @@ describe('SqlEditorPage', () => {
     expect(component).toBeTruthy();
   });
 
+  it('switches chart and AG Grid over one admitted held result without execution', () => {
+    const sourceId = 'ovdb:demo/northwind/Orders';
+    const held = {
+      recordset: {
+        columns: [{ name: 'country', type: 'string' }, { name: 'orders', type: 'integer' }],
+        rows: [[{ type: 'string', value: 'France' }, { type: 'integer', value: '2' }]],
+      },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { mode: 'live', source: 'Saved query', observedAt: '2026-10-16T00:00:00Z' },
+      sourceRights: [{ sourceId, source: { serverId: 'demo', databaseId: 'northwind', recordset: 'Orders' }, declaredAt: { serverId: 'demo', databaseId: 'northwind', recordset: 'Orders' }, declarationScope: 'recordset', declaration: { spdx: 'MIT' }, evidenceOrigin: 'publisher-verified', pins: [], transformations: [] }],
+      usedSourceIds: [sourceId], totalRows: 1, hasMore: false,
+    } as unknown as FederatedQueryResult;
+    component.runResult.set(held);
+    component.resultChartCategory.set('country');
+    component.resultChartMeasure.set('orders');
+    expect(component.resultChartReason()).toBe('');
+    const gridRows = component.resultGridRows();
+    component.resultChartView.set('chart');
+    expect(component.resultChartVisible()).toBe(true);
+    expect(component.resultChartHeld()?.recordset).toBe(held.recordset);
+    expect(component.resultGridRows()).toBe(gridRows);
+    component.resultChartView.set('grid');
+    expect(component.runResult()).toBe(held);
+    expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
+    component.resultChartView.set('chart');
+    component.runResult.set({ ...held, usedSourceIds: undefined });
+    expect(component.resultChartReason()).toContain('rights');
+    expect(component.resultChartVisible()).toBe(false);
+  });
+
   // G-A1c: where the back button goes with no history: the project's queries (its address is the one
   // `projectUrl()` writes), in the folder of this query.
   it.each([

@@ -985,16 +985,10 @@ test.describe('J4 — restricted principal', () => {
       expect.arrayContaining([expect.objectContaining({ rowsFiltered: true })]),
     );
     expect(canadianRunBody.provenance?.executionProfile).toBe('protected');
-    // S104's own confirmed bug: this exact assertion, unscoped, resolved to
-    // TWO elements once the query page's own limitation header (this run's
-    // result) joined the detached-but-present Customer table page's own copy
-    // (checked above, first instance) in the DOM. Root-caused with a live DOM
-    // probe: the detached table page carries `class="ion-page ion-page-hidden"
-    // aria-hidden="true"` and `display:none` on its own host element — Ionic
-    // behaving exactly as its RouteReuseStrategy intends, not a product
-    // defect. Scoping to the active page (below) is the correct fix.
+    // Scope to the query result's own header. The active page also contains a
+    // nested chart-result header; Ionic may retain a hidden table page too.
     await expect(
-      activePage(page).locator('sneat-datatug-limitation-header'),
+      activePage(page).locator('.author-results > sneat-datatug-limitation-header'),
     ).toBeVisible({ timeout: 10_000 });
 
     // "Run customer-invoices for a Brazilian ... fixture ID: the former
