@@ -302,22 +302,24 @@ jobs:
 
       # The browser suite counts the real reader's GitHub API/raw requests, but
       # anonymous API access from a shared CI runner can exhaust its quota.
-      # Serve the current public demo commit through the existing GitHub HTTP
-      # fake, and check the live API/tree/raw contracts at that same commit.
-      - name: Checkout canonical demo project
+      # Pin the browser catalog to the revision this app admits. Advance it
+      # atomically with support for a newer catalog's fixture URLs and assets.
+      # Check the live API/tree/raw contracts at this exact revision.
+      - name: Checkout validated browser demo revision
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          ref: 11d88a220354859c6f3d11d62ac02c86c6e2a325
           path: datatug-demo-project
 
-      - name: Verify live canonical GitHub source
+      - name: Verify pinned GitHub API tree and raw source
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           set -euo pipefail
           sha="$(git -C datatug-demo-project rev-parse HEAD)"
-          test "$(gh api repos/datatug/datatug-demo-project/commits/HEAD --jq .sha)" = "$sha"
+          test "$sha" = '11d88a220354859c6f3d11d62ac02c86c6e2a325'
+          test "$(gh api "repos/datatug/datatug-demo-project/commits/$sha" --jq .sha)" = "$sha"
           tree="$(gh api "repos/datatug/datatug-demo-project/git/trees/$sha?recursive=1" --jq '[.truncated, ([.tree[].path] | index("demo-project-1/entities/Album/Album.entity.json") != null), ([.tree[].path] | index("demo-project-1/queries/customers/customer-invoices.query.json") != null)] | @json')"
           test "$tree" = '[false,true,true]'
           curl -fsSL "https://raw.githubusercontent.com/datatug/datatug-demo-project/$sha/demo-project-1/entities/Album/Album.entity.json" -o "$RUNNER_TEMP/demo-album.json"
@@ -395,12 +397,12 @@ jobs:
       - uses: ./.github/actions/pnpm
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
-      - name: Checkout canonical demo project
+      - name: Checkout validated browser demo revision
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          ref: 11d88a220354859c6f3d11d62ac02c86c6e2a325
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands

@@ -21,3 +21,10 @@ The existing required `build`, `test`, and `journey e2e (real datatug-cli agent)
 Deployment uses a separate comparison against the last **actual successful application deploy** receipt, uploaded only after the reusable deploy job succeeds. The gate finds the stable receipt artifact by exact name, validates its run, attempt, head and successful jobs, and checks every later deploy run including failed or rerun attempts. An unreceipted later publication cannot authorize a skip. It skips a deployment only if the whole deploy-to-tip difference is verified status-only. Missing, expired, or unverifiable receipts and ambiguous later runs take the normal deployment path, even if the current CI run used its metadata-only path. The lookup is bounded at 500 artifacts/runs and 10 later-run job audits; exceeding either limit also takes the normal deployment path. The existing exact-head, current-main-tip, green-CI, and manual override rules still apply.
 
 CI runs the Chromium app suite and Query mobile WebKit suite in separate jobs after build. Keep both in the required `e2e` aggregate so either failure blocks landing. A head change requires a fresh aggregate verdict for that exact commit.
+
+Those two browser jobs use the validated demo catalog revision
+`11d88a220354859c6f3d11d62ac02c86c6e2a325` through the fake GitHub
+reader. The app job verifies GitHub's API, tree and raw source at that same
+commit. Advance this pin together with app runtime and bundled asset support
+when the demo catalog's fixture URL contract changes. Other demo checkouts are
+independent of this browser catalog pin.
