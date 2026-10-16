@@ -13,7 +13,7 @@
     <ion-row>
       <ion-col size="12" class="ion-padding-start">
         <h1>{{ projBoard()?.title || 'Board' }}</h1>
-        @if (boardDef() && canSaveFavorite()) {
+        @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
           <ion-button fill="outline" (click)="toggleFavorite()">
             {{
               choicesForBoard().favorite
@@ -25,7 +25,7 @@
           @if (favoriteError()) {
             <p role="alert">{{ favoriteError() }}</p>
           }
-        } @else if (boardDef()) {
+        } @else if (boardDef() && !tutorialActive()) {
           <p>Favorites are unavailable for local agent projects.</p>
         }
       </ion-col>

@@ -167,7 +167,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   toggleFavorite(): void {
     const ref = this.projectRef();
     const id = this.boardId();
-    if (ref && id && this.boardDef() && this.canSaveFavorite()) {
+    if (ref && id && this.boardDef() && !this.tutorialActive() && this.canSaveFavorite()) {
       this.favoriteError.set(
         this.choices.setFavorite(ref, id, !this.choicesForBoard().favorite)
           ? undefined
@@ -311,7 +311,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private publishTutorial(): void {
     const session = this.tutorialSession;
     if (!session) return;
-    this.tutorialBoard.set(session.board);
+    const cards = new Map((session.canonical.rows ?? []).flatMap(row =>
+      (row.cards ?? []).map(card => [card.id, card] as const),
+    ));
+    const working = session.board;
+    // Keep existing card and widget inputs stable across action replay. The
+    // session returns a fresh clone, while query results live in widget state.
+    this.tutorialBoard.set({ ...working, rows: working.rows?.map(row => ({
+      ...row,
+      cards: row.cards?.map(card => cards.get(card.id) ?? card),
+    })) });
     this.tutorialStatus.set({
       control: session.control,
       canNext: session.canNext,

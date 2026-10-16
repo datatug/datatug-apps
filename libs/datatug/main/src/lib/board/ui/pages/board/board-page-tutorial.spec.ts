@@ -81,14 +81,17 @@ describe('BoardPage same-route tutorial overlay', () => {
     expect(page.displayBoard()?.rows?.[0].cards).toHaveLength(0);
     page.addNextTutorialCard();
     page.takeTutorialControl();
+    const firstCard = page.displayBoard()?.rows?.[0].cards?.[0];
     const savedCards = saved.rows?.[0]?.cards;
     if (!savedCards || savedCards.length < 2) {
       throw new Error('Tutorial test fixture needs two cards');
     }
     page.addTutorialCard(savedCards[1]);
     expect(page.displayBoard()?.rows?.[0].cards).toHaveLength(2);
+    expect(page.displayBoard()?.rows?.[0].cards?.[0]).toBe(firstCard);
     page.moveTutorialCard(savedCards[0], 0, 1);
     expect(page.displayBoard()?.rows?.[0].cards?.map(card => card.id)).toEqual(['second', 'first']);
+    expect(page.displayBoard()?.rows?.[0].cards?.[1]).toBe(firstCard);
     page.removeTutorialCard(savedCards[0]);
     expect(page.displayBoard()?.rows?.[0].cards?.map(card => card.id)).toEqual(['second']);
     page.resumeTutorial();
