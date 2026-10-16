@@ -22,9 +22,12 @@ Deployment uses a separate comparison against the last **actual successful appli
 
 CI runs the Chromium app suite and Query mobile WebKit suite in separate jobs after build. Keep both in the required `e2e` aggregate so either failure blocks landing. A head change requires a fresh aggregate verdict for that exact commit.
 
-Those two browser jobs use the validated demo catalog revision
+The Chromium app, Query mobile WebKit, and demo SQLite jobs use the validated demo catalog revision
 `11d88a220354859c6f3d11d62ac02c86c6e2a325` through the fake GitHub
 reader. The app job verifies GitHub's API, tree and raw source at that same
-commit. Advance this pin together with app runtime and bundled asset support
+commit. The demo SQLite job includes the edited-copy Board to Query acceptance
+in its existing three-browser suite and serves only that case's Chinook download
+from the hash-checked bytes at the admitted URL; its other dataset checks remain
+live. Advance this pin together with app runtime and bundled asset support
 when the demo catalog's fixture URL contract changes. Other demo checkouts are
 independent of this browser catalog pin.

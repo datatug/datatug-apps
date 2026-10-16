@@ -460,12 +460,12 @@ jobs:
       - uses: ./.github/actions/pnpm
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
-      - name: Checkout canonical demo project
+      - name: Checkout validated edited-copy demo revision
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          ref: 11d88a220354859c6f3d11d62ac02c86c6e2a325
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
@@ -477,18 +477,21 @@ jobs:
         run: pnpm exec playwright install --with-deps chromium firefox webkit
 
       # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
-      # in the browser. Runs the built app in Chromium, Firefox and WebKit against the real demodb.dev files
+      # in the browser. Runs the built app in Chromium, Firefox and WebKit. The edited-copy Board -> Query
+      # acceptance uses the exact pinned Chinook bytes at its admitted URL; other cases use live demodb.dev files
       # (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
       # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
       # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
       # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
       # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the live demodb.dev pages).
-      - name: nx e2e-demo-sqlite affected
+      - name: nx e2e-demo-sqlite affected, including edited-copy Board to Query
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+        run: |
+          test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = '11d88a220354859c6f3d11d62ac02c86c6e2a325'
+          pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload demo SQLite e2e report
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}

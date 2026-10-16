@@ -4,14 +4,16 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
+import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
 /**
  * /demo/sqlite/<dataset>: "Explore SQLite in DataTug". A pinned SQLite file from demodb.dev opens as an editable
  * copy in the browser: downloaded and verified by a dataset worker, kept in the origin private file system (OPFS)
  * and shared by every tab through one leader. These tests drive the real BUILT app (see
  * playwright.demo-sqlite.config.ts) in a real browser against the real demodb.dev files: the worker, SQLite WASM,
- * OPFS, Web Locks and the in-process OVDB server are all real. Only the third-party hosts the app also talks to
- * (error reporting, analytics) are cut off.
+ * OPFS, Web Locks and the in-process OVDB server are all real. The edited-copy Board to Query case serves the
+ * exact hash-pinned Chinook bytes at its admitted public URL; the other cases keep their live DemoDB reads.
+ * Only the third-party hosts the app also talks to (error reporting, analytics) are cut off.
  *
  * WebKit under Playwright has no OPFS in its default (ephemeral) context. There the persistence journey is
  * replaced by the in-memory behaviour the page promises for that case: the warning banner, edits that work, and
@@ -50,6 +52,7 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
       'commit', '--quiet', '-m', 'Create saved working copy query']);
     await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: checkout }]);
+    await installPinnedChinookSqlite(context, checkout);
 
     const requests = trackDemodbRequests(context);
     await openDataset(page, 'chinook', 'Artist');
