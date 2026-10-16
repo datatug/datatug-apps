@@ -135,6 +135,12 @@ repository variable `DATATUG_LINKS_CLI_REF` names a datatug release that has tho
 another DataTug API already listens on port 8989 (the daemon would adopt it). The https-to-loopback path of the
 hosted UI is not exercised here; that is the reach script of the plan.
 
+`result-editor.spec.ts` covers the Table view of a stored query result, which is the query editor
+(`/project/<p>/query?result=<id>`): the saved rows in the shared results grid, the "Saved result from" strip, the
+Prompt section, the other result views and Back. Its checks of the query text and the prompt need a CLI with the
+editor-ready result members and `query results annotate` (datatug-cli #431, after v0.100.1); against an older binary
+they are skipped and the strip's "older DataTug" message is asserted instead.
+
 ## Running the journey suite
 
 ```sh

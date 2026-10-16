@@ -9,11 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  ActivatedRoute,
-  ActivatedRouteSnapshot,
-  Router,
-} from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -37,12 +33,13 @@ import {
   SemanticApiService,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
-import { AgGridReadyDirective } from '@datatug/ag-grid';
-import { AgGridAngular } from 'ag-grid-angular';
+import type { ColDef, RowClickedEvent } from 'ag-grid-community';
+import { ResultsGridComponent } from '../../components/results-grid/results-grid.component';
 import {
-  ColDef,
-  RowClickedEvent,
-} from 'ag-grid-community';
+  GridRow,
+  gridCell,
+  resultColumnDef,
+} from '../../components/results-grid/results-grid-columns';
 import {
   Subject,
   Subscription,
@@ -61,7 +58,12 @@ import { AuthorCurrentRowComponent } from '../../queries/query/page/author-curre
 import { parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../services/project/project.service';
-import { linkBackHref } from '../link-route';
+import {
+  isLoopbackStore,
+  linkBackHref,
+  projectPageCommands,
+  routeParam,
+} from '../link-route';
 import { agentBaseUrl } from '../../services/repo/agent-url';
 import {
   AgentLinkApiService,
@@ -71,6 +73,7 @@ import {
 import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import {
   RERUN_LIMIT,
+  RESULT_QUERY_PARAM,
   ROW_QUERY_PARAM,
   RESULT_VIEWS,
   ResultMeta,
@@ -78,7 +81,6 @@ import {
   ResultView,
   StoredResult,
   VIEW_QUERY_PARAM,
-  cellText,
   decodeRecordset,
   rerunBlocker,
   rerunRequest,
@@ -107,26 +109,7 @@ type RerunState =
     }
   | { readonly kind: 'error'; readonly text: string };
 
-type GridRow = Record<string, string>;
-
-/** A parameter of the route or of one of its ancestors (the store id is a parameter of `store/:storeId`). */
-function routeParam(
-  route: ActivatedRouteSnapshot,
-  key: string,
-): string | undefined {
-  for (const r of [...(route.pathFromRoot ?? []), route].reverse()) {
-    const value = r.paramMap?.get(key);
-    if (value) return value;
-  }
-  return undefined;
-}
-
-/** Whether the store is a local agent (`http-127.0.0.1:<port>`, `localhost:<port>`, `[::1]`). */
-export function isLoopbackStore(storeId: string): boolean {
-  return /^(?:https?-)?(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/.test(
-    storeId,
-  );
-}
+export { isLoopbackStore };
 
 const VIEW_LABELS: Record<ResultView, string> = {
   table: 'Table',
@@ -185,8 +168,7 @@ export function rerunErrorText(err: unknown): string {
     IonSegment,
     IonSegmentButton,
     IonLabel,
-    AgGridAngular,
-    AgGridReadyDirective,
+    ResultsGridComponent,
     AuthorCurrentRowComponent,
     LinkProblemComponent,
     ResultListsComponent,
@@ -220,6 +202,10 @@ export class QueryResultPageComponent {
   private readonly reload$ = new Subject<void>();
   private projectSubscription?: Subscription;
   private rerunSubscription?: Subscription;
+  /** The router commands of the query editor of the result's project, once the agent is known to have the project. */
+  private editorCommands?: string[];
+  /** The address asks for the Table view by name (`?view=table`), the card's "Open in DataTug" target. */
+  private tableRequested = false;
 
   readonly views = RESULT_VIEWS;
   readonly viewLabels = VIEW_LABELS;
@@ -252,25 +238,15 @@ export class QueryResultPageComponent {
       : undefined;
   });
   readonly gridColumns = computed<ColDef<GridRow>[]>(() =>
-    (this.recordset()?.columns ?? []).map((c, i) => ({
-      colId: `c${i}`,
-      field: `c${i}`,
-      headerName: c.name,
-      sortable: false,
-      minWidth: 120,
-    })),
+    (this.recordset()?.columns ?? []).map((c, i) =>
+      resultColumnDef(c, `c${i}`),
+    ),
   );
   readonly gridRows = computed<GridRow[]>(() =>
     (this.recordset()?.rows ?? []).map((row) =>
-      Object.fromEntries(row.map((cell, i) => [`c${i}`, cellText(cell)])),
+      Object.fromEntries(row.map((cell, i) => [`c${i}`, gridCell(cell)])),
     ),
   );
-  readonly gridDefaultColDef: ColDef<GridRow> = {
-    initialFlex: 1,
-    resizable: true,
-  };
-  readonly gridNoRows =
-    '<span class="ag-overlay-no-rows-center">No rows.</span>';
   readonly totalRows = computed(() => this.recordset()?.rows.length ?? 0);
   readonly currentRow = computed(() => this.recordset()?.rows[this.row() - 1]);
   /** Whether the shown rows are all there are: false when the saved result or the fresh run was cut short. */
@@ -327,8 +303,26 @@ export class QueryResultPageComponent {
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((q) => {
       this.view.set(resultView(q.get(VIEW_QUERY_PARAM)));
       this.row.set(resultRow(q.get(ROW_QUERY_PARAM)));
+      this.tableRequested = q.get(VIEW_QUERY_PARAM) === 'table';
+      this.openEditorForTable();
     });
     this.reload$.next();
+  }
+
+  /**
+   * The Table view of a stored result is the query editor: when the address names it (`?view=table`) and the agent
+   * knows the project of the result, the page is replaced (no history entry, so Back goes where it went before) by
+   * the editor of that project, opened from this result. The other views stay on this page, and a result whose
+   * project the agent does not know keeps its read-only table here.
+   */
+  private openEditorForTable(): void {
+    const commands = this.editorCommands;
+    const id = routeParam(this.route.snapshot, routingParamResultId);
+    if (!this.tableRequested || !commands || !validResultId(id)) return;
+    void this.router.navigate(commands, {
+      queryParams: { [RESULT_QUERY_PARAM]: id },
+      replaceUrl: true,
+    });
   }
 
   /** Reads the result again (Check again). */
@@ -352,8 +346,10 @@ export class QueryResultPageComponent {
     this.navigate({ [ROW_QUERY_PARAM]: String(row) });
   }
 
+  /** Opens the clicked row in the Record view. The position is the row's place in the saved rows, not on screen: the grid may be sorted or filtered. */
   gridRowClicked(event: RowClickedEvent<GridRow>): void {
-    if (typeof event.rowIndex === 'number') this.selectRow(event.rowIndex + 1);
+    const at = event.data ? this.gridRows().indexOf(event.data) : -1;
+    if (at >= 0) this.selectRow(at + 1);
   }
 
   /**
@@ -404,6 +400,7 @@ export class QueryResultPageComponent {
    */
   private selectProject(meta: ResultMeta | undefined): void {
     this.projectSubscription?.unsubscribe();
+    this.editorCommands = undefined;
     const url = this.router.url;
     const ids = meta ? resultDbIds(meta) : undefined;
     const storeId = this.storeId();
@@ -429,6 +426,8 @@ export class QueryResultPageComponent {
             { ref, store: { ref: parseDatatugStoreRef(storeId) } },
             known ? ids.env : undefined,
           );
+          this.editorCommands = projectPageCommands(ref, ['query']);
+          this.openEditorForTable();
         },
         error: () => this.navContext.selectResultProject(url),
       });
