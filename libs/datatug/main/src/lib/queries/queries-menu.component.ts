@@ -1,34 +1,34 @@
-import { Component, inject } from '@angular/core';
-import { FormsModule } from '@angular/forms';
+import { Component, DestroyRef, inject, signal } from '@angular/core';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { Router, RouterLink, UrlTree } from '@angular/router';
 import {
   IonButton,
   IonButtons,
   IonIcon,
-  IonInput,
   IonItem,
+  IonItemDivider,
   IonLabel,
-  IonSegment,
-  IonSegmentButton,
+  IonMenuToggle,
 } from '@ionic/angular';
 import { IQueryState } from '../editor/models';
 import { ProjectContextService } from '../services/project/project-context.service';
 import { QueryEditorStateService } from './query-editor-state-service';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { QueriesUiService } from './queries-ui.service';
+import { projectPageHref } from '../nav/project-page-href';
 
 @Component({
   selector: 'sneat-datatug-queries-menu',
   templateUrl: './queries-menu.component.html',
   imports: [
-    IonSegment,
-    IonSegmentButton,
     IonItem,
+    IonItemDivider,
     IonIcon,
-    IonInput,
-    IonButtons,
     IonButton,
+    IonButtons,
     IonLabel,
-    FormsModule,
+    IonMenuToggle,
+    RouterLink,
   ],
 })
 export class QueriesMenuComponent {
@@ -36,12 +36,14 @@ export class QueriesMenuComponent {
   private readonly projectContextService = inject(ProjectContextService);
   private readonly queriesUiService = inject(QueriesUiService);
   private readonly queryEditorStateService = inject(QueryEditorStateService);
+  private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly projectRef = toSignal(this.projectContextService.current$, {
+    initialValue: this.projectContextService.current,
+  });
 
-  tab: 'active' | 'all' | 'bookmarked' = 'all';
-
-  currentQueryId?: string;
-
-  queries?: ReadonlyArray<IQueryState>;
+  readonly currentQueryId = signal<string | undefined>(undefined);
+  readonly queries = signal<ReadonlyArray<IQueryState> | undefined>(undefined);
 
   constructor() {
     this.setupQueryEditorStateTracking();
@@ -49,19 +51,17 @@ export class QueriesMenuComponent {
 
   private setupQueryEditorStateTracking(): void {
     try {
-      this.queryEditorStateService.queryEditorState.subscribe({
-        next: (state) => {
-          console.log(
-            'QueriesMenuComponent.constructor() => QueryEditorStateService => QueryEditor state:',
-            state,
-          );
-          this.currentQueryId = state?.currentQueryId;
-          this.queries = state?.activeQueries;
-        },
-        error: this.errorLogger.logErrorHandler(
-          'failed to get query editor stage',
-        ),
-      });
+      this.queryEditorStateService.queryEditorState
+        .pipe(takeUntilDestroyed(this.destroyRef))
+        .subscribe({
+          next: (state) => {
+            this.currentQueryId.set(state?.currentQueryId);
+            this.queries.set(state?.activeQueries);
+          },
+          error: this.errorLogger.logErrorHandler(
+            'failed to get query editor stage',
+          ),
+        });
     } catch (err) {
       this.errorLogger.logError(
         err,
@@ -76,17 +76,29 @@ export class QueriesMenuComponent {
     }
   }
 
-  closeQuery(query: IQueryState): void {
+  closeQuery(event: Event, query: IQueryState): void {
+    event.stopPropagation();
     this.queryEditorStateService.closeQuery(query);
   }
 
+  hasProject(): boolean {
+    return !!this.projectRef();
+  }
+
+  queriesLink(): UrlTree | undefined {
+    const ref = this.projectRef();
+    return ref
+      ? this.router.parseUrl(projectPageHref(ref, 'queries', this.router.url))
+      : undefined;
+  }
+
   newQuery(): void {
-    if (!this.projectContextService.current) {
-      alert('Current project context is not in ProjectContextService');
+    const ref = this.projectRef();
+    if (!ref) {
       return;
     }
     this.queriesUiService
-      .openNewQuery(this.projectContextService.current)
+      .openNewQuery(ref)
       .catch(this.errorLogger.logErrorHandler('failed to open new query'));
   }
 }

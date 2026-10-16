@@ -3,9 +3,7 @@ import { FormsModule } from '@angular/forms';
 import {
   IonCard,
   IonIcon,
-  IonItem,
   IonItemDivider,
-  IonLabel,
   IonSegment,
   IonSegmentButton,
 } from '@ionic/angular';
@@ -23,12 +21,10 @@ import { ProjectMenuTopComponent } from '../project-menu-top/project-menu-top.co
     IonIcon,
     ProjectMenuTopComponent,
     QueriesMenuComponent,
-    IonLabel,
-    IonItem,
     FormsModule,
   ],
 })
 export class ProjectMenuComponent {
   readonly metadataOnly = input(false);
-  public tab: 'project' | 'queries' | 'boards' = 'project';
+  public tab: 'project' | 'queries' = 'project';
 }
