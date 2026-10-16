@@ -35,7 +35,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -133,7 +133,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -181,7 +181,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -261,7 +261,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -311,7 +311,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -365,7 +365,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -407,7 +407,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -521,7 +521,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 
@@ -556,6 +556,7 @@ jobs:
 
       - name: Run journey e2e (J1-J4, real datatug-cli agent)
         env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
         run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1
 
@@ -626,7 +627,7 @@ jobs:
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
-          private-key: ${{ secrets.SneatReleaser }}
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
 

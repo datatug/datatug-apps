@@ -47,5 +47,5 @@ jobs:
       pnpm-version: '11.26.0'
       cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     secrets:
-      BUILD_GITHUB_APP_PRIVATE_KEY: ${{ secrets.SneatReleaser }}
+      BUILD_GITHUB_APP_PRIVATE_KEY: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
