@@ -75,6 +75,7 @@ interface NewProjectDraft {
   readonly operationPayload?: string;
   readonly oauthResumePending?: boolean;
   readonly projectCreateSubmitted?: boolean;
+  readonly setupPR?: { readonly url: string; readonly number: number };
   readonly oauthState?: string;
   readonly resolvedCreateRequest?: CreateGithubProject;
 }
@@ -127,7 +128,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   readonly branch = signal('');
   readonly githubRepositoryURL = signal('');
   readonly ciEnabled = signal(true);
-  protected readonly setupStatus = signal<'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | undefined>(undefined);
+  protected readonly setupStatus = signal<'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | 'needs_review' | undefined>(undefined);
   protected readonly setupPR = signal<{ url: string; number: number } | undefined>(undefined);
   protected readonly isRefreshingSetup = signal(false);
   protected readonly isCreating = signal(false);
@@ -156,6 +157,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly projectCreateSubmitted = signal(false);
   private readonly oauthState = signal<string | undefined>(undefined);
   private readonly resolvedCreateRequest = signal<CreateGithubProject | undefined>(undefined);
+  private oauthResumeQueued = false;
   private readonly restoredDraft = signal<NewProjectDraft | undefined>(
     undefined,
   );
@@ -276,10 +278,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.isCreating.set(false);
           this.operationID.set(undefined);
           this.operationPayload.set(undefined);
+          this.resolvedCreateRequest.set(undefined);
           this.oauthResumePending.set(false);
           this.projectCreateSubmitted.set(false);
           this.setupStatus.set(undefined);
           this.setupPR.set(undefined);
+          this.isRefreshingSetup.set(false);
           if (this.store() === 'github') this.loadGithubRepos();
         }
         this.resolvePendingDraft(uid, state.status);
@@ -308,15 +312,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.route.snapshot.queryParamMap.get('returnUrl'),
     );
     if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
-    if (
-      oauthResult === 'success' &&
-      draft?.oauthResumePending &&
-      draft.actorID === this.userID()
-    ) {
-      this.oauthResumePending.set(false);
-      this.saveDraft();
-      queueMicrotask(() => this.create());
-    }
+    if (oauthResult === 'success') this.resumeOAuthDraftIfReady();
     if (
       this.projectCreateSubmitted() &&
       !draft?.oauthResumePending &&
@@ -332,7 +328,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
   cancel(): void {
     if (this.isCreating()) return;
-    if (this.setupStatus() !== 'pending_merge') clearNewProjectDraft();
+    if (!this.isSetupLocked()) clearNewProjectDraft();
     void this.router
       .navigateByUrl(this.returnUrl, { replaceUrl: true })
       .catch(
@@ -512,7 +508,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     });
   }
   create(): void {
-    if (this.isCreating() || this.setupStatus() === 'pending_merge') return;
+    if (this.isCreating() || this.isSetupLocked()) return;
     if (this.setupStatus() === 'closed_unmerged') {
       this.operationID.set(undefined);
       this.operationPayload.set(undefined);
@@ -646,7 +642,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
               this.isCreating.set(false);
               this.oauthResumePending.set(true);
               this.saveDraft();
-              this.startGithubOAuth(address.owner, address.name, operationID, ['repo']);
+              this.startGithubOAuth(address.owner, address.name, operationID, this.requiredOAuthScopes());
               return;
             }
             this.isCreating.set(false);
@@ -663,7 +659,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             address.owner,
             address.name,
             operationID,
-            this.ciEnabled() ? ['repo', 'workflow'] : ['repo'],
+            this.requiredOAuthScopes(),
           );
           return;
         }
@@ -681,6 +677,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.formError.set('The saved repository selection is missing. Re-enter the repository URL and submit again.');
       return;
     }
+    const actorID = this.userID();
+    const generation = this.selectionGeneration;
+    const isCurrent = () =>
+      this.userID() === actorID &&
+      this.selectionGeneration === generation &&
+      this.operationID() === operationID &&
+      this.resolvedCreateRequest() === resolvedRequest;
     this.isRefreshingSetup.set(true);
     this.queryApi.createStatus({
       operationID,
@@ -689,17 +692,18 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       name: resolvedRequest.github.name,
     }).subscribe({
       next: (status) => {
+        if (!isCurrent()) return;
         this.isRefreshingSetup.set(false);
         this.setupStatus.set(status.status);
         if (status.setupPR)
           this.setupPR.set({ url: status.setupPR.url, number: status.setupPR.number });
         if (status.status === 'merged_ready') {
-          const repo = this.githubRepos().find((item) => item.id === this.selectedRepo()) ?? parseGithubRepositoryURL(this.githubRepositoryURL());
-          const folder = readNewProjectFolder(this.githubFolder());
-          const projectID = status.projectID ?? (repo && folder.ok
-            ? formatGithubProjectApiKey({ org: repo.owner, repo: repo.name, folder: folder.folder })
-            : undefined);
-          const branch = status.setupPR?.baseBranch ?? this.resolvedCreateRequest()?.github.branch ?? this.branch();
+          const projectID = formatGithubProjectApiKey({
+            org: resolvedRequest.github.owner,
+            repo: resolvedRequest.github.name,
+            folder: resolvedRequest.github.folder,
+          });
+          const branch = status.setupPR?.baseBranch ?? resolvedRequest.github.branch;
           if (!projectID || !branch) {
             this.formError.set('The setup is ready, but project details need to be reselected before opening it.');
             return;
@@ -714,11 +718,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         }
       },
       error: (error: unknown) => {
+        if (!isCurrent()) return;
         this.isRefreshingSetup.set(false);
         if (githubOAuthNeedsAuthorization(error)) {
           this.oauthResumePending.set(true);
           this.saveDraft();
-          this.startGithubOAuth(resolvedRequest.github.owner, resolvedRequest.github.name, operationID, ['repo']);
+          this.startGithubOAuth(resolvedRequest.github.owner, resolvedRequest.github.name, operationID, this.requiredOAuthScopes());
           return;
         }
         this.formError.set('Setup status could not be checked. Retry to confirm whether the pull request merged.');
@@ -738,7 +743,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
 
   protected setupStatusMessage(
-    status: 'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed',
+    status: 'pending_merge' | 'merged_ready' | 'closed_unmerged' | 'failed' | 'needs_review',
   ): string {
     switch (status) {
       case 'pending_merge':
@@ -749,7 +754,18 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         return 'The setup pull request closed without merging. Review the repository and retry to create a fresh setup request, or go back to your projects.';
       case 'failed':
         return 'Project setup did not complete.';
+      case 'needs_review':
+        return 'The setup pull request merged, but its project files could not be verified. Repair the required files on the repository base branch, then refresh status; this project stays unopened until verification succeeds.';
     }
+  }
+
+  protected isSetupLocked(): boolean {
+    const status = this.setupStatus();
+    return (
+      status === 'pending_merge' ||
+      status === 'needs_review' ||
+      (this.projectCreateSubmitted() && status === undefined)
+    );
   }
 
   private startGithubOAuth(
@@ -758,6 +774,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     operationID: string,
     requiredScopes: readonly ('repo' | 'workflow')[],
   ): void {
+    if (!this.saveDraft()) {
+      this.isCreating.set(false);
+      this.oauthResumePending.set(false);
+      this.formError.set('Project details could not be saved for the GitHub redirect. Keep this page open and retry after enabling browser session storage.');
+      return;
+    }
     this.connection.startOAuth({ operationID, owner, repository, requiredScopes }).subscribe({
       next: ({ authorizationURL }) => {
         try {
@@ -766,7 +788,12 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           const state = url.searchParams.get('state');
           if (!state || state.length > 512) throw new Error();
           this.oauthState.set(state);
-          this.saveDraft();
+          if (!this.saveDraft()) {
+            this.oauthState.set(undefined);
+            this.oauthResumePending.set(false);
+            this.formError.set('Project details could not be saved for the GitHub redirect. Keep this page open and retry after enabling browser session storage.');
+            return;
+          }
           window.location.assign(url.href);
         } catch {
           this.isCreating.set(false);
@@ -782,6 +809,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.formError.set('GitHub authorization could not be started. Retry the same project request.');
       },
     });
+  }
+
+  private requiredOAuthScopes(): readonly ('repo' | 'workflow')[] {
+    return this.ciEnabled() ? ['repo', 'workflow'] : ['repo'];
   }
 
   private submitGithubProject(
@@ -807,9 +838,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       },
       error: (error: unknown) => {
         if (githubProjectErrorCode(error) === 'workflow_scope_required') {
+          if (!this.ciEnabled()) {
+            this.handleCreateFailure(error);
+            return;
+          }
           this.oauthResumePending.set(true);
           this.saveDraft();
-          this.startGithubOAuth(owner, repository, operationID, ['workflow']);
+          this.startGithubOAuth(owner, repository, operationID, this.requiredOAuthScopes());
           return;
         }
         this.handleCreateFailure(error);
@@ -870,6 +905,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         operationPayload: this.operationPayload(),
         oauthResumePending: this.oauthResumePending(),
         projectCreateSubmitted: this.projectCreateSubmitted(),
+        setupPR: this.setupPR(),
         oauthState: this.oauthState(),
         resolvedCreateRequest: this.resolvedCreateRequest(),
       };
@@ -923,9 +959,29 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         !this.isGithubSignedIn()
       )
         this.loadGithubRepos();
+      this.resumeOAuthDraftIfReady();
       return;
     }
     clearNewProjectDraft();
+  }
+
+  private resumeOAuthDraftIfReady(): void {
+    const draft = this.restoredDraft();
+    const uid = this.userID();
+    if (
+      this.oauthResumeQueued ||
+      this.route.snapshot.queryParamMap.get('oauthResult') !== 'success' ||
+      !uid ||
+      !draft?.oauthResumePending ||
+      draft.actorID !== uid
+    ) return;
+    this.oauthResumeQueued = true;
+    this.oauthResumePending.set(false);
+    this.saveDraft();
+    queueMicrotask(() => {
+      if (this.userID() === uid) this.create();
+      else this.oauthResumeQueued = false;
+    });
   }
 
   private applyDraft(draft: NewProjectDraft): void {
@@ -939,6 +995,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.operationPayload.set(draft.operationPayload);
     this.oauthResumePending.set(draft.oauthResumePending ?? false);
     this.projectCreateSubmitted.set(draft.projectCreateSubmitted ?? false);
+    this.setupPR.set(draft.setupPR);
+    if (draft.projectCreateSubmitted) this.setupStatus.set('pending_merge');
     this.oauthState.set(draft.oauthState);
     this.resolvedCreateRequest.set(draft.resolvedCreateRequest);
     this.branch.set(draft.branch ?? '');
@@ -1003,6 +1061,7 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
           : undefined,
       oauthResumePending: draft.oauthResumePending === true,
       projectCreateSubmitted: draft.projectCreateSubmitted === true,
+      setupPR: isSafeSetupPR(draft.setupPR) ? draft.setupPR : undefined,
       oauthState: typeof draft.oauthState === 'string' ? draft.oauthState.slice(0, 512) : undefined,
       resolvedCreateRequest: isCreateGithubProject(draft.resolvedCreateRequest) ? draft.resolvedCreateRequest : undefined,
     };
@@ -1017,6 +1076,17 @@ function clearNewProjectDraft(): void {
   } catch {
     // Session storage is optional; page navigation still works without it.
   }
+}
+
+function isSafeSetupPR(value: unknown): value is { readonly url: string; readonly number: number } {
+  if (!value || typeof value !== 'object') return false;
+  const pullRequest = value as { url?: unknown; number?: unknown };
+  return (
+    typeof pullRequest.url === 'string' &&
+    /^https:\/\/github\.com\/[^/\s]+\/[^/\s]+\/pull\/\d+$/.test(pullRequest.url) &&
+    Number.isInteger(pullRequest.number) &&
+    (pullRequest.number as number) > 0
+  );
 }
 
 function isCreateGithubProject(value: unknown): value is CreateGithubProject {

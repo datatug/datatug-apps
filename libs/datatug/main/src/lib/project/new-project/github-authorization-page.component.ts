@@ -77,7 +77,9 @@ export class GithubAuthorizationPageComponent {
     }
     // Existing GitHub App callbacks remain supported. Only the explicit
     // operation-bound marker selects the new OAuth project-create flow.
-    if (!hasPendingOAuthProject(authorization.state)) {
+    const isOAuthProjectFlow = hasPendingOAuthProject(authorization.state);
+    this.watchAuthChanges(isOAuthProjectFlow);
+    if (!isOAuthProjectFlow) {
       this.completeLegacyAuthorization(authorization.code, authorization.state);
       return;
     }
@@ -91,21 +93,6 @@ export class GithubAuthorizationPageComponent {
     }
     const expectedActorID = readPendingGitHubActorID();
     const requiresWorkflow = readPendingCIEnabled();
-    this.auth.authState
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((auth) => {
-        this.needsSignIn.set(auth.status === 'notAuthenticated');
-        if (
-          this.boundUserID &&
-          (auth.status !== 'authenticated' ||
-            auth.user?.uid !== this.boundUserID)
-        ) {
-          this.authChanged.next();
-          this.connected.set(false);
-          this.message.set('Your sign-in changed. Start Connect GitHub again.');
-          this.newProjectService.returnFromGithubOAuth('denied');
-        }
-      });
     this.auth.authState
       .pipe(
         filter((auth) => auth.status === 'authenticated' && !!auth.user?.uid),
@@ -155,6 +142,28 @@ export class GithubAuthorizationPageComponent {
         },
       });
   }
+  private watchAuthChanges(isOAuthProjectFlow: boolean): void {
+    this.auth.authState
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((auth) => {
+        this.needsSignIn.set(auth.status === 'notAuthenticated');
+        const uid = auth.status === 'authenticated' ? auth.user?.uid : undefined;
+        if (!this.boundUserID && uid) {
+          this.boundUserID = uid;
+          return;
+        }
+        if (
+          this.boundUserID &&
+          (!uid || uid !== this.boundUserID)
+        ) {
+          this.authChanged.next();
+          this.connected.set(false);
+          this.message.set('Your sign-in changed. Start Connect GitHub again.');
+          if (isOAuthProjectFlow)
+            this.newProjectService.returnFromGithubOAuth('denied');
+        }
+      });
+  }
   private completeLegacyAuthorization(code: string, state: string): void {
     this.auth.authState
       .pipe(
@@ -164,6 +173,7 @@ export class GithubAuthorizationPageComponent {
           this.boundUserID = auth.user?.uid;
           return this.connection.complete(code, state);
         }),
+        takeUntil(this.authChanged),
         takeUntilDestroyed(this.destroyRef),
       )
       .subscribe({

@@ -703,6 +703,118 @@ describe('New project through authenticated common API', () => {
     });
   });
 
+  it('restarts OAuth with both scopes when create discovers a missing workflow permission', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockReturnValue(
+      throwError(() => ({ status: 409, error: { error: { code: 'workflow_scope_required' } } })) as never,
+    );
+    h.component.create();
+
+    expect(h.connection.startOAuth).toHaveBeenCalledWith({
+      operationID: expect.any(String),
+      owner: 'owner',
+      repository: 'repo',
+      requiredScopes: ['repo', 'workflow'],
+    });
+  });
+
+  it('fails closed when the OAuth redirect draft cannot be persisted', async () => {
+    const h = await harness();
+    h.select();
+    h.connection.resolveOAuthRepository.mockReturnValue(
+      throwError(() => ({ status: 401, error: { error: { code: 'authorization_required' } } })),
+    );
+    const setItem = vi.spyOn(sessionStorage, 'setItem').mockImplementation(() => {
+      throw new DOMException('storage blocked', 'SecurityError');
+    });
+    h.component.create();
+
+    expect(h.component['formError']()).toContain('could not be saved for the GitHub redirect');
+    expect(h.component['oauthState']()).toBeUndefined();
+    expect(h.component['oauthResumePending']()).toBe(false);
+    expect(h.connection.startOAuth).not.toHaveBeenCalled();
+    setItem.mockRestore();
+  });
+
+  it('does not navigate from a delayed merged status after the Firebase actor changes', async () => {
+    const h = await harness();
+    h.select();
+    h.component.create();
+    const status = new Subject<{ operationID: string; status: 'merged_ready'; projectID: string; setupPR: typeof created.setupPR }>();
+    h.createStatus.mockReturnValue(status as never);
+
+    h.component['refreshSetupStatus']();
+    h.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor-b' },
+      record: { spaces: { space: { title: 'Other Space' } } },
+    });
+    status.next({ ...created, status: 'merged_ready', projectID: 'internal-id' });
+
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.component['setupStatus']()).toBeUndefined();
+    expect(h.component['isRefreshingSetup']()).toBe(false);
+  });
+
+  it('keeps a proof mismatch in review and never opens it as a ready project', async () => {
+    const h = await harness();
+    h.select();
+    h.component.create();
+    const status = new Subject<{ operationID: string; status: 'needs_review'; setupPR: typeof created.setupPR }>();
+    h.createStatus.mockReturnValue(status as never);
+
+    h.component['refreshSetupStatus']();
+    status.next({ ...created, status: 'needs_review' });
+
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.component['setupStatus']()).toBe('needs_review');
+    expect(h.component['isSetupLocked']()).toBe(true);
+    expect(h.component['setupStatusMessage']('needs_review')).toContain('could not be verified');
+  });
+
+  it('restores a submitted setup as locked while backend status is checked', async () => {
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({
+      actorID: 'actor', store: 'github', title: 'Project', githubFolder: 'datatug',
+      spaceID: 'space', spaceTitle: '', githubRepositoryURL: 'https://github.com/owner/repo',
+      ciEnabled: true, operationID: '33333333-3333-4333-8333-333333333333',
+      operationPayload: '{}', projectCreateSubmitted: true,
+      setupPR: { url: 'https://github.com/owner/repo/pull/42', number: 42 },
+    }));
+    const h = await harness(false, {}, true, true);
+    h.fixture.detectChanges();
+
+    h.component.create();
+
+    expect(h.component['setupStatus']()).toBe('pending_merge');
+    expect(h.component['isSetupLocked']()).toBe(true);
+    expect(h.component['setupPR']()).toEqual({
+      url: 'https://github.com/owner/repo/pull/42',
+      number: 42,
+    });
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
+  it('waits to resume a successful OAuth draft until Firebase restores the matching actor', async () => {
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({
+      actorID: 'actor', store: 'github', title: 'Project', githubFolder: 'datatug',
+      spaceID: 'space', spaceTitle: '', githubRepositoryURL: 'https://github.com/owner/repo',
+      ciEnabled: true, operationID: '33333333-3333-4333-8333-333333333333',
+      operationPayload: JSON.stringify({ title: 'Project' }), oauthResumePending: true,
+    }));
+    const restored = await harness(false, { oauthResult: 'success' }, false, true, 'authenticating');
+    restored.fixture.detectChanges();
+    expect(restored.connection.resolveOAuthRepository).not.toHaveBeenCalled();
+    restored.userState.next({
+      status: 'authenticated',
+      user: { uid: 'actor' },
+      record: { spaces: { space: { title: 'My Space' } } },
+    });
+    await Promise.resolve();
+    expect(restored.connection.resolveOAuthRepository).toHaveBeenCalledWith('owner', 'repo');
+    expect(restored.create).toHaveBeenCalledTimes(1);
+  });
+
   it('resumes the same actor-bound OAuth operation automatically and only once', async () => {
     const operationID = '33333333-3333-4333-8333-333333333333';
     const operationPayload = JSON.stringify({

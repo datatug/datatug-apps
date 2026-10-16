@@ -1,6 +1,6 @@
 <ion-header>
   <ion-toolbar color="light">
-    <ion-title>{{ setupStatus() === 'pending_merge' ? 'Project setup awaiting merge' : 'New DataTug Project' }}</ion-title>
+    <ion-title>{{ setupStatus() === 'needs_review' ? 'Project setup needs review' : setupStatus() === 'pending_merge' ? 'Project setup awaiting merge' : 'New DataTug Project' }}</ion-title>
     <ion-buttons slot="end">
       <ion-button color="medium" title="Cancel" (click)="cancel()">
         <ion-icon name="close-outline" />
@@ -9,7 +9,7 @@
   </ion-toolbar>
 </ion-header>
 <ion-content>
-@if (setupStatus() !== 'pending_merge') {
+@if (!isSetupLocked()) {
 <ion-item>
   <ion-label>Store</ion-label>
   <ion-select
@@ -155,7 +155,7 @@
 }
 }
 @if (store() === 'github') {
-  @if (setupStatus() !== 'pending_merge') {
+  @if (!isSetupLocked()) {
   <ion-item>
     <ion-checkbox
       [ngModel]="ciEnabled()"
@@ -180,7 +180,7 @@
     }
   }
 }
-@if (setupStatus() !== 'pending_merge') {
+@if (!isSetupLocked()) {
 <ion-item>
   <ion-label>Title</ion-label>
   <ion-input
@@ -213,7 +213,7 @@
 <ion-footer>
   <ion-toolbar>
     <ion-buttons slot="end">
-      @if (setupStatus() !== 'pending_merge') { <ion-button (click)="create()" [disabled]="isCreating()">
+      @if (!isSetupLocked()) { <ion-button (click)="create()" [disabled]="isCreating()">
         <ion-icon name="save-outline" slot="start" />
         <ion-label>Create new project</ion-label>
       </ion-button> }

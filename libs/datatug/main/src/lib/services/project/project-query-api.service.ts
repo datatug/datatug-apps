@@ -77,7 +77,8 @@ export interface GithubProjectCreateStatus {
     | 'pending_merge'
     | 'merged_ready'
     | 'closed_unmerged'
-    | 'failed';
+    | 'failed'
+    | 'needs_review';
   readonly setupPR?: CreatedGithubProject['setupPR'];
   readonly projectID?: string;
   readonly errorCode?: string;

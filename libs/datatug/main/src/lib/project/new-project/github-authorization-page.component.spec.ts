@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { ErrorLogger } from '@sneat/core';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import { BehaviorSubject, Subject } from 'rxjs';
 import { GithubAuthorizationPageComponent } from './github-authorization-page.component';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { NewProjectService } from './new-project.service';
@@ -23,7 +23,8 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
     void args;
     return result;
   });
-  const completeLegacy = vi.fn(() => of({ connected: true as const }));
+  const legacyResult = new Subject<{ connected: true }>();
+  const completeLegacy = vi.fn(() => legacyResult);
   const newProject = vi.fn();
   TestBed.configureTestingModule({
     imports: [GithubAuthorizationPageComponent],
@@ -51,7 +52,7 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
           ],
     },
   });
-  return { auth, result, complete, completeLegacy, newProject, router: TestBed.inject(Router) };
+  return { auth, result, legacyResult, complete, completeLegacy, newProject, router: TestBed.inject(Router) };
 }
 
 afterEach(() => {
@@ -161,6 +162,22 @@ describe('GitHub callback authenticated exchange', () => {
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
     expect(h.completeLegacy).toHaveBeenCalledWith('app-code', 'old-app-state');
     expect(h.complete).not.toHaveBeenCalled();
+  });
+  it('restores sign-in state and cancels a delayed legacy completion after the Firebase actor changes', async () => {
+    const h = harness();
+    window.__datatugTakeGitHubAuthorization = () => ({ code: 'app-code', state: 'legacy-state' });
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    expect(fixture.componentInstance.needsSignIn()).toBe(true);
+    h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
+    expect(h.completeLegacy).toHaveBeenCalledWith('app-code', 'legacy-state');
+    h.auth.next({ status: 'authenticated', user: { uid: 'actor-b' } });
+    h.legacyResult.next({ connected: true });
+    await fixture.whenStable();
+
+    expect(fixture.componentInstance.connected()).toBe(false);
+    expect(fixture.nativeElement.textContent).toContain('sign-in changed');
+    expect(h.newProject).not.toHaveBeenCalled();
   });
 });
 describe('GitHub callback "Back to projects"', () => {
