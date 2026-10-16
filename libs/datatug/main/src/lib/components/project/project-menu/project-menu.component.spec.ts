@@ -60,10 +60,18 @@ describe('ProjectMenuComponent — Active Queries tab renders QueriesMenuCompone
   let fixture: ComponentFixture<ProjectMenuComponent>;
 
   beforeEach(async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        async () =>
+          new Response('<svg xmlns="http://www.w3.org/2000/svg"></svg>'),
+      ),
+    );
     await TestBed.configureTestingModule({
       imports: [ProjectMenuComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        provideRouter([]),
         {
           provide: ErrorLogger,
           useValue: {
@@ -100,6 +108,8 @@ describe('ProjectMenuComponent — Active Queries tab renders QueriesMenuCompone
 
     const host = fixture.nativeElement as HTMLElement;
     expect(host.querySelector('sneat-datatug-queries-menu')).toBeTruthy();
+    expect(host.querySelector('ion-segment-button[value="boards"]')).toBeNull();
+    expect(host.textContent).not.toContain('Not implemented yet');
   });
 });
 
