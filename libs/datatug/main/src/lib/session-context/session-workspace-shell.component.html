@@ -11,20 +11,28 @@
     }
   </ion-tab-bar>
   <ion-item lines="full" class="session-summary">
-    <ion-buttons slot="start">
-      <ion-button (click)="chooserOpen.set(true)">All sessions</ion-button>
+    <ion-buttons class="session-primary-actions">
+      <ion-button (click)="chooserOpen.set(true)">{{ workspace.session() ? 'All sessions' : 'Open a session' }}</ion-button>
       <ion-button (click)="beginCreate()" [disabled]="!canCreateSession()">New session</ion-button>
-    </ion-buttons>
-    @if (workspace.session(); as session) {
-      <ion-button fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
+      @if (workspace.session()) {
+      <ion-button class="session-context-button" fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
         Context · {{ workspace.appliedCount() }} applied
         @if (workspace.hasPendingSelection()) { <strong> · Changes not applied</strong> }
       </ion-button>
-      <ion-buttons slot="end">
+      }
+    </ion-buttons>
+  </ion-item>
+  @if (workspace.session(); as session) {
+    <ion-item lines="full" class="session-summary session-secondary-row">
+      <ion-buttons class="session-secondary-actions">
         <ion-button (click)="beginRename()" [disabled]="!workspace.canExecute()">Rename</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-explorer')">Explorer</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-overview')">Invoice overview</ion-button>
         <ion-button (click)="openWorkspacePage('composer')">Composer</ion-button>
+        @if (workspace.capabilities()?.nativeDetective === true) {
+          <ion-button (click)="openWorkspacePage('checks')">Checks</ion-button>
+          <ion-button (click)="openWorkspacePage('detective')">Cases</ion-button>
+        }
         <ion-button (click)="openRunHistory()">Run history</ion-button>
         @if (session.state === 'active') {
           <ion-button (click)="workspace.transition('stop')" [disabled]="workspace.busy()">Stop</ion-button>
@@ -36,13 +44,35 @@
         }
         <ion-button color="danger" (click)="deleteOpen.set(true)" [disabled]="workspace.busy() || (session.pendingRunCount || 0) > 0" [title]="(session.pendingRunCount || 0) > 0 ? 'Accepted work is unresolved; settle its receipt before deleting.' : 'Delete session'">Delete</ion-button>
       </ion-buttons>
-    }
-  </ion-item>
-  @if (workspace.authRequired()) {
+    </ion-item>
+  }
+  @if (workspace.agentReconnectRequired()) {
+    <ion-item color="warning" role="status"><ion-label>Reconnect to the local agent to view saved sessions.</ion-label><ion-button slot="end" (click)="chooserOpen.set(true)">Reconnect</ion-button></ion-item>
+  } @else if (workspace.authRequired()) {
     <ion-item color="warning" role="status">
       <ion-label>Sign in to view or create sessions for this project.</ion-label>
       <ion-button slot="end" (click)="chooserOpen.set(true)">Sign in</ion-button>
     </ion-item>
+  }
+  @if (!workspace.session()) {
+    <div class="session-start" aria-labelledby="session-start-heading">
+      <h1 id="session-start-heading">Sessions</h1>
+      @if (workspace.agentReconnectRequired()) {
+        <p>Reconnect to the local agent to open saved sessions for this project.</p>
+      } @else if (workspace.authRequired()) {
+        <p>Sign in to open or create sessions for this project.</p>
+      } @else if (workspace.loading()) {
+        <p>Loading sessions for this project…</p>
+      } @else if (workspace.error()) {
+        <p>Sessions could not be loaded. Review the error above and retry if available.</p>
+      } @else if (workspace.sessions().length) {
+        <p>Open a saved session to continue its queries and context.@if (canCreateSession()) { Or start a new session for this project. }</p>
+      } @else if (canCreateSession()) {
+        <p>Start a session to keep queries and context together for this project.</p>
+      } @else {
+        <p>No sessions are shown yet. @if (workspace.hasMore()) { Open the session list to load more. } @else { Open the session list to check availability and connection requirements. }</p>
+      }
+    </div>
   }
   </div>
   @if (workspace.loading()) { <ion-item slot="top" lines="none"><ion-spinner slot="start" /><ion-label>Loading saved session…</ion-label></ion-item> }
@@ -137,11 +167,14 @@
   </ng-template>
 </ion-modal>
 
-<ion-modal [isOpen]="chooserOpen()" (didDismiss)="chooserOpen.set(false)">
+<ion-modal #sessionChooser [isOpen]="chooserOpen()" (didPresent)="chooserPresented.set(true)" (didDismiss)="chooserPresented.set(false); chooserOpen.set(false)">
   <ng-template>
     <ion-header><ion-toolbar><ion-title>Open a session</ion-title><ion-buttons slot="end"><ion-button (click)="chooserOpen.set(false)">Done</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>
-      @if (workspace.authRequired()) {
+      @if (workspace.agentReconnectRequired()) {
+        <ion-item lines="full" role="alert"><ion-label><h2>Reconnect to the local agent</h2><p>The agent may have restarted or its access link expired. Open a fresh DataTug link from your CLI to reconnect to this agent, then retry loading saved sessions. Retrying only reads sessions; it does not execute a query or Check.</p></ion-label></ion-item>
+        <ion-item><ion-button (click)="retryAgentAdmission()" [disabled]="workspace.loading()">Retry loading sessions</ion-button></ion-item>
+      } @else if (workspace.authRequired()) {
         <ion-item lines="full"><ion-label><h2>Sign in required</h2><p>Your saved sessions are available after you sign in. Signing in will return you to this project.</p></ion-label></ion-item>
         <sneat-auth-panel [returnTo]="signInReturnTo()" [showIntro]="false" initialMode="sign-in" />
       } @else if (showInitialLoading()) {
@@ -220,7 +253,7 @@
   </ng-template>
 </ion-modal>
 
-<ion-modal [isOpen]="createOpen() || addBagOpen() || !!renameTarget()" (didDismiss)="createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">
+<ion-modal #sessionCreate [isOpen]="createOpen() || addBagOpen() || !!renameTarget()" (didPresent)="createPresented.set(true)" (didDismiss)="createPresented.set(false); createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">
   <ng-template>
     <ion-header><ion-toolbar><ion-title>{{ renameTarget() ? 'Rename ' + renameTarget() : addBagOpen() ? 'New bag' : 'New session' }}</ion-title><ion-buttons slot="end"><ion-button (click)="createOpen.set(false); addBagOpen.set(false); renameTarget.set(undefined)">Cancel</ion-button></ion-buttons></ion-toolbar></ion-header>
     <ion-content>

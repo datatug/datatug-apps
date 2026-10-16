@@ -54,7 +54,11 @@ export interface AgentCell {
   readonly text: string;
 }
 
-/** Rows read through the agent, every value as display text (a typed integer keeps all its digits). */
+/**
+ * Rows read through the agent, every value as display text. A `records/lookup` integer keeps all its digits (the
+ * agent sends it as a string); an `exec/select` row arrives as plain JSON numbers, so an integer above 2^53 - 1 is
+ * shown rounded there. The records view links to no record, so no key is taken from that display.
+ */
 export interface AgentRows {
   readonly columns: readonly string[];
   readonly rows: readonly (readonly string[])[];

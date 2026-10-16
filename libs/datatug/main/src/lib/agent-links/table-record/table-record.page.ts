@@ -39,6 +39,7 @@ import {
   classifyAgentError,
 } from '../agent-link-api.service';
 import { linkTableRef } from '../link-route';
+import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import { lookupKey, parseKeyObject, pkOfRouteFragment } from '../record-key';
 import { qualifiedTableName } from '../table-identity';
 import { RecordHop, recordHops } from '../record-hops';
@@ -83,6 +84,7 @@ type RecordState =
     IonCardTitle,
     IonCardContent,
     IonText,
+    LinkProblemComponent,
     RecordHopsComponent,
   ],
   templateUrl: './table-record.page.html',

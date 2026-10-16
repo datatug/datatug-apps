@@ -1,3 +1,5 @@
+import { SessionDetectiveRunComponent } from '../session-context/session-detective-run.component';
+import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { CommonModule, DOCUMENT } from '@angular/common';
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import {
@@ -10,7 +12,7 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, UrlTree } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -73,6 +75,8 @@ import { ValidationRunResultsComponent } from './validation-run-results.componen
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
 import { checkConsumers, inspectCheck } from './check-inspection';
+import { PublicDemoChecksComponent } from './public-demo-checks.component';
+import { isPublicChecksProject } from './public-demo-checks.service';
 
 const NEW_CHECK = (): CheckDefinition => ({
   id: '',
@@ -99,6 +103,7 @@ interface QueryInputRow extends CheckInput {
   styleUrl: './detective-pages.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SessionDetectiveRunComponent,
     CommonModule,
     FormsModule,
     RouterLink,
@@ -125,9 +130,12 @@ interface QueryInputRow extends CheckInput {
     ValidationRunResultsComponent,
     DetectiveDemoStarterComponent,
     DetectiveAiPanelComponent,
+    PublicDemoChecksComponent,
   ],
 })
 export class ChecksPageComponent {
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
+  protected readonly nativeSessionId = computed(() => this.sessionWorkspace ? this.params()?.get('sessionId') || '' : '');
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly client = inject(DetectiveClientService);
@@ -139,6 +147,9 @@ export class ChecksPageComponent {
     () =>
       this.scope.ref()?.storeId === 'github.com' &&
       this.scope.ref()?.projectId === DEMO_PROJECT_REF.projectId,
+  );
+  protected readonly publicChecks = computed(() =>
+    isPublicChecksProject(this.scope.ref()),
   );
   private readonly params = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
@@ -404,18 +415,20 @@ export class ChecksPageComponent {
       this.environment.set(active);
   });
 
+  protected pageRoute(href: string): UrlTree { return this.router.parseUrl(href); }
+  private sessionPageHref(page: string | string[]): string {
+    const id = this.nativeSessionId();
+    return projectPageHref(this.scope.ref(), id ? ['sessions', id, ...(typeof page === 'string' ? [page] : page)] : page);
+  }
   protected checksUrl(): string {
-    return projectPageHref(this.scope.ref(), 'checks');
+    return this.sessionPageHref('checks');
   }
   protected checkUrl(id: string): string {
-    return projectPageHref(this.scope.ref(), ['checks', id]);
+    return this.sessionPageHref(['checks', id]);
   }
   protected caseUrl(): string {
     const caseId = this.caseId();
-    return projectPageHref(
-      this.scope.ref(),
-      caseId ? ['detective', caseId] : 'detective',
-    );
+    return this.sessionPageHref(caseId ? ['detective', caseId] : 'detective');
   }
   protected queryUrl(id: string) {
     const url = projectPageHref(this.scope.ref(), ['query', id]);
@@ -1160,6 +1173,7 @@ export class ChecksPageComponent {
     const context = this.scope.context();
     const identity = this.pageIdentity();
     const check = this.current();
+    if (this.nativeSessionId()) { this.error.set('Use the native session input preview. Legacy execution is unavailable in a session.'); return; }
     if (!context || !check) return;
     if (this.caseId() && !this.caseCheckCompatible()) {
       this.error.set(
