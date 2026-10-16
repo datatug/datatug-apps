@@ -8,7 +8,11 @@ import { provideHttpClient } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
 import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
-import { ProjectQueryApiService } from './project-query-api.service';
+import {
+  ProjectQueryApiService,
+  QualifiedLocalReadVersionError,
+  qualifiedLocalReadVersionGuidance,
+} from './project-query-api.service';
 import { StoreApiService } from '../repo/store-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
 import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
@@ -206,11 +210,34 @@ describe('ProjectQueryApiService', () => {
             branch: 'feature',
           }),
         ),
-      ).rejects.toThrow(/DataTug CLI v0\.97\.0 or later.*restart/i);
+      ).rejects.toThrow(/update DataTug CLI to v0\.97\.0 or later.*restart/i);
       expect(storeApi.get).toHaveBeenCalledTimes(1);
       expect(http.get).not.toHaveBeenCalled();
     },
   );
+
+  it('types only the compatibility refusal for trusted UI guidance', async () => {
+    storeApi.get.mockReturnValue(of({ version: '0.93.0' }));
+    const request = firstValueFrom(
+      TestBed.inject(ProjectQueryApiService).connectionCatalog({
+        storeId: 'localhost:8989',
+        projectId: 'local-project',
+        branch: 'feature',
+      }),
+    );
+    await expect(request).rejects.toBeInstanceOf(
+      QualifiedLocalReadVersionError,
+    );
+    expect(
+      qualifiedLocalReadVersionGuidance(new QualifiedLocalReadVersionError()),
+    ).toMatch(/update DataTug CLI to v0\.97\.0 or later.*restart its agent/i);
+    expect(
+      qualifiedLocalReadVersionGuidance(
+        new Error('server included private response text'),
+      ),
+    ).toBeUndefined();
+    expect(http.get).not.toHaveBeenCalled();
+  });
 
   it('fails closed with update guidance if the local CLI version cannot be read', async () => {
     storeApi.get.mockReturnValue(throwError(() => new Error('offline')));
@@ -431,7 +458,9 @@ describe('ProjectQueryApiService qualified local runtime compatibility', () => {
       version: '0.93.0',
       uptimeMinutes: 3,
     });
-    await expect(request).rejects.toThrow(/v0\.97\.0 or later.*restart/i);
+    await expect(request).rejects.toThrow(
+      /update DataTug CLI to v0\.97\.0 or later.*restart/i,
+    );
     http.expectNone('http://localhost:8989/datatug/boards/all_boards');
     http.verify();
   });
@@ -448,7 +477,9 @@ describe('ProjectQueryApiService qualified local runtime compatibility', () => {
       TestBed.inject(ProjectQueryApiService).summary(ref),
     );
     http.expectOne('http://localhost:8989/datatug/agent-info').flush(info);
-    await expect(request).rejects.toThrow(/v0\.97\.0 or later.*restart/i);
+    await expect(request).rejects.toThrow(
+      /update DataTug CLI to v0\.97\.0 or later.*restart/i,
+    );
     http.expectNone('http://localhost:8989/datatug/projects/project_summary');
     http.verify();
   });

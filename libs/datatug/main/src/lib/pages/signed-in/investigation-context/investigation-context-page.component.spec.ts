@@ -11,7 +11,7 @@ import {
   MockSemanticApi,
   SemanticApiService,
 } from '@sneat/datatug-semantic';
-import { Observable, of, Subject } from 'rxjs';
+import { Observable, of, Subject, throwError } from 'rxjs';
 
 import { InvestigationContextPageComponent } from './investigation-context-page.component';
 import {
@@ -27,6 +27,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
+import { QualifiedLocalReadVersionError } from '../../../services/project/project-query-api.service';
 
 const project: IProjectContext = {
   ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
@@ -288,6 +289,49 @@ describe('InvestigationContextPageComponent', () => {
       expect(entityService.getAllEntities).toHaveBeenCalledWith(project.ref);
       const { entitySelect } = formEls();
       expect(optionTexts(entitySelect)).toEqual(['Customer', 'Invoice']);
+    });
+
+    it('renders trusted compatibility guidance for entity and field reads and clears it on new selections', () => {
+      entityService.getAllEntities.mockReturnValueOnce(
+        throwError(() => new QualifiedLocalReadVersionError()),
+      );
+      currentProjectChanges.next({
+        ref: { ...project.ref, branch: 'old' },
+      });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toMatch(
+        /update DataTug CLI to v0\.97\.0 or later.*restart its agent/i,
+      );
+
+      entityService.getAllEntities.mockReturnValueOnce(
+        of([{ id: 'Customer' }]),
+      );
+      currentProjectChanges.next({
+        ref: { ...project.ref, branch: 'new' },
+      });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).not.toContain('v0.97.0');
+
+      entityService.getEntity.mockReturnValueOnce(
+        throwError(() => new QualifiedLocalReadVersionError()),
+      );
+      (
+        component as unknown as {
+          onEntityChange(id: string): void;
+        }
+      ).onEntityChange('Customer');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).toMatch(
+        /update DataTug CLI to v0\.97\.0 or later.*restart its agent/i,
+      );
+
+      (
+        component as unknown as {
+          onEntityChange(id: string): void;
+        }
+      ).onEntityChange('Invoice');
+      fixture.detectChanges();
+      expect(fixture.nativeElement.textContent).not.toContain('v0.97.0');
     });
 
     it('cancels old project list and same-ID field reads when the branch changes', () => {

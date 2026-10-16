@@ -28,6 +28,7 @@ import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { signal } from '@angular/core';
 import { githubProjectAddressForRef } from '../../../../services/project/project-assets-read.service';
+import { qualifiedLocalReadVersionGuidance } from '../../../../services/project/project-query-api.service';
 import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.component';
 
 @Component({
@@ -304,10 +305,11 @@ export class BoardWidgetComponent {
         )
       )
         this.runError.set(
-          error instanceof Error &&
+          qualifiedLocalReadVersionGuidance(error) ??
+            (error instanceof Error &&
             error.message.startsWith('This board card changed.')
-            ? error.message
-            : 'The saved query could not run. Try again or open the saved query to inspect it.',
+              ? error.message
+              : 'The saved query could not run. Try again or open the saved query to inspect it.'),
         );
     } finally {
       if (

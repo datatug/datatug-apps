@@ -3,13 +3,14 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { Board } from '@datatug/board-models';
 import { QueriesService } from '../../../../queries/queries.service';
 import { PublicSqliteQueryService } from '../../../../queries/public-sqlite-query.service';
 import { QueryType } from '../../../../models/definition/query-def';
 
 import { BoardWidgetComponent } from './board-widget.component';
+import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
 
 type QueryStub = {
   id: string;
@@ -192,6 +193,74 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'This board card changed.',
     );
+  });
+
+  it('shows safe CLI compatibility guidance when board revalidation is blocked', async () => {
+    getQuery.mockReturnValue(
+      of({
+        id: 'demo/query',
+        title: 'Demo query',
+        request: { queryType: QueryType.SQL, text: 'select 1' },
+        connectionId: 'chinook-sqlite',
+      }),
+    );
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'localhost:8989',
+      projectId: 'demo',
+      projectApi: 'local',
+      branch: 'feature/demo',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      throwError(() => new QualifiedLocalReadVersionError()),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId: 'demo/query' } },
+    });
+    fixture.detectChanges();
+    await fixture.componentInstance.run();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toMatch(
+      /update DataTug CLI to v0\.97\.0 or later.*restart its agent/i,
+    );
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('keeps an unexpected board read error generic', async () => {
+    getQuery.mockReturnValue(
+      of({
+        id: 'demo/query',
+        title: 'Demo query',
+        request: { queryType: QueryType.SQL, text: 'select 1' },
+        connectionId: 'chinook-sqlite',
+      }),
+    );
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'localhost:8989',
+      projectId: 'demo',
+      projectApi: 'local',
+      branch: 'feature/demo',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      throwError(() => new Error('private server response: token abc123')),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId: 'demo/query' } },
+    });
+    fixture.detectChanges();
+    await fixture.componentInstance.run();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'The saved query could not run. Try again or open the saved query to inspect it.',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('abc123');
   });
 
   it('uses the pinned branch for public query reads and browser execution', async () => {
