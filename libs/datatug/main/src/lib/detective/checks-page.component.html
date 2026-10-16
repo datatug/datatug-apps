@@ -483,7 +483,7 @@
             @if (caseId()) {
               <p>
                 This run will be linked to
-                <a [routerLink]="caseUrl()">Case {{ caseId() }}</a
+                <a [routerLink]="pageRoute(caseUrl())">Case {{ caseId() }}</a
                 >.
               </p>
             }
@@ -1133,7 +1133,7 @@
             ><ion-card-content>
               <div class="section-heading">
                 <div>
-                  <ion-button fill="clear" [routerLink]="checksUrl()"
+                  <ion-button fill="clear" [routerLink]="pageRoute(checksUrl())"
                     >← All Checks</ion-button
                   >
                   <h1>{{ check.title }}</h1>
@@ -1219,7 +1219,7 @@
                     ) {
                       <ion-item
                         ><ion-label
-                          ><a [routerLink]="checkUrl(dependency.id)">{{
+                          ><a [routerLink]="pageRoute(checkUrl(dependency.id))">{{
                             dependency.title
                           }}</a>
                           · {{ dependency.id }} · version
@@ -1294,7 +1294,7 @@
                   <p>
                     @for (parent of consumers.checks; track parent.id) {
                       Check
-                      <a [routerLink]="checkUrl(parent.id)">{{ parent.id }}</a>
+                      <a [routerLink]="pageRoute(checkUrl(parent.id))">{{ parent.id }}</a>
                       ·
                     }
                     @for (
@@ -1320,6 +1320,9 @@
 
           <ion-card
             ><ion-card-content>
+              @if (nativeSessionId() && scope.ref()) {
+                <sneat-session-detective-run [check]="check" [project]="scope.ref()!" [sessionId]="nativeSessionId()" [environment]="environment()" [caseId]="caseId()" />
+              } @else {
               <h2>Run manually</h2>
               <p>
                 Choose the logical environment explicitly. A shared physical
@@ -1328,7 +1331,7 @@
               @if (caseId()) {
                 <p>
                   Run requested for Case
-                  <a [routerLink]="caseUrl()">{{ caseId() }}</a
+                  <a [routerLink]="pageRoute(caseUrl())">{{ caseId() }}</a
                   >.
                 </p>
                 @if (caseContext()) {
@@ -1428,6 +1431,7 @@
                 (click)="run()"
                 >{{ busy() ? 'Running…' : 'Run Check' }}</ion-button
               >
+              }
             </ion-card-content></ion-card
           >
 
@@ -1477,7 +1481,7 @@
           <ion-card
             ><ion-card-content role="alert"
               >Check {{ checkId() }} was not found.
-              <a [routerLink]="checksUrl()"
+              <a [routerLink]="pageRoute(checksUrl())"
                 >Back to catalog</a
               ></ion-card-content
             ></ion-card
@@ -1507,7 +1511,7 @@
             /></ion-item>
             <ion-list>
               @for (check of checks(); track check.id) {
-                <ion-item button [routerLink]="checkUrl(check.id)"
+                <ion-item button [routerLink]="pageRoute(checkUrl(check.id))"
                   ><ion-label
                     ><h2>{{ check.title }}</h2>
                     <p>

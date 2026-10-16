@@ -64,16 +64,30 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
   it('treats only the API unauthenticated sentinel and HTTP 401 as sign-in required', async () => {
     service.setActor('signed-in-before-test'); service.setActor('');
     api.capabilities.mockRejectedValueOnce(SneatApiNotAuthenticatedError);
-    await service.openProject(project);
+    await service.openProject({ ...project, storeId: 'github.com' });
     expect(service.authRequired()).toBe(true);
     expect(service.error()).toBe('');
     expect(api.list).toHaveBeenCalledTimes(1);
 
     service.setActor('signed-in-before-test'); service.setActor('');
     api.capabilities.mockRejectedValueOnce({ status: 401 });
-    await service.openProject(project);
+    await service.openProject({ ...project, storeId: 'github.com' });
     expect(service.authRequired()).toBe(true);
     expect(service.error()).toBe('');
+  });
+
+  it('requires agent reconnect for local 401 without cloud sign-in or dispatch', async () => {
+    service.setActor('reset-local');
+    api.capabilities.mockRejectedValueOnce({ status: 401 });
+    await service.openProject(project);
+    expect(service.agentReconnectRequired()).toBe(true);
+    expect(service.authRequired()).toBe(false);
+    expect(service.capabilities()).toBeUndefined();
+    expect(commands).toHaveLength(0);
+    await service.openProject(project);
+    expect(service.agentReconnectRequired()).toBe(false);
+    expect(service.capabilities()).toEqual(capabilities);
+    expect(commands).toHaveLength(0);
   });
 
   it('keeps forbidden, network, and unrelated string errors distinct from sign-in-required', async () => {
@@ -329,4 +343,22 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     expect(principalB.draft().composer).toBe('');
     expect(principalB.deviceViewKey('s1', 'chat-replies')).not.toBe(service.deviceViewKey('s1', 'chat-replies'));
   });
+  it('keeps two identity domains in one environment separate and never picks the first', async () => {
+    const embedded = { environmentId: 'uat', identityDomain: 'embedded-invoices' };
+    const embeddedSubject = { conceptId: 'embedded-invoice', fieldId: 'invoice_id', fieldMappingRef: 'embedded-key' };
+    service.capabilities.set({ ...capabilities, environments: [embedded, uat, prod], subjects: [...(capabilities.subjects || []), { id: 'embedded', label: 'Invoice', subject: embeddedSubject, scope: embedded, type: 'integer', shape: 'scalar' }] });
+    current = { ...current, bags: [...current.bags, { id: 'b3', sessionId: 's1', title: 'Invoices', scope: embedded, version: 1, entryIds: ['e3'] }],
+      entries: [...current.entries, { id: 'e3', sessionId: 's1', bagId: 'b3', subject: embeddedSubject, version: 1, currentRevisionId: 'r3' }],
+      revisions: [...current.revisions, { id: 'r3', entryId: 'e3', bagId: 'b3', subject: embeddedSubject, value: { schemaVersion: 1, kind: 'scalar', scalar: { type: 'integer', value: '999' } }, createdAt: '' }],
+      contextSet: { ...current.contextSet, slots: [...current.contextSet.slots, { scope: embedded, bagId: 'b3', bagVersion: 1, version: 1, entries: [{ entryId: 'e3', revisionId: 'r3' }] }] } };
+    await service.focus('s1');
+    expect(service.appliedForEnvironment('uat')).toBeUndefined();
+    expect(service.appliedFactsFor('s1', 'uat')).toEqual([]);
+    expect(service.bindingScopeKey('s1', 'uat')).toBeUndefined();
+    expect(service.appliedForEnvironment(uat)?.bagId).toBe('b1');
+    expect(service.appliedFactsFor('s1', uat)[0].value).toEqual({ type: 'integer', value: '1' });
+    expect(service.appliedFactsFor('s1', embedded)[0].value).toEqual({ type: 'integer', value: '999' });
+    expect(service.bindingScopeKey('s1', uat)).not.toBe(service.bindingScopeKey('s1', embedded));
+  });
+
 });

@@ -170,6 +170,8 @@ const ALLOWED: Readonly<Record<string, string>> = {
     'writes the address of a STORE page (/store/<id>), the back button of the environment page, not of a project',
   'libs/datatug/main/src/lib/pages/signed-in/project/project-page.component.html':
     'writes the address of a STORE page (/store/<id>), the back button of the project page, not of a project',
+  'libs/datatug/main/src/lib/session-context/session-detective-recovery-link.ts':
+    'builds the non-project native Check recovery route for a local agent store; it does not build or parse a project address',
 };
 
 function sourcesUnder(dir: string): string[] {

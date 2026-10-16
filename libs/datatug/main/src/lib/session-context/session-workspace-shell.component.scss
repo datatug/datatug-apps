@@ -5,6 +5,10 @@ ion-tab-button { flex: 0 0 auto; min-width: 110px; max-width: 220px; }
 ion-tab-button ion-label { overflow: hidden; text-overflow: ellipsis; }
 ion-tab-button small { display: block; color: var(--ion-color-medium); font-size: .7rem; }
 .session-summary { --min-height: 42px; font-size: .82rem; }
+.session-primary-actions, .session-secondary-actions { display: flex; flex-wrap: wrap; width: 100%; min-width: 0; gap: 4px; }
+.session-primary-actions > ion-button, .session-secondary-actions > ion-button { flex: 0 0 auto; min-height: 40px; }
+.session-primary-actions > .session-context-button { flex: 1 0 12rem; min-width: min(100%, 12rem); max-width: 100%; height: auto; --padding-top: 8px; --padding-bottom: 8px; }
+.session-context-button::part(native) { white-space: normal; text-align: left; }
 .session-summary strong { font-weight: 600; }
 .session-tab-close { flex: 0 0 auto; margin-left: -6px; }
 ion-modal.context-bag-drawer { --width: min(560px, 90vw); --height: 100%; --border-radius: 0; justify-content: flex-end; }
