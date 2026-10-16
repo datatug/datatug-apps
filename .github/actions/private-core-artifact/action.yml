@@ -1,0 +1,23 @@
+name: Private Core artifact verification token
+description: Read-only access to the exact Core release and its attestations
+inputs:
+  private-key:
+    description: SneatReleaser App private key
+    required: true
+outputs:
+  token:
+    description: Short-lived contents and attestations read token for Core only
+    value: ${{ steps.core.outputs.token }}
+runs:
+  using: composite
+  steps:
+    - name: Mint exact Core artifact read token
+      id: core
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: Iv23li26w131Kv6u3IdM
+        private-key: ${{ inputs.private-key }}
+        owner: datatug
+        repositories: datatug-core
+        permission-contents: read
+        permission-attestations: read

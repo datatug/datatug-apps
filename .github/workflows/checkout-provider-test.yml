@@ -12,6 +12,12 @@ jobs:
       GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
+      - name: Authenticate private Core artifact verification
+        id: core-artifact-token
+        uses: ./.github/actions/private-core-artifact
+        with:
+          private-key: ${{ secrets.SneatReleaser }}
+
       - uses: ./.github/actions/pnpm
       - name: Require dedicated TEST credentials
         env:
@@ -22,8 +28,11 @@ jobs:
           test -n "$TEST_EMAIL" && test -n "$TEST_PASSWORD" && test -n "$TEST_UID"
       - run: pnpm exec playwright install --with-deps chromium
       - run: pnpm nx run datatug-app:build:production
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
       - name: Authenticate and mount unpaid TEST checkout forms
         env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_CHECKOUT_PROVIDER_TEST: '1'
           DATATUG_CHECKOUT_PROVIDER_SERVE: '1'
           DATATUG_CHECKOUT_TEST_EMAIL: ${{ secrets.DATATUG_CHECKOUT_TEST_EMAIL }}
