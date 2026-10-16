@@ -905,7 +905,7 @@
             <ion-label class="ion-text-wrap"><ion-card-title data-workspace-heading>{{ queryPageTitle() }}</ion-card-title>
               <p>{{ isNativeSqlWorkspace() ? 'Native SQL query' : isNativeDtqlWorkspace() ? 'Saved DTQL query' : 'TugQL query' }}</p></ion-label>
               <ion-button slot="end" data-testid="workspace-run" aria-label="Run query" size="default" color="primary" fill="solid"
-                [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+                [disabled]="running() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
                 (click)="runQuery()">
                 @if (running()) { <ion-spinner name="dots" slot="start" /> }
                 Run
@@ -1307,9 +1307,12 @@
           <ion-item lines="none">
             <ion-label>Execution runtime</ion-label>
             <select aria-label="Execution runtime" [value]="selectedWorkingCopy()" (change)="selectWorkingCopy($any($event.target).value)">
-              <option value="project">Project runtime</option>
+              <option value="project" [selected]="selectedWorkingCopy() === 'project'">Project runtime</option>
+              @if (unavailableWorkingCopy()) {
+                <option [value]="selectedWorkingCopy()" [selected]="true">Selected working copy unavailable</option>
+              }
               @for (runtime of workingCopyOptions(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId">{{ runtime.title }} · working copy</option>
+                <option [value]="runtime.selectionId" [selected]="runtime.selectionId === selectedWorkingCopy()">{{ runtime.title }} · working copy</option>
               }
             </select>
           </ion-item>
@@ -1326,7 +1329,7 @@
       <ng-container *ngTemplateOutlet="executionRuntime" />
       <ion-item lines="none"><ion-buttons>
         <ion-button fill="solid" color="primary"
-          [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+          [disabled]="running() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
           (click)="runQuery()">
           @if (running()) { <ion-spinner name="dots" slot="start" /> }
           Run query
@@ -1772,6 +1775,18 @@
           </ion-buttons>
         </ion-item>
       }
+      @if (isTextQueryWorkspace() && displayedRecordset() && !resultChartVisible()) {
+        <div class="author-current-row-toggle">
+          <ion-button
+            size="small"
+            fill="clear"
+            data-testid="author-current-row-toggle"
+            [attr.aria-expanded]="currentRowPaneOpen()"
+            (click)="toggleCurrentRowPane()"
+            >{{ currentRowPaneOpen() ? '▾ Current row' : '▸ Current row' }}</ion-button
+          >
+        </div>
+      }
       @if (
         !resultChartVisible() && (resultTotalRows() > resultPageSize ||
         resultHasMore() ||
@@ -1806,6 +1821,7 @@
         class="result-author-data"
         [class.result-author-data-enabled]="isTextQueryWorkspace()"
         [class.result-chart-hidden]="resultChartVisible()"
+        [class.result-author-data-collapsed]="isTextQueryWorkspace() && !currentRowPaneOpen()"
       >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTextQueryWorkspace()">
         <sneat-datatug-results-grid
@@ -1813,7 +1829,7 @@
           [headerHeight]="64"
           [rowData]="resultGridRows()"
           exportName="query-result"
-          [rowSelection]="isTextQueryWorkspace() ? authorResultRowSelection : undefined"
+          [stateKey]="resultGridStateKey()"
           [rowClassRules]="isTextQueryWorkspace() ? authorResultRowClassRules : undefined"
           [loading]="resultPageLoading()"
           [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
@@ -1823,6 +1839,7 @@
         />
       </div>
       @if (isTextQueryWorkspace() && displayedRecordset(); as currentRecordset) {
+        @if (currentRowPaneOpen()) {
         <sneat-author-current-row
           [columns]="currentRecordset.columns"
           [row]="currentAuthorResultRow()?.row"
@@ -1834,11 +1851,12 @@
           (useAsFilter)="useAuthorResultValueAsFilter($event)"
           (copyRequested)="clearAuthorRowFilterStatus()"
         />
+        }
       }
       </div>
     </div>
-    @if (resultChartOptions().reason; as chartUnavailableReason) {
-      <p class="ion-padding-horizontal" role="status">Chart unavailable: {{ chartUnavailableReason }}</p>
+    @if (resultChartUnavailableText(); as chartUnavailable) {
+      <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }
     <div class="ion-padding-horizontal">
       <sneat-datatug-source-rights-notice

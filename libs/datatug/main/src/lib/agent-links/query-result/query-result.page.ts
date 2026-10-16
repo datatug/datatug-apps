@@ -40,6 +40,7 @@ import {
   gridCell,
   resultColumnDef,
 } from '../../components/results-grid/results-grid-columns';
+import { gridStateKey } from '../../components/results-grid/results-grid-state';
 import {
   Subject,
   Subscription,
@@ -82,6 +83,7 @@ import {
   StoredResult,
   VIEW_QUERY_PARAM,
   decodeRecordset,
+  pkFirstOrder,
   rerunBlocker,
   rerunRequest,
   resultDbIds,
@@ -237,11 +239,30 @@ export class QueryResultPageComponent {
       ? v
       : undefined;
   });
-  readonly gridColumns = computed<ColDef<GridRow>[]>(() =>
-    (this.recordset()?.columns ?? []).map((c, i) =>
-      resultColumnDef(c, `c${i}`),
-    ),
-  );
+  readonly gridColumns = computed<ColDef<GridRow>[]>(() => {
+    const columns = this.recordset()?.columns ?? [];
+    const meta = this.result()?.meta;
+    // Primary-key columns are identifiers whatever their name: their digits are never grouped.
+    const keyNames = new Set(
+      (meta?.columns ?? []).filter((c) => (c.pk ?? 0) > 0).map((c) => c.name),
+    );
+    const defs = columns.map((c, i) =>
+      resultColumnDef({ ...c, primaryKey: keyNames.has(c.name) }, `c${i}`),
+    );
+    // The columns as the recordset gives them; the primary key first only when the saved metadata names it.
+    const order = meta ? pkFirstOrder(meta, columns) : undefined;
+    return order ? order.map((i) => defs[i]) : defs;
+  });
+  /** Where the grid remembers its layout: ids only (the project and the stored result), never a value. */
+  readonly gridStateKey = computed(() => {
+    const meta = this.result()?.meta;
+    const ids = meta ? resultDbIds(meta) : undefined;
+    return gridStateKey({
+      project: ids?.project,
+      context: meta?.id,
+      kind: 'result',
+    });
+  });
   readonly gridRows = computed<GridRow[]>(() =>
     (this.recordset()?.rows ?? []).map((row) =>
       Object.fromEntries(row.map((cell, i) => [`c${i}`, gridCell(cell)])),
@@ -420,7 +441,9 @@ export class QueryResultPageComponent {
             return;
           }
           this.backHref.set(linkBackHref(storeId, ids.project));
-          const known = summary.environments?.some((e) => e.id === ids.env);
+          // An agent that lists no environments in the summary cannot say the result's one is missing.
+          const envs = summary.environments;
+          const known = envs === undefined || envs.some((e) => e.id === ids.env);
           this.navContext.selectResultProject(
             url,
             { ref, store: { ref: parseDatatugStoreRef(storeId) } },

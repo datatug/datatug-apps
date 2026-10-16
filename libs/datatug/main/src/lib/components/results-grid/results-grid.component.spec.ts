@@ -10,11 +10,44 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ResultsGridComponent } from './results-grid.component';
 import { resultColumnDef } from './results-grid-columns';
 
+/** A column as the grid's api hands it out. */
+const col = (
+  colId: string,
+  extra: { headerName?: string; visible?: boolean; pinned?: 'left' | null } = {},
+) => ({
+  getColId: () => colId,
+  getColDef: () => ({
+    field: colId,
+    headerName: extra.headerName ?? colId.toUpperCase(),
+    headerTooltip: `${colId} (type)`,
+  }),
+  isVisible: () => extra.visible ?? true,
+  getPinned: () => extra.pinned ?? null,
+});
+
 const api = {
   exportDataAsCsv: vi.fn(),
   exportDataAsExcel: vi.fn(),
   getDisplayedRowCount: vi.fn(() => 1),
-  getAllDisplayedColumns: vi.fn(() => [{ getColId: () => '__row' }, { getColId: () => 'c0' }]),
+  getAllDisplayedColumns: vi.fn(() => [
+    col('ag-Grid-SelectionColumn'),
+    col('__row'),
+    col('c0'),
+  ]),
+  getAllGridColumns: vi.fn(() => [col('__row'), col('c0'), col('c1')]),
+  getSelectedNodes: vi.fn((): unknown[] => []),
+  getColumnState: vi.fn(() => [
+    { colId: '__row', width: 64 },
+    { colId: 'c0', width: 120, hide: false, pinned: null, sort: 'asc', sortIndex: 0 },
+  ]),
+  applyColumnState: vi.fn(),
+  resetColumnState: vi.fn(),
+  autoSizeAllColumns: vi.fn(),
+  setColumnsVisible: vi.fn(),
+  setColumnsPinned: vi.fn(),
+  moveColumns: vi.fn(),
+  setGridOption: vi.fn(),
+  resetRowHeights: vi.fn(),
 };
 
 /** The grid as the component drives it: its inputs are recorded, the real grid does not render in this environment. */
@@ -30,6 +63,9 @@ class GridStubComponent {
   readonly defaultColDef = input<Record<string, unknown>>();
   readonly headerHeight = input<unknown>();
   readonly rowSelection = input<unknown>();
+  readonly selectionColumnDef = input<unknown>();
+  readonly rowHeight = input<unknown>();
+  readonly columnHoverHighlight = input<unknown>();
   readonly rowClassRules = input<unknown>();
   readonly loading = input<unknown>();
   readonly overlayNoRowsTemplate = input<unknown>();
@@ -37,6 +73,7 @@ class GridStubComponent {
   readonly autoSizeStrategy = input<unknown>();
   readonly enableCellTextSelection = input<unknown>();
   readonly tooltipShowDelay = input<unknown>();
+  readonly suppressMenuHide = input<unknown>();
   readonly sideBar = input<unknown>();
   readonly statusBar = input<unknown>();
   readonly rowGroupPanelShow = input<unknown>();
@@ -47,20 +84,32 @@ class GridStubComponent {
   readonly selectionChanged = output<unknown>();
   readonly cellFocused = output<unknown>();
   readonly modelUpdated = output<unknown>();
+  readonly newColumnsLoaded = output<unknown>();
+  readonly columnMoved = output<unknown>();
+  readonly columnVisible = output<unknown>();
+  readonly columnPinned = output<unknown>();
+  readonly sortChanged = output<unknown>();
+  readonly columnResized = output<unknown>();
 }
 
 async function mount(
   rows: Record<string, string | null>[] = [{ c0: '1' }, { c0: null }],
+  stateKey?: string,
+  columnCount = 1,
 ) {
   TestBed.overrideComponent(ResultsGridComponent, {
     remove: { imports: [AgGridAngular] },
     add: { imports: [GridStubComponent] },
   });
   const fixture = TestBed.createComponent(ResultsGridComponent);
-  fixture.componentRef.setInput('columnDefs', [
-    resultColumnDef({ name: 'N', type: 'integer' }, 'c0'),
-  ]);
+  fixture.componentRef.setInput(
+    'columnDefs',
+    Array.from({ length: columnCount }, (_, i) =>
+      resultColumnDef({ name: `N${i}`, type: 'integer' }, `c${i}`),
+    ),
+  );
   fixture.componentRef.setInput('rowData', rows);
+  if (stateKey) fixture.componentRef.setInput('stateKey', stateKey);
   fixture.detectChanges();
   await ensureAgGrid();
   await fixture.whenStable();
@@ -110,6 +159,9 @@ describe('ResultsGridComponent', () => {
       });
       expect(def).not.toHaveProperty('enableRowGroup');
       expect(def).not.toHaveProperty('enablePivot');
+      // The column menu button and the sort indicator are reachable on every header, not only on hover.
+      expect(grid?.suppressMenuHide()).toBe(true);
+      expect(def).toMatchObject({ unSortIcon: true });
       expect(grid?.enableCellTextSelection()).toBe(true);
       expect(grid?.autoSizeStrategy()).toEqual({ type: 'fitCellContents' });
       const ids = (grid?.columnDefs() as { colId: string }[]).map(
@@ -141,6 +193,7 @@ describe('ResultsGridComponent', () => {
       expect(api.exportDataAsCsv).toHaveBeenCalledWith({
         fileName: 'results.csv',
         columnKeys: ['c0'],
+        processCellCallback: expect.any(Function),
       });
       cmp.exportExcel();
       expect(api.exportDataAsExcel).not.toHaveBeenCalled();
@@ -228,6 +281,276 @@ describe('ResultsGridComponent', () => {
       expect(api.exportDataAsExcel).toHaveBeenCalledWith({
         fileName: 'results.xlsx',
       });
+    });
+  });
+});
+
+describe('ResultsGridComponent layout, selection and chooser', () => {
+  const community = {
+    community: async () => ({ registerAgGridCommunity: () => undefined }),
+    enterprise: async () => {
+      throw new Error('the enterprise modules must not load without a key');
+    },
+  };
+  const KEY = 'datatug.grid.v1:demo:q1:query';
+  const ready = async (stateKey?: string, columnCount = 1) => {
+    await ensureAgGrid(community);
+    const m = await mount(undefined, stateKey, columnCount);
+    (m.grid as unknown as GridStubComponent).gridReady.emit({ api });
+    m.fixture.detectChanges();
+    return m;
+  };
+  const click = (el: HTMLElement, testId: string) =>
+    (el.querySelector(`[data-testid="${testId}"]`) as HTMLElement).click();
+
+  beforeEach(() => {
+    resetAgGridSetupForTests();
+    vi.clearAllMocks();
+    localStorage.clear();
+    api.getSelectedNodes.mockReturnValue([]);
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    TestBed.resetTestingModule();
+    resetAgGridSetupForTests();
+    localStorage.clear();
+  });
+
+  it('turns on community multi-row checkbox selection, where a click selects nothing', async () => {
+    const { grid } = await ready();
+    expect(grid?.rowSelection()).toMatchObject({
+      mode: 'multiRow',
+      checkboxes: true,
+      headerCheckbox: true,
+      enableClickSelection: false,
+    });
+    expect(grid?.columnHoverHighlight()).toBe(true);
+  });
+
+  it('exports all rows with no selection and only the selected rows with one', async () => {
+    const { el, fixture } = await ready();
+    click(el, 'results-grid-export-csv');
+    expect(api.exportDataAsCsv.mock.calls[0][0]).not.toHaveProperty('onlySelected');
+    api.getSelectedNodes.mockReturnValue([{ rowIndex: 0, data: { c0: '1' } }]);
+    fixture.componentInstance.onSelectionChanged({} as never);
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="results-grid-export-csv"]')?.textContent).toContain('CSV selected');
+    expect(el.querySelector('[data-testid="results-grid-count"]')?.textContent).toContain('1 selected');
+    click(el, 'results-grid-export-csv');
+    const params = api.exportDataAsCsv.mock.calls[1][0];
+    expect(params).toMatchObject({ onlySelected: true, columnKeys: ['c0'] });
+    // The cell text is exported as it is: no grouping, a NULL as an empty field.
+    expect(params.processCellCallback({ value: '1234567' })).toBe('1234567');
+    expect(params.processCellCallback({ value: null })).toBe('');
+  });
+
+  it('copies the selected rows as tab-separated text with a header, in screen order', async () => {
+    const writeText = vi.fn(async () => undefined);
+    vi.stubGlobal('navigator', { clipboard: { writeText } });
+    const { el, fixture, cmp } = await ready();
+    expect(
+      (el.querySelector('[data-testid="results-grid-copy"]') as HTMLButtonElement).disabled,
+    ).toBe(true);
+    api.getSelectedNodes.mockReturnValue([
+      { rowIndex: 1, data: { c0: 'a\tb' } },
+      { rowIndex: 0, data: { c0: null } },
+      { rowIndex: null, data: { c0: 'hidden by a filter' } },
+    ]);
+    cmp.onSelectionChanged({} as never);
+    fixture.detectChanges();
+    await cmp.copySelected();
+    expect(writeText).toHaveBeenCalledWith('C0\n\n"a\tb"');
+    fixture.detectChanges();
+    expect(el.querySelector('[data-testid="results-grid-status"]')?.textContent).toContain('Copied 2 rows');
+  });
+
+  it('names a copy failure and never puts the text in the message', async () => {
+    vi.stubGlobal('navigator', {
+      clipboard: { writeText: vi.fn(async () => { throw new Error('secret-cell-text'); }) },
+    });
+    const { el, fixture, cmp } = await ready();
+    api.getSelectedNodes.mockReturnValue([{ rowIndex: 0, data: { c0: 'secret-cell-text' } }]);
+    await cmp.copySelected();
+    fixture.detectChanges();
+    const status = el.querySelector('[data-testid="results-grid-status"]')?.textContent ?? '';
+    expect(status).toContain('Copy failed');
+    expect(status).not.toContain('secret');
+    vi.stubGlobal('navigator', {});
+    await cmp.copySelected();
+    expect(cmp.status()).toContain('Copy failed');
+  });
+
+  it('asks for a selection when copying with none', async () => {
+    const { cmp } = await ready();
+    await cmp.copySelected();
+    expect(cmp.status()).toContain('select rows');
+  });
+
+  it('autosizes all columns and remembers the result', async () => {
+    const { el } = await ready(KEY);
+    vi.useFakeTimers();
+    click(el, 'results-grid-autosize');
+    expect(api.autoSizeAllColumns).toHaveBeenCalled();
+    vi.advanceTimersByTime(700);
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+    expect(saved.cols.map((c: { colId: string }) => c.colId)).toEqual(['c0']);
+  });
+
+  it('toggles the density, shows it, and remembers it', async () => {
+    const { el, grid, fixture } = await ready(KEY);
+    vi.useFakeTimers();
+    expect(grid?.rowHeight()).toBeUndefined();
+    click(el, 'results-grid-density');
+    fixture.detectChanges();
+    expect(grid?.rowHeight()).toBe(28);
+    expect(api.setGridOption).toHaveBeenCalledWith('rowHeight', 28);
+    expect(api.resetRowHeights).toHaveBeenCalled();
+    vi.advanceTimersByTime(10);
+    const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
+    expect(saved.density).toBe('compact');
+    // Density alone does not freeze the fitted widths.
+    expect(saved.cols).toBeUndefined();
+    click(el, 'results-grid-density');
+    fixture.detectChanges();
+    expect(grid?.rowHeight()).toBeUndefined();
+  });
+
+  it('starts compact when the remembered state says so', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, density: 'compact' }));
+    const { grid, cmp } = await ready(KEY);
+    expect(cmp.density()).toBe('compact');
+    expect(grid?.rowHeight()).toBe(28);
+    // No remembered widths: the columns are fitted to content.
+    expect(grid?.autoSizeStrategy()).toEqual({ type: 'fitCellContents' });
+  });
+
+  it('remembers a moved or resized column and restores it on the next open', async () => {
+    const first = await ready(KEY);
+    vi.useFakeTimers();
+    (first.grid as unknown as GridStubComponent).columnMoved.emit({});
+    vi.advanceTimersByTime(400);
+    vi.useRealTimers();
+    const text = localStorage.getItem(KEY) ?? '';
+    expect(JSON.parse(text)).toMatchObject({ v: 1, sig: expect.any(String) });
+    expect(text).not.toMatch(/[0-9]+ rows|Filter/);
+    TestBed.resetTestingModule();
+    resetAgGridSetupForTests();
+    vi.clearAllMocks();
+    const second = await ready(KEY);
+    expect(api.applyColumnState).toHaveBeenCalledWith({
+      state: [expect.objectContaining({ colId: 'c0', width: 120, sort: 'asc' })],
+      applyOrder: true,
+    });
+    // The remembered widths replace the fit to content.
+    expect(second.grid?.autoSizeStrategy()).toBeUndefined();
+  });
+
+  it('does not save a fit to content or the grid\'s own events while a layout is applied', async () => {
+    const { grid } = await ready(KEY);
+    vi.useFakeTimers();
+    (grid as unknown as GridStubComponent).columnResized.emit({ finished: true, source: 'autosizeColumns' });
+    (grid as unknown as GridStubComponent).columnResized.emit({ finished: false, source: 'uiColumnResized' });
+    vi.advanceTimersByTime(1000);
+    expect(localStorage.getItem(KEY)).toBeNull();
+    (grid as unknown as GridStubComponent).columnResized.emit({ finished: true, source: 'uiColumnResized' });
+    vi.advanceTimersByTime(400);
+    expect(localStorage.getItem(KEY)).not.toBeNull();
+  });
+
+  it('ignores a remembered layout of other columns', async () => {
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({ v: 1, density: 'comfortable', sig: 'deadbeef', cols: [{ colId: 'c0' }] }),
+    );
+    const { grid } = await ready(KEY);
+    expect(api.applyColumnState).not.toHaveBeenCalled();
+    expect(grid?.autoSizeStrategy()).toEqual({ type: 'fitCellContents' });
+  });
+
+  it('stores nothing without a key, and survives a storage that throws', async () => {
+    const none = await ready();
+    vi.useFakeTimers();
+    (none.grid as unknown as GridStubComponent).columnMoved.emit({});
+    vi.advanceTimersByTime(1000);
+    expect(localStorage.length).toBe(0);
+    vi.useRealTimers();
+    const boom = () => {
+      throw new Error('blocked');
+    };
+    vi.stubGlobal('localStorage', { getItem: boom, setItem: boom, length: 0 });
+    TestBed.resetTestingModule();
+    resetAgGridSetupForTests();
+    const blocked = await ready(KEY);
+    vi.useFakeTimers();
+    (blocked.grid as unknown as GridStubComponent).sortChanged.emit({});
+    vi.advanceTimersByTime(1000);
+    expect(blocked.cmp.density()).toBe('comfortable');
+  });
+
+  it('resets the columns: forgets the layout, keeps the density, fits again', async () => {
+    localStorage.setItem(KEY, JSON.stringify({ v: 1, density: 'compact', sig: 'x', cols: [{ colId: 'c0' }] }));
+    const { el, fixture } = await ready(KEY);
+    vi.useFakeTimers();
+    click(el, 'results-grid-columns-button');
+    fixture.detectChanges();
+    click(el, 'results-grid-reset-columns');
+    expect(api.resetColumnState).toHaveBeenCalled();
+    expect(api.autoSizeAllColumns).toHaveBeenCalled();
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({ v: 1, density: 'compact' });
+    // The grid's own events after a reset do not bring the old layout back.
+    (fixture.componentInstance as unknown as { onLayoutChanged(): void }).onLayoutChanged();
+    vi.advanceTimersByTime(1000);
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({ v: 1, density: 'compact' });
+  });
+
+  describe('column chooser', () => {
+    const open = async () => {
+      const m = await ready();
+      click(m.el, 'results-grid-columns-button');
+      m.fixture.detectChanges();
+      return m;
+    };
+    it('lists the data columns (not the row number) and closes on Escape and outside clicks', async () => {
+      const { el, fixture, cmp } = await open();
+      const items = el.querySelectorAll('.dt-rg-chooser-item');
+      expect(items.length).toBe(1);
+      expect(items[0].textContent).toContain('C0');
+      expect(
+        el.querySelector('[data-testid="results-grid-columns-button"]')?.getAttribute('aria-expanded'),
+      ).toBe('true');
+      document.body.click();
+      fixture.detectChanges();
+      expect(cmp.chooserOpen()).toBe(false);
+      click(el, 'results-grid-columns-button');
+      expect(cmp.chooserOpen()).toBe(true);
+      cmp.closeChooser();
+      expect(cmp.chooserOpen()).toBe(false);
+    });
+    it('moves a column next to its neighbour in the grid order, and not past the ends', async () => {
+      const { cmp } = await ready(undefined, 2);
+      expect(cmp.chooserColumns().map((c) => c.colId)).toEqual(['c0', 'c1']);
+      cmp.moveColumn('c1', -1);
+      // The index is that of the neighbour among all the grid's columns (the row number is first).
+      expect(api.moveColumns).toHaveBeenCalledWith(['c1'], 1);
+      cmp.moveColumn('c0', 1);
+      expect(api.moveColumns).toHaveBeenLastCalledWith(['c0'], 2);
+      api.moveColumns.mockClear();
+      cmp.moveColumn('c0', -1);
+      cmp.moveColumn('c1', 1);
+      expect(api.moveColumns).not.toHaveBeenCalled();
+    });
+
+    it('shows, hides, pins and moves columns through the community column api', async () => {
+      const { cmp } = await ready();
+      cmp.setColumnVisible('c0', false);
+      expect(api.setColumnsVisible).toHaveBeenCalledWith(['c0'], false);
+      cmp.showAllColumns();
+      expect(api.setColumnsVisible).toHaveBeenCalledWith(['c0'], true);
+      cmp.togglePinned('c0');
+      expect(api.setColumnsPinned).toHaveBeenCalledWith(['c0'], 'left');
+      cmp.moveColumn('c0', 1);
+      expect(api.moveColumns).not.toHaveBeenCalled();
     });
   });
 });

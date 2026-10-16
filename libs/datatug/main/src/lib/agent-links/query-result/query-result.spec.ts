@@ -8,6 +8,7 @@ import {
   decodeRecordset,
   decodeStoredResult,
   parseDatatugRef,
+  pkFirstOrder,
   relatedRows,
   rerunBlocker,
   rerunRequest,
@@ -459,5 +460,49 @@ describe('classifyResultError', () => {
       ),
     ).toBe('read-failed');
     expect(classifyResultError(new Error('x'))).toBe('read-failed');
+  });
+});
+
+describe('pkFirstOrder', () => {
+  const metaOf = (
+    columns: { name: string; pk: number | null; instance?: string }[],
+  ) =>
+    ({
+      columns: columns.map((c) => ({
+        name: c.name,
+        pk: c.pk,
+        source: c.instance
+          ? { instance: c.instance, schema: '', relation: 'T', column: c.name }
+          : null,
+      })),
+    }) as unknown as Parameters<typeof pkFirstOrder>[0];
+  const names = (...n: string[]) => n.map((name) => ({ name }));
+
+  it('puts the key columns first by their place in the key, keeping the other columns in the recordset order', () => {
+    const meta = metaOf([
+      { name: 'Name', pk: null, instance: 'root' },
+      { name: 'B', pk: 2, instance: 'root' },
+      { name: 'City', pk: null, instance: 'root' },
+      { name: 'A', pk: 1, instance: 'root' },
+    ]);
+    expect(pkFirstOrder(meta, names('Name', 'B', 'City', 'A'))).toEqual([3, 1, 0, 2]);
+  });
+  it('moves nothing when the key is already first, there is none, or the metadata is not the recordset', () => {
+    const meta = metaOf([
+      { name: 'Id', pk: 1, instance: 'root' },
+      { name: 'Name', pk: null, instance: 'root' },
+    ]);
+    expect(pkFirstOrder(meta, names('Id', 'Name'))).toBeUndefined();
+    expect(pkFirstOrder(metaOf([{ name: 'Id', pk: null }]), names('Id'))).toBeUndefined();
+    expect(pkFirstOrder(meta, names('Name', 'Id'))).toBeUndefined();
+    expect(pkFirstOrder(meta, names('Id'))).toBeUndefined();
+  });
+  it('leaves a result with the keys of several tables as it is', () => {
+    const meta = metaOf([
+      { name: 'Name', pk: null, instance: 'root' },
+      { name: 'Id', pk: 1, instance: 'root' },
+      { name: 'CustomerId', pk: 1, instance: 'c' },
+    ]);
+    expect(pkFirstOrder(meta, names('Name', 'Id', 'CustomerId'))).toBeUndefined();
   });
 });

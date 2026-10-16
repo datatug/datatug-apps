@@ -10,6 +10,9 @@ const sourcePageSize = largeRun ? 500 : 25;
 const visibleSourcePageSize = Math.min(100, sourcePageSize);
 const alphaRowIndex = rowCount % 2;
 const queryId = 'large-invoices-country-join';
+// aria-rowcount of one result page: the rows, the column header row and the floating-filter row of the shared results
+// grid (#359), which AG Grid counts as a row too.
+const gridAriaRowCount = (rows: number): string => String(rows + 2);
 
 function startOvdb(): Promise<{
   server: Server;
@@ -193,7 +196,7 @@ columns:
     const resultGrid = page.locator('ag-grid-angular');
     const accessibleGrid = resultGrid.getByRole('grid');
     await expect(pages).toContainText('Rows 1–100');
-    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', '101');
+    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', gridAriaRowCount(100));
     await expect(
       resultGrid.locator(
         `.ag-row[row-index="${alphaRowIndex}"] [col-id="result_2"]`,
@@ -207,7 +210,7 @@ columns:
     ovdb.setCountryName('Gamma');
     await pages.getByText('Next').click();
     await expect(pages).toContainText('Rows 101–200');
-    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', '101');
+    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', gridAriaRowCount(100));
     await expect(
       resultGrid.locator(
         `.ag-row[row-index="${alphaRowIndex}"] [col-id="result_2"]`,
@@ -247,7 +250,7 @@ columns:
     await expect(pages).toContainText(`Rows 1–100 of ${rowCount}`, {
       timeout: 90_000,
     });
-    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', '101');
+    await expect(accessibleGrid).toHaveAttribute('aria-rowcount', gridAriaRowCount(100));
     await expect(
       resultGrid.locator(
         `.ag-row[row-index="${alphaRowIndex}"] [col-id="result_2"]`,

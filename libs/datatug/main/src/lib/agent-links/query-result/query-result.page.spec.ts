@@ -177,6 +177,10 @@ describe('QueryResultPageComponent', () => {
     });
     expect(m.text()).toContain('2 saved rows');
     expect(m.text()).toContain('more rows exist');
+    // The grid remembers its layout under a key of ids only: the project and the stored result.
+    expect(m.page.gridStateKey()).toMatch(
+      /^datatug\.grid\.v1:demo:t4:result$/,
+    );
   });
 
   it('selects the project of the result as the current one, with its environment', async () => {
@@ -204,6 +208,17 @@ describe('QueryResultPageComponent', () => {
       expect.any(String),
       expect.objectContaining({ ref: { projectId: 'demo', storeId: STORE } }),
       undefined,
+    );
+  });
+
+  it('selects the environment of the result when the agent lists no environments to check it against', async () => {
+    const m = mount('t4', {}, of({ id: 'demo' }));
+    answer(m);
+    await m.render();
+    expect(m.selectResultProject).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ ref: { projectId: 'demo', storeId: STORE } }),
+      'local',
     );
   });
 

@@ -25,7 +25,7 @@ import {
   signal,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { By } from '@angular/platform-browser';
+import { By, Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
@@ -1172,6 +1172,51 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     });
   });
 
+  it('keeps the Current row on the focused or clicked row, never on the checked rows, and remembers the grid layout under an id-only key', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const rawRows = [
+      [{ type: 'integer', value: '121' }],
+      [{ type: 'integer', value: '143' }],
+    ] as const;
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: rawRows,
+      },
+    } as FederatedQueryResult);
+    await component.changeRelatedResultSet('affiliations');
+    const rows = component.resultGridRows();
+    const setSelected = vi.fn();
+    const api = {
+      getDisplayedRowAtIndex: (index: number) => ({
+        data: rows[index],
+        setSelected,
+      }),
+      refreshCells: vi.fn(),
+      forEachNode: vi.fn(),
+    };
+    component.authorResultRowClicked({ api, data: rows[0] } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[0]);
+    // Ticking the checkbox of the second row selects it for export and copy; the Current row stays.
+    component.authorResultSelectionChanged({
+      api,
+      selectedNodes: [{ data: rows[1], isSelected: () => true }],
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[0]);
+    // Moving the focus moves the Current row without checking anything.
+    component.authorResultCellFocused({ rowIndex: 1, api } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
+    expect(setSelected).not.toHaveBeenCalled();
+
+    const key = component.resultGridStateKey();
+    expect(key).toMatch(
+      /^datatug\.grid\.v1:[^:]+:[^:]+:(query|source|result)$/,
+    );
+    expect(key).not.toContain('143');
+    expect(key).not.toContain('InvoiceId');
+  });
+
   it('keeps the inspected marker and sheet on the latest raw row, closes on replacement and restores caller focus', async () => {
     component = await createTugQLAuthor(authorSource);
     const rawRows = [
@@ -1203,10 +1248,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       forEachNode: (visit: (node: (typeof nodes)[number]) => void) =>
         nodes.forEach(visit),
     };
-    component.authorResultSelectionChanged({
-      api,
-      selectedNodes: [{ data: rows[0], isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ api, data: rows[0] } as never);
     component.authorResultCellFocused({ rowIndex: 1, api } as never);
     component.authorResultCellFocused({ rowIndex: null, api } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
@@ -1541,9 +1583,7 @@ select i.InvoiceId
     ).toEqual(['Location']);
     const gridRow = component.resultGridRows()[0];
     expect(gridRow).toEqual({ result_0: 'related-value' });
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: gridRow, isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: gridRow } as never);
     expect(component.authorResultSnapshotKey()).toBe(relatedSnapshotKey);
     expect(component.currentAuthorResultRow()?.recordset).toBe(
       component.displayedRecordset(),
@@ -1613,9 +1653,7 @@ select i.InvoiceId
     component.runResult.set(result);
     await component.changeRelatedResultSet('affiliations');
     const gridRow = component.resultGridRows()[0];
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: gridRow, isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: gridRow } as never);
     const selection = component.currentAuthorResultRow();
     expect(selection?.row).toBe(row);
     const editor = TestBed.inject(QueryEditorStateService);
@@ -1671,9 +1709,7 @@ select i.InvoiceId
     expect(component.resultTotalRowsKnown()).toBe(true);
 
     const rows = component.resultGridRows();
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: rows[0], isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: rows[0] } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
 
     component.authorResultCellFocused({
@@ -1682,9 +1718,7 @@ select i.InvoiceId
     } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(secondRaw);
 
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: rows[0], isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: rows[0] } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
 
     dispatchPageResponse.mockResolvedValue([pageRaw as never]);
@@ -1817,9 +1851,7 @@ select i.InvoiceId
     } as Awaited<ReturnType<typeof service.openLocalResult>>);
     await component.openHistoricalResult('same-result');
     const firstGridRow = component.resultGridRows()[0];
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: firstGridRow, isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: firstGridRow } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRow);
 
     vi.mocked(service.openLocalResult).mockResolvedValueOnce({
@@ -3821,11 +3853,129 @@ select (
     runFixture.detectChanges();
     await Promise.resolve();
     runFixture.detectChanges();
-    expect(component.selectedWorkingCopy()).toBe('project');
+    expect(component.selectedWorkingCopy()).toBe('runtime-18');
+    expect(component.unavailableWorkingCopy()).toBe(true);
     complete(result);
     await runFixture.whenStable();
     expect(component.runResult()).toBeUndefined();
     expect(component.workingCopyOptions()).toEqual([]);
+  });
+
+  it('applies a Board runtime hint after live options load and keeps an unavailable hint fenced', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+    };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+      availableWorkingCopies: ReturnType<typeof vi.fn>;
+    };
+    dispatcher.availableWorkingCopies.mockResolvedValue([{ selectionId: 'runtime-17', title: 'Edited copy' }]);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(component.selectedWorkingCopy()).toBe('runtime-17');
+    expect(component.unavailableWorkingCopy()).toBe(false);
+    expect(dispatcher.availableWorkingCopies).toHaveBeenCalled();
+
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'missing-runtime' }));
+    dispatcher.availableWorkingCopies.mockResolvedValue([]);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(component.selectedWorkingCopy()).toBe('missing-runtime');
+    expect(component.unavailableWorkingCopy()).toBe(true);
+    component.runQuery();
+    expect(dispatchStart).not.toHaveBeenCalled();
+    component.selectWorkingCopy('project');
+    expect(component.unavailableWorkingCopy()).toBe(false);
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'project' }));
+    expect(component.selectedWorkingCopy()).toBe('project');
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: definition.id, def: definition } as IQueryState);
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-18' }));
+    expect(editor.reloadQuery).toHaveBeenCalledWith(definition.id);
+  });
+
+  it('does not apply a late Board runtime lookup after the route explicitly chooses project runtime', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+    };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+      availableWorkingCopies: ReturnType<typeof vi.fn>;
+    };
+    let finish!: (options: { selectionId: string; title: string }[]) => void;
+    dispatcher.availableWorkingCopies.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    runFixture.detectChanges();
+    await vi.waitFor(() => expect(dispatcher.availableWorkingCopies).toHaveBeenCalled());
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'project' }));
+    finish([{ selectionId: 'runtime-17', title: 'Old copy' }]);
+    await runFixture.whenStable();
+    expect(component.selectedWorkingCopy()).toBe('project');
+    expect(component.workingCopyOptions()).toEqual([]);
+  });
+
+  it('cancels a pending project run when the same query route chooses a working copy', async () => {
+    const definition: IQueryDef = { ...queryDef, parameters: [] };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'project' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    const pending = new Subject<RunQueryResponse>();
+    localResultFixture.mockReturnValue(pending);
+
+    component.runQuery();
+    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+      target: expect.objectContaining({ kind: 'local-agent' }),
+    }));
+    expect(component.running()).toBe(true);
+
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    expect(component.selectedWorkingCopy()).toBe('runtime-17');
+    expect(component.running()).toBe(false);
+    expect(dispatchCancel).toHaveBeenCalled();
+
+    pending.next({
+      recordset: { columns: [{ name: 'Name', type: 'string' }], rows: [[{ type: 'string', value: 'stale' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'Project agent', queryId: definition.id, mode: 'live',
+        observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
+    });
+    pending.complete();
+    await runFixture.whenStable();
+    expect(component.running()).toBe(false);
+    expect(component.runResult()).toBeUndefined();
+  });
+
+  it('keeps a manual runtime and unsaved draft through normalized URL, environment and branch params', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\n' } as ITextQueryRequest,
+    };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+      availableWorkingCopies: ReturnType<typeof vi.fn>;
+    };
+    dispatcher.availableWorkingCopies.mockResolvedValue([
+      { selectionId: 'runtime-17', title: 'Old copy' }, { selectionId: 'runtime-18', title: 'New copy' },
+    ]);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    component.selectWorkingCopy('runtime-18');
+    const draft = { ...component.queryState, request: { queryType: QueryType.DTQL, text: 'edited draft' } as ITextQueryRequest };
+    component.queryState = draft;
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: definition.id, def: definition } as IQueryState);
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17', editor: 'text' }));
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-18', editor: 'text' }));
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-18', branch: 'work' }));
+    params.next(convertToParamMap({ id: definition.id, env: 'dev', runtime: 'runtime-18', branch: 'work' }));
+    expect(component.selectedWorkingCopy()).toBe('runtime-18');
+    expect(component.queryState).toBe(draft);
+    expect(editor.reloadQuery).not.toHaveBeenCalled();
   });
 
   it.each(['resolve', 'reject'])(
@@ -6285,6 +6435,7 @@ select (
                     ),
                   updateQueryState: vi.fn(),
                   openQuery: vi.fn(),
+                  reloadQuery: vi.fn(),
                   openAuthorizedQuery: vi.fn(),
                   newQuery: vi.fn(),
                   getQueryState: vi.fn(),
@@ -6846,6 +6997,191 @@ select (
       expect(created.savedResultBanner()).toMatchObject({ kind: 'shown', mode: 'saved' });
     });
 
+    it.each([
+      ['current', [{ selectionId: 'runtime-17', title: 'Edited copy' }], false],
+      ['closed', [], true],
+    ] as const)(
+      'keeps saved rows historical while a %s Board runtime hint is validated',
+      async (_state, options, unavailable) => {
+        const params = new Subject<ReturnType<typeof convertToParamMap>>();
+        const { created, opener } = await openerWith(
+          editorReadyResult({ query: { kind: 'saved', savedQueryId: 'folder/q1' } }),
+          { project: of(project), queryParams: params },
+        );
+        created.envId = 'local';
+        const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+          availableWorkingCopies: ReturnType<typeof vi.fn>;
+        };
+        dispatcher.availableWorkingCopies.mockResolvedValue(options);
+        params.next(convertToParamMap({ result: 'rid-runtime', env: 'local', runtime: 'runtime-17' }));
+        const definition: IQueryDef = {
+          ...queryDef, id: 'folder/q1', connectionId: 'logical-ledger-v7', parameters: [],
+          request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 10\n' } as ITextQueryRequest,
+        };
+        opener.onQueryEditorStateChanged({
+          currentQueryId: definition.id,
+          activeQueries: [{ id: definition.id, queryType: QueryType.DTQL,
+            request: definition.request, def: definition, isLoading: false }],
+        });
+        runFixture.detectChanges();
+        await runFixture.whenStable();
+        expect(created.selectedWorkingCopy()).toBe('runtime-17');
+        expect(created.unavailableWorkingCopy()).toBe(unavailable);
+        expect(dispatcher.availableWorkingCopies).toHaveBeenCalledWith(expect.objectContaining({
+          definition, environment: 'local',
+        }));
+        expect(created.runResult()?.provenance.mode).toBe('snapshot');
+        expect(created.savedResultBanner()).toMatchObject({ kind: 'shown', mode: 'saved' });
+        expect(dispatchStart).not.toHaveBeenCalled();
+
+        if (unavailable) {
+          created.runQuery();
+          expect(dispatchStart).not.toHaveBeenCalled();
+          expect(created.runResult()?.provenance.mode).toBe('snapshot');
+          return;
+        }
+        const edited = {
+          ...created.runResult(),
+          provenance: { source: 'Edited copy', queryId: definition.id, mode: 'live' as const,
+            observedAt: '2026-10-16T00:00:00Z' },
+        } as FederatedQueryResult;
+        dispatchOvdbResponse.mockResolvedValue(edited);
+        created.runQuery();
+        expect(created.runError()).toBeUndefined();
+        expect(created.queryId).toBe(definition.id);
+        expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+          runtimeSelectionId: 'runtime-17', definition,
+        }));
+        await runFixture.whenStable();
+        expect(created.runResult()?.provenance.mode).toBe('live');
+      },
+    );
+
+    it('keeps a result draft and explicit runtime choice through same-route normalization', async () => {
+      const params = new Subject<ReturnType<typeof convertToParamMap>>();
+      const { created } = await openerWith(editorReadyResult(), { project: of(project), queryParams: params });
+      params.next(convertToParamMap({ result: 'rid-draft', runtime: 'runtime-17', env: 'local' }));
+      const editor = TestBed.inject(QueryEditorStateService);
+      expect(editor.newQuery).toHaveBeenCalledOnce();
+      const draft = { ...created.queryState, id: 'test-id', isNew: true,
+        request: { queryType: QueryType.DTQL, text: 'unsaved edit' } as ITextQueryRequest };
+      created.queryState = draft;
+      created.selectWorkingCopy('project');
+      params.next(convertToParamMap({ result: 'rid-draft', runtime: 'runtime-17', env: 'local', editor: 'text' }));
+      params.next(convertToParamMap({ result: 'rid-draft', runtime: 'project', env: 'local', branch: 'work' }));
+      expect(created.selectedWorkingCopy()).toBe('project');
+      expect(created.queryState).toBe(draft);
+      expect(editor.newQuery).toHaveBeenCalledOnce();
+      expect(editor.openQuery).not.toHaveBeenCalledWith('test-id');
+      expect(storedResult).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a pending result read after its address is replaced', async () => {
+      const params = new Subject<ReturnType<typeof convertToParamMap>>();
+      const pending = new Subject<ReturnType<typeof decodeStoredResult>>();
+      storedResult.mockReset().mockReturnValue(pending);
+      TestBed.overrideProvider(AgentLinkApiService, { useValue: { storedResult } });
+      const created = await createComponent({}, queryDef, undefined, { project: of(project), queryParams: params });
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'demo' } };
+      params.next(convertToParamMap({ result: 'rid-late', runtime: 'runtime-17' }));
+      params.next(convertToParamMap({ id: 'another-query', runtime: 'project' }));
+      pending.next(decodeStoredResult(editorReadyResult()));
+      expect(TestBed.inject(QueryEditorStateService).newQuery).not.toHaveBeenCalled();
+      expect(created.savedResultBanner()).toBeUndefined();
+      expect(created.savedResultId()).toBe('');
+    });
+
+    it('cancels a run when a different stored result opens the same query and runtime', async () => {
+      const params = new Subject<ReturnType<typeof convertToParamMap>>();
+      const { created, opener } = await openerWith(
+        editorReadyResult({ query: { kind: 'saved', savedQueryId: 'folder/q1' } }),
+        { project: of(project), queryParams: params },
+      );
+      const definition: IQueryDef = { ...queryDef, id: 'folder/q1', parameters: [] };
+      const editorState = {
+        currentQueryId: definition.id,
+        activeQueries: [{ id: definition.id, title: definition.title,
+          queryType: definition.request.queryType,
+          request: definition.request, def: definition, isLoading: false }],
+      };
+      created.envId = 'local';
+      params.next(convertToParamMap({ result: 'rid-a', runtime: 'project', env: 'local' }));
+      opener.onQueryEditorStateChanged(editorState);
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+
+      const pending = new Subject<RunQueryResponse>();
+      localResultFixture.mockReturnValue(pending);
+      created.runQuery();
+      expect(created.running()).toBe(true);
+      expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+        target: expect.objectContaining({ kind: 'local-agent' }),
+      }));
+
+      params.next(convertToParamMap({ result: 'rid-b', runtime: 'project', env: 'local' }));
+      opener.onQueryEditorStateChanged(editorState);
+      expect(created.savedResultId()).toBe('rid-b');
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+      expect(created.running()).toBe(false);
+      expect(dispatchCancel).toHaveBeenCalled();
+
+      pending.next({
+        recordset: { columns: [{ name: 'Name', type: 'string' }],
+          rows: [[{ type: 'string', value: 'late A' }]] },
+        limitations: [], bindingsApplied: [], truncated: false,
+        provenance: { source: 'Project agent', queryId: definition.id, mode: 'live',
+          observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
+      });
+      pending.complete();
+      await runFixture.whenStable();
+      expect(created.savedResultId()).toBe('rid-b');
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+      expect(created.committedRun()).toBeUndefined();
+      expect(created.running()).toBe(false);
+    });
+
+    it('validates a deferred result-only runtime hint after the saved query identity resolves', async () => {
+      const params = new Subject<ReturnType<typeof convertToParamMap>>();
+      const pending = new Subject<ReturnType<typeof decodeStoredResult>>();
+      storedResult.mockReset().mockReturnValue(pending);
+      TestBed.overrideProvider(AgentLinkApiService, { useValue: { storedResult } });
+      const created = await createComponent({}, queryDef, undefined,
+        { project: of(project), queryParams: params });
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'demo' } };
+      created.envId = 'local';
+      const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+        availableWorkingCopies: ReturnType<typeof vi.fn>;
+        runtimeRevision: () => number;
+      };
+      dispatcher.availableWorkingCopies.mockResolvedValue([
+        { selectionId: 'runtime-17', title: 'Edited copy' },
+      ]);
+      const revision = dispatcher.runtimeRevision();
+      params.next(convertToParamMap({ result: 'rid-deferred', env: 'local', runtime: 'runtime-17' }));
+      runFixture.detectChanges();
+      await runFixture.whenStable();
+      expect(dispatcher.availableWorkingCopies).not.toHaveBeenCalled();
+      expect(created.unavailableWorkingCopy()).toBe(true);
+
+      pending.next(decodeStoredResult(editorReadyResult({
+        query: { kind: 'saved', savedQueryId: 'folder/q1' },
+      })));
+      const definition: IQueryDef = { ...queryDef, id: 'folder/q1', connectionId: 'logical-ledger-v7', parameters: [] };
+      (created as unknown as ResultOpener).onQueryEditorStateChanged({
+        currentQueryId: definition.id,
+        activeQueries: [{ id: definition.id, queryType: definition.request.queryType,
+          request: definition.request, def: definition, isLoading: false }],
+      });
+      runFixture.detectChanges();
+      await runFixture.whenStable();
+      expect(dispatcher.runtimeRevision()).toBe(revision);
+      expect(dispatcher.availableWorkingCopies).toHaveBeenCalledWith(expect.objectContaining({
+        definition, environment: 'local',
+      }));
+      expect(created.selectedWorkingCopy()).toBe('runtime-17');
+      expect(created.unavailableWorkingCopy()).toBe(false);
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+    });
+
     it('leaves the editor empty with a named message for an older result, and still shows the rows', async () => {
       const { created, opener } = await openerWith(invoiceCustomerResult());
       opener.openFromResult('rid-3');
@@ -6890,6 +7226,75 @@ select (
       const banner = created.savedResultBanner();
       expect(banner).toMatchObject({ kind: 'shown', mode: 'rows-only' });
       expect(banner?.kind === 'shown' && banner.notice).toMatch(/another project/);
+    });
+
+    it('shows the database that ran the query as the editor Target and names the page for the result', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      const title = TestBed.inject(Title);
+      title.setTitle('DataTug.app');
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'demo' }, summary: { id: 'demo', title: 'Demo project' } } as typeof created.project;
+      opener.openFromResult('rid-20');
+      expect(created.availableTargets()).toEqual([{ source: 'chinook', label: 'chinook' }]);
+      expect(created.savedResultBanner()).toMatchObject({ database: 'chinook · environment local' });
+      expect(created.selectedSource()).toBe('chinook');
+      expect(title.getTitle()).toBe('Query from result · Demo project');
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      expect(created.availableTargets()).toEqual([]);
+      expect(title.getTitle()).toBe('DataTug.app');
+    });
+
+    it('keeps the environment of the result selected when the address clears it, and not when the project has no such environment', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      const select = TestBed.inject(DatatugNavContextService).setCurrentEnvironment as ReturnType<typeof vi.fn>;
+      opener.openFromResult('rid-21');
+      select.mockClear();
+      (created as unknown as { keepResultEnvironment(): void }).keepResultEnvironment();
+      await Promise.resolve();
+      expect(select).toHaveBeenCalledWith('local');
+      // the person picks another environment: it is theirs, only a cleared one is put back
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      select.mockClear();
+      (created as unknown as { keepResultEnvironment(): void }).keepResultEnvironment();
+      await Promise.resolve();
+      expect(select).not.toHaveBeenCalled();
+      created.project = {
+        ref: { storeId: LOOPBACK, projectId: 'demo' },
+        summary: { id: 'demo', environments: [{ id: 'prod' }] },
+      } as typeof created.project;
+      opener.openFromResult('rid-22');
+      expect(select).not.toHaveBeenCalled();
+      const banner = created.savedResultBanner();
+      expect(banner?.kind === 'shown' && banner.notice).toContain(
+        'Environment local of this result is not in this project',
+      );
+    });
+
+    it('says when charts become available instead of a rights error for the saved rows', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-23');
+      expect(created.resultChartUnavailableText()).toBe('Charts are available after running the query.');
+      (created as unknown as { closeSavedResult(): void }).closeSavedResult();
+      expect(created.resultChartUnavailableText()).toMatch(/^Chart unavailable: /);
+    });
+
+    it('starts the Current row pane closed for a wide result, one click to open', async () => {
+      const { created, opener } = await openerWith(editorReadyResult());
+      opener.openFromResult('rid-24');
+      expect(created.displayedRecordset()?.columns.length).toBeLessThanOrEqual(created.currentRowOpenMaxColumns);
+      expect(created.currentRowPaneOpen()).toBe(true);
+      const wide = {
+        ...created.runResult(),
+        recordset: {
+          columns: Array.from({ length: 8 }, (_, i) => ({ name: `c${i}`, type: 'string' })),
+          rows: [],
+        },
+      } as unknown as FederatedQueryResult;
+      (created as unknown as { setDisplayedResult(r: FederatedQueryResult): void }).setDisplayedResult(wide);
+      expect(created.currentRowPaneOpen()).toBe(false);
+      created.toggleCurrentRowPane();
+      expect(created.currentRowPaneOpen()).toBe(true);
+      created.toggleCurrentRowPane();
+      expect(created.currentRowPaneOpen()).toBe(false);
     });
 
     it('asks no agent that is not a local one', async () => {
@@ -10542,6 +10947,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     editorImports: Array<Type<unknown>> = [],
     editorState$?: BehaviorSubject<IQueryEditorState>,
     projectContext: IProjectContext = project,
+    route?: {
+      readonly queryId?: string;
+      readonly queryParams?: ReturnType<typeof convertToParamMap>;
+    },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
@@ -10560,6 +10969,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ],
     } as unknown as IQueryEditorState;
     const editor = editorState$ ?? new BehaviorSubject(editorState);
+    const routeQueryParams = route?.queryParams ?? convertToParamMap({});
+    const routeParams = convertToParamMap(
+      route?.queryId ? { queryId: route.queryId } : {},
+    );
 
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -10591,9 +11004,13 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(routeQueryParams),
+            paramMap: of(routeParams),
+            snapshot: {
+              paramMap: routeParams,
+              queryParamMap: routeQueryParams,
+              params: {},
+            },
           },
         },
         {
@@ -10621,9 +11038,14 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
                 ),
               }),
             ),
-            openQuery: vi.fn(),
+            openQuery: vi.fn((queryId: string) => {
+              if (editor.value.activeQueries.some((query) => query.id === queryId))
+                editor.next({ ...editor.value, currentQueryId: queryId });
+            }),
             newQuery: vi.fn(),
-            getQueryState: vi.fn(),
+            getQueryState: vi.fn((queryId: string) =>
+              editor.value.activeQueries.find((query) => query.id === queryId),
+            ),
             saveQuery: vi.fn(),
           },
         },
@@ -10901,6 +11323,67 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     }));
     expect(component.queryBodyText()).toBe(legacySqlText);
     expect(component.queryDef()).toEqual(definition);
+  });
+
+  it('preserves an omitted environment from a saved SQL query route through browser SQLite dispatch', async () => {
+    const queryId = 'demodb/northwind-orders-browser-sqlite';
+    const definition: IQueryDef = {
+      id: queryId,
+      title: 'Northwind orders',
+      connectionId: 'northwind-sqlite',
+      request: { queryType: QueryType.SQL, text: 'select 1' } as ISqlQueryRequest,
+    };
+    const loadingState: IQueryState = {
+      id: queryId,
+      queryType: QueryType.SQL,
+      isLoading: true,
+      environments: [{ id: 'local' }],
+    };
+    const browserProject: IProjectContext = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      },
+    };
+    const editorState = new BehaviorSubject<IQueryEditorState>({
+      activeQueries: [loadingState],
+    });
+    component = await createComponent(
+      definition,
+      '',
+      [],
+      editorState,
+      browserProject,
+      {
+        queryId,
+        queryParams: convertToParamMap({
+          id: queryId,
+          runtime: 'project',
+        }),
+      },
+    );
+
+    expect(component.envId).toBeUndefined();
+    editorState.next({
+      ...editorState.value,
+      activeQueries: [
+        {
+          ...editorState.value.activeQueries[0],
+          isLoading: false,
+          request: definition.request,
+          def: definition,
+        },
+      ],
+    });
+    expect(component.envId).toBeUndefined();
+    component.runQuery();
+
+    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+      projectRef: browserProject.ref,
+      definition,
+      environment: undefined,
+      target: { kind: 'browser-sqlite' },
+    }));
   });
 
   it('keeps exact browser SQL inputs and client origins with the prior result after a draft binding edit', async () => {

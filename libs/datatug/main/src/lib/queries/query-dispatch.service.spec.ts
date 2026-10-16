@@ -103,6 +103,46 @@ describe('QueryDispatchService transport boundary', () => {
     expect(browser).not.toHaveBeenCalled();
   });
 
+  it('infers the sole declared browser fixture environment when omitted and rejects an explicit mismatch', async () => {
+    const definition: IQueryDef = {
+      ...sqlDefinition(),
+      connectionId: 'northwind-sqlite',
+    };
+    const connection = {
+      id: 'northwind-sqlite',
+      storage: 'sqlite',
+      environments: ['dev'],
+      fixtureSha256: 'a'.repeat(64),
+      browserFixture: {
+        url: '/assets/showcase/northwind.sqlite',
+        bytes: 128,
+      },
+    };
+    github.mockReturnValue(of({ connections: [connection] }));
+    browser.mockResolvedValue(result);
+
+    await expect(service.execute({
+      projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+      definition,
+      queryId: definition.id,
+      target: { kind: 'browser-sqlite' },
+    })).resolves.toEqual(result);
+    expect(browser).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: 'dev', target: { kind: 'browser-sqlite' } }),
+      expect.objectContaining({ environment: 'dev' }),
+    );
+
+    browser.mockClear();
+    await expect(service.execute({
+      projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+      definition,
+      queryId: definition.id,
+      environment: 'local',
+      target: { kind: 'browser-sqlite' },
+    })).rejects.toThrow('The selected connection is unavailable in this environment.');
+    expect(browser).not.toHaveBeenCalled();
+  });
+
   it('uses the hosted Firestore query contract and checks the retained receipt', async () => {
     hosted.mockReturnValue(of({ result: {
       ...result,

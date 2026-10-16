@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import {
   DEMO_DB,
   DEMO_ENV,
@@ -15,6 +16,7 @@ import {
  */
 type Answer = {
   query?: { text?: unknown };
+  meta?: { columns?: { name: string; pk?: number | null }[] };
   recordset?: { columns?: { name: string; type: string }[] };
 };
 /** The position of the first numeric column of the result (its type only, never a value), or -1. */
@@ -100,6 +102,57 @@ test.describe('query result in the query editor', () => {
       ).toHaveClass(/ag-right-aligned-cell/);
     }
     await expect(grid.locator('.ag-cell[col-id="__row"]')).toHaveCount(5);
+
+    // The page is named for the result and the project, not the app's generic title.
+    await expect(page).toHaveTitle(/^Query from result · \S/);
+    // The database and environment of the result are shown, and the environment is the selected one.
+    await expect(page.getByTestId('saved-result-database')).toContainText(
+      `${DEMO_DB} · environment ${DEMO_ENV}`,
+    );
+    await expect(
+      page.locator('sneat-datatug-menu-env-selector'),
+    ).toContainText(DEMO_ENV, { timeout: 30_000 });
+    // A saved snapshot has nothing to chart yet: it says when charts become available, not a rights error.
+    await expect(page.getByTestId('chart-unavailable')).toHaveText(
+      'Charts are available after running the query.',
+    );
+    await expect(page.getByText('usage rights')).toHaveCount(0);
+
+    // The internal `$key` column and its placeholder never show; the columns keep the order of the recordset, except
+    // that the primary key the metadata names comes first.
+    await expect(grid).not.toContainText('__dalgo_record_id');
+    await expect(grid.getByTestId('header-name').filter({ hasText: '$key' })).toHaveCount(0);
+    const shown = (answer.recordset?.columns ?? []).filter((c) => c.name !== '$key');
+    const headers = grid.locator('.ag-header-cell[role="columnheader"][col-id^="result_"]');
+    await expect(headers).toHaveCount(shown.length);
+    const pk = (answer.meta?.columns ?? [])
+      .filter((c) => typeof c.pk === 'number' && c.pk > 0)
+      .sort((a, b) => (a.pk as number) - (b.pk as number))[0];
+    if (pk) {
+      await expect(headers.first().getByTestId('header-name')).toHaveText(pk.name);
+    }
+    // Sort indicators are on every column, not only the sorted one. The column menu button is AG Grid
+    // Enterprise's: a community build has none, so it is checked only where the grid has one.
+    await expect(grid.getByTestId('header-sort-idle')).toHaveCount(shown.length);
+    const menus = grid.locator('[data-testid="header-menu"], .ag-header-cell-menu-button');
+    if ((await menus.count()) > 0) {
+      await headers.first().hover();
+      await expect(menus).toHaveCount(shown.length);
+      await expect(menus.first()).toBeVisible();
+    }
+
+    // A wide result starts with the Current row pane closed, so the grid has the width; one click opens it.
+    const toggle = page.getByTestId('author-current-row-toggle');
+    await expect(toggle).toBeVisible();
+    if (shown.length > 6) {
+      await expect(page.getByTestId('author-current-row')).toHaveCount(0);
+      await toggle.click();
+      await expect(page.getByTestId('author-current-row')).toBeVisible();
+      await toggle.click();
+      await expect(page.getByTestId('author-current-row')).toHaveCount(0);
+    } else {
+      await expect(page.getByTestId('author-current-row')).toBeVisible();
+    }
 
     if (editorReady) {
       await expect(
@@ -195,7 +248,12 @@ test.describe('query result in the query editor', () => {
     await expect(grid.getByTestId('results-grid-export-excel')).toHaveCount(0);
     const download = page.waitForEvent('download');
     await grid.getByTestId('results-grid-export-csv').click();
-    expect((await download).suggestedFilename()).toBe('query-result.csv');
+    const file = await download;
+    expect(file.suggestedFilename()).toBe('query-result.csv');
+    // The internal `$key` column is not exported.
+    const csv = fs.readFileSync((await file.path()) as string, 'utf8');
+    expect(csv.split('\n')[0]).not.toContain('$key');
+    expect(csv).not.toContain('__dalgo_record_id');
   });
 
   test('Back and the other result views work, and a refresh reopens the editor', async ({

@@ -424,6 +424,37 @@ export function parseDatatugRef(
   }
 }
 
+/**
+ * The order of the result's columns with the primary key columns first (by their position in the key), when the
+ * saved metadata exposes them for exactly the columns of the recordset. Undefined when nothing needs to move: no
+ * primary key, no match between metadata and recordset, a key spread over several tables (a join), or the key
+ * columns already first. The recordset's own order is otherwise kept.
+ */
+export function pkFirstOrder(
+  meta: ResultMeta,
+  recordsetColumns: readonly { readonly name: string }[],
+): number[] | undefined {
+  const cols = meta.columns;
+  if (
+    cols.length !== recordsetColumns.length ||
+    cols.some((c, i) => c.name !== recordsetColumns[i].name)
+  ) {
+    return undefined;
+  }
+  const keyed = cols
+    .map((c, i) => ({ i, pk: c.pk, instance: c.source?.instance ?? '' }))
+    .filter((c) => c.pk !== null && c.pk > 0);
+  if (!keyed.length) return undefined;
+  if (new Set(keyed.map((c) => c.instance)).size > 1) return undefined;
+  keyed.sort((a, b) => (a.pk as number) - (b.pk as number) || a.i - b.i);
+  const first = keyed.map((c) => c.i);
+  const order = [
+    ...first,
+    ...cols.map((_, i) => i).filter((i) => !first.includes(i)),
+  ];
+  return order.every((v, i) => v === i) ? undefined : order;
+}
+
 /** The database of the result, when it is a source of a registered project. */
 export function resultDbIds(meta: ResultMeta): DbIds | undefined {
   const { ref, project, env, source } = meta.db;
