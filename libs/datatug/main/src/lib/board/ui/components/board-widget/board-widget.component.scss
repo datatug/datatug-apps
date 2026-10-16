@@ -3,6 +3,14 @@
   overflow-x: auto;
 }
 
+.chart-source-terms {
+  margin-block: 0.75rem;
+}
+
+.chart-source-terms summary {
+  cursor: pointer;
+}
+
 table {
   border-collapse: collapse;
   min-width: 100%;

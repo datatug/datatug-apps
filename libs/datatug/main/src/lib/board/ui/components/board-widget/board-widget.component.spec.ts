@@ -1239,7 +1239,7 @@ describe('BoardWidgetComponent', () => {
     expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the same race instance and playback choices across chart/source row switches', async () => {
+  it('keeps the race visible before accessible source terms and preserves playback across chart/source row switches', async () => {
     configureShowcase({
       name: 'chart',
       data: {
@@ -1299,6 +1299,19 @@ describe('BoardWidgetComponent', () => {
     await vi.waitFor(() =>
       expect(run).toHaveBeenCalledTimes(1),
     );
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.result()).toBeDefined(),
+    );
+    fixture.detectChanges();
+    const chartElement = fixture.nativeElement.querySelector('datatug-bar-race-chart') as HTMLElement;
+    const terms = fixture.nativeElement.querySelector('details.chart-source-terms') as HTMLDetailsElement;
+    expect(chartElement.compareDocumentPosition(terms) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(terms.open).toBe(false);
+    const summary = terms.querySelector('summary') as HTMLElement;
+    expect(summary.textContent?.trim()).toBe('Source data terms');
+    summary.click();
+    expect(terms.open).toBe(true);
+    expect(terms.querySelector('[aria-label="Source data terms"]')?.textContent).toContain('MIT');
   });
 
   function configureBoundChart(bindings: unknown, countryType = 'string') {

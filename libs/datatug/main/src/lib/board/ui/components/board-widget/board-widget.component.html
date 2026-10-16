@@ -45,7 +45,6 @@
             frames · unit: {{ chartWidgetDef()?.chart?.unit }}
           </p>
           <p>{{ held.provenance.source }}</p>
-          <sneat-datatug-source-rights-notice [evidence]="held" />
         }
         <div role="group" aria-label="Chart result view">
           <button
@@ -80,6 +79,12 @@
             [error]="runError() ?? null"
           />
         </div>
+        @if (result(); as held) {
+          <details class="chart-source-terms">
+            <summary>Source data terms</summary>
+            <sneat-datatug-source-rights-notice [evidence]="held" />
+          </details>
+        }
       } @else {
         <sneat-datatug-held-result-presentation
           [result]="result() ?? null"
