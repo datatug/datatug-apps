@@ -1718,6 +1718,7 @@
       @if (semanticNotice()) { <ion-note color="warning">{{ semanticNotice() }}</ion-note> }
       @if (queryDef()?.semanticModel) { <ion-note>{{ semanticValidation() === 'checking' ? 'Checking saved meanings for this query output…' : semanticNeedsReview() ? 'Meanings need review: the query or result shape changed. Open each meaning to confirm it.' : 'Column meanings are saved for this query output.' }}</ion-note> }
 
+      @if (!resultChartOptions().reason) {
       <section class="query-result-chart-choice" aria-label="Result chart">
         <h3>Chart this result</h3>
         @if (resultChartOptions(); as chartOptions) {
@@ -1742,6 +1743,7 @@
         </div>
         @if (resultChartReason(); as reason) { <p role="status">{{ reason }}</p> }
       </section>
+      }
       @if (resultChartHeld(); as chartResult) {
         <div [hidden]="!resultChartVisible()">
           <sneat-datatug-held-result-presentation [result]="chartResult" [fields]="resultChartFields()" [chartOnly]="true" />
@@ -1829,6 +1831,9 @@
       }
       </div>
     </div>
+    @if (resultChartOptions().reason; as chartUnavailableReason) {
+      <p class="ion-padding-horizontal" role="status">Chart unavailable: {{ chartUnavailableReason }}</p>
+    }
     <div class="ion-padding-horizontal">
       <sneat-datatug-source-rights-notice
         [evidence]="result"
