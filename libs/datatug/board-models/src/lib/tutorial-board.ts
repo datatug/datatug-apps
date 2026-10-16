@@ -229,6 +229,7 @@ export class TutorialBoardSession {
   private actions: BoardAction[];
   private cursor: number;
   private controlValue: TutorialControl;
+  private workingBoard: Board;
 
   private constructor(
     readonly canonical: Board,
@@ -240,6 +241,7 @@ export class TutorialBoardSession {
     this.actions = [...(saved?.actions ?? [])];
     this.cursor = saved?.cursor ?? 0;
     this.controlValue = saved?.control ?? 'guided';
+    this.workingBoard = replay(canonical, this.actions, this.cursor);
   }
 
   /** Pass sessionStorage or a test double. Never pass localStorage or another persistent store. */
@@ -265,7 +267,7 @@ export class TutorialBoardSession {
     return this.open(canonical, scope, storage);
   }
 
-  get board(): Board { return cloneBoard(replay(this.canonical, this.actions, this.cursor)); }
+  get board(): Board { return cloneBoard(this.workingBoard); }
   get control(): TutorialControl { return this.controlValue; }
   get canPrevious(): boolean { return this.controlValue === 'guided' && this.cursor > 0; }
   get canNext(): boolean { return this.controlValue === 'guided' && (this.cursor < this.actions.length || !!this.nextCanonicalAction()); }
@@ -279,7 +281,7 @@ export class TutorialBoardSession {
   }
 
   private nextCanonicalAction(): BoardAction | undefined {
-    const working = replay(this.canonical, this.actions, this.cursor);
+    const working = this.workingBoard;
     for (const [row, definition] of (this.canonical.rows ?? []).entries()) {
       for (const [index, card] of (definition.cards ?? []).entries()) {
         if (working.rows?.[row]?.cards?.[index]?.id === card.id) continue;
@@ -293,7 +295,7 @@ export class TutorialBoardSession {
 
   dispatch(action: BoardAction): boolean {
     if (this.cursor >= MAX_ACTIONS) return false;
-    const before = replay(this.canonical, this.actions, this.cursor);
+    const before = this.workingBoard;
     let after: Board;
     try { after = applyFrom(this.canonical, before, action); } catch { return false; }
     if (JSON.stringify(after) === JSON.stringify(before)) return false;
@@ -304,6 +306,7 @@ export class TutorialBoardSession {
     if (byteLength(JSON.stringify(encodeActions(this.canonical, actions))) > MAX_SAVED_BYTES - 256) return false;
     this.actions = actions;
     this.cursor = actions.length;
+    this.workingBoard = after;
     this.save();
     return true;
   }
@@ -311,6 +314,7 @@ export class TutorialBoardSession {
   previous(): boolean {
     if (!this.canPrevious) return false;
     this.cursor--;
+    this.workingBoard = replay(this.canonical, this.actions, this.cursor);
     this.save();
     return true;
   }
@@ -318,6 +322,7 @@ export class TutorialBoardSession {
   next(): boolean {
     if (this.controlValue !== 'guided') return false;
     if (this.cursor < this.actions.length) {
+      this.workingBoard = applyFrom(this.canonical, this.workingBoard, this.actions[this.cursor]);
       this.cursor++;
       this.save();
       return true;
@@ -330,6 +335,7 @@ export class TutorialBoardSession {
     this.actions = [];
     this.cursor = 0;
     this.controlValue = 'guided';
+    this.workingBoard = emptyFrom(this.canonical);
     this.save();
   }
 
