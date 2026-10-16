@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   input,
+  inject,
   signal,
   Type,
   WritableSignal,
@@ -13,6 +14,7 @@ import { TabsWidgetDef } from '@datatug/board-models';
 import { IBoardContext } from '../../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../../core/project-context';
 import { BoardReadForRun } from '../../../../core/board-read-for-run';
+import { TutorialBoardRuntime } from '../../../../core/tutorial-board-runtime';
 import type { BoardResultSnapshot } from '../../board-widget/board-widget.component';
 import {
   MAX_NESTED_TAB_DEPTH,
@@ -26,6 +28,9 @@ import {
   imports: [IonSegment, IonSegmentButton, IonLabel, NgComponentOutlet],
 })
 export class TabsWidgetComponent {
+  private readonly tutorialRuntime = inject(TutorialBoardRuntime, {
+    optional: true,
+  });
   readonly level = input(0);
   readonly tabsWidgetDef = input<TabsWidgetDef>();
   readonly boardContext = input<IBoardContext>();
@@ -48,7 +53,13 @@ export class TabsWidgetComponent {
   );
   readonly active = computed(() => {
     const tabs = this.tabs();
-    const selected = this.selectedKey();
+    const selected = this.tutorialRuntime?.activeFor(
+      this.projectRef(),
+      this.boardId(),
+    )
+      ? (this.tutorialRuntime.selectedTab(this.cardId(), this.widgetPath()) ??
+        this.selectedKey())
+      : this.selectedKey();
     return tabs.find(({ key }) => key === selected) ?? tabs[0];
   });
   readonly activePath = computed(() => {
@@ -69,6 +80,18 @@ export class TabsWidgetComponent {
   }));
 
   select(key: string): void {
-    if (this.tabs().some((tab) => tab.key === key)) this.selectedKey.set(key);
+    if (!this.tabs().some((tab) => tab.key === key)) return;
+    const cardId = this.cardId();
+    if (
+      cardId &&
+      this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId())
+    ) {
+      this.tutorialRuntime.dispatch({
+        type: 'select-tab',
+        cardId,
+        widgetPath: this.widgetPath(),
+        tabKey: key,
+      });
+    } else this.selectedKey.set(key);
   }
 }

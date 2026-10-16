@@ -50,14 +50,14 @@
         <div role="group" aria-label="Chart result view">
           <button
             type="button"
-            (click)="chartView.set('chart')"
+            (click)="setChartView('chart')"
             [attr.aria-pressed]="chartView() === 'chart'"
           >
             Chart
           </button>
           <button
             type="button"
-            (click)="chartView.set('grid')"
+            (click)="setChartView('grid')"
             [attr.aria-pressed]="chartView() === 'grid'"
           >
             Source rows

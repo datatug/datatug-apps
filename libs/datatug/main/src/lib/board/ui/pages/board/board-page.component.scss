@@ -1,40 +1,195 @@
-.tutorial-entry, .tutorial-panel {
+.tutorial-entry,
+.tutorial-panel {
   box-sizing: border-box;
-  margin: .75rem 1rem 1rem;
+  margin: 0.75rem 1rem 1rem;
   padding: clamp(1rem, 2vw, 1.5rem);
   border: 1px solid #c8d9e9;
   border-radius: 1rem;
   background: #f5f9fd;
   color: #17213a;
 }
-.tutorial-entry, .tutorial-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 1rem; }
-.tutorial-entry p, .tutorial-heading p { margin: .3rem 0 0; color: #465b72; }
-.tutorial-eyebrow { font-size: .72rem; font-weight: 750; letter-spacing: .1em; text-transform: uppercase; }
-.tutorial-heading h2 { margin: .2rem 0; font-size: clamp(1.2rem, 3vw, 1.65rem); }
-.tutorial-panel button, .tutorial-entry button {
+.tutorial-entry,
+.tutorial-heading {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+.tutorial-entry p,
+.tutorial-heading p {
+  margin: 0.3rem 0 0;
+  color: #465b72;
+}
+.tutorial-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 750;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.tutorial-heading h2 {
+  margin: 0.2rem 0;
+  font-size: clamp(1.2rem, 3vw, 1.65rem);
+}
+.tutorial-panel button,
+.tutorial-entry button {
   min-height: 44px;
-  padding: .45rem .8rem;
+  padding: 0.45rem 0.8rem;
   border: 1px solid #356393;
-  border-radius: .5rem;
+  border-radius: 0.5rem;
   background: white;
   color: #174b7c;
   font: inherit;
   font-weight: 650;
   cursor: pointer;
 }
-.tutorial-panel button:hover:not(:disabled), .tutorial-entry button:hover { background: #e4f0fc; }
-.tutorial-panel button:disabled { cursor: default; opacity: .5; }
-.tutorial-panel button:focus-visible, .tutorial-entry button:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
-.tutorial-progress { margin: 1.1rem 0 .5rem; font-weight: 650; }
-.tutorial-controls, .tutorial-card-buttons { display: flex; flex-wrap: wrap; gap: .5rem; }
-.tutorial-free { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 1rem; margin-top: 1rem; }
-.tutorial-free > div { min-width: 0; padding: .75rem; border: 1px solid #d6e2ee; border-radius: .7rem; background: #fff; }
-.tutorial-free h3 { margin: 0 0 .5rem; font-size: 1rem; }
-.tutorial-card-action { display: flex; align-items: center; justify-content: space-between; gap: .5rem; padding: .45rem 0; border-top: 1px solid #e5edf4; }
-.tutorial-card-action span { overflow-wrap: anywhere; }
+.tutorial-panel button:hover:not(:disabled),
+.tutorial-entry button:hover {
+  background: #e4f0fc;
+}
+.tutorial-panel button:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+.tutorial-panel button:focus-visible,
+.tutorial-entry button:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+.tutorial-progress {
+  margin: 1.1rem 0 0.5rem;
+  font-weight: 650;
+}
+.tutorial-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.tutorial-panel h3:focus-visible,
+.tutorial-panel h2:focus-visible,
+h1[data-board-page-heading]:focus-visible,
+.tutorial-panel p[tabindex]:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
+.tutorial-controls,
+.tutorial-card-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.tutorial-free {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.tutorial-free > div {
+  min-width: 0;
+  padding: 0.75rem;
+  border: 1px solid #d6e2ee;
+  border-radius: 0.7rem;
+  background: #fff;
+}
+.tutorial-free h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+.tutorial-card-action {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0;
+  border-top: 1px solid #e5edf4;
+}
+.tutorial-card-action span {
+  overflow-wrap: anywhere;
+}
+.tutorial-step {
+  margin-block: 1rem;
+  padding: 1rem;
+  border-left: 4px solid #356393;
+  background: #fff;
+}
+.tutorial-step h3 {
+  margin: 0.2rem 0;
+}
+.tutorial-canvas {
+  padding: clamp(1rem, 4vw, 2rem);
+  border: 2px dashed #97b3d1;
+  border-radius: 0.8rem;
+  background: #fff;
+  overflow-wrap: anywhere;
+}
+.tutorial-canvas-icon {
+  font-size: 2.5rem;
+  color: #356393;
+}
+.tutorial-editors {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+.tutorial-editors fieldset {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid #97b3d1;
+  border-radius: 0.7rem;
+  background: #fff;
+}
+.tutorial-editors legend {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+.tutorial-editors label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  margin-block: 0.7rem;
+}
+.tutorial-editors select,
+.tutorial-editors input {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0.45rem;
+  border: 1px solid #7b99b8;
+  border-radius: 0.4rem;
+  background: white;
+  color: #17213a;
+  font: inherit;
+}
+.tutorial-editors input:focus-visible,
+.tutorial-editors select:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
+.tutorial-tab-editor {
+  border-bottom: 1px solid #d6e2ee;
+  padding-block: 0.75rem;
+}
+.tutorial-editors p {
+  overflow-wrap: anywhere;
+}
 @media (max-width: 640px) {
-  .tutorial-entry, .tutorial-panel { margin: .75rem .5rem; }
-  .tutorial-free { grid-template-columns: 1fr; }
-  .tutorial-card-action { align-items: flex-start; flex-direction: column; }
-  .tutorial-controls > button { flex: 1 1 auto; }
+  .tutorial-entry,
+  .tutorial-panel {
+    margin: 0.75rem 0.5rem;
+  }
+  .tutorial-free {
+    grid-template-columns: 1fr;
+  }
+  .tutorial-card-action {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .tutorial-controls > button {
+    flex: 1 1 auto;
+  }
 }

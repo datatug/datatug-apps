@@ -7,6 +7,9 @@ import {
   inject,
   signal,
   untracked,
+  afterNextRender,
+  ElementRef,
+  Injector,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -40,6 +43,12 @@ import {
   BoardCard,
   TutorialBoardSession,
   TutorialControl,
+  BoardSessionAction,
+  BoardWidget,
+  TabsWidgetDef,
+  ChartWidgetDef,
+  ChartSpec,
+  canonicalBoardQueryIds,
 } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
@@ -70,6 +79,23 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
+import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
+import { tabKey } from '../../components/board-widget/nested-tab-path';
+import { currentTutorialStep, tutorialSteps } from './tutorial-scenario';
+
+interface TutorialEditor {
+  readonly key: string;
+  readonly cardId: string;
+  readonly title: string;
+  readonly path: readonly string[];
+  readonly widget: BoardWidget;
+  readonly tabs?: readonly {
+    readonly title: string;
+    readonly key: string;
+    readonly queryId?: string;
+  }[];
+  readonly chart?: ChartWidgetDef;
+}
 
 interface TutorialStatus {
   readonly control: TutorialControl;
@@ -119,9 +145,15 @@ interface TutorialStatus {
     IonInput,
     BoardComponent,
   ],
-  providers: [QueryParamsService, ParameterLookupService],
+  providers: [QueryParamsService, ParameterLookupService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+  private focusGeneration = 0;
+  private readonly tutorialRuntime =
+    inject(TutorialBoardRuntime, { optional: true }) ??
+    new TutorialBoardRuntime();
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly choices = inject(BoardChoicesService);
   private readonly assets = inject(ProjectAssetsReadService);
@@ -152,6 +184,75 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly tutorialStatus = signal<TutorialStatus | undefined>(undefined);
   readonly tutorialLoading = signal(false);
   readonly tutorialError = signal<string | undefined>(undefined);
+  readonly authoringError = signal<string | undefined>(undefined);
+  readonly tutorialAnnouncement = signal('');
+  readonly tutorialGuide = signal<
+    ReturnType<typeof currentTutorialStep> | undefined
+  >(undefined);
+  readonly tutorialProgressCue = computed(() => {
+    const status = this.tutorialStatus();
+    if (status?.control === 'free')
+      return 'Editing freely. Resume the guide or restart this session.';
+    if (this.tutorialGuide()?.step.action)
+      return status?.canNext
+        ? `Next: ${this.tutorialGuide()?.step.title}`
+        : 'Session action limit reached. Use Previous or Restart to continue.';
+    return 'Review the source limitation or take control.';
+  });
+  readonly tutorialStepCount = computed(() =>
+    this.boardDef() ? tutorialSteps(this.boardDef() as Board).length : 0,
+  );
+  readonly tutorialQueries = computed(() =>
+    this.boardDef() ? canonicalBoardQueryIds(this.boardDef() as Board) : [],
+  );
+  readonly nextCardPreview = computed(() => this.hiddenTutorialCards()[0]);
+  readonly tutorialEditors = computed(() => {
+    const editors: TutorialEditor[] = [];
+    const walk = (
+      cardId: string,
+      title: string,
+      widget: BoardWidget | undefined,
+      path: readonly string[] = [],
+    ) => {
+      if (!widget || path.length > 8) return;
+      if (widget.name === 'tabs') {
+        const tabs = (widget.data as TabsWidgetDef).tabs ?? [];
+        editors.push({
+          key: JSON.stringify([cardId, ...path]),
+          cardId,
+          title,
+          path,
+          widget,
+          tabs: tabs.map((tab, index) => ({
+            title: tab.title,
+            key: tabKey(tab, index),
+            queryId:
+              tab.widget?.name === 'SQL'
+                ? (tab.widget.data as { sql?: { queryId?: string } }).sql
+                    ?.queryId
+                : undefined,
+          })),
+        });
+        tabs.forEach((tab, index) =>
+          walk(cardId, `${title} / ${tab.title}`, tab.widget, [
+            ...path,
+            tabKey(tab, index),
+          ]),
+        );
+      } else if (widget.name === 'chart')
+        editors.push({
+          key: JSON.stringify([cardId, ...path]),
+          cardId,
+          title,
+          path,
+          widget,
+          chart: widget.data as ChartWidgetDef,
+        });
+    };
+    for (const item of this.visibleTutorialCards())
+      walk(item.card.id, item.card.title || item.card.id, item.card.widget);
+    return editors;
+  });
   readonly tutorialAvailable = computed(() =>
     isShowcaseTutorialBoard(this.projectRef(), this.boardDef()),
   );
@@ -267,11 +368,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       next: (queryParamMap) => {
         const envId = queryParamMap.get('env');
         if (envId) this.dataTugNavContext.setCurrentEnvironment(envId);
-        const requested = queryParamMap.get('mode') === 'tutorial';
+        const requested = ['tutorial', 'tutoril'].includes(
+          queryParamMap.get('mode') ?? '',
+        );
         if (requested !== this.tutorialRequested()) {
+          const tutorialWasActive = this.tutorialActive();
           this.tutorialRequested.set(requested);
           this.clearTutorial();
           if (requested) void this.openTutorial();
+          else if (tutorialWasActive && this.boardDef())
+            this.focusSavedBoardHeading();
         }
       },
       error: (err) =>
@@ -354,6 +460,11 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   private clearTutorial(): void {
+    this.focusGeneration++;
+    this.tutorialAnnouncement.set('');
+    this.tutorialRuntime.clear();
+    this.tutorialGuide.set(undefined);
+    this.authoringError.set(undefined);
     this.tutorialGeneration++;
     this.tutorialSession = undefined;
     this.tutorialBoard.set(undefined);
@@ -388,11 +499,25 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         return;
       this.tutorialSession = session;
       this.publishTutorial();
+      this.focusTutorialChange(
+        undefined,
+        'Tutorial opened',
+        'Your working copy stays in this browser session.',
+        this.visibleTutorialCards().length
+          ? '[data-tutorial-route-heading]'
+          : '[data-tutorial-empty-focus]',
+      );
     } catch (error) {
       if (generation !== this.tutorialGeneration) return;
       this.errorLogger.logError(error, 'Failed to open tutorial board');
       this.tutorialError.set(
         'This tutorial could not be opened. You can still view the completed board.',
+      );
+      this.focusTutorialChange(
+        undefined,
+        'Tutorial unavailable',
+        'You can still view the completed board.',
+        '[data-tutorial-route-heading]',
       );
     } finally {
       if (generation === this.tutorialGeneration)
@@ -403,50 +528,295 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private publishTutorial(): void {
     const session = this.tutorialSession;
     if (!session) return;
-    const cards = new Map(
+    const canonicalCards = new Map(
       (session.canonical.rows ?? []).flatMap((row) =>
         (row.cards ?? []).map((card) => [card.id, card] as const),
       ),
     );
     const working = session.board;
+    const previousCards = new Map(
+      (this.tutorialBoard()?.rows ?? []).flatMap((row) =>
+        (row.cards ?? []).map((card) => [card.id, card] as const),
+      ),
+    );
     // Keep existing card and widget inputs stable across action replay. The
     // session returns a fresh clone, while query results live in widget state.
     this.tutorialBoard.set({
       ...working,
       rows: working.rows?.map((row) => ({
         ...row,
-        cards: row.cards?.map((card) => cards.get(card.id) ?? card),
+        cards: row.cards?.map((card) => {
+          const previous = previousCards.get(card.id);
+          if (previous && JSON.stringify(previous) === JSON.stringify(card))
+            return previous;
+          const canonical = canonicalCards.get(card.id);
+          return canonical && JSON.stringify(canonical) === JSON.stringify(card)
+            ? canonical
+            : card;
+        }),
       })),
     });
+    this.tutorialGuide.set(currentTutorialStep(session));
+    const history = session.history;
     this.tutorialStatus.set({
       control: session.control,
-      canNext: session.canNext,
+      canNext:
+        session.control === 'guided' &&
+        (history.cursor < history.actions.length ||
+          (session.canAppendAction && !!this.tutorialGuide()?.step.action)),
       canPrevious: session.canPrevious,
       isComplete: session.isComplete,
     });
+    const ref = this.projectRef();
+    if (ref)
+      this.tutorialRuntime.publish(
+        ref,
+        session,
+        (action) => this.editTutorial(action),
+        session.control === 'guided'
+          ? {
+              next: () => this.addNextTutorialCard(),
+              previous: () => this.previousTutorialStep(),
+              canNext: this.tutorialStatus()?.canNext ?? false,
+              canPrevious: session.canPrevious,
+              cue: this.tutorialProgressCue(),
+              limitation: this.tutorialGuide()?.step.limitation,
+            }
+          : undefined,
+      );
   }
 
   addNextTutorialCard(): void {
-    if (this.tutorialSession?.next()) this.publishTutorial();
+    const session = this.tutorialSession;
+    if (!session || session.control !== 'guided') return;
+    const history = session.history;
+    const step = currentTutorialStep(session).step;
+    if (history.cursor < history.actions.length) {
+      const action = history.actions[history.cursor];
+      if (session.next()) {
+        this.publishTutorial();
+        this.focusTutorialChange(action.cardId, step.title, step.detail);
+      }
+      return;
+    }
+    const action = step.action;
+    if (action && session.dispatch(action)) {
+      this.publishTutorial();
+      this.focusTutorialChange(action.cardId, step.title, step.detail);
+    }
   }
 
   previousTutorialStep(): void {
-    if (this.tutorialSession?.previous()) this.publishTutorial();
+    const session = this.tutorialSession;
+    const history = session?.history;
+    const action = history?.actions[(history?.cursor ?? 0) - 1];
+    if (session?.previous()) {
+      this.publishTutorial();
+      this.focusTutorialChange(
+        action?.cardId,
+        'Previous step restored',
+        this.tutorialGuide()?.step.detail ?? '',
+      );
+    }
   }
 
   restartTutorial(): void {
     this.tutorialSession?.restart();
     this.publishTutorial();
+    this.focusTutorialChange(
+      undefined,
+      'Tutorial restarted',
+      'Your browser-session canvas is empty again.',
+    );
   }
 
   takeTutorialControl(): void {
     this.tutorialSession?.takeControl();
     this.publishTutorial();
+    this.focusTutorialChange(
+      undefined,
+      'You have control',
+      'Edit widgets in this browser session.',
+      '[data-tutorial-authoring-focus]',
+    );
   }
 
   resumeTutorial(): void {
     this.tutorialSession?.resume();
     this.publishTutorial();
+    this.focusTutorialChange(
+      undefined,
+      'Guide resumed',
+      this.tutorialGuide()?.step.detail ?? '',
+    );
+  }
+
+  private focusTutorialChange(
+    cardId: string | undefined,
+    title: string,
+    detail: string,
+    fallback?: string,
+  ): void {
+    const generation = ++this.focusGeneration;
+    this.tutorialRuntime.notice.set(
+      cardId ? { cardId, title, detail } : undefined,
+    );
+    this.tutorialAnnouncement.set(
+      `${title}. ${detail} ${this.tutorialProgressCue()}`,
+    );
+    afterNextRender(
+      () => {
+        if (generation !== this.focusGeneration || !this.tutorialActive())
+          return;
+        const root = this.element.nativeElement;
+        const target =
+          (cardId
+            ? (Array.from(
+                root.querySelectorAll<HTMLElement>(
+                  '[data-tutorial-card-heading], [data-board-card-id]',
+                ),
+              ).find(
+                (element) =>
+                  element.getAttribute('data-tutorial-card-heading') === cardId,
+              ) ??
+              Array.from(
+                root.querySelectorAll<HTMLElement>('[data-board-card-id]'),
+              ).find(
+                (element) =>
+                  element.getAttribute('data-board-card-id') === cardId,
+              ))
+            : undefined) ??
+          root.querySelector<HTMLElement>(
+            fallback ??
+              (!this.visibleTutorialCards().length
+                ? '[data-tutorial-empty-focus]'
+                : '[data-tutorial-guide-focus]'),
+          );
+        target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+        target?.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
+
+  private focusSavedBoardHeading(): void {
+    const generation = ++this.focusGeneration;
+    const board = this.boardDef();
+    afterNextRender(
+      () => {
+        if (
+          generation !== this.focusGeneration ||
+          this.tutorialActive() ||
+          this.boardDef() !== board
+        )
+          return;
+        const heading = this.element.nativeElement.querySelector<HTMLElement>(
+          '[data-board-page-heading]',
+        );
+        heading?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+        heading?.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
+
+  explainSourceLimit(index: number): void {
+    const target = this.element.nativeElement.querySelector<HTMLElement>(
+      `#source-composition-limit-${index}`,
+    );
+    this.tutorialAnnouncement.set(
+      target?.textContent?.trim() ?? 'Source composition is unavailable.',
+    );
+    target?.focus();
+  }
+
+  editTutorial(action: BoardSessionAction): void {
+    const session = this.tutorialSession;
+    if (!session || !this.tutorialActive()) return;
+    if (!session.dispatch(action)) {
+      this.authoringError.set(
+        'This change is unavailable, invalid, or already applied. Choose saved queries and supported chart settings.',
+      );
+      return;
+    }
+    session.takeControl();
+    this.focusGeneration++;
+    this.tutorialRuntime.notice.set(undefined);
+    this.authoringError.set(undefined);
+    this.publishTutorial();
+    this.tutorialAnnouncement.set(this.tutorialProgressCue());
+  }
+
+  addTutorialTab(editor: TutorialEditor, title: string, queryId: string): void {
+    this.editTutorial({
+      type: 'add-tab',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      tabId: `session-${crypto.randomUUID()}`,
+      title: title.trim(),
+      queryId,
+    });
+  }
+
+  tabAction(
+    editor: TutorialEditor,
+    type: 'select-tab' | 'remove-tab' | 'reorder-tab' | 'set-tab-query',
+    key: string,
+    value?: string | number,
+  ): void {
+    const common = {
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      tabKey: key,
+    };
+    if (type === 'set-tab-query')
+      this.editTutorial({ ...common, type, queryId: String(value) });
+    else if (type === 'reorder-tab')
+      this.editTutorial({ ...common, type, toIndex: Number(value) });
+    else this.editTutorial({ ...common, type });
+  }
+
+  setTutorialView(editor: TutorialEditor, view: string): void {
+    if (view !== 'chart' && view !== 'grid') return;
+    this.editTutorial({
+      type: 'set-view',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      view,
+    });
+  }
+
+  setTutorialChart(editor: TutorialEditor, field: string, value: string): void {
+    if (
+      !editor.chart ||
+      ![
+        'categoryColumn',
+        'valueColumn',
+        'periodColumn',
+        'topN',
+        'mode',
+      ].includes(field)
+    )
+      return;
+    const spec = {
+      ...editor.chart.chart,
+      [field]: field === 'topN' ? Number(value) : value,
+    } as ChartSpec;
+    this.editTutorial({
+      type: 'set-chart-spec',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      spec,
+    });
+  }
+
+  removeTutorialSource(editor: TutorialEditor, sourceId: string): void {
+    this.editTutorial({
+      type: 'remove-chart-source',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      sourceId,
+    });
   }
 
   addTutorialCard(card: BoardCard): void {

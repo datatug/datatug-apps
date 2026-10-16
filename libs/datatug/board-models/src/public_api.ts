@@ -6,7 +6,23 @@ export { BOARD_MODELS_VERSION } from './lib/version';
 export { BoardId, BoardCardId } from './lib/ids';
 export { Board, BoardRow, BoardCard } from './lib/board';
 // Tutorial actions and session state are presentation-only; they do not extend the Board wire shape.
-export { BoardAction, TutorialControl, TutorialStorage, TutorialBoardSession, applyBoardAction, emptyTutorialBoard, canonicalBoardRevision } from './lib/tutorial-board';
+export {
+  BoardAction,
+  TutorialControl,
+  TutorialStorage,
+  TutorialBoardSession,
+  applyBoardAction,
+  emptyTutorialBoard,
+  canonicalBoardRevision,
+} from './lib/tutorial-board';
+// New session editing exports for human review; no additional durable Board fields.
+export {
+  BoardEditAction,
+  BoardSessionAction,
+  BoardSessionState,
+  replayBoardActions,
+  canonicalBoardQueryIds,
+} from './lib/tutorial-board';
 export {
   BoardWidget,
   BoardWidgetName,
