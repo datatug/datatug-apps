@@ -13,13 +13,15 @@ import {
   provideRouter,
 } from '@angular/router';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
-import { BehaviorSubject } from 'rxjs';
+import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   QueryResultPageComponent,
   isLoopbackStore,
   rerunErrorText,
 } from './query-result.page';
+import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
+import { ProjectService } from '../../services/project/project.service';
 import { ROW_MARKER, invoiceCustomerResult } from './query-result.spec-helper';
 
 /** The results grid as the page drives it (the grid itself does not render in this test environment). */
@@ -74,13 +76,28 @@ interface Mounted {
   ctrl: HttpTestingController;
   route: ReturnType<typeof routeStub>;
   navigate: ReturnType<typeof vi.fn>;
+  selectResultProject: ReturnType<typeof vi.fn>;
+  getSummary: ReturnType<typeof vi.fn>;
   el: () => HTMLElement;
   text: () => string;
   render: () => Promise<void>;
 }
 
-function mount(resultId: string, query: Record<string, string> = {}): Mounted {
+/** What the agent answers for the project of the result: its summary, nothing, or a failure. */
+type ProjectAnswer = Observable<unknown>;
+const KNOWN_PROJECT: ProjectAnswer = of({
+  id: 'demo',
+  environments: [{ id: 'local' }],
+});
+
+function mount(
+  resultId: string,
+  query: Record<string, string> = {},
+  project: ProjectAnswer = KNOWN_PROJECT,
+): Mounted {
   const route = routeStub(resultId, query);
+  const selectResultProject = vi.fn();
+  const getSummary = vi.fn(() => project);
   TestBed.configureTestingModule({
     imports: [QueryResultPageComponent],
     providers: [
@@ -89,6 +106,8 @@ function mount(resultId: string, query: Record<string, string> = {}): Mounted {
       provideRouter([]),
       { provide: DATATUG_AGENT_BASE_URL, useValue: AGENT },
       { provide: ActivatedRoute, useValue: route },
+      { provide: DatatugNavContextService, useValue: { selectResultProject } },
+      { provide: ProjectService, useValue: { getSummary } },
     ],
   });
   TestBed.overrideComponent(QueryResultPageComponent, {
@@ -107,6 +126,8 @@ function mount(resultId: string, query: Record<string, string> = {}): Mounted {
     ctrl: TestBed.inject(HttpTestingController),
     route,
     navigate,
+    selectResultProject,
+    getSummary,
     el,
     text: () => el().textContent ?? '',
     render: async () => {
@@ -158,6 +179,78 @@ describe('QueryResultPageComponent', () => {
     });
     expect(m.text()).toContain('2 saved rows');
     expect(m.text()).toContain('more rows exist');
+  });
+
+  it('selects the project of the result as the current one, with its environment', async () => {
+    const m = mount('t4');
+    answer(m);
+    await m.render();
+    expect(m.getSummary).toHaveBeenCalledWith({
+      projectId: 'demo',
+      storeId: STORE,
+    });
+    // With no history, Back goes to the project of the result.
+    expect(m.page.backHref()).toBe(`/store/${STORE}/project/demo`);
+    expect(m.selectResultProject).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ ref: { projectId: 'demo', storeId: STORE } }),
+      'local',
+    );
+  });
+
+  it('selects the project without an environment the project does not have', async () => {
+    const m = mount('t4', {}, of({ id: 'demo', environments: [] }));
+    answer(m);
+    await m.render();
+    expect(m.selectResultProject).toHaveBeenLastCalledWith(
+      expect.any(String),
+      expect.objectContaining({ ref: { projectId: 'demo', storeId: STORE } }),
+      undefined,
+    );
+  });
+
+  it.each([
+    [
+      'a project the agent does not know (error)',
+      () => throwError(() => new Error('404')),
+    ],
+    ['a project with no summary', () => of(undefined)],
+  ])(
+    'selects no project for %s, and the result still shows',
+    async (_n, answerOf) => {
+      const m = mount('t4', {}, answerOf());
+      answer(m);
+      await m.render();
+      expect(m.selectResultProject).toHaveBeenLastCalledWith(
+        expect.any(String),
+      );
+      expect(
+        m.el().querySelector('[data-testid="result-table"]'),
+      ).not.toBeNull();
+    },
+  );
+
+  it('selects no project, and asks the agent for none, for a database outside any project', async () => {
+    const m = mount('t4');
+    answer(
+      m,
+      invoiceCustomerResult({
+        db: { ref: null, project: null, env: null, source: null },
+      }),
+    );
+    await m.render();
+    expect(m.getSummary).not.toHaveBeenCalled();
+    expect(m.selectResultProject).toHaveBeenLastCalledWith(expect.any(String));
+  });
+
+  it('clears the project when the result cannot be read', async () => {
+    const m = mount('t4');
+    m.ctrl
+      .expectOne(`${AGENT}/results/t4`)
+      .flush({}, { status: 404, statusText: 'Not Found' });
+    await m.render();
+    expect(m.getSummary).not.toHaveBeenCalled();
+    expect(m.selectResultProject).toHaveBeenLastCalledWith(expect.any(String));
   });
 
   it('shows the row of the address in the Record view and moves by position', async () => {
