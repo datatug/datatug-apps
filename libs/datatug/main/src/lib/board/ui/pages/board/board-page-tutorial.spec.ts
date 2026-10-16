@@ -399,7 +399,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     fixture.destroy();
   });
 
-  it('keeps keyboard focus and in-canvas continuation on each changed card, announces views/tabs, and exposes the source limit', async () => {
+  it('keeps keyboard focus on the stable guide heading as card content changes, announces views/tabs, and exposes the source limit', async () => {
     const board: Board = {
       ...saved,
       rows: [
@@ -486,13 +486,18 @@ describe('BoardPage same-route tutorial overlay', () => {
     };
     await activate('Add the first card');
     expect(
-      document.activeElement?.getAttribute('data-tutorial-card-heading'),
-    ).toBe('race');
-    expect(document.activeElement?.textContent).toContain('Add Orders race');
-    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
-    await activate('Next Step', true);
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
     expect(document.activeElement?.textContent).toContain(
       'Inspect the source rows',
+    );
+    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
+    await activate('Next Step', true);
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
+    expect(document.activeElement?.textContent).toContain(
+      'Return to the paused race',
     );
     expect(
       fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
@@ -504,15 +509,15 @@ describe('BoardPage same-route tutorial overlay', () => {
       fixture.nativeElement.querySelector('.tutorial-progress').textContent,
     ).toContain('Return to the paused race');
     await activate('Next Step', true);
-    expect(document.activeElement?.textContent).toContain(
-      'Return to the paused race',
-    );
+    expect(document.activeElement?.textContent).toContain('Add Inspection');
     await activate('Next Step', true);
     expect(
-      document.activeElement?.getAttribute('data-tutorial-card-heading'),
-    ).toBe('inspect');
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
     await activate('Next Step', true);
-    expect(document.activeElement?.textContent).toContain('Inspect PostgreSQL');
+    expect(document.activeElement?.textContent).toContain(
+      'Explore another source',
+    );
     expect(
       fixture.nativeElement.querySelector('.tutorial-card-guide').textContent,
     ).toContain('Adding a second source is unavailable');
@@ -520,9 +525,13 @@ describe('BoardPage same-route tutorial overlay', () => {
       fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
     ).toContain('Inspect PostgreSQL');
     await activate('Previous Step', true);
-    expect(document.activeElement?.textContent).toContain(
-      'Previous step restored',
-    );
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
+    expect(document.activeElement?.textContent).toContain('Inspect PostgreSQL');
+    expect(
+      fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
+    ).toContain('Previous step restored');
     await activate('Take Control');
     expect(
       document.activeElement?.hasAttribute('data-tutorial-authoring-focus'),
