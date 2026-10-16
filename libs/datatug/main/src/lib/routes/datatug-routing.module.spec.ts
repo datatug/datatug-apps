@@ -48,6 +48,8 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'query', 'genre-mix'])).toBe(true);
     expect(matches([...base, 'sessions'])).toBe(true);
     expect(matches([...base, 'sessions', 's1', 'composer'])).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'checks', 'invoice-check'])).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'detective', 'invoice-case'])).toBe(true);
     expect(matches([...base, 'sessions', 's1', 'query', 'genre-mix'])).toBe(true);
     const encoded = new DefaultUrlSerializer().parse(
       '/space/S1/store/firestore/project/P1/query/folder%2Fgenre-mix',
@@ -60,6 +62,10 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'chat'])).toBe(false);
     expect(matches([...base, 'sessions', 's1', 'env', 'local'])).toBe(false);
     expect(matches([...base, 'env', 'local'])).toBe(false);
+  });
+  it('places metadata recovery routes before content-guarded project routes', () => {
+    expect(datatugRoutes.slice(0, 2).map(route => route.path)).toEqual(['native-check-status/:recoveryId', 'store/:storeId/native-check-status/:recoveryId']);
+    for (const route of datatugRoutes.slice(0, 2)) { expect(route.canActivate).toBeUndefined(); expect(route.canMatch).toBeUndefined(); }
   });
   it('resolves a cold scenario URL before the Case detail route', async () => {
     const project = datatugRoutes.find(

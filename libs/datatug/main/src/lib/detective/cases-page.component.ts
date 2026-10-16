@@ -1,3 +1,4 @@
+import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { CommonModule } from '@angular/common';
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import {
@@ -137,6 +138,8 @@ const NEW_CASE = (): DetectiveCase => ({
   ],
 })
 export class CasesPageComponent {
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
+
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly client = inject(DetectiveClientService);
@@ -459,10 +462,17 @@ export class CasesPageComponent {
   });
 
   protected casesUrl(): string {
-    return projectPageHref(this.scope.ref(), 'detective');
+    return this.sessionPageHref('detective');
+  }
+  protected pageRoute(href: string, params: Record<string, string> = {}): UrlTree {
+    const tree = this.router.parseUrl(href); tree.queryParams = { ...tree.queryParams, ...params }; return tree;
+  }
+  private sessionPageHref(page: string | string[]): string {
+    const id = this.sessionWorkspace?.focusedSessionId();
+    return projectPageHref(this.scope.ref(), id ? ['sessions', id, ...(typeof page === 'string' ? [page] : page)] : page);
   }
   protected caseUrl(id: string): string {
-    return projectPageHref(this.scope.ref(), ['detective', id]);
+    return this.sessionPageHref(['detective', id]);
   }
   protected scenarioUrl(id: string): UrlTree {
     return this.router.parseUrl(
@@ -470,10 +480,10 @@ export class CasesPageComponent {
     );
   }
   protected checkUrl(id: string): string {
-    return projectPageHref(this.scope.ref(), ['checks', id]);
+    return this.sessionPageHref(['checks', id]);
   }
   protected validatorUrl(queryId: string, caseId: string) {
-    const url = projectPageHref(this.scope.ref(), 'checks');
+    const url = this.sessionPageHref('checks');
     return this.router.parseUrl(
       `${url}${url.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}&caseId=${encodeURIComponent(caseId)}`,
     );

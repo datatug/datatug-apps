@@ -44,8 +44,8 @@ import {
 
 const CONNECTION_ID = 'chinook-sqlite';
 const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
-const FIXTURE_SHA256 =
-  '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15';
+import { PUBLIC_CHINOOK_FIXTURE_SHA256 } from './public-sqlite-source-identity';
+const FIXTURE_SHA256 = PUBLIC_CHINOOK_FIXTURE_SHA256;
 const FIXTURE_BYTES = 1007616;
 const RUN_TIMEOUT_MS = 10000;
 const GITHUB_STORES = new Set(['github', 'github.com', 'firestore']);

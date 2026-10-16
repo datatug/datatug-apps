@@ -21,6 +21,7 @@ class AuthPanelStubComponent {
 
 describe('SessionWorkspaceShellComponent auth lifecycle', () => {
   let fixture: ComponentFixture<SessionWorkspaceShellComponent>;
+  let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
   let api: { capabilities: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn>; command: ReturnType<typeof vi.fn> };
   const environment = { environmentId: 'uat', identityDomain: 'workspace' };
@@ -43,7 +44,7 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
       list: vi.fn(async () => ({ items: [], hasMore: false })),
       command: vi.fn(),
     };
-    const params = new BehaviorSubject(convertToParamMap({ storeId: 'http-localhost:8989', projectId: 'shop' }));
+    const params = routeParams = new BehaviorSubject(convertToParamMap({ storeId: 'github.com', projectId: 'shop' }));
     const query = new BehaviorSubject(convertToParamMap({}));
     const route = {
       paramMap: params.asObservable(),
@@ -104,6 +105,28 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(workspace.sessions()).toEqual([]);
   });
 
+  it('offers fresh CLI link instructions and read-only retry for local agent 401', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    api.capabilities.mockRejectedValueOnce({ status: 401 });
+    routeParams.next(convertToParamMap({ storeId: 'http-localhost:8989', projectId: 'shop' }));
+    await vi.waitFor(() => expect(workspace.agentReconnectRequired()).toBe(true));
+    fixture.componentInstance.chooserOpen.set(true);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(workspace.agentReconnectRequired()).toBe(true);
+    expect(workspace.authRequired()).toBe(false);
+    expect(fixture.debugElement.query(By.directive(AuthPanelStubComponent))).toBeNull();
+    await vi.waitFor(() => expect(document.body.textContent).toContain('Open a fresh DataTug link from your CLI'));
+    expect(document.body.textContent).toContain('Retry loading sessions');
+    const retry = [...document.body.querySelectorAll('ion-button')].find(button => button.textContent?.includes('Retry loading sessions'));
+    if (!retry) throw new Error('Missing agent admission retry');
+    retry.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    await vi.waitFor(() => expect(workspace.capabilities()).toEqual(caps));
+    expect(api.capabilities).toHaveBeenLastCalledWith({ storeId: 'http-localhost:8989', projectId: 'shop' });
+    expect(api.command).not.toHaveBeenCalled();
+  });
+
   it.each([
     ['createSession is unsupported', { ...caps, actions: [] }],
     ['no environment is admitted', { ...caps, environments: [] }],
@@ -128,14 +151,95 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(api.command).not.toHaveBeenCalled();
   });
 
-  it('allows creation when the capability and an admitted environment are available', () => {
+  it('allows creation when the capability and an admitted environment are available', async () => {
     const workspace = TestBed.inject(SessionWorkspaceService);
     const component = fixture.componentInstance;
     workspace.capabilities.set(caps);
 
     expect(component.canCreateSession()).toBe(true);
-    component.beginCreate();
+    component.chooserOpen.set(false);
+    await component.beginCreate();
     expect(component.createOpen()).toBe(true);
+  });
+
+  it('dismisses the real chooser before presenting create and waits for create didDismiss before navigation', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set(caps);
+    component.chooserOpen.set(true);
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(component.chooserPresented()).toBe(true));
+    const chooserDismissed = component.chooserModal()?.onDidDismiss();
+    const opening = component.beginCreate();
+    expect(component.createOpen()).toBe(false);
+    await chooserDismissed;
+    await opening;
+    expect(component.chooserOpen()).toBe(false);
+    await vi.waitFor(() => expect(component.createPresented()).toBe(true));
+    component.titleDraft.set('New session');
+    const focus = vi.spyOn(workspace, 'focus').mockResolvedValue();
+    vi.spyOn(workspace, 'create').mockResolvedValue('new-session');
+    const router = TestBed.inject(Router);
+    router.parseUrl = vi.fn(() => ({ queryParams: {} }) as ReturnType<Router['parseUrl']>);
+    const navigate = vi.fn(async () => true);
+    router.navigateByUrl = navigate;
+    let actuallyDismissed = false;
+    const dismissed = component.createModal()?.onDidDismiss().then(() => { actuallyDismissed = true; });
+    focus.mockImplementation(async () => { expect(actuallyDismissed).toBe(true); });
+    const saving = component.saveCreate();
+    expect(focus).not.toHaveBeenCalled();
+    expect(navigate).not.toHaveBeenCalled();
+    await dismissed;
+    await saving;
+    expect(component.createPresented()).toBe(false);
+    expect(component.chooserPresented()).toBe(false);
+    expect(navigate).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps a failed create open and preserves normal cancellation cleanup', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set(caps);
+    component.chooserOpen.set(false);
+    await component.beginCreate();
+    await vi.waitFor(() => expect(component.createPresented()).toBe(true));
+    component.titleDraft.set('Failed session');
+    vi.spyOn(workspace, 'create').mockImplementation(async () => { workspace.error.set('Save failed'); return undefined; });
+    const focus = vi.spyOn(workspace, 'focus');
+    await component.saveCreate();
+    expect(component.createOpen()).toBe(true);
+    expect(component.createPresented()).toBe(true);
+    expect(focus).not.toHaveBeenCalled();
+    const dismissed = component.createModal()?.onDidDismiss();
+    component.createOpen.set(false);
+    await dismissed;
+    expect(component.createPresented()).toBe(false);
+    expect(component.renameTarget()).toBeUndefined();
+    expect(component.addBagOpen()).toBe(false);
+  });
+
+  it('keeps Context in the primary action group and secondary actions independently operable', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.capabilities.set({ ...caps, nativeDetective: true });
+    vi.spyOn(workspace, 'session').mockReturnValue({ schemaVersion: 1, id: 'session-1', databaseId: 'ops', projectId: 'shop', owner: 'actor-1', title: 'Saved session', state: 'stopped', version: 1, defaultBagId: 'bag-1', contextSetId: 'set-1', bagIds: ['bag-1'], createdAt: '', updatedAt: '' });
+    vi.spyOn(workspace, 'appliedCount').mockReturnValue(3);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const primary = fixture.nativeElement.querySelector('.session-primary-actions');
+    const secondary = fixture.nativeElement.querySelector('.session-secondary-actions');
+    expect(primary.textContent).toContain('All sessions');
+    expect(primary.textContent).toContain('Context · 3 applied');
+    expect(primary.textContent).not.toContain('Run history');
+    await vi.waitFor(() => expect(secondary.textContent).toContain('Checks'));
+    expect(secondary.textContent).toContain('Cases');
+    expect(secondary.textContent).toContain('Run history');
+    expect(secondary.textContent).toContain('Resume');
+    primary.querySelector('.session-context-button').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    expect(component.drawerOpen()).toBe(true);
   });
 
   it('keeps loaded sessions available after a later workspace error', async () => {
