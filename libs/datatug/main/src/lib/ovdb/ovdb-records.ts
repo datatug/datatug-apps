@@ -4,7 +4,7 @@
 // one with `delete` (`POST /batch`, op "delete"). Keys are `<Table>/<pk>`.
 import { Key, NotFoundError, AlreadyExistsError, UnsupportedError } from '@dalgo/core';
 import { OpenVaultDbDatabase, OpenVaultDbHttpError } from '@dalgo/ovdb/client';
-import { ovdbDatabaseUrl, type OvdbConnection } from './ovdb-connection';
+import { ovdbCollectionTarget, ovdbDatabaseUrl, ovdbHttpError, type OvdbConnection, type OvdbDescriptor } from './ovdb-connection';
 
 export interface OvdbRow {
   /** The record key path as the server returned it (`Album/1`). */
@@ -22,11 +22,47 @@ export function ovdbDatabase(connection: OvdbConnection): OpenVaultDbDatabase {
   });
 }
 
+/**
+ * Whether rows are read with `POST /dtql` instead of `POST /query`: a native PostgreSQL mount (the hosted DemoDB
+ * editions on cloud.openvaultdb.com) reports `query: false` yet answers DTQL reads.
+ */
+export function ovdbReadsWithDtql(descriptor: OvdbDescriptor | undefined): boolean {
+  const capabilities = descriptor?.capabilities;
+  return capabilities?.query !== true && capabilities?.dtql === true;
+}
+
+/** A DTQL-YAML document reading one table. JSON strings are valid YAML scalars, so no name can alter the document. */
+export function ovdbDtqlDocument(target: { readonly id: string; readonly source?: { readonly schema?: string; readonly name: string } }, limit: number): string {
+  const from = target.source
+    ? [...(target.source.schema ? [`  schema: ${JSON.stringify(target.source.schema)}`] : []), `  name: ${JSON.stringify(target.source.name)}`]
+    : [`  name: ${JSON.stringify(target.id)}`];
+  return ['from:', ...from, `limit: ${limit}`, ''].join('\n');
+}
+
+async function listOvdbRowsWithDtql(connection: OvdbConnection, collection: string, limit: number): Promise<readonly OvdbRow[]> {
+  const response = await connection.fetch(`${ovdbDatabaseUrl(connection.baseUrl, connection.databaseId)}/dtql`, {
+    method: 'POST',
+    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ query: ovdbDtqlDocument(ovdbCollectionTarget(connection.descriptor, collection), limit) }),
+    cache: 'no-store',
+    credentials: 'omit',
+  });
+  if (!response.ok) throw await ovdbHttpError(response, 'read failed');
+  const body = (await response.json()) as { records?: unknown };
+  if (!Array.isArray(body.records)) throw new TypeError('The server answered without records.');
+  return body.records.map((record: { key?: unknown; data?: unknown }, index) => ({
+    // A DTQL record of a native mount carries no key; the position keeps rows apart.
+    key: typeof record.key === 'string' ? record.key : `#${index}`,
+    data: (record.data ?? {}) as Record<string, unknown>,
+  }));
+}
+
 export async function listOvdbRows(
   connection: OvdbConnection,
   collection: string,
   limit = OVDB_PAGE_SIZE,
 ): Promise<readonly OvdbRow[]> {
+  if (ovdbReadsWithDtql(connection.descriptor)) return listOvdbRowsWithDtql(connection, collection, limit);
   const page = await ovdbDatabase(connection).query<Record<string, unknown>>({
     source: { kind: 'collection', name: collection },
     filters: [],
@@ -69,18 +105,7 @@ export async function resetOvdbDatabase(connection: OvdbConnection): Promise<voi
     cache: 'no-store',
     credentials: 'omit',
   });
-  if (!response.ok) {
-    let code = 'unknown';
-    let message = 'reset failed';
-    try {
-      const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } };
-      if (typeof body.error?.code === 'string') code = body.error.code;
-      if (typeof body.error?.message === 'string') message = body.error.message;
-    } catch {
-      /* keep the status only */
-    }
-    throw new OpenVaultDbHttpError(response.status, code, message);
-  }
+  if (!response.ok) throw await ovdbHttpError(response, 'reset failed');
 }
 
 function httpCause(error: unknown): OpenVaultDbHttpError | undefined {
@@ -112,6 +137,11 @@ export function describeOvdbError(error: unknown, action: 'save' | 'delete' | 'r
         return 'A record with this key already exists.';
       case 'read_only':
         return 'This database is read-only: changes are not allowed.';
+      case 'database_unavailable':
+        return 'The hosted demo database is waking up or temporarily unavailable. Try again in a few seconds.';
+      case 'operation_unsupported':
+      case 'query_unsupported':
+        return 'The hosted database does not support this operation: it is read-only and opened for browsing only.';
       case 'read_denied':
         return 'This database does not allow reading records by key.';
       case 'not_supported':
@@ -124,6 +154,8 @@ export function describeOvdbError(error: unknown, action: 'save' | 'delete' | 'r
       case 'invalid_key':
         return `The request was invalid: ${detail}`;
     }
+    if (http.status === 503) return 'The hosted demo database is waking up or temporarily unavailable. Try again in a few seconds.';
+    if (http.status === 501) return 'The hosted database does not support this operation.';
     if (http.status === 404) return 'The record no longer exists. Refresh the table to see the current data.';
     if (http.status === 409) return 'The change conflicts with the data in the database.';
     if (http.status === 403) return 'This database does not allow this change.';

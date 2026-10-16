@@ -59,12 +59,18 @@ export function takeAgentLinkCode(
   if (!fragment) {
     return undefined;
   }
-  const parts = fragment.split('&');
-  const codeParts = parts.filter((part) => part.startsWith('code='));
+  // Only the parts before the record key are looked at: `pk=` is always last (`code=…&pk=…`), and after the
+  // router has rewritten the address bar a `&` inside a key value is bare, so a key holding `&code=` must never be
+  // cut into.
+  const all = fragment.split('&');
+  const pkAt = all.findIndex((part) => part.startsWith('pk='));
+  const head = pkAt < 0 ? all : all.slice(0, pkAt);
+  const tail = pkAt < 0 ? [] : [all.slice(pkAt).join('&')];
+  const codeParts = head.filter((part) => part.startsWith('code='));
   if (!codeParts.length) {
     return undefined;
   }
-  const kept = parts.filter((part) => !part.startsWith('code='));
+  const kept = [...head.filter((part) => !part.startsWith('code=')), ...tail];
   hist.replaceState(
     hist.state,
     '',

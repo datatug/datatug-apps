@@ -215,6 +215,12 @@
 
   <ion-footer class="composer-footer">
     <ion-toolbar>
+      @if (!providers.providers().length) {
+        <div class="ion-padding-horizontal" role="status" aria-label="AI provider setup">
+          <p>Add your own AI provider to send a question about Chinook. You’ll need a provider API key; requests go directly from this browser to that provider.</p>
+          <ion-button fill="outline" (click)="selectProvider('__add_provider__')">Add AI provider</ion-button>
+        </div>
+      }
       @if (workspace().attachments.length) {
         <div class="attachment-chips" aria-label="Attached context">
           @for (reference of workspace().attachments; track reference.kind + reference.objectId) {

@@ -1,3 +1,4 @@
+import { queryContextScope } from '../../../session-context/session-query-scope';
 import { savedMeaningChoices, type SavedMeaningChoice } from '../../semantic-meaning-reuse';
 import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
 import { SemanticMappingDialogComponent } from '../../semantic-mapping-dialog.component';
@@ -6144,14 +6145,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     const selectionFacts = this.buildSelectionFacts(parameters);
     const sessionId = this.contextSessionId();
+    const sessionScope = this.sessionWorkspace && sessionId ? queryContextScope(this.sessionWorkspace.capabilities(), this.envId ?? '', this.queryDef()) : undefined;
     const contextFacts = this.sessionWorkspace && sessionId
-      ? this.sessionWorkspace.appliedFactsFor(sessionId, this.envId ?? '')
+      ? sessionScope ? this.sessionWorkspace.appliedFactsFor(sessionId, sessionScope) : []
       : this.investigationContext
       .items()
       .filter((item) => item.enabled && isFactSelectedForBinding(item));
     const activeContextScope = this.investigationContext.scope();
     const contextScopeKey = this.sessionWorkspace && sessionId
-      ? this.sessionWorkspace.bindingScopeKey(sessionId, this.envId ?? '')
+      ? sessionScope ? this.sessionWorkspace.bindingScopeKey(sessionId, sessionScope) : undefined
       : activeContextScope
       ? scopeKey(activeContextScope)
       : undefined;
@@ -7098,8 +7100,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!workspace || !definition || !sessionId || !workspace.canExecuteFor(sessionId)) {
       this.runError.set('Resume this session before running a query.'); return;
     }
-    const scopes = workspace.capabilities()?.environments.filter((scope) => scope.environmentId === this.envId) ?? [];
-    if (scopes.length !== 1) { this.runError.set('Choose one admitted environment and identity domain before running this session query.'); return; }
+    const queryScope = queryContextScope(workspace.capabilities(), this.envId ?? '', definition);
+    const scopes = queryScope ? [queryScope] : [];
+    if (scopes.length !== 1) { this.runError.set('This query has no unique admitted source identity in this environment. Review the source mapping before running.'); return; }
     const request = definition.request as ITextQueryRequest;
     if (![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(request.queryType) || typeof request.text !== 'string') {
       this.runError.set('This session adapter can record SQL and TugQL executions. This request type has no supported private definition snapshot yet.'); return;
@@ -7108,7 +7111,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.runError.set('Review and accept the current context bindings before creating a saved session run.'); return;
     }
     this.sessionCompletionGeneration++;
-    const latestFacts = workspace.appliedFactsFor(sessionId, this.envId ?? '');
+    const latestFacts = workspace.appliedFactsFor(sessionId, scopes[0]);
     const bindings = this.effectiveBindings();
     if (bindings.some((binding) => binding.origin === 'context' && !latestFacts.some((fact) => fact.id === binding.factId && fact.value && binding.value && typedValuesEqual(fact.value, binding.value)))) {
       this.runError.set('These frozen bindings differ from the current applied manifest. Review the new context before running.'); return;

@@ -46,6 +46,23 @@ const receipt: ContextReceipt = {
 };
 
 describe('SessionContextApiService command wire boundary', () => {
+  it.each(['createSession', 'createBag', 'importLegacy'] as const)('projects capability metadata out of %s scope on the wire', async (action) => {
+    TestBed.configureTestingModule({ providers: [provideHttpClient(), provideHttpClientTesting(), SessionContextApiService] });
+    const service = TestBed.inject(SessionContextApiService);
+    const http = TestBed.inject(HttpTestingController);
+    const scope = { environmentId: 'local', identityDomain: 'chinook-local', title: 'Chinook invoices', querySources: [{ kind: 'public-sqlite', connectionId: 'chinook-sqlite' }] };
+    const enriched: ContextCommand = { ...command, action, scope, ...(action === 'importLegacy' ? { legacyImport: { sourceId: 'legacy_0123456789abcdef', scope, entries: [], messages: [] } } : {}) };
+    const pending = service.command(localProject, capabilities, enriched);
+    const request = http.expectOne(candidate => candidate.url.endsWith('/session-context/commands'));
+    const expectedScope = { environmentId: 'local', identityDomain: 'chinook-local' };
+    expect(action === 'importLegacy' ? request.request.body.legacyImport.scope : request.request.body.scope).toEqual(expectedScope);
+    expect(scope.title).toBe('Chinook invoices');
+    expect(scope.querySources).toHaveLength(1);
+    request.flush({ receipt: { ...receipt, action } });
+    await pending;
+    http.verify();
+  });
+
   it('sends local selector and database identity only as query parameters', async () => {
     TestBed.configureTestingModule({
       providers: [

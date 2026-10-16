@@ -1,0 +1,65 @@
+{
+  "version": 1,
+  "catalogueHost": "demodb.dev",
+  "ingitdbRevisions": {
+    "chinook": "411cb7aead96a0b4314f3068c0a0455f869dfdee",
+    "northwind": "adb71d17af9aa457d19326d0d275f7b924267659",
+    "pubs": "3e37e01e28f610f1d65c9e809a79ab6522928ad2",
+    "sakila": "7e7de96d904dedc130165691e59a8268ce5fb6d2",
+    "adventureworks": "b4f6a9909c0de58767663dce9006c7ac522ce6a7",
+    "employees": "397f3e32cb970e55bc4a528bb255c41272f6103f"
+  },
+  "databases": [
+    {
+      "id": "chinook",
+      "repository": "https://github.com/demo-db/chinook",
+      "commit": "3e7bb316d8a438eb7e5930067997a4e4543a275c",
+      "contractSha256": "576b4ecb21bd3b263b7a3523b6a3c952c8388298eb0fa56a7950b42f63958272"
+    },
+    {
+      "id": "northwind",
+      "repository": "https://github.com/demo-db/northwind",
+      "commit": "c07b4666734a3445b2b0c2fbaf84305dcdb1bf45",
+      "contractSha256": "88a7e21b1ed16b27c3195c8ee10dc60ebef60fba6c70df6f9325d8e4adaaea22"
+    },
+    {
+      "id": "pubs",
+      "repository": "https://github.com/demo-db/pubs",
+      "commit": "e99ca33330a043e23b2c5a665356fb8ad8d0b508",
+      "contractSha256": "32224efdbecd57962f32a0aad81653bbf5085788df69185be30b2c7c0910d659"
+    },
+    {
+      "id": "sakila",
+      "repository": "https://github.com/demo-db/sakila",
+      "commit": "113e54ad83c3e003a4fd195c893f2b19a921435c",
+      "contractSha256": "54b74e47ad29e4c1d68866e89add885ee833728f04c4d68c46c2486346882655"
+    },
+    {
+      "id": "adventureworks",
+      "repository": "https://github.com/demo-db/adventureworks",
+      "commit": "c91e06e9c12380e7709f66ab1e69cf7f858f67c1",
+      "contractSha256": "5b2cb733342ac9e848f2674090e0e534082d48111056ff4e6a3b6d4ef4f693e0"
+    },
+    {
+      "id": "employees",
+      "repository": "https://github.com/demo-db/employees",
+      "commit": "add7744ddc5cefc535a7cbb09b3dffee41811ade",
+      "contractSha256": "83bc1f52480c1917451e726261fda83e4bdd5ea44ef81b90462f33a8a6234443"
+    }
+  ],
+  "comparisonFixtures": [
+    {
+      "databaseId": "chinook",
+      "repository": "https://github.com/demo-db/chinook",
+      "commit": "95d14a11256f8db512d5ecd7ea5be56e01d51781",
+      "manifestPath": "fixtures/compare/manifest.json",
+      "manifestSha256": "aa80280419d5e0e8bd99ae97574b5d91cbf4df6e560e536f8699f42ec175c887",
+      "fixtureId": "chinook-synthetic-3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f",
+      "baselineSha256": "7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15",
+      "baselineBytes": 1007616,
+      "candidatePath": "fixtures/compare/chinook-candidate-3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f.sqlite",
+      "candidateSha256": "3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f",
+      "candidateBytes": 1007616
+    }
+  ]
+}

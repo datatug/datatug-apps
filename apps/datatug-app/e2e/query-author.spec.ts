@@ -2176,7 +2176,12 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   expect(executionId).toBeDefined();
   const rows = page.getByRole('grid').getByRole('row');
   await expect(rows).toHaveCount(8);
-  const retainedRows = await rows.allTextContents();
+  // AG Grid can render a different set of horizontally buffered columns after
+  // the mobile viewport changes. Compare the stable InvoiceDate cells rather
+  // than row text, which may gain or lose the off-screen InvoiceId column.
+  const invoiceDates = rows.locator('[role="gridcell"][col-id="result_1"]');
+  await expect(invoiceDates).toHaveCount(7);
+  const retainedDates = await invoiceDates.allTextContents();
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
 
   const malformed = valid.replace(
@@ -2260,7 +2265,8 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
   await expect(receipt).toContainText(`Worker execution ID ${executionId}`);
   await expect(receipt).toContainText('7 rows');
   await expect(rows).toHaveCount(8);
-  expect(await rows.allTextContents()).toEqual(retainedRows);
+  await expect(invoiceDates).toHaveCount(7);
+  expect(await invoiceDates.allTextContents()).toEqual(retainedDates);
   expect(workersStarted).toBe(1);
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
 

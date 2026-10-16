@@ -18,7 +18,7 @@
   <ion-card>
     <ion-item-divider>
       @switch (dbServer()?.driver) {
-        @case ("sqlserver") {
+        @case ('sqlserver') {
           <ion-icon name="logo-windows" slot="start" />
           <ion-label>Microsoft SQL Server</ion-label>
         }
@@ -41,6 +41,11 @@
   <ion-card>
     <ion-item-divider>
       <ion-label>Environments</ion-label>
+      @if (!loadingSummary() && !readOnlyNotice()) {
+        <ion-badge slot="end" color="light">{{
+          envs()?.length || 0
+        }}</ion-badge>
+      }
     </ion-item-divider>
     @if (loadingSummary()) {
       <ion-item>
@@ -53,15 +58,16 @@
       </ion-item>
     }
     @if (!loadingSummary() && !readOnlyNotice() && envs()?.length) {
-      <ion-item tappable>
-        <ion-label>Local</ion-label>
-        <ion-badge color="light">1</ion-badge>
-      </ion-item>
+      @for (env of envs(); track env) {
+        <ion-item>
+          <ion-label>{{ env }}</ion-label>
+        </ion-item>
+      }
     }
     @if (!loadingSummary() && !readOnlyNotice() && !envs()?.length) {
       <ion-item>
         <ion-label color="medium"
-          >Not assigned to any specific environment yet
+          >This server is not assigned to an environment in this project.
         </ion-label>
       </ion-item>
     }
@@ -73,7 +79,7 @@
         <ion-segment-button value="known">Known</ion-segment-button>
         <ion-segment-button value="unknown">
           <ion-label>
-            Unknown
+            Other databases
             @if (dbServerCatalogs()?.length) {
               <ion-badge color="light"
                 >{{ dbServerCatalogs()?.length }}
@@ -85,7 +91,7 @@
     </ion-item-divider>
     <ion-list>
       @switch (tab) {
-        @case ("known") {
+        @case ('known') {
           @if (loadingSummary()) {
             <ion-item>
               <ion-label color="medium">Loading...</ion-label>
@@ -110,13 +116,14 @@
             <ion-item>
               <ion-text color="medium">
                 <ion-label
-                  >Nothing from this server have been added to the project yet.
+                  >No databases from this server have been added to the project
+                  yet.
                 </ion-label>
               </ion-text>
             </ion-item>
           }
         }
-        @case ("unknown") {
+        @case ('unknown') {
           @if (loadingCatalogs()) {
             <ion-item>
               <ion-label color="medium">Loading...</ion-label>
@@ -127,12 +134,15 @@
             </ion-item>
           } @else if (dbServerCatalogs()) {
             @for (dbCatalog of dbServerCatalogs(); track dbCatalog.name) {
-              <ion-item tappable>
+              <ion-item>
                 <ion-icon slot="start" name="server-outline" />
                 <ion-label>{{ dbCatalog.name }}</ion-label>
-                <ion-buttons slot="end">
-                  <ion-button title="Add to project">Add</ion-button>
-                </ion-buttons>
+              </ion-item>
+            } @empty {
+              <ion-item>
+                <ion-label color="medium"
+                  >No other databases found on this server.</ion-label
+                >
               </ion-item>
             }
           }
