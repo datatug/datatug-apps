@@ -37,6 +37,12 @@ export interface LinkDaemon {
   readonly port: number;
   /** A fresh link (with a fresh one-time code) as a path for `page.goto`, minted by `datatug daemon url`. */
   link(req: LinkRequest): string;
+  /** Whether the binary stores query results (`query run --result-id`, `daemon url --result`). */
+  readonly supportsResults: boolean;
+  /** Stores a query result under `id` with `datatug query run <args> --result-id <id>` (no row reaches stdout). */
+  writeResult(id: string, args: readonly string[]): void;
+  /** A fresh link to a stored result, minted by `datatug daemon url --result`. */
+  resultLink(id: string, view?: string, row?: number): string;
   /** Stops the daemon (for the agent-unreachable state); `start()` starts it again. */
   stop(): void;
   start(): void;
@@ -139,8 +145,22 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
         return Number(st['port']);
       };
       const port = start();
+      const help = spawnSync(bin.value, ['daemon', 'url', '--help'], { env, encoding: 'utf8' });
       const daemon: LinkDaemon = {
         port,
+        supportsResults: `${help.stdout}${help.stderr}`.includes('--result'),
+        writeResult: (id, args) => {
+          const out = run(['query', 'run', ...args, '--result-id', id, '--format', 'json']);
+          expect(out['resultFiles']).toBeDefined();
+        },
+        resultLink: (id, view, row) => {
+          const args = ['daemon', 'url', '--format', 'json', '--result', id];
+          if (view) args.push(`--view=${view}`);
+          if (row) args.push('--row', String(row));
+          const url = String(run(args)['url']);
+          expect(url.startsWith(baseURL + '/store/http-127.0.0.1:')).toBe(true);
+          return url.slice(baseURL.length);
+        },
         link: (req) => {
           const args = [
             'daemon', 'url', '--format', 'json',

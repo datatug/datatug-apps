@@ -1,7 +1,10 @@
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
-import { routingParamProjectId } from '../core/datatug-routing-params';
+import {
+  routingParamProjectId,
+  routingParamResultId,
+} from '../core/datatug-routing-params';
 
 // Diff is one of the empty-shell pages — see `ENABLE_EMPTY_SHELL_PAGES`.
 const emptyShellStoreRoutes: Routes = [
@@ -33,6 +36,14 @@ export const datatugStoreRoutes: Routes = [
   {
     path: 'project',
     redirectTo: '',
+  },
+  // A query result stored by `datatug query run --result-id`, opened from the Claude Code card's link.
+  {
+    path: 'result/:' + routingParamResultId,
+    loadComponent: () =>
+      import('../agent-links/query-result/query-result.page').then(
+        (m) => m.QueryResultPageComponent,
+      ),
   },
   {
     path: 'environment',
