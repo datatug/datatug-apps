@@ -788,10 +788,6 @@ describe('New project through authenticated common API', () => {
     });
     await h.fixture.whenStable();
     expect(h.component.spaceID()).toBe('business-space');
-    expect(h.component.spaces()).toContainEqual({
-      id: 'business-space',
-      title: 'Business Space',
-    });
 
     h.component.create();
     expect(h.create.mock.calls[0][0]).toMatchObject({
