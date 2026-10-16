@@ -39,6 +39,17 @@ case "$endpoint" in
 esac
 STUB
 chmod +x "$tmp/bin/gh"
+REAL_PYTHON="$(command -v python3)"
+export REAL_PYTHON
+cat >"$tmp/bin/python3" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+  */workflow-baseline.py) printf '%s\n' "${DEPLOY_BASE:-}" ;;
+  */classify-metadata-change.py) printf '%s\n' "${CLASSIFICATION:-full: application code changed}" ;;
+  *) exec "$REAL_PYTHON" "$@" ;;
+esac
+STUB
+chmod +x "$tmp/bin/python3"
 export PATH="$tmp/bin:$PATH" REPO=o/r SHA=aaa TIP=aaa REF=refs/heads/main GH_TOKEN=x FIX="$tmp/fix"
 
 # page RUN PAGE name:conclusion... -> one jobs page fixture (conclusion "null" = in progress).
@@ -79,6 +90,9 @@ wr="EVENT_NAME=workflow_run WR_ID=7 WR_SHA=aaa WR_EVENT=push WR_BRANCH=main WR_H
 g() { reset; page 7 1 "$@"; }
 
 g "deploy-gate:success"; check "ci success"             true  0 -- $wr
+g "deploy-gate:success"; check "metadata after actual deploy" false 0 -- $wr DEPLOY_BASE=bbb CLASSIFICATION=metadata-only
+g "deploy-gate:success"; check "green code CI but code not deployed" true 0 -- $wr DEPLOY_BASE=bbb "CLASSIFICATION=full: application code changed"
+g "deploy-gate:success"; check "missing actual deploy receipt" true 0 -- $wr DEPLOY_BASE= CLASSIFICATION=metadata-only
 g "deploy-gate:failure";  check "ci failure"            false 0 -- $wr
 g "deploy-gate:cancelled"; check "ci cancelled"         false 0 -- $wr
 g "deploy-gate:skipped";  check "deploy-gate skipped"   false 0 -- $wr
@@ -115,6 +129,7 @@ if grep -q 'run_attempt=2' "$tmp/stdout"; then echo "PASS re-run is logged"; els
 check "tip lookup fails -> fail closed" false 1 -- $wr TIP_FAIL=1
 check "tip lookup garbage -> fail closed" false 1 -- $wr "TIP=not a sha"
 check "not a push"                 false 0 -- $wr WR_EVENT=pull_request
+check "scheduled CI cannot deploy" false 0 -- $wr WR_EVENT=schedule
 check "other branch"               false 0 -- $wr WR_BRANCH=feature
 check "fork head repo"             false 0 -- $wr WR_HEAD_REPO=evil/r
 check "gh unavailable is fail-closed" false 1 -- $wr PATH=/usr/bin:/bin

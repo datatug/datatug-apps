@@ -109,7 +109,7 @@ describe('BoardWidgetComponent', () => {
     });
 
     expect(renderedQueryLink()).toBe(
-      '/project/github.com/o/r/tree/v1.0.0/-/query/demodb%2Fchinook-top-customer-spend?id=demodb%2Fchinook-top-customer-spend',
+      '/project/github.com/o/r/tree/v1.0.0/-/query/demodb%2Fchinook-top-customer-spend?id=demodb%2Fchinook-top-customer-spend&runtime=project',
     );
   });
 
@@ -127,7 +127,7 @@ describe('BoardWidgetComponent', () => {
     fixture.componentRef.setInput('boardContext', { environment: 'dev' });
 
     expect(renderedQueryLink()).toBe(
-      '/project/github.com/o/r/tree/feature/-/query/demodb%2Fq?projectApi=cloud&branch=feature&id=demodb%2Fq&env=dev',
+      '/project/github.com/o/r/tree/feature/-/query/demodb%2Fq?projectApi=cloud&branch=feature&id=demodb%2Fq&env=dev&runtime=project',
     );
   });
 
@@ -307,6 +307,7 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).toContain('Edited copy');
     fixture.componentInstance.selectRuntime('runtime-17');
     fixture.detectChanges();
+    expect(renderedQueryLink()).toContain('runtime=runtime-17');
     await Promise.resolve();
     fixture.detectChanges();
     let complete!: (result: unknown) => void;

@@ -72,6 +72,7 @@ apps/datatug-app/src/build-info.json
 # dist and the separate emitted-dist verifier checks all pinned bytes.
 apps/datatug-app/src/assets/recordsetcompare/
 tools/recordsetcompare/__pycache__/
+.github/scripts/__pycache__/
 
 # AG Grid Enterprise license key: stamped from AG_GRID_LICENSE_KEY / .env.local at build time (docs/ag-grid-enterprise-license.md).
 apps/datatug-app/src/ag-grid-license.generated.ts

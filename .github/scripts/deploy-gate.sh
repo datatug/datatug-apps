@@ -63,6 +63,20 @@ gate_green() {
   [ -n "$conclusions" ] && [ "$(printf '%s\n' "$conclusions" | sort -u)" = "success" ]
 }
 
+# A green metadata CI run does not prove that earlier application code reached
+# production. Only a receipt uploaded after a successful deploy can anchor a
+# metadata-only gap. An unknown receipt or classifier error takes the normal
+# deployment path.
+skip_if_already_deployed() {
+  local deployed result
+  deployed="$(python3 .github/scripts/workflow-baseline.py deploy)" || return 0
+  [ -n "$deployed" ] || return 0
+  result="$(python3 .github/scripts/classify-metadata-change.py "$deployed" "$SHA")" || return 0
+  if [ "$result" = metadata-only ]; then
+    skip "Only verified SpecScore status metadata changed since successful application deploy $(clean "$deployed"); application deployment not applicable."
+  fi
+}
+
 # fetch_tip: SHA (what would be built and published) must be main's
 # current tip. Fails closed (refuse) when the tip cannot be determined.
 # Prints nothing on success. Sets TIP.
@@ -88,6 +102,7 @@ workflow_run)
   fetch_tip
   [ "$SHA" = "$TIP" ] || skip "$(clean "$SHA") is no longer main's tip ($(clean "$TIP")); not deploying an older commit (run_attempt=$ATTEMPT). The tip deploys after its own CI."
   gate_green "$WR_ID" || skip "CI run $(clean "$WR_ID") has no green deploy-gate job for $(clean "$WR_SHA") (failed, cancelled, skipped or still missing)."
+  skip_if_already_deployed
   allow "Deploying $(clean "$SHA") (main's tip): CI run $(clean "$WR_ID") deploy-gate passed."
   ;;
 workflow_dispatch)

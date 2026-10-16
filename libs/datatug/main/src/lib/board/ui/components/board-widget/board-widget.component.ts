@@ -949,6 +949,10 @@ export class BoardWidgetComponent {
       ...tree.queryParams,
       id,
       ...(environment ? { env: environment } : {}),
+      runtime:
+        this.selectedRuntimeId() === 'snapshot'
+          ? 'project'
+          : this.selectedRuntimeId(),
     };
     return tree;
   });

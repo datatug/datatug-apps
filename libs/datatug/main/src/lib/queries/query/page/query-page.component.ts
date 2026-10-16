@@ -844,12 +844,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly selectedWorkingCopy = signal('project');
   public readonly workingCopyLoading = signal(false);
   public readonly workingCopyError = signal<string | undefined>(undefined);
+  public readonly unavailableWorkingCopy = signal(false);
+  private readonly entryRuntimeHint = signal<{
+    selectionId: string;
+    queryId?: string;
+    resultId?: string;
+    environment?: string;
+  } | undefined>(undefined);
+  private readonly entryContextRevision = signal(0);
+  private entryRouteKey = '';
+  private entryLoadKey = '';
   private workingCopyScope = '';
   private workingCopyLoad = 0;
   private workingCopyRevision = -1;
 
   private currentWorkingCopyScope(): string {
-    return JSON.stringify({ project: this.project?.ref, connection: this.queryDef()?.connectionId, environment: this.envId });
+    return JSON.stringify({ project: this.project?.ref, queryId: this.queryId,
+      connection: this.queryDef()?.connectionId, environment: this.envId,
+      principal: this.agentContext.securityContextId() });
   }
 
   private currentBrowserDispatchScope(): string {
@@ -861,29 +873,66 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const ref = this.project?.ref;
     if (!ref || !definition?.connectionId || this.isTugqlAuthorJourney()) return;
     const scope = this.currentWorkingCopyScope();
+    const routeKey = this.entryRouteKey;
     const load = ++this.workingCopyLoad;
     this.workingCopyLoading.set(true);
     this.workingCopyError.set(undefined);
     try {
       const options = await this.queryDispatch.availableWorkingCopies({ projectRef: ref, definition, environment: this.envId });
-      if (load !== this.workingCopyLoad || scope !== this.currentWorkingCopyScope()) return;
+      if (load !== this.workingCopyLoad || scope !== this.currentWorkingCopyScope() || routeKey !== this.entryRouteKey) return;
       this.workingCopyOptions.set(options);
       this.workingCopyScope = scope;
       this.workingCopyRevision = this.queryDispatch.runtimeRevision();
-      if (!options.some((option) => option.selectionId === this.selectedWorkingCopy())) this.selectWorkingCopy('project');
+      const hint = this.entryRuntimeHint();
+      if (hint?.queryId && hint.queryId === this.queryId &&
+        (!hint.environment || hint.environment === this.envId)) {
+        this.entryRuntimeHint.set(undefined);
+        this.selectedWorkingCopy.set(hint.selectionId);
+      }
+      const unavailable = this.selectedWorkingCopy() !== 'project' &&
+        !options.some((option) => option.selectionId === this.selectedWorkingCopy());
+      this.unavailableWorkingCopy.set(unavailable);
+      if (unavailable) this.workingCopyError.set('The selected working copy is unavailable. Choose a current runtime explicitly.');
     } catch (error) {
-      if (load === this.workingCopyLoad) this.workingCopyError.set(error instanceof Error ? error.message : 'Working copies could not be checked.');
+      if (load === this.workingCopyLoad && routeKey === this.entryRouteKey) {
+        this.unavailableWorkingCopy.set(this.selectedWorkingCopy() !== 'project');
+        this.workingCopyError.set(error instanceof Error ? error.message : 'Working copies could not be checked.');
+      }
     } finally {
       if (load === this.workingCopyLoad) this.workingCopyLoading.set(false);
     }
   }
 
   public selectWorkingCopy(selectionId: string): void {
-    if (selectionId === this.selectedWorkingCopy()) return;
+    this.entryRuntimeHint.set(undefined);
+    this.unavailableWorkingCopy.set(false);
+    this.workingCopyError.set(undefined);
+    if (!this.changeWorkingCopySelection(selectionId)) return;
+    if (this.isCurrentRoute()) {
+      void this.router.navigate([], { relativeTo: this.route, replaceUrl: true,
+        queryParams: { runtime: selectionId }, queryParamsHandling: 'merge' });
+    }
+  }
+
+  private changeWorkingCopySelection(selectionId: string): boolean {
+    if (selectionId === this.selectedWorkingCopy()) return false;
     this.invalidateFederatedRun();
     this.stopFederatedRun();
     this.setDisplayedResult(undefined);
     this.selectedWorkingCopy.set(selectionId);
+    return true;
+  }
+
+  private scheduleEntryRuntimeLoad(): void {
+    if (this.selectedWorkingCopy() !== 'project' && this.workingCopyScope &&
+      this.workingCopyScope !== this.currentWorkingCopyScope()) {
+      ++this.workingCopyLoad;
+      this.workingCopyScope = '';
+      this.workingCopyOptions.set([]);
+      this.unavailableWorkingCopy.set(true);
+      this.workingCopyError.set('The selected working copy is unavailable in this context. Choose a current runtime explicitly.');
+    }
+    this.entryContextRevision.update((revision) => revision + 1);
   }
   private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
@@ -5152,7 +5201,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       .storedResult(storeId, resultId)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
-        next: (result) => this.applyStoredResult(result),
+        next: (result) => {
+          if (this.openedResultKey === key && this.savedResultId() === resultId)
+            this.applyStoredResult(result, resultId);
+        },
         error: (err: unknown) =>
           this.savedResultBanner.set({
             kind: 'problem',
@@ -5161,7 +5213,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       });
   }
 
-  private applyStoredResult(result: StoredResult): void {
+  private applyStoredResult(result: StoredResult, resultId: string): void {
     try {
       let plan = resultEditorPlan(result, this.randomIdService.newRandomId());
       const here = this.project?.ref.projectId;
@@ -5211,6 +5263,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.savedResultMeta.set(result.meta);
       this.resultMode = plan.mode;
       this.resultQueryId = plan.definition?.id ?? plan.savedQueryId;
+      // A result-only URL has no query identity until this read completes.
+      // Bind its opaque runtime hint only to the query this result opens.
+      const hint = this.entryRuntimeHint();
+      if (hint?.resultId === resultId && !hint.queryId && this.resultQueryId)
+        this.entryRuntimeHint.set({ ...hint, queryId: this.resultQueryId });
       this.savedResultBanner.set({
         kind: 'shown',
         mode: plan.mode,
@@ -5266,6 +5323,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.resultSubscription?.unsubscribe();
     this.pendingResultDisplay = undefined;
     this.openedResultKey = '';
+    this.savedResultId.set('');
+    this.savedResultStoreId.set('');
     this.resultQueryId = undefined;
     this.resultMode = undefined;
     this.savedRowsShown = undefined;
@@ -5322,6 +5381,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   constructor() {
     effect(() => {
+      this.agentContext.securityContextId();
+      untracked(() => this.scheduleEntryRuntimeLoad());
+    });
+    effect(() => {
+      const hint = this.entryRuntimeHint();
+      // A stored result can reveal its saved query only after the result has
+      // loaded. Its URL has no query id, but an opaque runtime selection still
+      // needs the same current-catalog validation before Run is available.
+      const needsValidation = this.selectedWorkingCopy() !== 'project' &&
+        this.unavailableWorkingCopy();
+      const definition = this.queryDef();
+      this.entryContextRevision();
+      if ((!hint && !needsValidation) || hint?.selectionId === 'project' ||
+        !definition?.connectionId || !this.project?.ref ||
+        (hint && (!hint.queryId || this.queryId !== hint.queryId)) ||
+        (hint?.environment && this.envId !== hint.environment) ||
+        this.isTugqlAuthorJourney()) return;
+      const key = `${this.entryRouteKey}:${this.currentWorkingCopyScope()}`;
+      if (this.entryLoadKey === key) return;
+      this.entryLoadKey = key;
+      untracked(() => { void this.loadWorkingCopies(); });
+    });
+    effect(() => {
       const revision = this.queryDispatch.runtimeRevision();
       untracked(() => {
         if (!this.workingCopyScope || revision === this.workingCopyRevision) return;
@@ -5329,10 +5411,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.workingCopyRevision = revision;
         ++this.workingCopyLoad;
         this.workingCopyLoading.set(false);
-        if (selected) this.selectWorkingCopy('project');
+        if (selected) {
+          this.unavailableWorkingCopy.set(true);
+          this.workingCopyError.set('The selected working copy changed. Choose a current runtime explicitly.');
+        }
         this.workingCopyOptions.set([]);
-        if (selected)
-          this.workingCopyError.set('The open working copy changed. Find current working copies before running again.');
         void this.loadWorkingCopies();
       });
     });
@@ -5743,6 +5826,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           federatedVisibleMode(effectiveDefinition).defaultMode,
         );
       this.queryDef.set(effectiveDefinition);
+      this.scheduleEntryRuntimeLoad();
       this.changeDetector.markForCheck();
       if (effectiveDefinition?.federation?.nativeGraph)
         void this.refreshLocalHistory();
@@ -5752,6 +5836,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
         this.envId = queryState?.activeEnv.id;
         this.datatugNavContextService.setCurrentEnvironment(this.envId);
+        this.scheduleEntryRuntimeLoad();
       }
       this.syncScopeAndBindings();
       const semanticCopy = QueryPageComponent.pendingSemanticCopy;
@@ -5850,6 +5935,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             this.setDisplayedResult(undefined);
           }
           this.envId = id;
+          this.scheduleEntryRuntimeLoad();
           this.agentSelectedEnvironment.set(id);
 
           let activeEnv = this.queryState.environments?.find(
@@ -6177,31 +6263,83 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // by the time `env` was applied).
         const routeId = this.route.snapshot.paramMap.get('queryId');
         const parameterId = queryParams.get('id');
+        const resultId = queryParams.get(RESULT_QUERY_PARAM);
         if (routeId && parameterId && routeId !== parameterId) {
           this.customerInvoiceExample.set(false);
           this.runError.set('Query URL and query ID disagree.');
           return;
         }
-        let queryId = routeId || parameterId;
-        const isNew = !queryId;
-        if (isNew) {
+        // `?result=` keeps an unsaved draft out of the address. Reuse the
+        // editor identity obtained from that result on later URL emissions;
+        // a new random id here would make a runtime/env normalization look
+        // like a different query and discard the restored draft.
+        const addressQueryId = routeId || parameterId;
+        let queryId = addressQueryId ||
+          (resultId && this.resultQueryId ? this.resultQueryId : undefined);
+        const runtime = queryParams.get('runtime');
+        const requestedEnv = queryParams.get('env') ?? undefined;
+        const routeKey = JSON.stringify({ queryId: addressQueryId, resultId, runtime, requestedEnv,
+          storeId: this.route.snapshot.paramMap.get('storeId'),
+          projectId: this.route.snapshot.paramMap.get('projectId'),
+          branch: queryParams.get('branch'), projectApi: queryParams.get('projectApi') });
+        const previousRoute = this.entryRouteKey ? JSON.parse(this.entryRouteKey) as {
+          queryId?: string; resultId?: string | null; runtime?: string | null;
+        } : undefined;
+        const entryChanged = routeKey !== this.entryRouteKey;
+        const newSelection = !previousRoute || previousRoute.queryId !== addressQueryId ||
+          previousRoute.resultId !== resultId ||
+          (previousRoute.runtime !== runtime && runtime !== this.selectedWorkingCopy());
+        if (entryChanged) {
+          if (previousRoute && previousRoute.resultId !== resultId) {
+            // A and B can share a query and runtime while having distinct
+            // result addresses. A's run must not replace B's saved rows.
+            ++this.semanticRunLifetime;
+            this.invalidateFederatedRun();
+            this.stopFederatedRun();
+            this.savedRowsShown = undefined;
+            this.setDisplayedResult(undefined);
+            this.committedRun.set(undefined);
+            this.resultPageRows.set([]);
+            this.runError.set(undefined);
+          }
+          this.entryRouteKey = routeKey;
+          this.entryLoadKey = '';
+          ++this.workingCopyLoad;
+          if (newSelection) {
+            this.workingCopyScope = '';
+            this.workingCopyOptions.set([]);
+            this.workingCopyError.set(undefined);
+            this.unavailableWorkingCopy.set(!!runtime && runtime !== 'project');
+            this.changeWorkingCopySelection(runtime || 'project');
+            this.entryRuntimeHint.set(runtime && runtime !== 'project'
+              ? { selectionId: runtime,
+                  queryId: addressQueryId || (resultId ? undefined : queryId),
+                  resultId: resultId || undefined,
+                  environment: requestedEnv }
+              : undefined);
+          }
+        }
+        const isNew = !addressQueryId;
+        if (!queryId) {
           queryId = this.randomIdService.newRandomId();
         }
         this.setQueryId(queryId, isNew);
+        if (entryChanged && newSelection && runtime && queryId) {
+          const cached = this.queryEditorStateService.getQueryState(queryId);
+          if (cached?.def && !cached.isLoading && !cached.isNew)
+            this.queryEditorStateService.reloadQuery(queryId);
+        }
         this.initializeCustomerInvoiceExample();
 
         const envId = queryParams.get('env');
         if (envId) {
           this.setActiveEnv(envId);
         }
-        const resultId = queryParams.get(RESULT_QUERY_PARAM);
+        this.scheduleEntryRuntimeLoad();
         if (resultId) {
           this.openFromResult(resultId);
-        } else if (
-          parameterId &&
-          this.resultQueryId !== undefined &&
-          parameterId !== this.resultQueryId
-        ) {
+        } else if (this.savedResultId() &&
+          (!parameterId || parameterId !== this.resultQueryId)) {
           this.closeSavedResult();
         }
       },
@@ -6274,6 +6412,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.project = sameResolvedProject
       ? prevProject
       : newProjectContextFromRef(ref);
+    this.scheduleEntryRuntimeLoad();
     this.backTarget.update((n) => n + 1);
     this.refreshHostedProject(ref, prevProject?.ref);
     // A genuinely new route ref arrives before its summary and has no admission.
@@ -6509,7 +6648,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Ionic gives routed pages a proxy, so ownership follows its active snapshot. */
   private isCurrentRoute(): boolean {
     if (this.router.currentNavigation?.()) return false;
-    const pending: ActivatedRoute[] = [this.router.routerState.root];
+    const root = this.router.routerState?.root;
+    if (!root) return false;
+    const pending: ActivatedRoute[] = [root];
     while (pending.length) {
       const route = pending.pop();
       if (!route) continue;
@@ -7778,6 +7919,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const definition = this.queryDef();
+    if (this.unavailableWorkingCopy()) {
+      this.runError.set('The selected working copy is unavailable. Choose a current runtime explicitly.');
+      return;
+    }
     if (
       definition?.publicData &&
       this.publicDataRevisionChanges().length &&
