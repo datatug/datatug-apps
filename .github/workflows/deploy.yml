@@ -29,7 +29,7 @@ concurrency:
 
 jobs:
   deploy:
-    uses: sneat-co/cicd/.github/workflows/cf-deploy.yml@main
+    uses: sneat-co/cicd/.github/workflows/cf-deploy.yml@ab513afde830771ff71391cfc3322b6977512594
     with:
       # The Angular app and its wrangler config both live at the repo root,
       # and cf-deploy's Nx fallback builds it with `pnpm exec nx build
@@ -40,9 +40,12 @@ jobs:
       # online tag/attestation verification), then verifies emitted assets
       # before Wrangler can publish them.
       build-command: python3 tools/recordsetcompare/build_app.py
-      build-github-auth: true
+      build-github-app-client-id: Iv23li26w131Kv6u3IdM
+      build-github-app-owner: datatug
+      build-github-app-repositories: datatug-core
       node-version: '24'
       pnpm-version: '11.26.0'
       cloudflare-account-id: ${{ vars.CLOUDFLARE_ACCOUNT_ID }}
     secrets:
+      BUILD_GITHUB_APP_PRIVATE_KEY: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
