@@ -20,6 +20,16 @@
       ],
       "cache": false
     },
+    "stamp-ag-grid-license": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "node tools/stamp-ag-grid-license.mjs"
+      },
+      "outputs": [
+        "{workspaceRoot}/apps/datatug-app/src/ag-grid-license.generated.ts"
+      ],
+      "cache": false
+    },
     "check-build-info": {
       "executor": "nx:run-commands",
       "options": {
@@ -45,7 +55,11 @@
     },
     "build": {
       "executor": "@angular-devkit/build-angular:application",
-      "dependsOn": ["stamp-build-info", "prepare-recordsetcompare"],
+      "dependsOn": [
+        "stamp-build-info",
+        "stamp-ag-grid-license",
+        "prepare-recordsetcompare"
+      ],
       "inputs": ["production", "{workspaceRoot}/tools/recordsetcompare/**/*"],
       "cache": false,
       "outputs": ["{options.outputPath}"],
@@ -106,6 +120,10 @@
             {
               "replace": "apps/datatug-app/src/build-info.ts",
               "with": "apps/datatug-app/src/build-info.generated.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/ag-grid-license.ts",
+              "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
             }
           ],
           "outputHashing": "all",
@@ -123,6 +141,10 @@
             {
               "replace": "apps/datatug-app/src/build-info.ts",
               "with": "apps/datatug-app/src/build-info.generated.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/ag-grid-license.ts",
+              "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
             }
           ]
         },
@@ -139,6 +161,10 @@
             {
               "replace": "apps/datatug-app/src/build-info.ts",
               "with": "apps/datatug-app/src/build-info.generated.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/ag-grid-license.ts",
+              "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
             }
           ]
         }
@@ -147,7 +173,11 @@
     },
     "serve": {
       "executor": "@angular-devkit/build-angular:dev-server",
-      "dependsOn": ["stamp-build-info", "prepare-recordsetcompare"],
+      "dependsOn": [
+        "stamp-build-info",
+        "stamp-ag-grid-license",
+        "prepare-recordsetcompare"
+      ],
       "configurations": {
         "production": {
           "buildTarget": "datatug-app:build:production"

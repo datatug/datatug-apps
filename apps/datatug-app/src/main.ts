@@ -40,6 +40,8 @@ import {
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
+import { configureAgGrid } from '@datatug/ag-grid';
+import { AG_GRID_LICENSE_KEY } from './ag-grid-license';
 import { buildInfo } from './build-info';
 import {
   datatugAppEnvironmentConfig as environmentConfig,
@@ -90,6 +92,10 @@ captureCliChatCapability();
 if (datatugAppEnvironmentConfig.posthog) {
   registerPosthog(datatugAppEnvironmentConfig.posthog);
 }
+
+// Hand the build-time AG Grid license key (possibly empty) to the lazy loader. No AG Grid code runs or loads at
+// startup: each grid-hosting chunk awaits ensureAgGrid() itself.
+configureAgGrid(AG_GRID_LICENSE_KEY);
 
 bootstrapApplication(DatatugAppComponent, {
   providers: [

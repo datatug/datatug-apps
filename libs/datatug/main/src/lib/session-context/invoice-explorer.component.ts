@@ -2,8 +2,8 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } 
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IonButton, IonButtons, IonContent, IonHeader, IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner, IonTitle, IonToolbar } from '@ionic/angular';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
 import { IProjectRef } from '../core/project-context';
 import { readProjectApiQuery } from '../nav/project-api-routing';
@@ -13,10 +13,9 @@ import { SessionChinookQueryService, SessionQueryRows } from './session-chinook-
 import { contextScopeKey } from './session-context-contract';
 import { invoiceInput, invoiceWidgetQuery } from './invoice-dashboard';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 @Component({
   selector: 'sneat-datatug-invoice-explorer', changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [SessionChinookQueryService], imports: [DatatugServicesStoreModule, AgGridAngular, IonHeader, IonToolbar, IonTitle,
+  providers: [SessionChinookQueryService], imports: [DatatugServicesStoreModule, AgGridAngular, AgGridReadyDirective, IonHeader, IonToolbar, IonTitle,
     IonButtons, IonButton, IonContent, IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner],
   template: `
     <ion-header><ion-toolbar><ion-title>Explorer · Chinook</ion-title><ion-buttons slot="end"><ion-button (click)="load()" [disabled]="busy() || !workspace.canExecuteFor(sessionId())">Refresh</ion-button></ion-buttons></ion-toolbar></ion-header>
@@ -27,7 +26,7 @@ ModuleRegistry.registerModules([AllCommunityModule]);
       @if (error()) { <ion-item color="warning" role="status"><ion-label>{{ error() }}</ion-label>@if (needsViewAll()) { <ion-button slot="end" (click)="selectViewAll()">Select View all</ion-button> }</ion-item> }
       @if (stale()) { <ion-item color="warning" role="status"><ion-label>Context or view changed; refresh to load related rows.</ion-label></ion-item> }
       @if (busy()) { <ion-item role="status"><ion-spinner slot="start" /><ion-label>Loading related rows…</ion-label></ion-item> }
-      @if (rows(); as result) { <ag-grid-angular style="height:calc(100% - 220px);min-height:260px;width:100%" [rowData]="result.rows" [columnDefs]="result.columns" [defaultColDef]="{resizable:true,sortable:true,flex:1,minWidth:110}" /> }
+      @if (rows(); as result) { <ag-grid-angular *datatugAgGridReady style="height:calc(100% - 220px);min-height:260px;width:100%" [rowData]="result.rows" [columnDefs]="result.columns" [defaultColDef]="{resizable:true,sortable:true,flex:1,minWidth:110}" /> }
     </ion-content>`,
 })
 export class InvoiceExplorerComponent {

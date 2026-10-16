@@ -4,8 +4,8 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { IonButton, IonButtons, IonCheckbox, IonContent, IonFooter, IonHeader, IonItem, IonLabel, IonTextarea, IonTitle, IonToolbar, IonSelect, IonSelectOption, IonModal, IonInput } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import { AllCommunityModule, ModuleRegistry } from 'ag-grid-community';
 import { ChatInterpretService } from '../chat/chat-interpret.service';
 import { ChatProviderService, providerPresets } from '../chat/chat-provider.service';
 import { ChatProvider } from '../chat/chat.types';
@@ -19,7 +19,6 @@ import { readProjectApiQuery } from '../nav/project-api-routing';
 import { ProjectAIEligibilityService } from '../services/project/project-ai-eligibility.service';
 import { sessionResultFingerprint } from './session-result-fingerprint';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 interface SessionReply { readonly inputId: string; readonly state: 'accepted' | 'completed' | 'failed' | 'dispatching'; readonly resultRef?: string; readonly result?: SessionQueryRows; readonly sql?: string; readonly error?: string; }
 import { SessionWorkspaceService } from './session-workspace.service';
 import { ContextMessage, contextScopeKey } from './session-context-contract';
@@ -29,7 +28,7 @@ import { ITextQueryRequest } from '../models/definition/query-def';
 @Component({
   selector: 'sneat-datatug-session-composer', changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [SessionChinookQueryService],
-  imports: [DatatugServicesStoreModule, FormsModule, AgGridAngular, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonFooter, IonItem, IonLabel, IonCheckbox, IonTextarea, IonSelect, IonSelectOption, IonModal, IonInput],
+  imports: [DatatugServicesStoreModule, FormsModule, AgGridAngular, AgGridReadyDirective, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonFooter, IonItem, IonLabel, IonCheckbox, IonTextarea, IonSelect, IonSelectOption, IonModal, IonInput],
   template: `
     <ion-header><ion-toolbar><ion-title>Session composer</ion-title></ion-toolbar></ion-header>
     @if (workspace.snapshotFor(sessionId())) { <ion-content>
@@ -42,7 +41,7 @@ import { ITextQueryRequest } from '../models/definition/query-def';
         @if (replyFor(message); as reply) {
           @if (reply.state === 'completed' && reply.result) {
             <ion-item><ion-label>{{ reply.result.rows.length }} rows · pinned input {{ reply.inputId }} · browser-observed result</ion-label></ion-item>
-            <ag-grid-angular style="height:280px;width:100%" [rowData]="reply.result.rows" [columnDefs]="reply.result.columns" [defaultColDef]="{resizable:true,sortable:true,flex:1,minWidth:110}" />
+            <ag-grid-angular *datatugAgGridReady style="height:280px;width:100%" [rowData]="reply.result.rows" [columnDefs]="reply.result.columns" [defaultColDef]="{resizable:true,sortable:true,flex:1,minWidth:110}" />
           } @else { <ion-item [color]="reply.state === 'failed' ? 'danger' : 'warning'" role="status"><ion-label>{{ reply.error || (reply.state === 'accepted' ? 'The server accepted this run. This browser will not dispatch it; refresh saved history for its outcome.' : 'Dispatch was started. Reopening never repeats provider or source execution; check the saved run before retrying.') }}</ion-label></ion-item> }
         } @else if (message.role === 'assistant') { <ion-item><ion-label color="medium">Input/history is saved. Result rows are not cached on this device; reopening does not run the question again.</ion-label></ion-item> }
       } @empty { <ion-item><ion-label color="medium">No saved questions in this session.</ion-label></ion-item> }

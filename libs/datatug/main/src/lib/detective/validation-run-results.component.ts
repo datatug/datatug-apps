@@ -8,11 +8,10 @@ import {
 } from '@angular/core';
 import { DatePipe } from '@angular/common';
 import { IonButton, IonItem, IonLabel, IonList } from '@ionic/angular';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
 import {
-  AllCommunityModule,
   ColDef,
-  ModuleRegistry,
   RowClickedEvent,
 } from 'ag-grid-community';
 import {
@@ -23,14 +22,13 @@ import {
 } from './detective-forms';
 import { CheckRun, DetectiveExecutionRef } from './models';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 
 /** Reusable status/tree view for Check and query-local Validator runs. */
 @Component({
   selector: 'sneat-validation-run-results',
   templateUrl: './validation-run-results.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonButton, IonItem, IonLabel, IonList, AgGridAngular],
+  imports: [DatePipe, IonButton, IonItem, IonLabel, IonList, AgGridAngular, AgGridReadyDirective],
 })
 export class ValidationRunResultsComponent {
   readonly run = input.required<CheckRun>();

@@ -5,8 +5,9 @@ import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { firstValueFrom, Subject } from 'rxjs';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import { AllCommunityModule, ModuleRegistry, type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
+import { type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
 import {
   IonAlert, IonButton, IonButtons, IonCard, IonCardContent, IonCol, IonContent, IonFooter, IonGrid, IonHeader,
   IonIcon, IonInput, IonItem, IonLabel, IonMenuButton, IonModal,
@@ -37,7 +38,6 @@ type SponsorEligibilityCheck =
   | { readonly kind: 'stale' }
   | { readonly kind: 'denied'; readonly message: string };
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 addIcons({ sendOutline });
 
 @Component({
@@ -46,7 +46,7 @@ addIcons({ sendOutline });
   styleUrls: ['./chat-page.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    FormsModule, DecimalPipe, NgTemplateOutlet, AgGridAngular, IonHeader, IonToolbar, IonButtons, IonMenuButton,
+    FormsModule, DecimalPipe, NgTemplateOutlet, AgGridAngular, AgGridReadyDirective, IonHeader, IonToolbar, IonButtons, IonMenuButton,
     IonTitle, IonContent, IonCard, IonCardContent, IonFooter, IonModal, IonGrid, IonRow, IonCol,
     IonSelect, IonSelectOption, IonIcon, IonInput, IonButton, IonItem, IonLabel, IonText,
     IonSpinner, IonSegment, IonSegmentButton, IonTextarea, IonAlert, SneatDatatugPageTitleComponent,

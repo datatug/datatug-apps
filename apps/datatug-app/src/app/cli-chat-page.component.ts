@@ -1,7 +1,8 @@
 import { ChangeDetectionStrategy, Component, OnDestroy, OnInit, computed, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import { AllCommunityModule, ModuleRegistry, type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
+import { type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
 import { Marked } from 'marked';
 import { IonButton } from '@ionic/angular/ion-button';
 import { IonButtons } from '@ionic/angular/ion-buttons';
@@ -18,7 +19,6 @@ import { IonTitle } from '@ionic/angular/ion-title';
 import { IonToolbar } from '@ionic/angular/ion-toolbar';
 import { captureCliChatCapability, cliChatCapability } from './cli-chat-capability';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 const chatMarkdown = new Marked({ renderer: { html: () => '', image: ({ text }) => text } });
 
 interface CliMessage {
@@ -79,7 +79,7 @@ interface CliSession {
 @Component({
   selector: 'datatug-cli-chat-page',
   standalone: true,
-  imports: [FormsModule, AgGridAngular, IonButton, IonButtons, IonContent, IonFooter, IonHeader, IonItem, IonLabel, IonMenuButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar],
+  imports: [FormsModule, AgGridAngular, AgGridReadyDirective, IonButton, IonButtons, IonContent, IonFooter, IonHeader, IonItem, IonLabel, IonMenuButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar],
   template: `
     <div class="ion-page">
       <ion-header><ion-toolbar>
@@ -153,7 +153,7 @@ interface CliSession {
                     @for (tab of resultTabs; track tab) { <button type="button" role="tab" [attr.aria-selected]="resultTab(message.RecordSetID) === tab" (click)="setResultTab(message.RecordSetID, tab)">{{ tab }}</button> }
                   </div>
                   @if (result.Result.Rows.length) {
-                    <ag-grid-angular class="ag-theme-quartz result-grid"
+                    <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz result-grid"
                       [style.display]="resultTab(message.RecordSetID) === 'Table' ? 'block' : 'none'"
                       [rowData]="gridRows(result)" [columnDefs]="gridColumns(result)"
                       [defaultColDef]="{ sortable: true, resizable: true, filter: true }"
@@ -283,7 +283,7 @@ interface CliSession {
                 <section class="context-card">
                   <div class="context-card-title"><strong>{{ dock.title }}</strong><button type="button" (click)="workspaceAction({kind: 'undock', dockId: dock.id})">Undock</button></div>
                   @if (dockRecordSet(dock); as record) {
-                    <ag-grid-angular class="ag-theme-quartz context-grid" [rowData]="dockRows(dock, record)" [columnDefs]="dockColumns(dock, record)" [defaultColDef]="{ sortable: true, resizable: true, filter: true }" />
+                    <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz context-grid" [rowData]="dockRows(dock, record)" [columnDefs]="dockColumns(dock, record)" [defaultColDef]="{ sortable: true, resizable: true, filter: true }" />
                   } @else { <p>Result unavailable in this session.</p> }
                 </section>
               } @empty { <p class="context-empty">Dock a result or selection to keep it visible here.</p> }
@@ -304,7 +304,7 @@ interface CliSession {
                     <button type="button" (click)="deleteBookmark(bookmark)">Delete</button>
                   </div>
                   @if (openedBookmark() === bookmark.ID && bookmark.Snapshot.RecordSet; as record) {
-                    <ag-grid-angular class="ag-theme-quartz context-grid" [rowData]="bookmarkRows(bookmark)" [columnDefs]="bookmarkColumns(bookmark)" />
+                    <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz context-grid" [rowData]="bookmarkRows(bookmark)" [columnDefs]="bookmarkColumns(bookmark)" />
                   }
                 </section>
               } @empty { <p class="context-empty">No bookmarks match this search.</p> }

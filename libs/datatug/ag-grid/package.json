@@ -1,0 +1,12 @@
+{
+  "name": "@datatug/ag-grid",
+  "version": "0.0.1",
+  "description": "One-time AG Grid module/license setup. Enterprise (and its license key) is loaded through a dynamic import only when a key is configured. The app's eager start-up code and the lazy datatug-main grids share it.",
+  "sideEffects": false,
+  "peerDependencies": {
+    "@angular/core": ">=22.0.0 <23.0.0",
+    "ag-charts-enterprise": "^14.2.0",
+    "ag-grid-community": "^36.2.0",
+    "ag-grid-enterprise": "^36.2.0"
+  }
+}
