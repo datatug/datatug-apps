@@ -191,6 +191,15 @@ export class ProjectService {
       return throwError(() => 'target.storeId is a required parameter');
     }
     if (
+      projectRef.branch &&
+      projectRef.spaceID === undefined &&
+      projectRef.projectApi !== 'cloud' &&
+      !['github.com', 'github', 'firestore'].includes(storeId) &&
+      !storeId.startsWith(GITLAB_REPO_PREFIX)
+    ) {
+      return this.injector.get(ProjectQueryApiService).summary(projectRef);
+    }
+    if (
       storeId === STORE_ID_GITHUB_COM ||
       storeId === STORE_TYPE_GITHUB ||
       storeId.startsWith(GITLAB_REPO_PREFIX)
