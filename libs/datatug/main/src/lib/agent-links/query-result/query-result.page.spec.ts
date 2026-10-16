@@ -5,7 +5,7 @@ import {
 } from '@angular/common/http/testing';
 import { Component, input, output } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { AgGridAngular } from 'ag-grid-angular';
+import { ResultsGridComponent } from '../../components/results-grid/results-grid.component';
 import {
   ActivatedRoute,
   Router,
@@ -24,17 +24,15 @@ import { DatatugNavContextService } from '../../services/nav/datatug-nav-context
 import { ProjectService } from '../../services/project/project.service';
 import { ROW_MARKER, invoiceCustomerResult } from './query-result.spec-helper';
 
-/** The results grid as the page drives it (the grid itself does not render in this test environment). */
+/** The shared results grid as the page drives it (the grid itself does not render in this test environment). */
 @Component({
-  // eslint-disable-next-line @angular-eslint/component-selector -- stands in for the grid's own element
-  selector: 'ag-grid-angular',
+  selector: 'sneat-datatug-results-grid',
   template: '<div data-testid="grid-stub"></div>',
 })
 class GridStubComponent {
   readonly columnDefs = input<unknown>();
   readonly rowData = input<unknown>();
-  readonly defaultColDef = input<unknown>();
-  readonly overlayNoRowsTemplate = input<unknown>();
+  readonly exportName = input<unknown>();
   readonly rowClicked = output<unknown>();
 }
 
@@ -111,7 +109,7 @@ function mount(
     ],
   });
   TestBed.overrideComponent(QueryResultPageComponent, {
-    remove: { imports: [AgGridAngular] },
+    remove: { imports: [ResultsGridComponent] },
     add: { imports: [GridStubComponent] },
   });
   const navigate = vi
@@ -281,10 +279,16 @@ describe('QueryResultPageComponent', () => {
     const m = mount('t4');
     answer(m);
     await m.render();
-    m.page.gridRowClicked({ rowIndex: 1 } as never);
+    const rows = m.page.gridRows();
+    // The position is the row's place in the saved rows, whatever its place on a sorted or filtered screen.
+    m.page.gridRowClicked({ data: rows[1], rowIndex: 0 } as never);
     expect(m.page.row()).toBe(2);
-    m.page.gridRowClicked({ rowIndex: null } as never);
+    m.page.gridRowClicked({ data: undefined, rowIndex: 0 } as never);
     expect(m.page.row()).toBe(2);
+    m.page.gridRowClicked({ data: { c0: 'other' }, rowIndex: 1 } as never);
+    expect(m.page.row()).toBe(2);
+    m.page.gridRowClicked({ data: rows[0], rowIndex: 1 } as never);
+    expect(m.page.row()).toBe(1);
   });
 
   it('lists the sources, each name opening its table and records pages', async () => {

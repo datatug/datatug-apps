@@ -37,12 +37,13 @@ import {
   SemanticApiService,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
-import { AgGridReadyDirective } from '@datatug/ag-grid';
-import { AgGridAngular } from 'ag-grid-angular';
+import type { ColDef, RowClickedEvent } from 'ag-grid-community';
+import { ResultsGridComponent } from '../../components/results-grid/results-grid.component';
 import {
-  ColDef,
-  RowClickedEvent,
-} from 'ag-grid-community';
+  GridRow,
+  gridCell,
+  resultColumnDef,
+} from '../../components/results-grid/results-grid-columns';
 import {
   Subject,
   Subscription,
@@ -78,7 +79,6 @@ import {
   ResultView,
   StoredResult,
   VIEW_QUERY_PARAM,
-  cellText,
   decodeRecordset,
   rerunBlocker,
   rerunRequest,
@@ -106,8 +106,6 @@ type RerunState =
       readonly truncated: boolean;
     }
   | { readonly kind: 'error'; readonly text: string };
-
-type GridRow = Record<string, string>;
 
 /** A parameter of the route or of one of its ancestors (the store id is a parameter of `store/:storeId`). */
 function routeParam(
@@ -185,8 +183,7 @@ export function rerunErrorText(err: unknown): string {
     IonSegment,
     IonSegmentButton,
     IonLabel,
-    AgGridAngular,
-    AgGridReadyDirective,
+    ResultsGridComponent,
     AuthorCurrentRowComponent,
     LinkProblemComponent,
     ResultListsComponent,
@@ -252,25 +249,15 @@ export class QueryResultPageComponent {
       : undefined;
   });
   readonly gridColumns = computed<ColDef<GridRow>[]>(() =>
-    (this.recordset()?.columns ?? []).map((c, i) => ({
-      colId: `c${i}`,
-      field: `c${i}`,
-      headerName: c.name,
-      sortable: false,
-      minWidth: 120,
-    })),
+    (this.recordset()?.columns ?? []).map((c, i) =>
+      resultColumnDef(c, `c${i}`),
+    ),
   );
   readonly gridRows = computed<GridRow[]>(() =>
     (this.recordset()?.rows ?? []).map((row) =>
-      Object.fromEntries(row.map((cell, i) => [`c${i}`, cellText(cell)])),
+      Object.fromEntries(row.map((cell, i) => [`c${i}`, gridCell(cell)])),
     ),
   );
-  readonly gridDefaultColDef: ColDef<GridRow> = {
-    initialFlex: 1,
-    resizable: true,
-  };
-  readonly gridNoRows =
-    '<span class="ag-overlay-no-rows-center">No rows.</span>';
   readonly totalRows = computed(() => this.recordset()?.rows.length ?? 0);
   readonly currentRow = computed(() => this.recordset()?.rows[this.row() - 1]);
   /** Whether the shown rows are all there are: false when the saved result or the fresh run was cut short. */
@@ -352,8 +339,10 @@ export class QueryResultPageComponent {
     this.navigate({ [ROW_QUERY_PARAM]: String(row) });
   }
 
+  /** Opens the clicked row in the Record view. The position is the row's place in the saved rows, not on screen: the grid may be sorted or filtered. */
   gridRowClicked(event: RowClickedEvent<GridRow>): void {
-    if (typeof event.rowIndex === 'number') this.selectRow(event.rowIndex + 1);
+    const at = event.data ? this.gridRows().indexOf(event.data) : -1;
+    if (at >= 0) this.selectRow(at + 1);
   }
 
   /**

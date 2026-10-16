@@ -62,8 +62,8 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
-import { AgGridReadyDirective } from '@datatug/ag-grid';
-import { AgGridAngular } from 'ag-grid-angular';
+import { ResultsGridComponent } from '../../../components/results-grid/results-grid.component';
+import { resultColumnDef } from '../../../components/results-grid/results-grid-columns';
 import { addIcons } from 'ionicons';
 import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
 import {
@@ -98,7 +98,8 @@ const hasQueryActivity = (ref?: IProjectRef): boolean =>
 
 
 interface QueryResultGridRow {
-  readonly [columnId: string]: string;
+  /** A cell is display text, or `null` for a database NULL (the grid draws it as a dimmed `null`). */
+  readonly [columnId: string]: string | null;
 }
 
 type HostedRowStatus = 'pass' | 'fail' | 'unknown';
@@ -738,7 +739,7 @@ let queryParameterEditorId = 0;
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
-    AgGridAngular, AgGridReadyDirective,
+    ResultsGridComponent,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,
@@ -2099,9 +2100,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
             canOfferLookup;
           return {
-            colId: columnId,
-            field: columnId,
-            headerName: column.name,
+            ...resultColumnDef(column, columnId),
             headerComponent: SemanticColumnHeaderComponent,
             headerComponentParams: {
               meaningLabel: this.semanticColumnLabel(index),
@@ -2112,8 +2111,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 ) && this.semanticNeedsReview(),
               openMeaning: () => { void this.openColumnMeaning(index); },
             },
-            sortable: false,
-            minWidth: 120,
             ...(canLookupCustomer ||
             (index === 0 && this.isTugqlAuthorJourney())
               ? {
@@ -2415,7 +2412,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const projected = Object.fromEntries(
         row.map((cell, columnIndex) => [
           `result_${columnIndex}`,
-          displayQueryResultValue(cell),
+          cell.type === 'null' ? null : displayQueryResultValue(cell),
         ]),
       );
       if (status) projected['validation_status'] = status;
@@ -2432,10 +2429,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return [projected];
     });
   });
-  public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
-    initialFlex: 1,
-    resizable: true,
-  };
   public readonly resultGridNoRowsTemplate =
     '<span class="ag-overlay-no-rows-center">No rows.</span>';
 

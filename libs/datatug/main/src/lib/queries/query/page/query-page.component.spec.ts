@@ -6725,6 +6725,39 @@ select (
     expect(template).not.toContain('<table');
   });
 
+  it('types the result grid columns like the shared results grid and keeps a NULL as null', async () => {
+    component = await createComponent();
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [
+          { name: 'n', type: 'integer' },
+          { name: 'when', type: 'date' },
+          { name: 'ok', type: 'boolean' },
+          { name: 'note', type: 'string' },
+        ],
+        rows: [
+          [
+            { type: 'integer', value: '7' },
+            { type: 'date', value: '2024-03-05' },
+            { type: 'boolean', value: true },
+            { type: 'null', value: null },
+          ],
+        ],
+      },
+      totalRows: undefined,
+    });
+    expect(component.resultGridColumnDefs().map((c) => [c.colId, c.type, c.sortable])).toEqual([
+      ['result_0', 'dtNumber', true],
+      ['result_1', 'dtDate', true],
+      ['result_2', 'dtBoolean', true],
+      ['result_3', 'dtText', true],
+    ]);
+    expect(component.resultGridRows()).toEqual([
+      { result_0: '7', result_1: '2024-03-05', result_2: 'true', result_3: null },
+    ]);
+  });
+
   it('keeps accepted plan review state across no-op editor emissions and resets it for a definition edit', async () => {
     const definition: IQueryDef = {
       ...historyDefinition(),
