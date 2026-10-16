@@ -34,6 +34,8 @@ export class AuthorCurrentRowComponent {
   public readonly totalKnown = input(true);
   public readonly snapshotKey = input<unknown>();
   public readonly filterStatus = input('');
+  /** Whether each field offers "Use as filter" (only where a query can take the filter). */
+  public readonly showFilter = input(true);
   public readonly useAsFilter = output<{ index: number; row: readonly TypedValue[]; snapshotKey: unknown }>();
   public readonly copyRequested = output<void>();
   private feedbackGeneration = 0;

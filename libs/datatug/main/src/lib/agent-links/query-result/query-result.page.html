@@ -1,0 +1,129 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      <ion-back-button defaultHref="datatug" />
+    </ion-buttons>
+    <ion-title>Query result</ion-title>
+  </ion-toolbar>
+</ion-header>
+<ion-content>
+  @let s = state(); @if (s.kind === 'loading') {
+  <ion-card>
+    <ion-card-content
+      ><ion-text color="medium">Loading the result…</ion-text></ion-card-content
+    >
+  </ion-card>
+  } @else if (s.kind === 'problem') {
+  <sneat-datatug-link-problem
+    [problem]="s.problem"
+    [storeId]="storeId()"
+    (checkAgain)="reload()"
+  />
+  } @else { @let meta = s.result.meta; @let r = rerun();
+  <ion-card>
+    <ion-card-content>
+      @if (r.kind === 'fresh') {
+      <p data-testid="result-fresh">
+        <strong>Fresh rows</strong>, run at {{ r.ranAt }}: {{
+        r.recordset.rows.length }} rows @if (r.truncated) { · first {{
+        rerunLimit }} rows (the agent's limit) }
+      </p>
+      <ion-button
+        size="small"
+        fill="outline"
+        data-testid="result-back-to-saved"
+        (click)="backToSaved()"
+        >Back to the saved result</ion-button
+      >
+      } @else {
+      <p data-testid="result-summary">
+        {{ meta.rows.kept }} saved rows @if (meta.rows.hasMore) { · more rows
+        exist } @if (meta.query.kind === 'saved' && meta.query.savedQueryId) { ·
+        saved query {{ meta.query.savedQueryId }} } · read-only
+      </p>
+      <ion-button
+        size="small"
+        data-testid="result-run-again"
+        [disabled]="!!rerunBlocker() || r.kind === 'running'"
+        (click)="runAgain()"
+        >{{ r.kind === 'running' ? 'Running…' : 'Run again' }}</ion-button
+      >
+      @if (rerunBlocker(); as reason) {
+      <p data-testid="result-run-again-reason">
+        <ion-text color="medium">{{ reason }}</ion-text>
+      </p>
+      } @if (r.kind === 'error') {
+      <p data-testid="result-run-error">
+        <ion-text color="danger">{{ r.text }}</ion-text>
+      </p>
+      } }
+    </ion-card-content>
+  </ion-card>
+  <ion-segment
+    data-testid="result-views"
+    [value]="view()"
+    (ionChange)="selectView($event.detail.value)"
+  >
+    @for (v of views; track v) {
+    <ion-segment-button [value]="v" [attr.data-testid]="'result-view-' + v">
+      <ion-label>{{ viewLabels[v] }}</ion-label>
+    </ion-segment-button>
+    }
+  </ion-segment>
+  @if (view() === 'table') {
+  <div class="result-grid" data-testid="result-table">
+    <ag-grid-angular
+      class="ag-theme-quartz"
+      style="height: 100%; width: 100%"
+      [columnDefs]="gridColumns()"
+      [rowData]="gridRows()"
+      [defaultColDef]="gridDefaultColDef"
+      [overlayNoRowsTemplate]="gridNoRows"
+      (rowClicked)="gridRowClicked($event)"
+    />
+  </div>
+  } @else if (view() === 'record') {
+  <ion-card>
+    <ion-card-content>
+      <ion-buttons>
+        <ion-button
+          size="small"
+          data-testid="result-row-previous"
+          [disabled]="row() <= 1"
+          (click)="selectRow(row() - 1)"
+          >Previous</ion-button
+        >
+        <ion-button
+          size="small"
+          data-testid="result-row-next"
+          [disabled]="row() >= totalRows()"
+          (click)="selectRow(row() + 1)"
+          >Next</ion-button
+        >
+      </ion-buttons>
+      @if (recordset(); as rs) {
+      <sneat-author-current-row
+        [columns]="rs.columns"
+        [row]="currentRow()"
+        [position]="currentRow() ? row() : undefined"
+        [totalRows]="totalRows()"
+        [totalKnown]="totalKnown()"
+        [snapshotKey]="rs"
+        [showFilter]="false"
+      />
+      }
+    </ion-card-content>
+  </ion-card>
+  } @else if (listView(); as lv) {
+  <ion-card>
+    <ion-card-content>
+      <sneat-datatug-result-lists
+        [view]="lv"
+        [meta]="meta"
+        [storeId]="storeId()"
+      />
+    </ion-card-content>
+  </ion-card>
+  } }
+</ion-content>

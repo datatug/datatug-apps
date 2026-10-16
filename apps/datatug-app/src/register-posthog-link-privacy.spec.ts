@@ -80,6 +80,29 @@ describe('PostHog on the pages a card link opens', () => {
     expect(sdk.set_config).toHaveBeenLastCalledWith({ autocapture: true });
   });
 
+  it('the query result page: events hold no result id, view, row, code or row text', () => {
+    const page = '/store/http-127.0.0.1:8989/result/qr-7f3a9c';
+    const config = start(`${page}?view=record&row=2`);
+    expect(config.autocapture).toBe(false);
+    expect(config.disable_session_recording).toBe(true);
+    const out = config.before_send({
+      event: '$pageview',
+      properties: {
+        $current_url: `https://datatug.app${page}?view=record&row=2#code=${CODE}`,
+        $pathname: page,
+        $referrer: `https://datatug.app${page}?view=table`,
+        $el_text: ROW,
+      },
+    }) as { properties: Record<string, unknown> };
+    const text = JSON.stringify(out);
+    for (const secret of ['qr-7f3a9c', ROW, CODE, 'view=', 'row=', 'code=']) {
+      expect(text).not.toContain(secret);
+    }
+    expect(out.properties['$current_url']).toBe('https://datatug.app/store/http-127.0.0.1:8989/result/:resultId');
+    expect(out.properties['$pathname']).toBe('/store/http-127.0.0.1:8989/result/:resultId');
+    expect(config.before_send({ event: '$autocapture', properties: {} })).toBeNull();
+  });
+
   it('keeps a fragment out of events on any page', () => {
     const config = start('/');
     const out = config.before_send({

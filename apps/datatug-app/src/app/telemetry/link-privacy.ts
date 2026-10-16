@@ -10,10 +10,27 @@ import { loopbackAgentOrigin } from '../agent-access/agent-link-code';
 /** `/store/<agent>/project/<p>/env/<e>/db/<d>/(table|view)/<name>[/records|/record]`. */
 const LINK_ROUTE =
   /^\/store\/[^/]+\/project\/[^/]+\/env\/[^/]+\/db\/[^/]+\/(?:table|view)\/[^/?#]+(?:\/(?:records|record))?\/?$/;
+/** `/store/<agent>/result/<id>`: a query result stored by `datatug query run --result-id`. */
+const RESULT_ROUTE = /^\/store\/[^/]+\/result\/[^/?#]+\/?$/;
 
-/** Whether pathname (no query or fragment) is a table, view, records or record page. */
+/** Whether pathname (no query or fragment) is a table, view, records, record or query result page. */
 export function isLinkRoute(pathname: string): boolean {
-  return LINK_ROUTE.test(pathname.split(/[?#]/)[0]);
+  const path = pathname.split(/[?#]/)[0];
+  return LINK_ROUTE.test(path) || RESULT_ROUTE.test(path);
+}
+
+/** What a result id is replaced with in telemetry. */
+export const RESULT_ID_PLACEHOLDER = ':resultId';
+/** The id of a result page's path (`/store/<agent>/result/<id>`) and of the agent's `results/<id>` route. */
+const RESULT_ID_IN_PATH =
+  /(\/store\/[^/\s"'<>`?#]+\/result\/|\/datatug\/results\/)[^/\s"'<>`?#]+/g;
+
+/** Text with every result id of a result page's path or of the agent's `results/<id>` route replaced. */
+export function redactResultIds(text: string): string {
+  return text.replace(
+    RESULT_ID_IN_PATH,
+    (_all, prefix: string) => prefix + RESULT_ID_PLACEHOLDER,
+  );
 }
 
 /** Whether the current page is a table, view, records or record page. */
@@ -29,9 +46,9 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
   const noFragment = url.split('#')[0];
   const path = noFragment.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
   if (dropQuery || loopbackAgentOrigin(noFragment) || isLinkRoute(path)) {
-    return noFragment.split('?')[0];
+    return redactResultIds(noFragment.split('?')[0]);
   }
-  return noFragment;
+  return redactResultIds(noFragment);
 }
 
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
@@ -43,7 +60,8 @@ const LINK_FRAGMENT_PARTS = /#(?:[^\s"'<>`#]*&)?(?:code|pk)=[^\s"'<>`]*/g;
  * address and every `/store/…` path in it goes through {@link scrubUrl}, and any `#code=`/`#pk=` fragment is cut.
  */
 export function scrubText(text: string, dropQuery: boolean): string {
-  return text
+  // A bare path (`url.path` of a span, the router's own URL) is no address the patterns below see.
+  return redactResultIds(text)
     .replace(ABSOLUTE_URL, (match) => {
       // Punctuation that ends a sentence is not part of the address ("…/select?x=1: 500").
       const url = match.replace(/[.,:;!)\]]+$/, '');
