@@ -1,7 +1,47 @@
 import type { Result, TypedValue } from '../contract/types';
+import { decodeSourceRightsEvidence } from '../contract/source-rights';
 
-/** Presentation input from a DataTug result. It is never a durable board field. */
-export type ChartRecordset = Result;
+/** Execution admission and page completeness are supplied by the dispatcher. */
+interface ChartRecordsetBase extends Pick<Result,
+  'recordset' | 'limitations' | 'bindingsApplied' | 'truncated' | 'sourceRights' | 'usedSourceIds'> {
+  readonly complete: boolean;
+  readonly hasMore: boolean;
+}
+
+export interface ServerChartRecordset extends ChartRecordsetBase {
+  readonly runtime: 'server';
+  readonly provenance: Result['provenance'];
+  readonly execution?: Result['execution'];
+  readonly publicApiReceipt?: never;
+}
+
+export interface PublicApiChartReceipt {
+  readonly endpoint: string;
+  readonly databaseId: string;
+  readonly collection: string;
+  readonly queryId: string;
+  readonly rowsReturned: number;
+  readonly observedAt: string;
+}
+
+export interface BrowserPublicApiChartRecordset extends ChartRecordsetBase {
+  readonly runtime: 'browser-public-api';
+  readonly provenance: {
+    readonly source: string;
+    readonly collection: string;
+    readonly queryId: string;
+    readonly mode: 'live';
+    readonly observedAt: string;
+    readonly endpoint: string;
+    readonly databaseId: string;
+    readonly executionProfile?: never;
+  };
+  readonly execution?: never;
+  readonly publicApiReceipt: PublicApiChartReceipt;
+}
+
+/** Presentation input; neither arm belongs in durable board JSON. */
+export type ChartRecordset = ServerChartRecordset | BrowserPublicApiChartRecordset;
 
 export interface ChartField {
   readonly column: string;
@@ -38,23 +78,29 @@ export interface BarRaceFrame {
   readonly entries: readonly BarRaceEntry[];
 }
 
-export interface BarRaceData {
-  /** Full source and execution profile; consumers must show limitations/truncation. */
-  readonly source: Result['provenance'];
+interface BarRaceDataBase {
   readonly limitations: Result['limitations'];
   readonly bindingsApplied: Result['bindingsApplied'];
   readonly truncated: Result['truncated'];
-  readonly execution: Result['execution'];
   readonly sourceRights: Result['sourceRights'];
   readonly usedSourceIds: Result['usedSourceIds'];
+  readonly complete: boolean;
+  readonly hasMore: boolean;
   readonly spec: BarRaceSpec;
   readonly dimensions: readonly ChartField[];
   readonly measures: readonly ChartField[];
   readonly frames: readonly BarRaceFrame[];
 }
 
+export type BarRaceData = BarRaceDataBase & (
+  | Pick<ServerChartRecordset, 'runtime' | 'execution'> & { readonly source: ServerChartRecordset['provenance']; readonly publicApiReceipt?: never }
+  | Pick<BrowserPublicApiChartRecordset, 'runtime' | 'publicApiReceipt'> & { readonly source: BrowserPublicApiChartRecordset['provenance']; readonly execution?: never }
+);
+
 export type ChartEligibilityErrorCode =
   | 'INVALID_SPEC'
+  | 'INCOMPLETE'
+  | 'SOURCE_RIGHTS_UNAVAILABLE'
   | 'MISSING_COLUMN'
   | 'DUPLICATE_COLUMN'
   | 'DUPLICATE_CATEGORY_PERIOD'
@@ -119,6 +165,16 @@ function calendarMonths(first: string, last: string): string[] | undefined {
 
 /** Build deterministic frames without fetching data or mutating the source result. */
 export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRacePreparation {
+  if (!result.complete || result.hasMore || result.truncated || result.limitations.some((item) => item.rowsFiltered))
+    return error('INCOMPLETE', 'A complete, unrestricted result is required for a bar race.');
+  try {
+    const rights = decodeSourceRightsEvidence(result as unknown as Record<string, unknown>);
+    if (!rights.usedSourceIds?.length || !rights.sourceRights?.length ||
+      rights.usedSourceIds.some((id) => !rights.sourceRights?.some((right) => right.sourceId === id)))
+      return error('SOURCE_RIGHTS_UNAVAILABLE', 'Source-rights evidence is required for every used chart source.');
+  } catch {
+    return error('SOURCE_RIGHTS_UNAVAILABLE', 'Chart source-rights evidence is malformed.');
+  }
   if (spec.kind !== 'bar-race') return error('INVALID_SPEC', 'Chart kind must be bar-race.');
   if (!Number.isInteger(spec.topN) || spec.topN < 1 || spec.topN > 100)
     return error('INVALID_SPEC', 'Top N must be a whole number from 1 to 100.');
@@ -199,23 +255,23 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
       .map(([category, value], index): BarRaceEntry => ({ category, value, rank: index + 1, color: barRaceColor(category) }));
     frames.push({ period, entries });
   }
-  return {
-    ok: true,
-    data: {
-      source: result.provenance,
-      limitations: result.limitations,
-      bindingsApplied: result.bindingsApplied,
-      truncated: result.truncated,
-      execution: result.execution,
-      sourceRights: result.sourceRights,
-      usedSourceIds: result.usedSourceIds,
-      spec,
-      dimensions: [
-        { column: spec.periodColumn, type: result.recordset.columns[periodIndex].type },
-        { column: spec.categoryColumn, type: result.recordset.columns[categoryIndex].type },
-      ],
-      measures: [{ column: spec.measureColumn, type: result.recordset.columns[measureIndex].type, unit: spec.unit }],
-      frames,
-    },
+  const shared: BarRaceDataBase = {
+    limitations: result.limitations,
+    bindingsApplied: result.bindingsApplied,
+    truncated: result.truncated,
+    sourceRights: result.sourceRights,
+    usedSourceIds: result.usedSourceIds,
+    complete: result.complete,
+    hasMore: result.hasMore,
+    spec,
+    dimensions: [
+      { column: spec.periodColumn, type: result.recordset.columns[periodIndex].type },
+      { column: spec.categoryColumn, type: result.recordset.columns[categoryIndex].type },
+    ],
+    measures: [{ column: spec.measureColumn, type: result.recordset.columns[measureIndex].type, unit: spec.unit }],
+    frames,
   };
+  return result.runtime === 'server'
+    ? { ok: true, data: { ...shared, runtime: 'server', source: result.provenance, execution: result.execution } }
+    : { ok: true, data: { ...shared, runtime: 'browser-public-api', source: result.provenance, publicApiReceipt: result.publicApiReceipt } };
 }
