@@ -215,6 +215,31 @@ describe('BoardPage same-route tutorial overlay', () => {
     fixture.destroy();
   });
 
+  it('preserves ordinary-board keyboard focus when removing a stray tutorial mode', async () => {
+    const board: Board = { ...saved, id: 'other' };
+    const { fixture, page, mode } = await harness(
+      board,
+      'tutorial',
+      true,
+      true,
+    );
+    const heading = fixture.nativeElement.querySelector(
+      '[data-board-page-heading]',
+    ) as HTMLElement;
+    const focus = vi.spyOn(heading, 'focus');
+    const retained = document.createElement('button');
+    retained.textContent = 'Ordinary board control';
+    fixture.nativeElement.appendChild(retained);
+    retained.focus();
+    expect(page.tutorialActive()).toBe(false);
+    mode.next(null);
+    await fixture.whenStable();
+    expect(focus).not.toHaveBeenCalled();
+    expect(document.activeElement).toBe(retained);
+    expect(page.displayBoard()).toBe(board);
+    fixture.destroy();
+  });
+
   it('disables guide and empty-canvas Next at the shared action cap while preserving redo', async () => {
     const { fixture, page } = await harness(saved, 'tutorial', true);
     await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
@@ -344,7 +369,9 @@ describe('BoardPage same-route tutorial overlay', () => {
     expect(
       document.activeElement?.hasAttribute('data-tutorial-route-heading'),
     ).toBe(true);
-    expect(document.activeElement?.textContent?.trim()).toBe('Build this dashboard');
+    expect(document.activeElement?.textContent?.trim()).toBe(
+      'Build this dashboard',
+    );
     fixture.destroy();
   });
 

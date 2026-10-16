@@ -372,10 +372,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           queryParamMap.get('mode') ?? '',
         );
         if (requested !== this.tutorialRequested()) {
+          const tutorialWasActive = this.tutorialActive();
           this.tutorialRequested.set(requested);
           this.clearTutorial();
           if (requested) void this.openTutorial();
-          else if (this.boardDef()) this.focusSavedBoardHeading();
+          else if (tutorialWasActive && this.boardDef())
+            this.focusSavedBoardHeading();
         }
       },
       error: (err) =>
