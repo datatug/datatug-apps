@@ -1742,8 +1742,10 @@
         </div>
         @if (resultChartReason(); as reason) { <p role="status">{{ reason }}</p> }
       </section>
-      @if (resultChartVisible() && resultChartHeld(); as chartResult) {
-        <sneat-datatug-held-result-presentation [result]="chartResult" [fields]="resultChartFields()" [chartOnly]="true" />
+      @if (resultChartHeld(); as chartResult) {
+        <div [hidden]="!resultChartVisible()">
+          <sneat-datatug-held-result-presentation [result]="chartResult" [fields]="resultChartFields()" [chartOnly]="true" />
+        </div>
       }
 
       @if (isTextQueryWorkspace() && !resultChartVisible()) {
