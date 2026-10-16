@@ -30,6 +30,7 @@
     "@codemirror/view": "^6.43.6",
     "@lezer/highlight": "^1.2.3",
     "@datatug/board-models": "*",
+    "@datatug/charts": "*",
     "@datatug/product-profiles": "*",
     "@datatug/ag-grid": "*",
     "@datatug/project-address": "*",

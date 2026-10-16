@@ -3197,6 +3197,15 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(author.getByTestId('author-code-tab')).toHaveCount(1);
     await expect(author.locator('.cm-editor')).toHaveCount(1);
     await expect(invoiceAuthorPage.locator('#author-results-heading')).toHaveCount(1);
+    // This held result has no published source-rights evidence, so disabled
+    // chart controls must not push the first query row below the viewport.
+    await expect(invoiceAuthorPage.getByRole('region', { name: 'Result chart' })).toHaveCount(0);
+    await expect(invoiceAuthorPage.getByText(
+      'Chart unavailable: Source usage rights are unavailable for this result. The rows remain inspectable.',
+    )).toHaveCount(1);
+    await expect(invoiceAuthorPage.locator(
+      '.author-results > .ion-padding-horizontal > sneat-datatug-source-rights-notice',
+    )).toHaveCount(1);
     const firstRowBounds = await rows.nth(1).evaluate((row) => {
       const bounds = row.getBoundingClientRect();
       return { top: bounds.top, bottom: bounds.bottom };
