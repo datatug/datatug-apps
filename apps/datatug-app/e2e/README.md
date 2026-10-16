@@ -77,7 +77,11 @@ DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
 
 Install Playwright's WebKit browser before running the profile locally.
 The GitHub reader is served from the local demo checkout; query execution and
-comparison use the real pinned SQLite workers and Core bridge. Reports are
+comparison use the real SQLite workers and Core bridge. The exact Chinook
+browser URL is fulfilled from the hash-checked, admitted
+[local fixture](fixtures/chinook.FIXTURE.md), so public download rate limits do
+not turn these application checks into source availability checks. The live
+DemoDB browser checks retain their public-source coverage. Reports are
 written under `coverage/apps/datatug-query-mobile/`.
 
 The existing `e2e` job always installs Chromium and adds WebKit to that same
