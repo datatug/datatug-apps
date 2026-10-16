@@ -1,8 +1,8 @@
 /// <reference types='vitest' />
-import { defineConfig } from 'vitest/config';
+import { defineConfig, type ViteUserConfig } from 'vitest/config';
 import { createBaseViteConfig } from '../../../vite.config.base';
 
-export function createDatatugMainViteConfig(coverageEnabled = true) {
+export function createDatatugMainViteConfig(coverageEnabled = true): ViteUserConfig {
 	const config = createBaseViteConfig({
 		dirname: __dirname,
 		name: 'datatug-main',
@@ -12,7 +12,7 @@ export function createDatatugMainViteConfig(coverageEnabled = true) {
 		test: {
 			...config.test,
 			reporters:
-				process.env.CI === 'true'
+				process.env['CI'] === 'true'
 					? [
 							'default',
 							['json', { outputFile: '../../../coverage/libs/datatug/main/vitest-results.json' }],
