@@ -148,12 +148,12 @@ export class AgentAccessService {
  * The status a failed exchange is reported with, so the page names the right state (and never echoes what the agent
  * said): 401 (`link-expired`) only for the agent's explicit `401 {"error":"link-expired"}`; 0 (`agent-unreachable`)
  * for no answer at all (the agent is not running, or the browser or an extension blocked the request, which a page
- * cannot tell apart); 503 (`agent-unreachable`) for a 5xx, as an agent that is stopping answers; 500 (`read-failed`)
- * for anything else, including a 200 without a token.
+ * cannot tell apart) and for a 5xx from the exchange, which only an agent that is not serving answers (data routes
+ * keep their own 503/504 meanings); 500 (`read-failed`) for anything else, including a 200 without a token.
  */
 export function exchangeFailureStatus(err: unknown, status: number): number {
   if (status === 0) return 0;
-  if (status >= 500) return 503;
+  if (status >= 500) return 0;
   if (status === 401 && err instanceof HttpErrorResponse && saysLinkExpired(err.error)) return 401;
   return 500;
 }

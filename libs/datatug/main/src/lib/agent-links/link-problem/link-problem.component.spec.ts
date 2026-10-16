@@ -54,7 +54,7 @@ describe('LinkProblemComponent (AC:unresolvable-link-names-the-problem)', () => 
 
   it('names the browser or an extension, and the built-in browser of AI tools, for an unreachable agent', () => {
     const blocking = linkProblemText('agent-unreachable', REF, true).hints.join(' ');
-    expect(blocking).toContain('built-in browser of AI tools cannot reach a local agent');
+    expect(blocking).toContain('built-in browser of an AI tool usually cannot reach a local agent');
     expect(blocking).toContain('Chrome');
     const other = linkProblemText('agent-unreachable', REF, false).hints.join(' ');
     expect(other).toContain('blocked by the browser or an extension');

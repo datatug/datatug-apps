@@ -94,8 +94,9 @@ describe('classifyAgentError', () => {
     [err(400, 'key'), 'bad-key'],
     [err(400, 'table'), 'read-failed'],
     [err(500), 'read-failed'],
-    [err(503), 'agent-unreachable'],
-    [err(502), 'agent-unreachable'],
+    // A reachable agent answers 503 SOURCE_UNAVAILABLE and 504 TIMEOUT on data routes: not unreachable.
+    [err(503, 'source'), 'read-failed'],
+    [err(504), 'read-failed'],
     [new Error('x'), 'read-failed'],
   ])('%# classifies as %s', (e, problem) => {
     expect(classifyAgentError(e)).toBe(problem);

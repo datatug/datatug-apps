@@ -321,8 +321,8 @@ describe('agentAccessInterceptor', () => {
 
   it.each([
     ['an explicit 401 link-expired', () => new Response('{"error":"link-expired"}', { status: 401 }), 401],
-    ['a 503 from a stopping agent', () => new Response('stopping', { status: 503 }), 503],
-    ['a 500', () => new Response('{}', { status: 500 }), 503],
+    ['a 503 from a stopping agent', () => new Response('stopping', { status: 503 }), 0],
+    ['a 500', () => new Response('{}', { status: 500 }), 0],
     ['a 401 without link-expired', () => new Response('{}', { status: 401 }), 500],
     ['a 400', () => new Response('{"error":"bad-request"}', { status: 400 }), 500],
     ['a 200 without a token', () => new Response('{}', { status: 200 }), 500],
