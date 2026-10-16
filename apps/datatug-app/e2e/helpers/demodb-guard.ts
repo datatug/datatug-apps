@@ -71,6 +71,10 @@ function fixtureFile(url: URL): { path: string; contentType: string } | undefine
   if (sub && data && data[1] === sub) {
     return { path: join(dir, 'data', `${sub}.sqlite`), contentType: 'application/vnd.sqlite3' };
   }
+  const compare = /^\/data\/compare\/([0-9a-f]{64})\.sqlite$/.exec(url.pathname);
+  if (sub === 'chinook' && compare) {
+    return { path: join(dir, 'data', 'compare', `${compare[1]}.sqlite`), contentType: 'application/vnd.sqlite3' };
+  }
   if (sub && (url.pathname === '/' || url.pathname === '/index.html')) {
     return { path: join(committed, 'pages', `${sub}.html`), contentType: 'text/html; charset=utf-8' };
   }

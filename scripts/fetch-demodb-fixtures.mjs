@@ -49,6 +49,16 @@ async function download(url) {
   return Buffer.from(await response.arrayBuffer());
 }
 
+/** Other pinned files the app lanes download (not part of the catalog): path under data/, source, SHA-256 (also the file's identity). */
+const extraFiles = [
+  {
+    path: 'compare/3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f.sqlite',
+    url: 'https://raw.githubusercontent.com/demo-db/chinook/main/fixtures/compare/chinook-candidate-3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f.sqlite',
+    sha256: '3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f',
+    bytes: 1007616, // https://chinook.demodb.dev/data/compare/<sha256>.sqlite, the comparison candidate of public-sqlite-comparison.ts
+  },
+];
+
 let failures = 0;
 const fill = async (label, path, url, check) => {
   if (existsSync(path)) {
@@ -83,6 +93,13 @@ for (const id of demoSqliteDatasetIds) {
     if (sha256(body) !== entry.sha256) throw new Error('SHA-256 differs from the catalog pin');
   });
 }
+for (const file of extraFiles) {
+  await fill(`data/${file.path}`, join(root, 'data', file.path), file.url, (body) => {
+    if (body.length !== file.bytes) throw new Error(`${body.length} bytes, pinned ${file.bytes}`);
+    if (sha256(body) !== file.sha256) throw new Error('SHA-256 differs from the pin');
+  });
+}
+
 console.log(`demodb fixtures: ${root}`);
 console.log(`demodb fixtures: ${requestCount()} network request(s), ${failures} failure(s)`);
 process.exitCode = failures === 0 ? 0 : 1;

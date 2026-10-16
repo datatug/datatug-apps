@@ -9,6 +9,8 @@ const queryURL =
 test('column meaning saves a complete personal copy, stays visible and survives cold reload', async ({
   context,
   page,
+  request,
+  demodbGuard,
 }) => {
   test.setTimeout(120000);
   page.setDefaultTimeout(15000);
@@ -38,12 +40,13 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     const isColdRunRequest = awaitingColdRun;
     const coldRequestNumber = isColdRunRequest ? ++coldDatabaseRequests : 0;
     sqliteBytesPromise ??= (async () => {
-      const response = await route.fetch({ timeout: 9000 });
-      expect(response.status()).toBe(200);
-      const bytes = await response.body();
+      // Through the guard (e2e/helpers/demodb-guard.ts): the local fixture, or the live host exactly once in live mode.
+      const response = await demodbGuard.get(request, pin.browserFixture.url);
+      expect(response.status).toBe(200);
+      const bytes = response.body;
       expect(bytes.byteLength).toBe(pin.browserFixture.bytes);
       expect(createHash('sha256').update(bytes).digest('hex')).toBe(pin.fixtureSha256);
-      const headers = response.headers();
+      const headers = { ...response.headers };
       delete headers['content-length'];
       delete headers['content-encoding'];
       expect(headers['access-control-allow-origin']).toBeTruthy();
