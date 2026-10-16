@@ -1,4 +1,6 @@
 import { readFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { join } from 'node:path';
 import { test, expect } from '@playwright/test';
 import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
@@ -10,12 +12,58 @@ test('column meaning saves a complete personal copy, stays visible and survives 
 }) => {
   test.setTimeout(120000);
   page.setDefaultTimeout(15000);
+  const fakeRepo =
+    process.env['DATATUG_E2E_GITHUB_FAKE'] ||
+    '/Users/alex/projects/datatug/datatug-demo-project';
+  const catalog = JSON.parse(
+    await readFile(join(fakeRepo, 'demo-project-1/connections/demo-db.json'), 'utf8'),
+  ) as {
+    connections: {
+      id: string;
+      fixtureSha256: string;
+      browserFixture: { url: string; bytes: number };
+    }[];
+  };
+  const pin = catalog.connections.find((connection) => connection.id === 'chinook-sqlite');
+  if (!pin) throw new Error('The fake demo project has no pinned Chinook SQLite fixture.');
+  expect(pin.browserFixture.url).toBe('https://chinook.demodb.dev/data/chinook.sqlite');
+  let sqliteBytesPromise:
+    | Promise<{ bytes: Buffer; headers: Record<string, string> }>
+    | undefined;
+  let databaseRequests = 0;
+  let coldDatabaseRequests = 0;
+  let awaitingColdRun = false;
+  await context.route(pin.browserFixture.url, async (route) => {
+    const requestNumber = ++databaseRequests;
+    const isColdRunRequest = awaitingColdRun;
+    const coldRequestNumber = isColdRunRequest ? ++coldDatabaseRequests : 0;
+    sqliteBytesPromise ??= (async () => {
+      const response = await route.fetch({ timeout: 9000 });
+      expect(response.status()).toBe(200);
+      const bytes = await response.body();
+      expect(bytes.byteLength).toBe(pin.browserFixture.bytes);
+      expect(createHash('sha256').update(bytes).digest('hex')).toBe(pin.fixtureSha256);
+      const headers = response.headers();
+      delete headers['content-length'];
+      delete headers['content-encoding'];
+      expect(headers['access-control-allow-origin']).toBeTruthy();
+      return { bytes, headers };
+    })();
+    const sqliteFixture = await sqliteBytesPromise;
+    if (coldRequestNumber === 1 && requestNumber > 1) {
+      // Reproduce the slow cold-fetch ordering that used to outlast the badge assertion.
+      await new Promise((resolve) => setTimeout(resolve, 6000));
+    }
+    await route.fulfill({
+      status: 200,
+      headers: sqliteFixture.headers,
+      body: sqliteFixture.bytes,
+    });
+  });
   await installFakeGithub(context, [
     {
       fullName: 'datatug/datatug-demo-project',
-      dir:
-        process.env['DATATUG_E2E_GITHUB_FAKE'] ||
-        '/Users/alex/projects/datatug/datatug-demo-project',
+      dir: fakeRepo,
     },
   ]);
   await page.goto(queryURL);
@@ -115,6 +163,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     animations: 'disabled',
   });
   await page.reload();
+  await expect(page.getByRole('grid')).toHaveCount(0);
   await expect(page.getByTestId('query-save-state')).toContainText(
     'Saved on this device',
   );
@@ -124,7 +173,14 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await reopened.getByTestId('author-customer-id').locator('input').fill('1');
   await reopened.getByTestId('author-preview-tab').click();
   await reopened.getByTestId('author-preview').click();
+  awaitingColdRun = true;
   await reopened.getByTestId('author-run').click();
+  await expect(page.getByRole('grid')).toBeVisible({ timeout: 30000 });
+  await expect(page.getByRole('grid').getByRole('row').nth(1)).toBeVisible({
+    timeout: 30000,
+  });
+  expect(databaseRequests).toBeGreaterThanOrEqual(2);
+  expect(coldDatabaseRequests).toBeGreaterThanOrEqual(1);
   const badge = page.getByRole('button', {
     name: 'Edit meaning of InvoiceId',
     exact: true,
