@@ -59,6 +59,26 @@ describe('prepareBarRace', () => {
     expect(cumulative.ok && cumulative.data.frames[2].entries.map(({ category, value }) => [category, value])).toEqual([['West', 6], ['East', 3]]);
   });
 
+  it('creates a zero-valued frame for globally missing calendar months', () => {
+    const input = result([
+      [text('2024-12'), text('East'), num(3)],
+      [text('2025-02'), text('West'), num(4)],
+    ]);
+    const period = prepareBarRace(input, spec);
+    const cumulative = prepareBarRace(input, { ...spec, mode: 'cumulative' });
+    expect(period.ok && period.data.frames.map((frame) => frame.period)).toEqual(['2024-12', '2025-01', '2025-02']);
+    expect(period.ok && period.data.frames[1].entries.map(({ category, value }) => [category, value])).toEqual([['East', 0]]);
+    expect(cumulative.ok && cumulative.data.frames[1].entries.map(({ category, value }) => [category, value])).toEqual([['East', 3]]);
+    expect(cumulative.ok && cumulative.data.source).toEqual(input.provenance);
+    expect(cumulative.ok && cumulative.data.limitations).toEqual(input.limitations);
+    expect(cumulative.ok && cumulative.data.usedSourceIds).toEqual(input.usedSourceIds);
+  });
+
+  it('bounds calendar expansion even when source rows are sparse', () => {
+    const distant = result([[text('2000-01'), text('East'), num(1)], [text('2025-01'), text('East'), num(1)]]);
+    expect(prepareBarRace(distant, spec)).toMatchObject({ ok: false, code: 'UNSUPPORTED_PERIOD' });
+  });
+
   it('respects top N and returns empty frames only for an empty result', () => {
     const top = prepareBarRace(result([[text('2025-01'), text('East'), num(1)], [text('2025-01'), text('West'), num(2)]]), { ...spec, topN: 1 });
     expect(top.ok && top.data.frames[0].entries.map((entry) => entry.category)).toEqual(['West']);
@@ -73,6 +93,13 @@ describe('prepareBarRace', () => {
     expect(prepareBarRace(result([[text('2025-01'), text('West'), { type: 'integer', value: '9007199254740993' }]]), spec)).toMatchObject({ ok: false, code: 'PRECISION_UNSUPPORTED' });
     expect(prepareBarRace(result([[text('2025-01')]]), spec)).toMatchObject({ ok: false, code: 'INVALID_ROW' });
     expect(prepareBarRace(result([]), { ...spec, topN: 0 })).toMatchObject({ ok: false, code: 'INVALID_SPEC' });
+    const wrongCategory = result([]);
+    expect(prepareBarRace({ ...wrongCategory, recordset: { ...wrongCategory.recordset, columns: [
+      { name: 'month', type: 'string' }, { name: 'territory', type: 'integer' }, { name: 'orders', type: 'number' },
+    ] } }, spec)).toMatchObject({ ok: false, code: 'INCOMPATIBLE_VALUE' });
+    expect(prepareBarRace({ ...wrongCategory, recordset: { ...wrongCategory.recordset, columns: [
+      { name: 'month', type: 'string' }, { name: 'territory', type: 'string' }, { name: 'orders', type: 'decimal' },
+    ] } }, spec)).toMatchObject({ ok: false, code: 'INCOMPATIBLE_VALUE' });
   });
 
   it('rejects nulls, decimals, fractional numbers and unsafe aggregation explicitly', () => {

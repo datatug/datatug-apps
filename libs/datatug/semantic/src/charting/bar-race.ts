@@ -69,6 +69,7 @@ export type BarRacePreparation =
   | { readonly ok: false; readonly code: ChartEligibilityErrorCode; readonly message: string };
 
 const palette = ['#2563eb', '#dc2626', '#059669', '#9333ea', '#d97706', '#0891b2', '#be185d', '#4f46e5'] as const;
+const MAX_FRAMES = 240;
 
 function compare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -111,6 +112,17 @@ function error(code: ChartEligibilityErrorCode, message: string): BarRacePrepara
   return { ok: false, code, message };
 }
 
+/** Include every calendar month between the observed endpoints, with a fixed work bound. */
+function calendarMonths(first: string, last: string): string[] | undefined {
+  const start = Number(first.slice(0, 4)) * 12 + Number(first.slice(5, 7)) - 1;
+  const end = Number(last.slice(0, 4)) * 12 + Number(last.slice(5, 7)) - 1;
+  if (end - start + 1 > MAX_FRAMES) return undefined;
+  return Array.from({ length: end - start + 1 }, (_, index) => {
+    const month = start + index;
+    return `${String(Math.floor(month / 12)).padStart(4, '0')}-${String(month % 12 + 1).padStart(2, '0')}`;
+  });
+}
+
 /** Build deterministic frames without fetching data or mutating the source result. */
 export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRacePreparation {
   if (spec.kind !== 'bar-race') return error('INVALID_SPEC', 'Chart kind must be bar-race.');
@@ -132,6 +144,11 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
   const measureIndex = names.indexOf(spec.measureColumn);
   const missing = [spec.periodColumn, spec.categoryColumn, spec.measureColumn].filter((name) => !names.includes(name));
   if (missing.length) return error('MISSING_COLUMN', `The result has no column: ${missing.join(', ')}.`);
+  const columns = result.recordset.columns;
+  if (columns[periodIndex].type !== 'string' && columns[periodIndex].type !== 'date')
+    return error('UNSUPPORTED_PERIOD', `Column ${spec.periodColumn} must declare string or date periods.`);
+  if (columns[categoryIndex].type !== 'string' || !['number', 'integer'].includes(columns[measureIndex].type))
+    return error('INCOMPATIBLE_VALUE', 'Category must declare string and measure must declare number or integer.');
 
   const byPeriod = new Map<string, Map<string, number>>();
   let periodKind: 'string' | 'date' | undefined;
@@ -168,7 +185,13 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
 
   const cumulative = new Map<string, number>();
   const frames: BarRaceFrame[] = [];
-  for (const period of [...byPeriod.keys()].sort(compare)) {
+  const observedPeriods = [...byPeriod.keys()].sort(compare);
+  const periods = periodKind === 'string' && observedPeriods.length
+    ? calendarMonths(observedPeriods[0], observedPeriods[observedPeriods.length - 1])
+    : observedPeriods.length <= MAX_FRAMES ? observedPeriods : undefined;
+  if (!periods)
+    return error('UNSUPPORTED_PERIOD', `The chart exceeds ${MAX_FRAMES} frames; choose a shorter range.`);
+  for (const period of periods) {
     const current = byPeriod.get(period) ?? new Map<string, number>();
     for (const [category, value] of current) {
       const total = spec.mode === 'cumulative' ? (cumulative.get(category) ?? 0) + value : 0;
