@@ -1,7 +1,7 @@
 import { isPlatformBrowser } from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, ElementRef,
-  EventEmitter, Inject, Input, OnChanges, OnDestroy, Output, PLATFORM_ID, SimpleChanges, ViewChild,
+  AfterViewInit, ChangeDetectionStrategy, Component, ElementRef,
+  EventEmitter, Inject, Input, OnChanges, OnDestroy, Output, PLATFORM_ID, signal, SimpleChanges, ViewChild,
 } from '@angular/core';
 import type { BarRaceData, BarRaceEntry, BarRaceFrame } from '@sneat/datatug-semantic';
 import * as echarts from 'echarts/core';
@@ -41,32 +41,31 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   @Output() readonly inspect = new EventEmitter<BarRaceInspectRequest>();
   @ViewChild('plot') private plot?: ElementRef<HTMLElement>;
 
-  mode: 'period' | 'cumulative' = 'period';
-  frameIndex = 0;
-  topN = 10;
-  intervalMs = 1000;
-  playing = false;
-  reducedMotion = false;
-  validationError: string | null = null;
+  readonly mode = signal<'period' | 'cumulative'>('period');
+  readonly frameIndex = signal(0);
+  readonly topN = signal(10);
+  readonly intervalMs = signal(1000);
+  readonly playing = signal(false);
+  readonly reducedMotion = signal(false);
+  readonly validationError = signal<string | null>(null);
   private chart?: ECharts;
   private observer?: ResizeObserver;
   private motionQuery?: MediaQueryList;
   private readonly onMotionChange = (event: MediaQueryListEvent) => {
-    this.reducedMotion = event.matches;
+    this.reducedMotion.set(event.matches);
     this.stop();
     this.render();
-    this.changeDetector.markForCheck();
   };
   private playback?: ReturnType<typeof setInterval>;
   private readonly browser: boolean;
   private readonly numberFormat = new Intl.NumberFormat();
 
-  constructor(@Inject(PLATFORM_ID) platformId: object, private readonly changeDetector: ChangeDetectorRef) {
+  constructor(@Inject(PLATFORM_ID) platformId: object) {
     this.browser = isPlatformBrowser(platformId);
   }
 
   get data(): BarRaceData | null {
-    return this.views?.[this.mode] ?? null;
+    return this.views?.[this.mode()] ?? null;
   }
 
   get frames(): readonly BarRaceFrame[] {
@@ -74,11 +73,11 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   get frame(): BarRaceFrame | null {
-    return this.frames[this.frameIndex] ?? null;
+    return this.frames[this.frameIndex()] ?? null;
   }
 
   get entries(): readonly BarRaceEntry[] {
-    return this.frame?.entries.slice(0, this.topN) ?? [];
+    return this.frame?.entries.slice(0, this.topN()) ?? [];
   }
 
   get maxTopN(): number {
@@ -86,24 +85,24 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   get plotHeight(): number {
-    return Math.max(320, Math.min(1600, this.topN * 34 + 70));
+    return Math.max(320, Math.min(1600, this.topN() * 34 + 70));
   }
 
   get available(): boolean {
-    return !this.loading && !this.error && !this.validationError && this.frames.length > 0;
+    return !this.loading && !this.error && !this.validationError() && this.frames.length > 0;
   }
 
   get atEnd(): boolean {
-    return this.frameIndex >= this.frames.length - 1;
+    return this.frameIndex() >= this.frames.length - 1;
   }
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['views']) {
       this.stop();
-      this.mode = 'period';
-      this.frameIndex = 0;
-      this.validationError = this.validateViews();
-      this.topN = Math.min(10, this.maxTopN);
+      this.mode.set('period');
+      this.frameIndex.set(0);
+      this.validationError.set(this.validateViews());
+      this.topN.set(Math.min(10, this.maxTopN));
     }
     if (this.loading || this.error) this.stop();
     this.render();
@@ -112,7 +111,7 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   ngAfterViewInit(): void {
     if (!this.browser || !this.plot) return;
     this.motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
-    this.reducedMotion = this.motionQuery.matches;
+    this.reducedMotion.set(this.motionQuery.matches);
     this.motionQuery.addEventListener('change', this.onMotionChange);
     this.chart = echarts.init(this.plot.nativeElement, undefined, { renderer: 'svg' });
     this.observer = new ResizeObserver(() => this.chart?.resize());
@@ -128,17 +127,17 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   previous(): void {
-    this.seek(this.frameIndex - 1);
+    this.seek(this.frameIndex() - 1);
   }
 
   next(): void {
-    this.seek(this.frameIndex + 1);
+    this.seek(this.frameIndex() + 1);
   }
 
   seek(index: number): void {
     this.stop();
     if (!this.available || !Number.isInteger(index)) return;
-    this.frameIndex = Math.max(0, Math.min(index, this.frames.length - 1));
+    this.frameIndex.set(Math.max(0, Math.min(index, this.frames.length - 1)));
     this.render();
   }
 
@@ -150,30 +149,30 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
     const mode = (event.target as HTMLSelectElement).value;
     if (mode !== 'period' && mode !== 'cumulative') return;
     this.stop();
-    this.mode = mode;
+    this.mode.set(mode);
     this.render();
   }
 
   onTopN(event: Event): void {
     const requested = Number((event.target as HTMLInputElement).value);
     if (!Number.isInteger(requested)) return;
-    this.topN = Math.max(1, Math.min(requested, this.maxTopN));
-    (event.target as HTMLInputElement).value = String(this.topN);
+    this.topN.set(Math.max(1, Math.min(requested, this.maxTopN)));
+    (event.target as HTMLInputElement).value = String(this.topN());
     this.render();
   }
 
   onInterval(event: Event): void {
     const interval = Number((event.target as HTMLSelectElement).value);
     if (![500, 1000, 2000].includes(interval)) return;
-    this.intervalMs = interval;
-    if (this.playing) {
+    this.intervalMs.set(interval);
+    if (this.playing()) {
       this.stop();
       this.play();
     }
   }
 
   togglePlayback(): void {
-    if (this.playing) this.stop();
+    if (this.playing()) this.stop();
     else this.play();
   }
 
@@ -187,26 +186,24 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   private play(): void {
-    if (!this.available || this.playing) return;
-    if (this.atEnd) this.frameIndex = 0;
-    this.playing = true;
+    if (!this.available || this.playing()) return;
+    if (this.atEnd) this.frameIndex.set(0);
+    this.playing.set(true);
     this.render();
     this.playback = setInterval(() => {
       if (this.atEnd) {
         this.stop();
       } else {
-        this.frameIndex += 1;
+        this.frameIndex.update(index => index + 1);
         this.render();
       }
-      this.changeDetector.markForCheck();
-    }, this.intervalMs);
+    }, this.intervalMs());
   }
 
   private stop(): void {
     if (this.playback) clearInterval(this.playback);
     this.playback = undefined;
-    this.playing = false;
-    this.changeDetector.markForCheck();
+    this.playing.set(false);
   }
 
   private validateViews(): string | null {
@@ -232,8 +229,8 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
     }
     const entries = this.entries;
     this.chart.setOption({
-      animation: !this.reducedMotion,
-      animationDurationUpdate: this.reducedMotion ? 0 : Math.min(350, this.intervalMs / 2),
+      animation: !this.reducedMotion(),
+      animationDurationUpdate: this.reducedMotion() ? 0 : Math.min(350, this.intervalMs() / 2),
       aria: { enabled: true, label: { description: `Bar chart for ${this.frame?.period}. The synchronized table lists exact values.` } },
       grid: { left: 12, right: 42, top: 8, bottom: 22, containLabel: true },
       xAxis: { type: 'value', min: entries.some(entry => entry.value < 0) ? 'dataMin' : 0, max: 'dataMax', axisLabel: { hideOverlap: true } },
