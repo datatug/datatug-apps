@@ -294,26 +294,62 @@ describe('ProjectService local summary HTTP context', () => {
     });
   });
 
-  it('sends the selected branch to the guarded local project summary endpoint', async () => {
-    const service = TestBed.inject(ProjectService);
-    const request = firstValueFrom(
-      service.getSummary({
-        storeId: 'localhost:8989',
-        projectId: 'demo',
-        projectApi: 'local',
-        branch: 'feature/demo',
-      }),
-    );
-    const http = TestBed.inject(HttpTestingController);
-    const call = http.expectOne((item) =>
-      item.url.includes('/projects/project_summary'),
-    );
-    expect(call.request.params.get('id')).toBe('demo');
-    expect(call.request.params.get('branch')).toBe('feature/demo');
-    call.flush({ id: 'demo', title: 'Feature demo' });
-    expect((await request)?.title).toBe('Feature demo');
-    http.verify();
-  });
+  it.each([
+    ['http-localhost:8989', 'http://localhost:8989'],
+    ['localhost:8989', '//localhost:8989'],
+  ])(
+    'sends the selected branch to the guarded local project summary endpoint for %s',
+    async (storeId, baseUrl) => {
+      const service = TestBed.inject(ProjectService);
+      const request = firstValueFrom(
+        service.getSummary({
+          storeId,
+          projectId: 'demo',
+          projectApi: 'local',
+          branch: 'feature/demo',
+        }),
+      );
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne(`${baseUrl}/datatug/agent-info`).flush({
+        version: '0.97.0',
+        uptimeMinutes: 3,
+      });
+      const call = http.expectOne(
+        (item) =>
+          item.url === `${baseUrl}/datatug/projects/project_summary` &&
+          item.params.get('id') === 'demo' &&
+          item.params.get('branch') === 'feature/demo',
+      );
+      expect(call.request.params.get('id')).toBe('demo');
+      expect(call.request.params.get('branch')).toBe('feature/demo');
+      call.flush({ id: 'demo', title: 'Feature demo' });
+      expect((await request)?.title).toBe('Feature demo');
+      http.verify();
+    },
+  );
+
+  it.each(['0.93.0', 'dev'])(
+    'blocks qualified summary HTTP when local CLI version is %s',
+    async (version) => {
+      const service = TestBed.inject(ProjectService);
+      const request = firstValueFrom(
+        service.getSummary({
+          storeId: 'http-localhost:8989',
+          projectId: 'demo',
+          projectApi: 'local',
+          branch: 'feature/demo',
+        }),
+      );
+      const http = TestBed.inject(HttpTestingController);
+      http.expectOne('http://localhost:8989/datatug/agent-info').flush({
+        version,
+        uptimeMinutes: 3,
+      });
+      await expect(request).rejects.toThrow(/v0\.97\.0 or later.*restart/i);
+      http.expectNone((item) => item.url.includes('/projects/project_summary'));
+      http.verify();
+    },
+  );
 });
 
 describe('ProjectService shared operation fence', () => {

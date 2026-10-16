@@ -1,9 +1,15 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, HttpParams } from '@angular/common/http';
+import {
+  HttpTestingController,
+  provideHttpClientTesting,
+} from '@angular/common/http/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
 import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
 import { ProjectQueryApiService } from './project-query-api.service';
+import { StoreApiService } from '../repo/store-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
 import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
 
@@ -28,14 +34,22 @@ describe('ProjectQueryApiService', () => {
       return of({});
     }),
   };
+  const storeApi = {
+    get: vi.fn((...args: unknown[]) => {
+      void args;
+      return of({ version: '0.97.0' });
+    }),
+  };
   beforeEach(() => {
     vi.clearAllMocks();
     api.get.mockImplementation(() => of({}));
+    storeApi.get.mockImplementation(() => of({ version: '0.97.0' }));
     TestBed.configureTestingModule({
       providers: [
         ProjectQueryApiService,
         { provide: SneatApiService, useValue: api },
         { provide: HttpClient, useValue: http },
+        { provide: StoreApiService, useValue: storeApi },
       ],
     });
   });
@@ -87,6 +101,7 @@ describe('ProjectQueryApiService', () => {
     expect(params.get('project')).toBe('demo@buyer@project');
     expect(params.get('branch')).toBe('work');
     expect(http.get).not.toHaveBeenCalled();
+    expect(storeApi.get).not.toHaveBeenCalled();
   });
   it('rejects a branch qualifier that conflicts with the branch embedded in the project address', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
@@ -129,6 +144,86 @@ describe('ProjectQueryApiService', () => {
     }
     expect((api.get.mock.calls[1][1] as HttpParams).get('id')).toBe('board_1');
     expect((api.get.mock.calls[3][1] as HttpParams).get('id')).toBe('Entity_1');
+  });
+
+  it('checks the current local CLI version before every qualified asset, catalog, and summary read', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    const ref = {
+      storeId: 'http-localhost:8989',
+      projectId: 'local-project',
+      projectApi: 'local' as const,
+      branch: 'feature/read-contract',
+    };
+    await firstValueFrom(service.boards(ref));
+    await firstValueFrom(service.board(ref, 'sales'));
+    await firstValueFrom(service.entities(ref));
+    await firstValueFrom(service.entity(ref, 'Customer'));
+    await firstValueFrom(service.environments(ref));
+    await firstValueFrom(service.connectionCatalog(ref));
+    await firstValueFrom(service.summary(ref));
+
+    expect(storeApi.get).toHaveBeenCalledTimes(7);
+    for (const [storeId, path] of storeApi.get.mock.calls) {
+      expect(storeId).toBe(ref.storeId);
+      expect(path).toBe('/agent-info');
+    }
+    expect(http.get).toHaveBeenCalledTimes(7);
+    const calls = http.get.mock.calls as [string, { params: HttpParams }][];
+    expect(calls.map(([url]) => url)).toEqual([
+      'http://localhost:8989/datatug/boards/all_boards',
+      'http://localhost:8989/datatug/boards/board',
+      'http://localhost:8989/datatug/entities/all_entities',
+      'http://localhost:8989/datatug/entities/entity',
+      'http://localhost:8989/datatug/environments/all_environments',
+      'http://localhost:8989/datatug/projects/connection_catalog',
+      'http://localhost:8989/datatug/projects/project_summary',
+    ]);
+    for (const [, options] of calls.slice(0, 6)) {
+      expect(options.params.get('storage')).toBe('local');
+      expect(options.params.get('project')).toBe(ref.projectId);
+      expect(options.params.get('branch')).toBe(ref.branch);
+    }
+    expect(calls[1][1].params.get('id')).toBe('sales');
+    expect(calls[3][1].params.get('id')).toBe('Customer');
+    expect(calls[6][1].params.get('storage')).toBe('local');
+    expect(calls[6][1].params.get('project')).toBeNull();
+    expect(calls[6][1].params.get('id')).toBe(ref.projectId);
+    expect(calls[6][1].params.get('branch')).toBe(ref.branch);
+  });
+
+  it.each(['0.96.9', '0.97.0-rc.1', 'dev', undefined])(
+    'blocks qualified local reads when CLI version is %s before requesting the asset',
+    async (version) => {
+      storeApi.get.mockReturnValue(
+        of(version === undefined ? ({} as { version: string }) : { version }),
+      );
+      const service = TestBed.inject(ProjectQueryApiService);
+      await expect(
+        firstValueFrom(
+          service.boards({
+            storeId: 'localhost:8989',
+            projectId: 'local-project',
+            branch: 'feature',
+          }),
+        ),
+      ).rejects.toThrow(/DataTug CLI v0\.97\.0 or later.*restart/i);
+      expect(storeApi.get).toHaveBeenCalledTimes(1);
+      expect(http.get).not.toHaveBeenCalled();
+    },
+  );
+
+  it('fails closed with update guidance if the local CLI version cannot be read', async () => {
+    storeApi.get.mockReturnValue(throwError(() => new Error('offline')));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectQueryApiService).entities({
+          storeId: 'localhost:8989',
+          projectId: 'local-project',
+          branch: 'feature',
+        }),
+      ),
+    ).rejects.toThrow(/Could not verify.*update.*restart/i);
+    expect(http.get).not.toHaveBeenCalled();
   });
   it('surfaces private asset authorization denial on the shared denial stream', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
@@ -305,4 +400,109 @@ it('emits explicit private read authority denial without treating a network fail
     status: 403,
   });
   expect(denied).toEqual([ref]);
+});
+
+describe('ProjectQueryApiService qualified local runtime compatibility', () => {
+  beforeEach(() => {
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectQueryApiService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: SneatApiService, useValue: { get: vi.fn() } },
+      ],
+    });
+  });
+
+  const ref = {
+    storeId: 'http-localhost:8989',
+    projectId: 'demo-project',
+    projectApi: 'local' as const,
+    branch: 'feature/demo',
+  };
+
+  it('does not send an asset request to an older CLI that would ignore branch', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const request = firstValueFrom(
+      TestBed.inject(ProjectQueryApiService).boards(ref),
+    );
+    http.expectOne('http://localhost:8989/datatug/agent-info').flush({
+      version: '0.93.0',
+      uptimeMinutes: 3,
+    });
+    await expect(request).rejects.toThrow(/v0\.97\.0 or later.*restart/i);
+    http.expectNone('http://localhost:8989/datatug/boards/all_boards');
+    http.verify();
+  });
+
+  it.each([
+    ['unknown', {}],
+    ['development', { version: 'dev' }],
+    ['prerelease', { version: '0.97.0-rc.1' }],
+    ['malformed build metadata', { version: '0.97.0+foo..bar' }],
+    ['oversized version numbers', { version: '999999999999999999999999.0.0' }],
+  ])('fails closed for %s agent-info metadata', async (_name, info) => {
+    const http = TestBed.inject(HttpTestingController);
+    const request = firstValueFrom(
+      TestBed.inject(ProjectQueryApiService).summary(ref),
+    );
+    http.expectOne('http://localhost:8989/datatug/agent-info').flush(info);
+    await expect(request).rejects.toThrow(/v0\.97\.0 or later.*restart/i);
+    http.expectNone('http://localhost:8989/datatug/projects/project_summary');
+    http.verify();
+  });
+
+  it('fails closed with restart guidance when agent-info cannot be reached', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const request = firstValueFrom(
+      TestBed.inject(ProjectQueryApiService).entity(ref, 'Customer'),
+    );
+    http
+      .expectOne('http://localhost:8989/datatug/agent-info')
+      .error(new ProgressEvent('network error'));
+    await expect(request).rejects.toThrow(/Could not verify.*update.*restart/i);
+    http.expectNone('http://localhost:8989/datatug/entities/entity');
+    http.verify();
+  });
+
+  it('sends the full branch and summary ID only after a supported fresh probe', async () => {
+    const http = TestBed.inject(HttpTestingController);
+    const service = TestBed.inject(ProjectQueryApiService);
+
+    const boardRead = firstValueFrom(service.board(ref, 'sales'));
+    http.expectOne('http://localhost:8989/datatug/agent-info').flush({
+      version: 'v0.97.0',
+      uptimeMinutes: 4,
+    });
+    const board = http.expectOne(
+      (request) => request.url === 'http://localhost:8989/datatug/boards/board',
+    );
+    expect(board.request.params.get('storage')).toBe('local');
+    expect(board.request.params.get('project')).toBe('demo-project');
+    expect(board.request.params.get('branch')).toBe('feature/demo');
+    expect(board.request.params.get('id')).toBe('sales');
+    board.flush({ id: 'sales', title: 'Feature sales' });
+    await expect(boardRead).resolves.toMatchObject({ title: 'Feature sales' });
+
+    const summaryRead = firstValueFrom(service.summary(ref));
+    http.expectOne('http://localhost:8989/datatug/agent-info').flush({
+      version: '0.97.1',
+      uptimeMinutes: 5,
+    });
+    const summary = http.expectOne(
+      (request) =>
+        request.url ===
+        'http://localhost:8989/datatug/projects/project_summary',
+    );
+    expect(summary.request.params.get('storage')).toBe('local');
+    expect(summary.request.params.get('project')).toBeNull();
+    expect(summary.request.params.get('id')).toBe('demo-project');
+    expect(summary.request.params.get('branch')).toBe('feature/demo');
+    summary.flush({ id: 'demo-project', title: 'Feature project' });
+    await expect(summaryRead).resolves.toMatchObject({
+      title: 'Feature project',
+    });
+    http.verify();
+  });
 });
