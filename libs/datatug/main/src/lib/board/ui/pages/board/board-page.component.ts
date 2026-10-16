@@ -7,7 +7,7 @@ import {
   signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -34,11 +34,11 @@ import {
 } from 'rxjs/operators';
 import { EMPTY, Subject, combineLatest } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { Board } from '@datatug/board-models';
+import { Board, BoardCard, TutorialBoardSession, TutorialControl } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
-import { IProjectRef, equalProjectRef } from '../../../../core/project-context';
+import { IProjectRef, equalProjectRef, projectRefToString } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import {
@@ -56,10 +56,19 @@ import { BoardComponent } from '../../components/board/board.component';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
+import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
+
+interface TutorialStatus {
+  readonly control: TutorialControl;
+  readonly canNext: boolean;
+  readonly canPrevious: boolean;
+  readonly isComplete: boolean;
+}
 
 @Component({
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
+  styleUrl: './board-page.component.scss',
   imports: [
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
@@ -105,6 +114,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly choices = inject(BoardChoicesService);
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router, { optional: true });
   private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
@@ -124,6 +134,26 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly projBoard = signal<IProjBoard | undefined>(undefined);
 
   readonly boardDef = signal<Board | undefined>(undefined);
+  readonly tutorialRequested = signal(false);
+  readonly tutorialBoard = signal<Board | undefined>(undefined);
+  readonly tutorialStatus = signal<TutorialStatus | undefined>(undefined);
+  readonly tutorialLoading = signal(false);
+  readonly tutorialError = signal<string | undefined>(undefined);
+  readonly tutorialAvailable = computed(() => isShowcaseTutorialBoard(this.projectRef(), this.boardDef()));
+  readonly tutorialActive = computed(() => this.tutorialRequested() && this.tutorialAvailable());
+  readonly displayBoard = computed(() => this.tutorialActive() ? this.tutorialBoard() : this.boardDef());
+  readonly hiddenTutorialCards = computed(() => {
+    const saved = this.boardDef();
+    const working = this.tutorialBoard();
+    if (!saved || !working) return [];
+    const visible = new Set((working.rows ?? []).flatMap(row => (row.cards ?? []).map(card => card.id)));
+    return (saved.rows ?? []).flatMap(row => row.cards ?? []).filter(card => !visible.has(card.id));
+  });
+  readonly visibleTutorialCards = computed(() => (this.tutorialBoard()?.rows ?? []).flatMap(
+    (row, rowIndex) => (row.cards ?? []).map((card, index) => ({ card, rowIndex, index, rowLength: row.cards?.length ?? 0 })),
+  ));
+  private tutorialSession?: TutorialBoardSession;
+  private tutorialGeneration = 0;
   readonly favoriteError = signal<string | undefined>(undefined);
   readonly canSaveFavorite = computed(() =>
     this.choices.canPersist(this.projectRef()),
@@ -137,7 +167,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   toggleFavorite(): void {
     const ref = this.projectRef();
     const id = this.boardId();
-    if (ref && id && this.boardDef() && this.canSaveFavorite()) {
+    if (ref && id && this.boardDef() && !this.tutorialActive() && this.canSaveFavorite()) {
       this.favoriteError.set(
         this.choices.setFavorite(ref, id, !this.choicesForBoard().favorite)
           ? undefined
@@ -175,6 +205,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       next: (queryParamMap) => {
         const envId = queryParamMap.get('env');
         if (envId) this.dataTugNavContext.setCurrentEnvironment(envId);
+        const requested = queryParamMap.get('mode') === 'tutorial';
+        if (requested !== this.tutorialRequested()) {
+          this.tutorialRequested.set(requested);
+          this.clearTutorial();
+          if (requested) void this.openTutorial();
+        }
       },
       error: (err) =>
         this.errorLogger.logError(err, 'Failed to get query parameters'),
@@ -203,6 +239,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.storeId.set(ref?.storeId);
           this.projectId.set(ref?.projectId);
           this.boardId.set(id);
+          this.clearTutorial();
           this.boardDef.set(undefined);
           this.projBoard.set(undefined);
           this.parameters.set(undefined);
@@ -234,7 +271,106 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         this.boardDef.set(board);
         this.parameters.set(this.resolveParameters());
         this.loading.set(false);
+        if (this.tutorialRequested()) void this.openTutorial();
       });
+  }
+
+  private clearTutorial(): void {
+    this.tutorialGeneration++;
+    this.tutorialSession = undefined;
+    this.tutorialBoard.set(undefined);
+    this.tutorialStatus.set(undefined);
+    this.tutorialLoading.set(false);
+    this.tutorialError.set(undefined);
+  }
+
+  private async openTutorial(): Promise<void> {
+    const board = this.boardDef();
+    const ref = this.projectRef();
+    if (!this.tutorialRequested() || !isShowcaseTutorialBoard(ref, board) || !board || !ref) return;
+    const scope = projectRefToString(ref);
+    if (!scope) return;
+    const generation = ++this.tutorialGeneration;
+    this.tutorialLoading.set(true);
+    this.tutorialBoard.set(undefined);
+    this.tutorialError.set(undefined);
+    try {
+      const session = await TutorialBoardSession.openBrowser(board, scope);
+      if (generation !== this.tutorialGeneration || !this.tutorialRequested() || this.boardDef() !== board) return;
+      this.tutorialSession = session;
+      this.publishTutorial();
+    } catch (error) {
+      if (generation !== this.tutorialGeneration) return;
+      this.errorLogger.logError(error, 'Failed to open tutorial board');
+      this.tutorialError.set('This tutorial could not be opened. You can still view the completed board.');
+    } finally {
+      if (generation === this.tutorialGeneration) this.tutorialLoading.set(false);
+    }
+  }
+
+  private publishTutorial(): void {
+    const session = this.tutorialSession;
+    if (!session) return;
+    const cards = new Map((session.canonical.rows ?? []).flatMap(row =>
+      (row.cards ?? []).map(card => [card.id, card] as const),
+    ));
+    const working = session.board;
+    // Keep existing card and widget inputs stable across action replay. The
+    // session returns a fresh clone, while query results live in widget state.
+    this.tutorialBoard.set({ ...working, rows: working.rows?.map(row => ({
+      ...row,
+      cards: row.cards?.map(card => cards.get(card.id) ?? card),
+    })) });
+    this.tutorialStatus.set({
+      control: session.control,
+      canNext: session.canNext,
+      canPrevious: session.canPrevious,
+      isComplete: session.isComplete,
+    });
+  }
+
+  addNextTutorialCard(): void {
+    if (this.tutorialSession?.next()) this.publishTutorial();
+  }
+
+  previousTutorialStep(): void {
+    if (this.tutorialSession?.previous()) this.publishTutorial();
+  }
+
+  restartTutorial(): void {
+    this.tutorialSession?.restart();
+    this.publishTutorial();
+  }
+
+  takeTutorialControl(): void {
+    this.tutorialSession?.takeControl();
+    this.publishTutorial();
+  }
+
+  resumeTutorial(): void {
+    this.tutorialSession?.resume();
+    this.publishTutorial();
+  }
+
+  addTutorialCard(card: BoardCard): void {
+    if (this.tutorialSession?.dispatch({ type: 'add-card', cardId: card.id })) this.publishTutorial();
+  }
+
+  removeTutorialCard(card: BoardCard): void {
+    if (this.tutorialSession?.dispatch({ type: 'remove-card', cardId: card.id })) this.publishTutorial();
+  }
+
+  moveTutorialCard(card: BoardCard, rowIndex: number, index: number): void {
+    if (this.tutorialSession?.dispatch({ type: 'move-card', cardId: card.id, toRow: rowIndex, toIndex: index }))
+      this.publishTutorial();
+  }
+
+  showFullBoard(): void {
+    void this.router?.navigate([], { relativeTo: this.route, queryParams: { mode: null }, queryParamsHandling: 'merge' });
+  }
+
+  buildStepByStep(): void {
+    void this.router?.navigate([], { relativeTo: this.route, queryParams: { mode: 'tutorial' }, queryParamsHandling: 'merge' });
   }
 
   /**
