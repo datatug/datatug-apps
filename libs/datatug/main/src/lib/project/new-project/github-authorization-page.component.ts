@@ -56,7 +56,7 @@ export class GithubAuthorizationPageComponent {
   readonly message = signal('Checking your DataTug sign-in…');
   readonly connected = signal(false);
   readonly needsSignIn = signal(false);
-  private boundUserID?: string;
+  private readonly boundUserID = signal<string | undefined>(undefined);
   private readonly authChanged = new Subject<void>();
 
   constructor() {
@@ -98,7 +98,7 @@ export class GithubAuthorizationPageComponent {
         filter((auth) => auth.status === 'authenticated' && !!auth.user?.uid),
         take(1),
         switchMap((auth) => {
-          this.boundUserID = auth.user?.uid;
+          this.boundUserID.set(auth.user?.uid);
           return this.connection.completeOAuth(
             operationID,
             authorization.code,
@@ -148,13 +148,13 @@ export class GithubAuthorizationPageComponent {
       .subscribe((auth) => {
         this.needsSignIn.set(auth.status === 'notAuthenticated');
         const uid = auth.status === 'authenticated' ? auth.user?.uid : undefined;
-        if (!this.boundUserID && uid) {
-          this.boundUserID = uid;
+        if (!this.boundUserID() && uid) {
+          this.boundUserID.set(uid);
           return;
         }
         if (
-          this.boundUserID &&
-          (!uid || uid !== this.boundUserID)
+          this.boundUserID() &&
+          (!uid || uid !== this.boundUserID())
         ) {
           this.authChanged.next();
           this.connected.set(false);
@@ -170,7 +170,7 @@ export class GithubAuthorizationPageComponent {
         filter((auth) => auth.status === 'authenticated' && !!auth.user?.uid),
         take(1),
         switchMap((auth) => {
-          this.boundUserID = auth.user?.uid;
+          this.boundUserID.set(auth.user?.uid);
           return this.connection.complete(code, state);
         }),
         takeUntil(this.authChanged),
@@ -178,7 +178,7 @@ export class GithubAuthorizationPageComponent {
       )
       .subscribe({
         next: (result) => {
-          if (!result.connected || !this.boundUserID) return;
+          if (!result.connected || !this.boundUserID()) return;
           this.connected.set(true);
           this.message.set('GitHub is connected. Choose a repository and branch to create your project.');
         },
@@ -193,8 +193,9 @@ export class GithubAuthorizationPageComponent {
       );
   }
   newProject(): void {
-    if (!this.connected() || !this.boundUserID) return;
-    const continuation = takeBusinessGithubContinuation(this.boundUserID);
+    const boundUserID = this.boundUserID();
+    if (!this.connected() || !boundUserID) return;
+    const continuation = takeBusinessGithubContinuation(boundUserID);
     if (continuation) {
       this.newProjectService.navigateToNewProjectPage('github', '/', continuation);
     } else {
