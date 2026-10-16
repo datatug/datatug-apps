@@ -297,7 +297,10 @@ export class TutorialBoardSession {
     let after: Board;
     try { after = applyFrom(this.canonical, before, action); } catch { return false; }
     if (JSON.stringify(after) === JSON.stringify(before)) return false;
-    const actions = [...this.actions.slice(0, this.cursor), action];
+    // Action fields are primitives; an owned frozen copy prevents caller mutation
+    // from changing replay after the compact session log has been persisted.
+    const ownedAction = Object.freeze({ ...action }) as BoardAction;
+    const actions = [...this.actions.slice(0, this.cursor), ownedAction];
     if (byteLength(JSON.stringify(encodeActions(this.canonical, actions))) > MAX_SAVED_BYTES - 256) return false;
     this.actions = actions;
     this.cursor = actions.length;

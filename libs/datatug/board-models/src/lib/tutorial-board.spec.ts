@@ -98,6 +98,22 @@ describe('TutorialBoardSession', () => {
     expect(reopened.isComplete).toBe(true);
   });
 
+  it('owns dispatched actions so later caller mutation cannot change replay or persisted state', async () => {
+    const storage = new MemoryStorage();
+    const session = await TutorialBoardSession.open(canonical, 'project-a', storage);
+    const action = { type: 'add-card' as const, cardId: 'orders', toRow: 0, toIndex: 0 };
+    expect(session.dispatch(action)).toBe(true);
+    const persisted = storage.getItem(session.storageKey);
+    action.cardId = 'detail';
+    action.toRow = 1;
+    expect(ids(session.board)).toEqual([['orders'], []]);
+    expect(session.previous()).toBe(true);
+    expect(session.next()).toBe(true);
+    expect(ids(session.board)).toEqual([['orders'], []]);
+    expect(storage.getItem(session.storageKey)).toBe(persisted);
+    expect(ids((await TutorialBoardSession.open(canonical, 'project-a', storage)).board)).toEqual([['orders'], []]);
+  });
+
   it('invalidates stale or malformed logs, without trusting a forged card payload', async () => {
     const storage = new MemoryStorage();
     const first = await TutorialBoardSession.open(canonical, 'project-a', storage);
