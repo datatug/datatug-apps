@@ -51,7 +51,7 @@
     <div #plot class="plot" [style.height.px]="plotHeight" aria-hidden="true"></div>
 
     <details class="ranked-values">
-      <summary>Inspect ranked values and source records for {{ frame?.period }}</summary>
+      <summary>Inspect ranked values{{ inspectable ? ' and source records' : '' }} for {{ frame?.period }}</summary>
       <div class="table-wrap">
         <table>
         <caption>{{ frame?.period }} · {{ mode() === 'period' ? 'Monthly' : 'Cumulative' }} values</caption>

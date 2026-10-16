@@ -259,6 +259,7 @@ describe('BarRaceChartComponent presentation controls', () => {
     const summary = disclosure.querySelector('summary') as HTMLElement;
     expect(disclosure.open).toBe(false);
     expect(summary.textContent).toContain('2024-01');
+    expect(summary.textContent).not.toContain('source records');
     expect(disclosure.querySelectorAll('tbody tr')).toHaveLength(2);
     summary.click();
     expect(disclosure.open).toBe(true);
@@ -267,6 +268,9 @@ describe('BarRaceChartComponent presentation controls', () => {
     expect(disclosure.open).toBe(true);
     expect(summary.textContent).toContain('2024-02');
     expect(disclosure.querySelectorAll('tbody tr')).toHaveLength(2);
+    fixture.componentRef.setInput('inspectable', true);
+    await fixture.whenStable();
+    expect(summary.textContent).toContain('source records');
     fixture.destroy();
   });
 
