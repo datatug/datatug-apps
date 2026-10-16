@@ -21,11 +21,10 @@
         This result is truncated. Chart values may be incomplete.
       </p>
     }
-    @if (result.limitations.length) {
-      <p class="notice" role="status">
-        Source restrictions apply to this result.
-      </p>
-    }
+    <sneat-datatug-limitation-header
+      [limitations]="result.limitations"
+      [executionProfile]="result.provenance.executionProfile"
+    />
 
     @if (fields && prepared?.ok) {
       <div class="view-switch" role="group" aria-label="Result view">
@@ -69,7 +68,7 @@
           <li>
             <button
               type="button"
-              (click)="selectRow(bar.sourceRow)"
+              (click)="inspectBar(bar.sourceRow)"
               [attr.aria-label]="
                 'Inspect ' +
                 bar.category +
@@ -176,7 +175,12 @@
         </nav>
       }
       @if (selectedValues) {
-        <aside class="inspection" aria-label="Selected row details">
+        <aside
+          #selectedDetails
+          class="inspection"
+          tabindex="-1"
+          aria-label="Selected row details"
+        >
           <h3>Row {{ selectedRow()! + 1 }}</h3>
           <dl>
             @for (column of result.recordset.columns; track $index) {
