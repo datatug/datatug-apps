@@ -1,5 +1,5 @@
 @if (!!boardDef()?.rows?.length) {
-  @for (boardRowDef of boardDef()?.rows || []; track boardRowDef) {
+  @for (boardRowDef of boardDef()?.rows || []; track $index) {
     <sneat-datatug-board-row
       [boardRowDef]="boardRowDef"
       [boardContext]="boardContext()"

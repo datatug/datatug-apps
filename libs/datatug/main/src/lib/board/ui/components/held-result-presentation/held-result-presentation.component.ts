@@ -12,8 +12,11 @@ import {
   LimitationHeaderComponent,
   SourceRightsNoticeComponent,
   type Result,
+  type BrowserPublicApiChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
+
+import type { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 
 export interface CategoryBarFields {
   readonly categoryColumn: string;
@@ -34,7 +37,7 @@ export type CategoryBarsResult =
 
 /** Only displays a previously admitted, held result; never executes or alters a query. */
 export function prepareCategoryBars(
-  result: Result,
+  result: Pick<Result, 'recordset'>,
   fields: CategoryBarFields,
 ): CategoryBarsResult {
   const columns = result.recordset.columns;
@@ -103,7 +106,7 @@ export function prepareCategoryBars(
 
 /** Bar view and row inspection share the exact same Result input and never refetch. */
 @Component({
-  selector: 'datatug-held-result-presentation',
+  selector: 'sneat-datatug-held-result-presentation',
   standalone: true,
   imports: [LimitationHeaderComponent, SourceRightsNoticeComponent],
   templateUrl: './held-result-presentation.component.html',
@@ -111,10 +114,23 @@ export function prepareCategoryBars(
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HeldResultPresentationComponent implements OnChanges {
-  @Input() result: Result | null = null;
+  @Input() result:
+    | Result
+    | FederatedQueryResult
+    | BrowserPublicApiChartRecordset
+    | null = null;
   @Input() fields: CategoryBarFields | null = null;
+  @Input() defaultView: 'chart' | 'grid' = 'chart';
   @Input() loading = false;
   @Input() error: string | null = null;
+
+  get publicApiReceipt() {
+    return this.result &&
+      'runtime' in this.result &&
+      this.result.runtime === 'browser-public-api'
+      ? this.result.publicApiReceipt
+      : null;
+  }
 
   readonly topN = signal(10);
   readonly view = signal<'chart' | 'grid'>('chart');
@@ -171,12 +187,14 @@ export class HeldResultPresentationComponent implements OnChanges {
   }
 
   ngOnChanges(changes: SimpleChanges): void {
-    if (changes['result'] || changes['fields']) {
+    if (changes['result'] || changes['fields'] || changes['defaultView']) {
       this.prepared =
         this.result && this.fields
           ? prepareCategoryBars(this.result, this.fields)
           : null;
-      this.view.set(this.prepared?.ok ? 'chart' : 'grid');
+      this.view.set(
+        this.prepared?.ok && this.defaultView !== 'grid' ? 'chart' : 'grid',
+      );
       this.topN.set(
         Math.min(
           10,

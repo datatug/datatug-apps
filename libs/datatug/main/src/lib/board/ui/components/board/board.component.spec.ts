@@ -9,6 +9,7 @@ import { QueryType } from '../../../../models/definition/query-def';
 import { GITHUB_FETCH } from '../../../../services/repo/github/github-project-reader.service';
 
 import { BoardComponent } from './board.component';
+import { BoardWidgetComponent } from '../board-widget/board-widget.component';
 
 describe('BoardComponent saved-query journey', () => {
   it('renders a demo board card as a full-width mobile column with an actionable saved query', async () => {
@@ -80,6 +81,22 @@ describe('BoardComponent saved-query journey', () => {
         'demodb/chinook-top-customer-spend',
       );
       expect(githubFetch).not.toHaveBeenCalled();
+
+      const firstWidget = fixture.debugElement.query(By.directive(BoardWidgetComponent)).componentInstance as BoardWidgetComponent;
+      firstWidget.runError.set('Held widget state');
+      const current = fixture.componentInstance.boardDef();
+      const firstCard = current?.rows?.[0]?.cards?.[0];
+      if (!current || !firstCard) throw new Error('Expected the first board card');
+      fixture.componentRef.setInput('boardDef', {
+        ...current,
+        rows: [{ ...current.rows?.[0], cards: [firstCard, { id: 'second-card', title: 'Second card' }] }],
+      });
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const widgets = fixture.debugElement.queryAll(By.directive(BoardWidgetComponent));
+      expect(widgets).toHaveLength(2);
+      expect(widgets[0].componentInstance).toBe(firstWidget);
+      expect(firstWidget.runError()).toBe('Held widget state');
     } finally {
       fixture.destroy();
     }

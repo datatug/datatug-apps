@@ -204,7 +204,11 @@
           <dt>Execution</dt>
           <dd>
             {{ result.provenance.mode }} ·
-            {{ result.provenance.executionProfile }}
+            {{
+              publicApiReceipt
+                ? 'Browser public API'
+                : result.provenance.executionProfile
+            }}
           </dd>
         </div>
         <div>
@@ -218,6 +222,17 @@
           </div>
         }
       </dl>
+      @if (publicApiReceipt; as receipt) {
+        <p>
+          Public API: {{ receipt.endpoint }} · database
+          {{ receipt.databaseId }} · collection {{ receipt.collectionId }}
+        </p>
+        @if (!result.sourceRights?.length) {
+          <p role="status">
+            Source usage rights are unavailable for this public result.
+          </p>
+        }
+      }
       <sneat-datatug-source-rights-notice [evidence]="result" />
     </details>
   }

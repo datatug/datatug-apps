@@ -1,21 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import type { Result, TypedValue } from '../contract/types';
-import { barRaceColor, prepareBarRace, type BarRaceSpec } from './bar-race';
+import type { TypedValue } from '../contract/types';
+import { barRaceColor, prepareBarRace, type BarRaceSpec, type ServerChartRecordset } from './bar-race';
 
 const text = (value: string): TypedValue => ({ type: 'string', value });
 const num = (value: number): TypedValue => ({ type: 'number', value });
 const nil: TypedValue = { type: 'null', value: null };
 
 // AdventureWorks territory/monthly-order result SHAPE. Values are test-only.
-const result = (rows: readonly (readonly TypedValue[])[]): Result => ({
+const result = (rows: readonly (readonly TypedValue[])[]): ServerChartRecordset => ({
+  runtime: 'server',
+  complete: true,
+  hasMore: false,
   recordset: {
     columns: [{ name: 'month', type: 'string' }, { name: 'territory', type: 'string' }, { name: 'orders', type: 'number' }],
     rows,
   },
   provenance: { source: 'AdventureWorks', collection: 'SalesOrderHeader', queryId: 'territory-monthly-orders', mode: 'snapshot', observedAt: '2026-01-01T00:00:00Z', executionProfile: 'protected' },
-  limitations: [{ policy: 'bounded-read', rowsFiltered: true, hiddenColumns: [] }],
+  limitations: [{ policy: 'bounded-read', rowsFiltered: false, hiddenColumns: [] }],
   bindingsApplied: [{ parameterId: 'TerritoryId', value: num(1), origin: 'manual', originEvidence: 'client-reported' }],
-  truncated: true,
+  truncated: false,
   execution: { storeId: 'github.com', projectId: 'demo', executionId: 'run-1' },
   sourceRights: [{ sourceId: 'ovdb:demo/adventureworks', source: { serverId: 'demo', databaseId: 'adventureworks' }, declaration: { spdx: 'CC0-1.0' }, declarationScope: 'database', declaredAt: { serverId: 'demo', databaseId: 'adventureworks' }, evidenceOrigin: 'publisher-verified', pins: [], transformations: [] }],
   usedSourceIds: ['ovdb:demo/adventureworks'],
@@ -39,7 +42,7 @@ describe('prepareBarRace', () => {
     expect(prepared.data.source.executionProfile).toBe('protected');
     expect(prepared.data.limitations).toEqual(result([]).limitations);
     expect(prepared.data.bindingsApplied).toEqual(result([]).bindingsApplied);
-    expect(prepared.data.truncated).toBe(true);
+    expect(prepared.data.truncated).toBe(false);
     expect(prepared.data.execution?.executionId).toBe('run-1');
     expect(prepared.data.sourceRights?.[0].sourceId).toBe('ovdb:demo/adventureworks');
     expect(prepared.data.usedSourceIds).toEqual(['ovdb:demo/adventureworks']);
@@ -84,6 +87,15 @@ describe('prepareBarRace', () => {
     expect(top.ok && top.data.frames[0].entries.map((entry) => entry.category)).toEqual(['West']);
     const empty = prepareBarRace(result([]), spec);
     expect(empty.ok && empty.data.frames).toEqual([]);
+  });
+
+  it('rejects incomplete or truncated input before charting', () => {
+    const input = result([[text('2025-01'), text('West'), num(1)]]);
+    expect(prepareBarRace({ ...input, complete: false }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
+    expect(prepareBarRace({ ...input, hasMore: true }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
+    expect(prepareBarRace({ ...input, truncated: true }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
+    expect(prepareBarRace({ ...input, limitations: [{ policy: 'filtered', rowsFiltered: true, hiddenColumns: [] }] }, spec)).toMatchObject({ ok: false, code: 'INCOMPLETE' });
+    expect(prepareBarRace({ ...input, sourceRights: undefined }, spec)).toMatchObject({ ok: false, code: 'SOURCE_RIGHTS_UNAVAILABLE' });
   });
 
   it('explains incompatible shapes and values without fabricating a frame', () => {
