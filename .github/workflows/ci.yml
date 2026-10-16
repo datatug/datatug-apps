@@ -316,7 +316,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: f65e3bdd2c6aff994b83408c79e843b945892ff5
+          ref: f40286a57ea3a04b93875335234665ece2595ed0
           path: datatug-demo-project
 
       - name: Verify pinned GitHub API tree and raw source
@@ -324,7 +324,7 @@ jobs:
         run: |
           set -euo pipefail
           sha="$(git -C datatug-demo-project rev-parse HEAD)"
-          test "$sha" = 'f65e3bdd2c6aff994b83408c79e843b945892ff5'
+          test "$sha" = 'f40286a57ea3a04b93875335234665ece2595ed0'
           test "$(gh api "repos/datatug/datatug-demo-project/commits/$sha" --jq .sha)" = "$sha"
           tree="$(gh api "repos/datatug/datatug-demo-project/git/trees/$sha?recursive=1" --jq '[.truncated, ([.tree[].path] | index("demo-project-1/entities/Album/Album.entity.json") != null), ([.tree[].path] | index("demo-project-1/queries/customers/customer-invoices.query.json") != null)] | @json')"
           test "$tree" = '[false,true,true]'
@@ -389,7 +389,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: f65e3bdd2c6aff994b83408c79e843b945892ff5
+          ref: f40286a57ea3a04b93875335234665ece2595ed0
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
@@ -452,7 +452,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: f65e3bdd2c6aff994b83408c79e843b945892ff5
+          ref: f40286a57ea3a04b93875335234665ece2595ed0
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
@@ -477,7 +477,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = 'f65e3bdd2c6aff994b83408c79e843b945892ff5'
+          test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = 'f40286a57ea3a04b93875335234665ece2595ed0'
           pnpm nx run datatug-app:e2e-demo-sqlite --skip-nx-cache
 
       - name: Upload demo SQLite e2e report

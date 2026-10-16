@@ -70,7 +70,7 @@ two-fixture comparison. It uses the iPhone 13 browser profile and also checks
 Safari testing is a separate check. The default CI projects remain unchanged.
 
 ```sh
-# Use a clean checkout of demo revision f65e3bdd2c6aff994b83408c79e843b945892ff5
+# Use a clean checkout of demo revision f40286a57ea3a04b93875335234665ece2595ed0
 # (the CI browser catalog pin) and an unused local port.
 DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
   pnpm nx run datatug-app:e2e-query-mobile

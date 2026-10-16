@@ -23,7 +23,7 @@ Deployment uses a separate comparison against the last **actual successful appli
 Nightly CI runs the Chromium app, Query mobile WebKit, checkout, demo, and real-agent suites in separate jobs after build. Its `e2e` aggregate reports their combined verdict, including the optional card-link suite when its CLI ref is configured. It does not block landing or deployment. Run focused browser and CLI journeys for the behavior changed by a branch against its final head.
 
 The Chromium app, Query mobile WebKit, and demo SQLite jobs use the validated demo catalog revision
-`f65e3bdd2c6aff994b83408c79e843b945892ff5` through the fake GitHub
+`f40286a57ea3a04b93875335234665ece2595ed0` through the fake GitHub
 reader. The app job verifies GitHub's API, tree and raw source at that same
 commit. The demo SQLite job includes the edited-copy Board to Query acceptance
 in its existing three-browser suite. The demo catalog admits the relative
