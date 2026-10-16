@@ -1,0 +1,73 @@
+name: DemoDB live smoke
+
+# MANUAL ONLY (workflow_dispatch). The one place that talks to the real DemoDB hosts (demodb.dev, *.demodb.dev) from
+# CI, to prove the live sites still match the pins in the catalog. It is not run on pull requests, pushes or a schedule.
+#
+# Why it is separate and small: on 2026-10-16 about 25,500 CI requests for chinook.demodb.dev/data/chinook.sqlite got
+# the whole demodb.dev Cloudflare zone rate limited. Regular CI serves the pinned files from local fixtures
+# (apps/datatug-app/e2e/helpers/demodb-guard.ts); this lane is the opt-in exception, with hard limits:
+#   - Chromium only (one browser), one worker, no Playwright retries, stops at the first failure;
+#   - each URL is fetched at most once per run (the guard answers repeats from memory);
+#   - at most DEMODB_E2E_MAX_LIVE_REQUESTS (15) live requests per test and DEMODB_E2E_MAX_RUN_LIVE_REQUESTS (120) per run;
+#   - HTTP 429 from a demodb host refuses every further request and fails the run: it is never retried;
+#   - one run at a time (concurrency group below).
+# The per-host request counts are printed at the end of the "Run live smoke" step.
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+
+concurrency:
+  group: demodb-live-smoke
+  cancel-in-progress: false
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      DEMODB_E2E_MODE: live
+      DEMODB_E2E_MAX_LIVE_REQUESTS: '15'
+      DEMODB_E2E_MAX_RUN_LIVE_REQUESTS: '120'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate private Core artifact verification
+        id: core-artifact-token
+        uses: ./.github/actions/private-core-artifact
+        with:
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Checkout canonical demo project
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-project
+          ref: main
+          path: datatug-demo-project
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run live smoke (Chromium, one worker, no retries, stop on first failure)
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
+        run: pnpm exec playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --project=chromium --forbid-only
+
+      - name: Upload live smoke report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demodb-live-smoke-playwright-report
+          path: |
+            coverage/apps/datatug-app-demo-sqlite-e2e/report
+            coverage/apps/datatug-app-demo-sqlite-e2e/results
+          if-no-files-found: ignore

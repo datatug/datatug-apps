@@ -16,7 +16,7 @@ import {
  * These tests call the REAL live API (nothing replaces the OVDB server or the data), so they need the network and
  * are written to tolerate its behaviour: a cold start takes up to ~6 s and a mount that is still pending answers
  * `503 database_unavailable` for a moment (the app retries with a back-off; every wait below is long, and the
- * config retries a failed test twice in CI). The two failure tests are the exception: they force 503 on the real
+ * config never retries a test: a retry is another round of live requests, and HTTP 429 stops everything). The two failure tests are the exception: they force 503 on the real
  * route to prove the retry and the friendly error, and pass everything else through.
  *
  * The built app is served as https://datatug.app (the browser context maps that origin onto this suite's web server,
@@ -32,6 +32,16 @@ const READ_ONLY_LABEL = 'Hosted PostgreSQL (read-only via OpenVaultDB)';
 /** A cold start is ~6 s and a pending mount is retried for ~10 s; allow both plus the page. */
 const LIVE = 90_000;
 
+/**
+ * Request budget: the most requests ONE test may send to cloud.openvaultdb.com (descriptor GET, dtql POSTs and CORS
+ * preflights, including the app's own 503 back-off retries). A page that loops fails the test instead of hammering the
+ * server. Override with DEMODB_E2E_MAX_OVDB_REQUESTS.
+ */
+const OVDB_REQUEST_BUDGET = Number(process.env['DEMODB_E2E_MAX_OVDB_REQUESTS'] || 40);
+/** Set on the first HTTP 429 from the OpenVaultDB server: every later request is refused, nothing is retried. */
+let rateLimited: string | undefined;
+let currentSeen: Seen[] = [];
+
 interface Seen {
   readonly method: string;
   readonly url: string;
@@ -44,6 +54,7 @@ async function openContext(
   onOvdb?: (route: Route) => Promise<boolean>,
 ): Promise<Seen[]> {
   const seen: Seen[] = [];
+  currentSeen = seen;
   context.on('request', (request) =>
     seen.push({ method: request.method(), url: request.url() }),
   );
@@ -61,8 +72,13 @@ async function openContext(
       return route.fulfill({ response });
     }
     if (url.hostname === OVDB_HOST) {
+      if (rateLimited) return route.abort();
       if (onOvdb && (await onOvdb(route))) return;
-      return route.continue();
+      const response = await route.fetch();
+      if (response.status() === 429) {
+        rateLimited = `HTTP 429 from ${route.request().url()}: the server is rate limiting this client. Stopping: no retries, all further requests refused.`;
+      }
+      return route.fulfill({ response });
     }
     if (url.protocol === 'data:' || url.protocol === 'blob:') {
       return route.continue();
@@ -136,6 +152,18 @@ async function expectNoMutationControls(page: Page): Promise<void> {
     }),
   ).toHaveCount(0);
 }
+
+// eslint-disable-next-line no-empty-pattern
+test.afterEach(async ({}, testInfo) => {
+  const ovdb = currentSeen.filter(({ url }) => new URL(url).hostname === OVDB_HOST).length;
+  currentSeen = [];
+  testInfo.annotations.push({
+    type: 'demodb-requests',
+    description: JSON.stringify({ mode: 'live', hosts: { [OVDB_HOST]: { total: ovdb, fixture: 0, memo: 0, live: ovdb } } }),
+  });
+  if (rateLimited) throw new Error(rateLimited);
+  expect(ovdb, `requests to ${OVDB_HOST} in this test (budget ${OVDB_REQUEST_BUDGET})`).toBeLessThanOrEqual(OVDB_REQUEST_BUDGET);
+});
 
 const openEdition = async (page: Page, databaseId: string, path = '') => {
   await page.goto(`${DATATUG_ORIGIN}/demo/ovdb/${databaseId}${path}`);
@@ -357,14 +385,17 @@ test.describe('Chinook (PostgreSQL) in DataTug through OpenVaultDB', () => {
 });
 
 // One smoke journey per hosted edition, driven by the catalog: the route opens, the tables listed are the catalog's
-// count, and one table shows rows. Live data, so tolerant to cold starts (LIVE waits, CI retries).
+// count, and one table shows rows. Live data, so tolerant to cold starts (LIVE waits), with no test retries.
 for (const id of demoPostgresqlDatasetIds) {
   const edition = demoPostgresqlCatalog[id];
   test(`${id}: ${edition.route} lists ${edition.tableCount} tables and shows rows of ${edition.sampleTable}, read-only, via ${OVDB_HOST}`, async ({
     page,
     context,
     baseURL,
-  }) => {
+  }, testInfo) => {
+    // Minimum live traffic: every edition is smoke-tested in Chromium; Firefox repeats only Chinook (the
+    // hand-written tests above also run in both browsers).
+    test.skip(testInfo.project.name !== 'chromium' && id !== 'chinook', 'Firefox repeats only the Chinook edition.');
     test.setTimeout(240_000);
     if (!baseURL) throw new Error('Playwright baseURL is required');
     const seen = await openContext(context, baseURL);

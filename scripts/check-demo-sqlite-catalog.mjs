@@ -4,9 +4,13 @@
 //   node scripts/check-demo-sqlite-catalog.mjs --online  also downloads every file and compares
 //                                                        HTTP status, decoded size and SHA-256
 //
+// --online is MANUAL ONLY: it is not part of any CI path (the manual "DemoDB live smoke" workflow runs it). It makes
+// one request per file and no retries; an HTTP 429 stops it immediately (exit 3), see demodb-http.mjs.
+//
 // The catalog is TypeScript; Node 24 strips its types on import.
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { exitOnRateLimit, fetchOnce } from './demodb-http.mjs';
 
 const catalogUrl = new URL('../libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', import.meta.url);
 const { demoSqliteCatalog, demoSqliteDatasetIds } = await import(catalogUrl.href);
@@ -31,7 +35,7 @@ if (process.argv.includes('--online')) {
     const entry = demoSqliteCatalog[id];
     try {
       // Node's fetch decodes Content-Encoding: gzip, as browsers do.
-      const response = await fetch(entry.url);
+      const response = await fetchOnce(entry.url);
       assert.equal(response.status, 200, 'HTTP status');
       const hash = createHash('sha256');
       let bytes = 0;
@@ -43,6 +47,7 @@ if (process.argv.includes('--online')) {
       assert.equal(hash.digest('hex'), entry.sha256, 'sha256');
       console.log(`ok   ${id} live ${entry.url} (${bytes} bytes, ${response.headers.get('content-encoding') ?? 'identity'})`);
     } catch (error) {
+      exitOnRateLimit(error);
       failures += 1;
       console.error(`FAIL ${id} live ${entry.url}: ${error.message}`);
     }

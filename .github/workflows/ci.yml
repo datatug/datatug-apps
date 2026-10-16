@@ -12,11 +12,22 @@ on:
       - 'docs/**'
       - '.git-hooks/**'
   merge_group:
+  # Nightly run of everything, including the lanes that need live third-party hosts (e2e-demo-postgresql). Those lanes
+  # run ONLY on this event; pull_request, merge_group and push run the offline lanes (see e2e/README.md "Lane matrix").
   schedule:
     - cron: '17 3 * * *'
 
 permissions:
   actions: read
+
+# Superseded PR runs are cancelled (a force-push or a new commit on the same pull request, a Renovate rebase), so they
+# stop spending runner time and network. Every other event gets a group of its own (the run id), so nothing else is
+# ever cancelled or replaced: deploy.yml reads the `deploy-gate` job of the CI run of EACH main commit, so a push to
+# main must always run to completion (a shared group would also drop all but one pending run, even with
+# cancel-in-progress false).
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -129,10 +140,10 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Run full browser suites nightly at 03:17 UTC. Independent runners keep their
-  # app servers, Playwright artifacts and Nx state from contending.
+  # Independent browser suites use separate runners so their app servers,
+  # Playwright artifacts and Nx state cannot contend. Keep app and query-mobile
+  # together because both use the development app on port 4200.
   e2e-checkout:
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -165,10 +176,10 @@ jobs:
           distribution: temurin
           java-version: '21'
 
-      - name: nx checkout journey e2e
+      - name: nx checkout journey e2e affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx run datatug-app:e2e-checkout --skip-nx-cache
+        run: pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload checkout journey traces
         if: failure()
@@ -179,7 +190,6 @@ jobs:
           if-no-files-found: ignore
 
   e2e-app:
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -223,14 +233,31 @@ jobs:
           curl -fsSL "https://raw.githubusercontent.com/datatug/datatug-demo-project/$sha/demo-project-1/entities/Album/Album.entity.json" -o "$RUNNER_TEMP/demo-album.json"
           cmp datatug-demo-project/demo-project-1/entities/Album/Album.entity.json "$RUNNER_TEMP/demo-album.json"
 
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Find affected datatug-app project
+        id: affected-app
+        run: |
+          projects="$(pnpm exec nx show projects --affected --json)"
+          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
+          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
+
       - name: Install Playwright browsers
         run: pnpm exec playwright install --with-deps chromium
 
-      - name: nx app e2e
+      - name: Smoke query context count geometry on Chromium
+        if: steps.affected-app.outputs.datatug_app == 'true'
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx run datatug-app:e2e --skip-nx-cache -- --project=chromium
+        run: pnpm nx run datatug-app:e2e -- --project=chromium --grep='query context counts stay inline through two digits and unavailable drafts'
+
+      - name: nx e2e affected
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
+        run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload app Playwright report and traces
         if: failure()
@@ -243,7 +270,6 @@ jobs:
           if-no-files-found: ignore
 
   e2e-query-mobile:
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -279,11 +305,11 @@ jobs:
       - name: Install mobile WebKit browser
         run: pnpm exec playwright install --with-deps webkit
 
-      - name: nx query mobile WebKit e2e
+      - name: nx query mobile WebKit e2e affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx run datatug-app:e2e-query-mobile --skip-nx-cache
+        run: pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload query mobile WebKit Playwright report and traces
         if: failure()
@@ -296,7 +322,6 @@ jobs:
           if-no-files-found: ignore
 
   e2e-demo-sqlite:
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -327,21 +352,56 @@ jobs:
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
 
+      - name: Find affected datatug-app project
+        id: affected-app
+        run: |
+          projects="$(pnpm exec nx show projects --affected --json)"
+          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
+          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
+
       - name: Install demo SQLite browsers
         run: pnpm exec playwright install --with-deps chromium firefox webkit
 
+      # The pinned DemoDB files are served to the browsers from LOCAL fixtures, never from the live demodb.dev hosts
+      # (the 2026-10-16 incident: ~25,500 requests for one file rate limited the whole zone). The fixtures are cached
+      # by the catalog's SHA-256 pins; on a miss scripts/fetch-demodb-fixtures.mjs downloads each distinct file ONCE
+      # (SHA-256 verified, no retries, HTTP 429 stops it), and the cache is saved even if a later step fails. Skipped
+      # when the lane has nothing to run (datatug-app not affected). The nightly run refreshes the cache on the
+      # default branch, which every pull request can read.
+      - name: Restore DemoDB fixtures
+        id: demodb-fixtures
+        if: github.event_name == 'schedule' || steps.affected-app.outputs.datatug_app == 'true'
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: demodb-fixtures-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+
+      - name: Fetch DemoDB fixtures (a cache miss costs one request per distinct file; a hit costs none)
+        if: github.event_name == 'schedule' || steps.affected-app.outputs.datatug_app == 'true'
+        run: node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/fetch-demodb-fixtures.mjs
+
+      - name: Save DemoDB fixtures
+        if: (github.event_name == 'schedule' || steps.affected-app.outputs.datatug_app == 'true') && steps.demodb-fixtures.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
+
       # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
-      # in the browser. Runs the built app in Chromium, Firefox and WebKit against the real demodb.dev files
-      # (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
-      # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
-      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
-      # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
-      # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the live demodb.dev pages).
-      - name: nx e2e-demo-sqlite
+      # in the browser. Runs the built app in Chromium, Firefox and WebKit against the pinned DemoDB files served from
+      # the local fixtures above (zero requests to demodb.dev; apps/datatug-app/e2e/helpers/demodb-guard.ts fails a
+      # test that sends one, and the run prints the per-host request counts at the end). WebKit's default context has
+      # no OPFS, so it asserts the in-memory behaviour. The 126.8 MB AdventureWorks download is opt-in
+      # (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs demo-sqlite-datasets.spec.ts (one
+      # smoke journey per catalog dataset, plus a check that the fixtured DemoDB registry and the DataTug catalog
+      # agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug /demo/sqlite/<dataset>, with the
+      # datatug.app origin mapped to this build and the DemoDB pages from the fixtures). The check against the LIVE
+      # site is the manual workflow demodb-live-smoke.yml.
+      - name: nx e2e-demo-sqlite affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx run datatug-app:e2e-demo-sqlite --skip-nx-cache
+        run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload demo SQLite e2e report
         if: failure()
@@ -356,8 +416,10 @@ jobs:
   # /demo/ovdb/<dataset>-postgresql (apps/datatug-app/e2e/demo-postgresql.spec.ts): the hosted, read-only PostgreSQL
   # DemoDB editions opened THROUGH the public OpenVaultDB server (cloud.openvaultdb.com), never Neon directly. Runs the
   # built app in Chromium and Firefox against the REAL live API (so it needs the network and tolerates cold starts:
-  # long waits, the app's own 503 back-off, two retries). Its own job, so an outage of the live API fails this lane
-  # and nothing else; it is part of the required "e2e" aggregate below.
+  # long waits and the app's own 503 back-off; Playwright never retries a test, every test has a request budget, and
+  # HTTP 429 stops the run). Chromium smoke-tests every edition; Firefox only Chinook. Nightly only: it needs a live
+  # third-party host, so it never runs on pull requests, merge groups or pushes. Its own job, so an outage of the
+  # live API fails this lane and nothing else; it is part of the nightly "e2e" aggregate below.
   e2e-demo-postgresql:
     if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
@@ -386,10 +448,10 @@ jobs:
       - name: Install demo PostgreSQL browsers
         run: pnpm exec playwright install --with-deps chromium firefox
 
-      - name: nx e2e-demo-postgresql
+      - name: nx e2e-demo-postgresql affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx run datatug-app:e2e-demo-postgresql --skip-nx-cache
+        run: pnpm nx affected --target=e2e-demo-postgresql --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload demo PostgreSQL e2e report
         if: failure()
@@ -402,7 +464,6 @@ jobs:
           if-no-files-found: ignore
 
   e2e-demo-handoff:
-    if: github.event_name == 'schedule'
     runs-on: ubuntu-latest
     needs: build
     permissions:
@@ -434,10 +495,10 @@ jobs:
       # PRODUCTION build (real Sentry DSN and analytics: playwright.demo-handoff.config.ts serves
       # `serve:production`), so it is its own target rather than part of "e2e" above, which serves the
       # development build.
-      - name: nx e2e-demo-handoff
+      - name: nx e2e-demo-handoff affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx run datatug-app:e2e-demo-handoff --skip-nx-cache
+        run: pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload demo hand-off e2e report
         if: failure()
@@ -447,10 +508,10 @@ jobs:
           path: coverage/apps/datatug-app-demo-handoff-e2e/report
           if-no-files-found: ignore
 
-  # `e2e` is the strict nightly aggregate of browser and real-agent lanes,
-  # including the live-API PostgreSQL lane. Production uses `deploy-gate` below.
-  # Keep the existing check name for nightly reports. `always()` makes it run even
-  # when build fails and GitHub skips its dependent lanes; every lane must
+  # `e2e` is the strict NIGHTLY aggregate: EVERY lane, including the live-API
+  # PostgreSQL lane. It is not what gates production; `deploy-gate` below is.
+  # It exists only on the schedule event (the PostgreSQL lane runs only there), so it is not a pull-request check.
+  # `always()` makes it run even when build fails and GitHub skips its dependent lanes; every lane must
   # actually succeed, so a skipped or cancelled lane cannot pass this check.
   e2e:
     if: always() && github.event_name == 'schedule'
@@ -482,14 +543,31 @@ jobs:
           fi
 
   # Production deploy gate (deploy.yml requires this job's conclusion to be
-  # `success` for the commit it deploys). Browser suites run nightly; push and
-  # PR runs gate on build and unit tests. A failed or skipped dependency fails
-  # the gate, including when build fails and test is skipped.
+  # `success` for the commit it deploys; also safe to make a required check).
+  # Gates on every lane that proves the shipped app, and deliberately NOT on
+  # e2e-demo-postgresql: that lane drives the real cloud.openvaultdb.com API, so
+  # an outage of that third party would otherwise stop all production deploys.
+  # It runs nightly only (it is skipped on PR/merge-group/push), where the `e2e`
+  # aggregate keeps it visible. `always()` + exact `success` per lane: a failed, skipped or
+  # cancelled lane (including lanes skipped because `build` failed) fails the
+  # gate. agent-links alone may be `skipped`, because it only runs once the
+  # DATATUG_LINKS_CLI_REF repository variable is set. Add new lanes here.
+  # The gate exists on pull_request, merge_group and push, not on the nightly schedule. On those events the PostgreSQL
+  # lane is skipped by design and is not in `needs`.
   deploy-gate:
     name: deploy-gate
     if: always() && github.event_name != 'schedule'
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs:
+      - build
+      - test
+      - e2e-checkout
+      - e2e-app
+      - e2e-query-mobile
+      - e2e-demo-sqlite
+      - e2e-demo-handoff
+      - journey
+      - agent-links
     steps:
       - name: Require every gating lane
         env:
@@ -497,9 +575,9 @@ jobs:
         run: |
           set -euo pipefail
           bad=0
-          for lane in build test; do
+          for lane in build test e2e-checkout e2e-app e2e-query-mobile e2e-demo-sqlite e2e-demo-handoff journey agent-links; do
             result="$(jq -r --arg l "$lane" '.[$l].result // "missing"' <<<"$NEEDS_JSON")"
-            if [[ "$result" == success ]]; then
+            if [[ "$result" == success || ( "$lane" == agent-links && "$result" == skipped ) ]]; then
               echo "ok      $lane: $result"
             else
               echo "::error title=deploy-gate::$lane ended with: $result"
@@ -516,9 +594,8 @@ jobs:
   # runs affected specs; this one always runs and proves the actual web <->
   # agent contract). Always runs (not gated by `nx affected`) because it is
   # the one suite that can catch a datatug-cli-side regression even when no
-  # file in this repo changed. Run it nightly with the other E2E suites.
+  # file in this repo changed.
   journey:
-    if: github.event_name == 'schedule'
     # `env` is not an available context for `jobs.<job_id>.name`, so the
     # pinned tag can't be interpolated here — it's visible in the "Checkout
     # datatug-cli" step name below instead. Keep this literal name and the
@@ -660,7 +737,7 @@ jobs:
   # read-only records/schema and records/lookup routes (datatug-cli #399).
   agent-links:
     name: card-link e2e (real datatug daemon)
-    if: ${{ github.event_name == 'schedule' && vars.DATATUG_LINKS_CLI_REF != '' }}
+    if: ${{ vars.DATATUG_LINKS_CLI_REF != '' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -717,7 +794,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
-        run: pnpm nx run datatug-app:e2e-agent-links --skip-nx-cache
+        run: pnpm nx run datatug-app:e2e-agent-links
 
       - name: Upload Playwright report
         if: failure()
