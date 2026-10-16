@@ -1,12 +1,12 @@
 ---
 format: https://specscore.md/feature-specification
-status: Implementing
+status: Stable
 ---
 
 # Feature: In-browser query dispatch
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/browser-query-dispatch?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/browser-query-dispatch?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/browser-query-dispatch?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/browser-query-dispatch?op=request-change) |
-**Status:** Implementing
+**Status:** Stable
 **Source Ideas:** —
 
 ## Summary
