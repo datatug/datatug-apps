@@ -1,5 +1,5 @@
 :host { display: block; min-width: 0; color: #17213a; }
-.race { box-sizing: border-box; width: 100%; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid #dce5ef; border-radius: 1rem; background: #fff; box-shadow: 0 8px 28px #17213a0a; }
+.race { box-sizing: border-box; width: 100%; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid #dce5ef; border-radius: .75rem; background: #fff; }
 .heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: end; gap: .25rem 1rem; margin-bottom: 1rem; }
 .eyebrow { margin: 0 0 .2rem; color: #30557a; font-size: .7rem; font-weight: 750; letter-spacing: .12em; text-transform: uppercase; }
 h2 { margin: 0; font-size: clamp(1.25rem, 2.5vw, 1.8rem); line-height: 1.2; font-variant-numeric: tabular-nums; }
@@ -19,7 +19,12 @@ input[type=range] { width: 100%; min-height: 2.75rem; accent-color: #2563eb; }
 .capacity { margin: .7rem 0 .2rem; }
 .notice { margin: .35rem 0; padding: .55rem .7rem; border-left: 3px solid #a95f00; background: #fff6e8; color: #573500; font-size: .82rem; }
 .plot { width: 100%; height: clamp(18rem, 38vw, 30rem); }
-.table-wrap { max-height: 19rem; overflow: auto; border: 1px solid #dce5ef; border-radius: .6rem; }
+.ranked-values { margin-top: .8rem; border: 1px solid #dce5ef; border-radius: .6rem; }
+.ranked-values summary { box-sizing: border-box; min-height: 2.75rem; padding: .6rem .8rem; color: #174b7c; font-weight: 650; cursor: pointer; }
+.ranked-values summary:hover { background: #f3f7fb; }
+.ranked-values summary:focus-visible { outline: 3px solid #2563eb; outline-offset: 2px; }
+.ranked-values[open] summary { border-bottom: 1px solid #dce5ef; }
+.table-wrap { max-height: 19rem; overflow: auto; }
 table { width: 100%; border-collapse: collapse; font-size: .85rem; }
 caption { padding: .6rem .8rem; color: #34455c; font-weight: 650; text-align: left; }
 thead { background: #f3f7fb; }

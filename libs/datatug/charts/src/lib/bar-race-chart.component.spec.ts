@@ -241,6 +241,35 @@ describe('BarRaceChartComponent presentation controls', () => {
     fixture.destroy();
   });
 
+  it('keeps the ranked source table behind a native keyboard-accessible disclosure', async () => {
+    TestBed.configureTestingModule({
+      imports: [BarRaceChartComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: PLATFORM_ID, useValue: 'server' },
+      ],
+    });
+    const fixture = TestBed.createComponent(BarRaceChartComponent);
+    fixture.componentRef.setInput('views', {
+      period: view('period'),
+      cumulative: view('cumulative'),
+    });
+    await fixture.whenStable();
+    const disclosure = fixture.nativeElement.querySelector('details.ranked-values') as HTMLDetailsElement;
+    const summary = disclosure.querySelector('summary') as HTMLElement;
+    expect(disclosure.open).toBe(false);
+    expect(summary.textContent).toContain('2024-01');
+    expect(disclosure.querySelectorAll('tbody tr')).toHaveLength(2);
+    summary.click();
+    expect(disclosure.open).toBe(true);
+    fixture.componentInstance.next();
+    await fixture.whenStable();
+    expect(disclosure.open).toBe(true);
+    expect(summary.textContent).toContain('2024-02');
+    expect(disclosure.querySelectorAll('tbody tr')).toHaveLength(2);
+    fixture.destroy();
+  });
+
   it('creates and rebinds the real SVG chart as async data, loading and error replace the plot', () => {
     const matchMedia = vi.fn().mockReturnValue({
       matches: false,

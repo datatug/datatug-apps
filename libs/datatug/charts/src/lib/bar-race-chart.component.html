@@ -50,8 +50,10 @@
     @if (data?.limitations.length) { <p class="notice" role="status">Source restrictions apply to this result.</p> }
     <div #plot class="plot" [style.height.px]="plotHeight" aria-hidden="true"></div>
 
-    <div class="table-wrap">
-      <table>
+    <details class="ranked-values">
+      <summary>Inspect ranked values and source records for {{ frame?.period }}</summary>
+      <div class="table-wrap">
+        <table>
         <caption>{{ frame?.period }} · {{ mode() === 'period' ? 'Monthly' : 'Cumulative' }} values</caption>
         <thead><tr><th scope="col">Rank</th><th scope="col">Category</th><th scope="col">Value{{ data?.spec.unit ? ' (' + data.spec.unit + ')' : '' }}</th>@if (inspectable) { <th scope="col">Records</th> }</tr></thead>
         <tbody>
@@ -66,7 +68,8 @@
             <tr><td [attr.colspan]="inspectable ? 4 : 3">No values in this month.</td></tr>
           }
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+    </details>
   }
 </section>
