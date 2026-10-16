@@ -9,9 +9,11 @@ import { SneatApiService } from '@sneat/api';
 import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
 import {
+  DATATUG_DEMO_PROJECT_TEMPLATE,
   ProjectQueryApiService,
   QualifiedLocalReadVersionError,
   qualifiedLocalReadVersionGuidance,
+  type CreateGithubProject,
 } from './project-query-api.service';
 import { StoreApiService } from '../repo/store-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
@@ -56,6 +58,42 @@ describe('ProjectQueryApiService', () => {
         { provide: StoreApiService, useValue: storeApi },
       ],
     });
+  });
+  it('sends the OAuth setup request and status preflight without dropping identity, CI, or repository fields', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    const request: CreateGithubProject = {
+      title: 'Project',
+      spaceID: 'space',
+      billingIntent: 'personal_pro',
+      operationID: '11111111-1111-4111-8111-111111111111',
+      ciEnabled: true,
+      github: {
+        repositoryID: 42,
+        owner: 'owner',
+        name: 'repo',
+        folder: 'datatug',
+        branch: 'main',
+        expectedBranchHead: 'abcdef0123456789abcdef0123456789abcdef01',
+      },
+      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+    };
+    await firstValueFrom(service.create(request));
+    expect(api.post.mock.calls[0][0]).toBe('datatug/projects/create_project');
+    expect(api.post.mock.calls[0][1]).toEqual(request);
+    const statusRequest = {
+      operationID: request.operationID,
+      repositoryID: request.github.repositoryID,
+      owner: request.github.owner,
+      name: request.github.name,
+    };
+    await firstValueFrom(service.createStatus(statusRequest));
+    const params = api.get.mock.calls[0][1] as HttpParams;
+    expect(api.get.mock.calls[0][0]).toBe('datatug/projects/create_project/status');
+    expect(params.get('operationID')).toBe(request.operationID);
+    expect(params.get('repositoryID')).toBe('42');
+    expect(params.get('owner')).toBe('owner');
+    expect(params.get('name')).toBe('repo');
+    expect(params.get('store')).toBe('github.com');
   });
   it('routes GitHub reads/saves through authenticated Cloud API with flat scope and no provider fallback', async () => {
     const service = TestBed.inject(ProjectQueryApiService);
@@ -427,6 +465,70 @@ it('emits explicit private read authority denial without treating a network fail
     status: 403,
   });
   expect(denied).toEqual([ref]);
+});
+
+it('clears private GitHub query scope and requests reconnect only for typed reauthorization conflicts', async () => {
+  TestBed.resetTestingModule();
+  const get = vi.fn(() =>
+    throwError(() => ({
+      status: 409,
+      error: { error: { code: 'reauthorization_required' } },
+    })),
+  );
+  TestBed.configureTestingModule({
+    providers: [
+      ProjectQueryApiService,
+      { provide: SneatApiService, useValue: { get } },
+      { provide: HttpClient, useValue: {} },
+    ],
+  });
+  const service = TestBed.inject(ProjectQueryApiService);
+  const ref = {
+    storeId: 'github.com',
+    projectId: 'repo@owner@folder',
+    projectApi: 'cloud' as const,
+    branch: 'work',
+  };
+  const denied: unknown[] = [];
+  const reconnect: unknown[] = [];
+  service.authorityDenied.subscribe((value) => denied.push(value));
+  service.githubReauthorizationRequired.subscribe((value) => reconnect.push(value));
+
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 409,
+  });
+  expect(denied).toEqual([ref]);
+  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+
+  get.mockImplementation(() =>
+    throwError(() => ({
+      status: 409,
+      error: { error: { code: 'branch_conflict' } },
+    })),
+  );
+  await expect(firstValueFrom(service.summary(ref))).rejects.toMatchObject({
+    status: 409,
+  });
+  expect(denied).toEqual([ref]);
+  expect(reconnect).toEqual([{ ref, requiredScopes: ['repo'] }]);
+});
+
+it('discovers pending GitHub setup operations through the authenticated common API', async () => {
+  TestBed.resetTestingModule();
+  const get = vi.fn(() => of({ setups: [], truncated: false }));
+  TestBed.configureTestingModule({
+    providers: [
+      ProjectQueryApiService,
+      { provide: SneatApiService, useValue: { get } },
+      { provide: HttpClient, useValue: {} },
+    ],
+  });
+  const service = TestBed.inject(ProjectQueryApiService);
+  await expect(firstValueFrom(service.pendingGithubProjectSetups())).resolves.toEqual({
+    setups: [],
+    truncated: false,
+  });
+  expect(get).toHaveBeenCalledWith('datatug/github/projects/pending-setups');
 });
 
 describe('ProjectQueryApiService qualified local runtime compatibility', () => {

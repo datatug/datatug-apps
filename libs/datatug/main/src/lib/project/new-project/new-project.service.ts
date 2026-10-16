@@ -35,6 +35,18 @@ export class NewProjectService {
         ),
       );
   }
+
+  public returnFromGithubOAuth(result: 'success' | 'denied' | 'actor-changed'): void {
+    void this.router
+      .navigate(['/new-project'], {
+        queryParams: { store: 'github', oauthResult: result },
+      })
+      .catch(
+        this.errorLogger.logErrorHandler(
+          'Failed to return from GitHub authorization',
+        ),
+      );
+  }
 }
 
 /** Only allow a same-app path to be used as the page's Back/Cancel destination. */
