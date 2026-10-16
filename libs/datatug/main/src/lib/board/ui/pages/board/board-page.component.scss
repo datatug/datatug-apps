@@ -1,4 +1,3 @@
-.tutorial-entry,
 .tutorial-panel {
   box-sizing: border-box;
   margin: 0.75rem 1rem 1rem;
@@ -8,7 +7,6 @@
   background: #f5f9fd;
   color: #17213a;
 }
-.tutorial-entry,
 .tutorial-heading {
   display: flex;
   flex-wrap: wrap;
@@ -16,7 +14,6 @@
   align-items: center;
   gap: 1rem;
 }
-.tutorial-entry p,
 .tutorial-heading p {
   margin: 0.3rem 0 0;
   color: #465b72;
@@ -31,8 +28,25 @@
   margin: 0.2rem 0;
   font-size: clamp(1.2rem, 3vw, 1.65rem);
 }
+.board-header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+.tutorial-about {
+  max-width: 24rem;
+}
+.tutorial-about summary {
+  cursor: pointer;
+  color: #174b7c;
+}
+.tutorial-about summary:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}
 .tutorial-panel button,
-.tutorial-entry button {
+.tutorial-start {
   min-height: 44px;
   padding: 0.45rem 0.8rem;
   border: 1px solid #356393;
@@ -44,7 +58,7 @@
   cursor: pointer;
 }
 .tutorial-panel button:hover:not(:disabled),
-.tutorial-entry button:hover {
+.tutorial-start:hover {
   background: #e4f0fc;
 }
 .tutorial-panel button:disabled {
@@ -52,7 +66,7 @@
   opacity: 0.5;
 }
 .tutorial-panel button:focus-visible,
-.tutorial-entry button:focus-visible {
+.tutorial-start:focus-visible {
   outline: 3px solid #2563eb;
   outline-offset: 2px;
 }

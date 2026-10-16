@@ -15,14 +15,35 @@
         <h1 tabindex="-1" data-board-page-heading>
           {{ projBoard()?.title || 'Board' }}
         </h1>
+        <div class="board-header-actions">
+          @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
+            <ion-button fill="outline" (click)="toggleFavorite()">
+              {{
+                choicesForBoard().favorite
+                  ? 'Remove from favorites'
+                  : 'Add to favorites'
+              }}
+            </ion-button>
+          }
+          @if (tutorialAvailable() && !tutorialActive()) {
+            <button
+              type="button"
+              class="tutorial-start"
+              (click)="buildStepByStep()"
+            >
+              Build Step by Step
+            </button>
+            <details class="tutorial-about">
+              <summary>How this dashboard is built</summary>
+              <strong>Explore how this dashboard is built</strong>
+              <p>
+                The completed saved board is ready to explore. You can also
+                build a working copy in this browser session.
+              </p>
+            </details>
+          }
+        </div>
         @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
-          <ion-button fill="outline" (click)="toggleFavorite()">
-            {{
-              choicesForBoard().favorite
-                ? 'Remove from favorites'
-                : 'Add to favorites'
-            }}
-          </ion-button>
           <p>Favorites are saved in this browser.</p>
           @if (favoriteError()) {
             <p role="alert">{{ favoriteError() }}</p>
@@ -42,21 +63,6 @@
     <p class="ion-padding" role="status">Loading board…</p>
   } @else if (loadError()) {
     <p class="ion-padding" role="alert">{{ loadError() }}</p>
-  }
-
-  @if (tutorialAvailable() && !tutorialActive()) {
-    <section class="tutorial-entry" aria-label="Build this board step by step">
-      <div>
-        <strong>Explore how this dashboard is built</strong>
-        <p>
-          The completed saved board is ready to explore. You can also build a
-          working copy in this browser session.
-        </p>
-      </div>
-      <button type="button" (click)="buildStepByStep()">
-        Build Step by Step
-      </button>
-    </section>
   }
 
   @if (tutorialActive()) {
