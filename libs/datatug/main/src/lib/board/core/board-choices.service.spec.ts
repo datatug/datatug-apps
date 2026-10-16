@@ -64,11 +64,10 @@ describe('BoardChoicesService', () => {
     expect(service.read(ref, 'board1')).toEqual({ favorite: false });
   });
 
-  it('does not persist choices for a local agent without an attested principal', () => {
+  it.each(['agent', 'http-localhost:8989', 'https-127.0.0.1:8989', 'localhost:8989'])('does not persist choices for local agent %s without an attested principal', (storeId) => {
     const local = {
-      storeId: 'agent',
+      storeId,
       projectId: 'personal',
-      projectApi: 'local' as const,
       branch: 'main',
     };
     expect(service.canPersist(local)).toBe(false);

@@ -3,6 +3,7 @@ import { toSignal } from '@angular/core/rxjs-interop';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { IProjectRef } from '../../core/project-context';
 import { of } from 'rxjs';
+import { isAgentStoreId } from '../../nav/nav-models';
 
 export interface BoardChoices {
   readonly favorite: boolean;
@@ -30,7 +31,7 @@ export class BoardChoicesService {
   canPersist(ref: IProjectRef | undefined): boolean {
     // A local agent may represent a different OS/CLI principal in the same
     // browser profile. Browser auth does not attest that principal.
-    return !!ref && ref.projectApi !== 'local' && ref.storeId !== 'agent';
+    return !!ref && ref.projectApi !== 'local' && ref.storeId !== 'agent' && !isAgentStoreId(ref.storeId);
   }
 
   private key(ref: IProjectRef, boardId: string): string | undefined {
