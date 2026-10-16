@@ -3,8 +3,13 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
-import { Board, BoardWidget } from '@datatug/board-models';
+import { BehaviorSubject, of, Subject, throwError, firstValueFrom } from 'rxjs';
+import {
+  Board,
+  BoardWidget,
+  TutorialBoardSession,
+} from '@datatug/board-models';
+import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
 import {
   executeSavedPublicChartQuery,
@@ -67,6 +72,7 @@ describe('BoardWidgetComponent', () => {
     await TestBed.configureTestingModule({
       imports: [BoardWidgetComponent],
       providers: [
+        TutorialBoardRuntime,
         { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
         {
@@ -568,6 +574,12 @@ describe('BoardWidgetComponent', () => {
     );
     fixture.detectChanges();
     await router.navigateByUrl('/?mode=tutorial');
+    const readBoard = fixture.componentInstance.readBoardForRun();
+    if (!readBoard) throw new Error('Missing board reader');
+    const canonical = await firstValueFrom(readBoard(ref, 'board1'));
+    const session = await TutorialBoardSession.open(canonical, 'scope');
+    session.dispatch({ type: 'add-card', cardId: 'top' });
+    TestBed.inject(TutorialBoardRuntime).publish(ref, session, () => undefined);
     fixture.detectChanges();
     expect(fixture.componentInstance.sessionOnly()).toBe(true);
     const save = vi.spyOn(fixture.componentInstance.choices, 'selectQuery');
@@ -992,7 +1004,7 @@ describe('BoardWidgetComponent', () => {
     const board = {
       id: 'showcase',
       title: 'Showcase',
-      rows: [{ cards: [{ id: 'countries', widget }] }],
+      rows: [{ cards: [{ id: 'countries', title: 'Countries', widget }] }],
     };
     const readBoard = vi.fn(() => of(board));
     fixture.componentRef.setInput('projectRef', {
@@ -1344,6 +1356,7 @@ describe('BoardWidgetComponent', () => {
     );
     run.mockResolvedValue(countryResult());
     fixture.detectChanges();
+    return widget;
   }
 
   it('resolves source constants and explicitly named board parameters for dispatcher execution', async () => {
@@ -1454,5 +1467,153 @@ describe('BoardWidgetComponent', () => {
       type: 'string',
       value: 'Germany',
     });
+  });
+  it('executes a session-authored saved-query tab after canonical replay, and refuses remote revision drift', async () => {
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    await router.navigateByUrl('/?mode=tutoril');
+    const root: BoardWidget = {
+      name: 'tabs',
+      data: {
+        tabs: [
+          {
+            id: 'saved',
+            title: 'Saved',
+            widget: { name: 'SQL', data: { sql: { queryId: publicQueryId } } },
+          },
+        ],
+      },
+    };
+    const canonical = {
+      id: 'showcase',
+      title: 'Showcase',
+      rows: [
+        { cards: [{ id: 'countries', title: 'Countries', widget: root }] },
+      ],
+    };
+    const session = await TutorialBoardSession.open(canonical, 'scope');
+    const { board } = configureShowcase(root);
+    const ref = fixture.componentInstance.projectRef();
+    if (!ref) throw new Error('Missing project');
+    session.dispatch({ type: 'add-card', cardId: 'countries' });
+    session.dispatch({
+      type: 'add-tab',
+      cardId: 'countries',
+      tabId: 'mine',
+      title: 'My query',
+      queryId: publicQueryId,
+    });
+    TestBed.inject(TutorialBoardRuntime).publish(ref, session, () => undefined);
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId: publicQueryId } },
+    });
+    fixture.componentRef.setInput('widgetPath', ['id:mine']);
+    await router.navigateByUrl('/?mode=tutoril');
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.result()).toBeTruthy(),
+    );
+    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.sessionOnly()).toBe(true);
+    board.title = 'Changed remotely';
+    await fixture.componentInstance.run();
+    expect(fixture.componentInstance.runError()).toContain(
+      'This board card changed.',
+    );
+    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps the admitted snapshot when a session action switches chart/grid presentation', async () => {
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    await router.navigateByUrl('/?mode=tutorial');
+    const canonical = {
+      id: 'showcase',
+      title: 'Showcase',
+      rows: [
+        {
+          cards: [
+            { id: 'countries', title: 'Countries', widget: countryWidget },
+          ],
+        },
+      ],
+    };
+    const session = await TutorialBoardSession.open(canonical, 'scope');
+    configureShowcase();
+    const ref = fixture.componentInstance.projectRef();
+    if (!ref) throw new Error('Missing project');
+    session.dispatch({ type: 'add-card', cardId: 'countries' });
+    const runtime = TestBed.inject(TutorialBoardRuntime);
+    runtime.publish(ref, session, () => undefined);
+    await router.navigateByUrl('/?mode=tutorial');
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.result()).toBeTruthy(),
+    );
+    const held = fixture.componentInstance.result();
+    for (const view of ['grid', 'chart'] as const) {
+      session.dispatch({ type: 'set-view', cardId: 'countries', view });
+      runtime.publish(ref, session, () => undefined);
+      fixture.componentRef.setInput(
+        'widgetDef',
+        session.board.rows?.[0].cards?.[0].widget,
+      );
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(fixture.componentInstance.result()).toBe(held);
+    }
+    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(getQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('aborts an old source binding, ignores its late reply, and invalidates a held result on mode change', async () => {
+    const widget = configureBoundChart([
+      { id: 'country', value: 'France' },
+      { id: 'limit', value: 5 },
+    ]);
+    let resolveOld:
+      | ((result: ReturnType<typeof countryResult>) => void)
+      | undefined;
+    let oldSignal: AbortSignal | undefined;
+    run.mockImplementationOnce((request: { signal: AbortSignal }) => {
+      oldSignal = request.signal;
+      return new Promise((resolve) => {
+        resolveOld = resolve;
+      });
+    });
+    const pending = fixture.componentInstance.run();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    const edited = {
+      ...widget,
+      data: {
+        ...widget.data,
+        sources: [
+          {
+            ...widget.data.sources[0],
+            parameters: [
+              { id: 'country', value: 'Spain' },
+              { id: 'limit', value: 5 },
+            ],
+          },
+        ],
+      },
+    };
+    // The freshly read canonical board now supplies the changed saved binding.
+    widget.data.sources = edited.data.sources;
+    fixture.componentRef.setInput('widgetDef', edited);
+    fixture.detectChanges();
+    expect(oldSignal?.aborted).toBe(true);
+    resolveOld?.(countryResult());
+    await pending;
+    expect(fixture.componentInstance.result()).toBeUndefined();
+    run.mockResolvedValue(countryResult());
+    await fixture.componentInstance.run();
+    expect(run.mock.calls[1][0].parameters.country.value).toBe('Spain');
+    expect(fixture.componentInstance.result()).toBeTruthy();
+    await router.navigateByUrl('/?mode=tutorial');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.result()).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(2);
   });
 });

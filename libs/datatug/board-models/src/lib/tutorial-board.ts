@@ -1028,6 +1028,16 @@ export class TutorialBoardSession {
   get presentation(): Readonly<Record<string, string>> {
     return { ...this.selectedTabs };
   }
+  /** Owned replay input for execution admission and guide progress; never includes results. */
+  get history(): {
+    readonly actions: readonly BoardSessionAction[];
+    readonly cursor: number;
+  } {
+    return {
+      actions: JSON.parse(JSON.stringify(this.actions)) as BoardSessionAction[],
+      cursor: this.cursor,
+    };
+  }
   selectedTab(
     cardId: string,
     widgetPath: readonly string[] = [],

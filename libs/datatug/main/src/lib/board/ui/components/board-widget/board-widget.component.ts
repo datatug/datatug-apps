@@ -52,6 +52,7 @@ import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eli
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
+import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { signal } from '@angular/core';
 import { githubProjectAddressForRef } from '../../../../services/project/project-assets-read.service';
 import { qualifiedLocalReadVersionGuidance } from '../../../../services/project/project-query-api.service';
@@ -80,6 +81,9 @@ export interface BoardResultSnapshot {
   ],
 })
 export class BoardWidgetComponent {
+  private readonly tutorialRuntime = inject(TutorialBoardRuntime, {
+    optional: true,
+  });
   private readonly router = inject(Router);
   private readonly route = inject(ActivatedRoute);
   private readonly queryParams = toSignal(this.route.queryParamMap, {
@@ -116,7 +120,8 @@ export class BoardWidgetComponent {
       card: this.cardId(),
       query: this.queryId(),
       definition: this.definition(),
-      bindings: this.chartWidgetDef()?.sources?.[0]?.parameters,
+      sources: this.chartExecutionInputs(),
+      tutorial: this.sessionOnly(),
       context: this.boardContext(),
       actor: this.choices.actor(),
       runtime: this.selectedRuntimeId(),
@@ -166,6 +171,10 @@ export class BoardWidgetComponent {
     this.widgetDef()?.name === 'chart'
       ? (this.widgetDef()?.data as ChartWidgetDef)
       : undefined,
+  );
+  private readonly widgetKind = computed(() => this.widgetDef()?.name);
+  private readonly chartExecutionInputs = computed(() =>
+    JSON.stringify(this.chartWidgetDef()?.sources),
   );
   readonly raceInitialMode = computed(() => {
     const chart = this.chartWidgetDef()?.chart;
@@ -242,8 +251,8 @@ export class BoardWidgetComponent {
   readonly canRemember = computed(
     () => !this.sessionOnly() && this.choices.canPersist(this.projectRef()),
   );
-  readonly sessionOnly = computed(
-    () => this.queryParams().get('mode') === 'tutorial',
+  readonly sessionOnly = computed(() =>
+    ['tutorial', 'tutoril'].includes(this.queryParams().get('mode') ?? ''),
   );
   readonly level = input<number>();
   readonly widgetPath = input<readonly string[]>([]);
@@ -288,6 +297,9 @@ export class BoardWidgetComponent {
   }
 
   constructor() {
+    effect(() =>
+      this.chartView.set(this.chartWidgetDef()?.defaultView ?? 'chart'),
+    );
     this.destroyRef.onDestroy(() => {
       this.destroyed = true;
       this.generation++;
@@ -296,6 +308,8 @@ export class BoardWidgetComponent {
     effect((onCleanup) => {
       const ref = this.projectRef();
       const id = this.queryId();
+      this.chartExecutionInputs();
+      this.sessionOnly();
       this.boardId();
       this.cardId();
       this.widgetPath();
@@ -313,12 +327,7 @@ export class BoardWidgetComponent {
       this.choiceError.set(undefined);
       this.running.set(false);
       this.unsupportedReason.set(undefined);
-      this.chartView.set(this.chartWidgetDef()?.defaultView ?? 'chart');
-      if (
-        !ref ||
-        !id ||
-        !['SQL', 'chart'].includes(this.widgetDef()?.name ?? '')
-      )
+      if (!ref || !id || !['SQL', 'chart'].includes(this.widgetKind() ?? ''))
         return;
       // The existing public GitHub query reader ignores branch. The qualified
       // reader and board revalidation must both be available before Run.
@@ -547,15 +556,44 @@ export class BoardWidgetComponent {
       const currentCard =
         matchingCards?.length === 1 ? matchingCards[0] : undefined;
       const currentWidget = widgetAtTabPath(currentCard?.widget, path);
+      const expectedWidget = this.widgetDef();
+      const sessionRequested = this.sessionOnly() && !!this.tutorialRuntime;
+      const sessionAdmitted =
+        sessionRequested &&
+        expectedWidget &&
+        this.tutorialRuntime?.activeFor(ref, boardId)
+          ? await this.tutorialRuntime.admit(
+              board,
+              ref,
+              cardId,
+              path,
+              expectedWidget,
+            )
+          : false;
+      if (
+        !this.stillCurrent(
+          generation,
+          ref,
+          boardId,
+          cardId,
+          queryId,
+          actor,
+          readBoard,
+          path,
+        )
+      )
+        return;
       if (
         board.id !== boardId ||
-        !currentWidget ||
-        currentWidget.name !== widgetName ||
-        (widgetName === 'chart'
-          ? JSON.stringify(currentWidget.data) !== chartDefinition
-          : (
-              currentWidget.data as SQLWidgetDef | undefined
-            )?.sql?.queryId?.trim() !== queryId)
+        (sessionRequested
+          ? !sessionAdmitted
+          : !currentWidget ||
+            currentWidget.name !== widgetName ||
+            (widgetName === 'chart'
+              ? JSON.stringify(currentWidget.data) !== chartDefinition
+              : (
+                  currentWidget.data as SQLWidgetDef | undefined
+                )?.sql?.queryId?.trim() !== queryId))
       )
         throw new Error(
           'This board card changed. Reopen the board before running it.',
@@ -723,6 +761,22 @@ export class BoardWidgetComponent {
       )
         this.running.set(false);
     }
+  }
+
+  setChartView(view: 'chart' | 'grid'): void {
+    const cardId = this.cardId();
+    if (
+      cardId &&
+      this.sessionOnly() &&
+      this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId())
+    ) {
+      this.tutorialRuntime.dispatch({
+        type: 'set-view',
+        cardId,
+        widgetPath: this.widgetPath(),
+        view,
+      });
+    } else this.chartView.set(view);
   }
 
   /** At most one held result per identity, with a small card-local history. */

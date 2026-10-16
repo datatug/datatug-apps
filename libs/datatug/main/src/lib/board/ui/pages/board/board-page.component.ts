@@ -40,6 +40,12 @@ import {
   BoardCard,
   TutorialBoardSession,
   TutorialControl,
+  BoardSessionAction,
+  BoardWidget,
+  TabsWidgetDef,
+  ChartWidgetDef,
+  ChartSpec,
+  canonicalBoardQueryIds,
 } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
@@ -70,6 +76,23 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
+import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
+import { tabKey } from '../../components/board-widget/nested-tab-path';
+import { currentTutorialStep, tutorialSteps } from './tutorial-scenario';
+
+interface TutorialEditor {
+  readonly key: string;
+  readonly cardId: string;
+  readonly title: string;
+  readonly path: readonly string[];
+  readonly widget: BoardWidget;
+  readonly tabs?: readonly {
+    readonly title: string;
+    readonly key: string;
+    readonly queryId?: string;
+  }[];
+  readonly chart?: ChartWidgetDef;
+}
 
 interface TutorialStatus {
   readonly control: TutorialControl;
@@ -119,9 +142,12 @@ interface TutorialStatus {
     IonInput,
     BoardComponent,
   ],
-  providers: [QueryParamsService, ParameterLookupService],
+  providers: [QueryParamsService, ParameterLookupService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
+  private readonly tutorialRuntime =
+    inject(TutorialBoardRuntime, { optional: true }) ??
+    new TutorialBoardRuntime();
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly choices = inject(BoardChoicesService);
   private readonly assets = inject(ProjectAssetsReadService);
@@ -152,6 +178,64 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly tutorialStatus = signal<TutorialStatus | undefined>(undefined);
   readonly tutorialLoading = signal(false);
   readonly tutorialError = signal<string | undefined>(undefined);
+  readonly authoringError = signal<string | undefined>(undefined);
+  readonly tutorialGuide = signal<
+    ReturnType<typeof currentTutorialStep> | undefined
+  >(undefined);
+  readonly tutorialStepCount = computed(() =>
+    this.boardDef() ? tutorialSteps(this.boardDef() as Board).length : 0,
+  );
+  readonly tutorialQueries = computed(() =>
+    this.boardDef() ? canonicalBoardQueryIds(this.boardDef() as Board) : [],
+  );
+  readonly nextCardPreview = computed(() => this.hiddenTutorialCards()[0]);
+  readonly tutorialEditors = computed(() => {
+    const editors: TutorialEditor[] = [];
+    const walk = (
+      cardId: string,
+      title: string,
+      widget: BoardWidget | undefined,
+      path: readonly string[] = [],
+    ) => {
+      if (!widget || path.length > 8) return;
+      if (widget.name === 'tabs') {
+        const tabs = (widget.data as TabsWidgetDef).tabs ?? [];
+        editors.push({
+          key: JSON.stringify([cardId, ...path]),
+          cardId,
+          title,
+          path,
+          widget,
+          tabs: tabs.map((tab, index) => ({
+            title: tab.title,
+            key: tabKey(tab, index),
+            queryId:
+              tab.widget?.name === 'SQL'
+                ? (tab.widget.data as { sql?: { queryId?: string } }).sql
+                    ?.queryId
+                : undefined,
+          })),
+        });
+        tabs.forEach((tab, index) =>
+          walk(cardId, `${title} / ${tab.title}`, tab.widget, [
+            ...path,
+            tabKey(tab, index),
+          ]),
+        );
+      } else if (widget.name === 'chart')
+        editors.push({
+          key: JSON.stringify([cardId, ...path]),
+          cardId,
+          title,
+          path,
+          widget,
+          chart: widget.data as ChartWidgetDef,
+        });
+    };
+    for (const item of this.visibleTutorialCards())
+      walk(item.card.id, item.card.title || item.card.id, item.card.widget);
+    return editors;
+  });
   readonly tutorialAvailable = computed(() =>
     isShowcaseTutorialBoard(this.projectRef(), this.boardDef()),
   );
@@ -267,7 +351,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       next: (queryParamMap) => {
         const envId = queryParamMap.get('env');
         if (envId) this.dataTugNavContext.setCurrentEnvironment(envId);
-        const requested = queryParamMap.get('mode') === 'tutorial';
+        const requested = ['tutorial', 'tutoril'].includes(
+          queryParamMap.get('mode') ?? '',
+        );
         if (requested !== this.tutorialRequested()) {
           this.tutorialRequested.set(requested);
           this.clearTutorial();
@@ -354,6 +440,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   private clearTutorial(): void {
+    this.tutorialRuntime.clear();
+    this.tutorialGuide.set(undefined);
+    this.authoringError.set(undefined);
     this.tutorialGeneration++;
     this.tutorialSession = undefined;
     this.tutorialBoard.set(undefined);
@@ -403,31 +492,62 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private publishTutorial(): void {
     const session = this.tutorialSession;
     if (!session) return;
-    const cards = new Map(
+    const canonicalCards = new Map(
       (session.canonical.rows ?? []).flatMap((row) =>
         (row.cards ?? []).map((card) => [card.id, card] as const),
       ),
     );
     const working = session.board;
+    const previousCards = new Map(
+      (this.tutorialBoard()?.rows ?? []).flatMap((row) =>
+        (row.cards ?? []).map((card) => [card.id, card] as const),
+      ),
+    );
     // Keep existing card and widget inputs stable across action replay. The
     // session returns a fresh clone, while query results live in widget state.
     this.tutorialBoard.set({
       ...working,
       rows: working.rows?.map((row) => ({
         ...row,
-        cards: row.cards?.map((card) => cards.get(card.id) ?? card),
+        cards: row.cards?.map((card) => {
+          const previous = previousCards.get(card.id);
+          if (previous && JSON.stringify(previous) === JSON.stringify(card))
+            return previous;
+          const canonical = canonicalCards.get(card.id);
+          return canonical && JSON.stringify(canonical) === JSON.stringify(card)
+            ? canonical
+            : card;
+        }),
       })),
     });
+    this.tutorialGuide.set(currentTutorialStep(session));
+    const history = session.history;
     this.tutorialStatus.set({
       control: session.control,
-      canNext: session.canNext,
+      canNext:
+        session.control === 'guided' &&
+        (history.cursor < history.actions.length ||
+          !!this.tutorialGuide()?.step.action),
       canPrevious: session.canPrevious,
       isComplete: session.isComplete,
     });
+    const ref = this.projectRef();
+    if (ref)
+      this.tutorialRuntime.publish(ref, session, (action) =>
+        this.editTutorial(action),
+      );
   }
 
   addNextTutorialCard(): void {
-    if (this.tutorialSession?.next()) this.publishTutorial();
+    const session = this.tutorialSession;
+    if (!session || session.control !== 'guided') return;
+    const history = session.history;
+    if (history.cursor < history.actions.length) {
+      if (session.next()) this.publishTutorial();
+      return;
+    }
+    const action = currentTutorialStep(session).step.action;
+    if (action && session.dispatch(action)) this.publishTutorial();
   }
 
   previousTutorialStep(): void {
@@ -447,6 +567,92 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   resumeTutorial(): void {
     this.tutorialSession?.resume();
     this.publishTutorial();
+  }
+
+  editTutorial(action: BoardSessionAction): void {
+    const session = this.tutorialSession;
+    if (!session || !this.tutorialActive()) return;
+    if (!session.dispatch(action)) {
+      this.authoringError.set(
+        'This change is unavailable, invalid, or already applied. Choose saved queries and supported chart settings.',
+      );
+      return;
+    }
+    session.takeControl();
+    this.authoringError.set(undefined);
+    this.publishTutorial();
+  }
+
+  addTutorialTab(editor: TutorialEditor, title: string, queryId: string): void {
+    this.editTutorial({
+      type: 'add-tab',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      tabId: `session-${crypto.randomUUID()}`,
+      title: title.trim(),
+      queryId,
+    });
+  }
+
+  tabAction(
+    editor: TutorialEditor,
+    type: 'select-tab' | 'remove-tab' | 'reorder-tab' | 'set-tab-query',
+    key: string,
+    value?: string | number,
+  ): void {
+    const common = {
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      tabKey: key,
+    };
+    if (type === 'set-tab-query')
+      this.editTutorial({ ...common, type, queryId: String(value) });
+    else if (type === 'reorder-tab')
+      this.editTutorial({ ...common, type, toIndex: Number(value) });
+    else this.editTutorial({ ...common, type });
+  }
+
+  setTutorialView(editor: TutorialEditor, view: string): void {
+    if (view !== 'chart' && view !== 'grid') return;
+    this.editTutorial({
+      type: 'set-view',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      view,
+    });
+  }
+
+  setTutorialChart(editor: TutorialEditor, field: string, value: string): void {
+    if (
+      !editor.chart ||
+      ![
+        'categoryColumn',
+        'valueColumn',
+        'periodColumn',
+        'topN',
+        'mode',
+      ].includes(field)
+    )
+      return;
+    const spec = {
+      ...editor.chart.chart,
+      [field]: field === 'topN' ? Number(value) : value,
+    } as ChartSpec;
+    this.editTutorial({
+      type: 'set-chart-spec',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      spec,
+    });
+  }
+
+  removeTutorialSource(editor: TutorialEditor, sourceId: string): void {
+    this.editTutorial({
+      type: 'remove-chart-source',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      sourceId,
+    });
   }
 
   addTutorialCard(card: BoardCard): void {
