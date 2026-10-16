@@ -21,21 +21,18 @@ const MAX_FRAGMENT_KEY_LENGTH = 4096;
 const MAX_SAFE = BigInt(Number.MAX_SAFE_INTEGER);
 const INTEGER_LITERAL = /^-?(?:0|[1-9]\d*)$/;
 
-/** The raw `pk` JSON text of a fragment (`code=…&pk=…`, with or without the `#`), or undefined. */
-export function pkOfFragment(fragment: string | null | undefined): string | undefined {
+/**
+ * The `pk` JSON text of the fragment as the router hands it over (`ActivatedRoute.snapshot.fragment`, decoded once),
+ * or undefined. The router rewrites the address bar with `encodeURI`, which leaves a `&` inside a key value bare
+ * (`"AT&T"`), so the fragment cannot be split on `&` after the router has run: `pk` is the last part of a link's
+ * fragment (`code=…&pk=…`, the code already taken out by main.ts) and its JSON runs to the end.
+ */
+export function pkOfRouteFragment(fragment: string | null | undefined): string | undefined {
   if (!fragment) return undefined;
-  const parts = fragment
-    .replace(/^#/, '')
-    .split('&')
-    .filter((p) => p.startsWith('pk='));
-  if (parts.length !== 1) return undefined;
-  const raw = parts[0].slice('pk='.length);
-  if (!raw || raw.length > MAX_FRAGMENT_KEY_LENGTH) return undefined;
-  try {
-    return decodeURIComponent(raw);
-  } catch {
-    return undefined;
-  }
+  const after = fragment.startsWith('pk=') ? 0 : fragment.indexOf('&pk=');
+  if (after < 0) return undefined;
+  const text = fragment.slice(fragment.indexOf('pk=', after) + 'pk='.length);
+  return text && text.length <= MAX_FRAGMENT_KEY_LENGTH ? text : undefined;
 }
 
 /**

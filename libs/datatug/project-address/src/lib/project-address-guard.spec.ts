@@ -162,6 +162,8 @@ const SHAPES: readonly { readonly name: string; readonly pattern: RegExp }[] = [
 
 /** Files where a match is right, and why. Each must still match (so this list cannot go stale). */
 const ALLOWED: Readonly<Record<string, string>> = {
+  'apps/datatug-app/src/app/telemetry/link-privacy.ts':
+    'matches the legacy table/view route only to redact sensitive telemetry; it neither constructs a project address nor extracts project identity, and sentry-privacy.spec.ts verifies the scrubbing',
   'apps/datatug-app/src/app/cli-chat-capability.ts':
     "the CLI bridge's chat path is for CLI agents only (/store/<id>/project/<id>/chat), left as it is on purpose (G-A1c); cli-chat-capability.spec.ts proves the short address does not match it",
   'libs/datatug/main/src/lib/pages/signed-in/environment/environment-page.component.ts':

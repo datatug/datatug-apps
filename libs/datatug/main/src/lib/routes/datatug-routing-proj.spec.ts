@@ -5,6 +5,22 @@ import { RouterTestingHarness } from '@angular/router/testing';
 import { datatugProjectRoutes } from './datatug-routing-proj';
 
 describe('Detective Scenario routes', () => {
+  it('loads public Scenario details before treating the URL as a Case ID', async () => {
+    const scenarioIndex = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'detective/scenarios/:scenarioId',
+    );
+    const caseIndex = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'detective/:caseId',
+    );
+    expect(scenarioIndex).toBeGreaterThanOrEqual(0);
+    expect(caseIndex).toBeGreaterThan(scenarioIndex);
+    const component =
+      await datatugProjectRoutes[scenarioIndex].loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'PublicScenariosPageComponent',
+    );
+  });
+
   it('loads a Scenario detail before treating the URL as a Case ID', async () => {
     const scenarioIndex = datatugProjectRoutes.findIndex(
       (route) => route.path === 'detective/scenario/:scenarioId',
@@ -38,7 +54,9 @@ describe('datatugProjectRoutes', () => {
 
   it('never resolves "variables" to the retired VariablesPageComponent', () => {
     const route = datatugProjectRoutes.find((r) => r.path === 'variables');
-    expect(route?.loadComponent?.toString()).not.toContain('variables-page.component');
+    expect(route?.loadComponent?.toString()).not.toContain(
+      'variables-page.component',
+    );
     expect(route?.loadComponent?.toString()).toContain(
       'investigation-context-page.component',
     );

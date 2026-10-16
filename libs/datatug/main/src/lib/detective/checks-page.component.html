@@ -9,7 +9,9 @@
 
 <ion-content color="light">
   <div class="detective-page">
-    @if (scope.unsupported()) {
+    @if (publicChecks() ? scope.ref() : undefined; as publicRef) {
+      <sneat-public-demo-checks [project]="publicRef" [checkId]="checkId()" />
+    } @else if (scope.unsupported()) {
       <ion-card
         ><ion-card-content role="status">
           Checks are unavailable for this project reference.

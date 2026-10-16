@@ -9,18 +9,24 @@
 
 <ion-content color="light">
   <div class="detective-page">
-    @if (scope.unsupported()) {
+    @if (publicDemo()) {
+      <sneat-datatug-public-scenarios-page [showHeader]="false" />
+      <ion-card>
+        <ion-card-content>
+          <p>
+            To investigate and record progress, start a private demo in your
+            Personal Space.
+          </p>
+          <sneat-datatug-detective-demo-starter destination="detective" />
+        </ion-card-content>
+      </ion-card>
+    } @else if (scope.unsupported()) {
       <ion-card
         ><ion-card-content role="status"
-          >Detective is unavailable for this project reference.
-          @if (publicDemo()) {
-            <p>
-              Start a private demo in your Personal Space to investigate and
-              resume a Case.
-            </p>
-            <sneat-datatug-detective-demo-starter destination="detective" />
-          }</ion-card-content
-      ></ion-card>
+          >Detective is unavailable for this project
+          reference.</ion-card-content
+        ></ion-card
+      >
     } @else if (!scope.context()) {
       <ion-card
         ><ion-card-content role="status"

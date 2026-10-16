@@ -58,6 +58,7 @@ import {
 import { useDetectivePageContext } from './detective-page-context';
 import { DetectiveDemoStarterComponent } from './detective-demo-starter.component';
 import { DetectiveAiPanelComponent } from './detective-ai-panel.component';
+import { PublicScenariosPageComponent } from './public-scenarios-page.component';
 import { knowledgeSaveAttempt } from './knowledge-save-attempt';
 import {
   HostedIncidentView,
@@ -133,6 +134,7 @@ const NEW_CASE = (): DetectiveCase => ({
     IonToolbar,
     DetectiveDemoStarterComponent,
     DetectiveAiPanelComponent,
+    PublicScenariosPageComponent,
   ],
 })
 export class CasesPageComponent {

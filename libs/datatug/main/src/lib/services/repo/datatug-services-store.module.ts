@@ -22,9 +22,10 @@ import { AgentService } from './agent.service';
     // DatatugStoreGithubService, whose per-instance summaryCache would then
     // not be shared with the app-wide singleton, causing redundant
     // datatug-project.json fetches. Root HttpClient is resolved instead of
-    // this module's own provideHttpClient(withInterceptorsFromDi()) —
-    // behavior-neutral, no DI HTTP interceptors are registered anywhere in
-    // this app.
+    // this module's own provideHttpClient(withInterceptorsFromDi()). This
+    // module's own client runs only DI (class) interceptors: the app registers
+    // AgentAccessDiInterceptor for it (apps/datatug-app/src/app/agent-access),
+    // which sends a local agent's session token.
     DatatugStoreService,
     AgentService,
     AgentStateService,

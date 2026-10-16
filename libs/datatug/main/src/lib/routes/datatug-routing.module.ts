@@ -225,6 +225,13 @@ export const datatugRoutes: Routes = [
         path: 'detective',
         children: [
           {
+            path: 'scenarios/:scenarioId',
+            loadComponent: () =>
+              import('../detective/public-scenarios-page.component').then(
+                (m) => m.PublicScenariosPageComponent,
+              ),
+          },
+          {
             path: 'scenario/:scenarioId',
             loadComponent: () =>
               import('../detective/scenario-detail-page.component').then(

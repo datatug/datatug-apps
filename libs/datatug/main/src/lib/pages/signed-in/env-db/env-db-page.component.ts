@@ -27,12 +27,19 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import {
+  CellComponent,
   GlobalTooltipOption,
   InteractionModule,
   Options,
   Tabulator,
+  TooltipModule,
 } from 'tabulator-tables';
-import { ErrorLogger, IErrorLogger, STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
+import {
+  ErrorLogger,
+  IErrorLogger,
+  STORE_ID_GITHUB_COM,
+  STORE_TYPE_GITHUB,
+} from '@sneat/core';
 
 const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
@@ -60,7 +67,8 @@ const isGithubStoreId = (storeId: string): boolean =>
 // this page's own `rowClick` option doesn't need) is registered here so this
 // page's own row-click keeps working table by itself, not by accident of
 // import order.
-Tabulator.registerModule([InteractionModule]);
+// Count explanations use Tabulator's optional tooltip module, including on cold links.
+Tabulator.registerModule([InteractionModule, TooltipModule]);
 import { getTabulatorCols, IGridColumn } from '@sneat/grid';
 import { Subject } from 'rxjs';
 import {
@@ -322,7 +330,7 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
         field: 'cols',
         widthGrow: 1,
         hozAlign: 'right',
-        tooltip: this.colsTooltip as unknown as GlobalTooltipOption, // TODO: fix
+        tooltip: this.colsTooltip,
       },
       {
         title: 'FKs',
@@ -330,7 +338,7 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
         field: 'fks',
         widthGrow: 1,
         hozAlign: 'right',
-        tooltip: this.fksTooltip as unknown as GlobalTooltipOption,
+        tooltip: this.fksTooltip,
       },
       {
         title: 'Refs By',
@@ -338,7 +346,7 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
         field: 'refsBy',
         widthGrow: 1,
         hozAlign: 'right',
-        tooltip: this.refsByTooltip as unknown as GlobalTooltipOption,
+        tooltip: this.refsByTooltip,
       },
       {
         title: 'Rows',
@@ -402,36 +410,49 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
     this.tabChanged();
   }
 
-  private colsTooltip = (cell: { getData: () => IRecordsetInfo }) => {
-    const data: IRecordsetInfo = cell.getData();
-    return (
-      'COLUMNS:\n' +
-      data.t.columns?.map((c) => `${c.name}: ${c.dbType}`).join('\n')
+  private countTooltip(
+    title: string,
+    entries: string[] | undefined,
+  ): HTMLElement {
+    const content = document.createElement('div');
+    content.style.whiteSpace = 'pre-wrap';
+    content.textContent = `${title}:\n${entries?.join('\n') || 'None'}`;
+    return content;
+  }
+
+  private colsTooltip: GlobalTooltipOption = (
+    _event: MouseEvent,
+    cell: CellComponent,
+  ) => {
+    const data = cell.getData() as IRecordsetInfo;
+    return this.countTooltip(
+      'COLUMNS',
+      data.t.columns?.map((c) => `${c.name}: ${c.dbType}`),
     );
   };
 
-  private fksTooltip = (cell: { getData: () => IRecordsetInfo }) => {
-    const data: IRecordsetInfo = cell.getData();
-    return (
-      'FOREIGN KEYS:\n' +
-      data.t.foreignKeys
-        ?.map((fk) => `${fk.name} (${fk.columns.join(', ')})`)
-        .join('\n')
+  private fksTooltip: GlobalTooltipOption = (
+    _event: MouseEvent,
+    cell: CellComponent,
+  ) => {
+    const data = cell.getData() as IRecordsetInfo;
+    return this.countTooltip(
+      'FOREIGN KEYS',
+      data.t.foreignKeys?.map((fk) => `${fk.name} (${fk.columns.join(', ')})`),
     );
   };
 
-  private refsByTooltip = (cell: { getData: () => IRecordsetInfo }) => {
-    const data: IRecordsetInfo = cell.getData();
-    return (
-      'REFERENCED BY:\n' +
-      data.t.referencedBy
-        ?.map(
-          (ref) =>
-            `${ref.schema}.${ref.name} (${ref.foreignKeys
-              .map((fk) => fk.name)
-              .join(', ')})`,
-        )
-        .join('\n')
+  private refsByTooltip: GlobalTooltipOption = (
+    _event: MouseEvent,
+    cell: CellComponent,
+  ) => {
+    const data = cell.getData() as IRecordsetInfo;
+    return this.countTooltip(
+      'REFERENCED BY',
+      data.t.referencedBy?.map(
+        (ref) =>
+          `${ref.schema}.${ref.name} (${ref.foreignKeys.map((fk) => fk.name).join(', ')})`,
+      ),
     );
   };
 }

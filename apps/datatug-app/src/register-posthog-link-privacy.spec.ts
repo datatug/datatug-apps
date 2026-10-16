@@ -63,6 +63,7 @@ describe('PostHog on the pages a card link opens', () => {
     expect(
       config.before_send({ event: '$autocapture', properties: { $el_text: ROW } }),
     ).toBeNull();
+    expect(config.before_send({ event: '$snapshot', properties: { $snapshot_data: ROW } })).toBeNull();
   });
 
   it('turns autocapture and recording off on a link page and back on after, unlike the one-way checkout switch', () => {
