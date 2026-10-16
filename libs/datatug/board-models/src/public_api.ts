@@ -12,6 +12,19 @@ export {
   BoardWidgetName,
   BOARD_WIDGET_NAME_TABS,
 } from './lib/board-widget';
+// New public exports for human review — chart/tab wire additions mirror boards.go:
+export {
+  ChartWidgetDef,
+  ChartSourceBinding,
+  ChartSourceTransform,
+  ChartSpec,
+  ChartType,
+  ChartDefaultView,
+  BOARD_WIDGET_NAME_CHART,
+  CHART_SOURCE_TRANSFORM_ORDERS_MONTHLY_COUNTRY_COUNT,
+  CHART_TYPE_BAR,
+  CHART_TYPE_BAR_RACE,
+} from './lib/widget-chart';
 export { WidgetBase } from './lib/widget-base';
 export {
   SQLWidgetDef,

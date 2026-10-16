@@ -1,0 +1,70 @@
+{
+  "id": "orders-showcase",
+  "title": "Orders showcase",
+  "parameters": [
+    { "id": "year", "type": "integer", "defaultValue": 2025 }
+  ],
+  "rows": [
+    {
+      "cards": [
+        {
+          "id": "orders-chart-card",
+          "title": "Orders by country",
+          "cols": 12,
+          "widget": {
+            "name": "tabs",
+            "data": {
+              "tabs": [
+                {
+                  "id": "monthly-orders",
+                  "title": "Monthly orders",
+                  "widget": {
+                    "name": "chart",
+                    "data": {
+                      "sources": [
+                        {
+                          "id": "orders",
+                          "queryId": "q-orders",
+                          "parameters": [{ "id": "year", "boardParameterId": "year" }],
+                          "transform": {
+                            "name": "orders-monthly-country-count",
+                            "orderIdColumn": "OrderID",
+                            "dateColumn": "OrderDate",
+                            "countryColumn": "ShipCountry"
+                          }
+                        }
+                      ],
+                      "chart": {
+                        "type": "bar-race",
+                        "categoryColumn": "category",
+                        "valueColumn": "value",
+                        "periodColumn": "period",
+                        "unit": "orders",
+                        "grain": "month",
+                        "onDuplicate": "reject",
+                        "mode": "cumulative",
+                        "topN": 10
+                      },
+                      "defaultView": "chart"
+                    }
+                  }
+                },
+                {
+                  "title": "Saved query",
+                  "widget": {
+                    "name": "SQL",
+                    "data": {
+                      "sql": {
+                        "queryId": "q-orders-by-country"
+                      }
+                    }
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

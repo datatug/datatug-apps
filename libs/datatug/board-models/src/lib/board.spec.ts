@@ -1,17 +1,20 @@
 import { describe, expect, it } from 'vitest';
 import { Board } from './board';
 import boardFixtureJson from './__fixtures__/board.fixture.json';
+import chartBoardFixtureJson from './__fixtures__/chart-board.fixture.json';
 import { BOARD_WIDGET_NAME_TABS } from './board-widget';
 import { HTTPWidgetDef, BOARD_WIDGET_NAME_HTTP } from './widget-http';
 import { SQLWidgetDef, BOARD_WIDGET_NAME_SQL } from './widget-sql';
 import { TabsWidgetDef } from './widget-tabs';
 import { BOARD_MODELS_VERSION } from './version';
+import { ChartWidgetDef, BOARD_WIDGET_NAME_CHART, CHART_TYPE_BAR_RACE } from '../public_api';
 
 // `boardFixtureJson satisfies Board` is the compile-time half of the
 // round-trip assertion: if a field in board.fixture.json (hand-written from
 // boards.go's struct tags) stops matching the TS shape, `nx build`/`tsc`
 // fails here before any test runs.
 const boardFixture = boardFixtureJson satisfies Board;
+const chartBoardFixture = chartBoardFixtureJson satisfies Board;
 
 describe('Board JSON shape (fixture derived from boards.go struct tags)', () => {
   it('exposes a semver-ish version constant', () => {
@@ -104,5 +107,57 @@ describe('Board JSON shape (fixture derived from boards.go struct tags)', () => 
       field: 'ID',
     });
     expect(httpDef.parameters?.[0]?.lookup?.db).toBe('sales');
+  });
+
+  it('accepts and round-trips chart widgets and stable tab IDs without runtime data', () => {
+    const board: Board = chartBoardFixture;
+    expect(JSON.parse(JSON.stringify(board))).toEqual(chartBoardFixtureJson);
+
+    const card = board.rows?.[0]?.cards?.[0];
+    expect(card?.widget?.name).toBe(BOARD_WIDGET_NAME_TABS);
+    const tabsDef = card?.widget?.data as TabsWidgetDef;
+    expect(tabsDef.tabs[0].id).toBe('monthly-orders');
+    expect(tabsDef.tabs[1].id).toBeUndefined();
+    expect(tabsDef.tabs[0].widget?.name).toBe(BOARD_WIDGET_NAME_CHART);
+
+    const chartDef = tabsDef.tabs[0].widget?.data as ChartWidgetDef;
+    expect(chartDef.chart.type).toBe(CHART_TYPE_BAR_RACE);
+    expect(chartDef.sources).toEqual([{
+      id: 'orders',
+      queryId: 'q-orders',
+      parameters: [{ id: 'year', boardParameterId: 'year' }],
+      transform: {
+        name: 'orders-monthly-country-count',
+        orderIdColumn: 'OrderID',
+        dateColumn: 'OrderDate',
+        countryColumn: 'ShipCountry',
+      },
+    }]);
+    expect(chartDef.chart).toEqual({
+      type: 'bar-race',
+      categoryColumn: 'category',
+      valueColumn: 'value',
+      periodColumn: 'period',
+      unit: 'orders',
+      grain: 'month',
+      onDuplicate: 'reject',
+      mode: 'cumulative',
+      topN: 10,
+    });
+    expect(chartDef).not.toHaveProperty('rows');
+    expect(chartDef).not.toHaveProperty('receipt');
+    expect(chartDef.sources[0]).not.toHaveProperty('rows');
+    expect(chartDef.sources[0]).not.toHaveProperty('receipt');
+
+    const simpleBar: ChartWidgetDef = {
+      sources: [{ id: 'revenue', queryId: 'q-revenue' }],
+      chart: { type: 'bar', categoryColumn: 'month', valueColumn: 'revenue' },
+      defaultView: 'grid',
+    };
+    expect(JSON.parse(JSON.stringify(simpleBar))).toEqual({
+      sources: [{ id: 'revenue', queryId: 'q-revenue' }],
+      chart: { type: 'bar', categoryColumn: 'month', valueColumn: 'revenue' },
+      defaultView: 'grid',
+    });
   });
 });
