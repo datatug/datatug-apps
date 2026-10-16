@@ -11,17 +11,21 @@ const spec: OrdersMonthlyCountryCountSpec = {
   dateColumn: 'OrderDate',
   countryColumn: 'ShipCountry',
 };
-const endpoint = 'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/dtql';
-const databaseId = 'northwind-postgresql';
-const collectionId = 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM';
-const sourceId = `ovdb:cloud.openvaultdb.com/${databaseId}/${collectionId}`;
+const serverId = 'https://demodb.dev/ovdb';
+const endpoint = `${serverId}/v1/databases/northwind/dtql`;
+const databaseId = 'northwind';
+const collectionId = 'Orders';
+const sourceId = `ovdb:${encodeURIComponent(serverId)}/${databaseId}/${collectionId}`;
+// Synthetic fixture: this presentation test exercises receipt consistency only.
+// The dispatcher must hash live rows and verify the fetched publisher artifact.
+const canonicalRowsSha256 = 'a'.repeat(64);
 const providerSourceSha256 = '279b34136771aee75d802094b3329515a2b01da65d2a20a4a9e3b58c29b4fd20';
 const rights = [{
   sourceId,
-  source: { serverId: 'cloud.openvaultdb.com', databaseId, recordset: collectionId },
+  source: { serverId, databaseId, recordset: collectionId },
   declaration: { spdx: 'MIT' },
-  declarationScope: 'database' as const,
-  declaredAt: { serverId: 'cloud.openvaultdb.com', databaseId },
+  declarationScope: 'recordset' as const,
+  declaredAt: { serverId, databaseId, recordset: collectionId },
   evidenceOrigin: 'publisher-verified' as const,
   pins: [{
     role: 'provider' as const,
@@ -47,7 +51,7 @@ const input = (rows: readonly (readonly TypedValue[])[]): BrowserPublicApiChartR
     rows,
   },
   provenance: {
-    source: 'northwind-postgresql',
+    source: databaseId,
     collection: 'Orders',
     queryId: 'northwind-shipping-country-race',
     mode: 'live',
@@ -57,20 +61,22 @@ const input = (rows: readonly (readonly TypedValue[])[]): BrowserPublicApiChartR
   },
   publicApiReceipt: {
     endpoint,
+    serverId,
     databaseId,
     logicalCollection: 'Orders',
     collectionId,
     queryId: 'northwind-shipping-country-race',
     rowsReturned: rows.length,
     observedAt: '2026-10-16T12:00:00Z',
-    executionSources: [{ database: databaseId, collection: collectionId }],
-    // Test-only admission fixture. The browser dispatcher must fetch and hash
-    // the actual publisher artifact before constructing this receipt.
+    sourceVerification: { kind: 'publisher-digest', canonicalRowsSha256 },
+    // Test-only receipt shape. The browser dispatcher must fetch and hash
+    // the actual publisher artifact and full result before constructing it.
     rightsPublication: {
-      url: 'https://demodb.dev/datasets/northwind/rights.json',
-      sha256: '2f3bf872421d645d8c3f4274b52b2ed8da64a490f1f69dd6812b01157fb61010',
+      url: 'https://raw.githubusercontent.com/demo-db/northwind/83ea600a7eae8b35ad33bf4c53bab6440d697850/artifacts/hosting-imports/source-rights.json',
+      sha256: '50454d5f30db615178fcd0c6a846854f9434f4f93bb44835cc75fdad4af52e30',
       sourceId,
       providerSourceSha256,
+      canonicalRowsSha256,
     },
   },
   limitations: [],
@@ -129,7 +135,9 @@ describe('transformOrdersMonthlyCountryCount', () => {
       kind: 'bar-race', periodColumn: 'OrderDate', categoryColumn: 'ShipCountry', measureColumn: 'OrderID',
       onDuplicate: 'reject', mode: 'period', topN: 21,
     })).toMatchObject({ ok: false, code: 'SOURCE_RIGHTS_UNAVAILABLE' });
-    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, executionSources: [{ database: databaseId, collection: 'Orders' }] } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, sourceVerification: { kind: 'publisher-digest', canonicalRowsSha256: '0'.repeat(64) } } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, sourceVerification: undefined } as unknown as typeof valid.publicApiReceipt }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
+    expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, serverId: 'https://another.example' } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, publicApiReceipt: { ...valid.publicApiReceipt, rightsPublication: undefined } }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
     expect(transformOrdersMonthlyCountryCount({ ...valid, sourceRights: [{ ...rights[0], evidenceOrigin: 'legacy-metadata' }] }, spec)).toMatchObject({ ok: false, code: 'RIGHTS' });
   });

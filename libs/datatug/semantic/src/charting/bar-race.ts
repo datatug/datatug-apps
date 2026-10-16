@@ -26,21 +26,27 @@ export interface ServerChartRecordset extends ChartRecordsetBase {
 
 export interface PublicApiChartReceipt {
   readonly endpoint: string;
+  /** Canonical server identity from the admitted provider descriptor, not URL hostname shorthand. */
+  readonly serverId: string;
   readonly databaseId: string;
   /** Human-facing collection mapped by the admitted saved query. */
   readonly logicalCollection: string;
-  /** Physical collection from the live execution.sources response. */
+  /** Physical collection from execution.sources, or the publisher's verified recordset. */
   readonly collectionId: string;
   readonly queryId: string;
   readonly rowsReturned: number;
   readonly observedAt: string;
-  readonly executionSources: readonly { readonly database: string; readonly collection: string }[];
+  readonly sourceVerification:
+    | { readonly kind: 'execution-source'; readonly executionSources: readonly { readonly database: string; readonly collection: string }[]; readonly canonicalRowsSha256?: never }
+    | { readonly kind: 'publisher-digest'; readonly executionSources?: readonly []; readonly canonicalRowsSha256: string };
   /** Supplied only after the runtime fetches and hashes a publisher-owned artifact. */
   readonly rightsPublication?: {
     readonly url: string;
     readonly sha256: string;
     readonly sourceId: string;
     readonly providerSourceSha256: string;
+    /** Required for a publisher-digest source without live execution.sources. */
+    readonly canonicalRowsSha256?: string;
   };
 }
 
@@ -190,10 +196,11 @@ export function chartEvidenceError(result: ChartRecordset): string | undefined {
     return 'Current publisher or server source-rights evidence is required for every used chart source.';
   if (result.runtime !== 'browser-public-api') return undefined;
   const receipt = result.publicApiReceipt;
-  let host: string;
   try {
     safeTermsUrl(receipt.endpoint);
-    host = new URL(receipt.endpoint).hostname;
+    safeTermsUrl(receipt.serverId);
+    if (!receipt.endpoint.startsWith(`${receipt.serverId}/v1/databases/${receipt.databaseId}/`))
+      return 'The public API endpoint does not belong to the admitted provider server.';
   } catch {
     return 'The public API endpoint is not an admitted HTTPS URL.';
   }
@@ -203,15 +210,28 @@ export function chartEvidenceError(result: ChartRecordset): string | undefined {
     receipt.logicalCollection !== result.provenance.collection ||
     receipt.queryId !== result.provenance.queryId ||
     receipt.observedAt !== result.provenance.observedAt ||
-    receipt.rowsReturned !== (result.sourceRowsReturned ?? result.recordset.rows.length) ||
-    receipt.executionSources.length !== 1 ||
-    receipt.executionSources[0].database !== receipt.databaseId ||
-    receipt.executionSources[0].collection !== receipt.collectionId)
-    return 'The public API receipt does not match the observed query, rows or physical source.';
+    receipt.rowsReturned !== (result.sourceRowsReturned ?? result.recordset.rows.length))
+    return 'The public API receipt does not match the observed query or rows.';
+  const verification = receipt.sourceVerification;
+  if (!verification || typeof verification !== 'object')
+    return 'The public API receipt has no admitted source verification.';
+  if (verification.kind === 'execution-source') {
+    if (verification.executionSources.length !== 1 ||
+      verification.executionSources[0].database !== receipt.databaseId ||
+      verification.executionSources[0].collection !== receipt.collectionId)
+      return 'The public API receipt does not match the physical execution source.';
+  } else if (verification.kind === 'publisher-digest') {
+    if (!/^[a-f0-9]{64}$/.test(verification.canonicalRowsSha256) ||
+      verification.executionSources?.length)
+      return 'The public API receipt lacks the verified publisher row digest.';
+  } else return 'The public API receipt has no admitted source verification.';
   const publication = receipt.rightsPublication;
   if (!publication || !/^[a-f0-9]{64}$/.test(publication.sha256) ||
     !/^[a-f0-9]{64}$/.test(publication.providerSourceSha256))
     return 'A verified publisher rights artifact is required for this public API source.';
+  if (verification.kind === 'publisher-digest' &&
+    publication.canonicalRowsSha256 !== verification.canonicalRowsSha256)
+    return 'The publisher rights artifact does not match the verified row digest.';
   try {
     safeTermsUrl(publication.url);
   } catch {
@@ -220,7 +240,7 @@ export function chartEvidenceError(result: ChartRecordset): string | undefined {
   if (rights.usedSourceIds.length !== 1 || rights.usedSourceIds[0] !== publication.sourceId ||
     !rights.sourceRights.some((right) =>
       right.sourceId === publication.sourceId && right.evidenceOrigin === 'publisher-verified' &&
-      right.source.serverId === host && right.source.databaseId === receipt.databaseId &&
+      right.source.serverId === receipt.serverId && right.source.databaseId === receipt.databaseId &&
       right.source.recordset === receipt.collectionId &&
       right.pins.some((pin) => pin.role === 'provider' && pin.sha256 === publication.providerSourceSha256)))
     return 'The publisher rights artifact does not bind this physical public API source.';
