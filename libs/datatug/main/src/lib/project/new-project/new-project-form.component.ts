@@ -76,6 +76,10 @@ interface NewProjectDraft {
   readonly ciEnabled?: boolean;
   readonly operationID?: string;
   readonly operationPayload?: string;
+  readonly operationBranch?: string;
+  readonly recoveryBranch?: string;
+  readonly createNeedsSameOperationRetry?: boolean;
+  readonly createConflictNeedsStatusCheck?: boolean;
   readonly oauthResumePending?: boolean;
   readonly projectCreateSubmitted?: boolean;
   readonly setupPR?: { readonly url: string; readonly number: number };
@@ -166,6 +170,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private pendingGithubSetupsRequestGeneration = 0;
   private readonly operationID = signal<string | undefined>(undefined);
   private readonly operationPayload = signal<string | undefined>(undefined);
+  private readonly operationBranch = signal<string | undefined>(undefined);
+  private readonly recoveryBranch = signal<string | undefined>(undefined);
+  private readonly createNeedsSameOperationRetry = signal(false);
+  private readonly createConflictNeedsStatusCheck = signal(false);
   private readonly oauthResumePending = signal(false);
   private readonly projectCreateSubmitted = signal(false);
   private readonly oauthState = signal<string | undefined>(undefined);
@@ -292,6 +300,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           this.isCreating.set(false);
           this.operationID.set(undefined);
           this.operationPayload.set(undefined);
+          this.operationBranch.set(undefined);
+          this.recoveryBranch.set(undefined);
+          this.createNeedsSameOperationRetry.set(false);
+          this.createConflictNeedsStatusCheck.set(false);
           this.resolvedCreateRequest.set(undefined);
           this.oauthResumePending.set(false);
           this.projectCreateSubmitted.set(false);
@@ -350,7 +362,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
   cancel(): void {
     if (this.isCreating()) return;
-    if (!this.isSetupLocked()) clearNewProjectDraft();
+    if (!this.isSetupLocked() && !this.createNeedsSameOperationRetry())
+      clearNewProjectDraft();
     void this.router
       .navigateByUrl(this.returnUrl, { replaceUrl: true })
       .catch(
@@ -430,7 +443,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     });
   }
   loadGithubRepos(): void {
-    if (!this.userID()) return;
+    if (!this.userID() || this.isCreating() || this.createNeedsSameOperationRetry()) return;
     const generation = ++this.selectionGeneration;
     this.githubReposError.set(undefined);
     this.isLoadingRepos.set(true);
@@ -473,6 +486,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     });
   }
   repositoryChanged(id: number): void {
+    if (this.isCreating() || this.createNeedsSameOperationRetry()) return;
     this.selectedRepo.set(id);
     const repo = this.githubRepos().find((candidate) => candidate.id === id);
     if (repo) this.githubRepositoryURL.set(`https://github.com/${repo.owner}/${repo.name}`);
@@ -480,12 +494,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.loadBranches();
   }
   repositoryURLChanged(value: string): void {
+    if (this.isCreating() || this.createNeedsSameOperationRetry()) return;
     this.githubRepositoryURL.set(value);
     this.selectedRepo.set(undefined);
     this.branch.set('');
     this.branches.set([]);
   }
   loadBranches(): void {
+    if (this.isCreating() || this.createNeedsSameOperationRetry()) return;
     const generation = ++this.selectionGeneration;
     const repo = this.githubRepos().find(
       (repo) => repo.id === this.selectedRepo(),
@@ -529,13 +545,26 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       },
     });
   }
+  branchChanged(value: string): void {
+    if (this.isCreating() || this.createNeedsSameOperationRetry()) return;
+    this.branch.set(value);
+    this.saveDraft();
+  }
   create(): void {
     if (this.isCreating() || this.isSetupLocked()) return;
+    if (this.createNeedsSameOperationRetry() && this.createConflictNeedsStatusCheck()) {
+      this.refreshSetupStatus();
+      return;
+    }
     if (this.setupStatus() === 'closed_unmerged') {
       this.operationID.set(undefined);
       this.operationPayload.set(undefined);
+      this.operationBranch.set(undefined);
+      this.recoveryBranch.set(undefined);
       this.resolvedCreateRequest.set(undefined);
       this.projectCreateSubmitted.set(false);
+      this.createNeedsSameOperationRetry.set(false);
+      this.createConflictNeedsStatusCheck.set(false);
       this.setupStatus.set(undefined);
       this.setupPR.set(undefined);
     }
@@ -606,12 +635,45 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       template: DATATUG_DEMO_PROJECT_TEMPLATE,
       ciEnabled: this.ciEnabled(),
     };
-    const payload = JSON.stringify(intent);
+    const currentBranch = this.branch();
+    const resolvedRequest = this.resolvedCreateRequest();
+    const operationBranch = this.operationBranch();
+    const branchMatchesDefaultMaterialization =
+      operationBranch === '' &&
+      !!(this.recoveryBranch() ?? resolvedRequest?.github.branch) &&
+      currentBranch === (this.recoveryBranch() ?? resolvedRequest?.github.branch);
+    const branchChanged =
+      operationBranch !== undefined &&
+      currentBranch !== operationBranch &&
+      !branchMatchesDefaultMaterialization;
+    if (this.createNeedsSameOperationRetry() && branchChanged) {
+      this.formError.set(
+        'This creation may already have reached GitHub. Retry the saved operation before changing its branch.',
+      );
+      return;
+    }
+    const payload = JSON.stringify({
+      ...intent,
+      selectedBranch: branchChanged ? currentBranch : (operationBranch ?? currentBranch),
+    });
+    if (
+      this.createNeedsSameOperationRetry() &&
+      payload !== this.operationPayload()
+    ) {
+      this.formError.set(
+        'This creation may already have reached GitHub. Retry the saved operation before changing its details.',
+      );
+      return;
+    }
     if (payload !== this.operationPayload()) {
       this.operationPayload.set(payload);
+      this.operationBranch.set(currentBranch);
+      this.recoveryBranch.set(undefined);
       this.operationID.set(crypto.randomUUID());
       this.projectCreateSubmitted.set(false);
       this.resolvedCreateRequest.set(undefined);
+      this.createNeedsSameOperationRetry.set(false);
+      this.createConflictNeedsStatusCheck.set(false);
     }
     const operationID = this.operationID() ?? crypto.randomUUID();
     this.operationID.set(operationID);
@@ -635,7 +697,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.queryApi.branches({ storeId: 'github.com', projectId }).subscribe({
           next: (result) => {
             if (generation !== this.selectionGeneration || this.userID() !== actorID) return;
-            const branchName = this.branch() || result.defaultBranch || resolved.defaultBranch;
+            const branchName = this.branch() || this.recoveryBranch() || result.defaultBranch || resolved.defaultBranch;
             const branch = result.branches.find((candidate) => candidate.name === branchName);
             if (!branch?.head) {
               this.isCreating.set(false);
@@ -716,9 +778,24 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       next: (status) => {
         if (!isCurrent()) return;
         this.isRefreshingSetup.set(false);
+        this.createConflictNeedsStatusCheck.set(false);
         this.setupStatus.set(status.status);
+        if (status.status === 'pending_merge' || status.status === 'needs_review') {
+          this.createNeedsSameOperationRetry.set(false);
+          this.projectCreateSubmitted.set(true);
+        } else if (status.status === 'closed_unmerged') {
+          this.createNeedsSameOperationRetry.set(false);
+          this.projectCreateSubmitted.set(false);
+        }
+        if (status.status === 'initializing' && this.createNeedsSameOperationRetry() && actorID) {
+          // An earlier request may have won the operation-ID CAS with its
+          // original digest. Rediscover that server-owned request so its
+          // canonical inputs remain available for recovery.
+          this.loadPendingGithubSetups(actorID, true);
+        }
         if (status.setupPR)
           this.setupPR.set({ url: status.setupPR.url, number: status.setupPR.number });
+        this.saveDraft();
         if (status.status === 'merged_ready') {
           const projectID = formatGithubProjectApiKey({
             org: resolvedRequest.github.owner,
@@ -742,6 +819,22 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       error: (error: unknown) => {
         if (!isCurrent()) return;
         this.isRefreshingSetup.set(false);
+        if (
+          this.createNeedsSameOperationRetry() &&
+          this.createConflictNeedsStatusCheck() &&
+          isHttpStatus(error, 404) &&
+          githubProjectErrorCode(error) === 'not_found'
+        ) {
+          this.createConflictNeedsStatusCheck.set(false);
+          this.recoveryBranch.set(resolvedRequest.github.branch);
+          this.branch.set(resolvedRequest.github.branch);
+          this.resolvedCreateRequest.set(undefined);
+          this.formError.set(
+            'GitHub has no saved setup visible yet. Retry this same operation; its details stay locked while the request is being recovered.',
+          );
+          this.saveDraft();
+          return;
+        }
         if (githubOAuthNeedsAuthorization(error)) {
           this.oauthResumePending.set(true);
           this.saveDraft();
@@ -940,6 +1033,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     if (this.setupStatus() !== 'closed_unmerged' || this.isCreating()) return;
     this.operationID.set(undefined);
     this.operationPayload.set(undefined);
+    this.operationBranch.set(undefined);
+    this.recoveryBranch.set(undefined);
+    this.createNeedsSameOperationRetry.set(false);
+    this.createConflictNeedsStatusCheck.set(false);
     this.resolvedCreateRequest.set(undefined);
     this.projectCreateSubmitted.set(false);
     this.setupStatus.set(undefined);
@@ -973,6 +1070,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       status === 'needs_review' ||
       (this.projectCreateSubmitted() && status === undefined)
     );
+  }
+
+  protected isCreateRetryLocked(): boolean {
+    return this.createNeedsSameOperationRetry();
   }
 
   private startGithubOAuth(
@@ -1046,16 +1147,24 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   ): void {
     const generation = this.selectionGeneration;
     const actorID = this.userID();
+    const previouslyUncertain = this.createNeedsSameOperationRetry();
     const isCurrent = () =>
       generation === this.selectionGeneration &&
       this.userID() === actorID &&
       this.operationID() === operationID &&
       this.resolvedCreateRequest() === request;
+    this.createNeedsSameOperationRetry.set(true);
+    if (!this.saveDraft()) {
+      this.isCreating.set(false);
+      return;
+    }
     this.isCreating.set(true);
     this.queryApi.create(request).subscribe({
       next: (created) => {
         if (!isCurrent()) return;
         this.isCreating.set(false);
+        this.createNeedsSameOperationRetry.set(false);
+        this.createConflictNeedsStatusCheck.set(false);
         this.setupStatus.set(created.status);
         this.setupPR.set({ url: created.setupPR.url, number: created.setupPR.number });
         this.projectCreateSubmitted.set(true);
@@ -1068,22 +1177,34 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         if (!isCurrent()) return;
         if (githubProjectErrorCode(error) === 'workflow_scope_required') {
           if (!this.ciEnabled()) {
-            this.handleCreateFailure(error);
+            this.handleCreateFailure(error, previouslyUncertain);
             return;
           }
+          if (previouslyUncertain)
+            this.createConflictNeedsStatusCheck.set(true);
+          else
+            this.createNeedsSameOperationRetry.set(false);
           this.oauthResumePending.set(true);
           this.saveDraft();
           this.startGithubOAuth(owner, repository, operationID, this.requiredOAuthScopes());
           return;
         }
-        this.handleCreateFailure(error);
+        this.handleCreateFailure(error, previouslyUncertain);
       },
     });
   }
 
-  private handleCreateFailure(error: unknown): void {
+  private handleCreateFailure(error: unknown, previouslyUncertain = false): void {
     this.isCreating.set(false);
     const failure = githubProjectCreateFailure(error);
+    this.createNeedsSameOperationRetry.set(
+      failure.retrySameOperation || previouslyUncertain,
+    );
+    this.createConflictNeedsStatusCheck.set(
+      githubProjectErrorCode(error) === 'conflict' ||
+        (previouslyUncertain && !failure.retrySameOperation),
+    );
+    this.saveDraft();
     this.formError.set(failure.message);
   }
   private dismissAndGo(ref: IProjectContext['ref']): void {
@@ -1132,6 +1253,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         ciEnabled: this.ciEnabled(),
         operationID: this.operationID(),
         operationPayload: this.operationPayload(),
+        operationBranch: this.operationBranch(),
+        recoveryBranch: this.recoveryBranch(),
+        createNeedsSameOperationRetry: this.createNeedsSameOperationRetry(),
+        createConflictNeedsStatusCheck: this.createConflictNeedsStatusCheck(),
         oauthResumePending: this.oauthResumePending(),
         projectCreateSubmitted: this.projectCreateSubmitted(),
         setupPR: this.setupPR(),
@@ -1221,7 +1346,26 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.githubRepositoryURL.set(draft.githubRepositoryURL ?? '');
     this.ciEnabled.set(draft.ciEnabled ?? true);
     this.operationID.set(draft.operationID);
-    this.operationPayload.set(draft.operationPayload);
+    const legacyOperation =
+      draft.operationBranch === undefined && draft.operationPayload;
+    const restoredBranch = draft.operationBranch ?? draft.branch ?? '';
+    const restoredPayload =
+      legacyOperation && draft.operationPayload
+        ? addSelectedBranchToLegacyIntent(draft.operationPayload, restoredBranch)
+        : draft.operationPayload;
+    this.operationPayload.set(restoredPayload);
+    this.operationBranch.set(
+      draft.operationBranch ??
+        (legacyOperation ? restoredBranch : undefined),
+    );
+    this.recoveryBranch.set(draft.recoveryBranch);
+    this.createNeedsSameOperationRetry.set(
+      draft.createNeedsSameOperationRetry ??
+        (!!draft.resolvedCreateRequest && !draft.projectCreateSubmitted),
+    );
+    this.createConflictNeedsStatusCheck.set(
+      draft.createConflictNeedsStatusCheck ?? false,
+    );
     this.oauthResumePending.set(draft.oauthResumePending ?? false);
     this.projectCreateSubmitted.set(draft.projectCreateSubmitted ?? false);
     this.setupPR.set(draft.setupPR);
@@ -1288,6 +1432,22 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
         typeof draft.operationPayload === 'string'
           ? draft.operationPayload.slice(0, 4096)
           : undefined,
+      operationBranch:
+        typeof draft.operationBranch === 'string'
+          ? draft.operationBranch.slice(0, 255)
+          : undefined,
+      recoveryBranch:
+        typeof draft.recoveryBranch === 'string'
+          ? draft.recoveryBranch.slice(0, 255)
+          : undefined,
+      createNeedsSameOperationRetry:
+        typeof draft.createNeedsSameOperationRetry === 'boolean'
+          ? draft.createNeedsSameOperationRetry
+          : undefined,
+      createConflictNeedsStatusCheck:
+        typeof draft.createConflictNeedsStatusCheck === 'boolean'
+          ? draft.createConflictNeedsStatusCheck
+          : undefined,
       oauthResumePending: draft.oauthResumePending === true,
       projectCreateSubmitted: draft.projectCreateSubmitted === true,
       setupPR: isSafeSetupPR(draft.setupPR) ? draft.setupPR : undefined,
@@ -1296,6 +1456,22 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
     };
   } catch {
     return undefined;
+  }
+}
+
+function addSelectedBranchToLegacyIntent(
+  payload: string,
+  selectedBranch: string,
+): string {
+  try {
+    const intent: unknown = JSON.parse(payload);
+    if (!intent || typeof intent !== 'object' || Array.isArray(intent))
+      return payload;
+    const value = intent as Record<string, unknown>;
+    if ('selectedBranch' in value) return payload;
+    return JSON.stringify({ ...value, selectedBranch });
+  } catch {
+    return payload;
   }
 }
 
@@ -1424,10 +1600,16 @@ function githubProjectCreateFailure(error: unknown): {
         message: 'Reconnect GitHub, then try creating the project again.',
         retrySameOperation: false,
       };
+    case 'workflow_conflict':
+      return {
+        message:
+          'The workflow setup conflicts with this repository. Review the workflow files, then retry with the same project details or choose another branch.',
+        retrySameOperation: false,
+      };
     case 'conflict':
       return {
         message:
-          'The branch, folder or shared-project limit conflicts with current state. Retry unchanged to check this operation, or review your selection before a new attempt.',
+          'The branch, folder or shared-project limit conflicts with current state. Retry the saved operation to resolve its outcome before changing project details.',
         retrySameOperation: true,
       };
   }
@@ -1440,7 +1622,7 @@ function githubProjectCreateFailure(error: unknown): {
   }
   return {
     message:
-      'Creation was not confirmed. Retry unchanged to recover the same operation; changed inputs start a new operation.',
+      'Creation was not confirmed. Retry the saved operation to recover its outcome before changing project details.',
     retrySameOperation: true,
   };
 }
@@ -1451,6 +1633,11 @@ function githubProjectErrorCode(error: unknown): string | undefined {
   return typeof response.error?.error?.code === 'string'
     ? response.error.error.code
     : undefined;
+}
+
+function isHttpStatus(error: unknown, expected: number): boolean {
+  return !!error && typeof error === 'object' &&
+    (error as { status?: unknown }).status === expected;
 }
 
 function githubOAuthNeedsAuthorization(error: unknown): boolean {

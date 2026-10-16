@@ -50,7 +50,7 @@
   <ion-label>Store</ion-label>
   <ion-select
     [ngModel]="store()"
-    [disabled]="isCreating()"
+    [disabled]="isCreating() || isCreateRetryLocked()"
     (ngModelChange)="storeChanged($event)"
     interface="popover"
   >
@@ -72,7 +72,7 @@
     ><ion-select
       [ngModel]="spaceID()"
       (ngModelChange)="spaceID.set($event)"
-      [disabled]="isCreating()"
+      [disabled]="isCreating() || isCreateRetryLocked()"
     >
       @for (space of spaces(); track space.id) {
         <ion-select-option [value]="space.id">{{
@@ -94,18 +94,18 @@
       label="New Space name"
       [ngModel]="spaceTitle()"
       (ngModelChange)="spaceTitle.set($event)"
-      [disabled]="isCreating() || isCreatingSpace()"
+      [disabled]="isCreating() || isCreateRetryLocked() || isCreatingSpace()"
     />
     <ion-button
       (click)="createSpace()"
-      [disabled]="isCreating() || isCreatingSpace() || !spaceTitle().trim()"
+      [disabled]="isCreating() || isCreateRetryLocked() || isCreatingSpace() || !spaceTitle().trim()"
       >Create Space</ion-button
     >
   </ion-item>
   <ion-item
     ><ion-button
       (click)="loadGithubRepos()"
-      [disabled]="isLoadingRepos()"
+      [disabled]="isLoadingRepos() || isCreating() || isCreateRetryLocked()"
       fill="clear"
       >Refresh connected repositories</ion-button
     ></ion-item
@@ -122,7 +122,7 @@
       placeholder="https://github.com/owner/repository"
       [ngModel]="githubRepositoryURL()"
       (ngModelChange)="repositoryURLChanged($event)"
-      [disabled]="isCreating()"
+      [disabled]="isCreating() || isCreateRetryLocked()"
     />
   </ion-item>
   @if (githubReposError(); as error) {
@@ -146,7 +146,7 @@
       ><ion-select
         [ngModel]="selectedRepo()"
         (ngModelChange)="repositoryChanged($event)"
-        [disabled]="isCreating()"
+        [disabled]="isCreating() || isCreateRetryLocked()"
       >
         @for (repo of githubRepos(); track repo.id) {
           <ion-select-option [value]="repo.id"
@@ -159,7 +159,7 @@
       ><ion-label position="stacked">Relative folder</ion-label
       ><ion-input
         [ngModel]="githubFolder()"
-        [disabled]="isCreating()"
+        [disabled]="isCreating() || isCreateRetryLocked()"
         (ngModelChange)="githubFolder.set($event)"
         (ionChange)="loadBranches()"
     /></ion-item>
@@ -167,8 +167,8 @@
       ><ion-label>Branch</ion-label
       ><ion-select
         [ngModel]="branch()"
-        (ngModelChange)="branch.set($event)"
-        [disabled]="isCreating()"
+        (ngModelChange)="branchChanged($event)"
+        [disabled]="isCreating() || isCreateRetryLocked()"
       >
         @for (branch of branches(); track branch.name) {
           <ion-select-option [value]="branch.name">{{
@@ -177,7 +177,7 @@
         }</ion-select
       ><ion-button
         (click)="loadBranches()"
-        [disabled]="isCreating()"
+        [disabled]="isCreating() || isCreateRetryLocked()"
         fill="clear"
         >Reload branches</ion-button
       ></ion-item
@@ -196,7 +196,7 @@
     <ion-checkbox
       [ngModel]="ciEnabled()"
       (ngModelChange)="ciEnabled.set($event)"
-      [disabled]="isCreating()"
+      [disabled]="isCreating() || isCreateRetryLocked()"
       >Enable CI verification workflow</ion-checkbox
     >
   </ion-item>
@@ -223,7 +223,7 @@
     placeholder="is required"
     [ngModel]="title()"
     (ngModelChange)="title.set($event)"
-    [disabled]="isCreating()"
+    [disabled]="isCreating() || isCreateRetryLocked()"
     required="required"
     minlength="2"
     maxlength="30"
@@ -251,7 +251,7 @@
     <ion-buttons slot="end">
       @if (!isSetupLocked()) { <ion-button (click)="create()" [disabled]="isCreating()">
         <ion-icon name="save-outline" slot="start" />
-        <ion-label>Create new project</ion-label>
+        <ion-label>{{ isCreateRetryLocked() ? 'Retry same project operation' : 'Create new project' }}</ion-label>
       </ion-button> }
     </ion-buttons>
   </ion-toolbar>

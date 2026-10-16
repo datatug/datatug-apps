@@ -15,7 +15,10 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { ProjectService } from '../../services/project/project.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
-import type { PendingGithubProjectSetup } from '../../services/project/project-query-api.service';
+import type {
+  CreateGithubProject,
+  PendingGithubProjectSetup,
+} from '../../services/project/project-query-api.service';
 import {
   saveBusinessGithubContinuation,
   takeBusinessGithubContinuation,
@@ -1216,7 +1219,7 @@ describe('New project through authenticated common API', () => {
     expect(h.branches).not.toHaveBeenCalled();
     expect(h.component['formError']()).toContain('Choose a repository');
   });
-  it('reuses the operation after an ambiguous failure but changes it for a changed payload', async () => {
+  it('reuses an ambiguous operation and refuses changed details until that outcome is recovered', async () => {
     const h = await harness();
     h.select();
     h.create.mockImplementation(() => throwError(() => ({ status: 0 })));
@@ -1229,7 +1232,234 @@ describe('New project through authenticated common API', () => {
     expect(h.branches).toHaveBeenCalledTimes(branchCallsAfterResolve);
     h.component.title.set('Different');
     h.component.create();
-    expect(h.create.mock.calls[2][0]).not.toEqual(request);
+    expect(h.create).toHaveBeenCalledTimes(2);
+    expect(h.component['formError']()).toContain('Retry the saved operation');
+  });
+  it('starts a new request for a branch changed after a definitive create failure', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 403, error: { error: { code: 'repository_denied' } } })),
+    );
+    h.component.create();
+    const firstRequest = h.create.mock.calls[0][0] as CreateGithubProject;
+
+    h.component.branchChanged('main');
+    expect(h.component.branch()).toBe('main');
+    h.component.create();
+
+    const retryRequest = h.create.mock.calls[1][0] as CreateGithubProject;
+    expect(retryRequest.github.branch).toBe('main');
+    expect(retryRequest.github.expectedBranchHead).toBe('main-head');
+    expect(retryRequest.operationID).not.toBe(firstRequest.operationID);
+  });
+  it('unlocks a typed workflow conflict without reusing its stale branch request', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 409, error: { error: { code: 'workflow_conflict' } } })),
+    );
+    h.component.create();
+    const firstRequest = h.create.mock.calls[0][0] as CreateGithubProject;
+
+    h.component.branchChanged('main');
+    h.component.create();
+
+    expect((h.create.mock.calls[1][0] as CreateGithubProject).github).toMatchObject({
+      branch: 'main',
+      expectedBranchHead: 'main-head',
+    });
+    expect((h.create.mock.calls[1][0] as CreateGithubProject).operationID).not.toBe(firstRequest.operationID);
+  });
+  it('re-resolves the same branch and operation after typed not-found status without unlocking intent', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 409, error: { error: { code: 'conflict' } } })),
+    );
+    h.createStatus.mockReturnValue(
+      throwError(() => ({ status: 404, error: { error: { code: 'not_found' } } })) as never,
+    );
+    h.branches.mockReturnValue(
+      of({ branches: [{ name: 'main', head: 'main-head' }, { name: 'work', head: 'fresh-head' }], defaultBranch: 'main' }),
+    );
+    h.component.create();
+    const firstRequest = h.create.mock.calls[0][0] as CreateGithubProject;
+    h.component.create();
+    expect(h.create).toHaveBeenCalledTimes(1);
+
+    h.component.branchChanged('main');
+    expect(h.component.branch()).toBe('work');
+    h.component.create();
+
+    expect((h.create.mock.calls[1][0] as CreateGithubProject).github).toMatchObject({
+      branch: 'work',
+      expectedBranchHead: 'fresh-head',
+    });
+    expect((h.create.mock.calls[1][0] as CreateGithubProject).operationID).toBe(firstRequest.operationID);
+  });
+  it('keeps the original implicit default branch when the repository default changes during recovery', async () => {
+    const h = await harness();
+    h.select();
+    h.component.branchChanged('');
+    h.branches
+      .mockReturnValueOnce(of({ branches: [{ name: 'main', head: 'main-head' }], defaultBranch: 'main' }))
+      .mockReturnValueOnce(of({ branches: [{ name: 'main', head: 'fresh-main-head' }, { name: 'other', head: 'other-head' }], defaultBranch: 'other' }));
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 409, error: { error: { code: 'conflict' } } })),
+    );
+    h.createStatus.mockReturnValue(
+      throwError(() => ({ status: 404, error: { error: { code: 'not_found' } } })) as never,
+    );
+    h.branches.mockReturnValue(
+      of({ branches: [{ name: 'main', head: 'fresh-main-head' }, { name: 'other', head: 'other-head' }], defaultBranch: 'other' }),
+    );
+
+    h.component.create();
+    const firstRequest = h.create.mock.calls[0][0] as CreateGithubProject;
+    expect(firstRequest.github.branch).toBe('main');
+    h.component.create(); // conflict status lookup
+    h.component.create(); // resolve fresh head on the same operation
+
+    const recovered = h.create.mock.calls[1][0] as CreateGithubProject;
+    expect(recovered.operationID).toBe(firstRequest.operationID);
+    expect(recovered.github).toMatchObject({ branch: 'main', expectedBranchHead: 'fresh-main-head' });
+    expect(h.component.branch()).toBe('main');
+  });
+  it('rediscovers canonical pending inputs when the original request wins recovery status', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 409, error: { error: { code: 'conflict' } } })),
+    );
+    h.component.create();
+    h.createStatus.mockReturnValue(of({ ...created, status: 'initializing' }) as never);
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
+
+    h.component.create();
+
+    expect(h.pendingGithubProjectSetups).toHaveBeenCalled();
+    expect(h.component['pendingGithubSetups']()).toEqual([pendingSetup]);
+    expect(h.component['isCreateRetryLocked']()).toBe(true);
+  });
+  it('keeps a prior uncertain operation locked after a later definitive denial', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() => throwError(() => ({ status: 0 })));
+    h.component.create();
+    const firstRequest = h.create.mock.calls[0][0] as CreateGithubProject;
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 409, error: { error: { code: 'workflow_conflict' } } })),
+    );
+    h.createStatus.mockReturnValue(of({ ...created, status: 'initializing' }) as never);
+    h.component.create();
+
+    h.component.branchChanged('main');
+    expect(h.component.branch()).toBe('work');
+    h.component.create();
+    expect(h.createStatus).toHaveBeenCalledWith({
+      operationID: firstRequest.operationID,
+      repositoryID: firstRequest.github.repositoryID,
+      owner: firstRequest.github.owner,
+      name: firstRequest.github.name,
+    });
+    expect(h.component['isCreateRetryLocked']()).toBe(true);
+  });
+  it('clears retry state after a closed operation so a fresh setup can start', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() => throwError(() => ({ status: 0 })));
+    h.component.create();
+    h.create.mockImplementationOnce(() =>
+      throwError(() => ({ status: 409, error: { error: { code: 'conflict' } } })),
+    );
+    h.component.create();
+    h.createStatus.mockReturnValue(of({ ...created, status: 'closed_unmerged' }) as never);
+    h.component.create();
+    expect(h.component['setupStatus']()).toBe('closed_unmerged');
+
+    h.component['retryClosedSetup']();
+
+    expect(h.create).toHaveBeenCalledTimes(3);
+    expect(h.component['isCreateRetryLocked']()).toBe(false);
+  });
+  it('locks branch and repository refresh until an uncertain operation is retried unchanged', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementation(() => throwError(() => ({ status: 0 })));
+    h.component.create();
+    const request = h.create.mock.calls[0][0] as CreateGithubProject;
+    h.fixture.detectChanges();
+    const repositoryCalls = h.connection.oauthRepositories.mock.calls.length;
+
+    h.component.branchChanged('main');
+    h.component.loadGithubRepos();
+    expect(h.component.branch()).toBe('work');
+    expect(h.connection.oauthRepositories).toHaveBeenCalledTimes(repositoryCalls);
+    const refresh = Array.from(
+      h.fixture.nativeElement.querySelectorAll('ion-button') as NodeListOf<HTMLElement>,
+    ).find((button) => button.textContent.includes('Refresh connected repositories')) as HTMLElement;
+    expect((refresh as unknown as { disabled: boolean }).disabled).toBe(true);
+
+    h.component.create();
+    expect(h.create.mock.calls[1][0]).toEqual(request);
+    h.component.cancel();
+    expect(sessionStorage.getItem('datatug:new-project:draft')).not.toBeNull();
+  });
+  it('preserves the default-branch retry when restoration materializes its name', async () => {
+    const h = await harness();
+    h.select();
+    h.component.branch.set('');
+    h.create.mockImplementation(() => throwError(() => ({ status: 0 })));
+    h.component.create();
+    const request = h.create.mock.calls[0][0] as CreateGithubProject;
+    expect(request.github.branch).toBe('main');
+
+    h.component.branch.set('main');
+    h.component.create();
+    expect(h.create.mock.calls[1][0]).toEqual(request);
+  });
+  it('migrates a pre-branch-identity draft without changing its uncertain operation', async () => {
+    const first = await harness();
+    first.select();
+    first.create.mockImplementation(() => throwError(() => ({ status: 0 })));
+    first.component.create();
+    const saved = JSON.parse(
+      sessionStorage.getItem('datatug:new-project:draft') ?? 'null',
+    );
+    const request = first.create.mock.calls[0][0] as CreateGithubProject;
+    delete saved.operationBranch;
+    delete saved.createNeedsSameOperationRetry;
+    const legacyIntent = JSON.parse(saved.operationPayload);
+    delete legacyIntent.selectedBranch;
+    saved.operationPayload = JSON.stringify(legacyIntent);
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify(saved));
+
+    const restored = await harness(false, {}, true, true);
+    restored.fixture.detectChanges();
+    await restored.fixture.whenStable();
+    restored.component.create();
+
+    expect(restored.create).toHaveBeenCalledTimes(1);
+    expect(restored.create.mock.calls[0][0]).toEqual(request);
+    expect((restored.create.mock.calls[0][0] as CreateGithubProject).operationID).toBe(request.operationID);
+  });
+  it('does not send the create mutation when persisting its in-flight lock fails', async () => {
+    const h = await harness();
+    h.select();
+    const originalSetItem = sessionStorage.setItem.bind(sessionStorage);
+    let writes = 0;
+    vi.spyOn(sessionStorage, 'setItem').mockImplementation((key, value) => {
+      writes++;
+      if (writes === 3) throw new DOMException('storage blocked', 'SecurityError');
+      originalSetItem(key, value);
+    });
+
+    h.component.create();
+
+    expect(h.create).not.toHaveBeenCalled();
+    expect(h.component['isCreating']()).toBe(false);
+    expect(h.component['formError']()).toContain('could not be saved');
   });
   it.each([
     [
@@ -1267,7 +1497,7 @@ describe('New project through authenticated common API', () => {
       })),
     );
     h.component.create();
-    const request = h.create.mock.calls[0][0];
+    const request = h.create.mock.calls[0][0] as CreateGithubProject;
     h.component.create();
     expect(h.create.mock.calls[1][0]).toEqual(request);
   });
@@ -1286,12 +1516,22 @@ describe('New project through authenticated common API', () => {
       const pending = new Subject();
       h.create.mockReturnValue(pending as never);
       h.component.create();
-      const request = h.create.mock.calls[0][0];
+      const request = h.create.mock.calls[0][0] as CreateGithubProject;
       pending.error(failure);
       await h.fixture.whenStable();
       expect(h.fixture.nativeElement.textContent).toContain(notice);
       h.component.create();
-      expect(h.create.mock.calls[1][0]).toEqual(request);
+      if (failure && typeof failure === 'object' && 'error' in failure) {
+        expect(h.create).toHaveBeenCalledTimes(1);
+        expect(h.createStatus).toHaveBeenCalledWith({
+          operationID: request.operationID,
+          repositoryID: request.github.repositoryID,
+          owner: request.github.owner,
+          name: request.github.name,
+        });
+      } else {
+        expect(h.create.mock.calls[1][0]).toEqual(request);
+      }
     },
   );
   it('ignores out-of-order branch lists after repository selection changes', async () => {
@@ -1322,6 +1562,34 @@ describe('New project through authenticated common API', () => {
     expect(
       h.fixture.nativeElement.querySelector('ion-button ion-label').textContent,
     ).toBe('Create new project');
+  });
+  it('does not let repository refresh invalidate an in-flight successful create', async () => {
+    const h = await harness();
+    h.select();
+    const pendingCreate = new Subject<typeof created>();
+    h.create.mockReturnValue(pendingCreate as never);
+    const repositoryCalls = h.connection.oauthRepositories.mock.calls.length;
+
+    h.component.create();
+    expect(h.component['isCreating']()).toBe(true);
+    h.component.loadGithubRepos();
+    expect(h.connection.oauthRepositories).toHaveBeenCalledTimes(repositoryCalls);
+
+    pendingCreate.next(created);
+    expect(h.component['isCreating']()).toBe(false);
+    expect(h.component['setupStatus']()).toBe('pending_merge');
+  });
+  it('disables the connected repository refresh control while create is active', async () => {
+    const h = await harness();
+    h.component.store.set('github');
+    h.fixture.detectChanges();
+    h.component['isCreating'].set(true);
+    h.fixture.detectChanges();
+
+    const refresh = Array.from(
+      h.fixture.nativeElement.querySelectorAll('ion-button') as NodeListOf<HTMLElement>,
+    ).find((button) => button.textContent.includes('Refresh connected repositories')) as HTMLElement;
+    expect((refresh as unknown as { disabled: boolean }).disabled).toBe(true);
   });
   it('does not render a direct provider repository-create/write flow', async () => {
     const h = await harness();
