@@ -1,5 +1,10 @@
 import type { Page } from '@playwright/test';
 import { expect, test } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
 
@@ -66,6 +71,62 @@ const PROJECT_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
 const PAGES_URL = `${PROJECT_URL}/-`;
 const OLD_PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
+
+test('a Board card runs an arbitrary pinned SQLite edition with its own schema', async ({ page, context }) => {
+  test.skip(!GITHUB_FAKE_DIR, 'requires the offline GitHub checkout to create a distinct edition');
+  if (!GITHUB_FAKE_DIR) return;
+  const scratch = mkdtempSync(join(tmpdir(), 'datatug-board-edition-'));
+  try {
+    const checkout = join(scratch, 'project');
+    execFileSync('git', ['clone', '--local', '--quiet', GITHUB_FAKE_DIR, checkout]);
+    const project = join(checkout, 'demo-project-1');
+    const fixture = readFileSync(join(project, 'fixtures/federated/countries.sqlite'));
+    const catalogPath = join(project, 'connections/demo-db.json');
+    const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
+    catalog.connections.push({
+      id: 'edition-v42', title: 'Country ledger', storage: 'sqlite', environments: ['dev'],
+      fixtureSha256: createHash('sha256').update(fixture).digest('hex'),
+      browserFixture: { url: 'https://fixture.example/country-ledger.sqlite', bytes: fixture.byteLength },
+    });
+    writeFileSync(catalogPath, JSON.stringify(catalog));
+    const boardPath = join(project, 'boards/board1/board.json');
+    const board = JSON.parse(readFileSync(boardPath, 'utf8'));
+    board.rows[0].cards[0].title = 'Country ledger';
+    board.rows[0].cards[0].widget.data.sql.queryId = 'demodb/country-ledger';
+    writeFileSync(boardPath, JSON.stringify(board));
+    writeFileSync(join(project, 'queries/demodb/country-ledger.query.json'), JSON.stringify({
+      id: 'country-ledger', title: 'Country ledger', type: 'SQL', connectionId: 'edition-v42',
+      recordsets: [{ columns: [{ name: 'name', type: 'string' }, { name: 'population', type: 'integer' }] }],
+    }));
+    writeFileSync(join(project, 'queries/demodb/country-ledger.query.sql'),
+      'SELECT name, population FROM Country ORDER BY id LIMIT 3\n');
+    execFileSync('git', ['-C', checkout, 'add', '-A']);
+    execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
+      'commit', '--quiet', '-m', 'Create arbitrary browser query fixture']);
+    await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: checkout }]);
+    await context.route('https://fixture.example/country-ledger.sqlite', (route) => route.fulfill({
+      body: fixture,
+      contentType: 'application/octet-stream',
+      headers: { 'access-control-allow-origin': '*' },
+    }));
+    await page.goto(PROJECT_URL);
+    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
+    await expect(environment).toBeVisible();
+    await environment.click();
+    await page.getByRole('radio', { name: 'dev' }).click();
+    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
+    await page.getByRole('link', { name: 'Chinook customer insights' }).last().click();
+    const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Country ledger' });
+    await expect(card).toBeVisible();
+    await card.getByRole('button', { name: 'Run on board' }).click();
+    await expect(card.getByText('3 rows returned.')).toBeVisible({ timeout: 25_000 });
+    await expect(card.locator('table tbody')).toContainText('Alpha');
+    await expect(card.locator('table tbody')).toContainText('Gamma');
+    await expect(card).toContainText('Browser SQLite snapshot (Country ledger)');
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
 
 /** `ErrorLoggerService.logError()`'s own, fixed console.error prefix
  * (`@sneat/logging`'s `error-logger.service.ts`: `console.error(

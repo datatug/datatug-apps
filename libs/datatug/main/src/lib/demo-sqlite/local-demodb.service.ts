@@ -12,7 +12,7 @@
 // memory: the session is opened with memoryFallback 'forbid', so where OPFS cannot
 // be used it fails before downloading and the page shows unsupported-browser.
 // A catalog `single-copy` policy keeps one OPFS copy (Reset downloads again).
-import { Injectable, InjectionToken, Signal, computed, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, InjectionToken, Signal, computed, inject, signal } from '@angular/core';
 import {
   demoSqliteStorageBytes,
   findDemoSqliteDataset,
@@ -24,6 +24,7 @@ import { fetchOvdbDescriptor, type OvdbConnection, type OvdbDescriptor } from '.
 import { LocalDemoDbOpenError } from './local-demodb-errors';
 import type { DemoDbInstallStep, DemoDbProgress } from './local-demodb-progress';
 import type { LocalDemoDbOpenReport, LocalDemoDbRuntime, OpenLocalDemoDbRuntime } from './local-demodb.types';
+import { QueryRuntimeRegistry } from '../queries/query-runtime-registry.service';
 
 export type LocalDemoDbState =
   | { readonly kind: 'checking' }
@@ -185,11 +186,14 @@ export class LocalDemoDbSession {
   #progressTimer: ReturnType<typeof setTimeout> | undefined;
   #epoch = 0;
   #disposed = false;
+  #startPromise?: Promise<void>;
+  #registration?: ReturnType<QueryRuntimeRegistry['register']>;
 
   constructor(
     readonly entry: DemoSqliteCatalogEntry,
     private readonly environment: LocalDemoDbEnvironment,
     private readonly loadRuntime: () => Promise<OpenLocalDemoDbRuntime>,
+    private readonly queryRuntimes?: QueryRuntimeRegistry,
   ) {}
 
   get baseUrl(): string | undefined {
@@ -201,7 +205,17 @@ export class LocalDemoDbSession {
   }
 
   /** Decides whether to ask, refuse or open, and opens when nothing needs asking. */
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    if (this.#disposed) return Promise.reject(new Error('This local database session is closed.'));
+    if (this.#state().kind === 'ready' || this.#state().kind === 'confirm-large') return Promise.resolve();
+    if (this.#startPromise) return this.#startPromise;
+    const started = this.#startCore();
+    this.#startPromise = started;
+    void started.finally(() => { if (this.#startPromise === started) this.#startPromise = undefined; }).catch(() => undefined);
+    return started;
+  }
+
+  async #startCore(): Promise<void> {
     const epoch = ++this.#epoch;
     this.#state.set({ kind: 'checking' });
     const entry = this.entry;
@@ -252,8 +266,13 @@ export class LocalDemoDbSession {
   async refreshDescriptor(): Promise<OvdbDescriptor> {
     const connection = this.#connection();
     if (!connection) throw new Error('The local database is not open.');
+    const epoch = this.#epoch;
     const descriptor = await fetchOvdbDescriptor(connection.fetch, connection.baseUrl, connection.databaseId);
-    this.#connection.set({ ...connection, descriptor });
+    if (this.#disposed || epoch !== this.#epoch || this.#connection() !== connection)
+      throw new Error('The local database changed while its descriptor was refreshing.');
+    const refreshed = { ...connection, descriptor };
+    this.#connection.set(refreshed);
+    this.#registration?.update(refreshed);
     return descriptor;
   }
 
@@ -269,6 +288,8 @@ export class LocalDemoDbSession {
     this.#unsubscribe = undefined;
     this.#runtime?.close();
     this.#runtime = undefined;
+    this.#registration?.dispose();
+    this.#registration = undefined;
     this.#connection.set(undefined);
   }
 
@@ -308,14 +329,16 @@ export class LocalDemoDbSession {
       }
       const descriptor = await fetchOvdbDescriptor(runtime.fetch, runtime.baseUrl, entry.dataset);
       if (epoch !== this.#epoch) return;
-      this.#connection.set({
+      const connection: OvdbConnection = {
         id: `${entry.dataset}-sqlite-local`,
         title: `${entry.title} (local SQLite)`,
         baseUrl: runtime.baseUrl,
         databaseId: entry.dataset,
         fetch: runtime.fetch,
         descriptor,
-      });
+      };
+      this.#connection.set(connection);
+      this.#registration = this.queryRuntimes?.register(connection);
     } catch (error) {
       if (epoch !== this.#epoch || this.#disposed) return;
       this.#closeRuntime();
@@ -338,10 +361,32 @@ export class LocalDemoDbSession {
 export class LocalDemoDbService {
   private readonly environment = inject(LOCAL_DEMODB_ENVIRONMENT);
   private readonly loadRuntime = inject(LOCAL_DEMODB_RUNTIME_LOADER);
+  private readonly queryRuntimes = inject(QueryRuntimeRegistry);
+  private readonly destroyRef = inject(DestroyRef);
+  private readonly sessions = new Map<string, LocalDemoDbSession>();
+
+  constructor() {
+    this.destroyRef.onDestroy(() => {
+      for (const session of this.sessions.values()) session.dispose();
+      this.sessions.clear();
+    });
+  }
 
   /** A session for the dataset (case-insensitive id), or undefined for an unknown dataset. Call `start()`. */
   open(datasetId: string): LocalDemoDbSession | undefined {
     const entry = findDemoSqliteDataset(datasetId);
-    return entry ? new LocalDemoDbSession(entry, this.environment, this.loadRuntime) : undefined;
+    if (!entry) return undefined;
+    const existing = this.sessions.get(entry.dataset);
+    if (existing) return existing;
+    const session = new LocalDemoDbSession(entry, this.environment, this.loadRuntime, this.queryRuntimes);
+    this.sessions.set(entry.dataset, session);
+    return session;
+  }
+
+  close(datasetId: string): void {
+    const key = findDemoSqliteDataset(datasetId)?.dataset ?? datasetId;
+    const session = this.sessions.get(key);
+    this.sessions.delete(key);
+    session?.dispose();
   }
 }
