@@ -16,21 +16,31 @@ import {
   provideAgentAccessForModuleClients,
 } from './agent-access.interceptor';
 import {
+  AGENT_ACTIVE_ORIGIN,
+  AgentAccessService,
   AGENT_SESSION_EXCHANGE_PATH,
   provideAgentLinkCode,
 } from './agent-access.service';
 import { AgentLinkCode } from './agent-link-code';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const AGENT = 'http://127.0.0.1:8989';
 const SCHEMA_URL = `${AGENT}/datatug/records/schema`;
 const TOKEN_KEY = `datatug.agent-session:${AGENT}`;
+const LEGACY_CODE_KEY = 'datatug.agent-link-code';
 
-function setup(code?: AgentLinkCode) {
+function setup(
+  code?: AgentLinkCode,
+  activeOrigin: string | undefined | (() => string | undefined) = AGENT,
+) {
+  const currentOrigin =
+    typeof activeOrigin === 'function' ? activeOrigin : () => activeOrigin;
   TestBed.configureTestingModule({
     providers: [
       provideHttpClient(withInterceptors([agentAccessInterceptor])),
       provideHttpClientTesting(),
       provideAgentLinkCode(code),
+      { provide: AGENT_ACTIVE_ORIGIN, useValue: currentOrigin },
       provideAgentAccessForModuleClients(),
     ],
   });
@@ -41,143 +51,251 @@ function setup(code?: AgentLinkCode) {
 }
 
 describe('agentAccessInterceptor', () => {
+  let fetchSpy: ReturnType<typeof vi.fn>;
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
   });
   afterEach(() => {
+    vi.unstubAllGlobals();
     localStorage.clear();
     sessionStorage.clear();
   });
 
-  it('exchanges the code once, then sends the token only to that agent', () => {
+  async function settleAsync(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  function ok(token: string): Promise<Response> {
+    return Promise.resolve(
+      new Response(JSON.stringify({ token }), { status: 200 }),
+    );
+  }
+
+  it('exchanges once with no ambient credentials, then attaches only to the active agent API', async () => {
+    fetchSpy.mockReturnValue(ok('tok-1'));
     const { http, ctrl } = setup({ origin: AGENT, code: 'v1.c' });
-    const done: unknown[] = [];
-    http.post(SCHEMA_URL, {}).subscribe((r) => done.push(r));
-    http.post(SCHEMA_URL, {}).subscribe((r) => done.push(r));
+    http.post(SCHEMA_URL, {}).subscribe();
+    await settleAsync();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const [url, options] = fetchSpy.mock.calls[0];
+    expect(url).toBe(AGENT + AGENT_SESSION_EXCHANGE_PATH);
+    expect(options).toEqual(
+      expect.objectContaining({
+        method: 'POST',
+        credentials: 'omit',
+        cache: 'no-store',
+        redirect: 'error',
+        body: JSON.stringify({ code: 'v1.c' }),
+      }),
+    );
+    const api = ctrl.expectOne(SCHEMA_URL);
+    expect(api.request.headers.get('Authorization')).toBe('Bearer tok-1');
+    expect(api.request.redirect).toBe('error');
+    expect(api.request.credentials).toBe('omit');
+    expect(api.request.withCredentials).toBe(false);
+    expect(api.request.cache).toBe('no-store');
+    api.flush({});
 
-    const exchange = ctrl.expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH);
-    expect(exchange.request.body).toEqual({ code: 'v1.c' });
-    expect(exchange.request.headers.has('Authorization')).toBe(false);
-    exchange.flush({ token: 'tok-1' });
-
-    const calls = ctrl.match(SCHEMA_URL);
-    expect(calls).toHaveLength(2);
-    for (const call of calls) {
-      expect(call.request.headers.get('Authorization')).toBe('Bearer tok-1');
-      call.flush({});
-    }
-    expect(done).toHaveLength(2);
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('tok-1');
-
-    http.get('https://api.example.com/x').subscribe();
-    const other = ctrl.expectOne('https://api.example.com/x');
-    expect(other.request.headers.has('Authorization')).toBe(false);
-    other.flush({});
-
-    http.get(`${AGENT}/datatug/agent-info`).subscribe();
-    ctrl.expectNone(AGENT + AGENT_SESSION_EXCHANGE_PATH);
-    ctrl.expectOne(`${AGENT}/datatug/agent-info`).flush({});
+    http.get(`${AGENT}/unrelated`).subscribe();
+    expect(
+      ctrl.expectOne(`${AGENT}/unrelated`).request.headers.has('Authorization'),
+    ).toBe(false);
+    http.get('http://127.0.0.1:9000/datatug/records/schema').subscribe();
+    expect(
+      ctrl
+        .expectOne('http://127.0.0.1:9000/datatug/records/schema')
+        .request.headers.has('Authorization'),
+    ).toBe(false);
+    http.get('https://api.example.com/datatug/records/schema').subscribe();
+    expect(
+      ctrl
+        .expectOne('https://api.example.com/datatug/records/schema')
+        .request.headers.has('Authorization'),
+    ).toBe(false);
     ctrl.verify();
   });
 
-  it('falls back to a token held from an earlier page when the code is spent (a second click)', () => {
+  it('does not retry or persist a one-shot code after a lost exchange acknowledgement', async () => {
+    fetchSpy.mockRejectedValue(new TypeError('network failure'));
+    const { http } = setup({ origin: AGENT, code: 'v1.once' });
+    let status = -1;
+    http.post(SCHEMA_URL, {}).subscribe({ error: (e) => (status = e.status) });
+    await settleAsync();
+    expect(status).toBe(401);
+    expect(sessionStorage.length).toBe(0);
+    TestBed.resetTestingModule();
+    const second = setup();
+    second.http.post(SCHEMA_URL, {}).subscribe();
+    await settleAsync();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    expect(
+      second.ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization'),
+    ).toBe(false);
+    second.ctrl.verify();
+  });
+
+  it('does not attach a token when the active agent changes during the exchange', async () => {
+    let resolveFetch!: (response: Response) => void;
+    fetchSpy.mockReturnValue(
+      new Promise<Response>((resolve) => (resolveFetch = resolve)),
+    );
+    let currentOrigin: string | undefined = AGENT;
+    let status = -1;
+    const { http, ctrl } = setup(
+      { origin: AGENT, code: 'v1.route-change' },
+      () => currentOrigin,
+    );
+    http.get(SCHEMA_URL).subscribe({ error: (err) => (status = err.status) });
+    currentOrigin = 'http://127.0.0.1:9000';
+    resolveFetch(
+      new Response(JSON.stringify({ token: 'tok-stale' }), { status: 200 }),
+    );
+    await settleAsync();
+    expect(status).toBe(0);
+    ctrl.expectNone(SCHEMA_URL);
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('tok-stale');
+    ctrl.verify();
+  });
+
+  it('rejects redirects at the exchange transport boundary', async () => {
+    fetchSpy.mockReturnValue(
+      Promise.reject(new TypeError('redirect rejected')),
+    );
+    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.redirect' });
+    http.post(SCHEMA_URL, {}).subscribe({ error: () => undefined });
+    await settleAsync();
+    expect(fetchSpy.mock.calls[0][1].redirect).toBe('error');
+    expect(ctrl.match(SCHEMA_URL)).toHaveLength(0);
+    ctrl.verify();
+  });
+
+  it('never exchanges a code minted for another agent or attaches to another active agent', () => {
+    const otherAgent = 'http://127.0.0.1:9000';
+    localStorage.setItem(`datatug.agent-session:${otherAgent}`, 'tok-other');
+    const { http, ctrl } = setup(undefined, otherAgent);
+    http.get(SCHEMA_URL).subscribe();
+    expect(
+      ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization'),
+    ).toBe(false);
+    http.get(`${otherAgent}/datatug/records/schema`).subscribe();
+    const active = ctrl.expectOne(`${otherAgent}/datatug/records/schema`);
+    expect(active.request.headers.get('Authorization')).toBe(
+      'Bearer tok-other',
+    );
+    expect(active.request.redirect).toBe('error');
+    active.flush({});
+    expect(fetchSpy).not.toHaveBeenCalled();
+    ctrl.verify();
+  });
+
+  it('keeps a newer persisted token after an old in-memory token gets a 401, then uses it', () => {
+    fetchSpy.mockReturnValue(ok('tok-old'));
+    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.old' });
+    http.get(SCHEMA_URL).subscribe({ error: () => undefined });
+    return settleAsync().then(() => {
+      const oldRequest = ctrl.expectOne(SCHEMA_URL);
+      expect(oldRequest.request.headers.get('Authorization')).toBe(
+        'Bearer tok-old',
+      );
+      localStorage.setItem(TOKEN_KEY, 'tok-new');
+      oldRequest.flush({}, { status: 401, statusText: 'Unauthorized' });
+      expect(localStorage.getItem(TOKEN_KEY)).toBe('tok-new');
+      http.get(SCHEMA_URL).subscribe();
+      const retry = ctrl.expectOne(SCHEMA_URL);
+      expect(retry.request.headers.get('Authorization')).toBe('Bearer tok-new');
+      retry.flush({});
+      ctrl.verify();
+    });
+  });
+
+  it('scrubs a legacy session-stored code without reading or replaying it', () => {
+    sessionStorage.setItem(
+      LEGACY_CODE_KEY,
+      JSON.stringify({ origin: AGENT, code: 'v1.old' }),
+    );
+    const getItem = vi.spyOn(Storage.prototype, 'getItem');
+    setup();
+    TestBed.inject(AgentAccessService);
+    expect(sessionStorage.length).toBe(0);
+    expect(getItem).not.toHaveBeenCalledWith(LEGACY_CODE_KEY);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+
+  it('uses a held token when a second tab exchanges an already-spent link', async () => {
     localStorage.setItem(TOKEN_KEY, 'tok-held');
+    fetchSpy.mockReturnValue(
+      Promise.resolve(new Response('{}', { status: 401 })),
+    );
     const { http, ctrl } = setup({ origin: AGENT, code: 'v1.spent' });
-    http.post(SCHEMA_URL, {}).subscribe();
-    ctrl
-      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
-      .flush({ error: 'link-expired' }, { status: 401, statusText: 'Unauthorized' });
+    http.get(SCHEMA_URL).subscribe();
+    await settleAsync();
     expect(
       ctrl.expectOne(SCHEMA_URL).request.headers.get('Authorization'),
     ).toBe('Bearer tok-held');
+    ctrl.verify();
   });
 
-  it('exchanges a fresh code instead of sending a token held from before the agent restarted', () => {
+  it('uses a fresh link token instead of a token held from before an agent restart', async () => {
     localStorage.setItem(TOKEN_KEY, 'tok-before-restart');
+    fetchSpy.mockReturnValue(ok('tok-fresh'));
     const { http, ctrl } = setup({ origin: AGENT, code: 'v1.fresh' });
-    http.post(SCHEMA_URL, {}).subscribe();
-    ctrl.expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH).flush({ token: 'tok-new' });
+    http.get(SCHEMA_URL).subscribe();
+    await settleAsync();
     expect(
       ctrl.expectOne(SCHEMA_URL).request.headers.get('Authorization'),
-    ).toBe('Bearer tok-new');
-    expect(localStorage.getItem(TOKEN_KEY)).toBe('tok-new');
+    ).toBe('Bearer tok-fresh');
+    expect(localStorage.getItem(TOKEN_KEY)).toBe('tok-fresh');
+    ctrl.verify();
   });
 
-  it('keeps an unspent code across a reload of the tab, and drops it once spent', () => {
-    let first = setup({ origin: AGENT, code: 'v1.c' });
-    first.http.post(SCHEMA_URL, {}).subscribe({ error: () => undefined });
-    first.ctrl
-      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
-      .error(new ProgressEvent('error'), { status: 0 });
-    TestBed.resetTestingModule();
-    // The reloaded page has no code in its address any more.
-    first = setup(undefined);
-    first.http.post(SCHEMA_URL, {}).subscribe();
-    const exchange = first.ctrl.expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH);
-    expect(exchange.request.body).toEqual({ code: 'v1.c' });
-    exchange.flush({ token: 'tok-3' });
-    expect(sessionStorage.length).toBe(0);
-  });
-
-  it('turns a refused code into a 401 and does not send the request', () => {
-    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.used' });
+  it('does not send the API request when a code is refused and no held token exists', async () => {
+    fetchSpy.mockReturnValue(
+      Promise.resolve(new Response('{}', { status: 401 })),
+    );
+    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.refused' });
     let status = -1;
-    http.post(SCHEMA_URL, {}).subscribe({ error: (e) => (status = e.status) });
-    ctrl
-      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
-      .flush({ error: 'link-expired' }, { status: 401, statusText: 'Unauthorized' });
+    http.get(SCHEMA_URL).subscribe({ error: (err) => (status = err.status) });
+    await settleAsync();
     expect(status).toBe(401);
     ctrl.expectNone(SCHEMA_URL);
+    ctrl.verify();
   });
 
-  it('keeps the code when the agent is not reachable, so Check again can exchange it', () => {
-    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.c' });
-    let status = -1;
-    http.post(SCHEMA_URL, {}).subscribe({ error: (e) => (status = e.status) });
-    ctrl
-      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
-      .error(new ProgressEvent('error'), { status: 0 });
-    expect(status).toBe(0);
-
-    http.post(SCHEMA_URL, {}).subscribe();
-    ctrl.expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH).flush({ token: 'tok-2' });
+  it('keeps old-agent 404 compatibility by sending the API request without a token', async () => {
+    fetchSpy.mockReturnValue(
+      Promise.resolve(new Response('{}', { status: 404 })),
+    );
+    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.old-agent' });
+    http.get(SCHEMA_URL).subscribe();
+    await settleAsync();
     expect(
-      ctrl.expectOne(SCHEMA_URL).request.headers.get('Authorization'),
-    ).toBe('Bearer tok-2');
+      ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization'),
+    ).toBe(false);
+    ctrl.verify();
   });
 
-  it('sends no token to an agent too old to have the exchange route', () => {
-    const { http, ctrl } = setup({ origin: AGENT, code: 'v1.c' });
-    http.post(SCHEMA_URL, {}).subscribe();
-    ctrl
-      .expectOne(AGENT + AGENT_SESSION_EXCHANGE_PATH)
-      .flush('404 page not found', { status: 404, statusText: 'Not Found' });
-    expect(ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization')).toBe(false);
-  });
-
-  it('forgets a token the agent refuses', () => {
-    localStorage.setItem(TOKEN_KEY, 'tok-old');
+  it('forgets the token an agent currently rejects', () => {
+    localStorage.setItem(TOKEN_KEY, 'tok-revoked');
     const { http, ctrl } = setup();
-    http.post(SCHEMA_URL, {}).subscribe({ error: () => undefined });
+    http.get(SCHEMA_URL).subscribe({ error: () => undefined });
     ctrl
       .expectOne(SCHEMA_URL)
       .flush({}, { status: 401, statusText: 'Unauthorized' });
     expect(localStorage.getItem(TOKEN_KEY)).toBeNull();
-
-    http.post(SCHEMA_URL, {}).subscribe({ error: () => undefined });
-    expect(ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization')).toBe(false);
+    http.get(SCHEMA_URL).subscribe();
+    expect(
+      ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization'),
+    ).toBe(false);
+    ctrl.verify();
   });
 
-  it('never exchanges a code minted for another agent', () => {
-    const { http, ctrl } = setup({ origin: 'http://127.0.0.1:9000', code: 'v1.c' });
-    http.post(SCHEMA_URL, {}).subscribe();
-    ctrl.expectNone('http://127.0.0.1:9000' + AGENT_SESSION_EXCHANGE_PATH);
-    expect(ctrl.expectOne(SCHEMA_URL).request.headers.has('Authorization')).toBe(false);
-  });
-
-  it('also sends the token from an HttpClient a library module provides itself', () => {
-    localStorage.setItem(TOKEN_KEY, 'tok-held');
+  it('uses FetchBackend for authenticated module clients so redirect:error is enforced there too', async () => {
+    fetchSpy.mockReturnValue(
+      Promise.resolve(new Response('{}', { status: 200 })),
+    );
+    localStorage.setItem(TOKEN_KEY, 'tok-module');
     const { ctrl } = setup();
     const root = TestBed.inject(EnvironmentInjector);
     const moduleInjector = createEnvironmentInjector(
@@ -187,9 +305,15 @@ describe('agentAccessInterceptor', () => {
       ],
       root,
     );
-    moduleInjector.get(HttpClient).get(`${AGENT}/datatug/exec/select`).subscribe();
-    const calls = ctrl.match(`${AGENT}/datatug/exec/select`);
-    expect(calls).toHaveLength(1);
-    expect(calls[0].request.headers.get('Authorization')).toBe('Bearer tok-held');
+    moduleInjector.get(HttpClient).get(SCHEMA_URL).subscribe();
+    await settleAsync();
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+    const init = fetchSpy.mock.calls[0][1];
+    expect(init.redirect).toBe('error');
+    expect(init.credentials).toBe('omit');
+    expect(new Headers(init.headers).get('Authorization')).toBe(
+      'Bearer tok-module',
+    );
+    ctrl.verify();
   });
 });

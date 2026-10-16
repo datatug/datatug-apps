@@ -28,7 +28,10 @@ import {
 } from '@sneat/logging';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
-import { agentBaseUrlOfPath } from './app/agent-base-url';
+import {
+  agentBaseUrlOfPath,
+  explicitAgentOriginOfPath,
+} from './app/agent-base-url';
 import {
   provideDatatugBusinessCheckoutApiOrigin,
   provideDatatugBusinessCheckoutLiveApiOrigin,
@@ -53,7 +56,10 @@ import {
   agentAccessInterceptor,
   provideAgentAccessForModuleClients,
 } from './app/agent-access/agent-access.interceptor';
-import { provideAgentLinkCode } from './app/agent-access/agent-access.service';
+import {
+  AGENT_ACTIVE_ORIGIN,
+  provideAgentLinkCode,
+} from './app/agent-access/agent-access.service';
 import {
   provideLinkTelemetryPrivacy,
   withPosthogLinkPrivacy,
@@ -102,6 +108,11 @@ bootstrapApplication(DatatugAppComponent, {
       withInterceptors([agentAccessInterceptor, cliChatProjectInterceptor]),
     ),
     provideAgentLinkCode(agentLinkCode),
+    {
+      provide: AGENT_ACTIVE_ORIGIN,
+      useValue: (): string | undefined =>
+        explicitAgentOriginOfPath(location.pathname),
+    },
     provideAgentAccessForModuleClients(),
     provideLinkTelemetryPrivacy(),
     provideIonicAngular(),
