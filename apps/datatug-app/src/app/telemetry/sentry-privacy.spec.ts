@@ -214,3 +214,34 @@ describe('the query result page', () => {
     expectNoResult(sent(options.beforeSendSpan?.({ description: `GET ${AGENT_RESULT}`, data: { 'http.url': AGENT_RESULT } } as never)));
   });
 });
+
+describe('the query editor opened from a stored result', () => {
+  const RESULT_ID = 'qr-7f3a9c';
+  const PROJECT = 'secret-project';
+  const EDITOR = `/store/http-127.0.0.1:8989/project/${PROJECT}/query`;
+
+  it('is a link page with or without its query, but a deeper path or another page is not', () => {
+    expect(isLinkRoute(EDITOR)).toBe(true);
+    expect(isLinkRoute(`${EDITOR}?result=${RESULT_ID}&env=local`)).toBe(true);
+    expect(isLinkRoute(`${EDITOR}/some/saved`)).toBe(false);
+    expect(isLinkRoute('/store/http-127.0.0.1:8989/project/demo/queries')).toBe(false);
+  });
+
+  it('replaces the result id of the query and the project id of the path', () => {
+    expect(redactResultIds(`${EDITOR}?result=${RESULT_ID}&env=local`)).toBe(
+      '/store/http-127.0.0.1:8989/project/:projectId/query?result=:resultId&env=local',
+    );
+    expect(redactResultIds(`x ?env=local&result=${RESULT_ID}#frag`)).toBe(
+      'x ?env=local&result=:resultId#frag',
+    );
+    expect(redactResultIds(`${EDITOR}`)).toBe('/store/http-127.0.0.1:8989/project/:projectId/query');
+    // another project page keeps its path
+    expect(redactResultIds('/store/http-127.0.0.1:8989/project/demo/queries')).toBe(
+      '/store/http-127.0.0.1:8989/project/demo/queries',
+    );
+    const url = scrubText(`https://datatug.app${EDITOR}?result=${RESULT_ID}&env=local#code=${CODE}`, false);
+    expect(url).toBe('https://datatug.app/store/http-127.0.0.1:8989/project/:projectId/query');
+    expect(url).not.toContain(RESULT_ID);
+    expect(url).not.toContain(CODE);
+  });
+});
