@@ -175,18 +175,38 @@
       }
     </ion-card>
   } @else if (activeTab() === 'boards') {
-    @if (projectItemsUnsupported()) {
+    @if (projectAssetsUnsupported()) {
       <ion-card>
         <ion-card-content role="status">
           Boards are unavailable for this project connection or branch.
         </ion-card-content>
       </ion-card>
     } @else {
-      <sneat-datatug-folder
-        [path]="'~'"
-        [projectRef]="project()?.ref"
-        [hideTabs]="true"
-      />
+      <ion-card
+        ><ion-list>
+          @if (boardError()) {
+            <ion-item
+              ><ion-label color="danger"
+                >Boards could not be loaded. Refresh to try again.</ion-label
+              ></ion-item
+            >
+          } @else if (boards(); as items) {
+            @for (board of items; track board.id) {
+              <ion-item button detail (click)="goBoard(board)"
+                ><ion-label>{{ board.title || board.id }}</ion-label></ion-item
+              >
+            } @empty {
+              <ion-item
+                ><ion-label
+                  >No boards have been created yet.</ion-label
+                ></ion-item
+              >
+            }
+          } @else {
+            <ion-item><ion-label>Loading boards…</ion-label></ion-item>
+          }
+        </ion-list></ion-card
+      >
     }
   } @else if (activeTab() === 'queries') {
     <sneat-datatug-project-queries-preview [projectRef]="project()?.ref" />
@@ -206,7 +226,7 @@
       />
     }
   } @else if (activeTab() === 'environments') {
-    @if (projectItemsUnsupported()) {
+    @if (projectAssetsUnsupported()) {
       <ion-card
         ><ion-card-content role="status"
           >Environments are unavailable for this project connection or
@@ -266,7 +286,7 @@
       </ion-card>
     }
   } @else {
-    @if (projectItemsUnsupported()) {
+    @if (projectAssetsUnsupported()) {
       <ion-card
         ><ion-card-content role="status"
           >Entities are unavailable for this project connection or

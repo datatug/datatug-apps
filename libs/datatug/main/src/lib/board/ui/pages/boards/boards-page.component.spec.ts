@@ -2,15 +2,38 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
+import { map } from 'rxjs/operators';
 import { AlertController } from '@ionic/angular';
 
 import { BoardsPageComponent } from './boards-page.component';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
 import { DatatugBoardService } from '../../../core/datatug-board.service';
-import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
+import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
 import { IProjectContext } from '../../../../nav/nav-models';
 import { IFolder } from '../../../../models/definition/folder';
+import { folderItemsAsList } from '../../../../models/definition/folder';
+
+const projectAssetsFromFolderReader = (
+  watchFolder: ReturnType<typeof vi.fn>,
+) => ({
+  boards: (ref: {
+    storeId: string;
+    projectId: string;
+    branch?: string;
+    projectApi?: 'cloud' | 'local';
+  }) =>
+    watchFolder({ ...ref, id: '~' }).pipe(
+      map((folder: IFolder | null) =>
+        folder?.boards
+          ? folderItemsAsList(folder.boards).map(({ id, name }) => ({
+              id,
+              title: name,
+            }))
+          : [],
+      ),
+    ),
+});
 
 describe('DataboardsPage', () => {
   let component: BoardsPageComponent;
@@ -47,8 +70,8 @@ describe('DataboardsPage', () => {
         { provide: DatatugBoardService, useValue: { createNewBoard: vi.fn() } },
         { provide: AlertController, useValue: { create: vi.fn() } },
         {
-          provide: DatatugFoldersService,
-          useValue: { watchFolder: vi.fn(() => of()) },
+          provide: ProjectAssetsReadService,
+          useValue: { boards: vi.fn(() => of([])) },
         },
       ],
     })
@@ -136,8 +159,10 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
         { provide: DatatugBoardService, useValue: { createNewBoard: vi.fn() } },
         { provide: AlertController, useValue: { create: vi.fn() } },
         {
-          provide: DatatugFoldersService,
-          useValue: { watchFolder: vi.fn(() => watchFolder$.asObservable()) },
+          provide: ProjectAssetsReadService,
+          useValue: projectAssetsFromFolderReader(
+            vi.fn(() => watchFolder$.asObservable()),
+          ),
         },
       ],
     })
@@ -190,9 +215,8 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     expect(fixture.nativeElement.textContent).not.toContain('New board');
   });
 
-  it('clears a visible board when the project changes to a qualified ref', async () => {
+  it('reloads visible boards when the project changes to a qualified ref', async () => {
     fixture.detectChanges();
-    const watchFolder = TestBed.inject(DatatugFoldersService).watchFolder;
     currentProject$.next({
       ref: { projectId: 'demo', storeId: 'github.com' },
     });
@@ -209,11 +233,10 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
       },
     });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('sneat-card-list')).toBeNull();
-    expect(
-      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
-    ).toContain('Boards are unavailable');
-    expect(watchFolder).toHaveBeenCalledTimes(1);
+    expect(boardsCard().isLoading).toBe(true);
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Boards are unavailable',
+    );
   });
 });
 
@@ -244,7 +267,10 @@ describe('BoardsPage project switching', () => {
         },
         { provide: DatatugBoardService, useValue: { createNewBoard: vi.fn() } },
         { provide: AlertController, useValue: { create: vi.fn() } },
-        { provide: DatatugFoldersService, useValue: { watchFolder } },
+        {
+          provide: ProjectAssetsReadService,
+          useValue: projectAssetsFromFolderReader(watchFolder),
+        },
       ],
     })
       .overrideComponent(BoardsPageComponent, {
@@ -293,12 +319,12 @@ describe('BoardsPage project switching', () => {
       },
     });
     expect(page.boards()).toBeUndefined();
-    expect(page.unsupportedProject()).toBe(true);
+    expect(page.unsupportedProject()).toBe(false);
     secondFolder.next({ id: '~', boards: { stale: { name: 'Stale branch' } } });
     expect(page.boards()).toBeUndefined();
     thirdFolder.next({ id: '~', boards: { third: { name: 'Feature board' } } });
-    expect(page.boards()).toBeUndefined();
-    expect(watchFolder).toHaveBeenCalledTimes(2);
+    expect(page.boards()).toEqual([{ id: 'third', title: 'Feature board' }]);
+    expect(watchFolder).toHaveBeenCalledTimes(3);
     fixture.destroy();
   });
 });
@@ -327,7 +353,10 @@ describe('BoardsPage read errors', () => {
           provide: DatatugNavService,
           useValue: { projectPageUrl: vi.fn(), goBoard: vi.fn() },
         },
-        { provide: DatatugFoldersService, useValue: { watchFolder } },
+        {
+          provide: ProjectAssetsReadService,
+          useValue: projectAssetsFromFolderReader(watchFolder),
+        },
       ],
     })
       .overrideComponent(BoardsPageComponent, {

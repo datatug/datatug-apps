@@ -32,7 +32,7 @@ import {
   switchMap,
   takeUntil,
 } from 'rxjs/operators';
-import { EMPTY, Subject, combineLatest, throwError } from 'rxjs';
+import { EMPTY, Subject, combineLatest } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Board } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
@@ -50,7 +50,7 @@ import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-c
 import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
-import { DatatugBoardService } from '../../../core/datatug-board.service';
+import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
 import { BoardComponent } from '../../components/board/board.component';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 import { BoardChoicesService } from '../../../core/board-choices.service';
@@ -101,8 +101,8 @@ import { BoardReadForRun } from '../../../core/board-read-for-run';
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly boardService = inject(DatatugBoardService);
   private readonly choices = inject(BoardChoicesService);
+  private readonly assets = inject(ProjectAssetsReadService);
   private readonly route = inject(ActivatedRoute);
   private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
@@ -124,20 +124,19 @@ export class BoardPageComponent implements OnInit, OnDestroy {
 
   readonly boardDef = signal<Board | undefined>(undefined);
   readonly favoriteError = signal<string | undefined>(undefined);
+  readonly canSaveFavorite = computed(() =>
+    this.choices.canPersist(this.projectRef()),
+  );
   readonly choicesForBoard = computed(() =>
     this.choices.read(this.projectRef(), this.boardId() || undefined),
   );
   readonly readBoardForRun: BoardReadForRun = (ref, id) =>
-    ref.projectApi || ref.branch
-      ? throwError(
-          () => new Error('This project connection cannot re-read boards yet.'),
-        )
-      : this.boardService.getBoard(ref.storeId, ref.projectId, id);
+    this.assets.board(ref, id);
 
   toggleFavorite(): void {
     const ref = this.projectRef();
     const id = this.boardId();
-    if (ref && id && this.boardDef()) {
+    if (ref && id && this.boardDef() && this.canSaveFavorite()) {
       this.favoriteError.set(
         this.choices.setFavorite(ref, id, !this.choicesForBoard().favorite)
           ? undefined
@@ -147,6 +146,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
   readonly projectRef = signal<IProjectRef | undefined>(undefined);
   readonly unsupportedProject = computed(() => {
+    const ref = this.projectRef();
+    return !!ref?.spaceID;
+  });
+  readonly lookupUnavailable = computed(() => {
     const ref = this.projectRef();
     return !!(ref?.projectApi || ref?.branch);
   });
@@ -206,29 +209,21 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.favoriteError.set(undefined);
           this.loading.set(true);
           if (!ref) return EMPTY;
-          // The Board reader accepts only store and project IDs, so a
-          // qualified ref would display a different branch or connection.
-          if (ref.projectApi || ref.branch) {
-            this.loading.set(false);
-            return EMPTY;
-          }
           if (!id) {
             this.loading.set(false);
             this.loadError.set('Board ID is missing.');
             return EMPTY;
           }
-          return this.boardService
-            .getBoard(ref.storeId, ref.projectId, id)
-            .pipe(
-              catchError((err: unknown) => {
-                this.errorLogger.logError(err, 'Failed to get board');
-                this.loadError.set(
-                  'This board could not be loaded. Try opening it again from Boards.',
-                );
-                this.loading.set(false);
-                return EMPTY;
-              }),
-            );
+          return this.assets.board(ref, id).pipe(
+            catchError((err: unknown) => {
+              this.errorLogger.logError(err, 'Failed to get board');
+              this.loadError.set(
+                'This board could not be loaded. Try opening it again from Boards.',
+              );
+              this.loading.set(false);
+              return EMPTY;
+            }),
+          );
         }),
         takeUntil(this.destroyed$),
       )
@@ -260,6 +255,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   lookup(p: IParamWithDefAndValue): void {
+    if (this.projectRef()?.projectApi || this.projectRef()?.branch) return;
     const storeId = this.storeId();
     const projectId = this.projectId();
     const envId = this.envId();

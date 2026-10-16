@@ -19,6 +19,7 @@ import {
   IEntityFieldDef,
 } from '../../../models/definition/metapedia/entity';
 import { IProjectContext } from '../../../nav/nav-models';
+import { IProjectRef } from '../../../core/project-context';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
@@ -56,7 +57,7 @@ function entityServiceStub() {
   );
   return {
     getAllEntities: vi.fn(() => of(entityRecords)),
-    getEntity: vi.fn((_store: string, _proj: string, entityId: string) =>
+    getEntity: vi.fn((_ref: IProjectRef, entityId: string) =>
       of({
         id: entityId,
         dbo: { id: entityId, fields: ENTITY_FIELDS[entityId] ?? [] } as IEntity,
@@ -132,6 +133,7 @@ describe('InvestigationContextPageComponent', () => {
   let navigateSpy: ReturnType<typeof vi.fn>;
   let navigateByUrlSpy: ReturnType<typeof vi.fn>;
   let entityService: ReturnType<typeof entityServiceStub>;
+  let currentProjectChanges: Subject<IProjectContext>;
 
   async function create(
     fixtures: { applicable?: ApplicableQueriesResponse } = {},
@@ -140,6 +142,7 @@ describe('InvestigationContextPageComponent', () => {
     navigateSpy = vi.fn(() => Promise.resolve(true));
     navigateByUrlSpy = vi.fn(() => Promise.resolve(true));
     entityService = entityServiceStub();
+    currentProjectChanges = new Subject<IProjectContext>();
 
     await TestBed.configureTestingModule({
       imports: [InvestigationContextPageComponent],
@@ -152,7 +155,7 @@ describe('InvestigationContextPageComponent', () => {
         {
           provide: DatatugNavContextService,
           useValue: {
-            currentProject: of(project),
+            currentProject: currentProjectChanges,
             currentEnv: of({ id: 'production' }),
           },
         },
@@ -207,6 +210,7 @@ describe('InvestigationContextPageComponent', () => {
     fixture = TestBed.createComponent(InvestigationContextPageComponent);
     component = fixture.componentInstance;
     context = TestBed.inject(InvestigationContextService);
+    currentProjectChanges.next(project);
   }
 
   beforeEach(() => {
@@ -279,6 +283,54 @@ describe('InvestigationContextPageComponent', () => {
       expect(optionTexts(entitySelect)).toEqual(['Customer', 'Invoice']);
     });
 
+    it('cancels old project list and same-ID field reads when the branch changes', () => {
+      const oldList = new Subject<IRecord<IEntity>[]>();
+      const oldFields = new Subject<IRecord<IEntity>>();
+      const newFields = of({
+        id: 'Customer',
+        dbo: {
+          id: 'Customer',
+          fields: [{ id: 'BranchField', type: 'string' }],
+        } as IEntity,
+      });
+      entityService.getAllEntities.mockImplementation((ref) =>
+        ref.branch === 'old' ? oldList : of([{ id: 'NewEntity' }]),
+      );
+      entityService.getEntity.mockImplementation((ref) =>
+        ref.branch === 'old' ? oldFields : newFields,
+      );
+      currentProjectChanges.next({ ref: { ...project.ref, branch: 'old' } });
+      (
+        component as unknown as { selectedEntity: { set(id: string): void } }
+      ).selectedEntity.set('Customer');
+      (component as unknown as { loadFields(id: string): void }).loadFields(
+        'Customer',
+      );
+      currentProjectChanges.next({ ref: { ...project.ref, branch: 'new' } });
+      (
+        component as unknown as { selectedEntity: { set(id: string): void } }
+      ).selectedEntity.set('Customer');
+      (component as unknown as { loadFields(id: string): void }).loadFields(
+        'Customer',
+      );
+
+      oldList.next([{ id: 'OldEntity' }]);
+      oldFields.next({
+        id: 'Customer',
+        dbo: {
+          id: 'Customer',
+          fields: [{ id: 'OldField', type: 'string' }],
+        } as IEntity,
+      });
+
+      const state = component as unknown as {
+        entities(): readonly string[];
+        fields(): readonly IEntityFieldDef[];
+      };
+      expect(state.entities()).toEqual(['NewEntity']);
+      expect(state.fields()).toEqual([{ id: 'BranchField', type: 'string' }]);
+    });
+
     it('form validity — canAdd() stays false, and clicking Add is a no-op, until Entity, Field, Condition and Value are all set', () => {
       const { entitySelect, valueInput, addButton } = formEls();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -326,8 +378,7 @@ describe('InvestigationContextPageComponent', () => {
       fixture.detectChanges();
 
       expect(entityService.getEntity).toHaveBeenCalledWith(
-        'localhost:8989',
-        'demo-project',
+        project.ref,
         'Customer',
       );
       expect(optionTexts(formEls().fieldSelect)).toEqual(['ID', 'Name']);
@@ -342,8 +393,7 @@ describe('InvestigationContextPageComponent', () => {
       fixture.detectChanges();
 
       expect(entityService.getEntity).toHaveBeenCalledWith(
-        'localhost:8989',
-        'demo-project',
+        project.ref,
         'Invoice',
       );
       expect(protectedComponent.selectedField()).toBeUndefined();
@@ -962,7 +1012,10 @@ describe('InvestigationContextPageComponent', () => {
     }
 
     it('opens the query of a GitHub project at its short address', () => {
-      openApplicableOf({ storeId: 'github.com', projectId: 'chinook-demo@datatug@' });
+      openApplicableOf({
+        storeId: 'github.com',
+        projectId: 'chinook-demo@datatug@',
+      });
 
       expect(navigateByUrlSpy).toHaveBeenCalledWith(
         '/project/github.com/datatug/chinook-demo/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices',
@@ -975,9 +1028,15 @@ describe('InvestigationContextPageComponent', () => {
 
       expect(navigateByUrlSpy).not.toHaveBeenCalled();
       expect(
-        (TestBed.inject(ErrorLogger) as unknown as { logError: ReturnType<typeof vi.fn> }).logError,
+        (
+          TestBed.inject(ErrorLogger) as unknown as {
+            logError: ReturnType<typeof vi.fn>;
+          }
+        ).logError,
       ).toHaveBeenCalledWith(
-        expect.objectContaining({ message: expect.stringContaining('no exact address') }),
+        expect.objectContaining({
+          message: expect.stringContaining('no exact address'),
+        }),
         'Failed to open applicable query',
       );
     });

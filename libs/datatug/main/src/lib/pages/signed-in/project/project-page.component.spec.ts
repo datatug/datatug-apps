@@ -18,6 +18,7 @@ import { ProjectService } from '../../../services/project/project.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { EntityService } from '../../../services/unsorted/entity.service';
+import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 
 interface TestDoubles {
   readonly logError: ReturnType<typeof vi.fn>;
@@ -82,6 +83,14 @@ function baseProviders(
     {
       provide: EntityService,
       useValue: { getAllEntities: vi.fn(() => of([])) },
+    },
+    {
+      provide: ProjectAssetsReadService,
+      useValue: {
+        boards: vi.fn(() => of([])),
+        environments: vi.fn(() => of([])),
+        entities: vi.fn(() => of([])),
+      },
     },
     {
       provide: NavController,
@@ -337,29 +346,29 @@ describe('ProjectPage rendering a local-agent store project', () => {
     ).not.toBeNull();
   });
 
-  it('settles the Boards folder card out of its loading state (no folder on a local agent = empty list, not a spinner)', async () => {
+  it('settles the Boards asset list out of its loading state for a local agent', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
-    const boardsCard = fixture.nativeElement.querySelector(
-      'sneat-card-list',
-    ) as HTMLElement & { isLoading?: boolean; items?: unknown[] };
-    expect(boardsCard.isLoading).toBe(false);
-    expect(boardsCard.items).toEqual([]);
+    await fixture.whenStable();
+    expect(
+      TestBed.inject(ProjectAssetsReadService).boards,
+    ).toHaveBeenCalledWith({
+      storeId: 'localhost:8989',
+      projectId: summary.id,
+    });
   });
 
-  it('does not show an unqualified Boards folder after selecting a branch', async () => {
+  it('uses the asset reader after selecting a branch', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('sneat-datatug-folder'),
-    ).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('ion-list')).not.toBeNull();
     const getFull = TestBed.inject(ProjectService).getFull as ReturnType<
       typeof vi.fn
     >;
-    const getAllEntities = TestBed.inject(EntityService)
-      .getAllEntities as ReturnType<typeof vi.fn>;
+    const assets = TestBed.inject(ProjectAssetsReadService);
+    const entityReads = (assets.entities as ReturnType<typeof vi.fn>).mock.calls
+      .length;
     const fullReads = getFull.mock.calls.length;
-    const entityReads = getAllEntities.mock.calls.length;
     const summaryReads = doubles.watchProjectSummary.mock.calls.length;
 
     const page = fixture.componentInstance as unknown as {
@@ -378,7 +387,7 @@ describe('ProjectPage rendering a local-agent store project', () => {
     });
     await fixture.whenStable();
     expect(getFull).toHaveBeenCalledTimes(fullReads);
-    expect(getAllEntities).toHaveBeenCalledTimes(entityReads);
+    expect(assets.entities).toHaveBeenCalledTimes(entityReads + 1);
     expect(doubles.watchProjectSummary).toHaveBeenCalledTimes(summaryReads);
     expect(
       (
@@ -402,9 +411,12 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(
       fixture.nativeElement.querySelector('sneat-datatug-folder'),
     ).toBeNull();
-    expect(fixture.nativeElement.textContent).toContain(
-      'Boards are unavailable',
-    );
+    expect(assets.boards).toHaveBeenCalledWith({
+      storeId: 'localhost:8989',
+      projectId: summary.id,
+      projectApi: 'local',
+      branch: 'feature',
+    });
 
     for (const [tab, label] of [
       [2, 'Environments'],
@@ -417,9 +429,15 @@ describe('ProjectPage rendering a local-agent store project', () => {
         ] as HTMLButtonElement
       ).click();
       await fixture.whenStable();
-      expect(fixture.nativeElement.textContent).toContain(
-        `${label} are unavailable`,
-      );
+      if (label === 'Databases') {
+        expect(fixture.nativeElement.textContent).toContain(
+          'Databases are unavailable',
+        );
+      } else {
+        expect(fixture.nativeElement.textContent).not.toContain(
+          `${label} are unavailable`,
+        );
+      }
     }
   });
 });
@@ -518,13 +536,11 @@ describe('ProjectPage overview lists', () => {
       providers: [
         ...baseProviders({ logError, watchProjectSummary: vi.fn(() => of()) }),
         {
-          provide: EnvironmentService,
-          useValue: { listEnvironments: vi.fn(() => of([])) },
-        },
-        {
-          provide: EntityService,
+          provide: ProjectAssetsReadService,
           useValue: {
-            getAllEntities: vi.fn(() => throwError(() => new Error('offline'))),
+            boards: vi.fn(() => of([])),
+            environments: vi.fn(() => of([])),
+            entities: vi.fn(() => throwError(() => new Error('offline'))),
           },
         },
       ],
@@ -559,16 +575,16 @@ describe('ProjectPage overview lists', () => {
 
   it('drops delayed data from the previous project and navigates using the current project', async () => {
     const oldEnvironments = new Subject<{ id: string; title: string }[]>();
-    const oldEntities = new Subject<{ id: string; dbo: { title: string } }[]>();
-    const listEnvironments = vi.fn((projectId: string) =>
-      projectId === 'old'
+    const oldEntities = new Subject<{ id: string; title: string }[]>();
+    const listEnvironments = vi.fn((ref: { projectId: string }) =>
+      ref.projectId === 'old'
         ? oldEnvironments.asObservable()
         : of([{ id: 'qa', title: 'QA' }]),
     );
     const getAllEntities = vi.fn((ref: { projectId: string }) =>
       ref.projectId === 'old'
         ? oldEntities.asObservable()
-        : of([{ id: 'Album', dbo: { title: 'Album' } }]),
+        : of([{ id: 'Album', title: 'Album' }]),
     );
     const nav = {
       goEnvironment: vi.fn(),
@@ -585,8 +601,14 @@ describe('ProjectPage overview lists', () => {
           logError: vi.fn(),
           watchProjectSummary: vi.fn(() => of()),
         }),
-        { provide: EnvironmentService, useValue: { listEnvironments } },
-        { provide: EntityService, useValue: { getAllEntities } },
+        {
+          provide: ProjectAssetsReadService,
+          useValue: {
+            boards: vi.fn(() => of([])),
+            environments: listEnvironments,
+            entities: getAllEntities,
+          },
+        },
         { provide: DatatugNavService, useValue: nav },
       ],
     })
@@ -610,7 +632,7 @@ describe('ProjectPage overview lists', () => {
     page.setProjRef({ storeId: 'github.com', projectId: 'old' });
     page.setProjRef({ storeId: 'github.com', projectId: 'new' });
     oldEnvironments.next([{ id: 'stale', title: 'Stale' }]);
-    oldEntities.next([{ id: 'Stale', dbo: { title: 'Stale' } }]);
+    oldEntities.next([{ id: 'Stale', title: 'Stale' }]);
     expect(page.environments()?.map((value) => value.id)).toEqual(['qa']);
     expect(page.entities()?.map((value) => value.id)).toEqual(['Album']);
     page.goEnvironment({ id: 'qa' });

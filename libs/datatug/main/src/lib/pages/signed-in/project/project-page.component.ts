@@ -8,13 +8,8 @@ import {
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { race, Subject, of } from 'rxjs';
-import { catchError, map, skip, takeUntil } from 'rxjs/operators';
-import {
-  ErrorLogger,
-  IErrorLogger,
-  STORE_ID_GITHUB_COM,
-  STORE_TYPE_GITHUB,
-} from '@sneat/core';
+import { catchError, skip, takeUntil } from 'rxjs/operators';
+import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
@@ -49,7 +44,6 @@ import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { environmentPresentation } from '../../../models/definition/environment-presentation';
 import { IEntity } from '../../../models/definition/metapedia/entity';
-import { DatatugFolderComponent } from '../../../folders/ui/datatug-folder.component';
 import {
   IProjBoard,
   IProjectSummary,
@@ -76,8 +70,7 @@ import { DatatugServicesProjectModule } from '../../../services/project/datatug-
 import { ProjectService } from '../../../services/project/project.service';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
-import { EntityService } from '../../../services/unsorted/entity.service';
-import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
@@ -96,7 +89,6 @@ import { projectPageHref } from '../../../nav/project-page-href';
     DatatugServicesProjectModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
-    DatatugFolderComponent,
     DemoDbConnectionsComponent,
     ProjectQueriesPreviewComponent,
     ProjectDatabaseServersPreviewComponent,
@@ -135,8 +127,7 @@ export class ProjectPageComponent
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly projectService = inject(ProjectService);
   private readonly schemaService = inject(SchemaService);
-  private readonly environmentService = inject(EnvironmentService);
-  private readonly entityService = inject(EntityService);
+  private readonly projectAssets = inject(ProjectAssetsReadService);
   private readonly navController = inject(NavController);
 
   // readonly DbModel = ProjectItem.dbModel as const;
@@ -160,6 +151,9 @@ export class ProjectPageComponent
     const ref = this.project()?.ref;
     return !!(ref?.spaceID || ref?.projectApi || ref?.branch);
   });
+  protected readonly projectAssetsUnsupported = computed(
+    () => !!this.project()?.ref.spaceID,
+  );
   protected readonly summaryUnsupported = computed(() => {
     const ref = this.project()?.ref;
     return (
@@ -195,6 +189,8 @@ export class ProjectPageComponent
     undefined,
   );
   protected readonly environmentError = signal(false);
+  protected readonly boards = signal<IProjBoard[] | undefined>(undefined);
+  protected readonly boardError = signal(false);
   protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
     undefined,
   );
@@ -241,20 +237,15 @@ export class ProjectPageComponent
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
       this.environments.set(undefined);
       this.entities.set(undefined);
+      this.boards.set(undefined);
       this.environmentError.set(false);
       this.entityError.set(false);
+      this.boardError.set(false);
       // These readers use only the store and project IDs. A qualified ref
       // would silently return a different branch or connection's content.
-      if (!ref.spaceID && !ref.projectApi && !ref.branch) {
-        const github =
-          ref.storeId === STORE_ID_GITHUB_COM ||
-          ref.storeId === STORE_TYPE_GITHUB;
+      if (!ref.spaceID) {
         const cancel$ = race([this.scopeChanged, this.destroyed]);
-        const environments$ = github
-          ? this.environmentService.listEnvironments(ref.projectId)
-          : this.projectService
-              .getFull(ref)
-              .pipe(map((full) => full.environments || []));
+        const environments$ = this.projectAssets.environments(ref);
         environments$
           .pipe(
             takeUntil(cancel$),
@@ -268,8 +259,22 @@ export class ProjectPageComponent
             }),
           )
           .subscribe((items) => this.environments.set(items));
-        this.entityService
-          .getAllEntities(ref)
+        this.projectAssets
+          .boards(ref)
+          .pipe(
+            takeUntil(cancel$),
+            catchError((error) => {
+              this.boardError.set(true);
+              this.errorLogger.logError(
+                error,
+                'Failed to load overview boards',
+              );
+              return of(undefined);
+            }),
+          )
+          .subscribe((items) => this.boards.set(items));
+        this.projectAssets
+          .entities(ref)
           .pipe(
             takeUntil(cancel$),
             catchError((error) => {
@@ -283,7 +288,12 @@ export class ProjectPageComponent
           )
           .subscribe((items) =>
             this.entities.set(
-              items?.toSorted((a, b) => a.id.localeCompare(b.id)),
+              items
+                ?.map((item) => ({
+                  id: item.id,
+                  dbo: item as unknown as IEntity,
+                }))
+                .toSorted((a, b) => a.id.localeCompare(b.id)),
             ),
           );
       }

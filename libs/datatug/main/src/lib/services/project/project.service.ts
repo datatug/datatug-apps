@@ -27,6 +27,10 @@ import {
 } from '../../core/project-context';
 import { IProjectFull, IProjectSummary } from '../../models/definition/project';
 import { buildAgentUrl } from '../repo/agent-url';
+import {
+  formatGithubProjectId,
+  readGithubProjectId,
+} from '@datatug/project-address';
 import { SharedProjectSummaryService } from './shared-project-summary.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 import type { ProjectBillingIntent } from './project-query-api.service';
@@ -184,6 +188,22 @@ export class ProjectService {
       storeId === STORE_TYPE_GITHUB ||
       storeId.startsWith(GITLAB_REPO_PREFIX)
     ) {
+      let projectId = projectRef.projectId;
+      if (projectRef.branch) {
+        const address = readGithubProjectId(projectId);
+        if (!address.ok)
+          return throwError(
+            () => new Error('Invalid GitHub project reference'),
+          );
+        if (address.id.ref && address.id.ref !== projectRef.branch)
+          return throwError(
+            () => new Error('Project branch conflicts with its GitHub address'),
+          );
+        projectId = formatGithubProjectId({
+          ...address.id,
+          ref: projectRef.branch,
+        });
+      }
       const storeService =
         this.datatugStoreServiceFactory.getDatatugStoreService(storeId);
       return storeService.getProjectSummary(projectId);

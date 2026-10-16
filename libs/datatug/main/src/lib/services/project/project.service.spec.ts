@@ -154,6 +154,17 @@ describe('ProjectService', () => {
     expect(received).toEqual([summary]);
   });
 
+  it('loads direct GitHub project summaries from the selected branch', () => {
+    const storeService = { getProjectSummary: vi.fn(() => of({ id: 'p' })) };
+    TestBed.overrideProvider(DatatugStoreServiceFactory, {
+      useValue: { getDatatugStoreService: vi.fn(() => storeService) },
+    });
+    TestBed.inject(ProjectService).watchProjectSummary({
+      storeId: 'github.com', projectId: 'repo@owner@folder', branch: 'work',
+    }).subscribe();
+    expect(storeService.getProjectSummary).toHaveBeenCalledWith('repo@owner@folder@work');
+  });
+
   // Regression for the NG0203 the founder hit on datatug.app (2026-09-14) when
   // submitting "Create new project" from the My projects card: the call used to
   // be routed through `SneatApiServiceFactory.getSneatApiService()`, which
