@@ -66,7 +66,9 @@ def latest(mode):
         # Missing it only widens the classifier range to the full CI path.
         runs = json.loads(api("/actions/workflows/ci.yml/runs?branch=main&status=success&per_page=100&page=1")).get("workflow_runs", [])
         candidates = [run for run in runs if run.get("id") != current and run.get("conclusion") == "success" and run.get("event") == "push"]
-        required = {"build", "test", "e2e", "journey e2e (real datatug-cli agent)", "deploy-gate"}
+        # Push CI verifies build and unit tests. Browser and real-agent suites
+        # are scheduled separately and must not be used as a push baseline.
+        required = {"build", "test", "deploy-gate"}
         for run in sorted(candidates, key=lambda item: timestamp(item.get("updated_at")), reverse=True):
             jobs = pages(f"/actions/runs/{run['id']}/jobs?filter=latest", "jobs")
             if not required.issubset({job["name"] for job in jobs if job.get("conclusion") == "success"}):

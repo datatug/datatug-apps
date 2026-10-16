@@ -52,11 +52,30 @@ class BaselineTest(unittest.TestCase):
                 ]}).encode()
             if "/runs/90/jobs" in path:
                 return json.dumps({"jobs": [{"name": name, "conclusion": "success"} for name in
-                    ("build", "test", "e2e", "journey e2e (real datatug-cli agent)", "deploy-gate")]}).encode()
+                    ("build", "test", "deploy-gate")]}).encode()
             raise AssertionError(path)
 
         with patch.dict(os.environ, {"GITHUB_RUN_ID": "100", "GITHUB_REPOSITORY": "datatug/datatug-apps"}), patch.object(baseline, "api", api):
             self.assertEqual(baseline.latest("ci"), sha)
+
+    def test_scheduled_success_cannot_replace_verified_push_baseline(self):
+        push_sha = "a" * 40
+
+        def api(path, accept=None):
+            if "/runs?" in path:
+                return json.dumps({"workflow_runs": [
+                    {"id": 91, "event": "schedule", "conclusion": "success", "head_sha": "b" * 40,
+                     "updated_at": "2026-10-16T13:00:00Z"},
+                    {"id": 90, "event": "push", "conclusion": "success", "head_sha": push_sha,
+                     "updated_at": "2026-10-16T12:00:00Z"},
+                ]}).encode()
+            if "/runs/90/jobs" in path:
+                return json.dumps({"jobs": [{"name": name, "conclusion": "success"} for name in
+                    ("build", "test", "deploy-gate")]}).encode()
+            raise AssertionError(path)
+
+        with patch.dict(os.environ, {"GITHUB_RUN_ID": "100", "GITHUB_REPOSITORY": "datatug/datatug-apps"}), patch.object(baseline, "api", api):
+            self.assertEqual(baseline.latest("ci"), push_sha)
 
     def test_missing_required_ci_job_has_no_shortcut_baseline(self):
         def api(path, accept=None):

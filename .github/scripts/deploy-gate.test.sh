@@ -129,6 +129,7 @@ if grep -q 'run_attempt=2' "$tmp/stdout"; then echo "PASS re-run is logged"; els
 check "tip lookup fails -> fail closed" false 1 -- $wr TIP_FAIL=1
 check "tip lookup garbage -> fail closed" false 1 -- $wr "TIP=not a sha"
 check "not a push"                 false 0 -- $wr WR_EVENT=pull_request
+check "scheduled CI cannot deploy" false 0 -- $wr WR_EVENT=schedule
 check "other branch"               false 0 -- $wr WR_BRANCH=feature
 check "fork head repo"             false 0 -- $wr WR_HEAD_REPO=evil/r
 check "gh unavailable is fail-closed" false 1 -- $wr PATH=/usr/bin:/bin
