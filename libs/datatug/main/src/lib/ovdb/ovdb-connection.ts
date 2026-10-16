@@ -10,6 +10,7 @@
 //   - delete a record: `delete`;
 //   - Reset Database: `reset`.
 // Never the engine name.
+import { OpenVaultDbHttpError } from '@dalgo/ovdb/client';
 
 /** The `capabilities` map of `GET /v1/databases/{db}` (openvaultdb-go docs/api.md). */
 export interface OvdbCapabilities {
@@ -31,6 +32,17 @@ export interface OvdbFieldSchema {
   readonly notNull?: boolean;
   /** 1-based position in the primary key; 0 or absent for other fields. */
   readonly primaryKeyPosition?: number;
+  /** Set by a native PostgreSQL mount: the column's PostgreSQL type, whether it is a key column and whether NULL is allowed. */
+  readonly nativeType?: string;
+  readonly primaryKey?: boolean;
+  readonly nullable?: boolean;
+  readonly required?: boolean;
+}
+
+/** Where a collection of a native PostgreSQL mount lives: its collection ids are opaque (`pg1_…`), this names the table. */
+export interface OvdbCollectionSource {
+  readonly schema?: string;
+  readonly name: string;
 }
 
 export interface OvdbForeignKeySchema {
@@ -44,6 +56,7 @@ export interface OvdbCollectionSchema {
   /** Primary key field names in key order; empty when the table has none. */
   readonly primaryKey?: readonly string[];
   readonly foreignKeys?: readonly OvdbForeignKeySchema[];
+  readonly source?: OvdbCollectionSource;
 }
 
 export interface OvdbDescriptor {
@@ -86,12 +99,32 @@ export function ovdbUiCapabilities(descriptor: OvdbDescriptor | undefined): Ovdb
   };
 }
 
+/**
+ * The schema key of a table: a table name is either a collection id as such (SQLite, in-process) or the
+ * `source.name` of an opaque collection id (a native PostgreSQL mount, whose ids read `pg1_…`).
+ */
+function ovdbCollectionId(descriptor: OvdbDescriptor | undefined, collection: string): string | undefined {
+  const collections = descriptor?.schemas?.collections;
+  if (!collections) return undefined;
+  if (Object.hasOwn(collections, collection)) return collection;
+  return Object.keys(collections).find((id) => collections[id].source?.name === collection);
+}
+
 export function ovdbCollectionSchema(
   descriptor: OvdbDescriptor | undefined,
   collection: string,
 ): OvdbCollectionSchema | undefined {
-  const collections = descriptor?.schemas?.collections;
-  return collections && Object.hasOwn(collections, collection) ? collections[collection] : undefined;
+  const id = ovdbCollectionId(descriptor, collection);
+  return id === undefined ? undefined : descriptor?.schemas?.collections?.[id];
+}
+
+/** The collection id the server knows a table by, and the table it names when the mount declares one. */
+export function ovdbCollectionTarget(
+  descriptor: OvdbDescriptor | undefined,
+  collection: string,
+): { readonly id: string; readonly source?: OvdbCollectionSource } {
+  const id = ovdbCollectionId(descriptor, collection) ?? collection;
+  return { id, source: descriptor?.schemas?.collections?.[id]?.source };
 }
 
 /** Whether records of a table can be addressed by key for edit/delete, and why not. */
@@ -114,10 +147,13 @@ export function ovdbRecordActions(descriptor: OvdbDescriptor | undefined, collec
   return { edit: caps.edit, delete: caps.delete, keyField: primaryKey[0] };
 }
 
-/** The table names of a descriptor, sorted. */
+/**
+ * The table names of a descriptor, sorted. A native PostgreSQL mount lists opaque collection ids; its tables
+ * are named by their `source` (a name is unique within a dataset: every DemoDB edition uses one schema).
+ */
 export function ovdbCollections(descriptor: OvdbDescriptor | undefined): readonly string[] {
   const named = descriptor?.collections ?? Object.keys(descriptor?.schemas?.collections ?? {});
-  return [...named].sort((a, b) => a.localeCompare(b));
+  return named.map((id) => descriptor?.schemas?.collections?.[id]?.source?.name ?? id).sort((a, b) => a.localeCompare(b));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -140,6 +176,20 @@ export function ovdbDatabaseUrl(baseUrl: string, databaseId: string): string {
   return `${baseUrl.replace(/\/$/, '')}/v1/databases/${encodeURIComponent(databaseId)}`;
 }
 
+/** The error of a non-2xx response: its status and the `error.code` / `error.message` of an OVDB error body. */
+export async function ovdbHttpError(response: Response, fallbackMessage: string): Promise<OpenVaultDbHttpError> {
+  let code = 'unknown';
+  let message = fallbackMessage;
+  try {
+    const body = (await response.json()) as { error?: { code?: unknown; message?: unknown } };
+    if (typeof body.error?.code === 'string') code = body.error.code;
+    if (typeof body.error?.message === 'string') message = body.error.message;
+  } catch {
+    /* keep the status only */
+  }
+  return new OpenVaultDbHttpError(response.status, code, message);
+}
+
 /** `GET /v1/databases/{db}`. */
 export async function fetchOvdbDescriptor(
   fetchFn: typeof globalThis.fetch,
@@ -151,6 +201,6 @@ export async function fetchOvdbDescriptor(
     cache: 'no-store',
     credentials: 'omit',
   });
-  if (!response.ok) throw new Error(`The database description could not be loaded (HTTP ${response.status}).`);
+  if (!response.ok) throw await ovdbHttpError(response, `The database description could not be loaded (HTTP ${response.status}).`);
   return parseOvdbDescriptor(await response.json());
 }

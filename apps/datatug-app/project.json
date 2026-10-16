@@ -225,6 +225,14 @@
         "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --forbid-only"
       }
     },
+    "e2e-demo-postgresql": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-postgresql-e2e"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.demo-postgresql.config.ts --forbid-only"
+      }
+    },
     "e2e-error-dialog": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-error-dialog-e2e"],

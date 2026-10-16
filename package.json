@@ -13,6 +13,7 @@
     "test:check-zoneless-fields": "node --test tools/__tests__/check-zoneless-fields.test.mjs",
     "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs",
     "check:demo-sqlite-catalog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-demo-sqlite-catalog.mjs",
+    "check:demo-postgresql-catalog": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-demo-postgresql-catalog.mjs",
     "test:checkout-flow": "node --test tools/checkout-flow.test.mjs"
   },
   "private": true,
