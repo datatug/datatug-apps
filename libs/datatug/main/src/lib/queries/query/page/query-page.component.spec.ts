@@ -7059,6 +7059,97 @@ select (
       expect(created.savedResultId()).toBe('');
     });
 
+    it('cancels a run when a different stored result opens the same query and runtime', async () => {
+      const params = new Subject<ReturnType<typeof convertToParamMap>>();
+      const { created, opener } = await openerWith(
+        editorReadyResult({ query: { kind: 'saved', savedQueryId: 'folder/q1' } }),
+        { project: of(project), queryParams: params },
+      );
+      const definition: IQueryDef = { ...queryDef, id: 'folder/q1', parameters: [] };
+      const editorState = {
+        currentQueryId: definition.id,
+        activeQueries: [{ id: definition.id, title: definition.title,
+          queryType: definition.request.queryType,
+          request: definition.request, def: definition, isLoading: false }],
+      };
+      created.envId = 'local';
+      params.next(convertToParamMap({ result: 'rid-a', runtime: 'project', env: 'local' }));
+      opener.onQueryEditorStateChanged(editorState);
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+
+      const pending = new Subject<RunQueryResponse>();
+      localResultFixture.mockReturnValue(pending);
+      created.runQuery();
+      expect(created.running()).toBe(true);
+      expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+        target: expect.objectContaining({ kind: 'local-agent' }),
+      }));
+
+      params.next(convertToParamMap({ result: 'rid-b', runtime: 'project', env: 'local' }));
+      opener.onQueryEditorStateChanged(editorState);
+      expect(created.savedResultId()).toBe('rid-b');
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+      expect(created.running()).toBe(false);
+      expect(dispatchCancel).toHaveBeenCalled();
+
+      pending.next({
+        recordset: { columns: [{ name: 'Name', type: 'string' }],
+          rows: [[{ type: 'string', value: 'late A' }]] },
+        limitations: [], bindingsApplied: [], truncated: false,
+        provenance: { source: 'Project agent', queryId: definition.id, mode: 'live',
+          observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
+      });
+      pending.complete();
+      await runFixture.whenStable();
+      expect(created.savedResultId()).toBe('rid-b');
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+      expect(created.committedRun()).toBeUndefined();
+      expect(created.running()).toBe(false);
+    });
+
+    it('validates a deferred result-only runtime hint after the saved query identity resolves', async () => {
+      const params = new Subject<ReturnType<typeof convertToParamMap>>();
+      const pending = new Subject<ReturnType<typeof decodeStoredResult>>();
+      storedResult.mockReset().mockReturnValue(pending);
+      TestBed.overrideProvider(AgentLinkApiService, { useValue: { storedResult } });
+      const created = await createComponent({}, queryDef, undefined,
+        { project: of(project), queryParams: params });
+      created.project = { ref: { storeId: LOOPBACK, projectId: 'demo' } };
+      created.envId = 'local';
+      const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+        availableWorkingCopies: ReturnType<typeof vi.fn>;
+        runtimeRevision: () => number;
+      };
+      dispatcher.availableWorkingCopies.mockResolvedValue([
+        { selectionId: 'runtime-17', title: 'Edited copy' },
+      ]);
+      const revision = dispatcher.runtimeRevision();
+      params.next(convertToParamMap({ result: 'rid-deferred', env: 'local', runtime: 'runtime-17' }));
+      runFixture.detectChanges();
+      await runFixture.whenStable();
+      expect(dispatcher.availableWorkingCopies).not.toHaveBeenCalled();
+      expect(created.unavailableWorkingCopy()).toBe(true);
+
+      pending.next(decodeStoredResult(editorReadyResult({
+        query: { kind: 'saved', savedQueryId: 'folder/q1' },
+      })));
+      const definition: IQueryDef = { ...queryDef, id: 'folder/q1', connectionId: 'logical-ledger-v7', parameters: [] };
+      (created as unknown as ResultOpener).onQueryEditorStateChanged({
+        currentQueryId: definition.id,
+        activeQueries: [{ id: definition.id, queryType: definition.request.queryType,
+          request: definition.request, def: definition, isLoading: false }],
+      });
+      runFixture.detectChanges();
+      await runFixture.whenStable();
+      expect(dispatcher.runtimeRevision()).toBe(revision);
+      expect(dispatcher.availableWorkingCopies).toHaveBeenCalledWith(expect.objectContaining({
+        definition, environment: 'local',
+      }));
+      expect(created.selectedWorkingCopy()).toBe('runtime-17');
+      expect(created.unavailableWorkingCopy()).toBe(false);
+      expect(created.runResult()?.provenance.mode).toBe('snapshot');
+    });
+
     it('leaves the editor empty with a named message for an older result, and still shows the rows', async () => {
       const { created, opener } = await openerWith(invoiceCustomerResult());
       opener.openFromResult('rid-3');

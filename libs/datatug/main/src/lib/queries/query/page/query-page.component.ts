@@ -838,7 +838,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly workingCopyLoading = signal(false);
   public readonly workingCopyError = signal<string | undefined>(undefined);
   public readonly unavailableWorkingCopy = signal(false);
-  private readonly entryRuntimeHint = signal<{ selectionId: string; queryId: string; environment?: string } | undefined>(undefined);
+  private readonly entryRuntimeHint = signal<{
+    selectionId: string;
+    queryId?: string;
+    resultId?: string;
+    environment?: string;
+  } | undefined>(undefined);
   private readonly entryContextRevision = signal(0);
   private entryRouteKey = '';
   private entryLoadKey = '';
@@ -872,7 +877,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.workingCopyScope = scope;
       this.workingCopyRevision = this.queryDispatch.runtimeRevision();
       const hint = this.entryRuntimeHint();
-      if (hint && hint.queryId === this.queryId && (!hint.environment || hint.environment === this.envId)) {
+      if (hint?.queryId && hint.queryId === this.queryId &&
+        (!hint.environment || hint.environment === this.envId)) {
         this.entryRuntimeHint.set(undefined);
         this.selectedWorkingCopy.set(hint.selectionId);
       }
@@ -5142,7 +5148,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       .storedResult(storeId, resultId)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
-        next: (result) => this.applyStoredResult(result),
+        next: (result) => {
+          if (this.openedResultKey === key && this.savedResultId() === resultId)
+            this.applyStoredResult(result, resultId);
+        },
         error: (err: unknown) =>
           this.savedResultBanner.set({
             kind: 'problem',
@@ -5151,7 +5160,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       });
   }
 
-  private applyStoredResult(result: StoredResult): void {
+  private applyStoredResult(result: StoredResult, resultId: string): void {
     try {
       let plan = resultEditorPlan(result, this.randomIdService.newRandomId());
       const here = this.project?.ref.projectId;
@@ -5174,6 +5183,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.selectedSource.set(plan.ids?.source);
       this.resultMode = plan.mode;
       this.resultQueryId = plan.definition?.id ?? plan.savedQueryId;
+      // A result-only URL has no query identity until this read completes.
+      // Bind its opaque runtime hint only to the query this result opens.
+      const hint = this.entryRuntimeHint();
+      if (hint?.resultId === resultId && !hint.queryId && this.resultQueryId)
+        this.entryRuntimeHint.set({ ...hint, queryId: this.resultQueryId });
       this.savedResultBanner.set({
         kind: 'shown',
         mode: plan.mode,
@@ -5269,7 +5283,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.entryContextRevision();
       if ((!hint && !needsValidation) || hint?.selectionId === 'project' ||
         !definition?.connectionId || !this.project?.ref ||
-        (hint && this.queryId !== hint.queryId) ||
+        (hint && (!hint.queryId || this.queryId !== hint.queryId)) ||
         (hint?.environment && this.envId !== hint.environment) ||
         this.isTugqlAuthorJourney()) return;
       const key = `${this.entryRouteKey}:${this.currentWorkingCopyScope()}`;
@@ -6146,6 +6160,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           previousRoute.resultId !== resultId ||
           (previousRoute.runtime !== runtime && runtime !== this.selectedWorkingCopy());
         if (entryChanged) {
+          if (previousRoute && previousRoute.resultId !== resultId) {
+            // A and B can share a query and runtime while having distinct
+            // result addresses. A's run must not replace B's saved rows.
+            ++this.semanticRunLifetime;
+            this.invalidateFederatedRun();
+            this.stopFederatedRun();
+            this.savedRowsShown = undefined;
+            this.setDisplayedResult(undefined);
+            this.committedRun.set(undefined);
+            this.resultPageRows.set([]);
+            this.runError.set(undefined);
+          }
           this.entryRouteKey = routeKey;
           this.entryLoadKey = '';
           ++this.workingCopyLoad;
@@ -6155,8 +6181,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             this.workingCopyError.set(undefined);
             this.unavailableWorkingCopy.set(!!runtime && runtime !== 'project');
             this.changeWorkingCopySelection(runtime || 'project');
-            this.entryRuntimeHint.set(runtime && runtime !== 'project' && queryId
-              ? { selectionId: runtime, queryId, environment: requestedEnv }
+            this.entryRuntimeHint.set(runtime && runtime !== 'project'
+              ? { selectionId: runtime,
+                  queryId: addressQueryId || (resultId ? undefined : queryId),
+                  resultId: resultId || undefined,
+                  environment: requestedEnv }
               : undefined);
           }
         }
