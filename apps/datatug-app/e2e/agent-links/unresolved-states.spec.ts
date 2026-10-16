@@ -37,7 +37,7 @@ test.describe('links the agent cannot resolve', () => {
     const writes = watchWrites(page, linkDaemon.port);
     await expectState(page, linkDaemon.link({ table: 'Album', project: 'no-such-project' }), 'project-not-found', 'no project no-such-project');
     await expectState(page, linkDaemon.link({ table: 'Album', db: 'no-such-db', records: true }), 'database-not-found', 'datatug db add');
-    await expectState(page, linkDaemon.link({ table: 'NoSuchTable', records: true }), 'table-not-found', 'no table NoSuchTable');
+    await expectState(page, linkDaemon.link({ table: 'Album', missingTable: 'NoSuchTable', records: true }), 'table-not-found', 'no table NoSuchTable');
     await expectState(page, linkDaemon.link({ table: 'Album', record: '{"AlbumId":99999}' }), 'record-not-found', 'Album has no record');
     // No other project's data on any of them.
     await expect(page.getByTestId('records-grid')).toHaveCount(0);

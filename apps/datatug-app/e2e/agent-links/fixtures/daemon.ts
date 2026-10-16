@@ -22,6 +22,12 @@ export const DEMO_DB = 'chinook-local';
 
 export interface LinkRequest {
   readonly table: string;
+  /**
+   * Link to a table the project does not have. `daemon url` checks `--table` against the scanned metadata and
+   * refuses a missing table (exit 3, REQ url-validates-metadata), so the link is minted for `table` (which must
+   * exist) and its table path segment is then replaced by this name, as a hand-edited or stale link would be.
+   */
+  readonly missingTable?: string;
   readonly schema?: string;
   readonly view?: boolean;
   readonly records?: boolean;
@@ -174,8 +180,13 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
           if (req.records) args.push('--records');
           if (req.limit) args.push('--limit', String(req.limit));
           if (req.record) args.push('--record', req.record);
-          const url = String(run(args)['url']);
+          let url = String(run(args)['url']);
           expect(url.startsWith(baseURL + '/store/http-127.0.0.1:')).toBe(true);
+          if (req.missingTable) {
+            const segment = `/table/${encodeURIComponent(req.table)}`;
+            expect(url).toContain(segment);
+            url = url.replace(segment, `/table/${encodeURIComponent(req.missingTable)}`);
+          }
           return url.slice(baseURL.length);
         },
         stop: () => {
