@@ -312,7 +312,9 @@ test.describe('results grid toolbar', () => {
       .toBeGreaterThan(0);
     await page.reload();
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
-    expect(Math.abs((await width()) - widened)).toBeLessThanOrEqual(2);
+    await expect
+      .poll(async () => Math.abs((await width()) - widened))
+      .toBeLessThanOrEqual(2);
     await expect(
       grid.locator(
         `.ag-header-cell:not(.ag-floating-filter)[col-id="${colId}"]`,
