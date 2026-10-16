@@ -1,16 +1,57 @@
 import { isPlatformBrowser } from '@angular/common';
 import {
-  AfterViewInit, ChangeDetectionStrategy, Component, ElementRef,
-  EventEmitter, Inject, Input, OnChanges, OnDestroy, Output, PLATFORM_ID, signal, SimpleChanges, ViewChild,
+  AfterViewInit,
+  ChangeDetectionStrategy,
+  Component,
+  ElementRef,
+  EventEmitter,
+  Inject,
+  Input,
+  OnChanges,
+  OnDestroy,
+  Output,
+  PLATFORM_ID,
+  signal,
+  SimpleChanges,
+  ViewChild,
 } from '@angular/core';
-import type { BarRaceData, BarRaceEntry, BarRaceFrame } from '@sneat/datatug-semantic';
+import type {
+  BarRaceData,
+  BarRaceEntry,
+  BarRaceFrame,
+} from '@sneat/datatug-semantic';
 import * as echarts from 'echarts/core';
 import { BarChart } from 'echarts/charts';
-import { AriaComponent, GridComponent, TooltipComponent } from 'echarts/components';
+import {
+  AriaComponent,
+  GridComponent,
+  TooltipComponent,
+} from 'echarts/components';
 import { SVGRenderer } from 'echarts/renderers';
 import type { ECharts } from 'echarts/core';
 
-echarts.use([BarChart, GridComponent, TooltipComponent, AriaComponent, SVGRenderer]);
+echarts.use([
+  BarChart,
+  GridComponent,
+  TooltipComponent,
+  AriaComponent,
+  SVGRenderer,
+]);
+
+/** ECharts' default tooltip renderer treats formatter strings as HTML. */
+export function escapeChartTooltipText(value: string): string {
+  return value.replace(
+    /[&<>"']/g,
+    (character) =>
+      ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+      })[character] ?? character,
+  );
+}
 
 /** Both modes must be prepared from one result at the maximum admitted Top N. */
 export interface BarRaceChartViews {
@@ -33,13 +74,21 @@ export interface BarRaceInspectRequest {
   styleUrl: './bar-race-chart.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
-export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestroy {
+export class BarRaceChartComponent
+  implements AfterViewInit, OnChanges, OnDestroy
+{
   @Input() views: BarRaceChartViews | null = null;
   @Input() loading = false;
   @Input() error: string | null = null;
   @Input() inspectable = false;
   @Output() readonly inspect = new EventEmitter<BarRaceInspectRequest>();
-  @ViewChild('plot') private plot?: ElementRef<HTMLElement>;
+  @ViewChild('plot') set plot(ref: ElementRef<HTMLElement> | undefined) {
+    const element = ref?.nativeElement;
+    if (element === this.plotElement) return;
+    this.disposeChart();
+    this.plotElement = element;
+    if (element && this.browser) this.initChart(element);
+  }
 
   readonly mode = signal<'period' | 'cumulative'>('period');
   readonly frameIndex = signal(0);
@@ -50,6 +99,7 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   readonly validationError = signal<string | null>(null);
   private chart?: ECharts;
   private observer?: ResizeObserver;
+  private plotElement?: HTMLElement;
   private motionQuery?: MediaQueryList;
   private readonly onMotionChange = (event: MediaQueryListEvent) => {
     this.reducedMotion.set(event.matches);
@@ -81,7 +131,9 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   get maxTopN(): number {
-    return this.views ? Math.min(this.views.period.spec.topN, this.views.cumulative.spec.topN) : 0;
+    return this.views
+      ? Math.min(this.views.period.spec.topN, this.views.cumulative.spec.topN)
+      : 0;
   }
 
   get plotHeight(): number {
@@ -89,7 +141,12 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   get available(): boolean {
-    return !this.loading && !this.error && !this.validationError() && this.frames.length > 0;
+    return (
+      !this.loading &&
+      !this.error &&
+      !this.validationError() &&
+      this.frames.length > 0
+    );
   }
 
   get atEnd(): boolean {
@@ -109,21 +166,32 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   }
 
   ngAfterViewInit(): void {
-    if (!this.browser || !this.plot) return;
+    if (!this.browser) return;
     this.motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
     this.reducedMotion.set(this.motionQuery.matches);
     this.motionQuery.addEventListener('change', this.onMotionChange);
-    this.chart = echarts.init(this.plot.nativeElement, undefined, { renderer: 'svg' });
-    this.observer = new ResizeObserver(() => this.chart?.resize());
-    this.observer.observe(this.plot.nativeElement);
     this.render();
+  }
+
+  private initChart(element: HTMLElement): void {
+    this.chart = echarts.init(element, undefined, { renderer: 'svg' });
+    this.observer = new ResizeObserver(() => this.chart?.resize());
+    this.observer.observe(element);
+    this.render();
+  }
+
+  private disposeChart(): void {
+    this.observer?.disconnect();
+    this.observer = undefined;
+    this.chart?.dispose();
+    this.chart = undefined;
   }
 
   ngOnDestroy(): void {
     this.stop();
-    this.observer?.disconnect();
     this.motionQuery?.removeEventListener('change', this.onMotionChange);
-    this.chart?.dispose();
+    this.disposeChart();
+    this.plotElement = undefined;
   }
 
   previous(): void {
@@ -182,7 +250,12 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
 
   requestInspection(entry: BarRaceEntry): void {
     if (!this.inspectable || !this.frame) return;
-    this.inspect.emit({ period: this.frame.period, category: entry.category, value: entry.value, rank: entry.rank });
+    this.inspect.emit({
+      period: this.frame.period,
+      category: entry.category,
+      value: entry.value,
+      rank: entry.rank,
+    });
   }
 
   private play(): void {
@@ -194,7 +267,7 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
       if (this.atEnd) {
         this.stop();
       } else {
-        this.frameIndex.update(index => index + 1);
+        this.frameIndex.update((index) => index + 1);
         this.render();
       }
     }, this.intervalMs());
@@ -209,13 +282,22 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
   private validateViews(): string | null {
     if (!this.views) return null;
     const { period, cumulative } = this.views;
-    if (period.spec.kind !== 'bar-race' || cumulative.spec.kind !== 'bar-race' ||
-      period.spec.mode !== 'period' || cumulative.spec.mode !== 'cumulative') {
+    if (
+      period.spec.kind !== 'bar-race' ||
+      cumulative.spec.kind !== 'bar-race' ||
+      period.spec.mode !== 'period' ||
+      cumulative.spec.mode !== 'cumulative'
+    ) {
       return 'The prepared chart modes are incompatible.';
     }
-    if (period.spec.topN < 1 || cumulative.spec.topN < 1 ||
+    if (
+      period.spec.topN < 1 ||
+      cumulative.spec.topN < 1 ||
       period.frames.length !== cumulative.frames.length ||
-      period.frames.some((frame, index) => frame.period !== cumulative.frames[index].period)) {
+      period.frames.some(
+        (frame, index) => frame.period !== cumulative.frames[index].period,
+      )
+    ) {
       return 'The prepared chart frames do not match.';
     }
     return null;
@@ -230,13 +312,45 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
     const entries = this.entries;
     this.chart.setOption({
       animation: !this.reducedMotion(),
-      animationDurationUpdate: this.reducedMotion() ? 0 : Math.min(350, this.intervalMs() / 2),
-      aria: { enabled: true, label: { description: `Bar chart for ${this.frame?.period}. The synchronized table lists exact values.` } },
-      grid: { left: 12, right: 42, top: 8, bottom: 22, containLabel: true },
-      xAxis: { type: 'value', min: entries.some(entry => entry.value < 0) ? 'dataMin' : 0, max: 'dataMax', axisLabel: { hideOverlap: true } },
-      yAxis: { type: 'category', inverse: true, data: entries.map(entry => entry.category), axisLabel: { width: 120, overflow: 'truncate' } },
-      tooltip: { trigger: 'item', formatter: (params: { name: string; value: number }) => `${params.name}: ${this.formatValue(params.value)}` },
-      series: [{ id: 'bar-race', type: 'bar', realtimeSort: true, data: entries.map(entry => ({ name: entry.category, value: entry.value, itemStyle: { color: entry.color } })) }],
+      animationDurationUpdate: this.reducedMotion()
+        ? 0
+        : Math.min(350, this.intervalMs() / 2),
+      aria: {
+        enabled: true,
+        label: {
+          description: `Bar chart for ${this.frame?.period}. The synchronized table lists exact values.`,
+        },
+      },
+      grid: { left: 12, right: 42, top: 8, bottom: 22, outerBoundsMode: 'same', outerBoundsContain: 'axisLabel' },
+      xAxis: {
+        type: 'value',
+        min: entries.some((entry) => entry.value < 0) ? 'dataMin' : 0,
+        max: 'dataMax',
+        axisLabel: { hideOverlap: true },
+      },
+      yAxis: {
+        type: 'category',
+        inverse: true,
+        data: entries.map((entry) => entry.category),
+        axisLabel: { width: 120, overflow: 'truncate' },
+      },
+      tooltip: {
+        trigger: 'item',
+        formatter: (params: { name: string; value: number }) =>
+          `${escapeChartTooltipText(params.name)}: ${this.formatValue(params.value)}`,
+      },
+      series: [
+        {
+          id: 'bar-race',
+          type: 'bar',
+          realtimeSort: true,
+          data: entries.map((entry) => ({
+            name: entry.category,
+            value: entry.value,
+            itemStyle: { color: entry.color },
+          })),
+        },
+      ],
     });
   }
 }
