@@ -1434,4 +1434,25 @@ describe('BoardWidgetComponent', () => {
       'chart parameter type',
     );
   });
+  it('invalidates a held chart after a board parameter edit and passes the new value on refresh', async () => {
+    configureBoundChart([
+      { id: 'country', boardParameterId: 'selectedCountry' },
+      { id: 'limit', value: 5 },
+    ]);
+    await fixture.componentInstance.run();
+    expect(fixture.componentInstance.result()).toBeTruthy();
+    fixture.componentRef.setInput('boardContext', {
+      executionTarget: { kind: 'local-agent', agentStoreId: 'localhost:8989' },
+      parameters: { selectedCountry: { type: 'string', value: 'Germany' } },
+    });
+    fixture.detectChanges();
+    expect(fixture.componentInstance.result()).toBeUndefined();
+    expect(run).toHaveBeenCalledTimes(1);
+    await fixture.componentInstance.run();
+    expect(run).toHaveBeenCalledTimes(2);
+    expect(run.mock.calls[1][0].parameters.country).toEqual({
+      type: 'string',
+      value: 'Germany',
+    });
+  });
 });
