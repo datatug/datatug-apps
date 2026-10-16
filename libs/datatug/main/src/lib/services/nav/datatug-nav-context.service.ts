@@ -66,6 +66,17 @@ function storeIdOfStorePath(path: string): string | undefined {
   }
 }
 
+/** Whether a path is the page of a stored query result: `/store/<storeId>/result/<resultId>`. */
+function isStoreResultPath(path: string): boolean {
+  const segments = path.split('/');
+  return (
+    segments[1] === 'store' &&
+    !!segments[2] &&
+    segments[3] === 'result' &&
+    !!segments[4]
+  );
+}
+
 /** The path of a URL as typed (`https://host/a/b?x#y` and `/a/b?x#y` both give `/a/b`). */
 function pathOf(url: string): string {
   return /^(?:[a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([^?#]*)/i.exec(url)?.[1] ?? '';
@@ -147,6 +158,13 @@ export class DatatugNavContextService {
     IEnvDbTableContext | undefined
   >(undefined);
   public readonly currentEnvDbTable = this.$currentEnvDbTable.asObservable();
+
+  /**
+   * The path of the stored-result page whose project the page itself selected (`selectResultProject`). A result
+   * address names no project, so it is the page that reads one from the result; while the address keeps this path
+   * (the view and row follow the query string) the project stays selected.
+   */
+  private resultProjectPath?: string;
 
   private navEndSubscription: Subscription;
   private projectSummarySubscription?: Subscription;
@@ -261,6 +279,32 @@ export class DatatugNavContextService {
     });
   }
 
+  /**
+   * Selects the project (and environment) a stored query result belongs to, for the page at `url`
+   * (`/store/<storeId>/result/<resultId>`). A result address names no project, so `processUrl` leaves the project
+   * of that exact path alone; any other address reads its own project again. With no project the selection is
+   * cleared.
+   */
+  public selectResultProject(
+    url: string,
+    projectContext?: IProjectContext,
+    envId?: string,
+  ): void {
+    this.resultProjectPath = projectContext ? pathOf(url) : undefined;
+    this.setCurrentProject(projectContext);
+    if (!projectContext) {
+      this.clearEnvironmentContext();
+      return;
+    }
+    this.setCurrentEnvironment(envId);
+  }
+
+  private clearEnvironmentContext(): void {
+    this.$currentEnv.next(undefined);
+    this.$currentEnvDb.next(undefined);
+    this.$currentEnvDbTable.next(undefined);
+  }
+
   public setCurrentEnvironment(id?: string): void {
     // console.log('DatatugNavContextService.setCurrentEnvironment()', id);
     if (id) {
@@ -346,6 +390,19 @@ export class DatatugNavContextService {
 
   private processUrl(rawUrl: string): void {
     // console.log('DatatugNavContextService.processUrl():', url);
+    const path = pathOf(rawUrl);
+    if (isStoreResultPath(path)) {
+      // The page of a stored result reads its project from the result itself (`selectResultProject`); the address
+      // has none. The same page (its view and row change the query string only) keeps it, another result starts clean.
+      this.processStore({ storeId: storeIdOfStorePath(path), rest: '' });
+      if (this.resultProjectPath !== path) {
+        this.resultProjectPath = undefined;
+        this.setCurrentProject(undefined);
+        this.clearEnvironmentContext();
+      }
+      return;
+    }
+    this.resultProjectPath = undefined;
     let where: IAddressedLocation;
     try {
       where = {

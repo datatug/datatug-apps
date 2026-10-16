@@ -2,6 +2,7 @@ import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   Injector,
   computed,
   inject,
@@ -51,12 +52,16 @@ import {
   map,
   of,
   switchMap,
+  take,
 } from 'rxjs';
 import {
   routingParamResultId,
   routingParamStoreId,
 } from '../../core/datatug-routing-params';
 import { AuthorCurrentRowComponent } from '../../queries/query/page/author-current-row.component';
+import { parseDatatugStoreRef } from '../../nav/nav-models';
+import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
+import { ProjectService } from '../../services/project/project.service';
 import { agentBaseUrl } from '../../services/repo/agent-url';
 import {
   AgentLinkApiService,
@@ -68,6 +73,7 @@ import {
   RERUN_LIMIT,
   ROW_QUERY_PARAM,
   RESULT_VIEWS,
+  ResultMeta,
   ResultRecordset,
   ResultView,
   StoredResult,
@@ -76,6 +82,7 @@ import {
   decodeRecordset,
   rerunBlocker,
   rerunRequest,
+  resultDbIds,
   resultRow,
   resultView,
   validResultId,
@@ -207,7 +214,11 @@ export class QueryResultPageComponent {
   private readonly agentBase = inject(DATATUG_AGENT_BASE_URL);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly navContext = inject(DatatugNavContextService);
+  private readonly projectService = inject(ProjectService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly reload$ = new Subject<void>();
+  private projectSubscription?: Subscription;
   private rerunSubscription?: Subscription;
 
   readonly views = RESULT_VIEWS;
@@ -303,7 +314,13 @@ export class QueryResultPageComponent {
         }),
         takeUntilDestroyed(),
       )
-      .subscribe((state) => this.state.set(state));
+      .subscribe((state) => {
+        this.state.set(state);
+        this.selectProject(
+          state.kind === 'loaded' ? state.result.meta : undefined,
+        );
+      });
+    this.destroyRef.onDestroy(() => this.projectSubscription?.unsubscribe());
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((q) => {
       this.view.set(resultView(q.get(VIEW_QUERY_PARAM)));
       this.row.set(resultRow(q.get(ROW_QUERY_PARAM)));
@@ -374,6 +391,42 @@ export class QueryResultPageComponent {
   /** Shows the saved result again; the saved files and this address never changed. */
   backToSaved(): void {
     this.resetRerun();
+  }
+
+  /**
+   * Makes the project of the result the current one, so the side panel shows its menu as on the project's own pages.
+   * The project is named by the result's saved database reference and is selected only when this agent knows it
+   * (its summary is read from the same loopback agent); a result of a database outside any project, or of a project
+   * this agent does not have, leaves the panel with no project, silently. No id or name is sent anywhere else.
+   */
+  private selectProject(meta: ResultMeta | undefined): void {
+    this.projectSubscription?.unsubscribe();
+    const url = this.router.url;
+    const ids = meta ? resultDbIds(meta) : undefined;
+    const storeId = this.storeId();
+    if (!ids || !storeId) {
+      this.navContext.selectResultProject(url);
+      return;
+    }
+    const ref = { projectId: ids.project, storeId };
+    this.projectSubscription = this.projectService
+      .getSummary(ref)
+      .pipe(take(1))
+      .subscribe({
+        next: (summary) => {
+          if (!summary) {
+            this.navContext.selectResultProject(url);
+            return;
+          }
+          const known = summary.environments?.some((e) => e.id === ids.env);
+          this.navContext.selectResultProject(
+            url,
+            { ref, store: { ref: parseDatatugStoreRef(storeId) } },
+            known ? ids.env : undefined,
+          );
+        },
+        error: () => this.navContext.selectResultProject(url),
+      });
   }
 
   private resetRerun(): void {

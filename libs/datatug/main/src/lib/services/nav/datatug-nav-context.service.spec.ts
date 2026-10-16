@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
-import { Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
-import { NEVER, of } from 'rxjs';
+import { NEVER, Subject, of } from 'rxjs';
+import { parseDatatugStoreRef } from '../../nav/nav-models';
 
 import { DatatugNavContextService } from './datatug-nav-context.service';
 import { AppContextService } from '../../core/services/app-context.service';
@@ -562,15 +563,27 @@ describe('DatatugNavContextService — reads the address with parseProjectUrl (G
       // REQ:table-identity (claude-mod-web-links): a card's link always carries `schema`, which is authoritative,
       // and its segment is the whole table name — a schemaless `Album`, and a SQLite table named `a.b`.
       '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook/table/Album?schema=#pk=%7B%7D',
-      'http-127.0.0.1:8989', 'demo', 'local', 'chinook', { schema: '', name: 'Album' },
+      'http-127.0.0.1:8989',
+      'demo',
+      'local',
+      'chinook',
+      { schema: '', name: 'Album' },
     ],
     [
       '/store/http-127.0.0.1:8989/project/demo/env/local/db/chinook/table/a.b/records?limit=5&schema=',
-      'http-127.0.0.1:8989', 'demo', 'local', 'chinook', { schema: '', name: 'a.b' },
+      'http-127.0.0.1:8989',
+      'demo',
+      'local',
+      'chinook',
+      { schema: '', name: 'a.b' },
     ],
     [
       '/store/http-127.0.0.1:8989/project/demo/env/local/db/pg/table/My%20Orders?schema=sales',
-      'http-127.0.0.1:8989', 'demo', 'local', 'pg', { schema: 'sales', name: 'My Orders' },
+      'http-127.0.0.1:8989',
+      'demo',
+      'local',
+      'pg',
+      { schema: 'sales', name: 'My Orders' },
     ],
     [
       '/store/github.com/project/Repo@Org@datatug/env/local',
@@ -705,5 +718,120 @@ describe('Space-scoped navigation metadata lifecycle', () => {
       store: undefined,
     });
     expect(env.getEnvSummary).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The page of a stored query result (`/store/<store>/result/<id>`) names no project in its address: the page reads
+ * it from the result and selects it (`selectResultProject`). The address changes of that page (its view and row are
+ * query parameters) keep the selection; another address reads its own project again.
+ */
+describe('DatatugNavContextService — the stored-result page', () => {
+  const store = 'http-127.0.0.1:8989';
+  const resultUrl = `/store/${store}/result/r1`;
+
+  function setup() {
+    const events = new Subject<unknown>();
+    window.history.replaceState({}, '', resultUrl);
+    TestBed.configureTestingModule({
+      providers: [
+        DatatugNavContextService,
+        {
+          provide: AppContextService,
+          useValue: { currentApp: of({ appCode: 'datatug' }) },
+        },
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current: undefined,
+            setCurrent: vi.fn(),
+            current$: of(undefined),
+          },
+        },
+        { provide: Router, useValue: { events, navigate: vi.fn() } },
+        {
+          provide: ProjectService,
+          useValue: {
+            watchProjectSummary: vi.fn(() => of(undefined)),
+            getFull: vi.fn(),
+          },
+        },
+        {
+          provide: EnvironmentService,
+          useValue: { getEnvSummary: vi.fn(() => of(undefined)) },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+      ],
+    });
+    const service = TestBed.inject(DatatugNavContextService);
+    const seen: Record<string, unknown> = {};
+    service.currentProject.subscribe((p) => (seen['project'] = p));
+    service.currentEnv.subscribe((e) => (seen['env'] = e));
+    service.currentStoreId.subscribe((id) => (seen['store'] = id));
+    const go = (url: string) => events.next(new NavigationEnd(1, url, url));
+    const project = {
+      ref: { projectId: 'demo', storeId: store },
+      store: { ref: parseDatatugStoreRef(store) },
+    };
+    return { service, seen, go, project };
+  }
+
+  beforeEach(() => sessionStorage.clear());
+
+  it('names the store of the address and no project', () => {
+    const { seen } = setup();
+    expect(seen['store']).toBe(store);
+    expect(seen['project']).toBeUndefined();
+  });
+
+  it('selects the project of the result and its environment', () => {
+    const { service, seen, project } = setup();
+    service.selectResultProject(resultUrl, project, 'local');
+    expect(seen['project']).toMatchObject({
+      ref: { projectId: 'demo', storeId: store },
+    });
+    expect(seen['store']).toBe(store);
+    expect(seen['env']).toMatchObject({ id: 'local' });
+  });
+
+  it('keeps the project when only the view or row of the page changes', () => {
+    const { service, seen, go, project } = setup();
+    service.selectResultProject(`${resultUrl}?view=table`, project, 'local');
+    go(`${resultUrl}?view=record&row=2`);
+    expect(seen['project']).toMatchObject({ ref: { projectId: 'demo' } });
+    expect(seen['env']).toMatchObject({ id: 'local' });
+  });
+
+  it('clears the project when another result opens', () => {
+    const { service, seen, go, project } = setup();
+    service.selectResultProject(resultUrl, project, 'local');
+    go(`/store/${store}/result/r2?view=table`);
+    expect(seen['project']).toBeUndefined();
+    expect(seen['env']).toBeUndefined();
+    expect(seen['store']).toBe(store);
+  });
+
+  it('reads the project of any other address again', () => {
+    const { service, seen, go, project } = setup();
+    service.selectResultProject(resultUrl, project);
+    go(`/store/${store}/project/p2/env/local`);
+    expect(seen['project']).toMatchObject({ ref: { projectId: 'p2' } });
+    // Back on the result page: nothing is selected until the page selects again.
+    go(resultUrl);
+    expect(seen['project']).toBeUndefined();
+  });
+
+  it('selecting no project clears it', () => {
+    const { service, seen, project } = setup();
+    service.selectResultProject(resultUrl, project, 'local');
+    service.selectResultProject(resultUrl);
+    expect(seen['project']).toBeUndefined();
+    expect(seen['env']).toBeUndefined();
   });
 });

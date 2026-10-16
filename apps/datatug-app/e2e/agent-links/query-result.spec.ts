@@ -50,6 +50,10 @@ test.describe('query result link', () => {
     expect(page.url()).not.toContain('code=');
     expect(page.url()).toContain('/result/e2e-invoices?view=sources');
 
+    // The project of the result is the current one: the side panel shows its menu, as on the project's own pages.
+    const projectMenu = page.locator('sneat-datatug-project-menu');
+    await expect(projectMenu).toContainText('Queries', { timeout: 30_000 });
+
     await page.getByTestId('result-view-related').click();
     const related = page.getByTestId('result-related');
     await expect(related).toContainText('Customer');
@@ -76,23 +80,30 @@ test.describe('query result link', () => {
       'Position 1',
     );
 
+    // Changing the view did not drop the project, and a refresh (the code is gone from the address) selects it again.
+    await expect(projectMenu).toContainText('Queries');
     await page.reload();
     await expect(page.getByTestId('author-current-row')).toContainText(
       'Position 1',
       { timeout: 30_000 },
     );
+    await expect(page.locator('sneat-datatug-project-menu')).toContainText(
+      'Queries',
+      { timeout: 30_000 },
+    );
 
-    // The page only read the result: one session exchange, the result reads, and no run or write.
+    // The page only read: one session exchange, the result reads and the project's own reads, and no run or write.
     expect(
       agentRequests.filter((r) => r.url.endsWith('/datatug/session/exchange')),
     ).toHaveLength(1);
     const others = agentRequests.filter(
       (r) => !r.url.endsWith('/datatug/session/exchange'),
     );
-    expect(others.length).toBeGreaterThan(0);
+    expect(others.some((r) => /\/datatug\/results\/e2e-invoices$/.test(r.url))).toBe(true);
     for (const r of others) {
       expect(r.method).toBe('GET');
-      expect(r.url).toMatch(/\/datatug\/results\/e2e-invoices$/);
+      expect(r.url).not.toMatch(/\/datatug\/exec\//);
+      expect(r.url).not.toContain('code=');
     }
 
     // A related name opens the table page of the same database.
