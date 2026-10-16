@@ -14,11 +14,11 @@
       <ion-card-content><ion-text color="medium">Loading records…</ion-text></ion-card-content>
     </ion-card>
   } @else if (s.kind === 'problem') {
-    <ion-card>
-      <ion-card-content data-testid="link-problem">
-        <ion-text color="danger">The records cannot be shown: {{ s.problem }}</ion-text>
-      </ion-card-content>
-    </ion-card>
+    <sneat-datatug-link-problem
+      [problem]="s.problem"
+      [tableRef]="tableRef()"
+      (checkAgain)="reload()"
+    />
   } @else {
     <ion-card>
       <ion-card-content>

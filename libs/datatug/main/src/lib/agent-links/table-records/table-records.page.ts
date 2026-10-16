@@ -28,6 +28,7 @@ import {
   classifyAgentError,
 } from '../agent-link-api.service';
 import { LIMIT_QUERY_PARAM, linkTableRef, recordsLimit } from '../link-route';
+import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import { qualifiedTableName } from '../table-identity';
 
 type RecordsState =
@@ -56,6 +57,7 @@ type RecordsState =
     IonCard,
     IonCardContent,
     IonText,
+    LinkProblemComponent,
   ],
   templateUrl: './table-records.page.html',
   styleUrl: '../agent-link-page.scss',
