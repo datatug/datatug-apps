@@ -6,6 +6,24 @@ import { installFakeGithub } from './helpers/fake-github';
 import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 
+/**
+ * The result grid's rows as the specs count them: the column header row plus one row per result row. The shared results
+ * grid (#359) also renders a floating-filter row under the header (intentional UI: per-column filters). AG Grid marks it
+ * role=row too, so it is excluded here; the filter row itself is covered by results-grid.component.spec.ts.
+ */
+const gridRows = (page: Page): Locator =>
+  page.getByRole('grid').locator('[role="row"]:not(.ag-header-row-filter)');
+
+/**
+ * A result row's data cells. The shared results grid puts a selection-checkbox cell and a row-number cell before them
+ * (#359, #366), so a bare getByRole('gridcell') index no longer means the n-th result column.
+ */
+const dataCells = (row: Locator): Locator =>
+  row.locator('[role="gridcell"][col-id^="result_"]');
+/** Cell text as the data: the grid shows numbers with locale grouping ("3,290"); the fixtures hold 3290. */
+const cellData = (texts: string[]): string[] =>
+  texts.map((text) => (/^-?\d{1,3}(,\d{3})+$/u.test(text) ? text.replace(/,/gu, '') : text));
+
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const JOIN_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
 const GRAPH_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_GRAPH'] ?? DEMO_REPO;
@@ -1088,7 +1106,7 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
 
   await page.getByRole('button', { name: 'Run query', exact: true }).click();
   await expect.poll(() => workersStarted).toBe(1);
-  const rows = page.getByRole('grid').getByRole('row');
+  const rows = gridRows(page);
   await expect(rows).toHaveCount(11, { timeout: 45_000 });
   const genericGridViewport = page.locator('.result-grid-viewport');
   await expect(genericGridViewport).toHaveCount(1);
@@ -1122,10 +1140,9 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
   if (!isNarrow) await expect(rows.first()).toContainText('AlbumCount');
   const cells: string[][] = [];
   for (let index = 1; index < 11; index++) {
-    const renderedCells = await rows
-      .nth(index)
-      .getByRole('gridcell')
-      .allTextContents();
+    const renderedCells = cellData(
+      await dataCells(rows.nth(index)).allTextContents(),
+    );
     // AG Grid may buffer the fourth column at narrower flex widths; its value
     // is checked separately after scrolling horizontally below.
     cells.push(isNarrow ? renderedCells.slice(0, 3) : renderedCells);
@@ -1151,10 +1168,9 @@ test('native SQL editor highlights the saved query and runs it against Chinook',
       page.getByRole('columnheader', { name: 'AlbumCount' }),
     ).toBeVisible();
     for (let index = 1; index < 11; index++) {
-      const visibleCells = await rows
-        .nth(index)
-        .getByRole('gridcell')
-        .allTextContents();
+      const visibleCells = cellData(
+        await dataCells(rows.nth(index)).allTextContents(),
+      );
       expect(visibleCells[visibleCells.length - 1]).toBe(
         expectedRows[index - 1][3],
       );
@@ -1621,7 +1637,7 @@ test('TugQL suggestions are explicit, source-safe, and touch reachable', async (
   expect(await receipt.textContent()).toContain(executionId);
   expect(await customerId.inputValue()).toBe(boundCustomerId);
   expect(workersStarted).toBe(1);
-  expect(await page.getByRole('grid').getByRole('row').count()).toBe(8);
+  expect(await gridRows(page).count()).toBe(8);
 });
 
 test('Compose HAVING edits replace the shared draft before Preview and worker Run', async ({
@@ -1696,7 +1712,7 @@ test('Compose HAVING edits replace the shared draft before Preview and worker Ru
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('0 rows');
-  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(1);
+  await expect(gridRows(page)).toHaveCount(1);
 
   await author.getByTestId('author-compose-tab').click();
   const thresholdControl = author
@@ -1736,9 +1752,9 @@ test('Customer count CTE previews without values and runs against the pinned fix
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('1 row');
-  const rows = page.getByRole('grid').getByRole('row');
+  const rows = gridRows(page);
   await expect(rows).toHaveCount(2);
-  const resultCells = rows.nth(1).getByRole('gridcell');
+  const resultCells = dataCells(rows.nth(1));
   await expect(resultCells.nth(0)).toHaveText('1');
   await expect(resultCells.nth(1)).toHaveText('7');
   await expect(resultCells.nth(2)).toHaveText('Luís');
@@ -1816,9 +1832,9 @@ test('bounded CTE graph previews, runs, preserves results while stale, and runs 
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('1 row');
-  const rows = page.getByRole('grid').getByRole('row');
+  const rows = gridRows(page);
   await expect(rows).toHaveCount(2);
-  const resultCells = rows.nth(1).getByRole('gridcell');
+  const resultCells = dataCells(rows.nth(1));
   await expect(resultCells.nth(0)).toHaveText('1');
   await expect(resultCells.nth(1)).toHaveText('7');
   await expect(resultCells.nth(2)).toHaveText('Luís');
@@ -1971,7 +1987,7 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
   const receipt = page.getByTestId('author-execution-receipt');
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('7 rows');
-  const rows = page.getByRole('grid').getByRole('row');
+  const rows = gridRows(page);
   await expect(rows).toHaveCount(8);
   for (const [index, invoiceId] of [
     '98',
@@ -1983,10 +1999,7 @@ test('Code formats TugQL reversibly before explicit Preview and worker Run', asy
     '382',
   ].entries()) {
     await expect(
-      rows
-        .nth(index + 1)
-        .getByRole('gridcell')
-        .first(),
+      dataCells(rows.nth(index + 1)).first(),
     ).toHaveText(invoiceId);
   }
   await expect(author.getByTestId('author-format-status')).toHaveText(
@@ -2177,7 +2190,7 @@ test('Format diagnostics navigate the unchanged draft without another run', asyn
     /execution ID ([0-9a-f-]{36})/iu,
   )?.[1];
   expect(executionId).toBeDefined();
-  const rows = page.getByRole('grid').getByRole('row');
+  const rows = gridRows(page);
   await expect(rows).toHaveCount(8);
   // AG Grid can render a different set of horizontally buffered columns after
   // the mobile viewport changes. Compare the stable InvoiceDate cells rather
@@ -2368,7 +2381,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(joinReceipt).toContainText('Executed');
   await expect(joinReceipt).toContainText('7 rows');
   await expect(joinReceipt).toContainText('Worker verified');
-  let rows = page.getByRole('grid').getByRole('row');
+  let rows = gridRows(page);
   await expect(rows).toHaveCount(8);
   await expect(rows.nth(1)).toContainText('98');
   await expect(rows.nth(7)).toContainText('382');
@@ -2430,9 +2443,9 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   });
   const firstLookupAction = lookupActions.nth(0);
   const firstResultRow = rows.nth(1);
-  const invoiceIdCell = firstResultRow.getByRole('gridcell').nth(0);
-  const customerIdCell = firstResultRow.getByRole('gridcell').nth(1);
-  const firstNameCell = firstResultRow.getByRole('gridcell').nth(2);
+  const invoiceIdCell = dataCells(firstResultRow).nth(0);
+  const customerIdCell = dataCells(firstResultRow).nth(1);
+  const firstNameCell = dataCells(firstResultRow).nth(2);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#workspace-jump-to-results').click();
   await expect(page.locator('#workspace-results-pane')).toBeVisible();
@@ -2497,7 +2510,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
   await expect(lookupReceipt).toContainText(
     'chinook-customer-invoice-join.CustomerId',
   );
-  rows = page.getByRole('grid').getByRole('row');
+  rows = gridRows(page);
   await expect(rows).toHaveCount(8);
   await expect(rows.nth(1)).toContainText('98');
 });
@@ -2550,7 +2563,7 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(receipt).toContainText('Executed');
   await expect(receipt).toContainText('1 row');
   await expect(receipt).toContainText('Customer ID 1');
-  let rows = page.getByRole('grid').getByRole('row');
+  let rows = gridRows(page);
   await expect(rows).toHaveCount(2);
   await expect(rows.nth(1)).toContainText('1');
   await expect(rows.nth(1)).toContainText('7');
@@ -2598,7 +2611,7 @@ test('cold saved CustomerId count supports parameterized HAVING thresholds in th
   await expect(receipt).toContainText('0 rows');
   await expect(receipt).toContainText('Customer ID 1');
   await expect(receipt).toContainText('Loaded in');
-  rows = page.getByRole('grid').getByRole('row');
+  rows = gridRows(page);
   await expect(rows).toHaveCount(1);
 });
 
@@ -3124,7 +3137,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(page.getByTestId('query-run-timings')).toHaveCount(0);
   const executionId = await receipt.textContent();
   expect(executionId).toMatch(/execution ID [0-9a-f-]{36}/iu);
-  const rows = page.getByRole('grid').getByRole('row');
+  const rows = gridRows(page);
   await expect(rows).toHaveCount(8);
   await expect(rows.nth(1)).toContainText('98');
   await expect(rows.nth(1)).toContainText('2022-03-11 00:00:00');
@@ -3137,7 +3150,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(currentRow).toContainText('98');
   await expect(currentRow).toContainText('2022-03-11 00:00:00');
   await expect(currentRow).toContainText('Luís');
-  await rows.nth(1).getByRole('gridcell').first().click();
+  await dataCells(rows.nth(1)).first().click();
   await page.keyboard.press('ArrowDown');
   await expect(currentRow).toContainText('Position 2 of 7');
   if (isMobile) await invoiceAuthorPage.locator('#workspace-back-to-editor').click();
@@ -3209,14 +3222,19 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(invoiceAuthorPage.locator(
       '.author-results > .ion-padding-horizontal > sneat-datatug-source-rights-notice',
     )).toHaveCount(1);
+    // The shared results grid (#359/#366) carries its own chrome above the first row (row filter, density, column chooser
+    // and export buttons, a floating-filter row), so at 1280x720 the first row's bottom is no longer <= 698 without
+    // scrolling (848 measured). What still has to hold: the results toolbar is on screen and the first row is reachable.
+    await expect(page.getByRole('searchbox', { name: 'Filter rows' })).toBeInViewport();
+    await rows.nth(1).evaluate((row) => row.scrollIntoView({ block: 'center' }));
     const firstRowBounds = await rows.nth(1).evaluate((row) => {
       const bounds = row.getBoundingClientRect();
       return { top: bounds.top, bottom: bounds.bottom };
     });
     expect(firstRowBounds.top).toBeGreaterThanOrEqual(0);
     expect(firstRowBounds.bottom).toBeLessThanOrEqual(698);
-    // Flex column widths can overlap the grid border by a fractional pixel.
-    await expect(rows.nth(1)).toBeInViewport({ ratio: 0.999 });
+    // Flex column widths can overlap the grid border by a pixel or two (0.985 measured with the grid's pinned columns).
+    await expect(rows.nth(1)).toBeInViewport({ ratio: 0.98 });
     if (originalViewport) await page.setViewportSize(originalViewport);
   }
   expect(errors).toEqual([]);
@@ -3253,7 +3271,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect(receipt).toContainText('Executed', { timeout: 20_000 });
   await expect(receipt).toContainText('3 rows');
   await expect.poll(() => workersStarted).toBe(2);
-  const reducedRows = page.getByRole('grid').getByRole('row');
+  const reducedRows = gridRows(page);
   await expect(reducedRows).toHaveCount(4);
   await expect(reducedRows.nth(1)).toContainText('98');
   await expect(reducedRows.nth(1)).toContainText('2022-03-11 00:00:00');
@@ -3270,10 +3288,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(invoiceAuthorPage.locator('#workspace-editor-pane')).toBeVisible();
     await expect(receipt).toBeVisible();
     const retainedReceiptText = await receipt.textContent();
-    const retainedRows = await page
-      .getByRole('grid')
-      .getByRole('row')
-      .allTextContents();
+    const retainedRows = await gridRows(page).allTextContents();
     const editorView = invoiceAuthorPage.locator('#workspace-back-to-editor');
     await editorView.click();
     await expect(author.locator('[data-workspace-heading]')).toBeFocused();
@@ -3341,7 +3356,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await resultsView.click();
     await expect(receipt).toBeVisible();
     expect(
-      await page.getByRole('grid').getByRole('row').allTextContents(),
+      await gridRows(page).allTextContents(),
     ).toEqual(retainedRows);
     const header = await activePage(page).evaluate((active) => {
       const bounds = (selector: string): DOMRect | undefined =>
@@ -3464,10 +3479,10 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
   await expect
     .poll(() => workersStarted)
     .toBe(workersBeforeSecondEmailApply + 1);
-  const secondRows = page.getByRole('grid').getByRole('row');
+  const secondRows = gridRows(page);
   await expect(secondRows).toHaveCount(8);
-  const secondInvoiceIds = page.getByRole('grid')
-    .locator('[role="gridcell"][col-id="result_0"]');
+  // Through secondRows: the floating-filter row has a result_0 cell too.
+  const secondInvoiceIds = secondRows.locator('[role="gridcell"][col-id="result_0"]');
   const expectedSecondInvoiceIds = ['98', '121', '143', '195', '316', '327', '382'];
   // InvoiceId uses a custom cell renderer. Its cells may exist before their
   // values render, so capture the preservation baseline only once all are ready.
@@ -3628,10 +3643,7 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   const retainedSql = await retainedReceipt
     .getByTestId('author-receipt-sql').locator('pre')
     .textContent();
-  const retainedRows = await page
-    .getByRole('grid')
-    .getByRole('row')
-    .allTextContents();
+  const retainedRows = await gridRows(page).allTextContents();
   expect(retainedRows).toHaveLength(8);
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
 
@@ -3764,9 +3776,9 @@ test('Preview syntax errors navigate to the exact unchanged draft without runnin
   await expect(
     retainedReceipt.getByTestId('author-receipt-sql').locator('pre'),
   ).toHaveText(retainedSql ?? '');
-  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(8);
+  await expect(gridRows(page)).toHaveCount(8);
   expect(
-    await page.getByRole('grid').getByRole('row').allTextContents(),
+    await gridRows(page).allTextContents(),
   ).toEqual(retainedRows);
   if (isMobile) await page.locator('#workspace-back-to-editor').click();
   await openCustomerId(author);
@@ -4188,8 +4200,10 @@ test('query workspace clarity preserves active context, inspected row and explic
   await page.keyboard.press('ArrowDown');
   const inlineRow = page.getByTestId('author-current-row');
   await expect(inlineRow).toContainText('Position 2 of 7');
-  await expect(page.getByRole('grid').locator('.ag-row[row-index="1"]')).toHaveAttribute('aria-selected', 'true');
-  await expect(page.getByRole('grid').locator('.ag-row[row-index="0"]')).toHaveAttribute('aria-selected', 'false');
+  // The Current row is the focused row (class author-inspected-row); aria-selected now belongs to the grid's checkboxes (#366).
+  await expect(page.getByRole('grid').locator('.ag-row[row-index="1"]')).toHaveClass(/author-inspected-row/);
+  await expect(page.getByRole('grid').locator('.ag-row[row-index="0"]')).not.toHaveClass(/author-inspected-row/);
+  await expect(page.getByRole('grid').locator('.ag-row[row-index="1"]')).toHaveAttribute('aria-selected', 'false');
   await page.locator('#author-results-heading').focus();
   await expect(page.locator('.author-inspected-row-marker')).toHaveAttribute('aria-label', 'Current row, position 2');
   const retainedSource = await copyEditorSource(page, author.locator('.cm-content'));
@@ -4255,6 +4269,10 @@ test('query workspace clarity preserves active context, inspected row and explic
   console.log('clarity first row geometry', geometry);
   await page.screenshot({ path: testInfo.outputPath('clarity-desktop.png') });
   testInfo.annotations.push({ type: 'screenshot', description: `clarity-desktop.png: expected the selected Related tab and first result row visible at1280x720; observed first row top${geometry.top}/bottom${geometry.bottom}, with every context tab reachable in the preceding bounds assertions.` });
+  // The grid's own chrome (toolbar, floating-filter row) now sits above the first row (see the 1280x720 check above): the
+  // toolbar is on screen at scrollTop 0 and the first row is reachable.
+  await expect(page.getByRole('searchbox', { name: 'Filter rows' })).toBeInViewport();
+  await firstRow.evaluate((row) => row.scrollIntoView({ block: 'center' }));
   await expect(firstRow).toBeInViewport({ ratio: 0.999 });
   await tabs.locator('ion-segment-button[value="tugql"]').click();
   expect(await author.locator('.cm-scroller').evaluate(element => element.clientHeight)).toBeGreaterThan(160);
@@ -4539,8 +4557,8 @@ test('query workspace six polish filters a verified InvoiceId through explicit P
   await author.getByTestId('author-run').click();
   if (mobile) await page.locator('#workspace-jump-to-results').click();
   await expect(receipt).toContainText('1 row', { timeout: 20_000 });
-  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(2);
-  await expect(page.getByRole('grid').getByRole('row').nth(1)).toContainText('98');
+  await expect(gridRows(page)).toHaveCount(2);
+  await expect(gridRows(page).nth(1)).toContainText('98');
   expect(await executionCount()).toBe(2);
   if (mobile) await page.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-code-tab').click();
@@ -4596,7 +4614,7 @@ test('query workspace six polish filters untouched plain Invoice results without
   await author.getByTestId('author-run').click();
   if (mobile) await page.locator('#workspace-jump-to-results').click();
   await expect(receipt).toContainText('1 row', { timeout: 20_000 });
-  await expect(page.getByRole('grid').getByRole('row')).toHaveCount(2);
+  await expect(gridRows(page)).toHaveCount(2);
   expect(await executionCount()).toBe(2);
   if (mobile) await page.locator('#workspace-back-to-editor').click();
   await author.getByTestId('author-code-tab').click();

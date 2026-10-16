@@ -144,7 +144,8 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   awaitingColdRun = true;
   await reopened.getByTestId('author-run').click();
   await expect(page.getByRole('grid')).toBeVisible({ timeout: 30000 });
-  await expect(page.getByRole('grid').getByRole('row').nth(1)).toBeVisible({
+  // The first result row: not the floating-filter row under the header (also role=row).
+  await expect(page.getByRole('grid').locator('[role="row"]:not(.ag-header-row-filter)').nth(1)).toBeVisible({
     timeout: 30000,
   });
   expect(databaseRequests).toBeGreaterThanOrEqual(2);

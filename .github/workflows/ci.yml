@@ -13,6 +13,9 @@ on:
   # run ONLY on this event; pull_request, merge_group and push run the offline lanes (see e2e/README.md "Lane matrix").
   schedule:
     - cron: '17 3 * * *'
+  # Manual run of the card-link e2e (agent-links) only; every other schedule-gated
+  # job stays nightly-only. A dispatch is never a push, so deploy.yml's gate skips it.
+  workflow_dispatch:
 
 permissions:
   actions: read
@@ -52,8 +55,8 @@ jobs:
           GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
         run: |
-          if [ "$EVENT_NAME" = schedule ]; then
-            echo '::notice::Scheduled nightly validation always runs the full application suites.'
+          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo '::notice::Scheduled or manual validation always runs the full application suites.'
             echo 'mode=full' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -227,7 +230,7 @@ jobs:
   # Run full browser suites nightly at 03:17 UTC. Independent runners keep their
   # app servers, Playwright artifacts and Nx state from contending.
   e2e-checkout:
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [preflight, build]
     permissions:
@@ -291,7 +294,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e-app:
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [preflight, build]
     permissions:
@@ -397,7 +400,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e-query-mobile:
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [preflight, build]
     permissions:
@@ -486,7 +489,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e-demo-sqlite:
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [preflight, build]
     permissions:
@@ -645,7 +648,7 @@ jobs:
           if-no-files-found: ignore
 
   e2e-demo-handoff:
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs: [preflight, build]
     permissions:
@@ -752,7 +755,7 @@ jobs:
   # `skipped`. Add new lanes here. Not run on the nightly schedule.
   deploy-gate:
     name: deploy-gate
-    if: always() && github.event_name != 'schedule'
+    if: always() && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs:
       - build
@@ -792,7 +795,7 @@ jobs:
   # the one suite that can catch a datatug-cli-side regression even when no
   # file in this repo changed. Run it nightly with the other E2E suites.
   journey:
-    if: always()
+    if: always() && github.event_name != 'workflow_dispatch'
     # `env` is not an available context for `jobs.<job_id>.name`, so the
     # pinned tag can't be interpolated here — it's visible in the "Checkout
     # datatug-cli" step name below instead. Keep this literal name and the

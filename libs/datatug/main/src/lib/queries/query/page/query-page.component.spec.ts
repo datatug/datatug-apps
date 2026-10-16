@@ -1172,6 +1172,51 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     });
   });
 
+  it('keeps the Current row on the focused or clicked row, never on the checked rows, and remembers the grid layout under an id-only key', async () => {
+    component = await createTugQLAuthor(authorSource);
+    const rawRows = [
+      [{ type: 'integer', value: '121' }],
+      [{ type: 'integer', value: '143' }],
+    ] as const;
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [{ name: 'InvoiceId', type: 'integer' }],
+        rows: rawRows,
+      },
+    } as FederatedQueryResult);
+    await component.changeRelatedResultSet('affiliations');
+    const rows = component.resultGridRows();
+    const setSelected = vi.fn();
+    const api = {
+      getDisplayedRowAtIndex: (index: number) => ({
+        data: rows[index],
+        setSelected,
+      }),
+      refreshCells: vi.fn(),
+      forEachNode: vi.fn(),
+    };
+    component.authorResultRowClicked({ api, data: rows[0] } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[0]);
+    // Ticking the checkbox of the second row selects it for export and copy; the Current row stays.
+    component.authorResultSelectionChanged({
+      api,
+      selectedNodes: [{ data: rows[1], isSelected: () => true }],
+    } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[0]);
+    // Moving the focus moves the Current row without checking anything.
+    component.authorResultCellFocused({ rowIndex: 1, api } as never);
+    expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
+    expect(setSelected).not.toHaveBeenCalled();
+
+    const key = component.resultGridStateKey();
+    expect(key).toMatch(
+      /^datatug\.grid\.v1:[^:]+:[^:]+:(query|source|result)$/,
+    );
+    expect(key).not.toContain('143');
+    expect(key).not.toContain('InvoiceId');
+  });
+
   it('keeps the inspected marker and sheet on the latest raw row, closes on replacement and restores caller focus', async () => {
     component = await createTugQLAuthor(authorSource);
     const rawRows = [
@@ -1203,10 +1248,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       forEachNode: (visit: (node: (typeof nodes)[number]) => void) =>
         nodes.forEach(visit),
     };
-    component.authorResultSelectionChanged({
-      api,
-      selectedNodes: [{ data: rows[0], isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ api, data: rows[0] } as never);
     component.authorResultCellFocused({ rowIndex: 1, api } as never);
     component.authorResultCellFocused({ rowIndex: null, api } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
@@ -1541,9 +1583,7 @@ select i.InvoiceId
     ).toEqual(['Location']);
     const gridRow = component.resultGridRows()[0];
     expect(gridRow).toEqual({ result_0: 'related-value' });
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: gridRow, isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: gridRow } as never);
     expect(component.authorResultSnapshotKey()).toBe(relatedSnapshotKey);
     expect(component.currentAuthorResultRow()?.recordset).toBe(
       component.displayedRecordset(),
@@ -1613,9 +1653,7 @@ select i.InvoiceId
     component.runResult.set(result);
     await component.changeRelatedResultSet('affiliations');
     const gridRow = component.resultGridRows()[0];
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: gridRow, isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: gridRow } as never);
     const selection = component.currentAuthorResultRow();
     expect(selection?.row).toBe(row);
     const editor = TestBed.inject(QueryEditorStateService);
@@ -1671,9 +1709,7 @@ select i.InvoiceId
     expect(component.resultTotalRowsKnown()).toBe(true);
 
     const rows = component.resultGridRows();
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: rows[0], isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: rows[0] } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
 
     component.authorResultCellFocused({
@@ -1682,9 +1718,7 @@ select i.InvoiceId
     } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(secondRaw);
 
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: rows[0], isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: rows[0] } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
 
     dispatchPageResponse.mockResolvedValue([pageRaw as never]);
@@ -1817,9 +1851,7 @@ select i.InvoiceId
     } as Awaited<ReturnType<typeof service.openLocalResult>>);
     await component.openHistoricalResult('same-result');
     const firstGridRow = component.resultGridRows()[0];
-    component.authorResultSelectionChanged({
-      selectedNodes: [{ data: firstGridRow, isSelected: () => true }],
-    } as never);
+    component.authorResultRowClicked({ data: firstGridRow } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRow);
 
     vi.mocked(service.openLocalResult).mockResolvedValueOnce({
@@ -10915,6 +10947,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     editorImports: Array<Type<unknown>> = [],
     editorState$?: BehaviorSubject<IQueryEditorState>,
     projectContext: IProjectContext = project,
+    route?: {
+      readonly queryId?: string;
+      readonly queryParams?: ReturnType<typeof convertToParamMap>;
+    },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
@@ -10933,6 +10969,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ],
     } as unknown as IQueryEditorState;
     const editor = editorState$ ?? new BehaviorSubject(editorState);
+    const routeQueryParams = route?.queryParams ?? convertToParamMap({});
+    const routeParams = convertToParamMap(
+      route?.queryId ? { queryId: route.queryId } : {},
+    );
 
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -10964,9 +11004,13 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(routeQueryParams),
+            paramMap: of(routeParams),
+            snapshot: {
+              paramMap: routeParams,
+              queryParamMap: routeQueryParams,
+              params: {},
+            },
           },
         },
         {
@@ -10994,9 +11038,14 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
                 ),
               }),
             ),
-            openQuery: vi.fn(),
+            openQuery: vi.fn((queryId: string) => {
+              if (editor.value.activeQueries.some((query) => query.id === queryId))
+                editor.next({ ...editor.value, currentQueryId: queryId });
+            }),
             newQuery: vi.fn(),
-            getQueryState: vi.fn(),
+            getQueryState: vi.fn((queryId: string) =>
+              editor.value.activeQueries.find((query) => query.id === queryId),
+            ),
             saveQuery: vi.fn(),
           },
         },
@@ -11274,6 +11323,67 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     }));
     expect(component.queryBodyText()).toBe(legacySqlText);
     expect(component.queryDef()).toEqual(definition);
+  });
+
+  it('preserves an omitted environment from a saved SQL query route through browser SQLite dispatch', async () => {
+    const queryId = 'demodb/northwind-orders-browser-sqlite';
+    const definition: IQueryDef = {
+      id: queryId,
+      title: 'Northwind orders',
+      connectionId: 'northwind-sqlite',
+      request: { queryType: QueryType.SQL, text: 'select 1' } as ISqlQueryRequest,
+    };
+    const loadingState: IQueryState = {
+      id: queryId,
+      queryType: QueryType.SQL,
+      isLoading: true,
+      environments: [{ id: 'local' }],
+    };
+    const browserProject: IProjectContext = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      },
+    };
+    const editorState = new BehaviorSubject<IQueryEditorState>({
+      activeQueries: [loadingState],
+    });
+    component = await createComponent(
+      definition,
+      '',
+      [],
+      editorState,
+      browserProject,
+      {
+        queryId,
+        queryParams: convertToParamMap({
+          id: queryId,
+          runtime: 'project',
+        }),
+      },
+    );
+
+    expect(component.envId).toBeUndefined();
+    editorState.next({
+      ...editorState.value,
+      activeQueries: [
+        {
+          ...editorState.value.activeQueries[0],
+          isLoading: false,
+          request: definition.request,
+          def: definition,
+        },
+      ],
+    });
+    expect(component.envId).toBeUndefined();
+    component.runQuery();
+
+    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+      projectRef: browserProject.ref,
+      definition,
+      environment: undefined,
+      target: { kind: 'browser-sqlite' },
+    }));
   });
 
   it('keeps exact browser SQL inputs and client origins with the prior result after a draft binding edit', async () => {

@@ -43,6 +43,10 @@ export interface LinkDaemon {
   readonly port: number;
   /** A fresh link (with a fresh one-time code) as a path for `page.goto`, minted by `datatug daemon url`. */
   link(req: LinkRequest): string;
+  /** The version of the datatug binary, e.g. `0.102.1`; empty when `datatug version` did not print one. */
+  readonly cliVersion: string;
+  /** Whether the binary is at least `min` (a `major.minor.patch` string); false when its version is unknown. */
+  cliAtLeast(min: string): boolean;
   /** Whether the binary stores query results (`query run --result-id`, `daemon url --result`). */
   readonly supportsResults: boolean;
   /** Stores a query result under `id` with `datatug query run <args> --result-id <id>` (no row reaches stdout). */
@@ -56,6 +60,19 @@ export interface LinkDaemon {
   /** Stops the daemon (for the agent-unreachable state); `start()` starts it again. */
   stop(): void;
   start(): void;
+}
+
+/** Whether the version `version` (`1.2.3`, a `v` prefix and a suffix are ignored) is at least `min`. */
+export function versionAtLeast(version: string, min: string): boolean {
+  const parse = (v: string) =>
+    (/(\d+)\.(\d+)\.(\d+)/.exec(v) ?? []).slice(1).map(Number);
+  const a = parse(version);
+  const b = parse(min);
+  if (a.length !== 3 || b.length !== 3) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return true;
 }
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; skipReason: string };
@@ -162,8 +179,13 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
       const port = start();
       const help = spawnSync(bin.value, ['daemon', 'url', '--help'], { env, cwd, encoding: 'utf8' });
       const storeHelp = spawnSync(bin.value, ['query', 'results', '--help'], { env, cwd, encoding: 'utf8' });
+      // `datatug version` prints `datatug 0.102.1 (<commit>) <date>`.
+      const versionOut = spawnSync(bin.value, ['version'], { env, cwd, encoding: 'utf8' });
+      const cliVersion = /(\d+\.\d+\.\d+)/.exec(versionOut.stdout)?.[1] ?? '';
       const daemon: LinkDaemon = {
         port,
+        cliVersion,
+        cliAtLeast: (min) => versionAtLeast(cliVersion, min),
         supportsResults: `${help.stdout}${help.stderr}`.includes('--result'),
         supportsPrompt: `${storeHelp.stdout}${storeHelp.stderr}`.includes('annotate'),
         annotate: (id, text) => {

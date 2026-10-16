@@ -670,22 +670,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           return;
         const root = this.element.nativeElement;
         const target =
-          (cardId
-            ? (Array.from(
-                root.querySelectorAll<HTMLElement>(
-                  '[data-tutorial-card-heading], [data-board-card-id]',
-                ),
-              ).find(
-                (element) =>
-                  element.getAttribute('data-tutorial-card-heading') === cardId,
-              ) ??
-              Array.from(
-                root.querySelectorAll<HTMLElement>('[data-board-card-id]'),
-              ).find(
-                (element) =>
-                  element.getAttribute('data-board-card-id') === cardId,
-              ))
-            : undefined) ??
           root.querySelector<HTMLElement>(
             fallback ??
               (!this.visibleTutorialCards().length
