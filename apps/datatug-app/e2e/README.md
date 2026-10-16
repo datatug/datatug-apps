@@ -117,21 +117,24 @@ two-fixture comparison. It uses the iPhone 13 browser profile and also checks
 Safari testing is a separate check. The default CI projects remain unchanged.
 
 ```sh
-# Use a clean checkout of the maintained demo project and an unused local port.
+# Use a clean checkout of demo revision f40286a57ea3a04b93875335234665ece2595ed0
+# (the CI browser catalog pin) and an unused local port.
 DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
   pnpm nx run datatug-app:e2e-query-mobile
 ```
 
 Install Playwright's WebKit browser before running the profile locally.
 The GitHub reader is served from the local demo checkout; query execution and
-comparison use the real pinned SQLite workers and Core bridge. Reports are
+comparison use the real SQLite workers and Core bridge. The exact Chinook
+browser URL is fulfilled from the hash-checked, admitted
+[local fixture](fixtures/chinook.FIXTURE.md), so public download rate limits do
+not turn these application checks into source availability checks. The live
+DemoDB browser checks retain their public-source coverage. Reports are
 written under `coverage/apps/datatug-query-mobile/`.
 
-The existing `e2e` job always installs Chromium and adds WebKit to that same
-install command when `datatug-app` is affected. It runs this target as a
-required step after the default affected Chromium suite. The hand-off check
-stays in the `e2e` job; the existing real-agent journey remains in its separate
-job with its current gate.
+The Chromium app and Query mobile WebKit suites run in separate CI jobs after
+build. Both remain in the required `e2e` aggregate. The real-agent journey
+remains in its separate job with its current gate.
 
 Two kinds of e2e live here.
 

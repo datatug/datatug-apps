@@ -1,5 +1,6 @@
 import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
+import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 
 const project =
@@ -7,10 +8,12 @@ const project =
 const fake = process.env['DATATUG_E2E_GITHUB_FAKE'];
 
 test.beforeEach(async ({ context }) => {
-  if (fake)
+  if (fake) {
+    await installPinnedChinookSqlite(context, fake);
     await installFakeGithub(context, [
       { fullName: 'datatug/datatug-demo-project', dir: fake },
     ]);
+  }
 });
 
 test('unsigned public Checks browse inspect run pass and intentional fail', async ({

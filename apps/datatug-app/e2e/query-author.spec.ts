@@ -3,6 +3,7 @@ import { expect, test } from './helpers/demodb-guard';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
+import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 
 const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
@@ -505,6 +506,7 @@ test.beforeEach(async ({ context, page }, testInfo) => {
     );
   }
   if (DEMO_REPO) {
+    await installPinnedChinookSqlite(context, DEMO_REPO);
     const repository = testInfo.title.includes('Invoice Customer join')
       ? JOIN_DEMO_REPO
       : testInfo.title.includes('bounded CTE graph')

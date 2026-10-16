@@ -8,9 +8,6 @@ on:
     branches:
       - main
   pull_request:
-    paths-ignore:
-      - 'docs/**'
-      - '.git-hooks/**'
   merge_group:
   # Nightly run of everything, including the lanes that need live third-party hosts (e2e-demo-postgresql). Those lanes
   # run ONLY on this event; pull_request, merge_group and push run the offline lanes (see e2e/README.md "Lane matrix").
@@ -30,7 +27,63 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      mode: ${{ steps.classify.outputs.mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Test metadata classifier and verified baselines
+        run: |
+          python3 -m unittest discover -s .github/scripts -p 'test_classify_metadata_change.py' -v
+          python3 -m unittest discover -s .github/scripts -p 'test_workflow_baseline.py' -v
+      - name: Classify exact cumulative change
+        id: classify
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          GROUP_BASE: ${{ github.event.merge_group.base_sha }}
+          GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
+        run: |
+          if [ "$EVENT_NAME" = schedule ]; then
+            echo '::notice::Scheduled nightly validation always runs the full application suites.'
+            echo 'mode=full' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          case "$EVENT_NAME" in
+            pull_request) base="$PR_BASE"; head="$PR_HEAD" ;;
+            merge_group) base="$GROUP_BASE"; head="$GROUP_HEAD" ;;
+            push) base="$(python3 .github/scripts/workflow-baseline.py ci)"; head="$GITHUB_SHA" ;;
+            *) base=""; head="" ;;
+          esac
+          result="$(python3 .github/scripts/classify-metadata-change.py "$base" "$head")"
+          if [ "$result" = metadata-only ]; then
+            echo 'mode=metadata-only' >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Full validation required: $result"
+            echo 'mode=full' >> "$GITHUB_OUTPUT"
+          fi
+      - name: Install SpecScore for metadata validation
+        if: steps.classify.outputs.mode == 'metadata-only'
+        env:
+          SPECSCORE_VERSION: v0.38.3
+        run: |
+          curl -fsSL https://specscore.md/install/get-cli | sh
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - name: Validate SpecScore tree
+        if: steps.classify.outputs.mode == 'metadata-only'
+        run: specscore spec lint
+
   build:
+    needs: preflight
+    if: always()
     runs-on: ubuntu-latest
     permissions:
       actions: read
@@ -39,23 +92,33 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       - name: nx lint affected
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm nx affected --target=lint --base=${{ env.NX_BASE }} --parallel=8
 
       # Whole-repo static check (not nx-affected-scoped — it's a single
@@ -66,27 +129,34 @@ jobs:
       # for the rule and AGENTS.md's "Change detection & state" section for
       # the fix recipe.
       - name: check:zoneless (no new plain-field writes from async callbacks)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run check:zoneless
 
       # Fixture-based unit tests for check-zoneless-fields.mjs's own AST
       # logic (tools/__tests__/) — cheap enough to run unconditionally
       # alongside the check itself, same as the check isn't nx-affected-scoped.
       - name: test:check-zoneless-fields (detector's own unit tests)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:check-zoneless-fields
 
       - name: test:stamp-ag-grid-license (optional AG Grid key stamping)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:stamp-ag-grid-license
 
       - name: test:checkout-flow (quote, payment and return contract)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:checkout-flow
 
       - name: test:wrangler-routes (preserve production app hostnames)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:wrangler-routes
 
       - name: test:RecordsetCompare artifact verifier guards
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: python3 -m unittest discover -s tools/recordsetcompare -p 'test_*.py' -v
 
       - name: nx build affected
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           # Optional repository variable; empty by default = community-only build. docs/ag-grid-enterprise-license.md
@@ -94,6 +164,7 @@ jobs:
         run: pnpm nx affected --target=build --base=${{ env.NX_BASE }} --parallel=8
 
       - name: Find affected datatug-app target
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: affected-app
         run: |
           projects="$(pnpm exec nx show projects --affected --json)"
@@ -101,26 +172,38 @@ jobs:
           echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
 
       - name: Verify emitted RecordsetCompare assets
-        if: steps.affected-app.outputs.datatug_app == 'true'
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (steps.affected-app.outputs.datatug_app == 'true') }}
         run: python3 tools/recordsetcompare/consume.py verify-dist
 
   test:
+    needs: preflight
+    if: always()
     runs-on: ubuntu-latest
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       - name: nx typecheck-spec main
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm nx run datatug-main:typecheck-spec
 
       - name: Cache Vite dependency pre-bundle
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/cache@v5
         with:
           path: node_modules/.vite
@@ -129,10 +212,11 @@ jobs:
             vite-${{ runner.os }}-
 
       - name: nx test affected
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Upload main Vitest diagnostics
-        if: always()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (always()) }}
         uses: actions/upload-artifact@v7
         with:
           name: datatug-main-vitest-diagnostics
@@ -140,49 +224,66 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Independent browser suites use separate runners so their app servers,
-  # Playwright artifacts and Nx state cannot contend. Keep app and query-mobile
-  # together because both use the development app on port 4200.
+  # Run full browser suites nightly at 03:17 UTC. Independent runners keep their
+  # app servers, Playwright artifacts and Nx state from contending.
   e2e-checkout:
+    if: always()
     runs-on: ubuntu-latest
-    needs: build
+    needs: [preflight, build]
     permissions:
       actions: read
       contents: read
       attestations: read
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       - name: Install checkout browsers
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium webkit
 
       - name: Set up Java for checkout Firestore emulator
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '21'
 
-      - name: nx checkout journey e2e affected
+      - name: nx checkout journey e2e
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then
+            pnpm nx run datatug-app:e2e-checkout --skip-nx-cache
+          else
+            pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+          fi
 
       - name: Upload checkout journey traces
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: checkout-journey-e2e-results
@@ -190,8 +291,9 @@ jobs:
           if-no-files-found: ignore
 
   e2e-app:
+    if: always()
     runs-on: ubuntu-latest
-    needs: build
+    needs: [preflight, build]
     permissions:
       actions: read
       contents: read
@@ -199,86 +301,93 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       # The browser suite counts the real reader's GitHub API/raw requests, but
       # anonymous API access from a shared CI runner can exhaust its quota.
-      # Serve the current public demo commit through the existing GitHub HTTP
-      # fake, and check the live API/tree/raw contracts at that same commit.
-      - name: Checkout canonical demo project
+      # Pin the browser catalog to the revision this app admits. Advance it
+      # atomically with support for a newer catalog's fixture URLs and assets.
+      # Check the live API/tree/raw contracts at this exact revision.
+      - name: Checkout validated browser demo revision
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          ref: f40286a57ea3a04b93875335234665ece2595ed0
           path: datatug-demo-project
 
-      - name: Verify live canonical GitHub source
+      - name: Verify pinned GitHub API tree and raw source
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           set -euo pipefail
           sha="$(git -C datatug-demo-project rev-parse HEAD)"
-          test "$(gh api repos/datatug/datatug-demo-project/commits/HEAD --jq .sha)" = "$sha"
+          test "$sha" = 'f40286a57ea3a04b93875335234665ece2595ed0'
+          test "$(gh api "repos/datatug/datatug-demo-project/commits/$sha" --jq .sha)" = "$sha"
           tree="$(gh api "repos/datatug/datatug-demo-project/git/trees/$sha?recursive=1" --jq '[.truncated, ([.tree[].path] | index("demo-project-1/entities/Album/Album.entity.json") != null), ([.tree[].path] | index("demo-project-1/queries/customers/customer-invoices.query.json") != null)] | @json')"
           test "$tree" = '[false,true,true]'
           curl -fsSL "https://raw.githubusercontent.com/datatug/datatug-demo-project/$sha/demo-project-1/entities/Album/Album.entity.json" -o "$RUNNER_TEMP/demo-album.json"
           cmp datatug-demo-project/demo-project-1/entities/Album/Album.entity.json "$RUNNER_TEMP/demo-album.json"
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
-      - name: Find affected datatug-app project
-        id: affected-app
-        run: |
-          projects="$(pnpm exec nx show projects --affected --json)"
-          app_affected="$(PROJECTS_JSON="$projects" node -e 'process.stdout.write(JSON.parse(process.env.PROJECTS_JSON).includes("datatug-app") ? "true" : "false")')"
-          echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
-
       - name: Install Playwright browsers
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium
 
       # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
       # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
       # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
-      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once, with no retry and a stop on HTTP 429.
+      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once from GitHub, with no retry, and never from demodb.dev.
       - name: Restore DemoDB fixtures
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: demodb-fixtures
         uses: actions/cache/restore@v5
         with:
           path: tmp/demodb-fixtures
           key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
-      - name: Smoke query context count geometry on Chromium
-        if: steps.affected-app.outputs.datatug_app == 'true'
+      - name: nx app e2e
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx run datatug-app:e2e -- --project=chromium --grep='query context counts stay inline through two digits and unavailable drafts'
-
-      - name: nx e2e affected
-        env:
-          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }}
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then
+            pnpm nx run datatug-app:e2e --skip-nx-cache -- --project=chromium
+          else
+            pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} -- --project=chromium
+          fi
 
       - name: Save DemoDB fixtures
-        if: always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != ''
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != '' }}
         uses: actions/cache/save@v5
         with:
           path: tmp/demodb-fixtures
           key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
       - name: Upload app Playwright report and traces
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: datatug-app-e2e-results
@@ -288,8 +397,9 @@ jobs:
           if-no-files-found: ignore
 
   e2e-query-mobile:
+    if: always()
     runs-on: ubuntu-latest
-    needs: build
+    needs: [preflight, build]
     permissions:
       actions: read
       contents: read
@@ -297,56 +407,76 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
-      - name: Checkout canonical demo project
+      - name: Checkout validated browser demo revision
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          ref: f40286a57ea3a04b93875335234665ece2595ed0
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       - name: Install mobile WebKit browser
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps webkit
 
-      # DemoDB fixtures: the app downloads chinook.sqlite itself; the tests serve it from this cached local copy (see the
-      # e2e-app job and apps/datatug-app/e2e/helpers/demodb-guard.ts). No request to demodb.dev.
+      # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
+      # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
+      # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
+      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once from GitHub, with no retry, and never from demodb.dev.
       - name: Restore DemoDB fixtures
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: demodb-fixtures
         uses: actions/cache/restore@v5
         with:
           path: tmp/demodb-fixtures
           key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
-      - name: nx query mobile WebKit e2e affected
+      - name: nx query mobile WebKit e2e
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then
+            pnpm nx run datatug-app:e2e-query-mobile --skip-nx-cache
+          else
+            pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+          fi
 
       - name: Save DemoDB fixtures
-        if: always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != ''
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != '' }}
         uses: actions/cache/save@v5
         with:
           path: tmp/demodb-fixtures
           key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
       - name: Upload query mobile WebKit Playwright report and traces
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: query-mobile-webkit-e2e-results
@@ -356,41 +486,53 @@ jobs:
           if-no-files-found: ignore
 
   e2e-demo-sqlite:
+    if: always()
     runs-on: ubuntu-latest
-    needs: build
+    needs: [preflight, build]
     permissions:
       actions: read
       contents: read
       attestations: read
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
-      - name: Checkout canonical demo project
+      - name: Checkout validated edited-copy demo revision
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          ref: f40286a57ea3a04b93875335234665ece2595ed0
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
       # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
       # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
-      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once, with no retry and a stop on HTTP 429.
+      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once from GitHub, with no retry, and never from demodb.dev.
       - name: Restore DemoDB fixtures
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: demodb-fixtures
         uses: actions/cache/restore@v5
         with:
@@ -398,33 +540,41 @@ jobs:
           key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
       - name: Install demo SQLite browsers
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium firefox webkit
 
       # /demo/sqlite (apps/datatug-app/e2e/demo-sqlite.spec.ts): a DemoDB SQLite file opened as an editable copy
-      # in the browser. Runs the built app in Chromium, Firefox and WebKit against the pinned DemoDB files served from
-      # the local fixtures above (zero requests to demodb.dev; apps/datatug-app/e2e/helpers/demodb-guard.ts fails a
-      # test that sends one, and the run prints the per-host request counts at the end). WebKit's default context has
-      # no OPFS, so it asserts the in-memory behaviour. The 126.8 MB AdventureWorks download is opt-in
-      # (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs demo-sqlite-datasets.spec.ts (one
-      # smoke journey per catalog dataset, plus a check that the fixtured DemoDB registry and the DataTug catalog
-      # agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug /demo/sqlite/<dataset>, with the
-      # datatug.app origin mapped to this build and the DemoDB pages from the fixtures). The check against the LIVE
-      # site is the manual workflow demodb-live-smoke.yml.
-      - name: nx e2e-demo-sqlite affected
+      # in the browser. Runs the built app in Chromium, Firefox and WebKit. Every DemoDB file and page is served from the
+      # local fixtures above (zero requests to demodb.dev; helpers/demodb-guard.ts fails a test that sends one and the run
+      # prints per-host counts). The edited-copy Board -> Query acceptance uses the exact pinned Chinook bytes at its admitted
+      # URL (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
+      # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
+      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
+      # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
+      # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the committed DemoDB pages). The live-site
+      # check is the manual workflow demodb-live-smoke.yml.
+      - name: nx e2e-demo-sqlite, including edited-copy Board to Query
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
-        run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+        run: |
+          test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = 'f40286a57ea3a04b93875335234665ece2595ed0'
+          if [ "${{ github.event_name }}" = schedule ]; then
+            pnpm nx run datatug-app:e2e-demo-sqlite --skip-nx-cache
+          else
+            pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+          fi
 
       - name: Save DemoDB fixtures
-        if: always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != ''
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/**') != '' }}
         uses: actions/cache/save@v5
         with:
           path: tmp/demodb-fixtures
           key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
       - name: Upload demo SQLite e2e report
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: demo-sqlite-e2e-playwright-report
@@ -438,43 +588,54 @@ jobs:
   # built app in Chromium and Firefox against the REAL live API (so it needs the network and tolerates cold starts:
   # long waits and the app's own 503 back-off; Playwright never retries a test, every test has a request budget, and
   # HTTP 429 stops the run). Chromium smoke-tests every edition; Firefox only Chinook. Nightly only: it needs a live
-  # third-party host, so it never runs on pull requests, merge groups or pushes. Its own job, so an outage of the
-  # live API fails this lane and nothing else; it is part of the nightly "e2e" aggregate below.
+  # third-party host, so it never runs on pull requests, merge groups or pushes. Its own job, so an outage of the live
+  # API fails this lane and nothing else; it is part of the nightly "e2e" aggregate below.
   e2e-demo-postgresql:
-    if: github.event_name == 'schedule'
+    if: always() && github.event_name == 'schedule'
     runs-on: ubuntu-latest
-    needs: build
+    needs: [preflight, build]
     permissions:
       actions: read
       contents: read
       attestations: read
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       - name: Install demo PostgreSQL browsers
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium firefox
 
-      - name: nx e2e-demo-postgresql affected
+      - name: nx e2e-demo-postgresql
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx affected --target=e2e-demo-postgresql --parallel=1 --base=${{ env.NX_BASE }}
+        run: pnpm nx run datatug-app:e2e-demo-postgresql --skip-nx-cache
 
       - name: Upload demo PostgreSQL e2e report
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: demo-postgresql-e2e-playwright-report
@@ -484,30 +645,41 @@ jobs:
           if-no-files-found: ignore
 
   e2e-demo-handoff:
+    if: always()
     runs-on: ubuntu-latest
-    needs: build
+    needs: [preflight, build]
     permissions:
       actions: read
       contents: read
       attestations: read
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout repository
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
 
       - name: Install demo handoff browser
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium
 
       # G-0 hand-off suite (apps/datatug-app/e2e/demo-handoff.spec.ts): the holding page for /demo and the
@@ -515,23 +687,29 @@ jobs:
       # PRODUCTION build (real Sentry DSN and analytics: playwright.demo-handoff.config.ts serves
       # `serve:production`), so it is its own target rather than part of "e2e" above, which serves the
       # development build.
-      - name: nx e2e-demo-handoff affected
+      - name: nx e2e-demo-handoff
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
+        run: |
+          if [ "${{ github.event_name }}" = schedule ]; then
+            pnpm nx run datatug-app:e2e-demo-handoff --skip-nx-cache
+          else
+            pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
+          fi
 
       - name: Upload demo hand-off e2e report
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: demo-handoff-e2e-playwright-report
           path: coverage/apps/datatug-app-demo-handoff-e2e/report
           if-no-files-found: ignore
 
-  # `e2e` is the strict NIGHTLY aggregate: EVERY lane, including the live-API
-  # PostgreSQL lane. It is not what gates production; `deploy-gate` below is.
-  # It exists only on the schedule event (the PostgreSQL lane runs only there), so it is not a pull-request check.
-  # `always()` makes it run even when build fails and GitHub skips its dependent lanes; every lane must
+  # `e2e` is the strict nightly aggregate of browser and real-agent lanes,
+  # including the live-API PostgreSQL lane. Production uses `deploy-gate` below.
+  # Keep the existing check name for nightly reports. `always()` makes it run even
+  # when build fails and GitHub skips its dependent lanes; every lane must
   # actually succeed, so a skipped or cancelled lane cannot pass this check.
   e2e:
     if: always() && github.event_name == 'schedule'
@@ -564,16 +742,14 @@ jobs:
 
   # Production deploy gate (deploy.yml requires this job's conclusion to be
   # `success` for the commit it deploys; also safe to make a required check).
-  # Gates on every lane that proves the shipped app, and deliberately NOT on
-  # e2e-demo-postgresql: that lane drives the real cloud.openvaultdb.com API, so
-  # an outage of that third party would otherwise stop all production deploys.
-  # It runs nightly only (it is skipped on PR/merge-group/push), where the `e2e`
-  # aggregate keeps it visible. `always()` + exact `success` per lane: a failed, skipped or
-  # cancelled lane (including lanes skipped because `build` failed) fails the
-  # gate. agent-links alone may be `skipped`, because it only runs once the
-  # DATATUG_LINKS_CLI_REF repository variable is set. Add new lanes here.
-  # The gate exists on pull_request, merge_group and push, not on the nightly schedule. On those events the PostgreSQL
-  # lane is skipped by design and is not in `needs`.
+  # Gates on every offline lane that proves the shipped app: the browser suites
+  # (none of which sends a request to demodb.dev or any other live third party),
+  # the real-agent journey and, once DATATUG_LINKS_CLI_REF is set, the card
+  # links. Deliberately NOT on e2e-demo-postgresql: it drives the real
+  # cloud.openvaultdb.com API, so it runs nightly only. `always()` + exact
+  # `success` per lane: a failed, skipped or cancelled lane (including lanes
+  # skipped because `build` failed) fails the gate; agent-links alone may be
+  # `skipped`. Add new lanes here. Not run on the nightly schedule.
   deploy-gate:
     name: deploy-gate
     if: always() && github.event_name != 'schedule'
@@ -614,8 +790,9 @@ jobs:
   # runs affected specs; this one always runs and proves the actual web <->
   # agent contract). Always runs (not gated by `nx affected`) because it is
   # the one suite that can catch a datatug-cli-side regression even when no
-  # file in this repo changed.
+  # file in this repo changed. Run it nightly with the other E2E suites.
   journey:
+    if: always()
     # `env` is not an available context for `jobs.<job_id>.name`, so the
     # pinned tag can't be interpolated here — it's visible in the "Checkout
     # datatug-cli" step name below instead. Keep this literal name and the
@@ -626,7 +803,7 @@ jobs:
       actions: read
       contents: read
       attestations: read
-    needs: build
+    needs: [preflight, build]
     env:
       GH_TOKEN: ${{ github.token }}
       # Pinned datatug release tag (not `main`) so this job is
@@ -637,11 +814,18 @@ jobs:
       # Session continuity requires the authenticated local Session runtime.
       DATATUG_SESSION_CLI_REF: v0.93.0
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout datatug-apps
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
 
       # Download prebuilt datatug binary from public datatug/datatug releases.
       - name: Download and verify pinned datatug CLI (${{ env.DATATUG_CLI_REF }})
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           mkdir -p "$RUNNER_TEMP/datatug-bin" "$RUNNER_TEMP/datatug-dl"
           gh release download "${{ env.DATATUG_CLI_REF }}" \
@@ -659,6 +843,7 @@ jobs:
       # project the journey suite drives the agent against. Same nested-path
       # reasoning as datatug-apps checkout above.
       - name: Checkout datatug-demo-project (main)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
@@ -666,12 +851,14 @@ jobs:
           path: datatug-demo-project
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       # The journey fixture (e2e/journey/fixtures/agent-server.ts) spawns
       # `datatug serve` itself; it does not fetch this dependency. `datatug
@@ -684,6 +871,7 @@ jobs:
       # datatug-demo-project declares, without the `serve` call. Verify the
       # content: github.com/.../blob?raw=true can return HTML with HTTP 200.
       - name: Fetch and verify pinned Chinook SQLite fixture
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           mkdir -p "$HOME/datatug/dbs"
           curl -fsSL -o "$HOME/datatug/dbs/chinook-local.sqlite" \
@@ -691,6 +879,7 @@ jobs:
           echo "f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3  $HOME/datatug/dbs/chinook-local.sqlite" | sha256sum --check
 
       - name: Install Playwright browsers
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium
 
       # Fail fast on a build break before spending the journey suite's
@@ -698,18 +887,21 @@ jobs:
       # for the actual test run (`nx run datatug-app:serve:development`), so
       # this is a production-config build check, not a second server.
       - name: Build datatug-app
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           AG_GRID_LICENSE_KEY: ${{ vars.AG_GRID_LICENSE_KEY }}
         run: python3 tools/recordsetcompare/build_app.py
 
       - name: Run journey e2e (J1-J4, real datatug-cli agent)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
         run: pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=journey --workers=1
 
       - name: Download and verify Session continuity CLI
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           mkdir -p "$RUNNER_TEMP/datatug-session-bin" "$RUNNER_TEMP/datatug-session-dl"
           gh release download "${{ env.DATATUG_SESSION_CLI_REF }}" \
@@ -724,13 +916,14 @@ jobs:
           echo "DATATUG_SESSION_BIN=$RUNNER_TEMP/datatug-session-bin/datatug" >> "$GITHUB_ENV"
 
       - name: Run real CLI Session continuity
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_BIN: ${{ env.DATATUG_SESSION_BIN }}
         run: pnpm exec playwright test -c apps/datatug-app/playwright.session-continuity.config.ts
 
       - name: Upload Playwright report
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: journey-e2e-playwright-report
@@ -742,7 +935,7 @@ jobs:
       # to see why `datatug serve` refused to start or what it logged for a
       # request that failed.
       - name: Upload agent logs
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: journey-e2e-agent-logs
@@ -757,21 +950,28 @@ jobs:
   # read-only records/schema and records/lookup routes (datatug-cli #399).
   agent-links:
     name: card-link e2e (real datatug daemon)
-    if: ${{ vars.DATATUG_LINKS_CLI_REF != '' }}
+    if: ${{ always() && vars.DATATUG_LINKS_CLI_REF != '' }}
     runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: read
       attestations: read
-    needs: build
+    needs: [preflight, build]
     env:
       GH_TOKEN: ${{ github.token }}
       DATATUG_CLI_REF: ${{ vars.DATATUG_LINKS_CLI_REF }}
     steps:
+      - name: Require successful metadata preflight
+        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
+      - name: Verified metadata-only change; application checks not applicable
+        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
+        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
       - name: Checkout datatug-apps
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
 
       - name: Download and verify datatug CLI (${{ env.DATATUG_CLI_REF }})
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           mkdir -p "$RUNNER_TEMP/datatug-bin" "$RUNNER_TEMP/datatug-dl"
           gh release download "${{ env.DATATUG_CLI_REF }}" \
@@ -786,6 +986,7 @@ jobs:
           echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
       - name: Checkout datatug-demo-project (main)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
@@ -793,14 +994,17 @@ jobs:
           path: datatug-demo-project
 
       - name: Authenticate private Core artifact verification
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         id: core-artifact-token
         uses: ./.github/actions/private-core-artifact
         with:
           private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
 
       - uses: ./.github/actions/pnpm
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
 
       - name: Fetch and verify pinned Chinook SQLite fixture
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
           mkdir -p "$HOME/datatug/dbs"
           curl -fsSL -o "$HOME/datatug/dbs/chinook-local.sqlite" \
@@ -808,16 +1012,18 @@ jobs:
           echo "f82efedb6c5c40734609e168bc5be5616a2eca6b90ed0048451a8674625e03a3  $HOME/datatug/dbs/chinook-local.sqlite" | sha256sum --check
 
       - name: Install Playwright browsers
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm exec playwright install --with-deps chromium
 
       - name: Run card-link e2e
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
-        run: pnpm nx run datatug-app:e2e-agent-links
+        run: pnpm nx run datatug-app:e2e-agent-links --skip-nx-cache
 
       - name: Upload Playwright report
-        if: failure()
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
         with:
           name: agent-links-e2e-playwright-report

@@ -5,6 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
+import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
 /**
  * /demo/sqlite/<dataset>: "Explore SQLite in DataTug". A pinned SQLite file from demodb.dev opens as an editable
@@ -12,7 +13,8 @@ import { installFakeGithub } from './helpers/fake-github';
  * and shared by every tab through one leader. These tests drive the real BUILT app (see
  * playwright.demo-sqlite.config.ts) in a real browser against the pinned demodb.dev files, served from local
  * fixtures (helpers/demodb-guard.ts; DEMODB_E2E_MODE=live for the manual live smoke): the worker, SQLite WASM,
- * OPFS, Web Locks and the in-process OVDB server are all real. Only the third-party hosts the app also talks to
+ * OPFS, Web Locks and the in-process OVDB server are all real. The edited-copy Board to Query case serves the exact
+ * hash-pinned Chinook bytes at its admitted public URL. Only the third-party hosts the app also talks to
  * (error reporting, analytics) are cut off.
  *
  * WebKit under Playwright has no OPFS in its default (ephemeral) context. There the persistence journey is
@@ -52,6 +54,7 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
       'commit', '--quiet', '-m', 'Create saved working copy query']);
     await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: checkout }]);
+    await installPinnedChinookSqlite(context, checkout);
 
     const requests = trackDemodbRequests(context);
     await openDataset(page, 'chinook', 'Artist');
@@ -74,15 +77,22 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     await card.locator('select').selectOption(selectionId);
     await card.getByRole('button', { name: 'Run on board' }).click();
     await expect(card.locator('table tbody')).toContainText(edited, { timeout: 30_000 });
+    await expect(card.getByRole('link', { name: 'Open saved query' })).toHaveAttribute('href', new RegExp(`runtime=${selectionId}`));
     await card.getByRole('link', { name: 'Open saved query' }).click();
-    await page.getByRole('button', { name: 'Find open working copies' }).click();
+    await expect(page).toHaveURL(new RegExp(`runtime=${selectionId}`));
     const queryRuntime = page.locator('sneat-datatug-sql-editor select option').filter({ hasText: 'working copy' });
     await expect(queryRuntime).toHaveCount(1);
-    await page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true })
-      .selectOption(selectionId, { timeout: 20_000 });
+    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
+      .toHaveValue(selectionId, { timeout: 20_000 });
     await page.getByRole('button', { name: 'Run query', exact: true }).click();
     await expect(page.locator('sneat-datatug-sql-editor .result-grid-viewport')).toContainText(edited, { timeout: 30_000 });
     expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
+    await page.reload();
+    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
+      .toHaveValue(selectionId, { timeout: 20_000 });
+    await expect(page.locator('sneat-datatug-sql-editor').getByRole('alert'))
+      .toContainText('selected working copy is unavailable');
+    await expect(page.getByRole('button', { name: 'Run query', exact: true })).toBeDisabled();
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

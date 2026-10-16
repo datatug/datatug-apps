@@ -6,6 +6,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
+import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 
 /**
@@ -57,6 +58,7 @@ test.skip(
 
 test.beforeEach(async ({ context }) => {
   if (GITHUB_FAKE_DIR) {
+    await installPinnedChinookSqlite(context, GITHUB_FAKE_DIR);
     await installFakeGithub(context, [
       { fullName: 'datatug/datatug-demo-project', dir: GITHUB_FAKE_DIR },
     ]);
