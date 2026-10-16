@@ -450,7 +450,10 @@ export class BoardWidgetComponent {
     if (href === '/') return undefined;
     const tree = this.router.parseUrl(href);
     const environment = this.boardContext()?.environment;
-    tree.queryParams = { ...tree.queryParams, id, ...(environment ? { env: environment } : {}) };
+    tree.queryParams = {
+      ...tree.queryParams, id, ...(environment ? { env: environment } : {}),
+      runtime: this.selectedRuntimeId() === 'snapshot' ? 'project' : this.selectedRuntimeId(),
+    };
     return tree;
   });
 

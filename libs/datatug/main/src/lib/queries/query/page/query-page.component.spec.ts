@@ -3779,11 +3779,97 @@ select (
     runFixture.detectChanges();
     await Promise.resolve();
     runFixture.detectChanges();
-    expect(component.selectedWorkingCopy()).toBe('project');
+    expect(component.selectedWorkingCopy()).toBe('runtime-18');
+    expect(component.unavailableWorkingCopy()).toBe(true);
     complete(result);
     await runFixture.whenStable();
     expect(component.runResult()).toBeUndefined();
     expect(component.workingCopyOptions()).toEqual([]);
+  });
+
+  it('applies a Board runtime hint after live options load and keeps an unavailable hint fenced', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+    };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+      availableWorkingCopies: ReturnType<typeof vi.fn>;
+    };
+    dispatcher.availableWorkingCopies.mockResolvedValue([{ selectionId: 'runtime-17', title: 'Edited copy' }]);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(component.selectedWorkingCopy()).toBe('runtime-17');
+    expect(component.unavailableWorkingCopy()).toBe(false);
+    expect(dispatcher.availableWorkingCopies).toHaveBeenCalled();
+
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'missing-runtime' }));
+    dispatcher.availableWorkingCopies.mockResolvedValue([]);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    expect(component.selectedWorkingCopy()).toBe('missing-runtime');
+    expect(component.unavailableWorkingCopy()).toBe(true);
+    component.runQuery();
+    expect(dispatchStart).not.toHaveBeenCalled();
+    component.selectWorkingCopy('project');
+    expect(component.unavailableWorkingCopy()).toBe(false);
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'project' }));
+    expect(component.selectedWorkingCopy()).toBe('project');
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: definition.id, def: definition } as IQueryState);
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-18' }));
+    expect(editor.reloadQuery).toHaveBeenCalledWith(definition.id);
+  });
+
+  it('does not apply a late Board runtime lookup after the route explicitly chooses project runtime', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+    };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+      availableWorkingCopies: ReturnType<typeof vi.fn>;
+    };
+    let finish!: (options: { selectionId: string; title: string }[]) => void;
+    dispatcher.availableWorkingCopies.mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    runFixture.detectChanges();
+    await vi.waitFor(() => expect(dispatcher.availableWorkingCopies).toHaveBeenCalled());
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'project' }));
+    finish([{ selectionId: 'runtime-17', title: 'Old copy' }]);
+    await runFixture.whenStable();
+    expect(component.selectedWorkingCopy()).toBe('project');
+    expect(component.workingCopyOptions()).toEqual([]);
+  });
+
+  it('keeps a manual runtime and unsaved draft through normalized URL, environment and branch params', async () => {
+    const definition: IQueryDef = {
+      ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\n' } as ITextQueryRequest,
+    };
+    const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
+    component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
+    const dispatcher = TestBed.inject(QueryDispatchService) as unknown as {
+      availableWorkingCopies: ReturnType<typeof vi.fn>;
+    };
+    dispatcher.availableWorkingCopies.mockResolvedValue([
+      { selectionId: 'runtime-17', title: 'Old copy' }, { selectionId: 'runtime-18', title: 'New copy' },
+    ]);
+    runFixture.detectChanges();
+    await runFixture.whenStable();
+    component.selectWorkingCopy('runtime-18');
+    const draft = { ...component.queryState, request: { queryType: QueryType.DTQL, text: 'edited draft' } as ITextQueryRequest };
+    component.queryState = draft;
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: definition.id, def: definition } as IQueryState);
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17', editor: 'text' }));
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-18', editor: 'text' }));
+    params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-18', branch: 'work' }));
+    params.next(convertToParamMap({ id: definition.id, env: 'dev', runtime: 'runtime-18', branch: 'work' }));
+    expect(component.selectedWorkingCopy()).toBe('runtime-18');
+    expect(component.queryState).toBe(draft);
+    expect(editor.reloadQuery).not.toHaveBeenCalled();
   });
 
   it.each(['resolve', 'reject'])(
@@ -6243,6 +6329,7 @@ select (
                     ),
                   updateQueryState: vi.fn(),
                   openQuery: vi.fn(),
+                  reloadQuery: vi.fn(),
                   openAuthorizedQuery: vi.fn(),
                   newQuery: vi.fn(),
                   getQueryState: vi.fn(),
