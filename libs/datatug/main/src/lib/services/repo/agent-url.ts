@@ -79,4 +79,6 @@ export function agentBaseUrl(storeId: string): string {
  * | `/recordsets/*`                      | full CRUD registered server-side        | not currently called by the client — `RecordsetService` is an empty class (see web-ui audit) |
  * | `/exec/execute_commands`             | `POST /exec/execute_commands`           | `agent.service.ts` (`AgentService.execute`) |
  * | `/exec/select`                       | `GET /exec/select`                      | `agent.service.ts` (`AgentService.select`) |
+ * | `/compare`                           | `POST /compare`                         | `incident-client.service.ts` (`IncidentClientService.compare`) |
+ * | `/compare/rows`                      | `GET /compare/rows`                     | `incident-client.service.ts` (`IncidentClientService.compareRows`) |
  */
