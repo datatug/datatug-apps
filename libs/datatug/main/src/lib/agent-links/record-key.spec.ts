@@ -9,6 +9,7 @@ const PLAYLIST_TRACK: AgentTableSchema = {
   ],
   primaryKey: ['PlaylistId', 'TrackId'],
   referencedBy: [],
+  foreignKeys: [],
 };
 const ALBUM: AgentTableSchema = {
   columns: [
@@ -16,7 +17,8 @@ const ALBUM: AgentTableSchema = {
     { name: 'Title', type: 'string' },
   ],
   primaryKey: ['AlbumId'],
-  referencedBy: ['Track'],
+  referencedBy: ["Track"],
+  foreignKeys: [],
 };
 const BY_CODE: AgentTableSchema = {
   columns: [
@@ -25,6 +27,7 @@ const BY_CODE: AgentTableSchema = {
   ],
   primaryKey: ['Code'],
   referencedBy: [],
+  foreignKeys: [],
 };
 
 function keyOf(text: string, schema: AgentTableSchema) {

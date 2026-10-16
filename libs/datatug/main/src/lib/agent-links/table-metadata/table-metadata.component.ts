@@ -80,6 +80,22 @@ import { LinkProblemComponent } from '../link-problem/link-problem.component';
       </ion-card>
       <ion-card>
         <ion-card-header>
+          <ion-card-title>Foreign keys</ion-card-title>
+        </ion-card-header>
+        <ion-card-content data-testid="table-metadata-foreign-keys">
+          @for (fk of s.foreignKeys; track fk.name + $index) {
+            <p>
+              {{ fk.name }}: ({{ fk.columns.join(', ') }}) &rarr;
+              {{ fk.refTable.schema ? fk.refTable.schema + '.' : '' }}{{ fk.refTable.name }}
+              ({{ fk.refColumns.join(', ') }})
+            </p>
+          } @empty {
+            <ion-text color="medium">No foreign keys.</ion-text>
+          }
+        </ion-card-content>
+      </ion-card>
+      <ion-card>
+        <ion-card-header>
           <ion-card-title>Referenced by</ion-card-title>
         </ion-card-header>
         <ion-card-content data-testid="table-metadata-referenced-by">
