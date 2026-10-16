@@ -11,6 +11,13 @@ export function createDatatugMainViteConfig(coverageEnabled = true) {
 		...config,
 		test: {
 			...config.test,
+			reporters:
+				process.env.CI === 'true'
+					? [
+							'default',
+							['json', { outputFile: '../../../coverage/libs/datatug/main/vitest-results.json' }],
+						]
+					: config.test?.reporters,
 			// The full suite can lose a VM thread before reporting results.
 			// Isolate each test file in a process while retaining the shared gates.
 			pool: 'forks',
