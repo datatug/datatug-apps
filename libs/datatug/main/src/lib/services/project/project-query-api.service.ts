@@ -7,9 +7,18 @@ import {
   formatGithubProjectApiKey,
   readGithubProjectId,
 } from '@datatug/project-address';
-import { type Observable, throwError, Subject, tap } from 'rxjs';
+import {
+  type Observable,
+  throwError,
+  Subject,
+  tap,
+  switchMap,
+  catchError,
+  defer,
+} from 'rxjs';
 import { IProjectRef, isSharedProjectRef } from '../../core/project-context';
 import { buildAgentUrl } from '../repo/agent-url';
+import { StoreApiService } from '../repo/store-api.service';
 import {
   type ProjectQueryCapabilities,
   type ProjectQueryRevision,
@@ -39,6 +48,45 @@ export const DATATUG_DEMO_PROJECT_TEMPLATE = {
   id: 'demo-project-1',
   commit: '436350d41371103be11144ffa346c605f85e1342',
 } as const;
+
+const MIN_QUALIFIED_READ_CLI_VERSION = [0, 97, 0] as const;
+const QUALIFIED_READ_CLI_UPDATE_MESSAGE =
+  'To load the selected project branch, update DataTug CLI to v0.97.0 or later, restart its agent, and retry.';
+
+/** A safe, actionable client message for agents that predate branch-qualified reads. */
+export class QualifiedLocalReadVersionError extends Error {
+  constructor() {
+    super(QUALIFIED_READ_CLI_UPDATE_MESSAGE);
+    this.name = 'QualifiedLocalReadVersionError';
+  }
+}
+
+/** Only this client-created error is safe to show verbatim in the UI. */
+export function qualifiedLocalReadVersionGuidance(
+  error: unknown,
+): string | undefined {
+  return error instanceof QualifiedLocalReadVersionError
+    ? QUALIFIED_READ_CLI_UPDATE_MESSAGE
+    : undefined;
+}
+
+function supportsQualifiedLocalReads(version: unknown): boolean {
+  if (typeof version !== 'string') return false;
+  // Deliberately require a stable release version. Development builds and
+  // prereleases cannot establish that the branch-qualified endpoints exist.
+  const match =
+    /^v?(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(
+      version.trim(),
+    );
+  if (!match) return false;
+  const actual = match.slice(1, 4).map(Number);
+  if (actual.some((part) => !Number.isSafeInteger(part))) return false;
+  for (let i = 0; i < MIN_QUALIFIED_READ_CLI_VERSION.length; i++) {
+    if (actual[i] > MIN_QUALIFIED_READ_CLI_VERSION[i]) return true;
+    if (actual[i] < MIN_QUALIFIED_READ_CLI_VERSION[i]) return false;
+  }
+  return true;
+}
 
 export type ProjectBillingIntent = 'personal_pro' | 'space_business';
 
@@ -130,6 +178,63 @@ export class ProjectQueryApiService {
   readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
+  private readonly storeApi = inject(StoreApiService);
+
+  private needsQualifiedLocalReadVersionCheck(ref: IProjectRef): boolean {
+    return (
+      !!ref.branch &&
+      ref.spaceID === undefined &&
+      ref.projectApi !== 'cloud' &&
+      !['github.com', 'github', 'firestore'].includes(ref.storeId)
+    );
+  }
+
+  private qualifiedRead<T>(
+    ref: IProjectRef,
+    path: string,
+    extra?: Record<string, string>,
+  ): Observable<T> {
+    if (!this.needsQualifiedLocalReadVersionCheck(ref))
+      return this.get<T>(ref, path, extra);
+
+    return this.readAfterQualifiedLocalProbe(ref, () =>
+      this.get<T>(ref, path, extra),
+    );
+  }
+
+  private readAfterQualifiedLocalProbe<T>(
+    ref: IProjectRef,
+    read: () => Observable<T>,
+  ): Observable<T> {
+    try {
+      this.reference(ref);
+    } catch (error) {
+      return throwError(() => error);
+    }
+    // This probe is intentionally fresh for every qualified read. Agent version
+    // admission must never be reused across a different principal or request.
+    return defer(() =>
+      this.storeApi.get<unknown>(ref.storeId, '/agent-info'),
+    ).pipe(
+      catchError(() =>
+        throwError(
+          () =>
+            new Error(
+              `Could not verify the local DataTug CLI version. ${QUALIFIED_READ_CLI_UPDATE_MESSAGE}`,
+            ),
+        ),
+      ),
+      switchMap((info) => {
+        const version =
+          info && typeof info === 'object' && 'version' in info
+            ? info.version
+            : undefined;
+        if (!supportsQualifiedLocalReads(version))
+          return throwError(() => new QualifiedLocalReadVersionError());
+        return read();
+      }),
+    );
+  }
 
   private reference(ref: IProjectRef): {
     storage: string;
@@ -204,7 +309,22 @@ export class ProjectQueryApiService {
   }
 
   summary(ref: IProjectRef): Observable<IProjectSummary> {
-    return this.get(
+    if (this.needsQualifiedLocalReadVersionCheck(ref)) {
+      const params = new HttpParams({
+        fromObject: {
+          storage: 'local',
+          id: ref.projectId,
+          branch: ref.branch as string,
+        },
+      });
+      return this.readAfterQualifiedLocalProbe(ref, () =>
+        this.http.get<IProjectSummary>(
+          buildAgentUrl(ref.storeId, '/projects/project_summary'),
+          { params },
+        ),
+      );
+    }
+    return this.qualifiedRead(
       ref,
       'projects/project_summary',
       ref.branch ? { branch: ref.branch } : undefined,
@@ -213,7 +333,7 @@ export class ProjectQueryApiService {
 
   /** Authenticated, fixed-file catalogue read for private GitHub projects. */
   connectionCatalog<T>(ref: IProjectRef): Observable<T> {
-    return this.get(
+    return this.qualifiedRead(
       ref,
       'projects/connection_catalog',
       ref.branch ? { branch: ref.branch } : undefined,
@@ -222,7 +342,7 @@ export class ProjectQueryApiService {
 
   /** Fixed read-only asset endpoints; all identifiers and refs remain query params. */
   boards<T>(ref: IProjectRef): Observable<T> {
-    return this.get(
+    return this.qualifiedRead(
       ref,
       'boards/all_boards',
       ref.branch ? { branch: ref.branch } : undefined,
@@ -230,14 +350,14 @@ export class ProjectQueryApiService {
   }
 
   board<T>(ref: IProjectRef, id: string): Observable<T> {
-    return this.get(ref, 'boards/board', {
+    return this.qualifiedRead(ref, 'boards/board', {
       id,
       ...(ref.branch ? { branch: ref.branch } : {}),
     });
   }
 
   entities<T>(ref: IProjectRef): Observable<T> {
-    return this.get(
+    return this.qualifiedRead(
       ref,
       'entities/all_entities',
       ref.branch ? { branch: ref.branch } : undefined,
@@ -245,14 +365,14 @@ export class ProjectQueryApiService {
   }
 
   entity<T>(ref: IProjectRef, id: string): Observable<T> {
-    return this.get(ref, 'entities/entity', {
+    return this.qualifiedRead(ref, 'entities/entity', {
       id,
       ...(ref.branch ? { branch: ref.branch } : {}),
     });
   }
 
   environments<T>(ref: IProjectRef): Observable<T> {
-    return this.get(
+    return this.qualifiedRead(
       ref,
       'environments/all_environments',
       ref.branch ? { branch: ref.branch } : undefined,

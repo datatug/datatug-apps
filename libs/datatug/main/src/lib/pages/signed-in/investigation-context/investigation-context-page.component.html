@@ -42,6 +42,11 @@
         }
       </ion-select>
     </ion-item>
+    @if (entitiesLoadError(); as error) {
+      <ion-item lines="none" role="alert">
+        <ion-text color="danger">{{ error }}</ion-text>
+      </ion-item>
+    }
     <ion-item>
       <ion-select
         label="Field"
@@ -60,6 +65,11 @@
         }
       </ion-select>
     </ion-item>
+    @if (fieldsLoadError(); as error) {
+      <ion-item lines="none" role="alert">
+        <ion-text color="danger">{{ error }}</ion-text>
+      </ion-item>
+    }
     <ion-item>
       <ion-select
         label="Condition"

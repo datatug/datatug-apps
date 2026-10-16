@@ -46,6 +46,9 @@
         </ion-select>
       }
     </ion-item>
+    @if (metadataReadError(); as error) {
+      <ion-card-content role="alert">{{ error }}</ion-card-content>
+    }
     <!--		<ion-item>-->
     <!--			<ion-label color="medium" style="font-weight: bold;">ID</ion-label>-->
     <!--			<ion-input readonly [value]="project?.ref?.projectId" color="medium"></ion-input>-->
@@ -75,8 +78,11 @@
           branch.
         </p>
       } @else if (environmentError()) {
-        <p role="status">
-          Environments could not be loaded. Refresh to try again.
+        <p role="alert">
+          {{
+            environmentErrorMessage() ||
+              'Environments could not be loaded. Refresh to try again.'
+          }}
         </p>
       } @else if (environments(); as items) {
         <div class="environment-strip">
@@ -183,9 +189,10 @@
         ><ion-list>
           @if (boardError()) {
             <ion-item
-              ><ion-label color="danger"
-                >Boards could not be loaded. Refresh to try again.</ion-label
-              ></ion-item
+              ><ion-label color="danger">{{
+                boardErrorMessage() ||
+                  'Boards could not be loaded. Refresh to try again.'
+              }}</ion-label></ion-item
             >
           } @else if (boards(); as items) {
             @for (board of items; track board.id) {
@@ -235,10 +242,10 @@
         <ion-list>
           @if (environmentError()) {
             <ion-item
-              ><ion-label color="danger"
-                >Environments could not be loaded. Refresh to try
-                again.</ion-label
-              ></ion-item
+              ><ion-label color="danger">{{
+                environmentErrorMessage() ||
+                  'Environments could not be loaded. Refresh to try again.'
+              }}</ion-label></ion-item
             >
           } @else if (environments(); as items) {
             @for (environment of items; track environment.id) {
@@ -295,9 +302,10 @@
         <ion-list>
           @if (entityError()) {
             <ion-item
-              ><ion-label color="danger"
-                >Entities could not be loaded. Refresh to try again.</ion-label
-              ></ion-item
+              ><ion-label color="danger">{{
+                entityErrorMessage() ||
+                  'Entities could not be loaded. Refresh to try again.'
+              }}</ion-label></ion-item
             >
           } @else if (entities(); as items) {
             @for (entity of items; track entity.id) {

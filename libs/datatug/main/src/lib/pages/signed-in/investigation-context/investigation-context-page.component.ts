@@ -66,6 +66,7 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
+import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
 
 addIcons({ closeOutline, linkOutline });
 
@@ -266,9 +267,11 @@ export class InvestigationContextPageComponent implements OnDestroy {
 
   /** The current project's entity ids, for the Entity select. */
   protected readonly entities = signal<readonly string[]>([]);
+  protected readonly entitiesLoadError = signal<string | undefined>(undefined);
   /** The selected entity's declared fields, for the Field select — reloaded whenever
    * {@link selectedEntity} changes; empty before an entity is chosen. */
   protected readonly fields = signal<readonly IEntityFieldDef[]>([]);
+  protected readonly fieldsLoadError = signal<string | undefined>(undefined);
   protected readonly selectedEntity = signal<string | undefined>(undefined);
   protected readonly selectedField = signal<string | undefined>(undefined);
   protected readonly selectedCondition = signal<ContextCondition | undefined>(
@@ -371,13 +374,17 @@ export class InvestigationContextPageComponent implements OnDestroy {
             this.entityListSubscription?.unsubscribe();
             this.fieldsSubscription?.unsubscribe();
             this.entities.set([]);
+            this.entitiesLoadError.set(undefined);
+            this.fieldsLoadError.set(undefined);
           }
           this.project.set(currentProject);
           // A new project means the previous one's entity/field selection (if any) no
           // longer applies — reset the form before loading the new project's entities.
+          this.fieldsSubscription?.unsubscribe();
           this.selectedEntity.set(undefined);
           this.selectedField.set(undefined);
           this.fields.set([]);
+          this.fieldsLoadError.set(undefined);
           this.loadEntities(currentProject);
         },
         error: (err) =>
@@ -535,6 +542,7 @@ export class InvestigationContextPageComponent implements OnDestroy {
     this.selectedEntity.set(id);
     this.selectedField.set(undefined);
     this.fields.set([]);
+    this.fieldsLoadError.set(undefined);
     if (id) {
       this.loadFields(id);
     }
@@ -628,6 +636,7 @@ export class InvestigationContextPageComponent implements OnDestroy {
 
   private loadEntities(project: IProjectContext | undefined): void {
     this.entityListSubscription?.unsubscribe();
+    this.entitiesLoadError.set(undefined);
     if (!project) {
       this.entities.set([]);
       return;
@@ -641,17 +650,24 @@ export class InvestigationContextPageComponent implements OnDestroy {
           if (projectRefToString(this.project()?.ref) !== refKey) return;
           this.entities.set(records.map((record) => record.id).toSorted());
         },
-        error: (err) =>
+        error: (err) => {
+          if (projectRefToString(this.project()?.ref) !== refKey) return;
+          this.entitiesLoadError.set(
+            qualifiedLocalReadVersionGuidance(err) ??
+              'Project entities could not be loaded. Refresh to try again.',
+          );
           this.errorLogger.logError(
             err,
             'Failed to load project entities for the Investigation Context form',
-          ),
+          );
+        },
       });
   }
 
   private loadFields(entityId: string): void {
     this.fieldsSubscription?.unsubscribe();
     this.fields.set([]);
+    this.fieldsLoadError.set(undefined);
     const project = this.project();
     if (!project) {
       return;
@@ -672,11 +688,22 @@ export class InvestigationContextPageComponent implements OnDestroy {
           }
           this.fields.set(record.dbo?.fields ?? []);
         },
-        error: (err) =>
+        error: (err) => {
+          if (
+            this.selectedEntity() !== entityId ||
+            projectRefToString(this.project()?.ref) !== refKey
+          ) {
+            return;
+          }
+          this.fieldsLoadError.set(
+            qualifiedLocalReadVersionGuidance(err) ??
+              'Entity fields could not be loaded. Refresh to try again.',
+          );
           this.errorLogger.logError(
             err,
             `Failed to load fields for entity "${entityId}"`,
-          ),
+          );
+        },
       });
   }
 

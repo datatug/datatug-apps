@@ -1,7 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
-import { Observable, of, Subject } from 'rxjs';
+import { Observable, of, Subject, throwError } from 'rxjs';
 import { map } from 'rxjs/operators';
 import { AlertController } from '@ionic/angular';
 
@@ -14,6 +14,7 @@ import { IProjectContext } from '../../../../nav/nav-models';
 import { IFolder } from '../../../../models/definition/folder';
 import { folderItemsAsList } from '../../../../models/definition/folder';
 import { IProjectRef } from '../../../../core/project-context';
+import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
 
 const projectAssetsFromFolderReader = (
   watchFolder: (
@@ -393,5 +394,47 @@ describe('BoardsPage read errors', () => {
     expect(list?.isLoading).toBe(false);
     expect(list?.items).toEqual([]);
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('renders the CLI update guidance for a qualified board-list read', async () => {
+    const project$ = new Subject<IProjectContext>();
+    await TestBed.configureTestingModule({
+      imports: [BoardsPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentProject: project$.asObservable() },
+        },
+        {
+          provide: DatatugNavService,
+          useValue: { projectPageUrl: vi.fn(), goBoard: vi.fn() },
+        },
+        {
+          provide: ProjectAssetsReadService,
+          useValue: {
+            boards: vi.fn(() =>
+              throwError(() => new QualifiedLocalReadVersionError()),
+            ),
+          },
+        },
+      ],
+    })
+      .overrideComponent(BoardsPageComponent, {
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+      })
+      .compileComponents();
+
+    const fixture = TestBed.createComponent(BoardsPageComponent);
+    fixture.detectChanges();
+    project$.next({
+      ref: { storeId: 'localhost:8989', projectId: 'demo', branch: 'feature' },
+    });
+    await fixture.whenStable();
+
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]').textContent,
+    ).toMatch(/update DataTug CLI to v0\.97\.0 or later.*restart its agent/i);
   });
 });

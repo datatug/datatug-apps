@@ -39,9 +39,9 @@
 
   @if (entityLoadState() === 'error') {
     <ion-card
-      ><ion-card-content role="alert"
-        >Could not load this entity.</ion-card-content
-      ></ion-card
+      ><ion-card-content role="alert">{{
+        entityLoadError() || 'Could not load this entity.'
+      }}</ion-card-content></ion-card
     >
   }
 

@@ -37,6 +37,7 @@ import { IProjectContext } from '../../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
 import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
+import { qualifiedLocalReadVersionGuidance } from '../../../../services/project/project-query-api.service';
 import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
 import { DatatugServicesProjectModule } from '../../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
@@ -150,7 +151,10 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
                 map((boards) => ({ status: 'success' as const, boards })),
                 catchError((err: unknown) => {
                   this.errorLogger.logError(err, 'Failed to load boards');
-                  return of({ status: 'error' as const });
+                  return of({
+                    status: 'error' as const,
+                    message: qualifiedLocalReadVersionGuidance(err),
+                  });
                 }),
               )
             : of({ status: 'success' as const, boards: [] as IProjBoard[] });
@@ -161,7 +165,9 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         next: (result) => {
           if (result.status === 'error') {
             this.boards.set(undefined);
-            this.loadError.set('Boards could not be loaded. Please try again.');
+            this.loadError.set(
+              result.message ?? 'Boards could not be loaded. Please try again.',
+            );
           } else {
             this.boards.set(result.boards);
           }

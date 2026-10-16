@@ -71,6 +71,7 @@ import { ProjectService } from '../../../services/project/project.service';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
+import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
@@ -171,6 +172,7 @@ export class ProjectPageComponent
   protected readonly metadataState = signal<
     'loading' | 'available' | 'unavailable'
   >('loading');
+  protected readonly metadataReadError = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
     'boards' | 'queries' | 'environments' | 'entities' | 'databases'
   >('boards');
@@ -185,12 +187,17 @@ export class ProjectPageComponent
     undefined,
   );
   protected readonly environmentError = signal(false);
+  protected readonly environmentErrorMessage = signal<string | undefined>(
+    undefined,
+  );
   protected readonly boards = signal<IProjBoard[] | undefined>(undefined);
   protected readonly boardError = signal(false);
+  protected readonly boardErrorMessage = signal<string | undefined>(undefined);
   protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
     undefined,
   );
   protected readonly entityError = signal(false);
+  protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
   protected readonly sandboxHref = computed(() => {
     const ref = this.project()?.ref;
@@ -230,23 +237,32 @@ export class ProjectPageComponent
         store: { ref: parseDatatugStoreRef(ref.storeId) },
       });
       this.metadataState.set('loading');
+      this.metadataReadError.set(undefined);
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
       this.environments.set(undefined);
       this.entities.set(undefined);
       this.boards.set(undefined);
       this.environmentError.set(false);
+      this.environmentErrorMessage.set(undefined);
       this.entityError.set(false);
+      this.entityErrorMessage.set(undefined);
       this.boardError.set(false);
-      // These readers use only the store and project IDs. A qualified ref
-      // would silently return a different branch or connection's content.
+      this.boardErrorMessage.set(undefined);
+      // These fixed-asset reads use the complete project ref so branch and
+      // connection selectors stay aligned. Shared Space asset shortcuts remain
+      // excluded because that API does not expose these asset collections.
+      const cancel$ = race([this.scopeChanged, this.destroyed]);
       if (!ref.spaceID) {
-        const cancel$ = race([this.scopeChanged, this.destroyed]);
         const environments$ = this.projectAssets.environments(ref);
         environments$
           .pipe(
             takeUntil(cancel$),
             catchError((error) => {
               this.environmentError.set(true);
+              this.environmentErrorMessage.set(
+                qualifiedLocalReadVersionGuidance(error) ??
+                  'Environments could not be loaded. Refresh to try again.',
+              );
               this.errorLogger.logError(
                 error,
                 'Failed to load overview environments',
@@ -261,6 +277,10 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.boardError.set(true);
+              this.boardErrorMessage.set(
+                qualifiedLocalReadVersionGuidance(error) ??
+                  'Boards could not be loaded. Refresh to try again.',
+              );
               this.errorLogger.logError(
                 error,
                 'Failed to load overview boards',
@@ -275,6 +295,10 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.entityError.set(true);
+              this.entityErrorMessage.set(
+                qualifiedLocalReadVersionGuidance(error) ??
+                  'Entities could not be loaded. Refresh to try again.',
+              );
               this.errorLogger.logError(
                 error,
                 'Failed to load overview entities',
@@ -296,6 +320,7 @@ export class ProjectPageComponent
       this.projectService
         .watchProjectSummary(ref)
         .pipe(
+          takeUntil(cancel$),
           takeUntil(
             race([
               this.projectTracker.projectRef.pipe(skip(1)),
@@ -306,7 +331,11 @@ export class ProjectPageComponent
         .subscribe({
           next: (summary) => this.onProjectSummaryChanged(ref, summary),
           error: (error) => {
+            if (!equalProjectRef(this.project()?.ref, ref)) return;
             this.onProjectSummaryChanged(ref, undefined);
+            this.metadataReadError.set(
+              qualifiedLocalReadVersionGuidance(error),
+            );
             this.errorLogger.logError(
               error,
               'Failed to load project summary for project page',
