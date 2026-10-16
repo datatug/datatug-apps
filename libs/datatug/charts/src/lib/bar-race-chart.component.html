@@ -1,0 +1,75 @@
+<section class="race" aria-label="Bar chart race">
+  @if (loading) {
+    <p class="state" role="status">Loading chart data…</p>
+  } @else if (error || validationError()) {
+    <p class="state error" role="alert">{{ error || validationError() }}</p>
+  } @else if (!views || !frames.length) {
+    <p class="state" role="status">No chart data is available.</p>
+  } @else {
+    <div class="heading">
+      <div>
+        <p class="eyebrow">DataTug · Bar race</p>
+        <h2>{{ frame?.period }}</h2>
+      </div>
+      <p class="period-status" aria-live="polite" aria-atomic="true">
+        Month {{ frameIndex() + 1 }} of {{ frames.length }} · {{ mode() === 'period' ? 'Monthly' : 'Cumulative' }}
+      </p>
+    </div>
+
+    <div class="controls" role="group" aria-label="Chart playback and display">
+      <button type="button" (click)="previous()" [disabled]="frameIndex() === 0" aria-label="Previous month">‹ <span>Previous</span></button>
+      <button type="button" (click)="togglePlayback()" [attr.aria-label]="playing() ? 'Pause chart' : 'Play chart'">
+        {{ playing() ? 'Pause' : 'Play' }}
+      </button>
+      <button type="button" (click)="next()" [disabled]="atEnd" aria-label="Next month"><span>Next</span> ›</button>
+      <label class="scrub">Month
+        <input type="range" min="0" [max]="frames.length - 1" [value]="frameIndex()" (input)="onScrub($event)"
+          [attr.aria-valuetext]="frame?.period" aria-label="Choose month" />
+      </label>
+      <label>View
+        <select [value]="mode()" (change)="onMode($event)" aria-label="Chart value mode">
+          <option value="period">Monthly</option>
+          <option value="cumulative">Cumulative</option>
+        </select>
+      </label>
+      <label>Top
+        <input type="number" min="1" [max]="maxTopN" [value]="topN()" (change)="onTopN($event)"
+          [attr.aria-description]="'Prepared data supports at most ' + maxTopN + ' categories'" />
+      </label>
+      <label>Speed
+        <select [value]="intervalMs()" (change)="onInterval($event)" aria-label="Playback interval">
+          <option value="2000">Slow</option>
+          <option value="1000">Normal</option>
+          <option value="500">Fast</option>
+        </select>
+      </label>
+    </div>
+
+    <p class="capacity">Showing up to {{ topN() }} of {{ maxTopN }} prepared categories. Change the saved chart to raise this limit.</p>
+    @if (data?.truncated) { <p class="notice" role="status">This result was truncated. The chart may omit records.</p> }
+    @if (data?.limitations.length) { <p class="notice" role="status">Source restrictions apply to this result.</p> }
+    <div #plot class="plot" [style.height.px]="plotHeight" aria-hidden="true"></div>
+
+    <details class="ranked-values">
+      <summary>Inspect ranked values{{ inspectable ? ' and source records' : '' }} for {{ frame?.period }}</summary>
+      <div class="table-wrap">
+        <table>
+        <caption>{{ frame?.period }} · {{ mode() === 'period' ? 'Monthly' : 'Cumulative' }} values</caption>
+        <thead><tr><th scope="col">Rank</th><th scope="col">Category</th><th scope="col">Value{{ data?.spec.unit ? ' (' + data.spec.unit + ')' : '' }}</th>@if (inspectable) { <th scope="col">Records</th> }</tr></thead>
+        <tbody>
+          @for (entry of entries; track entry.category) {
+            <tr>
+              <td>{{ entry.rank }}</td>
+              <th scope="row"><span class="swatch" [style.background-color]="entry.color" aria-hidden="true"></span>{{ entry.category }}</th>
+              <td class="numeric">{{ formatValue(entry.value) }}</td>
+              @if (inspectable) { <td><button type="button" class="inspect" (click)="requestInspection(entry)" [attr.aria-label]="'Inspect records for ' + entry.category + ' in ' + frame?.period">Inspect</button></td> }
+            </tr>
+          } @empty {
+            <tr><td [attr.colspan]="inspectable ? 4 : 3">No values in this month.</td></tr>
+          }
+        </tbody>
+        </table>
+      </div>
+    </details>
+  }
+</section>

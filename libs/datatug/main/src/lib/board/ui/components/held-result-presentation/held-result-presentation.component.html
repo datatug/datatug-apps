@@ -1,0 +1,239 @@
+<section class="result" aria-label="Data visualization and result rows">
+  @if (loading) {
+    <p class="state" role="status">Loading result…</p>
+  } @else if (error) {
+    <p class="state error" role="alert">{{ error }}</p>
+  } @else if (!result) {
+    <p class="state" role="status">Run this card to see its results.</p>
+  } @else {
+    <header class="summary">
+      <div>
+        <span class="eyebrow">Result explorer</span>
+        <h2>{{ fields?.title || 'Query results' }}</h2>
+      </div>
+      <p>
+        {{ result.recordset.rows.length }} rows ·
+        {{ result.recordset.columns.length }} columns
+      </p>
+    </header>
+    @if (result.truncated) {
+      <p class="notice" role="status">
+        This result is truncated. Chart values may be incomplete.
+      </p>
+    }
+    <sneat-datatug-limitation-header
+      [limitations]="result.limitations"
+      [executionProfile]="result.provenance.executionProfile"
+    />
+
+    @if (fields && prepared?.ok && !chartOnly) {
+      <div class="view-switch" role="group" aria-label="Result view">
+        <button
+          type="button"
+          [attr.aria-pressed]="view() === 'chart'"
+          (click)="view.set('chart')"
+        >
+          Chart
+        </button>
+        <button
+          type="button"
+          [attr.aria-pressed]="view() === 'grid'"
+          (click)="view.set('grid')"
+        >
+          Rows
+        </button>
+      </div>
+    }
+
+    @if (fields && prepared && !prepared.ok) {
+      <p class="state error" role="alert">{{ prepared.message }}</p>
+    } @else if (view() === 'chart' && fields && prepared?.ok) {
+      <div class="chart-head">
+        <p>Compare categories</p>
+        <label
+          >Show top
+          <select
+            [value]="topN()"
+            (change)="setTopN($event)"
+            aria-label="Number of categories shown"
+          >
+            @for (count of topNOptions; track count) {
+              <option [value]="count">{{ count }}</option>
+            }
+          </select>
+        </label>
+      </div>
+      <ol class="bars" aria-label="Category values">
+        @for (bar of bars; track bar.category) {
+          <li>
+            <button
+              type="button"
+              (click)="inspectBar(bar.sourceRow)"
+              [attr.aria-label]="
+                'Inspect ' +
+                bar.category +
+                ': ' +
+                bar.value +
+                ' ' +
+                (fields.unit || '')
+              "
+            >
+              <span class="bar-label">{{ bar.category }}</span>
+              <span class="bar-track"
+                ><span
+                  class="bar-fill"
+                  [style.width.%]="(bar.value / maxValue) * 100"
+                ></span
+              ></span>
+              <strong>{{ numberFormat.format(bar.value) }}</strong>
+            </button>
+          </li>
+        } @empty {
+          <li class="empty">No category rows in this result.</li>
+        }
+      </ol>
+    }
+
+    @if (view() === 'grid' && !chartOnly) {
+      <div class="table-head">
+        <h3>Inspect rows</h3>
+        <span>Same held result · no new query</span>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <caption>
+            Rows
+            {{
+              result.recordset.rows.length ? page() * pageSize + 1 : 0
+            }}–{{
+              page() * pageSize + rows.length
+            }}
+            of
+            {{
+              result.recordset.rows.length
+            }}
+          </caption>
+          <thead>
+            <tr>
+              <th scope="col">Row</th>
+              @for (column of result.recordset.columns; track $index) {
+                <th scope="col">{{ column.name }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of rows; track $index) {
+              <tr
+                [class.selected]="selectedRow() === page() * pageSize + $index"
+              >
+                <th scope="row">
+                  <button
+                    type="button"
+                    (click)="selectRow(page() * pageSize + $index)"
+                    [attr.aria-label]="
+                      'Inspect row ' + (page() * pageSize + $index + 1)
+                    "
+                  >
+                    {{ page() * pageSize + $index + 1 }}
+                  </button>
+                </th>
+                @for (value of row; track $index) {
+                  <td [class.null]="value.type === 'null'">
+                    {{ display(value) }}
+                  </td>
+                }
+              </tr>
+            } @empty {
+              <tr>
+                <td [attr.colspan]="result.recordset.columns.length + 1">
+                  No rows returned.
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+      @if (pageCount > 1) {
+        <nav class="pagination" aria-label="Result pages">
+          <button
+            type="button"
+            (click)="previousPage()"
+            [disabled]="page() === 0"
+          >
+            Previous
+          </button>
+          <span aria-live="polite"
+            >Page {{ page() + 1 }} of {{ pageCount }}</span
+          >
+          <button
+            type="button"
+            (click)="nextPage()"
+            [disabled]="page() >= pageCount - 1"
+          >
+            Next
+          </button>
+        </nav>
+      }
+    }
+      @if (selectedValues) {
+        <aside
+          #selectedDetails
+          class="inspection"
+          tabindex="-1"
+          aria-label="Selected row details"
+        >
+          <h3>Row {{ selectedRow()! + 1 }}</h3>
+          <dl>
+            @for (column of result.recordset.columns; track $index) {
+              <div>
+                <dt>{{ column.name }}</dt>
+                <dd>{{ display(selectedValues[$index]) }}</dd>
+              </div>
+            }
+          </dl>
+        </aside>
+      }
+    <details class="source-details">
+      <summary>Source and usage details</summary>
+      <dl>
+        <div>
+          <dt>Source</dt>
+          <dd>{{ result.provenance.source }}</dd>
+        </div>
+        <div>
+          <dt>Execution</dt>
+          <dd>
+            {{ result.provenance.mode }} ·
+            {{
+              publicApiReceipt
+                ? 'Browser public API'
+                : (result.provenance.executionProfile || 'not reported')
+            }}
+          </dd>
+        </div>
+        <div>
+          <dt>Observed</dt>
+          <dd>{{ result.provenance.observedAt }}</dd>
+        </div>
+        @if (result.provenance.queryId) {
+          <div>
+            <dt>Query</dt>
+            <dd>{{ result.provenance.queryId }}</dd>
+          </div>
+        }
+      </dl>
+      @if (publicApiReceipt; as receipt) {
+        <p>
+          Public API: {{ receipt.endpoint }} · database
+          {{ receipt.databaseId }} · collection {{ receipt.collectionId }}
+        </p>
+        @if (!result.sourceRights?.length) {
+          <p role="status">
+            Source usage rights are unavailable for this public result.
+          </p>
+        }
+      }
+      <sneat-datatug-source-rights-notice [evidence]="result" />
+    </details>
+  }
+</section>

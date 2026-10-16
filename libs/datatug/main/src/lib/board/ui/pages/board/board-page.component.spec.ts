@@ -492,4 +492,90 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       TestBed.inject(ParameterLookupService).lookupParameterValue,
     ).not.toHaveBeenCalled();
   });
+  it('publishes manually entered local board parameters as typed execution context and removes invalid values', async () => {
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: {
+        storeId: 'localhost:8989',
+        projectId: 'demo',
+        projectApi: 'local',
+        branch: 'main',
+      },
+    });
+    getBoard$.next({
+      id: 'board-1',
+      title: 'Local parameter board',
+      parameters: [
+        { id: 'count', title: 'Count', type: 'integer' },
+        { id: 'enabled', title: 'Enabled', type: 'boolean' },
+        { id: 'date', title: 'Date', type: 'date' },
+        { id: 'country', title: 'Country', type: 'string' },
+      ],
+    });
+    await fixture.whenStable();
+    const input = (type: string) => {
+      const element = Array.from(
+        fixture.nativeElement.querySelectorAll('ion-input') as NodeListOf<
+          HTMLElement & { placeholder: string }
+        >,
+      ).find((element) => element.placeholder === type);
+      if (!element) throw new Error(`Missing ${type} parameter input`);
+      return element;
+    };
+    const enter = (type: string, value: string) =>
+      input(type).dispatchEvent(
+        new CustomEvent('ionInput', { detail: { value }, bubbles: true }),
+      );
+    const original = fixture.componentInstance.boardContext();
+    enter('integer', '42');
+    enter('boolean', 'false');
+    enter('date', '2026-10-16');
+    enter('string', 'France');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.boardContext()).not.toBe(original);
+    expect(fixture.componentInstance.boardContext().parameters).toEqual({
+      count: { type: 'integer', value: 42 },
+      enabled: { type: 'boolean', value: false },
+      date: { type: 'date', value: '2026-10-16' },
+      country: { type: 'string', value: 'France' },
+    });
+    expect(
+      TestBed.inject(ParameterLookupService).lookupParameterValue,
+    ).not.toHaveBeenCalled();
+    const validContext = fixture.componentInstance.boardContext();
+    enter('integer', '1.5');
+    enter('date', '2026-02-30');
+    await fixture.whenStable();
+    expect(fixture.componentInstance.boardContext()).not.toBe(validContext);
+    expect(
+      fixture.componentInstance.boardContext().parameters['count'],
+    ).toBeUndefined();
+    expect(
+      fixture.componentInstance.boardContext().parameters['date'],
+    ).toBeUndefined();
+    expect(fixture.nativeElement.textContent).toContain('Enter a whole number');
+    expect(fixture.nativeElement.textContent).toContain('Enter an ISO date');
+  });
+
+  it('initializes validated saved defaults and clears board parameter values on navigation', async () => {
+    fixture.detectChanges();
+    currentProject$.next({
+      ref: { storeId: 'github.com', projectId: 'first@owner@' },
+    });
+    getBoard$.next({
+      id: 'board-1',
+      title: 'Defaults',
+      parameters: [{ id: 'count', type: 'integer', defaultValue: 5 }],
+    });
+    await fixture.whenStable();
+    expect(
+      fixture.componentInstance.boardContext().parameters['count'],
+    ).toEqual({ type: 'integer', value: 5 });
+    currentProject$.next({
+      ref: { storeId: 'github.com', projectId: 'second@owner@' },
+    });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.boardContext().parameters).toEqual({});
+    expect(fixture.componentInstance.parameterErrors()).toEqual({});
+  });
 });
