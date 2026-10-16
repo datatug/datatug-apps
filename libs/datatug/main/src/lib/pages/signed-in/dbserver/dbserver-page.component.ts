@@ -4,7 +4,6 @@ import { ActivatedRoute } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
-  IonButton,
   IonButtons,
   IonCard,
   IonContent,
@@ -70,7 +69,6 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
     IonSegmentButton,
     IonBadge,
     IonList,
-    IonButton,
     FormsModule,
     IonText,
   ],

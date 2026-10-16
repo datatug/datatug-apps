@@ -195,12 +195,7 @@ jobs:
           echo "datatug_app=$app_affected" >> "$GITHUB_OUTPUT"
 
       - name: Install Playwright browsers
-        run: |
-          browsers=(chromium)
-          if [[ "${{ steps.affected-app.outputs.datatug_app }}" == "true" ]]; then
-            browsers+=(webkit firefox)
-          fi
-          pnpm exec playwright install --with-deps "${browsers[@]}"
+        run: pnpm exec playwright install --with-deps chromium
 
       - name: Smoke query context count geometry on Chromium
         if: steps.affected-app.outputs.datatug_app == 'true'
@@ -222,6 +217,36 @@ jobs:
             coverage/apps/datatug-app-e2e/report
             coverage/apps/datatug-app-e2e/results
           if-no-files-found: ignore
+
+  e2e-query-mobile:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Checkout canonical demo project
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-project
+          ref: main
+          path: datatug-demo-project
+
+      - name: Derive appropriate SHAs for base and head for nx affected commands
+        uses: nrwl/nx-set-shas@v5
+
+      - name: Install mobile WebKit browser
+        run: pnpm exec playwright install --with-deps webkit
 
       - name: nx query mobile WebKit e2e affected
         env:
@@ -322,17 +347,18 @@ jobs:
   e2e:
     if: always()
     runs-on: ubuntu-latest
-    needs: [build, e2e-checkout, e2e-app, e2e-demo-sqlite, e2e-demo-handoff]
+    needs: [build, e2e-checkout, e2e-app, e2e-query-mobile, e2e-demo-sqlite, e2e-demo-handoff]
     steps:
       - name: Require every E2E lane
         env:
           BUILD_RESULT: ${{ needs.build.result }}
           CHECKOUT_RESULT: ${{ needs.e2e-checkout.result }}
           APP_RESULT: ${{ needs.e2e-app.result }}
+          QUERY_MOBILE_RESULT: ${{ needs.e2e-query-mobile.result }}
           SQLITE_RESULT: ${{ needs.e2e-demo-sqlite.result }}
           HANDOFF_RESULT: ${{ needs.e2e-demo-handoff.result }}
         run: |
-          for result in "$BUILD_RESULT" "$CHECKOUT_RESULT" "$APP_RESULT" "$SQLITE_RESULT" "$HANDOFF_RESULT"; do
+          for result in "$BUILD_RESULT" "$CHECKOUT_RESULT" "$APP_RESULT" "$QUERY_MOBILE_RESULT" "$SQLITE_RESULT" "$HANDOFF_RESULT"; do
             if [[ "$result" != success ]]; then
               echo "Required E2E dependency ended with: $result" >&2
               exit 1
