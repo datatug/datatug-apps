@@ -8,7 +8,7 @@ Run the production-configured app at the one origin enabled for native project s
 pnpm nx serve datatug-app --configuration=production --host=localhost --port=18782
 ```
 
-This keeps Firebase identity and the normal production API configuration while the app routes only the fixed project-preview allowlist to the TEST checkout host. Sign in through the app as usual; do not inspect or copy browser tokens or session storage. The isolated TEST host still enforces its fixed buyer, Space, repository, and intent scope.
+This keeps Firebase identity and the normal production API configuration while the app routes only the fixed project-preview allowlist to the TEST checkout host. During this local preview, repository lookup, repository resolution, and Space creation use the existing direct API host because the normal API edge may be unavailable. OAuth start/completion and all other API requests keep their normal destinations, and production pages are unaffected. Sign in through the app as usual; do not inspect or copy browser tokens or session storage. The isolated TEST host still enforces its fixed buyer, Space, repository, and intent scope.
 
 ## Build info
 

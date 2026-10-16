@@ -3,6 +3,7 @@ import { TEST_CHECKOUT_ORIGIN } from './checkout/checkout-config.mjs';
 
 const LOCAL_PREVIEW_ORIGIN = 'http://localhost:18782';
 const PRODUCTION_API_ORIGIN = 'https://api.sneat.cloud';
+const LOCAL_PROJECT_API_ORIGIN = 'https://sneat-app-354fvnqbaa-ey.a.run.app';
 
 const TEST_PROJECT_PREVIEW_METHODS: Readonly<Record<string, string>> = {
   '/v0/datatug/github/repositories': 'GET',
@@ -17,7 +18,13 @@ const TEST_PROJECT_PREVIEW_METHODS: Readonly<Record<string, string>> = {
   '/v0/datatug/queries/save_query': 'POST',
 };
 
-/** Routes only the native project-preview API calls from the dedicated local preview. */
+const LOCAL_PROJECT_API_FALLBACK_METHODS: Readonly<Record<string, string>> = {
+  '/v0/datatug/github/oauth/repositories': 'GET',
+  '/v0/datatug/github/oauth/resolve-repository': 'POST',
+  '/v0/spaces/create_space': 'POST',
+};
+
+/** Routes only the approved local project-preview and lookup requests. */
 export function testProjectPreviewUrl(
   requestUrl: string,
   method: string,
@@ -36,12 +43,17 @@ export function testProjectPreviewUrl(
     url.origin !== PRODUCTION_API_ORIGIN ||
     url.username ||
     url.password ||
-    TEST_PROJECT_PREVIEW_METHODS[url.pathname] !== method
+    (TEST_PROJECT_PREVIEW_METHODS[url.pathname] !== method &&
+      LOCAL_PROJECT_API_FALLBACK_METHODS[url.pathname] !== method)
   ) {
     return undefined;
   }
 
-  return `${TEST_CHECKOUT_ORIGIN}${url.pathname}${url.search}`;
+  const origin =
+    TEST_PROJECT_PREVIEW_METHODS[url.pathname] === method
+      ? TEST_CHECKOUT_ORIGIN
+      : LOCAL_PROJECT_API_ORIGIN;
+  return `${origin}${url.pathname}${url.search}`;
 }
 
 export function createTestProjectPreviewInterceptor(
