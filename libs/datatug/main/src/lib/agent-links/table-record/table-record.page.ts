@@ -38,7 +38,7 @@ import {
   LinkProblemError,
   classifyAgentError,
 } from '../agent-link-api.service';
-import { linkTableRef } from '../link-route';
+import { linkBackHref, linkTableRef } from '../link-route';
 import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import { lookupKey, parseKeyObject, pkOfRouteFragment } from '../record-key';
 import { qualifiedTableName } from '../table-identity';
@@ -97,6 +97,10 @@ export class TableRecordPageComponent {
 
   readonly tableRef = signal<AgentTableRef | undefined>(undefined);
   readonly state = signal<RecordState>({ kind: 'loading' });
+  readonly backHref = computed(() => {
+    const ref = this.tableRef();
+    return linkBackHref(ref?.storeId ?? '', ref?.project);
+  });
   readonly title = computed(() => {
     const ref = this.tableRef();
     return ref ? `${qualifiedTableName(ref.table)} record` : 'Record';
@@ -143,16 +147,23 @@ export class TableRecordPageComponent {
           throw new LinkProblemError('bad-key');
         }
         return this.api.lookupRecord(ref, typed).pipe(
-          map((rows): RecordState => ({
-            kind: 'record',
-            schema,
-            fields: rows.columns.map((name, i) => ({
-              name,
-              value: rows.rows[0][i] ?? '',
-              key: schema.primaryKey.includes(name),
-            })),
-            hops: recordHops(ref, schema.foreignKeys, rows.columns, rows.cells?.[0] ?? []),
-          })),
+          map(
+            (rows): RecordState => ({
+              kind: 'record',
+              schema,
+              fields: rows.columns.map((name, i) => ({
+                name,
+                value: rows.rows[0][i] ?? '',
+                key: schema.primaryKey.includes(name),
+              })),
+              hops: recordHops(
+                ref,
+                schema.foreignKeys,
+                rows.columns,
+                rows.cells?.[0] ?? [],
+              ),
+            }),
+          ),
         );
       }),
       catchError((err: unknown) =>

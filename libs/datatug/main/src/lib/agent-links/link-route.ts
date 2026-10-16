@@ -6,6 +6,8 @@ import {
   routingParamStoreId,
   routingParamTableType,
 } from '../core/datatug-routing-params';
+import { tryProjectUrl } from '@datatug/project-address';
+import { projectPageHref } from '../nav/project-page-href';
 import { AgentTableRef } from './agent-link-api.service';
 import { SCHEMA_QUERY_PARAM, tableIdentity } from './table-identity';
 
@@ -56,4 +58,36 @@ export function recordsLimit(param: string | null | undefined): number {
   const n = Number(param);
   if (n < 1) return DEFAULT_RECORDS_LIMIT;
   return Math.min(n, MAX_RECORDS_LIMIT);
+}
+
+/**
+ * Where the back button of an agent-link page goes when the page has no history (the link was opened in a fresh tab):
+ * the home of the project the page is for, else the store's own page (its projects). Always an address of this app.
+ */
+export function linkBackHref(
+  storeId: string,
+  projectId: string | undefined,
+): string {
+  if (projectId && storeId) {
+    const href = projectPageHref({ storeId, projectId });
+    if (href !== '/') return href;
+  }
+  return storeId
+    ? `/store/${encodeURIComponent(storeId).replace(/%3A/gi, ':')}`
+    : '/';
+}
+
+/**
+ * The router commands of a page of a project's database (`env/<env>/db/<source>/table/<name>[/records|/record]`),
+ * written by the one builder of project addresses and split into the segments the router takes (each decoded: the
+ * router encodes them again). Undefined when the project has no exact address.
+ */
+export function projectPageCommands(
+  project: { readonly storeId: string; readonly projectId: string },
+  page: readonly string[],
+): string[] | undefined {
+  const path = tryProjectUrl(project, [...page]);
+  if (typeof path !== 'string') return undefined;
+  const [first, ...rest] = path.slice(1).split('/').map(decodeURIComponent);
+  return [`/${first}`, ...rest];
 }

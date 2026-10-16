@@ -27,7 +27,12 @@ import {
   LinkProblem,
   classifyAgentError,
 } from '../agent-link-api.service';
-import { LIMIT_QUERY_PARAM, linkTableRef, recordsLimit } from '../link-route';
+import {
+  LIMIT_QUERY_PARAM,
+  linkBackHref,
+  linkTableRef,
+  recordsLimit,
+} from '../link-route';
 import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import { qualifiedTableName } from '../table-identity';
 
@@ -70,6 +75,10 @@ export class TableRecordsPageComponent {
   readonly tableRef = signal<AgentTableRef | undefined>(undefined);
   readonly limit = signal(recordsLimit(undefined));
   readonly state = signal<RecordsState>({ kind: 'loading' });
+  readonly backHref = computed(() => {
+    const ref = this.tableRef();
+    return linkBackHref(ref?.storeId ?? '', ref?.project);
+  });
   readonly title = computed(() => {
     const ref = this.tableRef();
     return ref ? `${qualifiedTableName(ref.table)} records` : 'Records';
@@ -87,13 +96,19 @@ export class TableRecordsPageComponent {
           this.limit.set(limit);
           this.state.set({ kind: 'loading' });
           if (!ref) {
-            return of<RecordsState>({ kind: 'problem', problem: 'table-not-found' });
+            return of<RecordsState>({
+              kind: 'problem',
+              problem: 'table-not-found',
+            });
           }
           return this.api.tableSchema(ref).pipe(
             switchMap(() => this.api.selectRows(ref, limit)),
             map((rows): RecordsState => ({ kind: 'rows', rows })),
             catchError((err: unknown) =>
-              of<RecordsState>({ kind: 'problem', problem: classifyAgentError(err) }),
+              of<RecordsState>({
+                kind: 'problem',
+                problem: classifyAgentError(err),
+              }),
             ),
           );
         }),
