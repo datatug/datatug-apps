@@ -10947,6 +10947,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     editorImports: Array<Type<unknown>> = [],
     editorState$?: BehaviorSubject<IQueryEditorState>,
     projectContext: IProjectContext = project,
+    route?: {
+      readonly queryId?: string;
+      readonly queryParams?: ReturnType<typeof convertToParamMap>;
+    },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
       value: { ...window.history, state: {} },
@@ -10965,6 +10969,10 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       ],
     } as unknown as IQueryEditorState;
     const editor = editorState$ ?? new BehaviorSubject(editorState);
+    const routeQueryParams = route?.queryParams ?? convertToParamMap({});
+    const routeParams = convertToParamMap(
+      route?.queryId ? { queryId: route.queryId } : {},
+    );
 
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -10996,9 +11004,13 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
-            paramMap: of({ get: () => null }),
-            snapshot: { paramMap: { get: () => null }, params: {} },
+            queryParamMap: of(routeQueryParams),
+            paramMap: of(routeParams),
+            snapshot: {
+              paramMap: routeParams,
+              queryParamMap: routeQueryParams,
+              params: {},
+            },
           },
         },
         {
@@ -11026,9 +11038,14 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
                 ),
               }),
             ),
-            openQuery: vi.fn(),
+            openQuery: vi.fn((queryId: string) => {
+              if (editor.value.activeQueries.some((query) => query.id === queryId))
+                editor.next({ ...editor.value, currentQueryId: queryId });
+            }),
             newQuery: vi.fn(),
-            getQueryState: vi.fn(),
+            getQueryState: vi.fn((queryId: string) =>
+              editor.value.activeQueries.find((query) => query.id === queryId),
+            ),
             saveQuery: vi.fn(),
           },
         },
@@ -11306,6 +11323,67 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     }));
     expect(component.queryBodyText()).toBe(legacySqlText);
     expect(component.queryDef()).toEqual(definition);
+  });
+
+  it('preserves an omitted environment from a saved SQL query route through browser SQLite dispatch', async () => {
+    const queryId = 'demodb/northwind-orders-browser-sqlite';
+    const definition: IQueryDef = {
+      id: queryId,
+      title: 'Northwind orders',
+      connectionId: 'northwind-sqlite',
+      request: { queryType: QueryType.SQL, text: 'select 1' } as ISqlQueryRequest,
+    };
+    const loadingState: IQueryState = {
+      id: queryId,
+      queryType: QueryType.SQL,
+      isLoading: true,
+      environments: [{ id: 'local' }],
+    };
+    const browserProject: IProjectContext = {
+      ref: {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      },
+    };
+    const editorState = new BehaviorSubject<IQueryEditorState>({
+      activeQueries: [loadingState],
+    });
+    component = await createComponent(
+      definition,
+      '',
+      [],
+      editorState,
+      browserProject,
+      {
+        queryId,
+        queryParams: convertToParamMap({
+          id: queryId,
+          runtime: 'project',
+        }),
+      },
+    );
+
+    expect(component.envId).toBeUndefined();
+    editorState.next({
+      ...editorState.value,
+      activeQueries: [
+        {
+          ...editorState.value.activeQueries[0],
+          isLoading: false,
+          request: definition.request,
+          def: definition,
+        },
+      ],
+    });
+    expect(component.envId).toBeUndefined();
+    component.runQuery();
+
+    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+      projectRef: browserProject.ref,
+      definition,
+      environment: undefined,
+      target: { kind: 'browser-sqlite' },
+    }));
   });
 
   it('keeps exact browser SQL inputs and client origins with the prior result after a draft binding edit', async () => {
