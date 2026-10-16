@@ -1,4 +1,5 @@
 import type { RunQueryRequest, TypedValue } from '@sneat/datatug-semantic';
+import { tryProjectUrl } from '@datatug/project-address';
 
 /**
  * A query result stored by `datatug query run --result-id` and served by the agent's `GET /datatug/results/<id>`
@@ -387,12 +388,10 @@ export function tableLink(
   kind: string,
 ): TableLink | undefined {
   if (!ids || !relation) return undefined;
+  const address = tryProjectUrl({ storeId, projectId: ids.project }, ['env']);
+  if (typeof address !== 'string') return undefined;
   const commands = [
-    '/store',
-    storeId,
-    'project',
-    ids.project,
-    'env',
+    address,
     ids.env,
     'db',
     ids.source,

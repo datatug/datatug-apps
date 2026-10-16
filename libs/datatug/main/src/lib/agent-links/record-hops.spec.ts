@@ -25,13 +25,24 @@ const COMPOSITE: AgentForeignKey = {
 
 describe('recordHops (plan Task 9: foreign-key hops)', () => {
   it('opens the referenced record by its typed key, only in the fragment', () => {
-    const [hop] = recordHops(REF, [TO_ARTIST], ['AlbumId', 'Title', 'ArtistId'], [
-      { type: 'integer', text: '1' },
-      { type: 'string', text: 'For Those About To Rock' },
-      { type: 'integer', text: '9007199254740993' },
-    ]);
+    const [hop] = recordHops(
+      REF,
+      [TO_ARTIST],
+      ['AlbumId', 'Title', 'ArtistId'],
+      [
+        { type: 'integer', text: '1' },
+        { type: 'string', text: 'For Those About To Rock' },
+        { type: 'integer', text: '9007199254740993' },
+      ],
+    );
     expect(hop.commands).toEqual([
-      '/store', 'http-127.0.0.1:8989', 'project', 'demo', 'env', 'local', 'db', 'chinook', 'table', 'Artist', 'record',
+      '/store/http-127.0.0.1:8989/project/demo/env',
+      'local',
+      'db',
+      'chinook',
+      'table',
+      'Artist',
+      'record',
     ]);
     expect(hop.schema).toBe('main');
     // Every digit, as a JSON number literal; no non-key value.
@@ -40,18 +51,31 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
   });
 
   it('maps a composite key column by column, with string values as JSON', () => {
-    const [hop] = recordHops(REF, [COMPOSITE], ['TCode', 'PId'], [
-      { type: 'string', text: 'a"&b' },
-      { type: 'integer', text: '7' },
-    ]);
-    expect(JSON.parse(hop.fragment.slice('pk='.length))).toEqual({ PlaylistId: 7, TrackCode: 'a"&b' });
+    const [hop] = recordHops(
+      REF,
+      [COMPOSITE],
+      ['TCode', 'PId'],
+      [
+        { type: 'string', text: 'a"&b' },
+        { type: 'integer', text: '7' },
+      ],
+    );
+    expect(JSON.parse(hop.fragment.slice('pk='.length))).toEqual({
+      PlaylistId: 7,
+      TrackCode: 'a"&b',
+    });
   });
 
   it('round-trips & " # % and non-ASCII through the router and the record page reader', () => {
-    const [hop] = recordHops(REF, [COMPOSITE], ['TCode', 'PId'], [
-      { type: 'string', text: 'a&b"#%26 ü' },
-      { type: 'integer', text: '9007199254740993' },
-    ]);
+    const [hop] = recordHops(
+      REF,
+      [COMPOSITE],
+      ['TCode', 'PId'],
+      [
+        { type: 'string', text: 'a&b"#%26 ü' },
+        { type: 'integer', text: '9007199254740993' },
+      ],
+    );
     // As the router writes the address bar.
     const serializer = new DefaultUrlSerializer();
     const tree = serializer.parse('/x');
@@ -59,9 +83,12 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
     const url = serializer.serialize(tree);
     // A reload parses that address again; the record page reads the router's fragment.
     expect(url).not.toMatch(/#.*[^\\]&/);
-    const key = parseKeyObject(pkOfRouteFragment(serializer.parse(url).fragment) ?? '');
+    const key = parseKeyObject(
+      pkOfRouteFragment(serializer.parse(url).fragment) ?? '',
+    );
     expect(key).toBeDefined();
-    if (!key) throw new Error('Expected route fragment to contain a primary key');
+    if (!key)
+      throw new Error('Expected route fragment to contain a primary key');
     expect(
       lookupKey(key, {
         columns: [
@@ -76,10 +103,17 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
   });
 
   it('has no hop for a string over 256 bytes', () => {
-    expect(recordHops(REF, [COMPOSITE], ['TCode', 'PId'], [
-      { type: 'string', text: 'ü'.repeat(129) },
-      { type: 'integer', text: '1' },
-    ])).toEqual([]);
+    expect(
+      recordHops(
+        REF,
+        [COMPOSITE],
+        ['TCode', 'PId'],
+        [
+          { type: 'string', text: 'ü'.repeat(129) },
+          { type: 'integer', text: '1' },
+        ],
+      ),
+    ).toEqual([]);
   });
 
   it.each([
@@ -91,6 +125,44 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
   });
 
   it('has no hop when the record lacks a key column', () => {
-    expect(recordHops(REF, [TO_ARTIST], ['AlbumId'], [{ type: 'integer', text: '1' }])).toEqual([]);
+    expect(
+      recordHops(
+        REF,
+        [TO_ARTIST],
+        ['AlbumId'],
+        [{ type: 'integer', text: '1' }],
+      ),
+    ).toEqual([]);
+  });
+
+  it('uses the canonical GitHub project address and refuses an invalid project', () => {
+    const githubRef = {
+      ...REF,
+      storeId: 'github.com',
+      project: 'repo@owner@data',
+    };
+    const [hop] = recordHops(
+      githubRef,
+      [TO_ARTIST],
+      ['ArtistId'],
+      [{ type: 'integer', text: '7' }],
+    );
+    expect(hop.commands).toEqual([
+      '/project/github.com/owner/repo/tree/HEAD/data/-/env',
+      'local',
+      'db',
+      'chinook',
+      'table',
+      'Artist',
+      'record',
+    ]);
+    expect(
+      recordHops(
+        { ...githubRef, project: 'invalid@id@extra@parts@x' },
+        [TO_ARTIST],
+        ['ArtistId'],
+        [{ type: 'integer', text: '7' }],
+      ),
+    ).toEqual([]);
   });
 });

@@ -115,11 +115,7 @@ describe('the lists', () => {
     expect(rows[1].join).toBe('inner on i.CustomerId = c.CustomerId');
     expect(rows[0].alias).toBe('i');
     expect(rows[1].link?.commands).toEqual([
-      '/store',
-      STORE,
-      'project',
-      'demo',
-      'env',
+      `/store/${STORE}/project/demo/env`,
       'local',
       'db',
       'chinook',
@@ -265,11 +261,7 @@ describe('the lists', () => {
     }).meta;
     const rows = sourceRows(meta, STORE);
     expect(rows[0].link?.commands).toEqual([
-      '/store',
-      STORE,
-      'project',
-      'shop',
-      'env',
+      `/store/${STORE}/project/shop/env`,
       'prod',
       'db',
       'pg',
@@ -297,6 +289,31 @@ describe('the lists', () => {
         { project: 'p', env: 'e', source: 'd' },
         's',
         '',
+        'table',
+      ),
+    ).toBeUndefined();
+    expect(
+      tableLink(
+        'github.com',
+        { project: 'repo@owner@data', env: 'dev', source: 'sqlite' },
+        '',
+        'Orders',
+        'table',
+      )?.commands,
+    ).toEqual([
+      '/project/github.com/owner/repo/tree/HEAD/data/-/env',
+      'dev',
+      'db',
+      'sqlite',
+      'table',
+      'Orders',
+    ]);
+    expect(
+      tableLink(
+        'github.com',
+        { project: 'invalid@id@extra@parts@x', env: 'dev', source: 'sqlite' },
+        '',
+        'Orders',
         'table',
       ),
     ).toBeUndefined();
