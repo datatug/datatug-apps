@@ -9,8 +9,10 @@ import {
 import {
   NATIVE_OPERATION_STORE,
   NativeOperationDraft,
+  nativeOperationDraftKey,
   SessionDetectiveOperationService,
 } from './session-detective-operation.service';
+import { detectiveOperationScopeKey } from './session-detective-contract';
 
 const project = { storeId: 'http-localhost:8989', projectId: 'source-project' };
 const locator = {
@@ -93,6 +95,38 @@ describe('native Detective operation recovery', () => {
       ],
     });
     service = TestBed.inject(SessionDetectiveOperationService);
+  });
+
+  it('keeps the predeployment storage key for an unqualified project ref', () => {
+    const key = nativeOperationDraftKey(project, caps.actorId, locator, request.sessionId, request.checkId);
+    const legacyProject = 'source-project@http-localhost:8989';
+    const legacyScope = detectiveOperationScopeKey(locator);
+
+    expect(key).toBe(JSON.stringify([
+      'native-detective/1', 'alice', legacyProject, '', legacyScope,
+      'session_1', 'check_1', '',
+    ]));
+  });
+
+  it('keeps the predeployment branch-qualified key, whose branch is already a separate key member', () => {
+    const branched = { ...project, branch: 'main' };
+    const key = nativeOperationDraftKey(branched, caps.actorId, locator, request.sessionId, request.checkId);
+
+    expect(key).toBe(JSON.stringify([
+      'native-detective/1', 'alice', 'source-project@http-localhost:8989', 'main',
+      detectiveOperationScopeKey(locator), 'session_1', 'check_1', '',
+    ]));
+  });
+
+  it('keeps the predeployment common-API project encoding inside native operation keys', () => {
+    const commonApiProject = { ...project, projectApi: 'local' as const, branch: 'topic' };
+    const key = nativeOperationDraftKey(commonApiProject, caps.actorId, locator, request.sessionId, request.checkId);
+
+    expect(key).toBe(JSON.stringify([
+      'native-detective/1', 'alice',
+      '["common-project/1","local","http-localhost:8989","source-project","topic"]',
+      'topic', detectiveOperationScopeKey(locator), 'session_1', 'check_1', '',
+    ]));
   });
   it('persists original request before dispatch and reload only observes accepted metadata', async () => {
     await service.open(project, caps, request.sessionId, request.checkId);

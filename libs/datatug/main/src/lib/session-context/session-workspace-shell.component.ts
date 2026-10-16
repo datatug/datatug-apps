@@ -54,6 +54,7 @@ export class SessionWorkspaceShellComponent {
     await dismissed;
   }
   readonly drawerOpen = signal(false);
+  readonly mappedFieldPickerOpen = signal(false);
   readonly chooserOpen = signal(false);
   readonly createOpen = signal(false);
   readonly addBagOpen = signal(false);
@@ -101,11 +102,18 @@ export class SessionWorkspaceShellComponent {
   readonly visibleSessions = computed(() => this.workspace.sessions().filter((session) =>
     (this.sessionFilter() === 'all' || session.state === this.sessionFilter()) &&
     session.title.toLowerCase().includes(this.sessionSearch().toLowerCase())));
+  onSessionSearchChange(query: string): void {
+    this.sessionSearch.set(query);
+    this.workspace.cancelSearchAll();
+  }
   readonly canCreateSession = computed(() => {
     const capabilities = this.workspace.capabilities();
     return !!capabilities && capabilities.actions.includes('createSession') &&
       capabilities.environments.length > 0 && !this.workspace.busy();
   });
+  onMappedFieldPickerOpen(): void { this.mappedFieldPickerOpen.set(true); }
+  onMappedFieldPickerDismiss(): void { this.mappedFieldPickerOpen.set(false); }
+  canDismissContextBag(): boolean { return !this.mappedFieldPickerOpen(); }
   readonly showInitialLoading = computed(() => this.workspace.loading() && !this.workspace.capabilities());
   readonly showInitialLoadError = computed(() => !!this.workspace.error() && !this.workspace.capabilities());
   readonly availableSubjects = computed(() => {
@@ -203,7 +211,11 @@ export class SessionWorkspaceShellComponent {
     else {
       this.chooserOpen.set(true);
       const project = this.project();
-      if (project) await this.router.navigateByUrl(projectPageHref(project, 'sessions'));
+      if (project) {
+        const tree = this.router.parseUrl(projectPageHref(project, 'sessions'));
+        tree.queryParams = { ...this.route.snapshot.queryParams };
+        await this.router.navigateByUrl(tree);
+      }
     }
   }
   async openWorkspacePage(page: 'invoice-overview' | 'invoice-explorer' | 'composer' | 'checks' | 'detective'): Promise<void> {

@@ -6,6 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -17,7 +18,7 @@ import {
 } from '@ionic/angular';
 import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { BehaviorSubject, combineLatest, EMPTY, of, Subject } from 'rxjs';
+import { BehaviorSubject, combineLatest, of, Subject } from 'rxjs';
 import {
   catchError,
   distinctUntilChanged,
@@ -28,11 +29,6 @@ import {
 } from 'rxjs/operators';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { equalProjectRef } from '../../../../core/project-context';
-import { DatatugFoldersService } from '../../../../folders/core/datatug-folders.service';
-import {
-  folderItemsAsList,
-  IFolder,
-} from '../../../../models/definition/folder';
 import {
   IProjBoard,
   IProjItemBrief,
@@ -40,11 +36,14 @@ import {
 import { IProjectContext } from '../../../../nav/nav-models';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
+import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
 import { DatatugServicesNavModule } from '../../../../services/nav/datatug-services-nav.module';
 import { DatatugServicesProjectModule } from '../../../../services/project/datatug-services-project.module';
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
+import { BoardChoicesService } from '../../../core/board-choices.service';
+import { projectPageHref } from '../../../../nav/project-page-href';
 
 @Component({
   selector: 'sneat-datatug-boards',
@@ -78,13 +77,30 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
     IonMenuButton,
     IonToolbar,
     IonContent,
+    RouterLink,
   ],
 })
 export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
-  private readonly foldersService = inject(DatatugFoldersService);
+  private readonly choices = inject(BoardChoicesService);
+  private readonly router = inject(Router);
+  readonly favoriteBoards = computed(() => {
+    const ref = this.project()?.ref;
+    return ref
+      ? (this.boards() || []).filter(
+          (board) => this.choices.read(ref, board.id).favorite,
+        )
+      : [];
+  });
+  boardLink(id: string) {
+    const ref = this.project()?.ref;
+    return ref
+      ? this.router.parseUrl(projectPageHref(ref, ['board', id]))
+      : undefined;
+  }
+  private readonly assets = inject(ProjectAssetsReadService);
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts). Both are written from
@@ -101,7 +117,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   readonly project = signal<IProjectContext | undefined>(undefined);
   readonly unsupportedProject = computed(() => {
     const ref = this.project()?.ref;
-    return !!(ref?.projectApi || ref?.branch);
+    return !!ref?.spaceID;
   });
 
   folderPath = '~';
@@ -129,20 +145,15 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         switchMap(({ ref }) => {
           this.boards.set(undefined);
           this.loadError.set(undefined);
-          // The folder store drops projectApi and branch. Reading here would
-          // silently show an unqualified project's boards under another ref.
-          if (ref?.projectApi || ref?.branch) return EMPTY;
           return ref
-            ? this.foldersService
-                .watchFolder({ ...ref, id: this.folderPath })
-                .pipe(
-                  map((folder) => ({ status: 'success' as const, folder })),
-                  catchError((err: unknown) => {
-                    this.errorLogger.logError(err, 'Failed to load boards');
-                    return of({ status: 'error' as const });
-                  }),
-                )
-            : of({ status: 'success' as const, folder: null });
+            ? this.assets.boards(ref).pipe(
+                map((boards) => ({ status: 'success' as const, boards })),
+                catchError((err: unknown) => {
+                  this.errorLogger.logError(err, 'Failed to load boards');
+                  return of({ status: 'error' as const });
+                }),
+              )
+            : of({ status: 'success' as const, boards: [] as IProjBoard[] });
         }),
         takeUntil(this.destroyed),
       )
@@ -152,7 +163,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
             this.boards.set(undefined);
             this.loadError.set('Boards could not be loaded. Please try again.');
           } else {
-            this.onFolderReceived(this.folderPath, result.folder);
+            this.boards.set(result.boards);
           }
         },
         error: (err) =>
@@ -173,33 +184,6 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     if (this.project()?.ref && !this.unsupportedProject())
       this.refresh.next(this.refresh.value + 1);
   }
-
-  private onFolderReceived = (path: string, folder?: IFolder | null): void => {
-    if (this.folderPath !== path) {
-      return;
-    }
-    // `folderItemsAsList()` returns `IFolderItemWithId[]` (`{id, name}`) —
-    // `this.boards` is typed `Signal<IProjBoard[] | undefined>`, and
-    // `IProjBoard` is `{id, title?}` (`title` optional), so TS accepts this
-    // structurally, but `sneat-card-list` (the external `@sneat/components`
-    // list this page's own template feeds `[items]="boards()"` into) reads
-    // `.title`, not `.name`, and silently falls back to showing the board's
-    // own `.id` when `.title` is `undefined` (confirmed live, S136: GitHub's
-    // `board1` — title "Chinook customer insights" in the demo project
-    // `datatug-project.json` summary — rendered as the id "board1" in the
-    // list). Pre-existing and not GitHub-specific: any store's board list
-    // goes through this same `IFolder`/`folderItemsAsList()` path
-    // (`DatatugFoldersService.watchFolder()`, used for every store type).
-    // Remapping `name` -> `title` here is the minimal fix.
-    this.boards.set(
-      folder?.boards
-        ? folderItemsAsList(folder.boards).map(({ id, name }) => ({
-            id,
-            title: name,
-          }))
-        : [],
-    );
-  };
 
   protected getLinkToBoard = (item: unknown) => {
     const projItemBrief = item as IProjItemBrief;

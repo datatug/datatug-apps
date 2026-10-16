@@ -2,6 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import { SessionContextApiService } from './session-context-api.service';
 import { SessionWorkspaceService, SESSION_DEVICE_DRAFTS, SessionDeviceDraft, SessionPendingOperation } from './session-workspace.service';
+import { projectRefToString } from '../core/project-context';
 import { ContextCapabilities, ContextCommand, ContextReceipt, ContextSnapshot } from './session-context-contract';
 
 const project = { storeId: 'http-localhost:8989', projectId: 'shop' };
@@ -59,6 +60,221 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     } }] });
     service = TestBed.inject(SessionWorkspaceService);
     await service.openProject(project); await service.focus('s1');
+  });
+
+  it('restores saved tabs beyond page one only from fresh reads, with bounded concurrency', async () => {
+    const saved = ['s1', 's2', 'bad-id', 's4', 's5', 's6', 's7', 'invalid/id'];
+    const key = JSON.stringify(['datatug-session-tabs/1', capabilities.actorId, projectRefToString(project)]);
+    localStorage.setItem(key, JSON.stringify(saved));
+    api.list.mockResolvedValueOnce({ items: [snapshot('s1').session], hasMore: true, nextCursor: 'p2' });
+    api.read.mockClear();
+    let active = 0, maxActive = 0;
+    api.read.mockImplementation(async (_project, _caps, id: string) => {
+      active++;
+      maxActive = Math.max(maxActive, active);
+      await Promise.resolve();
+      active--;
+      if (id === 'bad-id') throw { status: 404 };
+      return structuredClone(snapshot(id));
+    });
+    service.setActor('changed-then-restored');
+    service.setActor('');
+    await service.openProject(project);
+
+    expect(api.read).toHaveBeenCalledTimes(7);
+    expect(api.read).not.toHaveBeenCalledWith(project, capabilities, 'invalid/id');
+    expect(maxActive).toBeLessThanOrEqual(4);
+    expect(service.openSessionIds()).toEqual(['s1', 's2', 's4', 's5', 's6', 's7']);
+    expect(service.sessions().map((session) => session.id)).toEqual(['s1', 's2', 's4', 's5', 's6', 's7']);
+    expect(service.snapshotFor('s7')?.session.id).toBe('s7');
+  });
+
+  it('discards delayed saved-tab reads after the actor changes', async () => {
+    const key = JSON.stringify(['datatug-session-tabs/1', capabilities.actorId, projectRefToString(project)]);
+    localStorage.setItem(key, JSON.stringify(['s9']));
+    api.list.mockResolvedValueOnce({ items: [], hasMore: false });
+    const delayed = deferred<ContextSnapshot>();
+    api.read.mockReturnValueOnce(delayed.promise);
+    service.setActor('reset'); service.setActor('');
+    const reopening = service.openProject(project);
+    await Promise.resolve(); await Promise.resolve(); await Promise.resolve();
+    service.setActor('different-principal');
+    delayed.resolve(snapshot('s9'));
+    await reopening;
+
+    expect(service.openSessionIds()).toEqual([]);
+    expect(service.sessions()).toEqual([]);
+    expect(service.snapshotFor('s9')).toBeUndefined();
+  });
+
+  it('publishes admission after restoration so concurrent route focus cannot lose a tab', async () => {
+    const key = JSON.stringify(['datatug-session-tabs/1', capabilities.actorId, projectRefToString(project)]);
+    localStorage.setItem(key, JSON.stringify(['saved']));
+    const read = deferred<ContextSnapshot>();
+    api.read.mockImplementation(async (_project, _caps, id: string) => id === 'saved' ? read.promise : snapshot(id));
+    const opening = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+    const load = opening.openProject(project);
+    await vi.waitFor(() => expect(api.read).toHaveBeenCalledWith(project, capabilities, 'saved'));
+    expect(opening.capabilities()).toBeUndefined();
+    await opening.focus('routed');
+    expect(opening.openSessionIds()).toEqual([]);
+    read.resolve(snapshot('saved')); await load;
+    await opening.focus('routed');
+    expect(opening.openSessionIds()).toEqual(['saved', 'routed']);
+    expect(opening.snapshotFor('routed')?.session.id).toBe('routed');
+  });
+
+  it('refreshes restored tab metadata and bounds corrupt saved-tab hints', async () => {
+    const key = JSON.stringify(['datatug-session-tabs/1', capabilities.actorId, projectRefToString(project)]);
+    localStorage.setItem(key, JSON.stringify(['s1', ...Array.from({ length: 80 }, (_, i) => `saved${i}`)]));
+    api.read.mockClear();
+    api.read.mockImplementation(async (_project, _caps, id: string) => ({ ...snapshot(id), session: { ...snapshot(id).session, title: 'Fresh title', state: 'stopped' } }));
+    const opening = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+    await opening.openProject(project);
+    expect(api.read).toHaveBeenCalledTimes(24);
+    expect(opening.openSessionIds()).toHaveLength(24);
+    expect(opening.sessions().find((session) => session.id === 's1')).toMatchObject({ title: 'Fresh title', state: 'stopped' });
+  });
+
+  it('continues to read the literal predeployment tab hint for an unqualified project ref', async () => {
+    const legacyKey = '["datatug-session-tabs/1","local-principal","shop@http-localhost:8989"]';
+    localStorage.setItem(legacyKey, JSON.stringify(['s1', 's2']));
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+
+    expect(projectRefToString(project)).toBe('shop@http-localhost:8989');
+    expect(reopened.openSessionIds()).toEqual(['s1', 's2']);
+    expect(api.read).toHaveBeenCalledWith(project, capabilities, 's2');
+  });
+
+  it('continues to read a literal predeployment device draft for an unqualified project ref', async () => {
+    const legacyKey = '["datatug-session-draft/1","local-principal","shop@http-localhost:8989","ops","s1"]';
+    drafts.set(legacyKey, {
+      selectedBagId: 'b1', enabled: true, selections: { b1: [{ entryId: 'e1', revisionId: 'r1' }] },
+      attachments: [], pinnedAttachments: [], composer: 'Typed before the project-ref key update',
+    });
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+    await reopened.focus('s1');
+
+    expect(reopened.draft().composer).toBe('Typed before the project-ref key update');
+  });
+
+  it('retries the literal predeployment pending command with its original operation ID', async () => {
+    const legacyKey = '["datatug-session-pending/1","local-principal","shop@http-localhost:8989","ops"]';
+    const command: ContextCommand = {
+      action: 'applyContext', opId: 'operation_from_before_project_ref_update', sessionId: 's1',
+      bagId: 'b1', expectedBagVersion: 2, expectedSlotVersion: 1, selection: [], enabled: false,
+    };
+    pending.set(legacyKey, { project, capabilities, command });
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+    expect(reopened.canRetry()).toBe(true);
+    await reopened.retry();
+
+    expect(api.command).toHaveBeenCalledWith(project, capabilities, command);
+    expect(api.command.mock.calls.at(-1)?.[2].opId).toBe('operation_from_before_project_ref_update');
+    expect(pending.has(legacyKey)).toBe(false);
+  });
+
+  it('rejects a pending command whose stored complete project ref does not match its key', async () => {
+    const legacyKey = '["datatug-session-pending/1","local-principal","shop@http-localhost:8989","ops"]';
+    pending.set(legacyKey, {
+      project: { ...project, projectApi: 'local', branch: 'review' }, capabilities,
+      command: { action: 'applyContext', opId: 'wrong-branch-operation', sessionId: 's1', bagId: 'b1' },
+    });
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+
+    expect(reopened.canRetry()).toBe(false);
+  });
+
+  it('searches remaining session pages only after explicit request and reports completion', async () => {
+    service.hasMore.set(true); service.nextCursor.set('page-2');
+    api.list.mockResolvedValueOnce({ items: [snapshot('s3').session], hasMore: true, nextCursor: 'page-3' });
+    api.list.mockResolvedValueOnce({ items: [snapshot('s4').session], hasMore: false });
+    expect(api.list).toHaveBeenCalledTimes(1);
+    const search = service.searchAllSessions();
+    expect(service.searchAllLoading()).toBe(true);
+    await search;
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(service.sessions().map((session) => session.id).sort()).toEqual(['s1', 's2', 's3', 's4']);
+    expect(service.hasMore()).toBe(false);
+    expect(service.searchAllProgress()).toBe(4);
+    expect(service.searchAllLoading()).toBe(false);
+  });
+
+  it('cancels search-all on request and keeps page errors visible for retry', async () => {
+    service.hasMore.set(true); service.nextCursor.set('page-2');
+    const delayed = deferred<{ items: readonly ContextSnapshot['session'][]; hasMore: boolean; nextCursor?: string }>();
+    api.list.mockReturnValueOnce(delayed.promise);
+    const search = service.searchAllSessions();
+    service.cancelSearchAll();
+    delayed.resolve({ items: [snapshot('late').session], hasMore: false });
+    await search;
+    expect(service.sessions().some((session) => session.id === 'late')).toBe(false);
+    expect(service.searchAllLoading()).toBe(false);
+
+    service.hasMore.set(true);
+    api.list.mockRejectedValueOnce(new Error('page unavailable'));
+    await service.searchAllSessions();
+    expect(service.searchAllError()).toContain('page unavailable');
+    expect(service.hasMore()).toBe(true);
+  });
+
+  it('stops search-all when the server cannot advance its pagination cursor', async () => {
+    service.hasMore.set(true); service.nextCursor.set('page-2');
+    api.list.mockResolvedValueOnce({ items: [], hasMore: true, nextCursor: 'page-2' });
+    await service.searchAllSessions();
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(service.searchAllError()).toContain('Search stopped before claiming all results');
+    expect(service.hasMore()).toBe(true);
+  });
+
+  it('stops search-all on a cursor cycle across multiple pages', async () => {
+    service.hasMore.set(true); service.nextCursor.set('page-2');
+    api.list.mockResolvedValueOnce({ items: [], hasMore: true, nextCursor: 'page-3' });
+    api.list.mockResolvedValueOnce({ items: [], hasMore: true, nextCursor: 'page-2' });
+    await service.searchAllSessions();
+    expect(api.list).toHaveBeenCalledTimes(3);
+    expect(service.searchAllError()).toContain('Search stopped before claiming all results');
+    expect(service.hasMore()).toBe(true);
+  });
+
+  it('does not start search-all while a manual page request is in flight', async () => {
+    service.hasMore.set(true); service.nextCursor.set('page-2');
+    const delayed = deferred<{ items: readonly ContextSnapshot['session'][]; hasMore: boolean }>();
+    api.list.mockReturnValueOnce(delayed.promise);
+    const load = service.loadMore();
+    await service.searchAllSessions();
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(service.searchAllLoading()).toBe(false);
+    delayed.resolve({ items: [snapshot('s3').session], hasMore: false });
+    await load;
+    expect(service.sessions().some((session) => session.id === 's3')).toBe(true);
+  });
+
+  it('isolates tab hints, device drafts and pending operations across legacy branch refs', async () => {
+    const first = { ...project, branch: 'main' }, second = { ...project, branch: 'review' };
+    await service.openProject(first); await service.focus('s1');
+    service.setComposer('Private main draft'); await service.flushDraft();
+    api.command.mockRejectedValueOnce({ status: 0 });
+    service.stageEnabled(false); await service.apply();
+    expect(service.canRetry()).toBe(true);
+    const mainViewKey = service.deviceViewKey('s1', 'chat-replies');
+    await service.openProject(second);
+    expect(service.openSessionIds()).toEqual([]);
+    expect(service.canRetry()).toBe(false);
+    await service.focus('s1');
+    expect(service.draft().composer).toBe('');
+    expect(service.deviceViewKey('s1', 'chat-replies')).not.toBe(mainViewKey);
+    await service.openProject(first); await service.focus('s1');
+    expect(service.draft().composer).toBe('Private main draft');
+    expect(service.canRetry()).toBe(true);
   });
 
   it('treats only the API unauthenticated sentinel and HTTP 401 as sign-in required', async () => {

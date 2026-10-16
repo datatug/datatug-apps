@@ -81,6 +81,7 @@ export class SessionWorkspaceService {
   private authActorHint = '';
   private generation = 0;
   private focusGeneration = 0;
+  private searchGeneration = 0;
   private readonly snapshots = signal<Readonly<Record<string, ContextSnapshot>>>({});
   private readonly deviceDrafts = signal<Readonly<Record<string, SessionDeviceDraft>>>({});
   private saveQueue = Promise.resolve();
@@ -102,6 +103,9 @@ export class SessionWorkspaceService {
   requestBagEditor(): void { this.bagEditorRequests.update((count) => count + 1); }
   readonly nextCursor = signal<string | undefined>(undefined);
   readonly hasMore = signal(false);
+  readonly searchAllLoading = signal(false);
+  readonly searchAllProgress = signal(0);
+  readonly searchAllError = signal('');
   readonly snapshot = computed(() => this.snapshots()[this.focusedSessionId()]);
   readonly session = computed(() => this.snapshot()?.session);
   readonly draft = computed(() => this.deviceDrafts()[this.focusedSessionId()]);
@@ -141,14 +145,44 @@ export class SessionWorkspaceService {
       const pending = await this.drafts.readPending(this.pendingKey(project, capabilities));
       if (generation !== this.generation) return;
       this.authRequired.set(false);
-      this.capabilities.set(capabilities);
-      const actorPending = pending?.capabilities.actorId === capabilities.actorId ? pending : undefined;
+      const actorPending = pending && pending.capabilities.actorId === capabilities.actorId &&
+        pending.capabilities.databaseId === capabilities.databaseId &&
+        pending.capabilities.projectId === capabilities.projectId &&
+        equalProjectRef(pending.project, project) ? pending : undefined;
       this.pending.set(actorPending);
       if (actorPending) this.error.set('An operation with no confirmed receipt was recovered for this local principal. Retry the same operation before making another change.');
       this.sessions.set(page.items.filter((session) => session.state !== 'deleted'));
       this.nextCursor.set(page.nextCursor);
       this.hasMore.set(page.hasMore);
-      this.openSessionIds.set(this.readOpenTabs(capabilities).filter((id) => page.items.some((session) => session.id === id)));
+      const savedIds = this.readOpenTabs(capabilities);
+      const restored = new Map<string, ContextSnapshot>();
+      let nextIndex = 0;
+      const restoreWorker = async (): Promise<void> => {
+        while (generation === this.generation) {
+          const index = nextIndex++;
+          if (index >= savedIds.length) return;
+          const id = savedIds[index];
+          try {
+            const snapshot = await this.api.read(project, capabilities, id);
+            if (generation !== this.generation) return;
+            if (snapshot.session.state !== 'deleted') restored.set(id, snapshot);
+          } catch { /* A saved tab is a hint; only a successful fresh read restores it. */ }
+        }
+      };
+      await Promise.all(Array.from({ length: Math.min(4, savedIds.length) }, () => restoreWorker()));
+      if (generation !== this.generation) return;
+      if (restored.size) {
+        this.snapshots.set(Object.fromEntries(restored));
+        this.sessions.update((sessions) => {
+          const current = new Map(sessions.map((session) => [session.id, session]));
+          for (const snapshot of restored.values()) current.set(snapshot.session.id, snapshot.session);
+          return [...current.values()];
+        });
+      }
+      this.openSessionIds.set(savedIds.filter((id) => restored.has(id)));
+      // Publish admission only after restoration settles, so route focus cannot
+      // create a live tab that the restore batch would replace.
+      this.capabilities.set(capabilities);
     } catch (error) {
       if (generation === this.generation) {
         const unauthenticated = needsSignIn(error);
@@ -164,7 +198,7 @@ export class SessionWorkspaceService {
 
   async loadMore(): Promise<void> {
     const project = this.project, capabilities = this.capabilities();
-    if (!project || !capabilities || this.loading() || !this.hasMore()) return;
+    if (!project || !capabilities || this.loading() || this.searchAllLoading() || !this.hasMore()) return;
     const generation = this.generation;
     this.loading.set(true);
     try {
@@ -174,6 +208,44 @@ export class SessionWorkspaceService {
       this.nextCursor.set(page.nextCursor); this.hasMore.set(page.hasMore);
     } catch (error) { if (generation === this.generation) this.error.set(errorMessage(error)); }
     finally { if (generation === this.generation) this.loading.set(false); }
+  }
+
+  cancelSearchAll(): void {
+    this.searchGeneration++;
+    this.searchAllLoading.set(false);
+    this.searchAllError.set('');
+  }
+
+  async searchAllSessions(): Promise<void> {
+    const project = this.project, capabilities = this.capabilities();
+    if (!project || !capabilities || this.loading() || !this.hasMore() || this.searchAllLoading()) return;
+    const generation = this.generation, searchGeneration = ++this.searchGeneration;
+    this.searchAllLoading.set(true);
+    this.searchAllProgress.set(this.sessions().length);
+    this.searchAllError.set('');
+    try {
+      let cursor = this.nextCursor();
+      let hasMore = this.hasMore();
+      const visited = new Set<string | undefined>([cursor]);
+      while (hasMore && generation === this.generation && searchGeneration === this.searchGeneration) {
+        const page = await this.api.list(project, capabilities, cursor);
+        if (generation !== this.generation || searchGeneration !== this.searchGeneration) return;
+        this.sessions.update((sessions) => [...sessions, ...page.items.filter((item) => item.state !== 'deleted' && !sessions.some((session) => session.id === item.id))]);
+        if (page.hasMore && (!page.nextCursor || visited.has(page.nextCursor))) {
+          throw new Error('The session list returned an invalid page cursor. Search stopped before claiming all results.');
+        }
+        cursor = page.nextCursor;
+        visited.add(cursor);
+        hasMore = page.hasMore;
+        this.nextCursor.set(cursor);
+        this.hasMore.set(hasMore);
+        this.searchAllProgress.set(this.sessions().length);
+      }
+    } catch (error) {
+      if (generation === this.generation && searchGeneration === this.searchGeneration) this.searchAllError.set(errorMessage(error));
+    } finally {
+      if (generation === this.generation && searchGeneration === this.searchGeneration) this.searchAllLoading.set(false);
+    }
   }
 
   async focus(sessionId: string): Promise<void> {
@@ -428,7 +500,7 @@ export class SessionWorkspaceService {
   }
   deviceViewKey(sessionId: string, kind: string, authority?: { actorId?: string; databaseId?: string; project?: IProjectRef }): string {
     return JSON.stringify(['datatug-session-view/1', authority?.actorId ?? this.capabilities()?.actorId,
-      projectRefToString(authority?.project ?? this.project), authority?.databaseId ?? this.capabilities()?.databaseId, sessionId, kind]);
+      this.projectStorageKey(authority?.project ?? this.project), authority?.databaseId ?? this.capabilities()?.databaseId, sessionId, kind]);
   }
   history(sessionId: string, cursor?: string) {
     const project = this.project, capabilities = this.capabilities();
@@ -597,16 +669,20 @@ export class SessionWorkspaceService {
     try { await this.drafts.write(this.draftKey(this.focusedSessionId()), draft); this.draftError.set(''); }
     catch { this.draftError.set('The device draft could not be saved. Stay here and retry.'); }
   }
-  private tabKey(capabilities = this.capabilities()): string { return JSON.stringify(['datatug-session-tabs/1', capabilities?.actorId, projectRefToString(this.project)]); }
-  private draftKey(sessionId: string): string { return JSON.stringify(['datatug-session-draft/1', this.capabilities()?.actorId, projectRefToString(this.project), this.capabilities()?.databaseId, sessionId]); }
-  private pendingKey(project: IProjectRef, capabilities: ContextCapabilities): string { return JSON.stringify(['datatug-session-pending/1', capabilities.actorId, projectRefToString(project), capabilities.databaseId]); }
+  private projectStorageKey(project?: IProjectRef): string | undefined {
+    const key = projectRefToString(project);
+    return project?.branch && !project.projectApi ? JSON.stringify(['session-project/1', key, project.branch]) : key;
+  }
+  private tabKey(capabilities = this.capabilities()): string { return JSON.stringify(['datatug-session-tabs/1', capabilities?.actorId, this.projectStorageKey(this.project)]); }
+  private draftKey(sessionId: string): string { return JSON.stringify(['datatug-session-draft/1', this.capabilities()?.actorId, this.projectStorageKey(this.project), this.capabilities()?.databaseId, sessionId]); }
+  private pendingKey(project: IProjectRef, capabilities: ContextCapabilities): string { return JSON.stringify(['datatug-session-pending/1', capabilities.actorId, this.projectStorageKey(project), capabilities.databaseId]); }
   private readOpenTabs(capabilities: ContextCapabilities): readonly string[] {
-    try { const ids: unknown = JSON.parse(localStorage.getItem(this.tabKey(capabilities)) ?? '[]'); return Array.isArray(ids) ? ids.filter(contextOpaqueId) : []; }
+    try { const ids: unknown = JSON.parse(localStorage.getItem(this.tabKey(capabilities)) ?? '[]'); return Array.isArray(ids) ? [...new Set(ids.filter(contextOpaqueId))].slice(0, 24) : []; }
     catch { return []; }
   }
   private saveOpenTabs(): void { try { localStorage.setItem(this.tabKey(), JSON.stringify(this.openSessionIds())); } catch { /* Tab preferences carry no authority; draft persistence has a separate error. */ } }
   private reset(): void {
-    this.generation++; this.focusGeneration++; this.capabilities.set(undefined); this.authRequired.set(false); this.agentReconnectRequired.set(false); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
+    this.generation++; this.focusGeneration++; this.searchGeneration++; this.searchAllLoading.set(false); this.searchAllProgress.set(0); this.searchAllError.set(''); this.capabilities.set(undefined); this.authRequired.set(false); this.agentReconnectRequired.set(false); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
     this.focusedSessionId.set(''); this.openSessionIds.set([]); this.pending.set(undefined); this.busy.set(false); this.loading.set(false); this.error.set(''); this.draftError.set(''); this.notice.set('');
   }
 }

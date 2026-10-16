@@ -35,6 +35,7 @@ import {
   IEntity,
 } from '../../../models/definition/metapedia/entity';
 import { IProjEntity } from '../../../models/definition/project';
+import { IProjectRef } from '../../../core/project-context';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
@@ -131,18 +132,20 @@ export class EntityPageComponent implements OnDestroy {
           this.entityLoadState.set('error');
           return;
         }
-        // The legacy EntityService only accepts store/project IDs. It cannot
-        // identify a selected branch or common-API transport, so showing its
-        // result in that context would misrepresent which entity was read.
-        if (
-          queryParams.get('projectApi') !== null ||
-          queryParams.get('branch') !== null
-        ) {
-          this.entityLoadState.set('unsupported');
-          return;
-        }
+        const projectApi = queryParams.get('projectApi');
+        const branch = queryParams.get('branch') || undefined;
+        const spaceID = queryParams.get('spaceID') || undefined;
+        const ref: IProjectRef = {
+          storeId,
+          projectId,
+          ...(projectApi
+            ? { projectApi: projectApi as 'cloud' | 'local' }
+            : {}),
+          ...(branch ? { branch } : {}),
+          ...(spaceID ? { spaceID } : {}),
+        };
         this.entityRequest.set(
-          this.entityService.getEntity(storeId, projectId, entityId).subscribe({
+          this.entityService.getEntity(ref, entityId).subscribe({
             next: (entity) => {
               this.projEntity.set(entity);
               this.entity.set(entity.dbo); // TODO: workaround cast

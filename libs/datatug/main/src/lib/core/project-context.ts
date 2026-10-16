@@ -26,33 +26,54 @@ export function isValidProjectRef(v: IProjectRef): boolean {
   return (
     !!(v?.storeId && v?.projectId) &&
     (v.spaceID === undefined || isSharedProjectRef(v)) &&
-    (v.projectApi === undefined || (v.spaceID === undefined && !!v.branch &&
-      (v.projectApi === 'cloud' ? ['github.com', 'github'].includes(v.storeId) :
-        v.projectApi === 'local' && !['github.com', 'github', 'firestore'].includes(v.storeId))))
+    (v.projectApi === undefined ||
+      (v.spaceID === undefined &&
+        !!v.branch &&
+        (v.projectApi === 'cloud'
+          ? ['github.com', 'github'].includes(v.storeId)
+          : v.projectApi === 'local' &&
+            !['github.com', 'github', 'firestore'].includes(v.storeId))))
   );
 }
 
 export function projectRefToString(v?: IProjectRef): string | undefined {
-  return (
-    v &&
-    (v.projectApi !== undefined
-      ? JSON.stringify(['common-project/1', v.projectApi, v.storeId, v.projectId, v.branch])
-      : v.spaceID === undefined
-        ? `${v.projectId}@${v.storeId}`
-        : JSON.stringify([
-            'space-project/1',
-            v.storeId,
-            v.spaceID,
-            v.projectId,
-          ]))
-  );
+  if (!v) return undefined;
+  // These established encodings also identify persisted Session and recovery
+  // records. Keep them stable where they already name a single context.
+  if (v.projectApi !== undefined && v.spaceID === undefined) {
+    return JSON.stringify([
+      'common-project/1',
+      v.projectApi,
+      v.storeId,
+      v.projectId,
+      v.branch,
+    ]);
+  }
+  if (v.projectApi === undefined && v.branch === undefined) {
+    return v.spaceID === undefined
+      ? `${v.projectId}@${v.storeId}`
+      : JSON.stringify(['space-project/1', v.storeId, v.spaceID, v.projectId]);
+  }
+  // Older legacy branch keys collided; never restore another branch's state
+  // by falling back to that ambiguous identity.
+  return JSON.stringify([
+    'project-ref/2',
+    v.storeId,
+    v.projectId,
+    v.spaceID,
+    v.projectApi,
+    v.branch,
+  ]);
 }
 
 /** Matches the released backend ValidateSharedProjectIdentifier contract. */
 export const isSharedProjectIdentifier = (v: unknown): v is string =>
   typeof v === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(v);
 
-export function isSharedProjectRef(v: IProjectRef): v is IProjectRef & { readonly storeId: 'firestore'; readonly spaceID: string } {
+export function isSharedProjectRef(v: IProjectRef): v is IProjectRef & {
+  readonly storeId: 'firestore';
+  readonly spaceID: string;
+} {
   return (
     v?.storeId === 'firestore' &&
     isSharedProjectIdentifier(v.spaceID) &&

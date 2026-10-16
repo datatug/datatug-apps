@@ -4,7 +4,6 @@ import { openDB } from 'idb';
 import {
   IProjectRef,
   equalProjectRef,
-  projectRefToString,
 } from '../core/project-context';
 import {
   ContextCapabilities,
@@ -30,6 +29,20 @@ export interface NativeOperationDraft {
   readonly caseId?: string;
   readonly request?: SessionDetectiveRequest;
   readonly response?: SessionDetectiveResponse;
+}
+
+/**
+ * Keep the project component of native-detective/1 stable across the newer
+ * qualified project-ref encoding. Branch is already a separate key member.
+ */
+function nativeOperationProjectIdentity(project: IProjectRef): string {
+  if (project.projectApi !== undefined) {
+    return JSON.stringify(['common-project/1', project.projectApi, project.storeId, project.projectId, project.branch]);
+  }
+  if (project.spaceID !== undefined) {
+    return JSON.stringify(['space-project/1', project.storeId, project.spaceID, project.projectId]);
+  }
+  return `${project.projectId}@${project.storeId}`;
 }
 export interface NativeOperationRecovery extends Omit<
   NativeOperationDraft,
@@ -97,7 +110,7 @@ export function nativeOperationDraftKey(
   return JSON.stringify([
     'native-detective/1',
     actor,
-    projectRefToString(project),
+    nativeOperationProjectIdentity(project),
     project.branch || '',
     detectiveOperationScopeKey(locator),
     sessionId,
