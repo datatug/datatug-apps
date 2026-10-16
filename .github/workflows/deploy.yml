@@ -136,12 +136,13 @@ jobs:
           DEPLOY_RUN_ATTEMPT: ${{ github.run_attempt }}
         run: >-
           python3 -c 'import json, os;
-          print(json.dumps({"sha": os.environ["DEPLOYED_SHA"],
+          print(json.dumps({"schema_version": 1, "head_sha": os.environ["DEPLOYED_SHA"],
           "run_id": int(os.environ["DEPLOY_RUN_ID"]),
           "run_attempt": int(os.environ["DEPLOY_RUN_ATTEMPT"])}))' > deployed-sha.json
       - uses: actions/upload-artifact@v7
         with:
-          name: deployed-sha-${{ github.run_attempt }}
+          name: deployed-sha
           path: deployed-sha.json
           if-no-files-found: error
+          overwrite: true
           retention-days: 90
