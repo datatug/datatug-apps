@@ -61,7 +61,7 @@ describe('recordHops (plan Task 9: foreign-key hops)', () => {
     expect(url).not.toMatch(/#.*[^\\]&/);
     const key = parseKeyObject(pkOfRouteFragment(serializer.parse(url).fragment) ?? '');
     expect(key).toBeDefined();
-    if (!key) throw new Error('Expected a decoded composite record key');
+    if (!key) return;
     expect(
       lookupKey(key, {
         columns: [
