@@ -134,8 +134,13 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
         // The links name the app under test instead of https://datatug.app.
         DATATUG_UI_BASE: baseURL,
       };
+      // The CLI resolves `--project <id>` as a directory relative to its working directory before it consults the
+      // registry. CI checks the demo repository out as `./datatug-demo-project` in the workspace root, so a CLI run
+      // from there would take that checkout (a repository root, no queries) for the project and fail with
+      // `query not found`. Every CLI call therefore runs from the temporary HOME, which holds no such directory.
+      const cwd = home;
       const run = (args: string[]) => {
-        const r = spawnSync(bin.value, args, { env, encoding: 'utf8' });
+        const r = spawnSync(bin.value, args, { env, cwd, encoding: 'utf8' });
         if (r.status !== 0) {
           throw new Error(`datatug ${args.join(' ')} exited ${r.status}: ${r.stderr}`);
         }
@@ -151,7 +156,7 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
         return Number(st['port']);
       };
       const port = start();
-      const help = spawnSync(bin.value, ['daemon', 'url', '--help'], { env, encoding: 'utf8' });
+      const help = spawnSync(bin.value, ['daemon', 'url', '--help'], { env, cwd, encoding: 'utf8' });
       const daemon: LinkDaemon = {
         port,
         supportsResults: `${help.stdout}${help.stderr}`.includes('--result'),
@@ -199,7 +204,7 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
       try {
         await use(daemon);
       } finally {
-        spawnSync(bin.value, ['daemon', 'stop'], { env });
+        spawnSync(bin.value, ['daemon', 'stop'], { env, cwd });
         fs.rmSync(home, { recursive: true, force: true });
       }
     },
