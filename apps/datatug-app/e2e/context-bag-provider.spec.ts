@@ -471,8 +471,9 @@ test.describe(`${dryRun ? 'stub-provider' : 'real-provider'} Context Bag journey
       const invoiceIdColumn =
         Number(await invoiceHeader.getAttribute('aria-colindex')) - 1;
       expect(invoiceIdColumn).toBeGreaterThanOrEqual(0);
+      // Not the floating-filter row (also role=row, with gridcells) that the shared results grid renders under the header.
       const resultRows = resultGrid
-        .getByRole('row')
+        .locator('[role="row"]:not(.ag-header-row-filter)')
         .filter({ has: page.getByRole('gridcell') });
       await expect(resultRows).toHaveCount(2);
       const invoiceIds = await Promise.all(
