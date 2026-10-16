@@ -65,7 +65,7 @@ export async function executePublicDtql(
   if (parsedEndpoint.protocol !== 'https:' || parsedEndpoint.username || parsedEndpoint.password ||
     parsedEndpoint.hash || parsedEndpoint.search || !parsedEndpoint.pathname.endsWith(`/v1/databases/${source.databaseId}/dtql`))
     return reject('The saved public connection has an invalid HTTPS DTQL endpoint.');
-  if (!query.trim() || query.length > 32_768 || source.maxRows < 1 || source.maxRows > 1000)
+  if (!query.trim() || query.length > 32_768 || !Number.isSafeInteger(source.maxRows) || source.maxRows < 1 || source.maxRows > 1000)
     return reject('The saved public query exceeds the browser execution policy.');
   const deadline = AbortSignal.timeout(30_000);
   const signal = options.signal ? AbortSignal.any([options.signal, deadline]) : deadline;

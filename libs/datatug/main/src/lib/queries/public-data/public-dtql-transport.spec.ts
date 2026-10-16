@@ -40,4 +40,11 @@ describe('public DTQL transport', () => {
     await expect(executePublicDtql('query', source, { fetch: transport({ ...result, columns: ['orders', 'ShipCountry'] }) }))
       .rejects.toThrow(/columns/);
   });
+
+  it('rejects a non-integer or non-finite saved row limit before fetching', async () => {
+    for (const maxRows of [NaN, Infinity, 1.5]) {
+      await expect(executePublicDtql('query', { ...source, maxRows }, { fetch: transport(result) }))
+        .rejects.toThrow(/browser execution policy/);
+    }
+  });
 });
