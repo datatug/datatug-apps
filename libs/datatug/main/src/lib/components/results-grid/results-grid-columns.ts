@@ -117,6 +117,7 @@ export function compactJson(text: string): string {
 export function formatCell(
   cell: GridCell | undefined,
   kind: ColumnKind,
+  groupDigits = false,
 ): string {
   if (cell === null || cell === undefined) return NULL_TEXT;
   switch (kind) {
@@ -137,9 +138,63 @@ export function formatCell(
     case 'json':
     case 'text':
       return compactJson(cell);
+    case 'number':
+      return groupDigits ? groupNumberText(cell) : cell;
     default:
       return cell;
   }
+}
+
+/**
+ * Whether a column name reads as an identifier (`Id`, `InvoiceId`, `customer_id`, `ApiKey`, `order_key`): its digits
+ * are a label, not a quantity, so they are never grouped with thousands separators.
+ */
+export function isIdentifierColumnName(
+  name: string | undefined | null,
+): boolean {
+  const n = (name ?? '').trim();
+  // "id" / "key" alone, snake_case `_id` / `_key`, or a camel/Pascal-case word ending `Id` / `ID` / `Key` / `KEY`
+  // ("InvoiceId", "customerID"); "Paid", "Valid" and "Monkey" are not identifiers.
+  return (
+    /^(?:id|key)$/i.test(n) ||
+    /_(?:id|key)$/i.test(n) ||
+    /[A-Za-z0-9](?:Id|ID|Key|KEY)$/.test(n)
+  );
+}
+
+const GROUPING = (() => {
+  try {
+    const parts = new Intl.NumberFormat().formatToParts(1234567.5);
+    return {
+      group: parts.find((p) => p.type === 'group')?.value ?? ',',
+      decimal: parts.find((p) => p.type === 'decimal')?.value ?? '.',
+    };
+  } catch {
+    return { group: ',', decimal: '.' };
+  }
+})();
+
+/**
+ * A number given as text with thousands separators in the integer part (locale separators). The digits are never
+ * parsed as a JS number, so a wide integer keeps every digit, and the decimals are kept as they are. Text that is not
+ * a plain decimal number (exponent, leading zeros, spaces, `NaN`) is returned unchanged.
+ */
+export function groupNumberText(text: string): string {
+  const m = /^(-?)(0|[1-9]\d*)(?:\.(\d+))?$/.exec(text);
+  if (!m) return text;
+  const [, sign, int, decimals] = m;
+  const grouped = int.replace(/\B(?=(\d{3})+(?!\d))/g, GROUPING.group);
+  return `${sign}${grouped}${decimals === undefined ? '' : GROUPING.decimal + decimals}`;
+}
+
+/** Whether a cell's text probably does not fit a column of this width (so a tooltip with the full text helps). */
+export function isLikelyTruncated(
+  text: string,
+  columnWidth: number | undefined,
+): boolean {
+  if (!columnWidth) return true;
+  // About 7.5px per character at the grid's font size, minus the cell padding: deliberately generous.
+  return text.length * 7.5 > columnWidth - 24;
 }
 
 const cellOf = (
@@ -204,10 +259,20 @@ export function isInternalKeyColumn(name: string | undefined | null): boolean {
  * add what is theirs (a header component, a renderer).
  */
 export function resultColumnDef(
-  column: { readonly name: string; readonly type?: string },
+  column: {
+    readonly name: string;
+    readonly type?: string;
+    /** True for a column of the primary key: its digits are never grouped. */
+    readonly primaryKey?: boolean;
+  },
   colId: string,
 ): ColDef<GridRow> {
   const kind = columnKind(column.type);
+  // Thousands separators only for a quantity: not for an identifier or a key column.
+  const groupDigits =
+    kind === 'number' &&
+    !column.primaryKey &&
+    !isIdentifierColumnName(column.name);
   return {
     colId,
     field: colId,
@@ -216,8 +281,19 @@ export function resultColumnDef(
     sortable: true,
     minWidth: 90,
     maxWidth: 480,
-    valueFormatter: (p) => formatCell(p.value as GridCell, kind),
-    tooltipValueGetter: (p) => (isNullCell(p) ? NULL_TEXT : String(p.value)),
+    headerTooltip: column.type
+      ? `${column.name} (${column.type})`
+      : column.name,
+    valueFormatter: (p) => formatCell(p.value as GridCell, kind, groupDigits),
+    // The full text, only where the column is probably too narrow for it (text only: the grid never renders it as HTML).
+    tooltipValueGetter: (p) => {
+      if (isNullCell(p)) return undefined;
+      const text = String(p.value);
+      const column = p.column as { getActualWidth?: () => number } | undefined;
+      return isLikelyTruncated(text, column?.getActualWidth?.())
+        ? text
+        : undefined;
+    },
     cellClassRules: { 'dt-rg-null': isNullCell },
     ...(isInternalKeyColumn(column.name)
       ? {

@@ -1829,7 +1829,7 @@
           [headerHeight]="64"
           [rowData]="resultGridRows()"
           exportName="query-result"
-          [rowSelection]="isTextQueryWorkspace() ? authorResultRowSelection : undefined"
+          [stateKey]="resultGridStateKey()"
           [rowClassRules]="isTextQueryWorkspace() ? authorResultRowClassRules : undefined"
           [loading]="resultPageLoading()"
           [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
