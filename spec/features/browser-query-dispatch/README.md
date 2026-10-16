@@ -22,8 +22,8 @@ Saved project definitions can be read from local, GitHub, and cloud stores, whil
 ### User journey
 
 1. A user opens a project from its local CLI, GitHub, or supported cloud store. The project screen loads the definition; browser-owned runtimes also read the connection catalog. The visible project reference retains store, branch, project API, and space identity.
-2. The user opens a generic query board card or ordinary query page. It reads the saved query and project connection, shows the current environment and project runtime, and offers any matching open working copies by title. The user explicitly chooses the project runtime or an open working copy for this run.
-3. The user runs the card. The dispatcher resolves the unique connection descriptor, validates the selected runtime capability, captures the definition and bindings, and sends the request to that runtime. An unsupported or incomplete target produces a specific error without trying another runtime.
+2. The user opens a generic query board card or ordinary query page. It reads the saved query, shows the current environment and project runtime, and offers matching open working copies for browser execution by title. The user explicitly chooses the project runtime or an open working copy for this run.
+3. The user runs the card. The dispatcher captures the definition and bindings and validates the selected runtime. Browser runtimes resolve a unique catalog connection declaration; protected saved-query APIs admit sources against their own project and environment bindings. An unsupported or incomplete target produces a specific error without trying another runtime.
 4. The user sees the returned rows, an empty result, or an actionable error. Leaving the card, changing project, branch, environment, principal, or runtime selection cancels the request; a late response cannot replace the current result. Independent cards retain independent execution sessions. Closing or refreshing a working copy invalidates its previous selection.
 
 ### Runtime responsibilities
