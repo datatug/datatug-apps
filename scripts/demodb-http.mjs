@@ -31,12 +31,11 @@ export async function fetchOnce(url, init) {
   return response;
 }
 
-/** Prints the message and exits 3 for a rate limit; rethrows anything else. */
+/** Prints the message and exits 3 for a rate limit; returns for any other error (the caller reports it). */
 export function exitOnRateLimit(error) {
   if (error instanceof DemodbRateLimitedError) {
     console.error(`::error title=demodb.dev rate limited::${error.message}`);
     console.error(error.message);
     process.exit(3);
   }
-  throw error;
 }

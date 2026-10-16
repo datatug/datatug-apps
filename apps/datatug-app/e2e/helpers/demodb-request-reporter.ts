@@ -1,4 +1,4 @@
-import type { FullResult, Reporter, TestCase, TestResult } from '@playwright/test/reporter';
+import type { Reporter, TestCase } from '@playwright/test/reporter';
 import type { HostCounts } from './demodb-guard';
 
 /**
@@ -11,7 +11,7 @@ export default class DemodbRequestReporter implements Reporter {
   private mode = process.env['DEMODB_E2E_MODE'] === 'live' ? 'live' : 'fixture';
   private tests = 0;
 
-  onTestEnd(test: TestCase, _result: TestResult): void {
+  onTestEnd(test: TestCase): void {
     const note = test.annotations.filter((annotation) => annotation.type === 'demodb-requests').at(-1);
     if (!note?.description) return;
     this.tests += 1;
@@ -27,7 +27,7 @@ export default class DemodbRequestReporter implements Reporter {
     }
   }
 
-  async onEnd(_result: FullResult): Promise<{ status: 'failed' } | undefined> {
+  async onEnd(): Promise<{ status: 'failed' } | undefined> {
     const rows = [...this.hosts.entries()].sort(([a], [b]) => a.localeCompare(b));
     const live = rows.filter(([host]) => /(^|\.)demodb\.dev$/.test(host)).reduce((sum, [, counts]) => sum + counts.live, 0);
     const budget = this.mode === 'live' ? Number(process.env['DEMODB_E2E_MAX_RUN_LIVE_REQUESTS'] || 120) : 0;
