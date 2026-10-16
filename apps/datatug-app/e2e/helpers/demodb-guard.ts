@@ -11,8 +11,9 @@ import { APIRequestContext, BrowserContext, expect, Route, test as base, TestInf
  *
  * Two modes, picked by DEMODB_E2E_MODE:
  *
- *  - `fixture` (default): every demodb.dev request is answered from DEMODB_FIXTURE_DIR (default <repo>/tmp/demodb-fixtures,
- *    filled by scripts/fetch-demodb-fixtures.mjs: SHA-256 verified, at most one request per file, none when warm).
+ *  - `fixture` (default): every demodb.dev request is answered locally: the SQLite files from DEMODB_FIXTURE_DIR (default
+ *    <repo>/tmp/demodb-fixtures, filled by scripts/fetch-demodb-fixtures.mjs from the public demo-db GitHub repos, SHA-256 verified,
+ *    at most one request per file, none when warm), corpus.json and the dataset pages from the repository (e2e/fixtures/demodb).
  *    Nothing reaches the network; a demodb.dev URL without a fixture is aborted. Live requests budget: 0.
  *  - `live` (opt-in, the manual "DemoDB live smoke" workflow): requests go to the real hosts, but each URL at most once
  *    per run (later requests are answered from memory), at most DEMODB_E2E_MAX_LIVE_REQUESTS (default 15) live
@@ -29,6 +30,9 @@ export const DEMODB_HOST = /(^|\.)demodb\.dev$/;
 export const DEMODB_LIVE = process.env['DEMODB_E2E_MODE'] === 'live';
 const MAX_LIVE_PER_TEST = Number(process.env['DEMODB_E2E_MAX_LIVE_REQUESTS'] || 15);
 const MEMO_LIMIT_BYTES = 16 * 1024 * 1024;
+
+/** Committed fixtures (corpus.json, dataset pages) built from demo-db/websites; see fixtures/demodb/provenance.json. */
+const committedDir = (): string => join(__dirname, '../fixtures/demodb');
 
 export const fixtureDir = (): string =>
   resolve(process.env['DEMODB_FIXTURE_DIR'] || join(__dirname, '../../../../tmp/demodb-fixtures'));
@@ -58,16 +62,17 @@ const CORS = { 'access-control-allow-origin': '*', 'access-control-expose-header
 
 function fixtureFile(url: URL): { path: string; contentType: string } | undefined {
   const dir = fixtureDir();
+  const committed = committedDir();
   const sub = url.hostname.replace(/\.?demodb\.dev$/, '');
   if (url.hostname === 'demodb.dev' && url.pathname === '/corpus.json') {
-    return { path: join(dir, 'corpus.json'), contentType: 'application/json' };
+    return { path: join(committed, 'corpus.json'), contentType: 'application/json' };
   }
   const data = /^\/data\/([a-z0-9-]+)\.sqlite$/.exec(url.pathname);
   if (sub && data && data[1] === sub) {
     return { path: join(dir, 'data', `${sub}.sqlite`), contentType: 'application/vnd.sqlite3' };
   }
   if (sub && (url.pathname === '/' || url.pathname === '/index.html')) {
-    return { path: join(dir, 'pages', `${sub}.html`), contentType: 'text/html; charset=utf-8' };
+    return { path: join(committed, 'pages', `${sub}.html`), contentType: 'text/html; charset=utf-8' };
   }
   return undefined;
 }
@@ -191,6 +196,7 @@ async function installRoute(
         console.error(`[demodb-guard] ${result.abort}`);
         return route.abort();
       }
+      if (process.env['DEMODB_GUARD_DEBUG']) console.error(`[demodb-guard] ${request.method()} ${url.href} -> ${result.status} (${result.body.length} bytes)`);
       return route.fulfill({ status: result.status, headers: result.headers, body: result.body });
     },
   );

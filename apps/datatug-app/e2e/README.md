@@ -27,13 +27,13 @@ out of `needs`.
 ### DemoDB fixtures (`e2e-demo-sqlite`)
 
 `helpers/demodb-guard.ts` (every spec imports `test` from it; it is an automatic fixture) answers every `*.demodb.dev`
-request from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's globalSetup running
-`node scripts/fetch-demodb-fixtures.mjs`. A valid file is never requested again, so a warm cache sends 0 requests and
-a cold one at most 1 per distinct file. Scope `sqlite` (e2e-app, e2e-query-mobile): the 5 pinned SQLite files, taken
-from the public `demo-db/<dataset>` GitHub repositories and accepted only when size and SHA-256 equal the catalog pin,
-so zero requests to demodb.dev. Scope `full` (e2e-demo-sqlite): also `corpus.json` and the 6 dataset home pages, which
-exist only on the live DemoDB hosts (7 requests on a cold cache; follow-up: commit them as repository fixtures).
-CI caches the directory by the hash of the catalog and the script (restore, then save even when tests fail).
+request locally. The 5 pinned SQLite files come from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's
+globalSetup running `node scripts/fetch-demodb-fixtures.mjs`: they are taken from the public `demo-db/<dataset>` GitHub
+repositories and accepted only when size and SHA-256 equal the catalog pin. A valid file is never requested again, so a
+warm cache makes 0 requests and a cold one 1 per file, none of them to demodb.dev. `corpus.json` and the six dataset
+home pages are committed in `e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in
+`provenance.json`). CI caches the SQLite directory by the hash of the catalog and the script (restore, then save even
+when tests fail). Every lane therefore sends ZERO requests to demodb.dev, cold or warm.
 
 * Fixture mode (default): the live request budget is 0; a test that sends one fails, and a demodb.dev URL with no
   fixture is aborted.

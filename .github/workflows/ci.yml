@@ -249,13 +249,13 @@ jobs:
       # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
       # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
       # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
-      # (scripts/fetch-demodb-fixtures.mjs --scope sqlite) downloads each missing file once, with no retry and a stop on HTTP 429.
-      - name: Restore DemoDB fixtures (sqlite)
+      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once, with no retry and a stop on HTTP 429.
+      - name: Restore DemoDB fixtures
         id: demodb-fixtures
         uses: actions/cache/restore@v5
         with:
           path: tmp/demodb-fixtures
-          key: demodb-fixtures-sqlite-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+          key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
       - name: Smoke query context count geometry on Chromium
         if: steps.affected-app.outputs.datatug_app == 'true'
@@ -325,12 +325,12 @@ jobs:
 
       # DemoDB fixtures: the app downloads chinook.sqlite itself; the tests serve it from this cached local copy (see the
       # e2e-app job and apps/datatug-app/e2e/helpers/demodb-guard.ts). No request to demodb.dev.
-      - name: Restore DemoDB fixtures (sqlite)
+      - name: Restore DemoDB fixtures
         id: demodb-fixtures
         uses: actions/cache/restore@v5
         with:
           path: tmp/demodb-fixtures
-          key: demodb-fixtures-sqlite-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+          key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
       - name: nx query mobile WebKit e2e affected
         env:
@@ -389,13 +389,13 @@ jobs:
       # DemoDB fixtures (see apps/datatug-app/e2e/helpers/demodb-guard.ts): the browser tests are served the pinned DemoDB
       # files from a local directory instead of the live demodb.dev hosts (the 2026-10-16 incident: ~25,500 requests for
       # one file rate limited the whole zone). Cached by the catalog's SHA-256 pins; Playwright's globalSetup
-      # (scripts/fetch-demodb-fixtures.mjs --scope full) downloads each missing file once, with no retry and a stop on HTTP 429.
-      - name: Restore DemoDB fixtures (full)
+      # (scripts/fetch-demodb-fixtures.mjs) downloads each missing file once, with no retry and a stop on HTTP 429.
+      - name: Restore DemoDB fixtures
         id: demodb-fixtures
         uses: actions/cache/restore@v5
         with:
           path: tmp/demodb-fixtures
-          key: demodb-fixtures-full-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+          key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
 
       - name: Install demo SQLite browsers
         run: pnpm exec playwright install --with-deps chromium firefox webkit

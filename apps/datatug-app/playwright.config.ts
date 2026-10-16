@@ -1,8 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
 // Specs import `test` from ./e2e/helpers/demodb-guard, which serves *.demodb.dev from local fixtures (the app downloads
-// chinook.sqlite itself) and fails a test that sends a live request; only the pinned SQLite files are needed here.
-process.env['DEMODB_FIXTURE_SCOPE'] ??= 'sqlite';
+// chinook.sqlite itself) and fails a test that sends a live request.
 const e2ePort = process.env.DATATUG_E2E_PORT || '4200';
 
 export default defineConfig({
