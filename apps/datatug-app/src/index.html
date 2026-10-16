@@ -48,10 +48,13 @@
         if (segment(segments[0]) !== 'github' || segment(segments[1]) !== 'callback') return;
         var params = new URLSearchParams(location.search);
         var codes = params.getAll('code'),
-          states = params.getAll('state');
+          states = params.getAll('state'),
+          errors = params.getAll('error');
         var handoff =
           codes.length === 1 && states.length === 1 && codes[0] && states[0]
             ? { code: codes[0], state: states[0] }
+            : errors.length === 1 && states.length === 1 && errors[0] && states[0]
+              ? { error: errors[0], state: states[0] }
             : undefined;
         // No secrets in URL, history state, browser storage or analytics.
         history.replaceState(null, '', (path.slice(0, 2) === '//' ? location.origin : '') + path);

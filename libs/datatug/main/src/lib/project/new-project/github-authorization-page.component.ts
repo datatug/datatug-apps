@@ -11,16 +11,17 @@ import {
   IonButton,
 } from '@ionic/angular';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
+import { NewProjectService } from './new-project.service';
 import {
   clearBusinessGithubContinuation,
   takeBusinessGithubContinuation,
 } from './business-github-continuation';
-import { NewProjectService } from './new-project.service';
 
 declare global {
   interface Window {
     __datatugTakeGitHubAuthorization?: () =>
       | { code: string; state: string }
+      | { error: string; state: string }
       | undefined;
   }
 }
@@ -64,10 +65,32 @@ export class GithubAuthorizationPageComponent {
     delete window.__datatugTakeGitHubAuthorization;
     if (!authorization) {
       this.message.set(
-        'This connection return is missing or has already been used. Start Connect GitHub again.',
+        'GitHub authorization was canceled or did not return. Your project details are saved; retry from the project form.',
       );
       return;
     }
+    if ('error' in authorization) {
+      this.message.set('GitHub authorization was canceled. Your project details are saved; retry from the project form.');
+      if (hasPendingOAuthProject(authorization.state))
+        this.newProjectService.returnFromGithubOAuth('denied');
+      return;
+    }
+    // Existing GitHub App callbacks remain supported. Only the explicit
+    // operation-bound marker selects the new OAuth project-create flow.
+    if (!hasPendingOAuthProject(authorization.state)) {
+      this.completeLegacyAuthorization(authorization.code, authorization.state);
+      return;
+    }
+    const operationID = readPendingOperationID();
+    if (!operationID) {
+      this.message.set(
+        'The saved project request is missing. Return to the project form and submit again.',
+      );
+      this.newProjectService.returnFromGithubOAuth('denied');
+      return;
+    }
+    const expectedActorID = readPendingGitHubActorID();
+    const requiresWorkflow = readPendingCIEnabled();
     this.auth.authState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((auth) => {
@@ -80,6 +103,7 @@ export class GithubAuthorizationPageComponent {
           this.authChanged.next();
           this.connected.set(false);
           this.message.set('Your sign-in changed. Start Connect GitHub again.');
+          this.newProjectService.returnFromGithubOAuth('denied');
         }
       });
     this.auth.authState
@@ -88,7 +112,8 @@ export class GithubAuthorizationPageComponent {
         take(1),
         switchMap((auth) => {
           this.boundUserID = auth.user?.uid;
-          return this.connection.complete(
+          return this.connection.completeOAuth(
+            operationID,
             authorization.code,
             authorization.state,
           );
@@ -98,17 +123,56 @@ export class GithubAuthorizationPageComponent {
       )
       .subscribe({
         next: (result) => {
-          if (result.connected === true) {
+          if (result.connected === true && expectedActorID && String(result.actorID) !== expectedActorID) {
+            resetPendingProjectForGitHubActor(String(result.actorID));
+            this.message.set('The GitHub account changed. Choose the repository and branch again before continuing.');
+            this.newProjectService.returnFromGithubOAuth('actor-changed');
+            return;
+          }
+          if (
+            result.connected === true &&
+            result.scopes.includes('repo') &&
+            (!requiresWorkflow || result.scopes.includes('workflow'))
+          ) {
+            bindGitHubActorID(String(result.actorID));
             this.connected.set(true);
             this.message.set(
-              'GitHub is connected. Choose an initialized repository and branch to create your project.',
+              'GitHub access is ready. Resuming your saved project request…',
             );
+            this.newProjectService.returnFromGithubOAuth('success');
+          } else {
+            this.message.set(
+              'GitHub access did not match this DataTug account or include repository permission. Your project details are saved; retry authorization from the project form.',
+            );
+            this.newProjectService.returnFromGithubOAuth('denied');
           }
         },
-        error: () =>
+        error: () => {
           this.message.set(
-            'GitHub could not be connected. Start Connect GitHub again; no credentials were saved in this browser.',
-          ),
+            'GitHub could not be connected. Your project details are saved; retry authorization from the project form.',
+          );
+          this.newProjectService.returnFromGithubOAuth('denied');
+        },
+      });
+  }
+  private completeLegacyAuthorization(code: string, state: string): void {
+    this.auth.authState
+      .pipe(
+        filter((auth) => auth.status === 'authenticated' && !!auth.user?.uid),
+        take(1),
+        switchMap((auth) => {
+          this.boundUserID = auth.user?.uid;
+          return this.connection.complete(code, state);
+        }),
+        takeUntilDestroyed(this.destroyRef),
+      )
+      .subscribe({
+        next: (result) => {
+          if (!result.connected || !this.boundUserID) return;
+          this.connected.set(true);
+          this.message.set('GitHub is connected. Choose a repository and branch to create your project.');
+        },
+        error: () => this.message.set('GitHub could not be connected. Start Connect GitHub again.'),
       });
   }
   signIn(): void {
@@ -120,17 +184,97 @@ export class GithubAuthorizationPageComponent {
   }
   newProject(): void {
     if (!this.connected() || !this.boundUserID) return;
-    // The callback handoff is one-shot; cancel should return to projects,
-    // not revisit the already-consumed callback URL.
     const continuation = takeBusinessGithubContinuation(this.boundUserID);
     if (continuation) {
-      this.newProjectService.navigateToNewProjectPage(
-        'github',
-        '/',
-        continuation,
-      );
+      this.newProjectService.navigateToNewProjectPage('github', '/', continuation);
     } else {
       this.newProjectService.navigateToNewProjectPage('github', '/');
     }
+  }
+}
+
+function readPendingOperationID(): string | undefined {
+  try {
+    const value: unknown = JSON.parse(
+      sessionStorage.getItem('datatug:new-project:draft') ?? 'null',
+    );
+    if (!value || typeof value !== 'object') return undefined;
+    const operationID = (value as { operationID?: unknown }).operationID;
+    return typeof operationID === 'string' && /^[0-9a-f-]{36}$/i.test(operationID)
+      ? operationID
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function hasPendingOAuthProject(returnedState: string): boolean {
+  const draft = readPendingDraft();
+  return (
+    draft?.['oauthResumePending'] === true &&
+    typeof draft['operationID'] === 'string' &&
+    /^[0-9a-f-]{36}$/i.test(draft['operationID']) &&
+    typeof draft['oauthState'] === 'string' &&
+    draft['oauthState'] === returnedState
+  );
+}
+
+function readPendingDraft(): Record<string, unknown> | undefined {
+  try {
+    const value: unknown = JSON.parse(
+      sessionStorage.getItem('datatug:new-project:draft') ?? 'null',
+    );
+    return value && typeof value === 'object'
+      ? (value as Record<string, unknown>)
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readPendingGitHubActorID(): string | undefined {
+  const actorID = readPendingDraft()?.['githubActorID'];
+  return typeof actorID === 'string' ? actorID : undefined;
+}
+
+function readPendingCIEnabled(): boolean {
+  return readPendingDraft()?.['ciEnabled'] !== false;
+}
+
+function bindGitHubActorID(actorID: string): void {
+  const draft = readPendingDraft();
+  if (!draft) return;
+  try {
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({ ...draft, githubActorID: actorID, oauthState: undefined }),
+    );
+  } catch {
+    // The form reports storage failures when it resumes.
+  }
+}
+
+function resetPendingProjectForGitHubActor(actorID: string): void {
+  const draft = readPendingDraft();
+  if (!draft) return;
+  try {
+    sessionStorage.setItem(
+      'datatug:new-project:draft',
+      JSON.stringify({
+        ...draft,
+        githubActorID: actorID,
+        repositoryID: undefined,
+        githubRepositoryURL: '',
+        branch: '',
+        operationID: undefined,
+        operationPayload: undefined,
+        resolvedCreateRequest: undefined,
+        oauthResumePending: false,
+        oauthState: undefined,
+        projectCreateSubmitted: false,
+      }),
+    );
+  } catch {
+    // The project form keeps its normal storage error behavior.
   }
 }

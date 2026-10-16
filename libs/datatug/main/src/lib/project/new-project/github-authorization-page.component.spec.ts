@@ -2,11 +2,10 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { ErrorLogger } from '@sneat/core';
-import { BehaviorSubject, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject } from 'rxjs';
 import { GithubAuthorizationPageComponent } from './github-authorization-page.component';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { NewProjectService } from './new-project.service';
-import { saveBusinessGithubContinuation } from './business-github-continuation';
 
 function harness(actorID = 'actor', useRealNewProjectService = false) {
   TestBed.resetTestingModule();
@@ -14,11 +13,17 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
     status: 'notAuthenticated',
     user: { uid: actorID },
   });
-  const result = new Subject<{ connected: true }>();
+  const result = new Subject<{
+    connected: true;
+    actorID: number | string;
+    login: string;
+    scopes: string[];
+  }>();
   const complete = vi.fn((...args: unknown[]) => {
     void args;
     return result;
   });
+  const completeLegacy = vi.fn(() => of({ connected: true as const }));
   const newProject = vi.fn();
   TestBed.configureTestingModule({
     imports: [GithubAuthorizationPageComponent],
@@ -28,7 +33,7 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
         provide: SneatAuthStateService,
         useValue: { authState: auth, signInWith: vi.fn() },
       },
-      { provide: GithubConnectionService, useValue: { complete } },
+      { provide: GithubConnectionService, useValue: { completeOAuth: complete, complete: completeLegacy } },
       {
         provide: ErrorLogger,
         useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
@@ -41,21 +46,22 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
         : [
             {
               provide: NewProjectService,
-              useValue: { navigateToNewProjectPage: newProject },
+              useValue: { returnFromGithubOAuth: newProject },
             },
           ],
     },
   });
-  return { auth, result, complete, newProject, router: TestBed.inject(Router) };
+  return { auth, result, complete, completeLegacy, newProject, router: TestBed.inject(Router) };
 }
 
 afterEach(() => {
   delete window.__datatugTakeGitHubAuthorization;
-  sessionStorage.removeItem('datatug:new-project:github-business-continuation');
+  sessionStorage.removeItem('datatug:new-project:draft');
 });
 describe('GitHub callback authenticated exchange', () => {
-  it('consumes only the ephemeral handoff, waits for Firebase, exchanges once and offers the real create dialog', async () => {
+  it('consumes the handoff, waits for Firebase and resumes the saved operation once', async () => {
     const h = harness();
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthState: 'state-fixture', ciEnabled: true }));
     window.__datatugTakeGitHubAuthorization = () => ({
       code: 'code-fixture',
       state: 'state-fixture',
@@ -65,12 +71,11 @@ describe('GitHub callback authenticated exchange', () => {
     expect(window.__datatugTakeGitHubAuthorization).toBeUndefined();
     expect(h.complete).not.toHaveBeenCalled();
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
-    expect(h.complete).toHaveBeenCalledWith('code-fixture', 'state-fixture');
-    h.result.next({ connected: true });
+    expect(h.complete).toHaveBeenCalledWith('11111111-1111-4111-8111-111111111111', 'code-fixture', 'state-fixture');
+    h.result.next({ connected: true, actorID: 'github-actor', login: 'alex', scopes: ['repo', 'workflow'] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('GitHub is connected');
-    fixture.componentInstance.newProject();
-    expect(h.newProject).toHaveBeenCalledWith('github', '/');
+    expect(fixture.nativeElement.textContent).toContain('Resuming your saved project request');
+    expect(h.newProject).toHaveBeenCalledWith('success');
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
     expect(h.complete).toHaveBeenCalledTimes(1);
   });
@@ -80,16 +85,39 @@ describe('GitHub callback authenticated exchange', () => {
     fixture.detectChanges();
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
     expect(h.complete).not.toHaveBeenCalled();
-    expect(fixture.nativeElement.textContent).toContain(
-      'missing or has already been used',
-    );
+    expect(fixture.nativeElement.textContent).toContain('authorization was canceled');
+    expect(h.newProject).not.toHaveBeenCalled();
   });
-  it('returns Business checkout context to project creation for the same Business-only actor', async () => {
+  it('returns a state-matched OAuth denial to the saved form without exchanging a code', () => {
+    const h = harness();
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthState: 'denied-state' }));
+    window.__datatugTakeGitHubAuthorization = () => ({ error: 'access_denied', state: 'denied-state' });
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    expect(h.complete).not.toHaveBeenCalled();
+    expect(h.newProject).toHaveBeenCalledWith('denied');
+    expect(fixture.nativeElement.textContent).toContain('authorization was canceled');
+  });
+  it('requires repository and branch reselection when the connected GitHub actor changes', () => {
+    const h = harness();
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ actorID: 'actor', githubActorID: '100', operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthState: 'state-fixture', ciEnabled: false, repositoryID: 42, githubRepositoryURL: 'https://github.com/old/repo', branch: 'main' }));
+    window.__datatugTakeGitHubAuthorization = () => ({ code: 'code-fixture', state: 'state-fixture' });
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
+    h.result.next({ connected: true, actorID: 200, login: 'other', scopes: ['repo'] });
+    const draft = JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null');
+    expect(h.newProject).toHaveBeenCalledWith('actor-changed');
+    expect(draft.githubActorID).toBe('200');
+    expect(draft.repositoryID).toBeUndefined();
+    expect(draft.githubRepositoryURL).toBe('');
+    expect(draft.branch).toBe('');
+    expect(draft.operationID).toBeUndefined();
+  });
+  it('returns the same actor to the saved project request after OAuth', async () => {
     const h = harness('business-only-actor', true);
     const navigate = vi.spyOn(h.router, 'navigate').mockResolvedValue(true);
-    expect(
-      saveBusinessGithubContinuation('business-only-actor', 'space-a'),
-    ).toBe(true);
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '22222222-2222-4222-8222-222222222222', oauthResumePending: true, oauthState: 'state-fixture', ciEnabled: false }));
     window.__datatugTakeGitHubAuthorization = () => ({
       code: 'code-fixture',
       state: 'state-fixture',
@@ -100,26 +128,17 @@ describe('GitHub callback authenticated exchange', () => {
       status: 'authenticated',
       user: { uid: 'business-only-actor' },
     });
-    h.result.next({ connected: true });
+    h.result.next({ connected: true, actorID: 'github-user-2', login: 'alex', scopes: ['repo'] });
+    await fixture.whenStable();
     await fixture.whenStable();
 
-    fixture.componentInstance.newProject();
     expect(navigate).toHaveBeenCalledWith(['/new-project'], {
-      queryParams: {
-        store: 'github',
-        billingIntent: 'space_business',
-        spaceID: 'space-a',
-        returnUrl: '/',
-      },
+      queryParams: { store: 'github', oauthResult: 'success' },
     });
-    expect(
-      sessionStorage.getItem(
-        'datatug:new-project:github-business-continuation',
-      ),
-    ).toBeNull();
   });
   it('cancels an old-actor return on a session change and never claims it is connected for the new actor', async () => {
     const h = harness();
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthState: 'state-fixture', ciEnabled: false }));
     window.__datatugTakeGitHubAuthorization = () => ({
       code: 'code-fixture',
       state: 'state-fixture',
@@ -128,10 +147,20 @@ describe('GitHub callback authenticated exchange', () => {
     fixture.detectChanges();
     h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
     h.auth.next({ status: 'authenticated', user: { uid: 'different' } });
-    h.result.next({ connected: true });
+    h.result.next({ connected: true, actorID: 3860020, login: 'alex', scopes: ['repo'] });
     await fixture.whenStable();
     expect(fixture.componentInstance.connected()).toBe(false);
     expect(fixture.nativeElement.textContent).toContain('sign-in changed');
+  });
+  it('keeps a legacy App return on its legacy path when an old OAuth draft has a different state', () => {
+    const h = harness();
+    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify({ operationID: '11111111-1111-4111-8111-111111111111', oauthResumePending: true, oauthState: 'new-oauth-state' }));
+    window.__datatugTakeGitHubAuthorization = () => ({ code: 'app-code', state: 'old-app-state' });
+    const fixture = TestBed.createComponent(GithubAuthorizationPageComponent);
+    fixture.detectChanges();
+    h.auth.next({ status: 'authenticated', user: { uid: 'actor' } });
+    expect(h.completeLegacy).toHaveBeenCalledWith('app-code', 'old-app-state');
+    expect(h.complete).not.toHaveBeenCalled();
   });
 });
 describe('GitHub callback "Back to projects"', () => {

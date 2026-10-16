@@ -3,7 +3,11 @@ import { HttpClient, HttpParams } from '@angular/common/http';
 import { SneatApiService } from '@sneat/api';
 import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
-import { ProjectQueryApiService } from './project-query-api.service';
+import {
+  DATATUG_DEMO_PROJECT_TEMPLATE,
+  ProjectQueryApiService,
+  type CreateGithubProject,
+} from './project-query-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
 import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
 
@@ -37,6 +41,42 @@ describe('ProjectQueryApiService', () => {
         { provide: HttpClient, useValue: http },
       ],
     });
+  });
+  it('sends the OAuth setup request and status preflight without dropping identity, CI, or repository fields', async () => {
+    const service = TestBed.inject(ProjectQueryApiService);
+    const request: CreateGithubProject = {
+      title: 'Project',
+      spaceID: 'space',
+      billingIntent: 'personal_pro',
+      operationID: '11111111-1111-4111-8111-111111111111',
+      ciEnabled: true,
+      github: {
+        repositoryID: 42,
+        owner: 'owner',
+        name: 'repo',
+        folder: 'datatug',
+        branch: 'main',
+        expectedBranchHead: 'abcdef0123456789abcdef0123456789abcdef01',
+      },
+      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+    };
+    await firstValueFrom(service.create(request));
+    expect(api.post.mock.calls[0][0]).toBe('datatug/projects/create_project');
+    expect(api.post.mock.calls[0][1]).toEqual(request);
+    const statusRequest = {
+      operationID: request.operationID,
+      repositoryID: request.github.repositoryID,
+      owner: request.github.owner,
+      name: request.github.name,
+    };
+    await firstValueFrom(service.createStatus(statusRequest));
+    const params = api.get.mock.calls[0][1] as HttpParams;
+    expect(api.get.mock.calls[0][0]).toBe('datatug/projects/create_project/status');
+    expect(params.get('operationID')).toBe(request.operationID);
+    expect(params.get('repositoryID')).toBe('42');
+    expect(params.get('owner')).toBe('owner');
+    expect(params.get('name')).toBe('repo');
+    expect(params.get('store')).toBe('github.com');
   });
   it('routes GitHub reads/saves through authenticated Cloud API with flat scope and no provider fallback', async () => {
     const service = TestBed.inject(ProjectQueryApiService);

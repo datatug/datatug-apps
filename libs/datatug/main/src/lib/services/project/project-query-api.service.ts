@@ -46,7 +46,8 @@ export interface CreateGithubProject {
   readonly title: string;
   readonly spaceID: string;
   readonly billingIntent: ProjectBillingIntent;
-  readonly operationId: string;
+  readonly operationID: string;
+  readonly ciEnabled: boolean;
   readonly github: {
     readonly repositoryID: number;
     readonly owner: string;
@@ -59,14 +60,34 @@ export interface CreateGithubProject {
 }
 
 export interface CreatedGithubProject {
-  readonly id: string;
-  readonly storage: 'github.com';
-  readonly project: string;
-  readonly spaceID: string;
-  readonly sharedProjectID: string;
-  readonly branch: string;
-  readonly branchHead: string;
-  readonly revision: string;
+  readonly status: 'pending_merge';
+  readonly setupPR: {
+    readonly url: string;
+    readonly number: number;
+    readonly headBranch: string;
+    readonly baseBranch: string;
+    readonly commit: string;
+    readonly repositoryID: number;
+  };
+}
+
+export interface GithubProjectCreateStatus {
+  readonly operationID: string;
+  readonly status:
+    | 'pending_merge'
+    | 'merged_ready'
+    | 'closed_unmerged'
+    | 'failed';
+  readonly setupPR?: CreatedGithubProject['setupPR'];
+  readonly projectID?: string;
+  readonly errorCode?: string;
+}
+
+export interface GithubProjectCreateStatusRequest {
+  readonly operationID: string;
+  readonly repositoryID: number;
+  readonly owner: string;
+  readonly name: string;
 }
 
 /** Store-specific transport only. Cloud always uses the shared Firebase auth bridge; no provider token or private fallback. */
@@ -189,6 +210,13 @@ export class ProjectQueryApiService {
       'datatug/projects/create_project',
       request,
       { params: { store: 'github.com' } },
+    );
+  }
+
+  createStatus(request: GithubProjectCreateStatusRequest): Observable<GithubProjectCreateStatus> {
+    return this.api.get<GithubProjectCreateStatus>(
+      'datatug/projects/create_project/status',
+      new HttpParams({ fromObject: { ...request, store: 'github.com' } }),
     );
   }
 }

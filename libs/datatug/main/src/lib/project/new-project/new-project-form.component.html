@@ -1,6 +1,6 @@
 <ion-header>
   <ion-toolbar color="light">
-    <ion-title>New DataTug Project</ion-title>
+    <ion-title>{{ setupStatus() === 'pending_merge' ? 'Project setup awaiting merge' : 'New DataTug Project' }}</ion-title>
     <ion-buttons slot="end">
       <ion-button color="medium" title="Cancel" (click)="cancel()">
         <ion-icon name="close-outline" />
@@ -9,6 +9,7 @@
   </ion-toolbar>
 </ion-header>
 <ion-content>
+@if (setupStatus() !== 'pending_merge') {
 <ion-item>
   <ion-label>Store</ion-label>
   <ion-select
@@ -27,12 +28,9 @@
   </ion-item-divider>
 }
 @if (store() === 'github') {
-  <ion-item-divider
-    ><i
-      >Create from the demo template in an initialized repository you can write
-      to. GitHub credentials stay on the server.</i
-    ></ion-item-divider
-  >
+  <ion-item-divider>
+    <i>Create from the demo template in a GitHub repository where you can write. DataTug keeps GitHub credentials on the server.</i>
+  </ion-item-divider>
   <ion-item
     ><ion-label>Space</ion-label
     ><ion-select
@@ -69,26 +67,27 @@
     >
   </ion-item>
   <ion-item
-    ><ion-button (click)="signInToGithub()" [disabled]="isConnecting()"
-      >Connect GitHub</ion-button
     ><ion-button
       (click)="loadGithubRepos()"
       [disabled]="isLoadingRepos()"
       fill="clear"
-      >Refresh repositories</ion-button
+      >Refresh connected repositories</ion-button
     ></ion-item
   >
   <ion-item lines="none">
     <ion-label class="ion-text-wrap">
-      The DataTug GitHub App must have access to the repository you choose.
-      <a
-        href="https://github.com/apps/datatug/installations/new"
-        target="_blank"
-        rel="noopener noreferrer"
-        >Install DataTug App</a
-      >
-      on GitHub, select your repository, then return and refresh repositories.
+      If your repository is not listed, enter its GitHub URL below. At submit, GitHub may ask you to authorize account-level repository access and, when CI verification is enabled, workflow access. These permissions apply to your GitHub account, not only the selected repository.
     </ion-label>
+  </ion-item>
+  <ion-item>
+    <ion-input
+      label="GitHub repository URL"
+      aria-label="GitHub repository URL"
+      placeholder="https://github.com/owner/repository"
+      [ngModel]="githubRepositoryURL()"
+      (ngModelChange)="repositoryURLChanged($event)"
+      [disabled]="isCreating()"
+    />
   </ion-item>
   @if (githubReposError(); as error) {
     <ion-item lines="none">
@@ -102,10 +101,7 @@
     !githubRepos().length
   ) {
     <ion-item lines="none">
-      <ion-label class="ion-text-wrap">
-        No repositories with write access are available yet. Install the App for
-        a repository you can write to, then refresh repositories.
-      </ion-label>
+      <ion-label class="ion-text-wrap">No connected repositories are listed yet. Enter a repository URL and submit to connect the account that can write to it.</ion-label>
     </ion-item>
   }
   @if (isGithubSignedIn()) {
@@ -157,6 +153,34 @@
     ></ion-item
   >
 }
+}
+@if (store() === 'github') {
+  @if (setupStatus() !== 'pending_merge') {
+  <ion-item>
+    <ion-checkbox
+      [ngModel]="ciEnabled()"
+      (ngModelChange)="ciEnabled.set($event)"
+      [disabled]="isCreating()"
+      >Enable CI verification workflow</ion-checkbox
+    >
+  </ion-item>
+  }
+  @if (setupStatus(); as status) {
+    <ion-item lines="none">
+      <ion-label class="ion-text-wrap">
+        {{ setupStatusMessage(status) }}
+      </ion-label>
+      <ion-button (click)="refreshSetupStatus()" [disabled]="isRefreshingSetup()">{{ isRefreshingSetup() ? 'Checking…' : 'Refresh status' }}</ion-button>
+      @if (status === 'closed_unmerged') { <ion-button (click)="retryClosedSetup()">Retry setup</ion-button> }
+    </ion-item>
+    @if (setupPR(); as pr) {
+      <ion-item lines="none">
+        <a [href]="pr.url" target="_blank" rel="noopener noreferrer">Open setup pull request #{{ pr.number }}</a>
+      </ion-item>
+    }
+  }
+}
+@if (setupStatus() !== 'pending_merge') {
 <ion-item>
   <ion-label>Title</ion-label>
   <ion-input
@@ -169,6 +193,7 @@
     maxlength="30"
   />
 </ion-item>
+}
 @if (formError(); as error) {
   <ion-item lines="none">
     <ion-label color="danger" class="ion-text-wrap">{{ error }}</ion-label>
@@ -188,10 +213,10 @@
 <ion-footer>
   <ion-toolbar>
     <ion-buttons slot="end">
-      <ion-button (click)="create()" [disabled]="isCreating()">
+      @if (setupStatus() !== 'pending_merge') { <ion-button (click)="create()" [disabled]="isCreating()">
         <ion-icon name="save-outline" slot="start" />
         <ion-label>Create new project</ion-label>
-      </ion-button>
+      </ion-button> }
     </ion-buttons>
   </ion-toolbar>
 </ion-footer>
