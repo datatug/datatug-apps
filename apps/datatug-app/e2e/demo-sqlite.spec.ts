@@ -72,15 +72,22 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     await card.locator('select').selectOption(selectionId);
     await card.getByRole('button', { name: 'Run on board' }).click();
     await expect(card.locator('table tbody')).toContainText(edited, { timeout: 30_000 });
+    await expect(card.getByRole('link', { name: 'Open saved query' })).toHaveAttribute('href', new RegExp(`runtime=${selectionId}`));
     await card.getByRole('link', { name: 'Open saved query' }).click();
-    await page.getByRole('button', { name: 'Find open working copies' }).click();
+    await expect(page).toHaveURL(new RegExp(`runtime=${selectionId}`));
     const queryRuntime = page.locator('sneat-datatug-sql-editor select option').filter({ hasText: 'working copy' });
     await expect(queryRuntime).toHaveCount(1);
-    await page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true })
-      .selectOption(selectionId, { timeout: 20_000 });
+    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
+      .toHaveValue(selectionId, { timeout: 20_000 });
     await page.getByRole('button', { name: 'Run query', exact: true }).click();
     await expect(page.locator('sneat-datatug-sql-editor .result-grid-viewport')).toContainText(edited, { timeout: 30_000 });
     expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
+    await page.reload();
+    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
+      .toHaveValue(selectionId, { timeout: 20_000 });
+    await expect(page.locator('sneat-datatug-sql-editor').getByRole('alert'))
+      .toContainText('selected working copy is unavailable');
+    await expect(page.getByRole('button', { name: 'Run query', exact: true })).toBeDisabled();
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }

@@ -15,10 +15,10 @@ export type QueryRuntimeOption = Pick<RegisteredQueryRuntime, 'selectionId' | 't
 export class QueryRuntimeRegistry {
   private readonly entries = new Map<string, RegisteredQueryRuntime>();
   readonly revision = signal(0);
-  private nextId = 0;
 
   register(connection: OvdbConnection): { readonly selectionId: string; update(connection: OvdbConnection): void; dispose(): void } {
-    const selectionId = `runtime-${++this.nextId}`;
+    // A URL can outlive this page. Never let a new registry reuse an old URL's ID.
+    const selectionId = `runtime-${crypto.randomUUID()}`;
     const publish = (current: OvdbConnection): void => {
       this.entries.set(selectionId, { selectionId, title: current.title, connection: current });
       this.revision.update((value) => value + 1);

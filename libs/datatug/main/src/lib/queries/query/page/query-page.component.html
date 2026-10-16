@@ -897,7 +897,7 @@
             <ion-label class="ion-text-wrap"><ion-card-title data-workspace-heading>{{ queryPageTitle() }}</ion-card-title>
               <p>{{ isNativeSqlWorkspace() ? 'Native SQL query' : isNativeDtqlWorkspace() ? 'Saved DTQL query' : 'TugQL query' }}</p></ion-label>
               <ion-button slot="end" data-testid="workspace-run" aria-label="Run query" size="default" color="primary" fill="solid"
-                [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+                [disabled]="running() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
                 (click)="runQuery()">
                 @if (running()) { <ion-spinner name="dots" slot="start" /> }
                 Run
@@ -1299,9 +1299,12 @@
           <ion-item lines="none">
             <ion-label>Execution runtime</ion-label>
             <select aria-label="Execution runtime" [value]="selectedWorkingCopy()" (change)="selectWorkingCopy($any($event.target).value)">
-              <option value="project">Project runtime</option>
+              <option value="project" [selected]="selectedWorkingCopy() === 'project'">Project runtime</option>
+              @if (unavailableWorkingCopy()) {
+                <option [value]="selectedWorkingCopy()" [selected]="true">Selected working copy unavailable</option>
+              }
               @for (runtime of workingCopyOptions(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId">{{ runtime.title }} · working copy</option>
+                <option [value]="runtime.selectionId" [selected]="runtime.selectionId === selectedWorkingCopy()">{{ runtime.title }} · working copy</option>
               }
             </select>
           </ion-item>
@@ -1318,7 +1321,7 @@
       <ng-container *ngTemplateOutlet="executionRuntime" />
       <ion-item lines="none"><ion-buttons>
         <ion-button fill="solid" color="primary"
-          [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+          [disabled]="running() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
           (click)="runQuery()">
           @if (running()) { <ion-spinner name="dots" slot="start" /> }
           Run query
