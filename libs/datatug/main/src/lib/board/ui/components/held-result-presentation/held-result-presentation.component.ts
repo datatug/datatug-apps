@@ -1,12 +1,15 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  ElementRef,
   Input,
   OnChanges,
   SimpleChanges,
+  ViewChild,
   signal,
 } from '@angular/core';
 import {
+  LimitationHeaderComponent,
   SourceRightsNoticeComponent,
   type Result,
   type TypedValue,
@@ -102,7 +105,7 @@ export function prepareCategoryBars(
 @Component({
   selector: 'datatug-held-result-presentation',
   standalone: true,
-  imports: [SourceRightsNoticeComponent],
+  imports: [LimitationHeaderComponent, SourceRightsNoticeComponent],
   templateUrl: './held-result-presentation.component.html',
   styleUrl: './held-result-presentation.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -120,6 +123,16 @@ export class HeldResultPresentationComponent implements OnChanges {
   readonly pageSize = 25;
   readonly numberFormat = new Intl.NumberFormat();
   prepared: CategoryBarsResult | null = null;
+  private focusSelectedDetails = false;
+
+  @ViewChild('selectedDetails') set selectedDetails(
+    ref: ElementRef<HTMLElement> | undefined,
+  ) {
+    if (ref && this.focusSelectedDetails) {
+      this.focusSelectedDetails = false;
+      ref.nativeElement.focus();
+    }
+  }
 
   get bars(): readonly CategoryBar[] {
     return this.prepared?.ok ? this.prepared.bars.slice(0, this.topN()) : [];
@@ -172,6 +185,7 @@ export class HeldResultPresentationComponent implements OnChanges {
       );
       this.page.set(0);
       this.selectedRow.set(null);
+      this.focusSelectedDetails = false;
     }
   }
 
@@ -185,6 +199,12 @@ export class HeldResultPresentationComponent implements OnChanges {
     this.selectedRow.set(index);
     this.page.set(Math.floor(index / this.pageSize));
     this.view.set('grid');
+  }
+
+  inspectBar(index: number): void {
+    if (!this.result?.recordset.rows[index]) return;
+    this.focusSelectedDetails = true;
+    this.selectRow(index);
   }
 
   previousPage(): void {

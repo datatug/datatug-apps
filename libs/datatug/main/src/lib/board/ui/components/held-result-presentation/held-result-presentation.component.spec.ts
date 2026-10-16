@@ -83,12 +83,42 @@ describe('held result presentation', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent).toContain('Germany');
     expect(root.querySelector('.table-scroll')).toBeNull();
-    expect(root.querySelector('.source-details')?.textContent).toContain('Northwind');
+    expect(root.querySelector('.source-details')?.textContent).toContain(
+      'Northwind',
+    );
     const bars = root.querySelectorAll<HTMLButtonElement>('.bars button');
     bars[0].click();
     fixture.detectChanges();
     expect(root.textContent).toContain('Same held result · no new query');
     expect(root.querySelector('.inspection')?.textContent).toContain('Row 2');
     expect(root.querySelector('.inspection')?.textContent).toContain('204');
+    expect(document.activeElement).toBe(root.querySelector('.inspection'));
+  });
+
+  it('shows the actual policy restriction and opaque execution warning with the held result', async () => {
+    await TestBed.configureTestingModule({
+      imports: [HeldResultPresentationComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+    fixture.componentRef.setInput('fields', fields);
+    fixture.componentRef.setInput('result', {
+      ...result(rows),
+      limitations: [
+        { policy: 'regional access', rowsFiltered: true, hiddenColumns: [] },
+      ],
+      provenance: {
+        ...result(rows).provenance,
+        executionProfile: 'opaque-privileged',
+      },
+    } satisfies Result);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain(
+      'Limited by policy regional access: rows filtered',
+    );
+    expect(root.textContent).toContain('row/column enforcement does not apply');
+    expect(root.textContent).not.toContain(
+      'Source restrictions apply to this result.',
+    );
   });
 });
