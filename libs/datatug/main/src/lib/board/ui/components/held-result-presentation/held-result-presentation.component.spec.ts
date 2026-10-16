@@ -95,6 +95,24 @@ describe('held result presentation', () => {
     expect(document.activeElement).toBe(root.querySelector('.inspection'));
   });
 
+  it('offers chart-only embedding with source-row inspection and no replacement table', async () => {
+    await TestBed.configureTestingModule({ imports: [HeldResultPresentationComponent] }).compileComponents();
+    const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+    fixture.componentRef.setInput('fields', fields);
+    fixture.componentRef.setInput('result', result(rows));
+    fixture.componentRef.setInput('chartOnly', true);
+    fixture.detectChanges();
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('.view-switch')).toBeNull();
+    expect(root.querySelector('.table-scroll')).toBeNull();
+    root.querySelector<HTMLButtonElement>('.bars button')?.click();
+    fixture.detectChanges();
+    expect(root.querySelector('.table-scroll')).toBeNull();
+    expect(root.querySelector('.inspection')?.textContent).toContain('Row 2');
+    expect(root.querySelector('.inspection')?.textContent).toContain('204');
+    expect(fixture.componentInstance.view()).toBe('chart');
+  });
+
   it('shows the actual policy restriction and opaque execution warning with the held result', async () => {
     await TestBed.configureTestingModule({
       imports: [HeldResultPresentationComponent],

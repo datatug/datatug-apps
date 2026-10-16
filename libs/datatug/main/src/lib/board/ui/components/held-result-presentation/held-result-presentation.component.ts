@@ -121,6 +121,8 @@ export class HeldResultPresentationComponent implements OnChanges {
     | null = null;
   @Input() fields: CategoryBarFields | null = null;
   @Input() defaultView: 'chart' | 'grid' = 'chart';
+  /** Parent owns the row/grid switch; bar clicks inspect this held snapshot in place. */
+  @Input() chartOnly = false;
   @Input() loading = false;
   @Input() error: string | null = null;
 
@@ -216,7 +218,7 @@ export class HeldResultPresentationComponent implements OnChanges {
     if (!this.result?.recordset.rows[index]) return;
     this.selectedRow.set(index);
     this.page.set(Math.floor(index / this.pageSize));
-    this.view.set('grid');
+    if (!this.chartOnly) this.view.set('grid');
   }
 
   inspectBar(index: number): void {
