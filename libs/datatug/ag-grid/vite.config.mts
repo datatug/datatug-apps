@@ -36,7 +36,7 @@ export default defineConfig({
     name: 'datatug-ag-grid',
     watch: false,
     globals: true,
-    environment: 'node',
+    environment: 'happy-dom',
     include: ['src/**/*.spec.ts'],
     reporters: ['default'],
     coverage: {

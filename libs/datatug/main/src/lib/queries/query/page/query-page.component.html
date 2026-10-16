@@ -1767,7 +1767,7 @@
         [class.result-author-data-enabled]="isTextQueryWorkspace()"
       >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTextQueryWorkspace()">
-        <ag-grid-angular
+        <ag-grid-angular *datatugAgGridReady
           class="ag-theme-quartz"
           style="height: 100%; width: 100%"
           [columnDefs]="resultGridColumnDefs()"

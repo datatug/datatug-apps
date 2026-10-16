@@ -62,12 +62,11 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
 import { addIcons } from 'ionicons';
 import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
 import {
-  AllCommunityModule,
-  ModuleRegistry,
   type ColDef,
   type CellFocusedEvent,
   type GridApi,
@@ -97,7 +96,6 @@ const hasQueryActivity = (ref?: IProjectRef): boolean =>
   ((isGithubStoreId(ref.storeId) && ref.projectApi === 'cloud') ||
     isSharedProjectRef(ref));
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 
 interface QueryResultGridRow {
   readonly [columnId: string]: string;
@@ -740,7 +738,7 @@ let queryParameterEditorId = 0;
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
-    AgGridAngular,
+    AgGridAngular, AgGridReadyDirective,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,

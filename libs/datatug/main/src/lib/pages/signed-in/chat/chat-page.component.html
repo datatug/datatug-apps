@@ -87,7 +87,7 @@
                     <ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'bookmark', reference })">Bookmark result</ion-button>
                   }
                 </div>
-                <ag-grid-angular class="ag-theme-quartz chat-grid" [attr.data-turn-id]="turn.id" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
+                <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz chat-grid" [attr.data-turn-id]="turn.id" [rowData]="gridRows(turn.rows)" [columnDefs]="columnsFor(turn.rows)" [defaultColDef]="{ sortable: true, resizable: true }" [rowSelection]="{ mode: 'multiRow', checkboxes: true, headerCheckbox: false }" (selectionChanged)="onGridSelection(turn, $event)" (cellClicked)="onGridCell(turn, $event)" />
               }
               @if (turnTab(turn) === 'rows' && turn.recordSetId) {
                 <section class="join-candidates" tabindex="0" aria-label="Related tables" (keydown)="onJoinKeys($event, turn)">
@@ -174,7 +174,7 @@
                 @for (entry of selectedEntries(); track entry.key) { <div><dt>{{ entry.key }}</dt><dd>{{ entry.value ?? '—' }}</dd></div> }
               </dl>
             } @else if (selectedRows().length) {
-              <ag-grid-angular class="ag-theme-quartz workspace-grid" [rowData]="selectedRows()" [columnDefs]="columnsFor(selectedRows(), selection.columns)" />
+              <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz workspace-grid" [rowData]="selectedRows()" [columnDefs]="columnsFor(selectedRows(), selection.columns)" />
             } @else { <p>This selection has no rows.</p> }
           } @else { <p class="workspace-empty">Select rows or a cell in a result grid to inspect them here.</p> }
         }
@@ -182,7 +182,7 @@
           @for (dock of workspace().docks; track dock.id) {
             <section class="dock-item">
               <div class="dock-title"><strong>{{ dock.title }}</strong><ion-button size="small" fill="clear" (click)="workspaceAction({ kind: 'undock', dockId: dock.id })">Undock</ion-button></div>
-              @if (dockRows(dock).length) { <ag-grid-angular class="ag-theme-quartz workspace-grid" [rowData]="dockRows(dock)" [columnDefs]="columnsFor(dockRows(dock), dockColumns(dock))" /> }
+              @if (dockRows(dock).length) { <ag-grid-angular *datatugAgGridReady class="ag-theme-quartz workspace-grid" [rowData]="dockRows(dock)" [columnDefs]="columnsFor(dockRows(dock), dockColumns(dock))" /> }
               @else { <p>No rows in this dock.</p> }
             </section>
           } @empty { <p class="workspace-empty">Dock a result or selection to keep it here for this chat session.</p> }
@@ -206,7 +206,7 @@
               </div>
             </section>
           } @empty { <p class="workspace-empty">Bookmark a result or selection to reuse it in another chat session.</p> }
-          @if (openBookmark(); as bookmark) { <section class="bookmark-open"><div class="dock-title"><strong>{{ bookmark.title }}</strong><ion-button size="small" fill="clear" (click)="openBookmark.set(undefined)">Close</ion-button></div><ag-grid-angular class="ag-theme-quartz workspace-grid" [rowData]="bookmarkRows(bookmark)" [columnDefs]="columnsFor(bookmarkRows(bookmark))" /></section> }
+          @if (openBookmark(); as bookmark) { <section class="bookmark-open"><div class="dock-title"><strong>{{ bookmark.title }}</strong><ion-button size="small" fill="clear" (click)="openBookmark.set(undefined)">Close</ion-button></div><ag-grid-angular *datatugAgGridReady class="ag-theme-quartz workspace-grid" [rowData]="bookmarkRows(bookmark)" [columnDefs]="columnsFor(bookmarkRows(bookmark))" /></section> }
         }
       </div>
     </aside>

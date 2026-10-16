@@ -2,8 +2,9 @@ import { ChangeDetectionStrategy, Component, computed, effect, inject, signal } 
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IonButton, IonButtons, IonContent, IonHeader, IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner, IonTitle, IonToolbar } from '@ionic/angular';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import { AllCommunityModule, ModuleRegistry, type ColDef } from 'ag-grid-community';
+import { type ColDef } from 'ag-grid-community';
 import { DatatugServicesStoreModule } from '../services/repo/datatug-services-store.module';
 import { readProjectApiQuery } from '../nav/project-api-routing';
 import { IProjectRef } from '../core/project-context';
@@ -15,7 +16,6 @@ import type { TypedValue } from '@sneat/datatug-semantic';
 import { SessionResultCacheService, tryWriteSessionResultCache } from './session-result-cache.service';
 import { sessionResultFingerprint } from './session-result-fingerprint';
 
-ModuleRegistry.registerModules([AllCommunityModule]);
 type WidgetView = { readonly state: 'completed'; readonly resultRef: string; readonly rows: Record<string, unknown>[]; readonly columns: ColDef[] } | { readonly state: 'failed'; readonly error: string };
 type WidgetExecutionView = { readonly state: 'completed'; readonly rows: Record<string, unknown>[]; readonly columns: ColDef[] } | { readonly state: 'failed'; readonly error: string };
 interface DashboardView { readonly runId: string; readonly inputId: string; readonly invoiceId: string; readonly scopeKey: string; readonly bindingStamp: string; readonly widgets: Readonly<Record<'lines' | 'genres', WidgetView>>; }
@@ -25,7 +25,7 @@ type MutableDashboardWidgets = { -readonly [Key in keyof DashboardView['widgets'
   selector: 'sneat-datatug-invoice-dashboard', changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [SessionChinookQueryService],
   imports: [DatatugServicesStoreModule, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent,
-    IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner, AgGridAngular],
+    IonItem, IonLabel, IonSelect, IonSelectOption, IonSpinner, AgGridAngular, AgGridReadyDirective],
   template: `
     <ion-header><ion-toolbar><ion-title>Invoice overview</ion-title><ion-buttons slot="end"><ion-button (click)="run()" [disabled]="busy() || !workspace.canExecuteFor(sessionId())">{{ view() ? 'Refresh' : 'Run' }}</ion-button></ion-buttons></ion-toolbar></ion-header>
     @if (snapshot()) { <ion-content>
@@ -40,7 +40,7 @@ type MutableDashboardWidgets = { -readonly [Key in keyof DashboardView['widgets'
           <ion-item><ion-label><h2>Invoice {{ result.invoiceId }}</h2><p>Input {{ result.inputId }} · run {{ result.runId }}</p><p>Browser-observed widget outcomes; rows are stored only in this device's private cache.</p></ion-label></ion-item>
         @if (result.widgets.lines.state === 'completed') {
           <ion-item><ion-label><h2>Invoice lines · {{ result.widgets.lines.rows.length }} rows</h2></ion-label></ion-item>
-          <ag-grid-angular style="height:320px;width:100%" [rowData]="result.widgets.lines.rows" [columnDefs]="result.widgets.lines.columns" [defaultColDef]="{resizable:true,sortable:true,flex:1,minWidth:110}" />
+          <ag-grid-angular *datatugAgGridReady style="height:320px;width:100%" [rowData]="result.widgets.lines.rows" [columnDefs]="result.widgets.lines.columns" [defaultColDef]="{resizable:true,sortable:true,flex:1,minWidth:110}" />
         } @else { <ion-item color="danger" role="alert"><ion-label>Invoice lines failed: {{ result.widgets.lines.error }}</ion-label></ion-item> }
         @if (result.widgets.genres.state === 'completed') {
           <ion-item><ion-label><h2>Amount by genre</h2></ion-label></ion-item>
