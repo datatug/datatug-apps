@@ -46,10 +46,13 @@ import { prepareDeclaredSqlBindings, type SqliteScalar } from './sql-bindings';
 export { prepareDeclaredSqlBindings, type SqliteScalar } from './sql-bindings';
 
 const CONNECTION_ID = 'chinook-sqlite';
-const FIXTURE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
-import { PUBLIC_CHINOOK_FIXTURE_SHA256 } from './public-sqlite-source-identity';
+import {
+  PUBLIC_CHINOOK_FIXTURE_SHA256,
+  PUBLIC_CHINOOK_BUNDLED_FIXTURE,
+  PUBLIC_CHINOOK_LEGACY_FIXTURE_URL,
+} from './public-sqlite-source-identity';
 const FIXTURE_SHA256 = PUBLIC_CHINOOK_FIXTURE_SHA256;
-const FIXTURE_BYTES = 1007616;
+const FIXTURE_BYTES = PUBLIC_CHINOOK_BUNDLED_FIXTURE.bytes;
 const RUN_TIMEOUT_MS = 10000;
 const GITHUB_STORES = new Set(['github', 'github.com', 'firestore']);
 
@@ -111,8 +114,8 @@ export function admitPublicSqliteSource(
     entry.readiness !== 'public-api' ||
     entry.source !== 'https://demodb.dev/ovdb/v1/databases/chinook' ||
     entry.fixtureSha256 !== FIXTURE_SHA256 ||
-    entry.browserFixture?.url !== FIXTURE_URL ||
-    entry.browserFixture.bytes !== FIXTURE_BYTES
+    ![PUBLIC_CHINOOK_BUNDLED_FIXTURE.url, PUBLIC_CHINOOK_LEGACY_FIXTURE_URL].includes(entry.browserFixture?.url ?? '') ||
+    entry.browserFixture?.bytes !== FIXTURE_BYTES
   ) {
     throw new Error('This query has no admitted public browser SQLite source.');
   }

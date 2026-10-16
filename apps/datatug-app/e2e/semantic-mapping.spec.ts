@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect } from '@playwright/test';
 import { installFakeGithub } from './helpers/fake-github';
-import { CHINOOK_SQLITE_URL, loadPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
+import { loadPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 const queryURL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
@@ -14,11 +14,11 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   const fakeRepo =
     process.env['DATATUG_E2E_GITHUB_FAKE'] ||
     '/Users/alex/projects/datatug/datatug-demo-project';
-  const sqliteBytes = loadPinnedChinookSqlite(fakeRepo);
+  loadPinnedChinookSqlite(fakeRepo);
   let databaseRequests = 0;
   let coldDatabaseRequests = 0;
   let awaitingColdRun = false;
-  await context.route(CHINOOK_SQLITE_URL, async (route) => {
+  await context.route('**/assets/showcase/chinook.sqlite', async (route) => {
     const requestNumber = ++databaseRequests;
     const isColdRunRequest = awaitingColdRun;
     const coldRequestNumber = isColdRunRequest ? ++coldDatabaseRequests : 0;
@@ -26,12 +26,7 @@ test('column meaning saves a complete personal copy, stays visible and survives 
       // Reproduce the slow cold-fetch ordering that used to outlast the badge assertion.
       await new Promise((resolve) => setTimeout(resolve, 6000));
     }
-    await route.fulfill({
-      status: 200,
-      contentType: 'application/vnd.sqlite3',
-      headers: { 'access-control-allow-origin': '*' },
-      body: sqliteBytes,
-    });
+    await route.continue();
   });
   await installFakeGithub(context, [
     {

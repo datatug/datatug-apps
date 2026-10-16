@@ -6,13 +6,15 @@ import type { BrowserContext } from '@playwright/test';
 // This is the exact public artifact tracked by demo-db/chinook at 85ad3b4d.
 // Browser execution still uses the real SQLite worker and its source admission.
 export const CHINOOK_SQLITE_URL = 'https://chinook.demodb.dev/data/chinook.sqlite';
+const BUNDLED_CHINOOK_URL = '/assets/showcase/chinook.sqlite';
+const BUNDLED_RIGHTS_URL = '/assets/showcase/chinook-source-rights.json';
 const CHINOOK_SQLITE_BYTES = 1_007_616;
 const CHINOOK_SQLITE_SHA256 = '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15';
 const CHINOOK_COMPARE_URL = 'https://chinook.demodb.dev/data/compare/3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f.sqlite';
 const CHINOOK_COMPARE_SHA256 = '3369d25729dea9e21facc7226aee3d5247fa0f3d8d4be4678aa9247fd064845f';
 
 function readPinnedFixture(name: string, size: number, sha256: string): Buffer {
-  const bytes = readFileSync(join(__dirname, '../fixtures', name));
+  const bytes = readFileSync(join(__dirname, '../../src/assets/showcase', name));
   if (bytes.byteLength !== size || createHash('sha256').update(bytes).digest('hex') !== sha256) {
     throw new Error(`The checked-in ${name} fixture does not match its admitted digest.`);
   }
@@ -24,17 +26,25 @@ export function loadPinnedChinookSqlite(demoRepo: string): Buffer {
     connections: {
       id: string;
       fixtureSha256: string;
-      browserFixture: { url: string; bytes: number };
+      browserFixture: {
+        url: string;
+        bytes: number;
+        sourceRights: { url: string; bytes: number; sha256: string };
+      };
     }[];
   };
   const connection = catalog.connections.find(({ id }) => id === 'chinook-sqlite');
   if (
-    connection?.browserFixture.url !== CHINOOK_SQLITE_URL ||
+    connection?.browserFixture.url !== BUNDLED_CHINOOK_URL ||
     connection.browserFixture.bytes !== CHINOOK_SQLITE_BYTES ||
-    connection.fixtureSha256 !== CHINOOK_SQLITE_SHA256
+    connection.fixtureSha256 !== CHINOOK_SQLITE_SHA256 ||
+    connection.browserFixture.sourceRights?.url !== BUNDLED_RIGHTS_URL
   ) {
     throw new Error('The demo catalog no longer admits the pinned Chinook browser fixture.');
   }
+
+  const rights = connection.browserFixture.sourceRights;
+  readPinnedFixture('chinook-source-rights.json', rights.bytes, rights.sha256);
 
   return readPinnedFixture('chinook.sqlite', CHINOOK_SQLITE_BYTES, CHINOOK_SQLITE_SHA256);
 }
@@ -59,6 +69,8 @@ async function servePinnedFixture(context: BrowserContext, url: string, bytes: B
 }
 
 export async function installPinnedChinookSqlite(context: BrowserContext, demoRepo: string): Promise<void> {
+  // Only the comparison baseline still names this public URL. The catalog's
+  // relative application asset is deliberately served by the built app.
   await servePinnedFixture(context, CHINOOK_SQLITE_URL, loadPinnedChinookSqlite(demoRepo));
 }
 
@@ -66,6 +78,6 @@ export async function installPinnedChinookComparison(context: BrowserContext): P
   await servePinnedFixture(
     context,
     CHINOOK_COMPARE_URL,
-    readPinnedFixture('chinook-compare.sqlite', CHINOOK_SQLITE_BYTES, CHINOOK_COMPARE_SHA256),
+    readPinnedFixture(`chinook-candidate-${CHINOOK_COMPARE_SHA256}.sqlite`, CHINOOK_SQLITE_BYTES, CHINOOK_COMPARE_SHA256),
   );
 }

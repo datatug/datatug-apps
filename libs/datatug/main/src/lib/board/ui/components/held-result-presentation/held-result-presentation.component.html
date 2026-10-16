@@ -175,24 +175,24 @@
         </nav>
       }
     }
-      @if (selectedValues) {
-        <aside
-          #selectedDetails
-          class="inspection"
-          tabindex="-1"
-          aria-label="Selected row details"
-        >
-          <h3>Row {{ selectedRow()! + 1 }}</h3>
-          <dl>
-            @for (column of result.recordset.columns; track $index) {
-              <div>
-                <dt>{{ column.name }}</dt>
-                <dd>{{ display(selectedValues[$index]) }}</dd>
-              </div>
-            }
-          </dl>
-        </aside>
-      }
+    @if (selectedValues) {
+      <aside
+        #selectedDetails
+        class="inspection"
+        tabindex="-1"
+        aria-label="Selected row details"
+      >
+        <h3>Row {{ selectedRow()! + 1 }}</h3>
+        <dl>
+          @for (column of result.recordset.columns; track $index) {
+            <div>
+              <dt>{{ column.name }}</dt>
+              <dd>{{ display(selectedValues[$index]) }}</dd>
+            </div>
+          }
+        </dl>
+      </aside>
+    }
     <details class="source-details">
       <summary>Source and usage details</summary>
       <dl>
@@ -207,7 +207,9 @@
             {{
               publicApiReceipt
                 ? 'Browser public API'
-                : (result.provenance.executionProfile || 'not reported')
+                : sqliteReceipt
+                  ? 'Browser SQLite'
+                  : result.provenance.executionProfile || 'not reported'
             }}
           </dd>
         </div>
@@ -232,6 +234,12 @@
             Source usage rights are unavailable for this public result.
           </p>
         }
+      }
+      @if (sqliteReceipt; as receipt) {
+        <p>
+          Verified SQLite snapshot · {{ receipt.fixtureBytes }} bytes · SHA-256
+          {{ receipt.fixtureSha256 }}
+        </p>
       }
       <sneat-datatug-source-rights-notice [evidence]="result" />
     </details>

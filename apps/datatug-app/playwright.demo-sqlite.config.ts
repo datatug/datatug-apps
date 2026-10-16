@@ -3,7 +3,8 @@ import { defineConfig, devices } from '@playwright/test';
 // /demo/sqlite/<dataset>: a DemoDB SQLite file opened as an editable copy in the browser (OPFS, a dataset
 // worker, Web Locks leader election). The suite runs the real BUILT app (`serve:production`, so the worker and
 // sqlite3.wasm are the bundled ones) in Chromium, Firefox and WebKit. The edited-copy Board to Query acceptance
-// uses the exact pinned Chinook bytes at the admitted URL; other cases read live demodb.dev files. Nothing here
+// imports the exact pinned Chinook bytes at its public URL, then uses the built app's admitted relative
+// asset for saved-query execution; other cases read live demodb.dev files. Nothing here
 // replaces the OVDB server, the worker or the database. WebKit's default Playwright context has
 // no OPFS, so there the suite asserts the in-memory behaviour instead (see demo-sqlite.spec.ts).
 const port = process.env['DATATUG_E2E_SQLITE_PORT'] || '4333';

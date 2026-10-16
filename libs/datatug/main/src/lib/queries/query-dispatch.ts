@@ -62,6 +62,7 @@ export interface QueryConnectionDescriptor {
   readonly browserFixture?: {
     readonly url?: string;
     readonly bytes?: number;
+    readonly sourceRights?: { readonly url: string; readonly bytes: number; readonly sha256: string };
   };
 }
 

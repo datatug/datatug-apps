@@ -91,3 +91,22 @@ export function projectPageCommands(
   const [first, ...rest] = path.slice(1).split('/').map(decodeURIComponent);
   return [`/${first}`, ...rest];
 }
+
+/** Whether the store is a local agent (`http-127.0.0.1:<port>`, `localhost:<port>`, `[::1]`). */
+export function isLoopbackStore(storeId: string): boolean {
+  return /^(?:https?-)?(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/.test(
+    storeId,
+  );
+}
+
+/** A parameter of the route or of one of its ancestors (the store id is a parameter of `store/:storeId`). */
+export function routeParam(
+  route: ActivatedRouteSnapshot,
+  key: string,
+): string | undefined {
+  for (const r of [...(route.pathFromRoot ?? []), route].reverse()) {
+    const value = r.paramMap?.get(key);
+    if (value) return value;
+  }
+  return undefined;
+}

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { CUSTOM_ELEMENTS_SCHEMA, PLATFORM_ID, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -11,23 +13,7 @@ import {
 } from '@datatug/board-models';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
-import {
-  executeSavedPublicChartQuery,
-  executeSavedPublicInspectQuery,
-} from '../../../../queries/public-data/public-chart-query';
 import { HeldResultPresentationComponent } from '../held-result-presentation/held-result-presentation.component';
-
-vi.mock('../../../../queries/public-data/public-chart-query', () => ({
-  isSavedPublicChartQueryId: (id: string) =>
-    [
-      'demodb/northwind-orders-full-sqlite',
-      'demodb/northwind-shipping-country-count-sqlite',
-    ].includes(id),
-  isSavedPublicInspectQueryId: (id: string) =>
-    id === 'demodb/northwind-shipping-country-count-postgresql',
-  executeSavedPublicChartQuery: vi.fn(),
-  executeSavedPublicInspectQuery: vi.fn(),
-}));
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
 import { QueryDispatchError } from '../../../../queries/query-dispatch';
@@ -61,8 +47,6 @@ describe('BoardWidgetComponent', () => {
   beforeEach(async () => {
     getQuery.mockReset();
     run.mockReset();
-    vi.mocked(executeSavedPublicChartQuery).mockReset();
-    vi.mocked(executeSavedPublicInspectQuery).mockReset();
     availableWorkingCopies.mockReset().mockResolvedValue([]);
     runtimeRevision = signal(0);
     authState = new BehaviorSubject<{
@@ -1013,7 +997,7 @@ describe('BoardWidgetComponent', () => {
     await pending;
     expect(run).not.toHaveBeenCalled();
   });
-  const publicQueryId = 'demodb/northwind-shipping-country-count-sqlite';
+  const publicQueryId = 'reports/shipping-counts';
   const countryWidget: BoardWidget = {
     name: 'chart',
     data: {
@@ -1032,7 +1016,7 @@ describe('BoardWidgetComponent', () => {
       id: publicQueryId,
       title: 'Countries',
       connectionId: 'northwind-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'saved DTQL' },
+      request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry' },
     };
     getQuery.mockReturnValue(of(definition));
     const board = {
@@ -1052,8 +1036,9 @@ describe('BoardWidgetComponent', () => {
     return { board, readBoard, definition };
   }
   function countryResult() {
+    const rights = JSON.parse(readFileSync(resolve(process.cwd(), 'libs/datatug/main/src/lib/queries/test-fixtures/browser-sqlite/northwind-source-rights.json'), 'utf8'));
     return {
-      runtime: 'browser-public-api' as const,
+      runtime: 'browser-sqlite' as const,
       complete: true,
       hasMore: false,
       truncated: false,
@@ -1071,48 +1056,38 @@ describe('BoardWidgetComponent', () => {
       },
       limitations: [],
       bindingsApplied: [],
-      sourceRights: [],
-      usedSourceIds: [],
+      sourceRights: rights.sourceRights,
+      usedSourceIds: rights.usedSourceIds,
       provenance: {
         source: 'northwind',
         collection: 'Orders',
         queryId: publicQueryId,
-        mode: 'live' as const,
+        mode: 'snapshot' as const,
         observedAt: '2026-10-16T14:00:00Z',
         endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
         databaseId: 'northwind',
       },
-      publicApiReceipt: {
-        endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
-        serverId: 'https://demodb.dev/ovdb',
-        databaseId: 'northwind',
-        logicalCollection: 'Orders',
-        collectionId: 'Orders',
-        queryId: publicQueryId,
-        rowsReturned: 1,
+      sqliteReceipt: {
+        fixtureSha256: rights.sourceRights[0].pins[0].sha256, fixtureBytes: 602112,
+        sourceId: rights.usedSourceIds[0], queryId: publicQueryId, rowsReturned: 1,
         observedAt: '2026-10-16T14:00:00Z',
-        sourceVerification: {
-          kind: 'execution-source' as const,
-          executionSources: [{ database: 'northwind', collection: 'Orders' }],
-        },
       },
     };
   }
 
   it('automatically executes a visible saved showcase chart once and switches held chart/grid without fetching', async () => {
     const { readBoard } = configureShowcase();
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
       expect(fixture.componentInstance.running()).toBe(false),
     );
     await vi.waitFor(() =>
-      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+      expect(run).toHaveBeenCalledTimes(1),
     );
     await fixture.whenStable();
     expect(readBoard).toHaveBeenCalledTimes(1);
-    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
     const held = fixture.debugElement.query(
       By.directive(HeldResultPresentationComponent),
     ).componentInstance as HeldResultPresentationComponent;
@@ -1121,7 +1096,7 @@ describe('BoardWidgetComponent', () => {
     fixture.detectChanges();
     held.view.set('chart');
     fixture.detectChanges();
-    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
     expect(getQuery).toHaveBeenCalledTimes(2);
   });
 
@@ -1140,7 +1115,7 @@ describe('BoardWidgetComponent', () => {
         'This board card changed.',
       ),
     );
-    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
     expect(fixture.componentInstance.runError()).toContain(
       'This board card changed.',
     );
@@ -1149,7 +1124,7 @@ describe('BoardWidgetComponent', () => {
   it('aborts a stale public chart and ignores its late completion after environment changes', async () => {
     configureShowcase();
     let finish!: (result: ReturnType<typeof countryResult>) => void;
-    vi.mocked(executeSavedPublicChartQuery).mockImplementation(
+    run.mockImplementation(
       () =>
         new Promise((resolve) => {
           finish = resolve;
@@ -1157,10 +1132,9 @@ describe('BoardWidgetComponent', () => {
     );
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+      expect(run).toHaveBeenCalledTimes(1),
     );
-    const signal = vi.mocked(executeSavedPublicChartQuery).mock.calls[0][2]
-      ?.signal;
+    const signal = run.mock.calls[0][0]?.signal;
     fixture.componentRef.setInput('boardContext', { environment: 'different' });
     fixture.detectChanges();
     expect(signal?.aborted).toBe(true);
@@ -1182,10 +1156,10 @@ describe('BoardWidgetComponent', () => {
       },
     };
     configureShowcase(widget);
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+      expect(run).toHaveBeenCalledTimes(1),
     );
     await fixture.whenStable();
     const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
@@ -1196,7 +1170,7 @@ describe('BoardWidgetComponent', () => {
     tabs.select('id:first');
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
     fixture.componentRef.setInput('cardId', 'different-card');
     fixture.detectChanges();
     expect(fixture.componentInstance.result()).toBeUndefined();
@@ -1210,61 +1184,46 @@ describe('BoardWidgetComponent', () => {
     });
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
     expect(run).not.toHaveBeenCalled();
   });
-  it('uses the verified public API when the selected environment has a browser default target', async () => {
+  it('dispatches saved SQL with the selected browser target', async () => {
     configureShowcase();
     fixture.componentRef.setInput('boardContext', {
       environment: 'dev',
       executionTarget: { kind: 'browser-sqlite' },
     });
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+      expect(run).toHaveBeenCalledTimes(1),
     );
-    expect(run).not.toHaveBeenCalled();
   });
 
-  it('rejects an incompatible explicit target without silently dispatching a public chart elsewhere', async () => {
+  it('dispatches an explicit target and displays its runtime validation failure', async () => {
     configureShowcase();
-    fixture.componentRef.setInput('boardContext', {
-      environment: 'dev',
-      executionTarget: { kind: 'hosted-cloud' },
-    });
+    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'hosted-cloud' } });
+    run.mockRejectedValue(new QueryDispatchError('Hosted execution requires a shared cloud project.'));
     fixture.detectChanges();
-    await vi.waitFor(() =>
-      expect(fixture.componentInstance.runError()).toContain(
-        'requires the public API runtime',
-      ),
-    );
-    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('Hosted execution requires'));
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'hosted-cloud' } }));
   });
 
-  it('runs the PostgreSQL inspector independently with no SQLite rights or bar controls', async () => {
-    const queryId = 'demodb/northwind-shipping-country-count-postgresql';
+  it('runs a separate saved inspector query through the dispatcher with no bar controls', async () => {
+    const queryId = 'reports/country-inspector';
     configureShowcase({ name: 'SQL', data: { sql: { queryId } } });
     getQuery.mockReturnValue(
       of({
         id: queryId,
-        title: 'PostgreSQL countries',
-        connectionId: 'northwind-postgresql',
-        request: { queryType: QueryType.DTQL, text: 'saved postgres DTQL' },
+        title: 'Country inspector',
+        connectionId: 'northwind-sqlite',
+        request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry' },
       }),
     );
-    vi.mocked(executeSavedPublicInspectQuery).mockResolvedValue({
-      ...countryResult(),
-      sourceRights: [],
-      usedSourceIds: ['postgresql-orders'],
-      rightsStatus: 'unavailable',
-      rightsUnavailableReason:
-        'No verified publisher source rights are available for this PostgreSQL result.',
-    });
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(executeSavedPublicInspectQuery).toHaveBeenCalledTimes(1),
+      expect(run).toHaveBeenCalledTimes(1),
     );
     await vi.waitFor(() =>
       expect(fixture.componentInstance.running()).toBe(false),
@@ -1276,13 +1235,12 @@ describe('BoardWidgetComponent', () => {
     expect(presentation.fields).toBeNull();
     expect(presentation.view()).toBe('grid');
     expect(fixture.nativeElement.textContent).toContain(
-      'Source usage rights are unavailable',
+      'Source and usage details',
     );
-    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled();
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the same race instance and playback choices across chart/source row switches', async () => {
+  it('keeps the race visible before accessible source terms and preserves playback across chart/source row switches', async () => {
     configureShowcase({
       name: 'chart',
       data: {
@@ -1318,7 +1276,7 @@ describe('BoardWidgetComponent', () => {
         cumulative: mode('cumulative'),
       } as unknown as BarRaceChartViews,
     });
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     const chart = fixture.debugElement.query(
       By.directive(BarRaceChartComponent),
@@ -1327,10 +1285,23 @@ describe('BoardWidgetComponent', () => {
     expect(chart.topN()).toBe(15);
     chart.next();
     chart.topN.set(7);
-    fixture.componentInstance.chartView.set('grid');
+    const switchGroup = fixture.nativeElement.querySelector(
+      '[aria-label="Chart result view"]',
+    ) as HTMLElement;
+    const chartElement = fixture.nativeElement.querySelector(
+      'datatug-bar-race-chart',
+    ) as HTMLElement;
+    expect(
+      switchGroup.compareDocumentPosition(chartElement) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+    (switchGroup.querySelectorAll('button')[1] as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(chart.active).toBe(false);
-    fixture.componentInstance.chartView.set('chart');
+    expect(
+      switchGroup.querySelectorAll('button')[1].getAttribute('aria-pressed'),
+    ).toBe('true');
+    (switchGroup.querySelectorAll('button')[0] as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(
       fixture.debugElement.query(By.directive(BarRaceChartComponent))
@@ -1340,8 +1311,20 @@ describe('BoardWidgetComponent', () => {
     expect(chart.mode()).toBe('cumulative');
     expect(chart.topN()).toBe(7);
     await vi.waitFor(() =>
-      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+      expect(run).toHaveBeenCalledTimes(1),
     );
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.result()).toBeDefined(),
+    );
+    fixture.detectChanges();
+    const terms = fixture.nativeElement.querySelector('details.chart-source-terms') as HTMLDetailsElement;
+    expect(chartElement.compareDocumentPosition(terms) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(terms.open).toBe(false);
+    const summary = terms.querySelector('summary') as HTMLElement;
+    expect(summary.textContent?.trim()).toBe('Source data terms');
+    summary.click();
+    expect(terms.open).toBe(true);
+    expect(terms.querySelector('[aria-label="Source data terms"]')?.textContent).toContain('MIT');
   });
 
   function configureBoundChart(bindings: unknown, countryType = 'string') {
@@ -1430,12 +1413,12 @@ describe('BoardWidgetComponent', () => {
       configureBoundChart(bindings);
       await fixture.componentInstance.run();
       expect(run).not.toHaveBeenCalled();
-      expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+      expect(run).not.toHaveBeenCalled();
       expect(fixture.componentInstance.runError()).toBeTruthy();
     },
   );
 
-  it('rejects parameterized pinned public execution before requesting an unbound query', async () => {
+  it('dispatches declared saved SQL parameters without a query-ID-specific profile', async () => {
     configureShowcase({
       name: 'chart',
       data: {
@@ -1454,18 +1437,15 @@ describe('BoardWidgetComponent', () => {
         id: publicQueryId,
         title: 'Bound public query',
         connectionId: 'northwind-sqlite',
-        request: { queryType: QueryType.DTQL, text: 'saved DTQL' },
+        request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry' },
         parameters: [{ id: 'limit', type: 'integer' }],
       }),
     );
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
-    await vi.waitFor(() =>
-      expect(fixture.componentInstance.runError()).toContain(
-        'does not support chart parameter bindings',
-      ),
-    );
-    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
-    expect(run).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({
+      parameters: { limit: { type: 'integer', value: '5' } },
+    })));
   });
   it('rejects unsupported chart parameter types rather than relabeling them as strings', async () => {
     configureBoundChart(
@@ -1503,7 +1483,7 @@ describe('BoardWidgetComponent', () => {
     });
   });
   it('executes a session-authored saved-query tab after canonical replay, and refuses remote revision drift', async () => {
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     await router.navigateByUrl('/?mode=tutoril');
     const root: BoardWidget = {
       name: 'tabs',
@@ -1543,23 +1523,23 @@ describe('BoardWidgetComponent', () => {
     });
     fixture.componentRef.setInput('widgetPath', ['id:mine']);
     await router.navigateByUrl('/?mode=tutoril');
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
       expect(fixture.componentInstance.result()).toBeTruthy(),
     );
-    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
     expect(fixture.componentInstance.sessionOnly()).toBe(true);
     board.title = 'Changed remotely';
     await fixture.componentInstance.run();
     expect(fixture.componentInstance.runError()).toContain(
       'This board card changed.',
     );
-    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
   });
 
   it('keeps the admitted snapshot for session views and invalidates it when leaving the active tutorial', async () => {
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     await router.navigateByUrl('/?mode=tutorial');
     const canonical = {
       id: 'showcase',
@@ -1580,7 +1560,7 @@ describe('BoardWidgetComponent', () => {
     const runtime = TestBed.inject(TutorialBoardRuntime);
     runtime.publish(ref, session, () => undefined);
     await router.navigateByUrl('/?mode=tutorial');
-    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
       expect(fixture.componentInstance.result()).toBeTruthy(),
@@ -1597,12 +1577,12 @@ describe('BoardWidgetComponent', () => {
       await fixture.whenStable();
       expect(fixture.componentInstance.result()).toBe(held);
     }
-    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(run).toHaveBeenCalledTimes(1);
     expect(getQuery).toHaveBeenCalledTimes(2);
     let resolveNormal:
       | ((result: ReturnType<typeof countryResult>) => void)
       | undefined;
-    vi.mocked(executeSavedPublicChartQuery).mockImplementationOnce(
+    run.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
           resolveNormal = resolve;
@@ -1613,7 +1593,7 @@ describe('BoardWidgetComponent', () => {
     await router.navigateByUrl('/');
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(2),
+      expect(run).toHaveBeenCalledTimes(2),
     );
     expect(fixture.componentInstance.sessionOnly()).toBe(false);
     expect(fixture.componentInstance.result()).toBeUndefined();

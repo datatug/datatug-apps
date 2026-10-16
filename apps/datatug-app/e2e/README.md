@@ -70,7 +70,7 @@ two-fixture comparison. It uses the iPhone 13 browser profile and also checks
 Safari testing is a separate check. The default CI projects remain unchanged.
 
 ```sh
-# Use a clean checkout of demo revision 11d88a220354859c6f3d11d62ac02c86c6e2a325
+# Use a clean checkout of demo revision f65e3bdd2c6aff994b83408c79e843b945892ff5
 # (the CI browser catalog pin) and an unused local port.
 DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
   pnpm nx run datatug-app:e2e-query-mobile
@@ -137,6 +137,12 @@ Without `DATATUG_BIN` or `DATATUG_CLI_DIR` every test is skipped. CI runs it in 
 repository variable `DATATUG_LINKS_CLI_REF` names a datatug release that has those routes. It refuses to run when
 another DataTug API already listens on port 8989 (the daemon would adopt it). The https-to-loopback path of the
 hosted UI is not exercised here; that is the reach script of the plan.
+
+`result-editor.spec.ts` covers the Table view of a stored query result, which is the query editor
+(`/project/<p>/query?result=<id>`): the saved rows in the shared results grid, the "Saved result from" strip, the
+Prompt section, the other result views and Back. Its checks of the query text and the prompt need a CLI with the
+editor-ready result members and `query results annotate` (datatug-cli #431, after v0.100.1); against an older binary
+they are skipped and the strip's "older DataTug" message is asserted instead.
 
 ## Running the journey suite
 

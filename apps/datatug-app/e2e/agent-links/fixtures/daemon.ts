@@ -47,6 +47,10 @@ export interface LinkDaemon {
   readonly supportsResults: boolean;
   /** Stores a query result under `id` with `datatug query run <args> --result-id <id>` (no row reaches stdout). */
   writeResult(id: string, args: readonly string[]): void;
+  /** Whether the binary records a prompt on a stored result (the `annotate` verb of `results`, datatug-cli#431). */
+  readonly supportsPrompt: boolean;
+  /** Records `text` as the prompt of the stored result `id` (the text goes in on stdin, never in an argument). */
+  annotate(id: string, text: string): void;
   /** A fresh link to a stored result, minted by `datatug daemon url --result`. */
   resultLink(id: string, view?: string, row?: number): string;
   /** Stops the daemon (for the agent-unreachable state); `start()` starts it again. */
@@ -157,9 +161,20 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
       };
       const port = start();
       const help = spawnSync(bin.value, ['daemon', 'url', '--help'], { env, cwd, encoding: 'utf8' });
+      const storeHelp = spawnSync(bin.value, ['query', 'results', '--help'], { env, cwd, encoding: 'utf8' });
       const daemon: LinkDaemon = {
         port,
         supportsResults: `${help.stdout}${help.stderr}`.includes('--result'),
+        supportsPrompt: `${storeHelp.stdout}${storeHelp.stderr}`.includes('annotate'),
+        annotate: (id, text) => {
+          const r = spawnSync(
+            bin.value,
+            ['query', 'results', 'annotate', '--id', id, '--prompt-stdin'],
+            { env, cwd, input: text, encoding: 'utf8' },
+          );
+          // Neither the text nor the CLI's output is put in the message.
+          if (r.status !== 0) throw new Error(`annotating a result exited ${r.status}`);
+        },
         writeResult: (id, args) => {
           const out = run(['query', 'run', ...args, '--result-id', id, '--format', 'json']);
           expect(out['resultFiles']).toBeDefined();

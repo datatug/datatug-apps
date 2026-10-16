@@ -32,6 +32,8 @@ export const RESULT_VIEWS = [
 export type ResultView = (typeof RESULT_VIEWS)[number];
 
 export const VIEW_QUERY_PARAM = 'view';
+/** The query editor's query parameter that names the stored result to open it from. */
+export const RESULT_QUERY_PARAM = 'result';
 export const ROW_QUERY_PARAM = 'row';
 
 /** The `view` query parameter: one of {@link RESULT_VIEWS}, `table` for anything else. */
@@ -127,6 +129,8 @@ export interface ResultRelated {
 
 export interface ResultUnavailable {
   readonly query?: string;
+  /** `too-large`: the editor-ready members (`query.text`, `query.params`) were dropped for size. */
+  readonly editor?: string;
   readonly columns?: string;
   readonly participants?: string;
   readonly related?: string;
@@ -154,9 +158,29 @@ export interface ResultRecordset {
   readonly rows: readonly (readonly TypedValue[])[];
 }
 
+/** What the query editor needs to open the result's query (CLI `query.text`, `language`, `dbRef`, `params`). */
+export interface ResultEditor {
+  /** The canonical query text; absent in an older result, a saved HTTP query, or when it was too large. */
+  readonly text?: string;
+  readonly language?: 'dtql' | 'sql' | 'http';
+  /** The `datatug://<project>/<db>?env=<env>` reference of the database. */
+  readonly dbRef?: string;
+  /** Each value is a TypedValue or a set `{type: 'set', values: TypedValue[]}`. */
+  readonly params: readonly { readonly name: string; readonly value: unknown }[];
+}
+
+/** The request that produced the result (CLI `query results annotate`), plain text. */
+export interface ResultPrompt {
+  readonly text: string;
+  readonly truncated: boolean;
+}
+
 export interface StoredResult {
   readonly meta: ResultMeta;
   readonly recordset: ResultRecordset;
+  /** Absent fields are an older agent's or result's: the page then shows the rows and the saved metadata only. */
+  readonly editor: ResultEditor;
+  readonly prompt?: ResultPrompt;
 }
 
 /** The answer is not a result this page can read: a metadata format or version it does not know. */
@@ -296,6 +320,9 @@ export function decodeStoredResult(response: unknown): StoredResult {
       ...(typeof unavailable['query'] === 'string'
         ? { query: unavailable['query'] }
         : {}),
+      ...(typeof unavailable['editor'] === 'string'
+        ? { editor: unavailable['editor'] }
+        : {}),
       ...(typeof unavailable['columns'] === 'string'
         ? { columns: unavailable['columns'] }
         : {}),
@@ -310,7 +337,37 @@ export function decodeStoredResult(response: unknown): StoredResult {
         : {}),
     },
   };
-  return { meta, recordset: decodeRecordset(r['recordset']) };
+  return {
+    meta,
+    recordset: decodeRecordset(r['recordset']),
+    editor: decodeEditor(r['query'], q),
+    ...decodePrompt(r['prompt'], m['prompt']),
+  };
+}
+
+/** The editor-ready members of the answer's top-level `query` (else of `meta.query`, which holds the same). */
+function decodeEditor(top: unknown, fromMeta: Obj): ResultEditor {
+  const q = top && typeof top === 'object' && !Array.isArray(top) ? obj(top) : fromMeta;
+  const language = q['language'];
+  return {
+    ...(typeof q['text'] === 'string' && q['text'] ? { text: q['text'] } : {}),
+    ...(language === 'dtql' || language === 'sql' || language === 'http'
+      ? { language }
+      : {}),
+    ...(typeof q['dbRef'] === 'string' && q['dbRef'] ? { dbRef: q['dbRef'] } : {}),
+    params: list(q['params'])
+      .filter((p) => typeof p['name'] === 'string' && p['name'] !== '')
+      .map((p) => ({ name: p['name'] as string, value: p['value'] })),
+  };
+}
+
+/** The prompt as plain text (top-level `prompt`) and whether it was cut (`meta.prompt.truncated`). */
+function decodePrompt(top: unknown, fromMeta: unknown): { prompt?: ResultPrompt } {
+  const meta = obj(fromMeta);
+  const text = typeof top === 'string' ? top : str(meta['text']);
+  return text
+    ? { prompt: { text, truncated: meta['truncated'] === true } }
+    : {};
 }
 
 /** A contract recordset `{columns: [{name, type}], rows: [[TypedValue]]}`; a cell that is not one is shown empty. */

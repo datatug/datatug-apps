@@ -23,11 +23,13 @@ Deployment uses a separate comparison against the last **actual successful appli
 Nightly CI runs the Chromium app, Query mobile WebKit, checkout, demo, and real-agent suites in separate jobs after build. Its `e2e` aggregate reports their combined verdict, including the optional card-link suite when its CLI ref is configured. It does not block landing or deployment. Run focused browser and CLI journeys for the behavior changed by a branch against its final head.
 
 The Chromium app, Query mobile WebKit, and demo SQLite jobs use the validated demo catalog revision
-`11d88a220354859c6f3d11d62ac02c86c6e2a325` through the fake GitHub
+`f65e3bdd2c6aff994b83408c79e843b945892ff5` through the fake GitHub
 reader. The app job verifies GitHub's API, tree and raw source at that same
 commit. The demo SQLite job includes the edited-copy Board to Query acceptance
-in its existing three-browser suite and serves only that case's Chinook download
-from the hash-checked bytes at the admitted URL; its other dataset checks remain
-live. Advance this pin together with app runtime and bundled asset support
-when the demo catalog's fixture URL contract changes. Other demo checkouts are
-independent of this browser catalog pin.
+in its existing three-browser suite. The demo catalog admits the relative
+bundled Chinook asset and rights sidecar; the app serves those exact checked
+bytes and the real SQLite worker executes them. The standalone `/demo/sqlite`
+import and comparison baseline still use their declared public URLs, served
+from the same checked-in bundled bytes only in focused browser journeys.
+Other live dataset checks and demo checkouts remain independent of this
+browser catalog pin.

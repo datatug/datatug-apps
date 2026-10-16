@@ -1,0 +1,21 @@
+{
+  "format": "datatug-bundled-sqlite-source-authorities/v1",
+  "publications": [
+    {
+      "url": "/assets/showcase/northwind-source-rights.json",
+      "sha256": "523f610b513473d166f4afe0c5c0c77e10e291f1baebcc3cadf556b5a8ac7a82",
+      "bytes": 1405,
+      "fixtureSha256": "279b34136771aee75d802094b3329515a2b01da65d2a20a4a9e3b58c29b4fd20",
+      "fixtureBytes": 602112,
+      "sourceId": "ovdb:https%3A%2F%2Fgithub.com%2Fdemo-db%2Fnorthwind/northwind"
+    },
+    {
+      "url": "/assets/showcase/chinook-source-rights.json",
+      "sha256": "41cc624d2cfc9396dbaad7eef3f7d0d187de8e1949e17e25830abe7072a46ea0",
+      "bytes": 1348,
+      "fixtureSha256": "7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15",
+      "fixtureBytes": 1007616,
+      "sourceId": "ovdb:https%3A%2F%2Fgithub.com%2Fdemo-db%2Fchinook/chinook"
+    }
+  ]
+}

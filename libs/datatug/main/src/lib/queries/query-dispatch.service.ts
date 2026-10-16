@@ -100,10 +100,12 @@ export class QueryDispatchService {
     const matches = catalog?.connections?.filter((item) => item.id === connectionId) ?? [];
     if (matches.length !== 1) throw new QueryDispatchError('The saved query connection is missing or ambiguous in this project.');
     const declaration = matches[0];
-    if (!request.environment && (declaration.environment !== undefined || declaration.environments !== undefined))
+    const environment = request.environment ?? (declaration.storage === 'sqlite' && declaration.browserFixture &&
+      request.definition.request.queryType === QueryType.SQL && declaration.environments?.length === 1 ? declaration.environments[0] : undefined);
+    if (!environment && (declaration.environment !== undefined || declaration.environments !== undefined))
       throw new QueryDispatchError('Select an environment for this saved connection before running the query.');
-    if (declaration.environment !== undefined && declaration.environment !== request.environment ||
-      declaration.environments !== undefined && (!request.environment || !declaration.environments.includes(request.environment)))
+    if (declaration.environment !== undefined && declaration.environment !== environment ||
+      declaration.environments !== undefined && (!environment || !declaration.environments.includes(environment)))
       throw new QueryDispatchError('The selected connection is unavailable in this environment.');
     return declaration;
   }
@@ -118,7 +120,9 @@ export class QueryDispatchService {
       : captured.runtimeBinding;
     if (captured.runtimeSelectionId && !binding)
       throw new QueryDispatchError('The selected working copy is closed or no longer matches this project connection.');
-    const boundRequest = binding ? { ...captured, runtimeBinding: binding } : captured;
+    const environment = captured.environment ?? (connection?.storage === 'sqlite' && connection.browserFixture &&
+      captured.definition.request.queryType === QueryType.SQL && connection.environments?.length === 1 ? connection.environments[0] : undefined);
+    const boundRequest = { ...captured, ...(environment ? { environment } : {}), ...(binding ? { runtimeBinding: binding } : {}) };
     return { request: boundRequest, plan: resolveQueryDispatchPlan(boundRequest, connection ? { connections: [connection] } : undefined) };
   }
 

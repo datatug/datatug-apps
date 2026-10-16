@@ -67,14 +67,6 @@ test.describe('query result link', () => {
       'CustomerId',
     );
 
-    await page.getByTestId('result-view-table').click();
-    await expect(
-      page.getByTestId('result-table').locator('.ag-header-cell-text').first(),
-    ).toBeVisible();
-    await expect(
-      page.getByTestId('result-table').locator('.ag-row'),
-    ).toHaveCount(5);
-
     await page.getByTestId('result-view-record').click();
     await expect(page.getByTestId('author-current-row')).toContainText(
       'Position 1',
@@ -123,7 +115,7 @@ test.describe('query result link', () => {
     );
   });
 
-  test('Back with no history goes to the project of the result', async ({
+  test('Back of a result page with no history goes to the project of the result', async ({
     page,
     linkDaemon,
   }) => {
@@ -136,7 +128,7 @@ test.describe('query result link', () => {
       '2',
       '--no-policies',
     ]);
-    await page.goto(linkDaemon.resultLink('e2e-back', 'table'));
+    await page.goto(linkDaemon.resultLink('e2e-back', 'columns'));
     await expect(page.locator('sneat-datatug-project-menu')).toContainText(
       'Queries',
       { timeout: 30_000 },
@@ -165,13 +157,14 @@ test.describe('query result link', () => {
       if (r.url().endsWith('/datatug/exec/run_query'))
         runs.push(r.postData() ?? '');
     });
-    await page.goto(linkDaemon.resultLink('e2e-rerun'));
+    // A view other than the table: the table view of a result is the query editor (result-editor.spec.ts).
+    await page.goto(linkDaemon.resultLink('e2e-rerun', 'columns'));
     await expect(page.getByTestId('result-summary')).toContainText(
       '3 saved rows',
       { timeout: 30_000 },
     );
+    await page.getByTestId('result-view-record').click();
     await page.getByTestId('result-view-columns').click();
-    await page.getByTestId('result-view-table').click();
     expect(runs).toHaveLength(0);
 
     await page.getByTestId('result-run-again').click();
@@ -267,7 +260,7 @@ test.describe('query result link', () => {
       '--no-policies',
     ]);
     // Exchange a code first (the session token is then held for this agent), then ask for a result that is not there.
-    const link = linkDaemon.resultLink('e2e-known');
+    const link = linkDaemon.resultLink('e2e-known', 'columns');
     await page.goto(link);
     await expect(page.getByTestId('result-summary')).toBeVisible({
       timeout: 30_000,
