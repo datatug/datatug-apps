@@ -7,7 +7,7 @@
       }
     </ion-buttons>
     <ion-title>{{
-      section() === 'sessions' ? 'Sample Session' : 'Sample Incident'
+      sectionKind() === 'sessions' ? 'Sample Session' : 'Sample Incident'
     }}</ion-title>
   </ion-toolbar>
 </ion-header>
@@ -23,7 +23,7 @@
     >
       <h1 id="sample-unavailable-heading">
         Sample
-        {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }} unavailable
+        {{ sectionKind() === 'sessions' ? 'Sessions' : 'Incidents' }} unavailable
       </h1>
       <ion-card
         ><ion-card-content role="status"
@@ -41,7 +41,7 @@
       aria-labelledby="sample-list-heading"
     >
       <h1 id="sample-list-heading">
-        Sample {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }}
+        Sample {{ sectionKind() === 'sessions' ? 'Sessions' : 'Incidents' }}
       </h1>
       <p>
         Curated, read-only examples from the Chinook demo. These are sample
@@ -52,7 +52,7 @@
       >
       <ion-list
         [attr.aria-label]="
-          section() === 'sessions' ? 'Sample Sessions' : 'Sample Incidents'
+          sectionKind() === 'sessions' ? 'Sample Sessions' : 'Sample Incidents'
         "
       >
         <ion-item [routerLink]="exampleHref()" detail>
@@ -68,7 +68,7 @@
     <section class="detective-page" aria-labelledby="sample-missing-heading">
       <h1 id="sample-missing-heading">
         Sample
-        {{ section() === 'sessions' ? 'Session' : 'Incident' }} unavailable
+        {{ sectionKind() === 'sessions' ? 'Session' : 'Incident' }} unavailable
       </h1>
       <ion-card
         ><ion-card-content role="status"
@@ -78,7 +78,7 @@
       >
       <ion-button fill="outline" [routerLink]="listHref()"
         >Back to
-        {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }}</ion-button
+        {{ sectionKind() === 'sessions' ? 'Sessions' : 'Incidents' }}</ion-button
       >
     </section>
   } @else {
@@ -89,7 +89,7 @@
       <h1 id="sample-detail-heading">{{ sample().title }}</h1>
       <ion-note class="scope-note"
         >Read-only sample
-        {{ section() === 'sessions' ? 'Session' : 'Incident' }} · public demo ·
+        {{ sectionKind() === 'sessions' ? 'Session' : 'Incident' }} · public demo ·
         no saved changes</ion-note
       >
       <ion-card
@@ -142,7 +142,7 @@
       >
       <ion-button fill="outline" [routerLink]="listHref()"
         >Back to
-        {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }}</ion-button
+        {{ sectionKind() === 'sessions' ? 'Sessions' : 'Incidents' }}</ion-button
       >
       <ng-container [ngTemplateOutlet]="continuation" />
     </article>
@@ -150,7 +150,7 @@
   <ng-template #continuation>
     <ion-card>
       <ion-card-content>
-        @if (section() === 'sessions') {
+        @if (sectionKind() === 'sessions') {
           <p>
             Continue in a private Detective demo with saved Sessions after
             sign-in. This sample makes no saved changes.

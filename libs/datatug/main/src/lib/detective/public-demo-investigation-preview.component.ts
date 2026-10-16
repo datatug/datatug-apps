@@ -79,10 +79,7 @@ const SAMPLES = {
   styleUrl: './public-demo-investigation-preview.component.scss',
 })
 export class PublicDemoInvestigationPreviewComponent {
-  readonly sectionInput = input<PublicDemoInvestigationSection | undefined>(
-    undefined,
-    { alias: 'section' },
-  );
+  readonly section = input<PublicDemoInvestigationSection | undefined>();
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly navContext = inject(DatatugNavContextService);
@@ -98,9 +95,9 @@ export class PublicDemoInvestigationPreviewComponent {
   private readonly routeParams = toSignal(this.route.paramMap, {
     initialValue: this.route.snapshot.paramMap,
   });
-  protected readonly section = computed<PublicDemoInvestigationSection>(
+  protected readonly sectionKind = computed<PublicDemoInvestigationSection>(
     () =>
-      this.sectionInput() ??
+      this.section() ??
       (this.route.snapshot.data['section'] === 'incidents'
         ? 'incidents'
         : 'sessions'),
@@ -112,7 +109,7 @@ export class PublicDemoInvestigationPreviewComponent {
   protected readonly isCanonicalDemo = computed(() =>
     isCanonicalPublicDemo(this.projectRef()),
   );
-  protected readonly sample = computed(() => SAMPLES[this.section()]);
+  protected readonly sample = computed(() => SAMPLES[this.sectionKind()]);
   protected readonly example = computed(() =>
     this.exampleId() === this.sample().id ? this.sample() : undefined,
   );
@@ -123,11 +120,11 @@ export class PublicDemoInvestigationPreviewComponent {
   }
 
   protected listHref() {
-    return this.projectHref(this.section());
+    return this.projectHref(this.sectionKind());
   }
 
   protected exampleHref() {
-    return this.projectHref(`${this.section()}/examples/${this.sample().id}`);
+    return this.projectHref(`${this.sectionKind()}/examples/${this.sample().id}`);
   }
 
   protected queryHref() {
