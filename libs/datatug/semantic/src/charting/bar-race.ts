@@ -1,7 +1,73 @@
 import type { Result, TypedValue } from '../contract/types';
+import { decodeSourceRightsEvidence, safeTermsUrl } from '../contract/source-rights';
 
-/** Presentation input from a DataTug result. It is never a durable board field. */
-export type ChartRecordset = Result;
+export interface ChartLineage {
+  readonly output: string;
+  readonly input: string;
+  readonly operation: 'calendar-month' | 'identity' | 'distinct-count';
+}
+
+/** Execution admission and page completeness are supplied by the dispatcher. */
+interface ChartRecordsetBase extends Pick<Result,
+  'recordset' | 'limitations' | 'bindingsApplied' | 'truncated' | 'sourceRights' | 'usedSourceIds'> {
+  readonly complete: boolean;
+  readonly hasMore: boolean;
+  readonly lineage?: readonly ChartLineage[];
+  /** Original admitted API row count when this recordset contains derived rows. */
+  readonly sourceRowsReturned?: number;
+}
+
+export interface ServerChartRecordset extends ChartRecordsetBase {
+  readonly runtime: 'server';
+  readonly provenance: Result['provenance'];
+  readonly execution?: Result['execution'];
+  readonly publicApiReceipt?: never;
+}
+
+export interface PublicApiChartReceipt {
+  readonly endpoint: string;
+  /** Canonical server identity from the admitted provider descriptor, not URL hostname shorthand. */
+  readonly serverId: string;
+  readonly databaseId: string;
+  /** Human-facing collection mapped by the admitted saved query. */
+  readonly logicalCollection: string;
+  /** Physical collection from execution.sources, or the publisher's verified recordset. */
+  readonly collectionId: string;
+  readonly queryId: string;
+  readonly rowsReturned: number;
+  readonly observedAt: string;
+  readonly sourceVerification:
+    | { readonly kind: 'execution-source'; readonly executionSources: readonly { readonly database: string; readonly collection: string }[]; readonly canonicalRowsSha256?: never }
+    | { readonly kind: 'publisher-digest'; readonly executionSources?: readonly []; readonly canonicalRowsSha256: string };
+  /** Supplied only after the runtime fetches and hashes a publisher-owned artifact. */
+  readonly rightsPublication?: {
+    readonly url: string;
+    readonly sha256: string;
+    readonly sourceId: string;
+    readonly providerSourceSha256: string;
+    /** Required for a publisher-digest source without live execution.sources. */
+    readonly canonicalRowsSha256?: string;
+  };
+}
+
+export interface BrowserPublicApiChartRecordset extends ChartRecordsetBase {
+  readonly runtime: 'browser-public-api';
+  readonly provenance: {
+    readonly source: string;
+    readonly collection: string;
+    readonly queryId: string;
+    readonly mode: 'live';
+    readonly observedAt: string;
+    readonly endpoint: string;
+    readonly databaseId: string;
+    readonly executionProfile?: never;
+  };
+  readonly execution?: never;
+  readonly publicApiReceipt: PublicApiChartReceipt;
+}
+
+/** Presentation input; neither arm belongs in durable board JSON. */
+export type ChartRecordset = ServerChartRecordset | BrowserPublicApiChartRecordset;
 
 export interface ChartField {
   readonly column: string;
@@ -38,23 +104,31 @@ export interface BarRaceFrame {
   readonly entries: readonly BarRaceEntry[];
 }
 
-export interface BarRaceData {
-  /** Full source and execution profile; consumers must show limitations/truncation. */
-  readonly source: Result['provenance'];
+interface BarRaceDataBase {
   readonly limitations: Result['limitations'];
   readonly bindingsApplied: Result['bindingsApplied'];
   readonly truncated: Result['truncated'];
-  readonly execution: Result['execution'];
   readonly sourceRights: Result['sourceRights'];
   readonly usedSourceIds: Result['usedSourceIds'];
+  readonly complete: boolean;
+  readonly hasMore: boolean;
+  readonly lineage?: readonly ChartLineage[];
+  readonly sourceRowsReturned?: number;
   readonly spec: BarRaceSpec;
   readonly dimensions: readonly ChartField[];
   readonly measures: readonly ChartField[];
   readonly frames: readonly BarRaceFrame[];
 }
 
+export type BarRaceData = BarRaceDataBase & (
+  | Pick<ServerChartRecordset, 'runtime' | 'execution'> & { readonly source: ServerChartRecordset['provenance']; readonly publicApiReceipt?: never }
+  | Pick<BrowserPublicApiChartRecordset, 'runtime' | 'publicApiReceipt'> & { readonly source: BrowserPublicApiChartRecordset['provenance']; readonly execution?: never }
+);
+
 export type ChartEligibilityErrorCode =
   | 'INVALID_SPEC'
+  | 'INCOMPLETE'
+  | 'SOURCE_RIGHTS_UNAVAILABLE'
   | 'MISSING_COLUMN'
   | 'DUPLICATE_COLUMN'
   | 'DUPLICATE_CATEGORY_PERIOD'
@@ -70,6 +144,7 @@ export type BarRacePreparation =
 
 const palette = ['#2563eb', '#dc2626', '#059669', '#9333ea', '#d97706', '#0891b2', '#be185d', '#4f46e5'] as const;
 const MAX_FRAMES = 240;
+const derivedRecordsets = new WeakSet<object>();
 
 function compare(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
@@ -106,6 +181,89 @@ function error(code: ChartEligibilityErrorCode, message: string): BarRacePrepara
   return { ok: false, code, message };
 }
 
+/** Presentation consistency only. The dispatcher must authenticate the API and rights artifact first. */
+export function chartEvidenceError(result: ChartRecordset): string | undefined {
+  if (result.sourceRowsReturned !== undefined && !derivedRecordsets.has(result))
+    return 'An original API row count may only be attached by an admitted chart transform.';
+  let rights;
+  try {
+    rights = decodeSourceRightsEvidence(result as unknown as Record<string, unknown>);
+  } catch {
+    return 'Chart source-rights evidence is malformed.';
+  }
+  if (!rights.usedSourceIds?.length || !rights.sourceRights?.length ||
+    rights.usedSourceIds.some((id) => !rights.sourceRights?.some((right) => right.sourceId === id && right.evidenceOrigin !== 'legacy-metadata')))
+    return 'Current publisher or server source-rights evidence is required for every used chart source.';
+  if (result.runtime !== 'browser-public-api') return undefined;
+  const receipt = result.publicApiReceipt;
+  try {
+    safeTermsUrl(receipt.endpoint);
+    safeTermsUrl(receipt.serverId);
+    if (!receipt.endpoint.startsWith(`${receipt.serverId}/v1/databases/${receipt.databaseId}/`))
+      return 'The public API endpoint does not belong to the admitted provider server.';
+  } catch {
+    return 'The public API endpoint is not an admitted HTTPS URL.';
+  }
+  if (receipt.endpoint !== result.provenance.endpoint ||
+    receipt.databaseId !== result.provenance.databaseId ||
+    receipt.databaseId !== result.provenance.source ||
+    receipt.logicalCollection !== result.provenance.collection ||
+    receipt.queryId !== result.provenance.queryId ||
+    receipt.observedAt !== result.provenance.observedAt ||
+    receipt.rowsReturned !== (result.sourceRowsReturned ?? result.recordset.rows.length))
+    return 'The public API receipt does not match the observed query or rows.';
+  const verification = receipt.sourceVerification;
+  if (!verification || typeof verification !== 'object')
+    return 'The public API receipt has no admitted source verification.';
+  if (verification.kind === 'execution-source') {
+    if (verification.executionSources.length !== 1 ||
+      verification.executionSources[0].database !== receipt.databaseId ||
+      verification.executionSources[0].collection !== receipt.collectionId)
+      return 'The public API receipt does not match the physical execution source.';
+  } else if (verification.kind === 'publisher-digest') {
+    if (!/^[a-f0-9]{64}$/.test(verification.canonicalRowsSha256) ||
+      verification.executionSources?.length)
+      return 'The public API receipt lacks the verified publisher row digest.';
+  } else return 'The public API receipt has no admitted source verification.';
+  const publication = receipt.rightsPublication;
+  if (!publication || !/^[a-f0-9]{64}$/.test(publication.sha256) ||
+    !/^[a-f0-9]{64}$/.test(publication.providerSourceSha256))
+    return 'A verified publisher rights artifact is required for this public API source.';
+  if (verification.kind === 'publisher-digest' &&
+    publication.canonicalRowsSha256 !== verification.canonicalRowsSha256)
+    return 'The publisher rights artifact does not match the verified row digest.';
+  try {
+    safeTermsUrl(publication.url);
+  } catch {
+    return 'The publisher rights artifact must have an HTTPS URL.';
+  }
+  if (rights.usedSourceIds.length !== 1 || rights.usedSourceIds[0] !== publication.sourceId ||
+    !rights.sourceRights.some((right) =>
+      right.sourceId === publication.sourceId && right.evidenceOrigin === 'publisher-verified' &&
+      right.source.serverId === receipt.serverId && right.source.databaseId === receipt.databaseId &&
+      right.source.recordset === receipt.collectionId &&
+      right.pins.some((pin) => pin.role === 'provider' && pin.sha256 === publication.providerSourceSha256)))
+    return 'The publisher rights artifact does not bind this physical public API source.';
+  return undefined;
+}
+
+/** Preserve the admitted raw receipt while replacing rows in a reviewed presentation transform. */
+export function deriveChartRecordset(
+  input: ChartRecordset,
+  recordset: ChartRecordset['recordset'],
+  lineage: readonly ChartLineage[],
+): ChartRecordset | undefined {
+  if (input.sourceRowsReturned !== undefined || chartEvidenceError(input)) return undefined;
+  const derived: ChartRecordset = {
+    ...input,
+    sourceRowsReturned: input.recordset.rows.length,
+    lineage,
+    recordset,
+  };
+  derivedRecordsets.add(derived);
+  return derived;
+}
+
 /** Include every calendar month between the observed endpoints, with a fixed work bound. */
 function calendarMonths(first: string, last: string): string[] | undefined {
   const start = Number(first.slice(0, 4)) * 12 + Number(first.slice(5, 7)) - 1;
@@ -119,6 +277,10 @@ function calendarMonths(first: string, last: string): string[] | undefined {
 
 /** Build deterministic frames without fetching data or mutating the source result. */
 export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRacePreparation {
+  if (!result.complete || result.hasMore || result.truncated || result.limitations.some((item) => item.rowsFiltered))
+    return error('INCOMPLETE', 'A complete, unrestricted result is required for a bar race.');
+  const evidenceError = chartEvidenceError(result);
+  if (evidenceError) return error('SOURCE_RIGHTS_UNAVAILABLE', evidenceError);
   if (spec.kind !== 'bar-race') return error('INVALID_SPEC', 'Chart kind must be bar-race.');
   if (!Number.isInteger(spec.topN) || spec.topN < 1 || spec.topN > 100)
     return error('INVALID_SPEC', 'Top N must be a whole number from 1 to 100.');
@@ -199,23 +361,25 @@ export function prepareBarRace(result: ChartRecordset, spec: BarRaceSpec): BarRa
       .map(([category, value], index): BarRaceEntry => ({ category, value, rank: index + 1, color: barRaceColor(category) }));
     frames.push({ period, entries });
   }
-  return {
-    ok: true,
-    data: {
-      source: result.provenance,
-      limitations: result.limitations,
-      bindingsApplied: result.bindingsApplied,
-      truncated: result.truncated,
-      execution: result.execution,
-      sourceRights: result.sourceRights,
-      usedSourceIds: result.usedSourceIds,
-      spec,
-      dimensions: [
-        { column: spec.periodColumn, type: result.recordset.columns[periodIndex].type },
-        { column: spec.categoryColumn, type: result.recordset.columns[categoryIndex].type },
-      ],
-      measures: [{ column: spec.measureColumn, type: result.recordset.columns[measureIndex].type, unit: spec.unit }],
-      frames,
-    },
+  const shared: BarRaceDataBase = {
+    limitations: result.limitations,
+    bindingsApplied: result.bindingsApplied,
+    truncated: result.truncated,
+    sourceRights: result.sourceRights,
+    usedSourceIds: result.usedSourceIds,
+    complete: result.complete,
+    hasMore: result.hasMore,
+    lineage: result.lineage,
+    sourceRowsReturned: result.sourceRowsReturned,
+    spec,
+    dimensions: [
+      { column: spec.periodColumn, type: result.recordset.columns[periodIndex].type },
+      { column: spec.categoryColumn, type: result.recordset.columns[categoryIndex].type },
+    ],
+    measures: [{ column: spec.measureColumn, type: result.recordset.columns[measureIndex].type, unit: spec.unit }],
+    frames,
   };
+  return result.runtime === 'server'
+    ? { ok: true, data: { ...shared, runtime: 'server', source: result.provenance, execution: result.execution } }
+    : { ok: true, data: { ...shared, runtime: 'browser-public-api', source: result.provenance, publicApiReceipt: result.publicApiReceipt } };
 }
