@@ -22,6 +22,7 @@ class AuthPanelStubComponent {
 describe('SessionWorkspaceShellComponent auth lifecycle', () => {
   let fixture: ComponentFixture<SessionWorkspaceShellComponent>;
   let routeParams: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let routeQuery: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
   let api: { capabilities: ReturnType<typeof vi.fn>; list: ReturnType<typeof vi.fn>; command: ReturnType<typeof vi.fn> };
   const environment = { environmentId: 'uat', identityDomain: 'workspace' };
@@ -45,7 +46,7 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
       command: vi.fn(),
     };
     const params = routeParams = new BehaviorSubject(convertToParamMap({ storeId: 'github.com', projectId: 'shop' }));
-    const query = new BehaviorSubject(convertToParamMap({}));
+    const query = routeQuery = new BehaviorSubject(convertToParamMap({}));
     const route = {
       paramMap: params.asObservable(),
       queryParamMap: query.asObservable(),
@@ -57,6 +58,8 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
       events: routerEvents.asObservable(),
       routerState: { snapshot: { root: { paramMap: convertToParamMap({}), firstChild: null } } },
       createUrlTree: vi.fn(() => ({})),
+      parseUrl: vi.fn(() => ({ queryParams: {} })),
+      navigateByUrl: vi.fn(async () => true),
       serializeUrl: vi.fn(() => projectUrl),
     };
 
@@ -295,6 +298,15 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(component.drawerOpen()).toBe(true);
   });
 
+  it('keeps Context Bag controls locked until the mapped field picker is dismissed', () => {
+    const component = fixture.componentInstance;
+    expect(component.canDismissContextBag()).toBe(true);
+    component.onMappedFieldPickerOpen();
+    expect(component.canDismissContextBag()).toBe(false);
+    component.onMappedFieldPickerDismiss();
+    expect(component.canDismissContextBag()).toBe(true);
+  });
+
   it('keeps loaded sessions available after a later workspace error', async () => {
     await fixture.whenStable();
     const workspace = TestBed.inject(SessionWorkspaceService);
@@ -312,5 +324,43 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(fixture.componentInstance.visibleSessions()).toEqual([session]);
     expect(fixture.componentInstance.showInitialLoading()).toBe(false);
     expect(fixture.componentInstance.showInitialLoadError()).toBe(false);
+  });
+
+  it('preserves project route qualifiers when closing the last session tab', async () => {
+    await fixture.whenStable();
+    routeParams.next(convertToParamMap({ storeId: 'http-localhost:8989', projectId: 'shop' }));
+    routeQuery.next(convertToParamMap({ projectApi: 'local', branch: 'release' }));
+    const route = TestBed.inject(ActivatedRoute) as unknown as { snapshot: { queryParams: Record<string, string> } };
+    route.snapshot.queryParams = { projectApi: 'local', branch: 'release', environment: 'prod' };
+    const router = TestBed.inject(Router) as unknown as { parseUrl: ReturnType<typeof vi.fn>; navigateByUrl: ReturnType<typeof vi.fn> };
+    router.parseUrl.mockReturnValue({ queryParams: {} });
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    vi.spyOn(workspace, 'closeTab').mockResolvedValue('');
+
+    await fixture.componentInstance.closeSession('last-tab');
+
+    expect(router.parseUrl).toHaveBeenCalledWith(expect.stringContaining('/sessions'));
+    expect(router.navigateByUrl.mock.calls.at(-1)?.[0].queryParams).toEqual({
+      projectApi: 'local', branch: 'release', environment: 'prod',
+    });
+  });
+
+  it('cancels an in-flight all-pages search when the query changes', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    await workspace.openProject({ storeId: 'http-localhost:8989', projectId: 'other' });
+    workspace.hasMore.set(true);
+    workspace.nextCursor.set('next');
+    let resolvePage!: (page: { items: readonly ContextSession[]; hasMore: boolean }) => void;
+    api.list.mockImplementationOnce(() => new Promise((resolve) => { resolvePage = resolve; }));
+    const search = workspace.searchAllSessions();
+    await vi.waitFor(() => expect(resolvePage).toBeTypeOf('function'));
+
+    fixture.componentInstance.onSessionSearchChange('different term');
+    resolvePage({ items: [{ schemaVersion: 1, id: 'late', owner: 'actor-1', databaseId: 'ops', projectId: 'shop', title: 'late', state: 'active', version: 1, defaultBagId: 'bag-1', contextSetId: 'set-1', bagIds: ['bag-1'], createdAt: '', updatedAt: '' }], hasMore: false });
+    await search;
+
+    expect(fixture.componentInstance.sessionSearch()).toBe('different term');
+    expect(workspace.sessions().some((session) => session.id === 'late')).toBe(false);
   });
 });
