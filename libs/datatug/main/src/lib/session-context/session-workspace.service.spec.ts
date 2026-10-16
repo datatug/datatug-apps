@@ -136,6 +136,63 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     expect(opening.sessions().find((session) => session.id === 's1')).toMatchObject({ title: 'Fresh title', state: 'stopped' });
   });
 
+  it('continues to read the literal predeployment tab hint for an unqualified project ref', async () => {
+    const legacyKey = '["datatug-session-tabs/1","local-principal","shop@http-localhost:8989"]';
+    localStorage.setItem(legacyKey, JSON.stringify(['s1', 's2']));
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+
+    expect(projectRefToString(project)).toBe('shop@http-localhost:8989');
+    expect(reopened.openSessionIds()).toEqual(['s1', 's2']);
+    expect(api.read).toHaveBeenCalledWith(project, capabilities, 's2');
+  });
+
+  it('continues to read a literal predeployment device draft for an unqualified project ref', async () => {
+    const legacyKey = '["datatug-session-draft/1","local-principal","shop@http-localhost:8989","ops","s1"]';
+    drafts.set(legacyKey, {
+      selectedBagId: 'b1', enabled: true, selections: { b1: [{ entryId: 'e1', revisionId: 'r1' }] },
+      attachments: [], pinnedAttachments: [], composer: 'Typed before the project-ref key update',
+    });
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+    await reopened.focus('s1');
+
+    expect(reopened.draft().composer).toBe('Typed before the project-ref key update');
+  });
+
+  it('retries the literal predeployment pending command with its original operation ID', async () => {
+    const legacyKey = '["datatug-session-pending/1","local-principal","shop@http-localhost:8989","ops"]';
+    const command: ContextCommand = {
+      action: 'applyContext', opId: 'operation_from_before_project_ref_update', sessionId: 's1',
+      bagId: 'b1', expectedBagVersion: 2, expectedSlotVersion: 1, selection: [], enabled: false,
+    };
+    pending.set(legacyKey, { project, capabilities, command });
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+    expect(reopened.canRetry()).toBe(true);
+    await reopened.retry();
+
+    expect(api.command).toHaveBeenCalledWith(project, capabilities, command);
+    expect(api.command.mock.calls.at(-1)?.[2].opId).toBe('operation_from_before_project_ref_update');
+    expect(pending.has(legacyKey)).toBe(false);
+  });
+
+  it('rejects a pending command whose stored complete project ref does not match its key', async () => {
+    const legacyKey = '["datatug-session-pending/1","local-principal","shop@http-localhost:8989","ops"]';
+    pending.set(legacyKey, {
+      project: { ...project, projectApi: 'local', branch: 'review' }, capabilities,
+      command: { action: 'applyContext', opId: 'wrong-branch-operation', sessionId: 's1', bagId: 'b1' },
+    });
+    const reopened = TestBed.runInInjectionContext(() => new SessionWorkspaceService());
+
+    await reopened.openProject(project);
+
+    expect(reopened.canRetry()).toBe(false);
+  });
+
   it('searches remaining session pages only after explicit request and reports completion', async () => {
     service.hasMore.set(true); service.nextCursor.set('page-2');
     api.list.mockResolvedValueOnce({ items: [snapshot('s3').session], hasMore: true, nextCursor: 'page-3' });
