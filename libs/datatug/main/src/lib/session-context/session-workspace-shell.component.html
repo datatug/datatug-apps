@@ -12,7 +12,7 @@
   </ion-tab-bar>
   <ion-item lines="full" class="session-summary">
     <ion-buttons class="session-primary-actions">
-      <ion-button (click)="chooserOpen.set(true)">All sessions</ion-button>
+      <ion-button (click)="chooserOpen.set(true)">{{ workspace.session() ? 'All sessions' : 'Open a session' }}</ion-button>
       <ion-button (click)="beginCreate()" [disabled]="!canCreateSession()">New session</ion-button>
       @if (workspace.session()) {
       <ion-button class="session-context-button" fill="clear" (click)="drawerOpen.set(true)" aria-haspopup="dialog">
@@ -53,6 +53,26 @@
       <ion-label>Sign in to view or create sessions for this project.</ion-label>
       <ion-button slot="end" (click)="chooserOpen.set(true)">Sign in</ion-button>
     </ion-item>
+  }
+  @if (!workspace.session()) {
+    <div class="session-start" aria-labelledby="session-start-heading">
+      <h1 id="session-start-heading">Sessions</h1>
+      @if (workspace.agentReconnectRequired()) {
+        <p>Reconnect to the local agent to open saved sessions for this project.</p>
+      } @else if (workspace.authRequired()) {
+        <p>Sign in to open or create sessions for this project.</p>
+      } @else if (workspace.loading()) {
+        <p>Loading sessions for this project…</p>
+      } @else if (workspace.error()) {
+        <p>Sessions could not be loaded. Review the error above and retry if available.</p>
+      } @else if (workspace.sessions().length) {
+        <p>Open a saved session to continue its queries and context.@if (canCreateSession()) { Or start a new session for this project. }</p>
+      } @else if (canCreateSession()) {
+        <p>Start a session to keep queries and context together for this project.</p>
+      } @else {
+        <p>No sessions are shown yet. @if (workspace.hasMore()) { Open the session list to load more. } @else { Open the session list to check availability and connection requirements. }</p>
+      }
+    </div>
   }
   </div>
   @if (workspace.loading()) { <ion-item slot="top" lines="none"><ion-spinner slot="start" /><ion-label>Loading saved session…</ion-label></ion-item> }

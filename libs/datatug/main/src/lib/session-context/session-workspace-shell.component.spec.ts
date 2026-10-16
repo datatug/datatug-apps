@@ -162,6 +162,59 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     expect(component.createOpen()).toBe(true);
   });
 
+  it('explains the Sessions root and offers a first action before opening the chooser', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    const component = fixture.componentInstance;
+    workspace.authRequired.set(false);
+    workspace.capabilities.set(caps);
+    fixture.detectChanges();
+
+    expect(component.chooserOpen()).toBe(false);
+    const start = fixture.nativeElement.querySelector('.session-start') as HTMLElement;
+    expect(start.querySelector('h1')?.outerHTML).toContain('Sessions');
+    expect(start.querySelector('p')?.outerHTML).toContain('Start a session to keep queries and context together');
+    const openButton = fixture.nativeElement.querySelector('.session-primary-actions > ion-button') as HTMLElement;
+    expect(openButton.outerHTML).toContain('Open a session');
+    openButton.click();
+    expect(component.chooserOpen()).toBe(true);
+  });
+
+  it('does not promise session creation when the project only admits browsing', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    workspace.authRequired.set(false);
+    workspace.capabilities.set({ ...caps, actions: [] });
+    workspace.sessions.set([{
+      schemaVersion: 1, id: 'saved-1', databaseId: 'ops', projectId: 'shop', owner: 'actor-1',
+      title: 'Saved session', state: 'stopped', version: 1, defaultBagId: 'bag-1', contextSetId: 'set-1',
+      bagIds: ['bag-1'], createdAt: '', updatedAt: '',
+    }]);
+    fixture.detectChanges();
+
+    const start = fixture.nativeElement.querySelector('.session-start') as HTMLElement;
+    expect(start.querySelector('p')?.outerHTML).toContain('Open a saved session');
+    expect(start.querySelector('p')?.outerHTML).not.toContain('start a new session');
+    const newSession = [...fixture.nativeElement.querySelectorAll('ion-button')]
+      .find((button: HTMLElement) => button.outerHTML.includes('New session')) as HTMLIonButtonElement;
+    expect(newSession.disabled).toBe(true);
+  });
+
+  it('only offers loading more sessions when another page exists', async () => {
+    await fixture.whenStable();
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    workspace.authRequired.set(false);
+    workspace.capabilities.set({ ...caps, actions: [] });
+    fixture.detectChanges();
+    const start = fixture.nativeElement.querySelector('.session-start p') as HTMLElement;
+    expect(start.outerHTML).toContain('check availability and connection requirements');
+    expect(start.outerHTML).not.toContain('load more');
+
+    workspace.hasMore.set(true);
+    fixture.detectChanges();
+    expect(start.outerHTML).toContain('load more');
+  });
+
   it('dismisses the real chooser before presenting create and waits for create didDismiss before navigation', async () => {
     await fixture.whenStable();
     const workspace = TestBed.inject(SessionWorkspaceService);
