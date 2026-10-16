@@ -28,12 +28,17 @@ not modify `sneat-co/dashboardius`.
   `name`).
 - Widget defs: `SQLWidgetDef`/`SQLWidgetSettings`,
   `HTTPWidgetDef`/`HTTPRequest`/`HTTPHeaderItem`, `TabsWidgetDef`/`TabWidget`,
-  plus the shared `WidgetBase` (`title`, `parameters`) they all inline (Go
-  embeds `WidgetBase` anonymously, which JSON-inlines its fields — modelled
-  here with `interface X extends WidgetBase`).
-- `BOARD_WIDGET_NAME_SQL` / `_HTTP` / `_TABS` — the `BoardWidget.name` values
+  `ChartWidgetDef`/`ChartSourceBinding`/`ChartSourceTransform`/`ChartSpec`, plus
+  the shared `WidgetBase` (`title`, `parameters`) they inline (Go embeds
+  `WidgetBase` anonymously, which JSON-inlines its fields — modelled here with
+  `interface X extends WidgetBase`).
+- `BOARD_WIDGET_NAME_SQL` / `_HTTP` / `_TABS` / `_CHART` — the `BoardWidget.name` values
   `boards.go`'s `BoardWidget.Validate()` currently recognizes, plus the
   `BoardWidgetName` convenience union built from them.
+- Chart sources carry a saved query ID, optional query-parameter bindings and
+  an optional named transform. Chart specs carry column mappings and
+  presentation settings; query results and execution receipts are resolved at
+  view time and are not part of the saved board wire shape.
 - `BoardId`, `BoardCardId` — id aliases (Go: plain `string`).
 - `ParameterLookup` — mirrors the struct of that name _declared inside_
   `boards.go` itself.
@@ -79,10 +84,10 @@ that copy should be replaced with an import from it.
 
 ## JSON-shape testing
 
-`src/lib/__fixtures__/board.fixture.json` is a hand-written fixture exercising
-every field and widget kind (SQL, HTTP, and a nested tabs widget with a SQL
-tab and an HTTP tab), built from `boards.go`'s struct tags. `board.spec.ts`
-asserts:
+`src/lib/__fixtures__/board.fixture.json` is a hand-written legacy fixture for
+the SQL, HTTP, and nested tabs shapes. `chart-board.fixture.json` exercises
+stable tab IDs and the chart source/transform/spec contract. Both are built
+from `boards.go`'s struct tags. `board.spec.ts` asserts:
 
 - `boardFixtureJson satisfies Board` — compile-time: the fixture's shape is
   assignable to the `Board` type (catches added/renamed/removed fields at

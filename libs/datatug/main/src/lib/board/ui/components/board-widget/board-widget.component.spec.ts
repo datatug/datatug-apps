@@ -12,6 +12,7 @@ import { QueryType } from '../../../../models/definition/query-def';
 
 import { BoardWidgetComponent } from './board-widget.component';
 import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
+import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.component';
 
 type QueryStub = {
   id: string;
@@ -315,6 +316,191 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'This board card changed.',
     );
+  });
+
+  it('runs only the selected nested widget in the freshly read board', async () => {
+    const ref = { storeId: 'github.com', projectId: 'r@o@@v1.0.0' };
+    const queryId = 'demodb/chinook-top-customer-spend';
+    const board = {
+      id: 'board1',
+      title: 'Board',
+      rows: [
+        {
+          cards: [
+            {
+              id: 'top',
+              title: 'Top',
+              widget: {
+                name: 'tabs',
+                data: {
+                  tabs: [
+                    {
+                      id: 'chart',
+                      title: 'Chart',
+                      widget: { name: 'SQL', data: { sql: { queryId } } },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const readBoard = vi.fn(() => of(board));
+    run.mockResolvedValue({
+      recordset: { columns: [], rows: [] },
+      truncated: false,
+      provenance: { source: 'test' },
+    });
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('widgetPath', ['id:chart']);
+    fixture.componentRef.setInput('readBoardForRun', readBoard);
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
+    fixture.detectChanges();
+    await fixture.componentInstance.run();
+    expect(run).toHaveBeenCalledTimes(1);
+    board.rows[0].cards[0].widget.data.tabs[0].id = 'changed';
+    await fixture.componentInstance.run();
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.runError()).toContain(
+      'This board card changed.',
+    );
+  });
+
+  it('renders one selected nested tab using stable IDs even when titles match', () => {
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'r@o@@v1.0.0',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'tabs',
+      data: {
+        tabs: [
+          { id: 'chart', title: 'Data', widget: { name: 'HTTP' } },
+          {
+            id: 'grid',
+            title: 'Data',
+            widget: {
+              name: 'SQL',
+              data: { sql: { queryId: 'demodb/chinook-top-customer-spend' } },
+            },
+          },
+        ],
+      },
+    });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'To be implemented: HTTP',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Run on board');
+    const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
+      .componentInstance as TabsWidgetComponent;
+    tabs.select('id:grid');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'To be implemented: HTTP',
+    );
+    expect(fixture.nativeElement.textContent).toContain('Run on board');
+    expect(tabs.activePath()).toEqual(['id:grid']);
+  });
+
+  it('does not persist saved-query choices in tutorial mode', async () => {
+    const ref = { storeId: 'github.com', projectId: 'r@o@@v1.0.0' };
+    const queryId = 'demodb/chinook-top-customer-spend';
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'top',
+                title: 'Top',
+                widget: { name: 'SQL', data: { sql: { queryId } } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    fixture.detectChanges();
+    await router.navigateByUrl('/?mode=tutorial');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.sessionOnly()).toBe(true);
+    const save = vi.spyOn(fixture.componentInstance.choices, 'selectQuery');
+    fixture.componentInstance.rememberChoice();
+    run.mockResolvedValue({
+      recordset: { columns: [], rows: [] },
+      truncated: false,
+      provenance: { source: 'test' },
+    });
+    await fixture.componentInstance.run();
+    expect(save).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Choices stay in this tutorial session.',
+    );
+  });
+
+  it('retains one card result while switching sibling tabs with the same query', async () => {
+    const queryId = 'demodb/chinook-top-customer-spend';
+    const queryWidget = { name: 'SQL', data: { sql: { queryId } } };
+    const tabsWidget = {
+      name: 'tabs',
+      data: {
+        tabs: [
+          { id: 'chart', title: 'Chart', widget: queryWidget },
+          { id: 'grid', title: 'Grid', widget: queryWidget },
+        ],
+      },
+    };
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'r@o@@v1.0.0',
+    });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('widgetDef', tabsWidget);
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [{ cards: [{ id: 'top', title: 'Top', widget: tabsWidget }] }],
+      }),
+    );
+    run.mockResolvedValue({
+      recordset: { columns: [], rows: [] },
+      truncated: false,
+      provenance: { source: 'test' },
+    });
+    fixture.detectChanges();
+    const child = () =>
+      fixture.debugElement.query(By.directive(BoardWidgetComponent))
+        .componentInstance as BoardWidgetComponent;
+    await child().run();
+    expect(run).toHaveBeenCalledTimes(1);
+    const firstSnapshot = fixture.componentInstance.snapshotStore()();
+    const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
+      .componentInstance as TabsWidgetComponent;
+    tabs.select('id:grid');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.snapshotStore()()).toBe(firstSnapshot);
+    expect(child().result()).toBe(firstSnapshot?.result);
   });
 
   it('shows safe CLI compatibility guidance when board revalidation is blocked', async () => {

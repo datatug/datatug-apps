@@ -1,0 +1,11 @@
+{
+  "name": "@datatug/charts",
+  "version": "0.0.1",
+  "peerDependencies": {
+    "@angular/common": ">=22.0.0 <23.0.0",
+    "@angular/core": ">=22.0.0 <23.0.0",
+    "@sneat/datatug-semantic": "0.0.1",
+    "echarts": "^6.1.0"
+  },
+  "sideEffects": false
+}

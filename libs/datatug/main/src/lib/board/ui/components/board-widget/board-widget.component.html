@@ -2,9 +2,16 @@
 @switch (widget?.name) {
   @case ('tabs') {
     <sneat-datatug-tabs-widget
-      [level]="level()"
+      [level]="level() ?? 0"
       [tabsWidgetDef]="tabsWidgetDef()"
       [boardContext]="boardContext()"
+      [projectRef]="projectRef()"
+      [boardId]="boardId()"
+      [cardId]="cardId()"
+      [readBoardForRun]="readBoardForRun()"
+      [widgetPath]="widgetPath()"
+      [boardWidgetComponent]="nestedWidgetComponent"
+      [resultSnapshot]="snapshotStore()"
     />
   }
   @case ('SQL') {
@@ -15,7 +22,9 @@
       @if (remembered()) {
         <p role="status">Last selected from this board in this browser</p>
       }
-      @if (!canRemember()) {
+      @if (sessionOnly()) {
+        <p>Choices stay in this tutorial session.</p>
+      } @else if (!canRemember()) {
         <p>Choices are not saved for local agent projects.</p>
       }
       @if (definitionLoading()) {
