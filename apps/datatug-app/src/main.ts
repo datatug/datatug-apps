@@ -40,6 +40,8 @@ import {
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
+import { setupAgGrid } from '@datatug/ag-grid';
+import { AG_GRID_LICENSE_KEY } from './ag-grid-license';
 import { buildInfo } from './build-info';
 import {
   datatugAppEnvironmentConfig as environmentConfig,
@@ -90,6 +92,10 @@ captureCliChatCapability();
 if (datatugAppEnvironmentConfig.posthog) {
   registerPosthog(datatugAppEnvironmentConfig.posthog);
 }
+
+// Register AG Grid modules (enterprise only when a license key was built in) before any grid can render.
+// setupAgGrid never rejects: if enterprise fails to load the app continues on community modules.
+await setupAgGrid(AG_GRID_LICENSE_KEY);
 
 bootstrapApplication(DatatugAppComponent, {
   providers: [

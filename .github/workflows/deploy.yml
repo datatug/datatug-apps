@@ -107,7 +107,13 @@ jobs:
       # The script runs the app's uncached Nx build (whose dependency performs
       # online tag/attestation verification), then verifies emitted assets
       # before Wrangler can publish them.
-      build-command: python3 tools/recordsetcompare/build_app.py
+      #
+      # AG_GRID_LICENSE_KEY is OPTIONAL: the repository VARIABLE of that name (empty/unset by default -> a
+      # community-only build that never downloads AG Grid Enterprise). tools/stamp-ag-grid-license.mjs reads it
+      # during the Nx build. cf-deploy has no env pass-through, hence the inline assignment. AG Grid keys are
+      # public client-side config (shipped in the bundle) but this line is visible in the job log; see
+      # docs/ag-grid-enterprise-license.md. Do not put a key containing a single quote here.
+      build-command: AG_GRID_LICENSE_KEY='${{ vars.AG_GRID_LICENSE_KEY }}' python3 tools/recordsetcompare/build_app.py
       build-github-app-client-id: Iv23li26w131Kv6u3IdM
       build-github-app-owner: datatug
       build-github-app-repositories: datatug-core
