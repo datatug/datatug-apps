@@ -1,0 +1,213 @@
+import type { IQueryDef } from '../models/definition/query-def';
+import type { ExecutionBindingOrigin, TypedValue } from '@sneat/datatug-semantic';
+import type { IProjectRef } from '../core/project-context';
+import type { OvdbConnection } from '../ovdb/ovdb-connection';
+import { QueryType } from '../models/definition/query-def';
+import type { FederatedQueryMode, FederatedQueryProgress, FederatedQueryResult } from './federated-query-executor';
+import type { FederatedRunExtras, LocalResultRef } from './federated-query.service';
+import type { RunQueryRequest } from '@sneat/datatug-semantic';
+import type { HostedQueryResponse } from '../detective/detective-client.service';
+
+/** Client-authored admission failure whose message is safe to show in a board card. */
+export class QueryDispatchError extends Error {}
+
+/** Runtime selection is separate from the reference used to load a definition. */
+export type QueryRuntimeTarget =
+  | { readonly kind: 'local-agent'; readonly agentStoreId: string }
+  | { readonly kind: 'hosted-cloud' }
+  | { readonly kind: 'ovdb-federation' }
+  | { readonly kind: 'ovdb-connection'; readonly connectionId: string; readonly databaseId: string }
+  | { readonly kind: 'browser-sqlite' };
+
+export interface QueryDispatchRequest {
+  readonly projectRef: IProjectRef;
+  readonly definition: IQueryDef;
+  /** Canonical path-qualified saved-query identity; never derive it from a basename. */
+  readonly queryId?: string;
+  readonly environment?: string;
+  readonly target?: QueryRuntimeTarget;
+  readonly securityContextId?: string;
+  readonly agentRequest?: RunQueryRequest;
+  readonly hostedInputs?: Readonly<Record<string, TypedValue>>;
+  /** Explicit runtime object selected by the open database session; its fetch stays request-owned. */
+  readonly runtimeBinding?: OvdbConnection;
+  /** Opaque identity of a currently registered provider-owned browser runtime. */
+  readonly runtimeSelectionId?: string;
+  /** Explicit runtime object selected by the open database session; its fetch stays request-owned. */
+  readonly federationRun?: {
+    readonly token?: string;
+    readonly mode?: FederatedQueryMode;
+    readonly onProgress?: (progress: FederatedQueryProgress) => void;
+    readonly onFinished?: (totalRows: number) => void;
+    readonly extras?: FederatedRunExtras;
+  };
+  readonly parameters?: Readonly<Record<string, TypedValue>>;
+  readonly bindingOrigins?: readonly ExecutionBindingOrigin[];
+  /** Called only once a browser worker has accepted the prepared request. */
+  readonly onDispatched?: () => void;
+  readonly signal?: AbortSignal;
+}
+
+export interface QueryConnectionDescriptor {
+  readonly id?: string;
+  readonly title?: string;
+  readonly dataset?: string;
+  readonly storage?: string;
+  readonly source?: string;
+  readonly readiness?: string;
+  readonly query?: string;
+  readonly environment?: string;
+  readonly environments?: readonly string[];
+  readonly fixtureSha256?: string;
+  readonly browserFixture?: {
+    readonly url?: string;
+    readonly bytes?: number;
+  };
+}
+
+export interface QueryDispatchPlan {
+  readonly projectRef: IProjectRef;
+  readonly definition: IQueryDef;
+  readonly connection?: QueryConnectionDescriptor;
+  readonly target: QueryRuntimeTarget;
+  readonly environment?: string;
+  readonly runtimeBinding?: OvdbConnection;
+  readonly runtimeSelectionId?: string;
+}
+
+export interface QueryExecutionSession {
+  readonly result: Promise<FederatedQueryResult>;
+  readonly hostedResponse?: Promise<HostedQueryResponse>;
+  cancel(): Promise<void>;
+  dispose(): Promise<void>;
+  getPage?(index: number, resultSet?: string, localResult?: LocalResultRef): Promise<TypedValue[][]>;
+  continueSource?(sourceId: string, limit: number, offset: number): Promise<FederatedQueryResult>;
+  associateLocalResult?(projectRef: IProjectRef, queryId: string, result: LocalResultRef): Promise<void>;
+}
+
+export function captureQueryDispatchRequest(
+  request: QueryDispatchRequest,
+): QueryDispatchRequest {
+  if (!request.projectRef || !request.definition)
+    throw new QueryDispatchError('A project reference and query definition are required to run this query.');
+  const { signal, runtimeBinding, federationRun, onDispatched, ...snapshot } = request;
+  const captured = structuredClone({
+    ...snapshot,
+    projectRef: request.projectRef,
+    definition: request.definition,
+    ...(request.parameters ? { parameters: request.parameters } : {}),
+  });
+  // AbortSignal is not structured-cloneable; keep the original request-owned signal.
+  const capturedBinding = runtimeBinding
+    ? Object.freeze({
+      ...runtimeBinding,
+      descriptor: Object.freeze(structuredClone(runtimeBinding.descriptor)),
+    })
+    : undefined;
+  const capturedRun = federationRun ? Object.freeze({
+    ...federationRun,
+    ...(federationRun.extras ? { extras: Object.freeze({
+      ...federationRun.extras,
+      ...(federationRun.extras.staticSource
+        ? { staticSource: Object.freeze(structuredClone(federationRun.extras.staticSource)) }
+        : {}),
+    }) } : {}),
+  }) : undefined;
+  return Object.freeze({
+    ...captured,
+    ...(capturedBinding ? { runtimeBinding: capturedBinding } : {}),
+    ...(capturedRun ? { federationRun: capturedRun } : {}),
+    ...(onDispatched ? { onDispatched } : {}),
+    signal,
+  });
+}
+
+export function resolveQueryDispatchPlan(
+  request: QueryDispatchRequest,
+  catalog: { readonly connections?: readonly QueryConnectionDescriptor[] } | null | undefined,
+): QueryDispatchPlan {
+  const connectionId = request.definition.connectionId;
+  const matches = connectionId ? catalog?.connections?.filter((connection) => connection.id === connectionId) ?? [] : [];
+  if (connectionId && matches.length !== 1)
+    throw new QueryDispatchError(matches.length ? 'The saved query connection is ambiguous.' : 'The saved query connection is missing from this project.');
+  const connection = matches[0];
+  const target = request.target ?? inferRuntimeTarget(connection, request);
+  validateRuntimeTarget(target, connection, request);
+  return Object.freeze({
+    projectRef: Object.freeze(structuredClone(request.projectRef)),
+    definition: Object.freeze(structuredClone(request.definition)),
+    ...(connection ? { connection: Object.freeze(structuredClone(connection)) } : {}),
+    target: Object.freeze(structuredClone(target)),
+    ...(request.environment ? { environment: request.environment } : {}),
+    ...(request.runtimeBinding ? { runtimeBinding: request.runtimeBinding } : {}),
+    ...(request.runtimeSelectionId ? { runtimeSelectionId: request.runtimeSelectionId } : {}),
+  });
+}
+
+function inferRuntimeTarget(
+  connection: QueryConnectionDescriptor | undefined,
+  request: QueryDispatchRequest,
+): QueryRuntimeTarget {
+  if (request.runtimeBinding) return {
+    kind: 'ovdb-connection',
+    connectionId: request.runtimeBinding.id,
+    databaseId: request.runtimeBinding.databaseId,
+  };
+  if (request.definition.federation) return { kind: 'ovdb-federation' };
+  if (request.projectRef.projectApi === 'local' &&
+    !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId))
+    return { kind: 'local-agent', agentStoreId: request.projectRef.storeId };
+  if (connection?.storage === 'sqlite' && connection.browserFixture)
+    return { kind: 'browser-sqlite' };
+  throw new QueryDispatchError('Choose a supported execution target before running this saved query.');
+}
+
+function validateRuntimeTarget(
+  target: QueryRuntimeTarget,
+  connection: QueryConnectionDescriptor | undefined,
+  request: QueryDispatchRequest,
+): void {
+  if (request.definition.targets?.length &&
+    (target.kind === 'browser-sqlite' || target.kind === 'ovdb-connection' || target.kind === 'ovdb-federation'))
+    throw new QueryDispatchError('This saved query has legacy target settings that this browser runtime cannot apply. Choose its agent runtime.');
+  if (request.definition.federation && target.kind !== 'ovdb-federation')
+    throw new QueryDispatchError('This saved query is an admitted federation plan and cannot be sent to the selected runtime.');
+  if (connection) {
+    const member = connection.environment === undefined
+      ? connection.environments === undefined || !!request.environment && connection.environments.includes(request.environment)
+      : connection.environment === request.environment;
+    if (!member) throw new QueryDispatchError('The selected connection is unavailable in this environment.');
+  }
+  if (target.kind === 'browser-sqlite') {
+    if (
+      !connection || connection.storage !== 'sqlite' || !connection.browserFixture ||
+      typeof connection.browserFixture.url !== 'string' || typeof connection.fixtureSha256 !== 'string'
+    ) throw new QueryDispatchError('This connection has no pinned browser SQLite fixture.');
+    return;
+  }
+  if (target.kind === 'hosted-cloud' && (!request.projectRef.spaceID || !request.environment))
+    throw new QueryDispatchError('Hosted execution requires a shared cloud project and selected environment.');
+  if (target.kind === 'hosted-cloud' && request.projectRef.storeId !== 'firestore')
+    throw new QueryDispatchError('Hosted execution is available only for shared Firestore projects.');
+  if (target.kind === 'hosted-cloud' && !request.queryId)
+    throw new QueryDispatchError('Hosted execution requires the exact saved query path.');
+  if (target.kind === 'ovdb-federation' && !request.definition.federation)
+    throw new QueryDispatchError('OVDB execution requires an admitted federation definition.');
+  if (target.kind === 'ovdb-connection') {
+    const binding = request.runtimeBinding;
+    if (!binding || binding.id !== target.connectionId || binding.databaseId !== target.databaseId)
+      throw new QueryDispatchError('The selected OVDB runtime binding is missing or changed.');
+    if (!connection || connection.id !== request.definition.connectionId ||
+      !connection.fixtureSha256 || !/^[a-f0-9]{64}$/u.test(connection.fixtureSha256) ||
+      binding.descriptor.canonical?.sha256 !== connection.fixtureSha256)
+      throw new QueryDispatchError('The selected OVDB runtime does not match the query connection in this project.');
+    if (request.definition.request.queryType !== QueryType.TugQL && request.definition.request.queryType !== QueryType.DTQL)
+      throw new QueryDispatchError('This OVDB runtime supports structured DTQL queries; raw SQL is unavailable.');
+    if (binding.descriptor.capabilities.query !== true && binding.descriptor.capabilities.dtql !== true)
+      throw new QueryDispatchError('The selected OVDB runtime does not support query execution.');
+  }
+  if (target.kind === 'local-agent' && (!target.agentStoreId || !request.environment || !request.securityContextId || !request.queryId))
+    throw new QueryDispatchError('Local agent execution requires an explicit agent, exact saved query path, environment and security context.');
+  if (target.kind === 'local-agent' && (target.agentStoreId !== request.projectRef.storeId || request.projectRef.branch || request.projectRef.projectApi === 'cloud'))
+    throw new QueryDispatchError('This local agent cannot bind the selected project revision to the saved query. Choose a revision-aware runtime.');
+}

@@ -187,7 +187,7 @@ export interface FederatedRuntimeSession {
   readonly close: () => void;
 }
 
-export type FederatedQueryResult = RunQueryResponse & {
+export type FederatedQueryResult = Omit<RunQueryResponse, 'provenance'> & {
   /** Worker-issued proof of the exact prepared request that produced this result. */
   readonly publicSqliteReceipt?: import('./public-sqlite-tugql').PublicSqliteExecutionReceipt;
   readonly localResult?: { readonly id: string; readonly generation: number };
@@ -210,7 +210,25 @@ export type FederatedQueryResult = RunQueryResponse & {
   readonly nativeStream?: true;
   /** Worker staging marker for a complete ordinary /dtql response. */
   readonly nativeDirect?: true;
+  /** Local browser execution has no server issued execution profile or retention receipt. */
+  readonly provenance: RunQueryResponse['provenance'] | BrowserResultProvenance;
+  readonly browserExecution?: {
+    readonly runtime: 'sqlite-fixture' | 'ovdb-connection';
+    readonly fixtureSha256?: string;
+    readonly connectionId?: string;
+    readonly databaseId?: string;
+    readonly workingCopyModified?: boolean;
+    readonly canonicalFixtureSha256?: string;
+  };
 };
+
+export interface BrowserResultProvenance {
+  readonly source: string;
+  readonly queryId?: string;
+  readonly mode: 'snapshot' | 'live';
+  readonly observedAt: string;
+  readonly executionProfile?: never;
+}
 export type FederatedOutputPage = (
   rows: readonly (readonly TypedValue[])[],
 ) => Promise<void>;

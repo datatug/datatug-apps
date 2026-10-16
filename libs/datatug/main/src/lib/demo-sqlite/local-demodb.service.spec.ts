@@ -10,19 +10,20 @@ import {
 import { LocalDemoDbOpenError } from './local-demodb-errors';
 import { FakeLocalDemoDbRuntime, fakeEnvironment } from './local-demodb.spec-helper';
 import type { LocalDemoDbRuntimeOptions } from './local-demodb.types';
+import { QueryRuntimeRegistry } from '../queries/query-runtime-registry.service';
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 20; i++) await Promise.resolve();
 };
 
-function harness(dataset: keyof typeof demoSqliteCatalog, environment: LocalDemoDbEnvironment = fakeEnvironment()) {
+function harness(dataset: keyof typeof demoSqliteCatalog, environment: LocalDemoDbEnvironment = fakeEnvironment(), registry?: QueryRuntimeRegistry) {
   const runtimes: FakeLocalDemoDbRuntime[] = [];
   const loader = vi.fn(async () => (options: LocalDemoDbRuntimeOptions) => {
     const runtime = new FakeLocalDemoDbRuntime(options);
     runtimes.push(runtime);
     return runtime;
   });
-  const session = new LocalDemoDbSession(demoSqliteCatalog[dataset], environment, loader);
+  const session = new LocalDemoDbSession(demoSqliteCatalog[dataset], environment, loader, registry);
   return { session, runtimes, loader, environment };
 }
 
@@ -49,6 +50,42 @@ describe('LocalDemoDbSession', () => {
     expect(connection?.descriptor.collections).toEqual(['Album', 'Artist', 'PlaylistTrack', 'Track']);
     expect(connection?.descriptor.canonical?.sha256).toBe(demoSqliteCatalog.chinook.sha256);
     expect(env.stored.get('chinook')).toBe(true);
+  });
+
+  it('registers only the live ready connection and removes it when the provider closes', async () => {
+    const registry = new QueryRuntimeRegistry();
+    const { session, runtimes } = harness('chinook', fakeEnvironment(), registry);
+    const declaration = { id: 'an-arbitrary-logical-id', fixtureSha256: demoSqliteCatalog.chinook.sha256 };
+    expect(registry.candidates(declaration)).toEqual([]);
+    const started = session.start();
+    await flush();
+    runtimes[0].open();
+    await started;
+    const candidates = registry.candidates(declaration);
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0].connection.fetch).toBe(runtimes[0].fetch);
+    expect(registry.resolve(candidates[0].selectionId, { ...declaration, fixtureSha256: '0'.repeat(64) })).toBeUndefined();
+    session.dispose();
+    expect(registry.candidates(declaration)).toEqual([]);
+    expect(registry.resolve(candidates[0].selectionId, declaration)).toBeUndefined();
+  });
+
+  it('shares overlapping opens and revisits an already ready session without a second runtime', async () => {
+    const registry = new QueryRuntimeRegistry();
+    const { session, runtimes, loader } = harness('chinook', fakeEnvironment(), registry);
+    const first = session.start();
+    const overlapping = session.start();
+    expect(overlapping).toBe(first);
+    await flush();
+    expect(loader).toHaveBeenCalledOnce();
+    runtimes[0].open();
+    await first;
+    const connection = session.connection();
+    await session.start();
+    expect(loader).toHaveBeenCalledOnce();
+    expect(session.connection()).toBe(connection);
+    expect(registry.candidates({ fixtureSha256: demoSqliteCatalog.chinook.sha256 })).toHaveLength(1);
+    session.dispose();
   });
 
   it('shows no progress UI for a quick open and phased progress for a slow one', async () => {

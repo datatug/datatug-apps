@@ -1,4 +1,4 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
@@ -6,7 +6,8 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { Board } from '@datatug/board-models';
 import { QueriesService } from '../../../../queries/queries.service';
-import { PublicSqliteQueryService } from '../../../../queries/public-sqlite-query.service';
+import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
+import { QueryDispatchError } from '../../../../queries/query-dispatch';
 import { QueryType } from '../../../../models/definition/query-def';
 
 import { BoardWidgetComponent } from './board-widget.component';
@@ -24,6 +25,8 @@ describe('BoardWidgetComponent', () => {
   let router: Router;
   const getQuery = vi.fn();
   const run = vi.fn();
+  const availableWorkingCopies = vi.fn(async () => [] as { selectionId: string; title: string }[]);
+  let runtimeRevision = signal(0);
   let authState: BehaviorSubject<{
     status: 'notAuthenticated' | 'authenticated';
     user?: { uid: string };
@@ -32,6 +35,8 @@ describe('BoardWidgetComponent', () => {
   beforeEach(async () => {
     getQuery.mockReset();
     run.mockReset();
+    availableWorkingCopies.mockReset().mockResolvedValue([]);
+    runtimeRevision = signal(0);
     authState = new BehaviorSubject<{
       status: 'notAuthenticated' | 'authenticated';
       user?: { uid: string };
@@ -45,7 +50,10 @@ describe('BoardWidgetComponent', () => {
           useValue: { authState: authState.asObservable() },
         },
         { provide: QueriesService, useValue: { getQuery } },
-        { provide: PublicSqliteQueryService, useValue: { run } },
+        { provide: QueryDispatchService, useValue: {
+          execute: run, runtimeRevision: runtimeRevision.asReadonly(),
+          availableWorkingCopies,
+        } },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
@@ -98,9 +106,10 @@ describe('BoardWidgetComponent', () => {
       name: 'SQL',
       data: { sql: { queryId: 'demodb/q' } },
     });
+    fixture.componentRef.setInput('boardContext', { environment: 'dev' });
 
     expect(renderedQueryLink()).toBe(
-      '/project/github.com/o/r/tree/feature/-/query/demodb%2Fq?projectApi=cloud&branch=feature&id=demodb%2Fq',
+      '/project/github.com/o/r/tree/feature/-/query/demodb%2Fq?projectApi=cloud&branch=feature&id=demodb%2Fq&env=dev',
     );
   });
 
@@ -121,7 +130,7 @@ describe('BoardWidgetComponent', () => {
     );
   });
 
-  it('re-reads board and query before rendering a real result and remembers the choice', async () => {
+  it('dispatches an arbitrary catalog connection after re-reading the board and query', async () => {
     const ref = { storeId: 'github.com', projectId: 'r@o@@v1.0.0' };
     const queryId = 'demodb/chinook-top-customer-spend';
     const readBoard = vi.fn(() =>
@@ -164,11 +173,124 @@ describe('BoardWidgetComponent', () => {
     expect(readBoard).toHaveBeenCalledWith(ref, 'board1');
     expect(getQuery).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][0]).toMatchObject({
+      definition: { connectionId: 'chinook-sqlite' },
+      projectRef: ref,
+    });
     expect(fixture.nativeElement.textContent).toContain('1 rows returned');
     expect(fixture.nativeElement.textContent).toContain('42');
     expect(fixture.nativeElement.textContent).toContain(
       'Last selected from this board in this browser',
     );
+  });
+
+  it('does not restrict board dispatch to a named dataset connection', async () => {
+    const queryId = 'demo/reports/active-accounts';
+    getQuery.mockReturnValue(of({
+      id: queryId,
+      title: 'Active accounts',
+      request: { queryType: QueryType.SQL, text: 'select count(*) from account' },
+      connectionId: 'customer-ledger-v2',
+    }));
+    run.mockResolvedValue({
+      recordset: { columns: [{ name: 'count', type: 'integer' }], rows: [[{ type: 'integer', value: '3' }]] },
+      provenance: { source: 'test fixture' },
+      truncated: false,
+    });
+    const ref = { storeId: 'github.com', projectId: 'r@o@@main' };
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'ledger');
+    fixture.componentRef.setInput('readBoardForRun', () => of({
+      id: 'board1', title: 'Board', rows: [{ cards: [{ id: 'ledger', widget: { name: 'SQL', data: { sql: { queryId } } } }] }],
+    }));
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.detectChanges();
+
+    await fixture.componentInstance.run();
+
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({
+      projectRef: ref,
+      definition: expect.objectContaining({ connectionId: 'customer-ledger-v2' }),
+    }));
+  });
+
+  it('dispatches a structured card to an explicitly selected open working copy and fences a changed choice', async () => {
+    const queryId = 'reports/customers';
+    const ref = { storeId: 'github.com', projectId: 'r@o@@main' };
+    getQuery.mockReturnValue(of({
+      id: queryId, title: 'Customers', connectionId: 'logical-ledger-v7',
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' },
+    }));
+    availableWorkingCopies.mockResolvedValue([{ selectionId: 'runtime-17', title: 'Edited copy' }]);
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'customers');
+    fixture.componentRef.setInput('readBoardForRun', () => of({
+      id: 'board1', title: 'Board', rows: [{ cards: [{ id: 'customers', widget: { name: 'SQL', data: { sql: { queryId } } } }] }],
+    }));
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Edited copy');
+    fixture.componentInstance.selectRuntime('runtime-17');
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    let complete!: (result: unknown) => void;
+    run.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const pending = fixture.componentInstance.run();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({
+      projectRef: ref, queryId, runtimeSelectionId: 'runtime-17',
+      definition: expect.objectContaining({ connectionId: 'logical-ledger-v7' }),
+    })));
+    fixture.componentInstance.selectRuntime('snapshot');
+    complete({ recordset: { columns: [], rows: [] }, truncated: false });
+    await pending;
+    fixture.detectChanges();
+    expect(fixture.componentInstance.result()).toBeUndefined();
+  });
+
+  it('closes a selected working-copy option and fences its in-flight result on registry revision', async () => {
+    const queryId = 'reports/customers';
+    const ref = { storeId: 'github.com', projectId: 'r@o@@main' };
+    getQuery.mockReturnValue(of({
+      id: queryId, title: 'Customers', connectionId: 'logical-ledger-v7',
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' },
+    }));
+    availableWorkingCopies.mockResolvedValue([{ selectionId: 'runtime-17', title: 'Edited copy' }]);
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'customers');
+    fixture.componentRef.setInput('readBoardForRun', () => of({
+      id: 'board1', title: 'Board', rows: [{ cards: [{ id: 'customers', widget: { name: 'SQL', data: { sql: { queryId } } } }] }],
+    }));
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    fixture.componentInstance.selectRuntime('runtime-17');
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    let complete!: (value: unknown) => void;
+    run.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    const pending = fixture.componentInstance.run();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({ runtimeSelectionId: 'runtime-17' })));
+    const dispatchedSignal = run.mock.calls.at(-1)?.[0]?.signal as AbortSignal;
+    availableWorkingCopies.mockResolvedValue([]);
+    runtimeRevision.update((revision) => revision + 1);
+    fixture.detectChanges();
+    await Promise.resolve();
+    fixture.detectChanges();
+    expect(dispatchedSignal.aborted).toBe(true);
+    expect(fixture.componentInstance.workingCopies()).toEqual([]);
+    expect(fixture.componentInstance.selectedRuntimeId()).toBe('snapshot');
+    complete({ recordset: { columns: [], rows: [] }, truncated: false });
+    await pending;
+    fixture.detectChanges();
+    expect(fixture.componentInstance.result()).toBeUndefined();
   });
 
   it('does not dispatch a changed board card', async () => {
@@ -304,10 +426,10 @@ describe('BoardWidgetComponent', () => {
       queryId,
     );
     await fixture.componentInstance.run();
-    expect(run).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: 'r@o@@feature/demo' }),
-      expect.anything(),
-    );
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({
+      projectRef: expect.objectContaining({ projectId: 'r@o@', branch: 'feature/demo' }),
+      queryId,
+    }));
   });
 
   it('shows the completed empty state and a retryable execution error', async () => {
@@ -359,6 +481,11 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       'secret service detail',
     );
+
+    run.mockRejectedValueOnce(new QueryDispatchError('The query exceeds the 1,000-row browser limit.'));
+    await fixture.componentInstance.run();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('The query exceeds the 1,000-row browser limit.');
   });
 
   it('keeps the saved-query action for a qualified ref when its query is not admitted', () => {

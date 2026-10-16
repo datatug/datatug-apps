@@ -23,6 +23,16 @@
       } @else if (unsupportedReason(); as reason) {
         <p role="status">{{ reason }}</p>
       } @else if (definition()) {
+        <p>Environment: {{ boardContext()?.environment || 'select an environment' }}.
+          Runtime: {{ selectedRuntimeId() === 'snapshot' ? projectRuntimeLabel() : 'open working copy' }}.</p>
+          <label>Execution runtime
+            <select [value]="selectedRuntimeId()" (change)="selectRuntime($any($event.target).value)">
+              <option value="snapshot">{{ projectRuntimeLabel() }}</option>
+              @for (runtime of workingCopies(); track runtime.selectionId) {
+                <option [value]="runtime.selectionId">{{ runtime.title }} · working copy</option>
+              }
+            </select>
+          </label>
         <ion-button [disabled]="running()" (click)="run()">{{
           running() ? 'Running…' : 'Run on board'
         }}</ion-button>
@@ -46,7 +56,7 @@
         } @else {
           <p role="status">
             {{ answer.recordset.rows.length }} rows returned{{
-              answer.truncated ? ' (limited)' : ''
+              answer.truncated || answer.hasMore ? ' (limited)' : ''
             }}.
           </p>
           <div class="board-result-scroll">
@@ -69,10 +79,14 @@
               </tbody>
             </table>
           </div>
-          @if (answer.recordset.rows.length > visibleRows().length) {
+          @if (answer.recordset.rows.length > visibleRows().length || answer.hasMore || answer.truncated) {
             <p>
-              Showing the first {{ visibleRows().length }} rows. Open the saved
-              query to inspect more.
+              Showing {{ visibleRows().length }} rows.
+              @if (answer.browserExecution?.runtime === 'ovdb-connection') {
+                This working copy has no continuation for this result. Narrow the query to see the rows you need.
+              } @else {
+                Open the saved query to inspect more.
+              }
             </p>
           }
         }

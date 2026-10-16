@@ -1,4 +1,6 @@
 import { IParameterValueWithoutID } from '../parameter';
+import type { QueryRuntimeTarget } from '../../../queries/query-dispatch';
+import type { OvdbConnection } from '../../../ovdb/ovdb-connection';
 
 // The wire-schema board types (Board, BoardRow, BoardCard, BoardWidget and
 // the widget defs) come from `@datatug/board-models`
@@ -18,4 +20,9 @@ export interface IBoardWidgetInstance {
 export interface IBoardContext {
   mode: 'edit' | 'view';
   parameters: Record<string, IParameterValueWithoutID>;
+  environment?: string;
+  /** Runtime selection is explicit context, independent of project storage. */
+  executionTarget?: QueryRuntimeTarget;
+  securityContextId?: string;
+  runtimeBinding?: OvdbConnection;
 }
