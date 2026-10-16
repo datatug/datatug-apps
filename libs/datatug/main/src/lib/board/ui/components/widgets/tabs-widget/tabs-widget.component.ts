@@ -37,6 +37,7 @@ export class TabsWidgetComponent {
   readonly boardWidgetComponent = input.required<Type<unknown>>();
   readonly resultSnapshot =
     input.required<WritableSignal<BoardResultSnapshot | undefined>>();
+  readonly autoRunAttempts = input<WritableSignal<ReadonlySet<string>>>();
   readonly maxDepth = MAX_NESTED_TAB_DEPTH;
   readonly selectedKey = signal<string | undefined>(undefined);
   readonly tabs = computed(() =>
@@ -64,6 +65,7 @@ export class TabsWidgetComponent {
     readBoardForRun: this.readBoardForRun(),
     widgetPath: this.activePath(),
     resultSnapshot: this.resultSnapshot(),
+    autoRunAttempts: this.autoRunAttempts(),
   }));
 
   select(key: string): void {

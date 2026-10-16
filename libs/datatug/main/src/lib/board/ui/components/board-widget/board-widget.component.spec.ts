@@ -4,7 +4,21 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
-import { Board } from '@datatug/board-models';
+import { Board, BoardWidget } from '@datatug/board-models';
+import { executeSavedPublicChartQuery, executeSavedPublicInspectQuery } from '../../../../queries/public-data/public-chart-query';
+import { HeldResultPresentationComponent } from '../held-result-presentation/held-result-presentation.component';
+
+vi.mock('../../../../queries/public-data/public-chart-query', () => ({
+  isSavedPublicChartQueryId: (id: string) =>
+    [
+      'demodb/northwind-orders-full-sqlite',
+      'demodb/northwind-shipping-country-count-sqlite',
+    ].includes(id),
+  isSavedPublicInspectQueryId: (id: string) =>
+    id === 'demodb/northwind-shipping-country-count-postgresql',
+  executeSavedPublicChartQuery: vi.fn(),
+  executeSavedPublicInspectQuery: vi.fn(),
+}));
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
 import { QueryDispatchError } from '../../../../queries/query-dispatch';
@@ -26,7 +40,9 @@ describe('BoardWidgetComponent', () => {
   let router: Router;
   const getQuery = vi.fn();
   const run = vi.fn();
-  const availableWorkingCopies = vi.fn(async () => [] as { selectionId: string; title: string }[]);
+  const availableWorkingCopies = vi.fn(
+    async () => [] as { selectionId: string; title: string }[],
+  );
   let runtimeRevision = signal(0);
   let authState: BehaviorSubject<{
     status: 'notAuthenticated' | 'authenticated';
@@ -36,6 +52,8 @@ describe('BoardWidgetComponent', () => {
   beforeEach(async () => {
     getQuery.mockReset();
     run.mockReset();
+    vi.mocked(executeSavedPublicChartQuery).mockReset();
+    vi.mocked(executeSavedPublicInspectQuery).mockReset();
     availableWorkingCopies.mockReset().mockResolvedValue([]);
     runtimeRevision = signal(0);
     authState = new BehaviorSubject<{
@@ -51,10 +69,14 @@ describe('BoardWidgetComponent', () => {
           useValue: { authState: authState.asObservable() },
         },
         { provide: QueriesService, useValue: { getQuery } },
-        { provide: QueryDispatchService, useValue: {
-          execute: run, runtimeRevision: runtimeRevision.asReadonly(),
-          availableWorkingCopies,
-        } },
+        {
+          provide: QueryDispatchService,
+          useValue: {
+            execute: run,
+            runtimeRevision: runtimeRevision.asReadonly(),
+            availableWorkingCopies,
+          },
+        },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
@@ -187,14 +209,22 @@ describe('BoardWidgetComponent', () => {
 
   it('does not restrict board dispatch to a named dataset connection', async () => {
     const queryId = 'demo/reports/active-accounts';
-    getQuery.mockReturnValue(of({
-      id: queryId,
-      title: 'Active accounts',
-      request: { queryType: QueryType.SQL, text: 'select count(*) from account' },
-      connectionId: 'customer-ledger-v2',
-    }));
+    getQuery.mockReturnValue(
+      of({
+        id: queryId,
+        title: 'Active accounts',
+        request: {
+          queryType: QueryType.SQL,
+          text: 'select count(*) from account',
+        },
+        connectionId: 'customer-ledger-v2',
+      }),
+    );
     run.mockResolvedValue({
-      recordset: { columns: [{ name: 'count', type: 'integer' }], rows: [[{ type: 'integer', value: '3' }]] },
+      recordset: {
+        columns: [{ name: 'count', type: 'integer' }],
+        rows: [[{ type: 'integer', value: '3' }]],
+      },
       provenance: { source: 'test fixture' },
       truncated: false,
     });
@@ -202,35 +232,80 @@ describe('BoardWidgetComponent', () => {
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('boardId', 'board1');
     fixture.componentRef.setInput('cardId', 'ledger');
-    fixture.componentRef.setInput('readBoardForRun', () => of({
-      id: 'board1', title: 'Board', rows: [{ cards: [{ id: 'ledger', widget: { name: 'SQL', data: { sql: { queryId } } } }] }],
-    }));
-    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'ledger',
+                widget: { name: 'SQL', data: { sql: { queryId } } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
     fixture.detectChanges();
 
     await fixture.componentInstance.run();
 
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({
-      projectRef: ref,
-      definition: expect.objectContaining({ connectionId: 'customer-ledger-v2' }),
-    }));
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRef: ref,
+        definition: expect.objectContaining({
+          connectionId: 'customer-ledger-v2',
+        }),
+      }),
+    );
   });
 
   it('dispatches a structured card to an explicitly selected open working copy and fences a changed choice', async () => {
     const queryId = 'reports/customers';
     const ref = { storeId: 'github.com', projectId: 'r@o@@main' };
-    getQuery.mockReturnValue(of({
-      id: queryId, title: 'Customers', connectionId: 'logical-ledger-v7',
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' },
-    }));
-    availableWorkingCopies.mockResolvedValue([{ selectionId: 'runtime-17', title: 'Edited copy' }]);
+    getQuery.mockReturnValue(
+      of({
+        id: queryId,
+        title: 'Customers',
+        connectionId: 'logical-ledger-v7',
+        request: {
+          queryType: QueryType.DTQL,
+          text: 'from:\n  name: "customers"\nlimit: 10\n',
+        },
+      }),
+    );
+    availableWorkingCopies.mockResolvedValue([
+      { selectionId: 'runtime-17', title: 'Edited copy' },
+    ]);
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('boardId', 'board1');
     fixture.componentRef.setInput('cardId', 'customers');
-    fixture.componentRef.setInput('readBoardForRun', () => of({
-      id: 'board1', title: 'Board', rows: [{ cards: [{ id: 'customers', widget: { name: 'SQL', data: { sql: { queryId } } } }] }],
-    }));
-    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'customers',
+                widget: { name: 'SQL', data: { sql: { queryId } } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
     fixture.detectChanges();
     await Promise.resolve();
     fixture.detectChanges();
@@ -240,12 +315,25 @@ describe('BoardWidgetComponent', () => {
     await Promise.resolve();
     fixture.detectChanges();
     let complete!: (result: unknown) => void;
-    run.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    run.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
     const pending = fixture.componentInstance.run();
-    await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({
-      projectRef: ref, queryId, runtimeSelectionId: 'runtime-17',
-      definition: expect.objectContaining({ connectionId: 'logical-ledger-v7' }),
-    })));
+    await vi.waitFor(() =>
+      expect(run).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectRef: ref,
+          queryId,
+          runtimeSelectionId: 'runtime-17',
+          definition: expect.objectContaining({
+            connectionId: 'logical-ledger-v7',
+          }),
+        }),
+      ),
+    );
     fixture.componentInstance.selectRuntime('snapshot');
     complete({ recordset: { columns: [], rows: [] }, truncated: false });
     await pending;
@@ -256,18 +344,43 @@ describe('BoardWidgetComponent', () => {
   it('closes a selected working-copy option and fences its in-flight result on registry revision', async () => {
     const queryId = 'reports/customers';
     const ref = { storeId: 'github.com', projectId: 'r@o@@main' };
-    getQuery.mockReturnValue(of({
-      id: queryId, title: 'Customers', connectionId: 'logical-ledger-v7',
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' },
-    }));
-    availableWorkingCopies.mockResolvedValue([{ selectionId: 'runtime-17', title: 'Edited copy' }]);
+    getQuery.mockReturnValue(
+      of({
+        id: queryId,
+        title: 'Customers',
+        connectionId: 'logical-ledger-v7',
+        request: {
+          queryType: QueryType.DTQL,
+          text: 'from:\n  name: "customers"\nlimit: 10\n',
+        },
+      }),
+    );
+    availableWorkingCopies.mockResolvedValue([
+      { selectionId: 'runtime-17', title: 'Edited copy' },
+    ]);
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('boardId', 'board1');
     fixture.componentRef.setInput('cardId', 'customers');
-    fixture.componentRef.setInput('readBoardForRun', () => of({
-      id: 'board1', title: 'Board', rows: [{ cards: [{ id: 'customers', widget: { name: 'SQL', data: { sql: { queryId } } } }] }],
-    }));
-    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId } } });
+    fixture.componentRef.setInput('readBoardForRun', () =>
+      of({
+        id: 'board1',
+        title: 'Board',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'customers',
+                widget: { name: 'SQL', data: { sql: { queryId } } },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    fixture.componentRef.setInput('widgetDef', {
+      name: 'SQL',
+      data: { sql: { queryId } },
+    });
     fixture.detectChanges();
     await Promise.resolve();
     fixture.detectChanges();
@@ -276,9 +389,18 @@ describe('BoardWidgetComponent', () => {
     await Promise.resolve();
     fixture.detectChanges();
     let complete!: (value: unknown) => void;
-    run.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    run.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    );
     const pending = fixture.componentInstance.run();
-    await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({ runtimeSelectionId: 'runtime-17' })));
+    await vi.waitFor(() =>
+      expect(run).toHaveBeenCalledWith(
+        expect.objectContaining({ runtimeSelectionId: 'runtime-17' }),
+      ),
+    );
     const dispatchedSignal = run.mock.calls.at(-1)?.[0]?.signal as AbortSignal;
     availableWorkingCopies.mockResolvedValue([]);
     runtimeRevision.update((revision) => revision + 1);
@@ -612,10 +734,15 @@ describe('BoardWidgetComponent', () => {
       queryId,
     );
     await fixture.componentInstance.run();
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({
-      projectRef: expect.objectContaining({ projectId: 'r@o@', branch: 'feature/demo' }),
-      queryId,
-    }));
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRef: expect.objectContaining({
+          projectId: 'r@o@',
+          branch: 'feature/demo',
+        }),
+        queryId,
+      }),
+    );
   });
 
   it('shows the completed empty state and a retryable execution error', async () => {
@@ -668,10 +795,14 @@ describe('BoardWidgetComponent', () => {
       'secret service detail',
     );
 
-    run.mockRejectedValueOnce(new QueryDispatchError('The query exceeds the 1,000-row browser limit.'));
+    run.mockRejectedValueOnce(
+      new QueryDispatchError('The query exceeds the 1,000-row browser limit.'),
+    );
     await fixture.componentInstance.run();
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('The query exceeds the 1,000-row browser limit.');
+    expect(fixture.nativeElement.textContent).toContain(
+      'The query exceeds the 1,000-row browser limit.',
+    );
   });
 
   it('keeps the saved-query action for a qualified ref when its query is not admitted', () => {
@@ -831,4 +962,230 @@ describe('BoardWidgetComponent', () => {
     await pending;
     expect(run).not.toHaveBeenCalled();
   });
+  const publicQueryId = 'demodb/northwind-shipping-country-count-sqlite';
+  const countryWidget: BoardWidget = {
+    name: 'chart',
+    data: {
+      title: 'Shipping countries',
+      sources: [{ id: 'countries', queryId: publicQueryId }],
+      chart: {
+        type: 'bar',
+        categoryColumn: 'ShipCountry',
+        valueColumn: 'orders',
+        unit: 'orders',
+      },
+    },
+  };
+  function configureShowcase(widget: BoardWidget = countryWidget) {
+    const definition = {
+      id: publicQueryId,
+      title: 'Countries',
+      connectionId: 'northwind-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'saved DTQL' },
+    };
+    getQuery.mockReturnValue(of(definition));
+    const board = {
+      id: 'showcase',
+      title: 'Showcase',
+      rows: [{ cards: [{ id: 'countries', widget }] }],
+    };
+    const readBoard = vi.fn(() => of(board));
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+    });
+    fixture.componentRef.setInput('boardId', 'showcase');
+    fixture.componentRef.setInput('cardId', 'countries');
+    fixture.componentRef.setInput('widgetDef', widget);
+    fixture.componentRef.setInput('readBoardForRun', readBoard);
+    return { board, readBoard, definition };
+  }
+  function countryResult() {
+    return {
+      runtime: 'browser-public-api' as const,
+      complete: true,
+      hasMore: false,
+      truncated: false,
+      recordset: {
+        columns: [
+          { name: 'ShipCountry', type: 'string' },
+          { name: 'orders', type: 'integer' },
+        ],
+        rows: [
+          [
+            { type: 'string' as const, value: 'France' },
+            { type: 'integer' as const, value: '77' },
+          ],
+        ],
+      },
+      limitations: [],
+      bindingsApplied: [],
+      sourceRights: [],
+      usedSourceIds: [],
+      provenance: {
+        source: 'northwind',
+        collection: 'Orders',
+        queryId: publicQueryId,
+        mode: 'live' as const,
+        observedAt: '2026-10-16T14:00:00Z',
+        endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
+        databaseId: 'northwind',
+      },
+      publicApiReceipt: {
+        endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
+        serverId: 'https://demodb.dev/ovdb',
+        databaseId: 'northwind',
+        logicalCollection: 'Orders',
+        collectionId: 'Orders',
+        queryId: publicQueryId,
+        rowsReturned: 1,
+        observedAt: '2026-10-16T14:00:00Z',
+        sourceVerification: {
+          kind: 'execution-source' as const,
+          executionSources: [{ database: 'northwind', collection: 'Orders' }],
+        },
+      },
+    };
+  }
+
+  it('automatically executes a visible saved showcase chart once and switches held chart/grid without fetching', async () => {
+    const { readBoard } = configureShowcase();
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(fixture.componentInstance.running()).toBe(false));
+    await vi.waitFor(() => expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1));
+    await fixture.whenStable();
+    expect(readBoard).toHaveBeenCalledTimes(1);
+    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(run).not.toHaveBeenCalled();
+    const held = fixture.debugElement.query(
+      By.directive(HeldResultPresentationComponent),
+    ).componentInstance as HeldResultPresentationComponent;
+    expect(held.bars[0].category).toBe('France');
+    held.view.set('grid');
+    fixture.detectChanges();
+    held.view.set('chart');
+    fixture.detectChanges();
+    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    expect(getQuery).toHaveBeenCalledTimes(2);
+  });
+
+  it('revalidates the exact saved chart before its automatic public request', async () => {
+    const { board } = configureShowcase();
+    board.rows[0].cards[0].widget = {
+      ...countryWidget,
+      data: {
+        ...(countryWidget.data as object),
+        sources: [{ id: 'changed', queryId: publicQueryId }],
+      },
+    };
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('This board card changed.'));
+    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.runError()).toContain(
+      'This board card changed.',
+    );
+  });
+
+  it('aborts a stale public chart and ignores its late completion after environment changes', async () => {
+    configureShowcase();
+    let finish!: (result: ReturnType<typeof countryResult>) => void;
+    vi.mocked(executeSavedPublicChartQuery).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1),
+    );
+    const signal = vi.mocked(executeSavedPublicChartQuery).mock.calls[0][2]
+      ?.signal;
+    fixture.componentRef.setInput('boardContext', { environment: 'different' });
+    fixture.detectChanges();
+    expect(signal?.aborted).toBe(true);
+    finish(countryResult());
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(fixture.componentInstance.result()).toBeUndefined();
+  });
+
+  it('shares cached automatic results only within the card and does not rerun a revisited sibling query', async () => {
+    const sql = { name: 'SQL', data: { sql: { queryId: publicQueryId } } };
+    const widget = {
+      name: 'tabs',
+      data: {
+        tabs: [
+          { id: 'first', title: 'First', widget: sql },
+          { id: 'second', title: 'Second', widget: sql },
+        ],
+      },
+    };
+    configureShowcase(widget);
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1));
+    await fixture.whenStable();
+    const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
+      .componentInstance as TabsWidgetComponent;
+    tabs.select('id:second');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    tabs.select('id:first');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
+    fixture.componentRef.setInput('cardId', 'different-card');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.result()).toBeUndefined();
+  });
+
+  it('does not automatically execute charts from another project', async () => {
+    configureShowcase();
+    fixture.componentRef.setInput('projectRef', {
+      storeId: 'github.com',
+      projectId: 'fork@someone@demo-project-1',
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+  it('uses the verified public API when the selected environment has a browser default target', async () => {
+    configureShowcase();
+    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'browser-sqlite' } });
+    vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1));
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incompatible explicit target without silently dispatching a public chart elsewhere', async () => {
+    configureShowcase();
+    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'hosted-cloud' } });
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('requires the public API runtime'));
+    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('runs the PostgreSQL inspector independently with no SQLite rights or bar controls', async () => {
+    const queryId = 'demodb/northwind-shipping-country-count-postgresql';
+    configureShowcase({ name: 'SQL', data: { sql: { queryId } } });
+    getQuery.mockReturnValue(of({ id: queryId, title: 'PostgreSQL countries', connectionId: 'northwind-postgresql', request: { queryType: QueryType.DTQL, text: 'saved postgres DTQL' } }));
+    vi.mocked(executeSavedPublicInspectQuery).mockResolvedValue({ ...countryResult(), sourceRights: [],
+      usedSourceIds: ['postgresql-orders'], rightsStatus: 'unavailable', rightsUnavailableReason: 'No verified publisher source rights are available for this PostgreSQL result.' });
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(executeSavedPublicInspectQuery).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(fixture.componentInstance.running()).toBe(false));
+    await fixture.whenStable();
+    const presentation = fixture.debugElement.query(By.directive(HeldResultPresentationComponent)).componentInstance as HeldResultPresentationComponent;
+    expect(presentation.fields).toBeNull();
+    expect(presentation.view()).toBe('grid');
+    expect(fixture.nativeElement.textContent).toContain('Source usage rights are unavailable');
+    expect(executeSavedPublicChartQuery).not.toHaveBeenCalled();
+    expect(run).not.toHaveBeenCalled();
+  });
+
 });

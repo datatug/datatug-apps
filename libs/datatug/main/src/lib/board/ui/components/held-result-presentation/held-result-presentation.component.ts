@@ -12,8 +12,11 @@ import {
   LimitationHeaderComponent,
   SourceRightsNoticeComponent,
   type Result,
+  type BrowserPublicApiChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
+
+import type { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 
 export interface CategoryBarFields {
   readonly categoryColumn: string;
@@ -34,7 +37,7 @@ export type CategoryBarsResult =
 
 /** Only displays a previously admitted, held result; never executes or alters a query. */
 export function prepareCategoryBars(
-  result: Result,
+  result: Pick<Result, 'recordset'>,
   fields: CategoryBarFields,
 ): CategoryBarsResult {
   const columns = result.recordset.columns;
@@ -111,10 +114,22 @@ export function prepareCategoryBars(
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class HeldResultPresentationComponent implements OnChanges {
-  @Input() result: Result | null = null;
+  @Input() result:
+    | Result
+    | FederatedQueryResult
+    | BrowserPublicApiChartRecordset
+    | null = null;
   @Input() fields: CategoryBarFields | null = null;
   @Input() loading = false;
   @Input() error: string | null = null;
+
+  get publicApiReceipt() {
+    return this.result &&
+      'runtime' in this.result &&
+      this.result.runtime === 'browser-public-api'
+      ? this.result.publicApiReceipt
+      : null;
+  }
 
   readonly topN = signal(10);
   readonly view = signal<'chart' | 'grid'>('chart');

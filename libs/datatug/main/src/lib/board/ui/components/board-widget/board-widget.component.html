@@ -12,7 +12,74 @@
       [widgetPath]="widgetPath()"
       [boardWidgetComponent]="nestedWidgetComponent"
       [resultSnapshot]="snapshotStore()"
+      [autoRunAttempts]="attemptsStore()"
     />
+  }
+  @case ('chart') {
+    <div class="ion-padding">
+      <p>{{ chartWidgetDef()?.title }}</p>
+      @if (definitionLoading() || running()) {
+        <p role="status">Loading saved chart…</p>
+      }
+      @if (runError() || unsupportedReason(); as error) {
+        <p role="alert">{{ error }}</p>
+      }
+      <ion-button
+        [disabled]="running() || definitionLoading() || !definition() || !!unsupportedReason()"
+        (click)="run()"
+        >{{ running() ? 'Running…' : 'Refresh chart' }}</ion-button
+      >
+      @if (queryUrlTree(); as tree) {
+        <ion-button [routerLink]="tree">Open saved query</ion-button>
+      }
+      @if (chartWidgetDef()?.chart?.type === 'bar-race') {
+        @if (result(); as held) {
+          <p role="status">
+            {{ held.recordset.rows.length }} source orders ·
+            {{ preparedRace().views?.period?.frames?.length ?? 0 }} monthly
+            frames · unit: {{ chartWidgetDef()?.chart?.unit }}
+          </p>
+          <p>{{ held.provenance.source }}</p>
+          <sneat-datatug-source-rights-notice [evidence]="held" />
+        }
+        <div role="group" aria-label="Chart result view">
+          <button
+            type="button"
+            (click)="chartView.set('chart')"
+            [attr.aria-pressed]="chartView() === 'chart'"
+          >
+            Chart
+          </button>
+          <button
+            type="button"
+            (click)="chartView.set('grid')"
+            [attr.aria-pressed]="chartView() === 'grid'"
+          >
+            Source rows
+          </button>
+        </div>
+        @if (chartView() === 'chart') {
+          <datatug-bar-race-chart
+            [views]="preparedRace().views ?? null"
+            [loading]="running()"
+            [error]="preparedRace().error ?? runError() ?? null"
+          />
+        } @else {
+          <datatug-held-result-presentation
+            [result]="result() ?? null"
+            [loading]="running()"
+            [error]="runError() ?? null"
+          />
+        }
+      } @else {
+        <datatug-held-result-presentation
+          [result]="result() ?? null"
+          [fields]="barFields()"
+          [loading]="running()"
+          [error]="runError() ?? null"
+        />
+      }
+    </div>
   }
   @case ('SQL') {
     <div class="ion-padding">
@@ -32,16 +99,29 @@
       } @else if (unsupportedReason(); as reason) {
         <p role="status">{{ reason }}</p>
       } @else if (definition()) {
-        <p>Environment: {{ boardContext()?.environment || 'select an environment' }}.
-          Runtime: {{ selectedRuntimeId() === 'snapshot' ? projectRuntimeLabel() : 'open working copy' }}.</p>
-          <label>Execution runtime
-            <select [value]="selectedRuntimeId()" (change)="selectRuntime($any($event.target).value)">
-              <option value="snapshot">{{ projectRuntimeLabel() }}</option>
-              @for (runtime of workingCopies(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId">{{ runtime.title }} · working copy</option>
-              }
-            </select>
-          </label>
+        <p>
+          Environment:
+          {{ boardContext()?.environment || 'select an environment' }}. Runtime:
+          {{
+            selectedRuntimeId() === 'snapshot'
+              ? projectRuntimeLabel()
+              : 'open working copy'
+          }}.
+        </p>
+        <label
+          >Execution runtime
+          <select
+            [value]="selectedRuntimeId()"
+            (change)="selectRuntime($any($event.target).value)"
+          >
+            <option value="snapshot">{{ projectRuntimeLabel() }}</option>
+            @for (runtime of workingCopies(); track runtime.selectionId) {
+              <option [value]="runtime.selectionId">
+                {{ runtime.title }} · working copy
+              </option>
+            }
+          </select>
+        </label>
         <ion-button [disabled]="running()" (click)="run()">{{
           running() ? 'Running…' : 'Run on board'
         }}</ion-button>
@@ -60,46 +140,58 @@
         <p role="alert">{{ error }}</p>
       }
       @if (result(); as answer) {
-        @if (!answer.recordset.rows.length) {
-          <p role="status">Query completed with no rows.</p>
+        @if (publicQuery()) {
+          <datatug-held-result-presentation [result]="answer" />
         } @else {
-          <p role="status">
-            {{ answer.recordset.rows.length }} rows returned{{
-              answer.truncated || answer.hasMore ? ' (limited)' : ''
-            }}.
-          </p>
-          <div class="board-result-scroll">
-            <table>
-              <thead>
-                <tr>
-                  @for (column of answer.recordset.columns; track $index) {
-                    <th scope="col">{{ column.name }}</th>
-                  }
-                </tr>
-              </thead>
-              <tbody>
-                @for (row of visibleRows(); track $index) {
+          @if (!answer.recordset.rows.length) {
+            <p role="status">Query completed with no rows.</p>
+          } @else {
+            <p role="status">
+              {{ answer.recordset.rows.length }} rows returned{{
+                answer.truncated || answer.hasMore ? ' (limited)' : ''
+              }}.
+            </p>
+            <div class="board-result-scroll">
+              <table>
+                <thead>
                   <tr>
-                    @for (cell of row; track $index) {
-                      <td>{{ displayCell(cell) }}</td>
+                    @for (column of answer.recordset.columns; track $index) {
+                      <th scope="col">{{ column.name }}</th>
                     }
                   </tr>
+                </thead>
+                <tbody>
+                  @for (row of visibleRows(); track $index) {
+                    <tr>
+                      @for (cell of row; track $index) {
+                        <td>{{ displayCell(cell) }}</td>
+                      }
+                    </tr>
+                  }
+                </tbody>
+              </table>
+            </div>
+            @if (
+              answer.recordset.rows.length > visibleRows().length ||
+              answer.hasMore ||
+              answer.truncated
+            ) {
+              <p>
+                Showing {{ visibleRows().length }} rows.
+                @if (
+                  serverResult()?.browserExecution?.runtime ===
+                  'ovdb-connection'
+                ) {
+                  This working copy has no continuation for this result. Narrow
+                  the query to see the rows you need.
+                } @else {
+                  Open the saved query to inspect more.
                 }
-              </tbody>
-            </table>
-          </div>
-          @if (answer.recordset.rows.length > visibleRows().length || answer.hasMore || answer.truncated) {
-            <p>
-              Showing {{ visibleRows().length }} rows.
-              @if (answer.browserExecution?.runtime === 'ovdb-connection') {
-                This working copy has no continuation for this result. Narrow the query to see the rows you need.
-              } @else {
-                Open the saved query to inspect more.
-              }
-            </p>
+              </p>
+            }
           }
+          <p>{{ answer.provenance.source }}</p>
         }
-        <p>{{ answer.provenance.source }}</p>
       }
     </div>
   }
