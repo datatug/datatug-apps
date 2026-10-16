@@ -1,4 +1,6 @@
-import { expect, test } from './helpers/demodb-guard';
+// Deliberately NOT importing `test` from ./helpers/demodb-guard: this spec navigates to /favicon.ico, and with the guard's
+// request interception installed Chromium aborts that navigation (ERR_ABORTED). It never talks to demodb.dev.
+import { expect, test } from '@playwright/test';
 
 test('Bookmarks migrate, preserve scoped snapshots, and support cross-session follow-ups', async ({ page }) => {
   test.setTimeout(120_000);
