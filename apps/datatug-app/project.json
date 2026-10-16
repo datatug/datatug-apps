@@ -220,9 +220,7 @@
     "e2e-demo-sqlite": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --forbid-only"
       }
@@ -240,6 +238,14 @@
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-checkout-provider"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.checkout-provider.config.ts --forbid-only"
+      }
+    },
+    "e2e-context-bag-provider": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-context-bag-provider"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.context-bag-provider.config.ts --forbid-only"
       }
     },
     "e2e-checkout": {
