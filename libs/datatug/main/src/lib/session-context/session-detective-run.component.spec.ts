@@ -1,11 +1,11 @@
-import { provideRouter } from '@angular/router';
+import { RouterLink, provideRouter } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { signal } from '@angular/core';
 import { SessionDetectiveRunComponent } from './session-detective-run.component';
 import { SessionWorkspaceService } from './session-workspace.service';
 import { SessionContextApiService } from './session-context-api.service';
-import { NATIVE_OPERATION_STORE } from './session-detective-operation.service';
+import { NATIVE_OPERATION_STORE, SessionDetectiveOperationService } from './session-detective-operation.service';
 import {
   ContextCapabilities,
   ContextSnapshot,
@@ -101,6 +101,35 @@ function snapshot(): ContextSnapshot {
   };
 }
 describe('native Check input preview', () => {
+  it.each([
+    [{ storeId: 'http-127.0.0.1:8989', projectId: 'source-project' }, ['store', 'http-127.0.0.1:8989', 'native-check-status', 'recovery_1']],
+    [{ storeId: 'github.com', projectId: 'repo@owner@', projectApi: 'cloud' as const }, ['native-check-status', 'recovery_1']],
+  ])('renders a recovery RouterLink with exact store identity for %j', async (ref, expectedSegments) => {
+    TestBed.configureTestingModule({
+      imports: [SessionDetectiveRunComponent],
+      providers: [provideRouter([]),
+        { provide: SessionWorkspaceService, useValue: { capabilities: signal(caps), snapshotFor: () => snapshot(), draft: () => ({ attachments: [] }), canExecuteFor: () => true } },
+        { provide: SessionContextApiService, useValue: {} },
+        { provide: NATIVE_OPERATION_STORE, useValue: { read: async () => undefined } },
+      ],
+    });
+    const fixture = TestBed.createComponent(SessionDetectiveRunComponent);
+    fixture.componentRef.setInput('project', ref);
+    fixture.componentRef.setInput('sessionId', 's1');
+    fixture.componentRef.setInput('environment', 'demo');
+    fixture.componentRef.setInput('check', { id: 'invoice-check', title: 'Invoice check', version: 1, inputs: [], steps: [] });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.debugElement.injector.get(SessionDetectiveOperationService).draft.set({ recoveryId: 'recovery_1', actor: 'alice', project: ref, locator: operationScope, operationId: 'op_1', sessionId: 's1', checkId: 'invoice-check' });
+    await fixture.whenStable();
+    const anchor = fixture.debugElement.query(By.css('a'));
+    const link = anchor.injector.get(RouterLink);
+    expect(link.urlTree?.root.children['primary'].segments.map(segment => segment.path)).toEqual(expectedSegments);
+    const href = anchor.nativeElement.getAttribute('href');
+    expect(href).not.toContain('%253A');
+    expect(new URL(href, document.location.origin).origin).toBe(document.location.origin);
+  });
+
   it('does not select a first domain and sends only explicit exact revision mappings', async () => {
     const current = signal(snapshot());
     const nativeDetective = vi.fn(async (_project, _caps, request) => ({

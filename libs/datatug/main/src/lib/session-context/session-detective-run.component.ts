@@ -1,4 +1,4 @@
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { nativeRecoveryHref } from './session-detective-recovery-link';
 import {
   ChangeDetectionStrategy,
@@ -228,9 +228,10 @@ export class SessionDetectiveRunComponent {
   protected readonly manual = signal<Record<string, string>>({});
   protected readonly error = signal('');
   protected readonly key = contextScopeKey;
+  private readonly router = inject(Router);
   protected readonly recoveryHref = computed(() => {
     const draft = this.operation.draft();
-    return draft ? nativeRecoveryHref(draft.project, draft.recoveryId) : '';
+    return draft ? this.router.parseUrl(nativeRecoveryHref(draft.project, draft.recoveryId)) : '';
   });
   protected readonly scopes = computed(
     () =>
