@@ -4,6 +4,7 @@
 
 // The frozen wire contract (types, decoders, wrap/unwrap adapters) — see contract/index.ts.
 export * from './contract';
+export * from './charting/bar-race';
 export * from './lib/models/models';
 export * from './lib/tokens/datatug-agent-base-url.token';
 export { SemanticApiService } from './lib/services/semantic-api.service';
