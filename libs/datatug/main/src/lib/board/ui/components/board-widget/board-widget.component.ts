@@ -6,8 +6,11 @@ import {
   effect,
   inject,
   input,
+  WritableSignal,
 } from '@angular/core';
 import { Router, RouterLink, UrlTree } from '@angular/router';
+import { ActivatedRoute } from '@angular/router';
+import { toSignal } from '@angular/core/rxjs-interop';
 import { IonButton } from '@ionic/angular';
 import {
   BoardWidget,
@@ -30,6 +33,12 @@ import { signal } from '@angular/core';
 import { githubProjectAddressForRef } from '../../../../services/project/project-assets-read.service';
 import { qualifiedLocalReadVersionGuidance } from '../../../../services/project/project-query-api.service';
 import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.component';
+import { MAX_NESTED_TAB_DEPTH, widgetAtTabPath } from './nested-tab-path';
+
+export interface BoardResultSnapshot {
+  readonly queryId: string;
+  readonly result: FederatedQueryResult;
+}
 
 @Component({
   selector: 'sneat-datatug-board-widget',
@@ -40,6 +49,10 @@ import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.componen
 })
 export class BoardWidgetComponent {
   private readonly router = inject(Router);
+  private readonly route = inject(ActivatedRoute);
+  private readonly queryParams = toSignal(this.route.queryParamMap, {
+    initialValue: this.route.snapshot.queryParamMap,
+  });
   private readonly queries = inject(QueriesService);
   private readonly sqlite = inject(PublicSqliteQueryService);
   private readonly destroyRef = inject(DestroyRef);
@@ -47,7 +60,21 @@ export class BoardWidgetComponent {
   private generation = 0;
   private destroyed = false;
   readonly running = signal(false);
-  readonly result = signal<FederatedQueryResult | undefined>(undefined);
+  private readonly ownSnapshot = signal<BoardResultSnapshot | undefined>(
+    undefined,
+  );
+  /** Shared only through this card's nested widget tree; never persisted. */
+  readonly resultSnapshot =
+    input<WritableSignal<BoardResultSnapshot | undefined>>();
+  readonly snapshotStore = computed(
+    () => this.resultSnapshot() ?? this.ownSnapshot,
+  );
+  readonly result = computed(() => {
+    const snapshot = this.snapshotStore()();
+    return snapshot && snapshot.queryId === this.queryId()
+      ? snapshot.result
+      : undefined;
+  });
   readonly runError = signal<string | undefined>(undefined);
   readonly choiceError = signal<string | undefined>(undefined);
   readonly unsupportedReason = signal<string | undefined>(undefined);
@@ -55,13 +82,20 @@ export class BoardWidgetComponent {
   readonly definition = signal<IQueryDef | undefined>(undefined);
   readonly remembered = computed(
     () =>
+      !this.sessionOnly() &&
       this.choices.read(this.projectRef(), this.boardId()).selectedQueryId ===
-      this.queryId(),
+        this.queryId(),
   );
-  readonly canRemember = computed(() =>
-    this.choices.canPersist(this.projectRef()),
+  readonly canRemember = computed(
+    () => !this.sessionOnly() && this.choices.canPersist(this.projectRef()),
+  );
+  readonly sessionOnly = computed(
+    () => this.queryParams().get('mode') === 'tutorial',
   );
   readonly level = input<number>();
+  readonly widgetPath = input<readonly string[]>([]);
+  readonly maxTabDepth = MAX_NESTED_TAB_DEPTH;
+  readonly nestedWidgetComponent = BoardWidgetComponent;
   readonly cardTab = input<QueryType | 'grid' | 'card'>();
   // TODO: Skipped for migration because:
   //  This input is used in a control flow expression (e.g. `@if` or `*ngIf`)
@@ -104,12 +138,13 @@ export class BoardWidgetComponent {
       const id = this.queryId();
       this.boardId();
       this.cardId();
+      this.widgetPath();
       this.readBoardForRun();
       this.choices.actor();
       this.generation++;
       const generation = this.generation;
       this.definition.set(undefined);
-      this.result.set(undefined);
+      if (!this.resultSnapshot()) this.ownSnapshot.set(undefined);
       this.runError.set(undefined);
       this.choiceError.set(undefined);
       this.running.set(false);
@@ -164,6 +199,7 @@ export class BoardWidgetComponent {
     queryId: string,
     actor: string | undefined,
     readBoard: BoardReadForRun,
+    path: readonly string[],
   ): boolean {
     return (
       !this.destroyed &&
@@ -175,7 +211,8 @@ export class BoardWidgetComponent {
       this.queryId() === queryId &&
       this.widgetDef()?.name === 'SQL' &&
       this.choices.actor() === actor &&
-      this.readBoardForRun() === readBoard
+      this.readBoardForRun() === readBoard &&
+      this.widgetPath() === path
     );
   }
 
@@ -200,6 +237,7 @@ export class BoardWidgetComponent {
     const cardId = this.cardId();
     const queryId = this.queryId();
     const readBoard = this.readBoardForRun();
+    const path = this.widgetPath();
     const actor = this.choices.actor();
     if (
       !ref ||
@@ -214,9 +252,8 @@ export class BoardWidgetComponent {
       return;
     const generation = ++this.generation;
     this.running.set(true);
-    this.result.set(undefined);
+    this.snapshotStore().set(undefined);
     this.runError.set(undefined);
-    this.rememberChoice();
     try {
       const board = await firstValueFrom(
         readBoard(ref, boardId).pipe(timeout(15000)),
@@ -230,6 +267,7 @@ export class BoardWidgetComponent {
           queryId,
           actor,
           readBoard,
+          path,
         )
       )
         return;
@@ -238,7 +276,7 @@ export class BoardWidgetComponent {
         .filter((card) => card.id === cardId);
       const currentCard =
         matchingCards?.length === 1 ? matchingCards[0] : undefined;
-      const currentWidget = currentCard?.widget;
+      const currentWidget = widgetAtTabPath(currentCard?.widget, path);
       if (
         board.id !== boardId ||
         currentWidget?.name !== 'SQL' ||
@@ -262,6 +300,7 @@ export class BoardWidgetComponent {
           queryId,
           actor,
           readBoard,
+          path,
         )
       )
         return;
@@ -276,6 +315,7 @@ export class BoardWidgetComponent {
           queryId,
           actor,
           readBoard,
+          path,
         )
       )
         return;
@@ -289,9 +329,12 @@ export class BoardWidgetComponent {
           queryId,
           actor,
           readBoard,
+          path,
         )
-      )
-        this.result.set(result);
+      ) {
+        this.snapshotStore().set({ queryId, result });
+        this.rememberChoice();
+      }
     } catch (error) {
       if (
         this.stillCurrent(
@@ -302,6 +345,7 @@ export class BoardWidgetComponent {
           queryId,
           actor,
           readBoard,
+          path,
         )
       )
         this.runError.set(
@@ -321,6 +365,7 @@ export class BoardWidgetComponent {
           queryId,
           actor,
           readBoard,
+          path,
         )
       )
         this.running.set(false);
