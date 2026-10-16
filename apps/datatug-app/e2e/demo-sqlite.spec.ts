@@ -1,4 +1,9 @@
 import { BrowserContext, expect, Locator, Page, test } from '@playwright/test';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { installFakeGithub } from './helpers/fake-github';
 
 /**
  * /demo/sqlite/<dataset>: "Explore SQLite in DataTug". A pinned SQLite file from demodb.dev opens as an editable
@@ -19,6 +24,67 @@ import { BrowserContext, expect, Locator, Page, test } from '@playwright/test';
 const DEMODB = /(^|\.)demodb\.dev$/;
 const SQLITE_ORIGINAL_ARTIST_1 = 'AC/DC';
 const ARTIST_WITHOUT_ALBUMS = 'Milton Nascimento & Bebeto'; // ArtistId 25: nothing refers to it
+
+test('an edited local copy runs on a saved Board card and ordinary query page', async ({ page, context }) => {
+  test.skip(!process.env['DATATUG_E2E_GITHUB_FAKE'], 'requires the offline demo project checkout');
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  if (!source) return;
+  test.setTimeout(180_000);
+  const scratch = mkdtempSync(join(tmpdir(), 'datatug-working-copy-'));
+  try {
+    const checkout = join(scratch, 'project');
+    execFileSync('git', ['clone', '--local', '--quiet', source, checkout]);
+    const project = join(checkout, 'demo-project-1');
+    const boardPath = join(project, 'boards/board1/board.json');
+    const board = JSON.parse(readFileSync(boardPath, 'utf8'));
+    board.rows[0].cards[0].title = 'Live artist names';
+    board.rows[0].cards[0].widget.data.sql.queryId = 'demodb/live-artist-names';
+    writeFileSync(boardPath, JSON.stringify(board));
+    writeFileSync(join(project, 'queries/demodb/live-artist-names.query.json'), JSON.stringify({
+      id: 'live-artist-names', title: 'Live artist names', type: 'DTQL', connectionId: 'chinook-sqlite',
+      recordsets: [{ columns: [{ name: 'Name', type: 'string' }] }],
+    }));
+    writeFileSync(join(project, 'queries/demodb/live-artist-names.query.dtql'),
+      'from:\n  name: "Artist"\nlimit: 100\n');
+    execFileSync('git', ['-C', checkout, 'add', '-A']);
+    execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
+      'commit', '--quiet', '-m', 'Create saved working copy query']);
+    await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: checkout }]);
+
+    const requests = trackDemodbRequests(context);
+    await openDataset(page, 'chinook', 'Artist');
+    const edited = 'AC/DC (working copy journey)';
+    await editName(page, SQLITE_ORIGINAL_ARTIST_1, edited);
+    await page.locator('a.brand-home-link').first().click();
+    await page.getByTestId('open-demo-github').click();
+    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
+    await expect(environment).toBeVisible();
+    await environment.click();
+    await page.getByRole('radio', { name: 'dev' }).click();
+    await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
+    await page.getByRole('link', { name: 'Chinook customer insights' }).last().click();
+    const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Live artist names' });
+    await expect(card).toBeVisible();
+    const runtime = card.locator('select option').filter({ hasText: 'working copy' });
+    await expect(runtime).toHaveCount(1);
+    const selectionId = await runtime.getAttribute('value');
+    if (!selectionId) throw new Error('The working copy has no runtime selection ID');
+    await card.locator('select').selectOption(selectionId);
+    await card.getByRole('button', { name: 'Run on board' }).click();
+    await expect(card.locator('table tbody')).toContainText(edited, { timeout: 30_000 });
+    await card.getByRole('link', { name: 'Open saved query' }).click();
+    await page.getByRole('button', { name: 'Find open working copies' }).click();
+    const queryRuntime = page.locator('sneat-datatug-sql-editor select option').filter({ hasText: 'working copy' });
+    await expect(queryRuntime).toHaveCount(1);
+    await page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true })
+      .selectOption(selectionId, { timeout: 20_000 });
+    await page.getByRole('button', { name: 'Run query', exact: true }).click();
+    await expect(page.locator('sneat-datatug-sql-editor .result-grid-viewport')).toContainText(edited, { timeout: 30_000 });
+    expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+});
 
 test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;

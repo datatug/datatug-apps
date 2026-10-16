@@ -11,10 +11,10 @@
 //   /demo/sqlite/<id>/table/<name>    rows + record view (edit / delete)
 //
 // Large-dataset confirmation: Continue → progress → tables; Cancel → /demo/sqlite.
-import { ChangeDetectionStrategy, Component, DestroyRef, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, effect, inject, signal, untracked, viewChild } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -196,6 +196,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
               </ion-card>
             }
             @if (session()?.connection(); as connection) {
+              <ion-button data-testid="demo-sqlite-close" fill="clear" (click)="closeCopy()">Close local runtime</ion-button>
               <sneat-datatug-ovdb-database-browser
                 [connection]="connection"
                 [basePath]="basePath()"
@@ -223,6 +224,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
 })
 export class DemoSqlitePageComponent implements ViewWillEnter {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly service = inject(LocalDemoDbService);
 
   protected readonly persistenceNotice = persistenceNotice;
@@ -292,14 +294,13 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
   });
 
   constructor() {
-    const destroyRef = inject(DestroyRef);
     // One session per dataset; changing only the table keeps it.
     effect(() => {
       const entry = this.entry();
       untracked(() => {
         const current = this.session();
         if (current?.entry.dataset === entry?.dataset) return;
-        current?.dispose();
+        if (current) this.service.close(current.entry.dataset);
         const next = entry ? this.service.open(entry.dataset) : undefined;
         this.session.set(next);
         void next?.start();
@@ -309,7 +310,6 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
       const state = this.state();
       if (state.kind === 'ready' && state.replacedPreviousVersion) untracked(() => this.replacedNotice.set(true));
     });
-    destroyRef.onDestroy(() => this.session()?.dispose());
   }
 
   /**
@@ -334,5 +334,13 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
 
   retry(): Promise<void> {
     return this.session()?.retry() ?? Promise.resolve();
+  }
+
+  closeCopy(): void {
+    const current = this.session();
+    if (!current) return;
+    this.service.close(current.entry.dataset);
+    this.session.set(undefined);
+    void this.router.navigateByUrl('/demo/sqlite');
   }
 }

@@ -324,6 +324,13 @@ jobs:
 
       - uses: ./.github/actions/pnpm
 
+      - name: Checkout canonical demo project
+        uses: actions/checkout@v6
+        with:
+          repository: datatug/datatug-demo-project
+          ref: main
+          path: datatug-demo-project
+
       - name: Derive appropriate SHAs for base and head for nx affected commands
         uses: nrwl/nx-set-shas@v5
 
@@ -340,6 +347,7 @@ jobs:
       - name: nx e2e-demo-sqlite affected
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+          DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Upload demo SQLite e2e report

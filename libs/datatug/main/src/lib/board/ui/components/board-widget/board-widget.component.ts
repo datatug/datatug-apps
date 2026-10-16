@@ -22,7 +22,10 @@ import { QueryType } from '../../../../models/definition/query-def';
 import { IQueryDef } from '../../../../models/definition/query-def';
 import { firstValueFrom, timeout } from 'rxjs';
 import { QueriesService } from '../../../../queries/queries.service';
-import { PublicSqliteQueryService } from '../../../../queries/public-sqlite-query.service';
+import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
+import { QueryDispatchError } from '../../../../queries/query-dispatch';
+import type { QueryRuntimeOption } from '../../../../queries/query-runtime-registry.service';
+import type { TypedValue } from '@sneat/datatug-semantic';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
@@ -41,8 +44,9 @@ import { TabsWidgetComponent } from '../widgets/tabs-widget/tabs-widget.componen
 export class BoardWidgetComponent {
   private readonly router = inject(Router);
   private readonly queries = inject(QueriesService);
-  private readonly sqlite = inject(PublicSqliteQueryService);
+  private readonly dispatcher = inject(QueryDispatchService);
   private readonly destroyRef = inject(DestroyRef);
+  private activeRun?: AbortController;
   readonly choices = inject(BoardChoicesService);
   private generation = 0;
   private destroyed = false;
@@ -53,6 +57,8 @@ export class BoardWidgetComponent {
   readonly unsupportedReason = signal<string | undefined>(undefined);
   readonly definitionLoading = signal(false);
   readonly definition = signal<IQueryDef | undefined>(undefined);
+  readonly workingCopies = signal<readonly QueryRuntimeOption[]>([]);
+  readonly selectedRuntimeId = signal('snapshot');
   readonly remembered = computed(
     () =>
       this.choices.read(this.projectRef(), this.boardId()).selectedQueryId ===
@@ -106,9 +112,13 @@ export class BoardWidgetComponent {
       this.cardId();
       this.readBoardForRun();
       this.choices.actor();
+      this.boardContext();
+      this.dispatcher.runtimeRevision();
+      this.selectedRuntimeId();
       this.generation++;
       const generation = this.generation;
       this.definition.set(undefined);
+      this.workingCopies.set([]);
       this.result.set(undefined);
       this.runError.set(undefined);
       this.choiceError.set(undefined);
@@ -117,15 +127,6 @@ export class BoardWidgetComponent {
       if (!ref || !id || this.widgetDef()?.name !== 'SQL') return;
       // The existing public GitHub query reader ignores branch. The qualified
       // reader and board revalidation must both be available before Run.
-      if (
-        ref.spaceID ||
-        (!ref.projectApi && !['github', 'github.com'].includes(ref.storeId))
-      ) {
-        this.unsupportedReason.set(
-          'Run from this project connection is unavailable. Open the saved query to run it there.',
-        );
-        return;
-      }
       let queryRef: IProjectRef;
       try {
         queryRef = this.queryReadRef(ref);
@@ -142,7 +143,24 @@ export class BoardWidgetComponent {
           this.definitionLoading.set(false);
           const reason = this.ineligibleReason(definition, id);
           this.unsupportedReason.set(reason);
-          if (!reason) this.definition.set(definition);
+          if (!reason) {
+            this.definition.set(definition);
+            if (definition.request.queryType === QueryType.DTQL || definition.request.queryType === QueryType.TugQL) {
+              const controller = new AbortController();
+              onCleanup(() => controller.abort());
+              void this.dispatcher.availableWorkingCopies({
+                projectRef: ref,
+                definition,
+                environment: this.boardContext()?.environment,
+                signal: controller.signal,
+              }).then((options) => {
+                if (this.generation !== generation) return;
+                this.workingCopies.set(options);
+                if (!options.some((option) => option.selectionId === this.selectedRuntimeId()))
+                  this.selectedRuntimeId.set('snapshot');
+              }).catch(() => { if (this.generation === generation) this.workingCopies.set([]); });
+            }
+          }
         },
         error: () => {
           if (this.generation !== generation) return;
@@ -152,7 +170,10 @@ export class BoardWidgetComponent {
           );
         },
       });
-      onCleanup(() => subscription.unsubscribe());
+      onCleanup(() => {
+        subscription.unsubscribe();
+        this.activeRun?.abort();
+      });
     });
   }
 
@@ -185,13 +206,29 @@ export class BoardWidgetComponent {
   ): string | undefined {
     if (definition.id !== id && !id.endsWith('/' + definition.id))
       return 'The saved query identity changed. Open it to inspect the source.';
-    if (definition.request.queryType !== QueryType.SQL)
-      return 'This widget is not a SQL query. Open the saved query to run it.';
-    if (definition.connectionId !== 'chinook-sqlite' || definition.federation)
-      return 'This source cannot run in the board yet. Open the saved query to choose its supported runtime.';
-    if (definition.parameters?.length)
-      return 'This query needs inputs. Open the saved query to enter them and run it.';
+    if (![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(definition.request.queryType))
+      return 'This widget uses a query language this board cannot run.';
+    if (definition.federation)
+      return 'This saved query needs its admitted federation session. Open it to run the full query.';
     return undefined;
+  }
+
+  projectRuntimeLabel(): string {
+    switch (this.boardContext()?.executionTarget?.kind) {
+      case 'local-agent': return 'Local agent';
+      case 'hosted-cloud': return 'Shared cloud';
+      case 'ovdb-federation': return 'Federated runtime';
+      case 'ovdb-connection': return 'OVDB connection';
+      default: return 'Published browser snapshot';
+    }
+  }
+
+  selectRuntime(selectionId: string): void {
+    if (selectionId === this.selectedRuntimeId()) return;
+    this.activeRun?.abort();
+    this.result.set(undefined);
+    this.runError.set(undefined);
+    this.selectedRuntimeId.set(selectionId);
   }
 
   async run(): Promise<void> {
@@ -212,7 +249,19 @@ export class BoardWidgetComponent {
       this.unsupportedReason()
     )
       return;
+    if (this.definition()?.request.queryType !== QueryType.SQL && this.selectedRuntimeId() === 'snapshot' &&
+      (!this.boardContext()?.executionTarget || this.boardContext()?.executionTarget?.kind === 'browser-sqlite')) {
+      this.runError.set('Choose an open working copy to run this structured query.');
+      return;
+    }
+    if (this.definition()?.request.queryType === QueryType.SQL && this.selectedRuntimeId() !== 'snapshot') {
+      this.runError.set('Raw SQL cannot run in this working-copy runtime. Choose the project runtime.');
+      return;
+    }
     const generation = ++this.generation;
+    const controller = new AbortController();
+    this.activeRun?.abort();
+    this.activeRun = controller;
     this.running.set(true);
     this.result.set(undefined);
     this.runError.set(undefined);
@@ -279,7 +328,24 @@ export class BoardWidgetComponent {
         )
       )
         return;
-      const result = await this.sqlite.run(queryRef, definition);
+      const context = this.boardContext();
+      const parameters = this.typedParameters(definition);
+      const selectedRuntimeId = this.selectedRuntimeId();
+      if (selectedRuntimeId !== 'snapshot' && !this.workingCopies().some((option) => option.selectionId === selectedRuntimeId))
+        throw new QueryDispatchError('The selected working copy is closed. Choose a current runtime.');
+      const result = await this.dispatcher.execute({
+        projectRef: ref,
+        definition,
+        queryId,
+        environment: context?.environment,
+        ...(selectedRuntimeId !== 'snapshot'
+          ? { runtimeSelectionId: selectedRuntimeId }
+          : context?.executionTarget ? { target: context.executionTarget } : {}),
+        ...(context?.securityContextId ? { securityContextId: context.securityContextId } : {}),
+        ...(context?.runtimeBinding ? { runtimeBinding: context.runtimeBinding } : {}),
+        parameters,
+        signal: controller.signal,
+      });
       if (
         this.stillCurrent(
           generation,
@@ -306,12 +372,13 @@ export class BoardWidgetComponent {
       )
         this.runError.set(
           qualifiedLocalReadVersionGuidance(error) ??
-            (error instanceof Error &&
-            error.message.startsWith('This board card changed.')
+            (error instanceof QueryDispatchError || error instanceof Error &&
+            (error.message.startsWith('This board card changed.') || error.message.startsWith('This board card needs a value for '))
               ? error.message
               : 'The saved query could not run. Try again or open the saved query to inspect it.'),
         );
     } finally {
+      if (this.activeRun === controller) this.activeRun = undefined;
       if (
         this.stillCurrent(
           generation,
@@ -325,6 +392,39 @@ export class BoardWidgetComponent {
       )
         this.running.set(false);
     }
+  }
+
+  private typedParameters(definition: IQueryDef): Readonly<Record<string, TypedValue>> {
+    const supplied = this.boardContext()?.parameters ?? {};
+    const values: Record<string, TypedValue> = {};
+    for (const parameter of definition.parameters ?? []) {
+      const raw = supplied[parameter.id]?.value;
+      if (raw === undefined) {
+        if (parameter.isRequired !== false)
+          throw new Error(`This board card needs a value for ${parameter.title ?? parameter.id}.`);
+        continue;
+      }
+      if (Array.isArray(raw)) throw new Error(`This board card requires a single value for ${parameter.title ?? parameter.id}.`);
+      switch (parameter.type) {
+        case 'integer': values[parameter.id] = { type: 'integer', value: String(raw) }; break;
+        case 'number': case 'float': case 'money':
+          if (typeof raw !== 'number' || !Number.isFinite(raw)) throw new Error(`The value for ${parameter.title ?? parameter.id} is invalid.`);
+          values[parameter.id] = { type: 'number', value: raw }; break;
+        case 'boolean': case 'bit':
+          if (typeof raw !== 'boolean') throw new Error(`The value for ${parameter.title ?? parameter.id} is invalid.`);
+          values[parameter.id] = { type: 'boolean', value: raw }; break;
+        case 'date':
+          if (typeof raw !== 'string') throw new Error(`The value for ${parameter.title ?? parameter.id} is invalid.`);
+          values[parameter.id] = { type: 'date', value: raw }; break;
+        case 'datetime':
+          if (typeof raw !== 'string') throw new Error(`The value for ${parameter.title ?? parameter.id} is invalid.`);
+          values[parameter.id] = { type: 'datetime', value: raw }; break;
+        default:
+          if (typeof raw !== 'string') throw new Error(`The value for ${parameter.title ?? parameter.id} is invalid.`);
+          values[parameter.id] = { type: 'string', value: raw };
+      }
+    }
+    return Object.freeze(values);
   }
 
   rememberChoice(): void {
@@ -349,7 +449,8 @@ export class BoardWidgetComponent {
     const href = projectPageHref(ref, ['query', id]);
     if (href === '/') return undefined;
     const tree = this.router.parseUrl(href);
-    tree.queryParams = { ...tree.queryParams, id };
+    const environment = this.boardContext()?.environment;
+    tree.queryParams = { ...tree.queryParams, id, ...(environment ? { env: environment } : {}) };
     return tree;
   });
 
