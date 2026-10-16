@@ -1,4 +1,5 @@
 import type { RunQueryRequest, TypedValue } from '@sneat/datatug-semantic';
+import { projectPageCommands } from '../link-route';
 
 /**
  * A query result stored by `datatug query run --result-id` and served by the agent's `GET /datatug/results/<id>`
@@ -387,11 +388,7 @@ export function tableLink(
   kind: string,
 ): TableLink | undefined {
   if (!ids || !relation) return undefined;
-  const commands = [
-    '/store',
-    storeId,
-    'project',
-    ids.project,
+  const page = [
     'env',
     ids.env,
     'db',
@@ -399,9 +396,13 @@ export function tableLink(
     kind === 'view' ? 'view' : 'table',
     relation,
   ];
+  const project = { storeId, projectId: ids.project };
+  const commands = projectPageCommands(project, page);
+  const recordsCommands = projectPageCommands(project, [...page, 'records']);
+  if (!commands || !recordsCommands) return undefined;
   return {
     commands,
-    recordsCommands: [...commands, 'records'],
+    recordsCommands,
     queryParams: { schema },
   };
 }

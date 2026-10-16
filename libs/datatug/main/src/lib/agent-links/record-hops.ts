@@ -1,4 +1,9 @@
-import { AgentCell, AgentForeignKey, AgentTableRef } from './agent-link-api.service';
+import {
+  AgentCell,
+  AgentForeignKey,
+  AgentTableRef,
+} from './agent-link-api.service';
+import { projectPageCommands } from './link-route';
 
 /**
  * A foreign-key hop of a record (Feature claude-mod-web-links, plan Task 9): the record of `refTable` that a foreign
@@ -26,9 +31,18 @@ function jsonText(value: string): string {
 /** A typed cell as a JSON key value: an integer as its exact digits (never through a number), a string as JSON. */
 function keyLiteral(cell: AgentCell | undefined): string | undefined {
   if (!cell) return undefined;
-  if (cell.type === 'integer' && INTEGER_TEXT.test(cell.text) && cell.text !== '-0') return cell.text;
+  if (
+    cell.type === 'integer' &&
+    INTEGER_TEXT.test(cell.text) &&
+    cell.text !== '-0'
+  )
+    return cell.text;
   // At most 256 bytes, as the agent's lookup counts them.
-  if (cell.type === 'string' && new TextEncoder().encode(cell.text).length <= 256) return jsonText(cell.text);
+  if (
+    cell.type === 'string' &&
+    new TextEncoder().encode(cell.text).length <= 256
+  )
+    return jsonText(cell.text);
   return undefined; // null, decimal, date, bytes…: the record lookup takes integer and string keys only
 }
 
@@ -52,9 +66,14 @@ export function recordHops(
       parts.push(`${jsonText(fk.refColumns[i])}:${literal}`);
     }
     if (parts.length !== fk.columns.length) continue;
+    const commands = projectPageCommands(
+      { storeId: ref.storeId, projectId: ref.project },
+      ['env', ref.env, 'db', ref.source, 'table', fk.refTable.name, 'record'],
+    );
+    if (!commands) continue;
     hops.push({
       fk,
-      commands: ['/store', ref.storeId, 'project', ref.project, 'env', ref.env, 'db', ref.source, 'table', fk.refTable.name, 'record'],
+      commands,
       schema: fk.refTable.schema,
       fragment: `pk={${parts.join(',')}}`,
     });
