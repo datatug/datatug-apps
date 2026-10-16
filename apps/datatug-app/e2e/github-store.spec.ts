@@ -467,6 +467,10 @@ test.describe('GitHub-store project — every side-menu page loads without error
   }) => {
     const errors = installErrorLoggerWatch(page);
     await page.goto(PROJECT_URL);
+    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
+    await expect(environment).toBeVisible();
+    await environment.click();
+    await page.getByRole('radio', { name: 'dev' }).click();
     await page
       .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
       .click();
@@ -500,6 +504,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       hasText: 'Top customer spend',
     });
     await topSpendCard.getByRole('button', { name: 'Run on board' }).click();
+    await expect(topSpendCard).toContainText('Environment: dev');
     await expect(topSpendCard.getByText(/rows returned/)).toBeVisible({
       timeout: 25_000,
     });
@@ -537,6 +542,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     expect(new URL(page.url()).searchParams.get('id')).toBe(
       'demodb/chinook-top-customer-spend',
     );
+    expect(new URL(page.url()).searchParams.get('env')).toBe('dev');
     await expect(
       page.locator('sneat-datatug-sql-editor .query-page-title'),
     ).toContainText('Top Customer Spend', { timeout: 20_000 });

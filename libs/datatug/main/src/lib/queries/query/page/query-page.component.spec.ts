@@ -7923,7 +7923,7 @@ select (
     },
   );
 
-  it.each(['edit', 'history', 'destroy'])(
+  it.each(['edit', 'history', 'Ionic leave', 'destroy'])(
     'invalidates an owned dispatch session before a pending result on %s',
     async (action) => {
       const definition = historyDefinition(),
@@ -7949,6 +7949,7 @@ select (
         }
         if (action === 'history')
           await component.openHistoricalResult('fixture');
+        if (action === 'Ionic leave') component.ionViewWillLeave();
         if (action === 'destroy') component.ngOnDestroy();
         await runFixture.whenStable();
         expect(component.running()).toBe(false);
@@ -7960,6 +7961,47 @@ select (
         expect(component.runError()).toBeUndefined();
     },
   );
+
+  it('discards a historical result opened while Ionic leaves the cached query page', async () => {
+    const definition = historyDefinition();
+    component = await createComponent({}, definition, historyResultTemplate());
+    const federation = TestBed.inject(FederatedQueryService);
+    let release!: (value: Awaited<ReturnType<FederatedQueryService['openLocalResult']>>) => void;
+    vi.mocked(federation.openLocalResult).mockImplementation(() =>
+      new Promise((resolve) => { release = resolve; }));
+
+    const pending = component.openHistoricalResult('datatug-output-100000-abc');
+    await vi.waitFor(() => expect(federation.openLocalResult).toHaveBeenCalledOnce());
+    component.ionViewWillLeave();
+    release({
+      descriptor: {} as LocalResultDescriptor,
+      executedDefinition: definition,
+      result: historyResultFor(definition),
+    });
+    await pending;
+
+    expect(component.runResult()).toBeUndefined();
+    expect(component.selectedHistoricalResult()).toBeUndefined();
+    expect(component.historicalDefinition()).toBeUndefined();
+    expect(component.localHistoryLoading()).toBe(false);
+  });
+
+  it('keeps a completed agent result on cached leave when no worker session remains', async () => {
+    component = await createComponent();
+    const result: RunQueryResponse = {
+      recordset: { columns: [{ name: 'n', type: 'integer' }], rows: [[{ type: 'integer', value: '1' }]] },
+      limitations: [], bindingsApplied: [], truncated: false,
+      provenance: { source: 'agent', queryId: queryDef.id, mode: 'live', observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
+    };
+    localResultFixture.mockReturnValueOnce(of(result));
+    component.runQuery();
+    await runFixture.whenStable();
+    expect(component.runResult()).toEqual(result);
+
+    component.ionViewWillLeave();
+    expect(component.runResult()).toEqual(result);
+    expect(component.committedRun()).toBeDefined();
+  });
 
   it.each(['edit', 'silent-in-place'])(
     'does not publish delayed output live across %s mutation and fences all old callbacks',
@@ -8600,6 +8642,20 @@ select (
       [{ type: 'integer', value: '101' }],
     ]);
     expect(component.resultPageEnd()).toBe(200);
+
+    // A cached Ionic page keeps its dispatcher session for paging, then must
+    // release that same owner when navigation leaves the route.
+    expect(dispatchCancel).not.toHaveBeenCalled();
+    component.selectedHistoricalResult.set(historyResultFor(historyDefinition()).localResult);
+    component.historicalDefinition.set(definition);
+    component.ionViewWillLeave();
+    await runFixture.whenStable();
+    expect(dispatchCancel).toHaveBeenCalledOnce();
+    expect(component.runResult()).toBeUndefined();
+    expect(component.visibleResultRows()).toEqual([]);
+    expect(component.committedRun()).toBeUndefined();
+    expect(component.selectedHistoricalResult()).toBeUndefined();
+    expect(component.historicalDefinition()).toBeUndefined();
   });
 
   it('binds a parameter from context when no selection binding is present', async () => {

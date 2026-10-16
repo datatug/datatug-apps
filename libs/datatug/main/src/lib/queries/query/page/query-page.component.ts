@@ -2709,6 +2709,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public ionViewWillLeave(): void {
     this.invalidateSemanticMapping();
     this.authorViewActive = false;
+    // Ionic retains this component after navigation. The dispatcher session owns
+    // the result worker and its temporary IndexedDB pages until this route ends.
+    const hadActiveDispatchSession = this.activeDispatchSession !== undefined;
+    this.invalidateFederatedRun();
+    this.stopFederatedRun();
+    this.invalidateHistoryRequests();
+    if (hadActiveDispatchSession) {
+      this.setDisplayedResult(undefined);
+      this.committedRun.set(undefined);
+      this.resultPageRows.set([]);
+      this.resultPageIndex.set(0);
+      this.selectedHistoricalResult.set(undefined);
+      this.historicalDefinition.set(undefined);
+      this.executedGraphDefinition = undefined;
+    }
     ++this.authorRowDetailsFocusGeneration;
     ++this.authorPreviewLifetime;
     this.authorPreviewLoading.set(false);

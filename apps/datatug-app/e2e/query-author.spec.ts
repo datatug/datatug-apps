@@ -16,7 +16,7 @@ const CTE_AUTHOR_URL =
 const CTE_GRAPH_AUTHOR_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
 const PLAYLIST_SQL_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=dev';
 const LEGACY_DTQL_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices&editor=text&env=local';
 const LONG_HEADER_QUERY_TITLE =

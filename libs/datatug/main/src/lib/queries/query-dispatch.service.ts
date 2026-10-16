@@ -100,6 +100,8 @@ export class QueryDispatchService {
     const matches = catalog?.connections?.filter((item) => item.id === connectionId) ?? [];
     if (matches.length !== 1) throw new QueryDispatchError('The saved query connection is missing or ambiguous in this project.');
     const declaration = matches[0];
+    if (!request.environment && (declaration.environment !== undefined || declaration.environments !== undefined))
+      throw new QueryDispatchError('Select an environment for this saved connection before running the query.');
     if (declaration.environment !== undefined && declaration.environment !== request.environment ||
       declaration.environments !== undefined && (!request.environment || !declaration.environments.includes(request.environment)))
       throw new QueryDispatchError('The selected connection is unavailable in this environment.');
