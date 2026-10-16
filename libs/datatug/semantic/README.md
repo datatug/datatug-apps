@@ -25,6 +25,16 @@ the service/component level. It does not wire into any existing page or route â€
   `LimitationHeaderComponent`, `SemanticMarkerComponent` â€” standalone, Ionic
   list/chip-based, dense.
 
+## Monthly bar race input
+
+`prepareBarRace` accepts a result column containing canonical `YYYY-MM` strings.
+It fills every missing calendar month between the first and last observed month
+with zero period values or carried cumulative values, up to 240 frames. Typed
+dates and datetimes are rejected until the chart specification declares a time
+grain and its gap policy. Callers must aggregate authorized source records into
+month/category/safe-integer measure rows before preparing the chart; the
+result's source, execution, rights, and limitation metadata stays attached.
+
 ## Testing
 
 ```bash
