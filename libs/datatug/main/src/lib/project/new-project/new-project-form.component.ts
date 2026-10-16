@@ -208,7 +208,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.isCreatingSpace.set(true);
     this.injector
       .get(SpaceService)
-      .createSpace({ type: 'group', title })
+      .createSpace({
+        type: this.billingIntent() === 'space_business' ? 'company' : 'group',
+        title,
+      })
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe({
         next: (space) => {
