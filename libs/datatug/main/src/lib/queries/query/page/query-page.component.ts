@@ -453,6 +453,9 @@ import type {
 } from '../../federated-local-results';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
 import { QueryContextSqlService } from '../../query-context-sql.service';
+import { QueryDispatchService } from '../../query-dispatch.service';
+import type { QueryExecutionSession } from '../../query-dispatch';
+import type { QueryRuntimeOption } from '../../query-runtime-registry.service';
 import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
 import { SessionResultCacheService, tryWriteSessionResultCache } from '../../../session-context/session-result-cache.service';
 import { sessionResultFingerprint } from '../../../session-context/session-result-fingerprint';
@@ -805,6 +808,53 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly agentRunEnvironmentsError = signal('');
   public readonly agentSelectedEnvironment = signal('');
   private readonly federatedQuery = inject(FederatedQueryService);
+  private readonly queryDispatch = inject(QueryDispatchService);
+  private activeDispatchSession?: QueryExecutionSession;
+  public readonly workingCopyOptions = signal<readonly QueryRuntimeOption[]>([]);
+  public readonly selectedWorkingCopy = signal('project');
+  public readonly workingCopyLoading = signal(false);
+  public readonly workingCopyError = signal<string | undefined>(undefined);
+  private workingCopyScope = '';
+  private workingCopyLoad = 0;
+  private workingCopyRevision = -1;
+
+  private currentWorkingCopyScope(): string {
+    return JSON.stringify({ project: this.project?.ref, connection: this.queryDef()?.connectionId, environment: this.envId });
+  }
+
+  private currentBrowserDispatchScope(): string {
+    return JSON.stringify({ project: this.project?.ref, environment: this.envId });
+  }
+
+  public async loadWorkingCopies(): Promise<void> {
+    const definition = this.queryDef();
+    const ref = this.project?.ref;
+    if (!ref || !definition?.connectionId || this.isTugqlAuthorJourney()) return;
+    const scope = this.currentWorkingCopyScope();
+    const load = ++this.workingCopyLoad;
+    this.workingCopyLoading.set(true);
+    this.workingCopyError.set(undefined);
+    try {
+      const options = await this.queryDispatch.availableWorkingCopies({ projectRef: ref, definition, environment: this.envId });
+      if (load !== this.workingCopyLoad || scope !== this.currentWorkingCopyScope()) return;
+      this.workingCopyOptions.set(options);
+      this.workingCopyScope = scope;
+      this.workingCopyRevision = this.queryDispatch.runtimeRevision();
+      if (!options.some((option) => option.selectionId === this.selectedWorkingCopy())) this.selectWorkingCopy('project');
+    } catch (error) {
+      if (load === this.workingCopyLoad) this.workingCopyError.set(error instanceof Error ? error.message : 'Working copies could not be checked.');
+    } finally {
+      if (load === this.workingCopyLoad) this.workingCopyLoading.set(false);
+    }
+  }
+
+  public selectWorkingCopy(selectionId: string): void {
+    if (selectionId === this.selectedWorkingCopy()) return;
+    this.invalidateFederatedRun();
+    this.stopFederatedRun();
+    this.setDisplayedResult(undefined);
+    this.selectedWorkingCopy.set(selectionId);
+  }
   private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly detectiveClient = inject(DetectiveClientService);
@@ -2659,6 +2709,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public ionViewWillLeave(): void {
     this.invalidateSemanticMapping();
     this.authorViewActive = false;
+    // Ionic retains this component after navigation. The dispatcher session owns
+    // the result worker and its temporary IndexedDB pages until this route ends.
+    const hadActiveDispatchSession = this.activeDispatchSession !== undefined;
+    this.invalidateFederatedRun();
+    this.stopFederatedRun();
+    this.invalidateHistoryRequests();
+    if (hadActiveDispatchSession) {
+      this.setDisplayedResult(undefined);
+      this.committedRun.set(undefined);
+      this.resultPageRows.set([]);
+      this.resultPageIndex.set(0);
+      this.selectedHistoricalResult.set(undefined);
+      this.historicalDefinition.set(undefined);
+      this.executedGraphDefinition = undefined;
+    }
     ++this.authorRowDetailsFocusGeneration;
     ++this.authorPreviewLifetime;
     this.authorPreviewLoading.set(false);
@@ -4923,6 +4988,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   constructor() {
     effect(() => {
+      const revision = this.queryDispatch.runtimeRevision();
+      untracked(() => {
+        if (!this.workingCopyScope || revision === this.workingCopyRevision) return;
+        const selected = this.selectedWorkingCopy() !== 'project';
+        this.workingCopyRevision = revision;
+        ++this.workingCopyLoad;
+        this.workingCopyLoading.set(false);
+        if (selected) this.selectWorkingCopy('project');
+        this.workingCopyOptions.set([]);
+        if (selected)
+          this.workingCopyError.set('The open working copy changed. Find current working copies before running again.');
+        void this.loadWorkingCopies();
+      });
+    });
+    effect(() => {
       const definition = this.queryDef(), recordset = this.displayedRecordset(), resultSet = this.relatedResultSet(), executed = this.semanticExecutedDefinition();
       const generation = ++this.semanticBasisGeneration;
       this.semanticBasis.set(undefined);
@@ -5373,6 +5453,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorRunAbort = undefined;
     ++this.semanticRunLifetime;
     this.invalidateFederatedRun();
+    this.stopFederatedRun();
     this.setDisplayedResult(undefined);
     this.committedRun.set(undefined);
     this.historySelection++;
@@ -5410,6 +5491,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           const { id } = currentEnv;
           if (!id) {
             return;
+          }
+          if (this.envId !== undefined && this.envId !== id) {
+            this.invalidateFederatedRun();
+            this.stopFederatedRun();
+            this.setDisplayedResult(undefined);
           }
           this.envId = id;
           this.agentSelectedEnvironment.set(id);
@@ -5794,6 +5880,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private onProjRefChanged = (ref: IProjectRef) => {
     this.comparisonRouteProjectRef = ref;
     const prevProject = this.project;
+    if (prevProject && !equalProjectRef(prevProject.ref, ref)) {
+      this.invalidateFederatedRun();
+      this.stopFederatedRun();
+      this.setDisplayedResult(undefined);
+    }
     if (
       ref.projectId !== prevProject?.ref.projectId ||
       ref.storeId !== prevProject?.ref.storeId
@@ -6657,6 +6748,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private currentResultTargetIdentity(): string {
     return JSON.stringify([
       this.queryDef()?.connectionId,
+      this.selectedWorkingCopy(),
       this.selectedSource(),
       this.envId,
       this.effectiveBindings().map((binding) => [
@@ -6672,6 +6764,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     definition = this.queryDef(),
     result?: FederatedQueryResult,
   ): string {
+    if (result?.browserExecution?.runtime === 'ovdb-connection')
+      return result.provenance.source || 'Open working copy';
+    if (result?.browserExecution?.runtime === 'sqlite-fixture')
+      return result.provenance.source || 'Published browser SQLite snapshot';
     const federationBase = definition?.federation?.ovdbBaseUrl;
     if (federationBase) {
       try {
@@ -6681,8 +6777,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
     }
     const connectionId = definition?.connectionId;
-    if (connectionId === 'chinook-sqlite')
-      return 'Chinook SQLite browser fixture';
     if (connectionId) {
       const connection = this.activeEnv?.summary?.connections?.[connectionId];
       return connection?.database
@@ -6871,11 +6965,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.hostedScenarioError.set('');
     this.running.set(true);
     this.runError.set(undefined);
-    this.detectiveClient
-      .runHostedQuery(context, queryId, environment, inputs)
-      .pipe(takeUntil(this.destroyed))
-      .subscribe({
-        next: (response: HostedQueryResponse) => {
+    const session = this.queryDispatch.start({
+      projectRef: ref,
+      definition,
+      queryId,
+      environment,
+      target: { kind: 'hosted-cloud' },
+      hostedInputs: inputs,
+    });
+    this.activeDispatchSession = session;
+    void (session.hostedResponse ?? Promise.reject(new Error('Hosted execution session has no response.')))
+      .then((response: HostedQueryResponse) => {
           if (!current()) return;
           const execution = response.result.execution;
           if (
@@ -6994,12 +7094,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               });
           };
           validateReceipt(0);
-        },
-        error: (error: unknown) => {
+        })
+      .catch((error: unknown) => {
           if (!current()) return;
           this.runError.set(detectiveErrorMessage(error, true));
           this.running.set(false);
-        },
+        })
+      .finally(() => {
+        if (this.activeDispatchSession === session) this.activeDispatchSession = undefined;
+        void session.dispose();
       });
   }
 
@@ -7294,7 +7397,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.historySelection++;
     this.queryRunTiming.set(undefined);
-    if (projectRef && this.isHostedProject) {
+    if (projectRef && this.isHostedProject && this.selectedWorkingCopy() === 'project') {
       this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
       return;
     }
@@ -7385,6 +7488,59 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         });
       return;
     }
+    if (this.selectedWorkingCopy() !== 'project' && definition && !this.isTugqlAuthorJourney()) {
+      const selectionId = this.selectedWorkingCopy();
+      if (this.workingCopyScope !== this.currentWorkingCopyScope() ||
+        !this.workingCopyOptions().some((option) => option.selectionId === selectionId)) {
+        this.runError.set('Refresh the open working copies and choose the runtime for this saved query.');
+        return;
+      }
+      if (![QueryType.DTQL, QueryType.TugQL].includes(definition.request.queryType)) {
+        this.runError.set('This working copy accepts structured queries. Choose the project runtime for raw SQL.');
+        return;
+      }
+      if (this.effectiveBindings().length || definition.parameters?.length) {
+        this.runError.set('This working-copy runtime cannot bind query parameters yet. Choose another runtime.');
+        return;
+      }
+      if (this.running()) return;
+      if (!projectRef) return;
+      const executedDefinition = structuredClone(definition);
+      const scope = this.historyScope();
+      const dispatchScope = this.currentBrowserDispatchScope();
+      const revision = this.queryDispatch.runtimeRevision();
+      const lifetime = ++this.federatedRunLifetime;
+      const current = (): boolean =>
+        lifetime === this.federatedRunLifetime && this.historyScope() === scope &&
+        this.currentBrowserDispatchScope() === dispatchScope &&
+        this.selectedWorkingCopy() === selectionId && this.queryDispatch.runtimeRevision() === revision &&
+        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
+      this.running.set(true);
+      this.runError.set(undefined);
+      const session = this.queryDispatch.start({
+        projectRef, definition: executedDefinition, queryId,
+        environment: this.envId, runtimeSelectionId: selectionId,
+      });
+      void this.activeDispatchSession?.cancel().catch(() => undefined);
+      this.activeDispatchSession = session;
+      void session.result.then((result) => {
+        if (!current()) return;
+        this.showAttemptResult(result);
+        const timing: QueryRunTiming = {
+          allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+          noRecords: result.recordset.rows.length === 0,
+        };
+        this.queryRunTiming.set(timing);
+        if (!result.truncated && !result.hasMore) this.commitSuccessfulResult(result, executedDefinition, timing);
+      }).catch((error: unknown) => {
+        if (current()) this.runError.set(error instanceof Error ? error.message : 'The working-copy query failed.');
+      }).finally(() => {
+        if (this.activeDispatchSession === session) this.activeDispatchSession = undefined;
+        void session.dispose();
+        if (lifetime === this.federatedRunLifetime) this.running.set(false);
+      });
+      return;
+    }
     if (
       isBrowserSqlProject(this.project?.ref) &&
       definition?.connectionId &&
@@ -7396,12 +7552,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const exactBindings = declared.map((parameter) =>
         effective.find((binding) => binding.parameterId === parameter.id)?.value,
       );
-      if (declared.length && (exactBindings.some((value) => value === undefined) || effective.length !== declared.length)) {
-        this.runError.set('This browser SQLite source requires a value for every declared parameter. Set each value before Run, or use an agent target that supports optional SQL inputs.');
+      const declaredIds = new Set(declared.map((parameter) => parameter.id));
+      if (declared.some((parameter, index) => parameter.isRequired !== false && exactBindings[index] === undefined) ||
+        effective.some((binding) => !declaredIds.has(binding.parameterId))) {
+        this.runError.set('This browser SQLite source needs values for its required declared parameters.');
         return;
       }
       const parameterValues: Record<string, TypedValue> = Object.fromEntries(
-        declared.map((parameter, index) => [parameter.id, structuredClone(exactBindings[index] as TypedValue)]),
+        declared.flatMap((parameter, index) => exactBindings[index] === undefined
+          ? [] : [[parameter.id, structuredClone(exactBindings[index] as TypedValue)]]),
       );
       // The browser worker reports the executed rows, but its generic SQL envelope
       // does not echo bindings. Retain the exact validated inputs dispatched with
@@ -7409,10 +7568,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const dispatched: Binding[] = [];
       for (const parameter of declared) {
         const binding = effective.find((candidate) => candidate.parameterId === parameter.id);
-        if (!binding) {
-          this.runError.set('This browser SQLite source requires a value for every declared parameter.');
-          return;
-        }
+        if (!binding) continue;
         dispatched.push({
           parameterId: parameter.id,
           value: parameterValues[parameter.id],
@@ -7423,20 +7579,37 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
       const dispatchedBindings: readonly Binding[] = cloneAndFreeze(dispatched);
       const runScope = this.historyScope();
+      const dispatchScope = this.currentBrowserDispatchScope();
       const executedDefinition = structuredClone(definition);
       const executedBindings = JSON.stringify(effective);
       const lifetime = ++this.federatedRunLifetime;
       const current = (): boolean =>
         lifetime === this.federatedRunLifetime &&
         this.historyScope() === runScope &&
+        this.currentBrowserDispatchScope() === dispatchScope &&
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition) &&
         JSON.stringify(this.effectiveBindings()) === executedBindings;
       this.running.set(true);
       this.runError.set(undefined);
-      const onDispatched = () => this.reportGitHubQueryDispatch(projectRef);
-      void (declared.length
-        ? this.publicSqliteQuery.runParameterized(projectRef, executedDefinition, parameterValues, onDispatched)
-        : this.publicSqliteQuery.run(projectRef, executedDefinition, onDispatched))
+      const dispatchedOrigins = dispatchedBindings.map((binding) => ({
+        parameterId: binding.parameterId,
+        origin: binding.origin,
+        ...(binding.factId ? { factId: binding.factId } : {}),
+      }));
+      const controller = new AbortController();
+      const session = this.queryDispatch.start({
+        projectRef,
+        definition: executedDefinition,
+        queryId,
+        environment: this.envId,
+        target: { kind: 'browser-sqlite' },
+        parameters: parameterValues,
+        bindingOrigins: dispatchedOrigins,
+        onDispatched: () => this.reportGitHubQueryDispatch(projectRef),
+        signal: controller.signal,
+      });
+      this.activeDispatchSession = session;
+      void session.result
         .then((result) => {
           if (!current()) return;
           const displayedResult = dispatchedBindings.length
@@ -7464,6 +7637,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           }
         })
         .finally(() => {
+          if (this.activeDispatchSession === session)
+            this.activeDispatchSession = undefined;
+          void session.dispose();
           if (lifetime === this.federatedRunLifetime) {
             if (!current()) this.queryRunTiming.set(undefined);
             this.running.set(false);
@@ -7495,15 +7671,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         graphStableIdentity(this.queryDef()) === executedIdentity;
       this.executedGraphDefinition = executedDefinition;
       this.reportGitHubQueryDispatch(projectRef);
-      this.federatedQuery
-        .run(
-          executedDefinition,
-          (progress) => {
+      if (!projectRef) return;
+      const session = this.queryDispatch.start({
+        projectRef,
+        definition: executedDefinition,
+        target: { kind: 'ovdb-federation' },
+        federationRun: {
+          token: runtimeToken,
+          mode: runMode,
+          onProgress: (progress) => {
             if (current()) this.federatedProgress.set(progress);
           },
-          runtimeToken,
-          runMode,
-          (totalRows) => {
+          onFinished: (totalRows) => {
             if (!current()) return;
             if (!resultPublished) {
               reportedTotalRows = totalRows;
@@ -7514,7 +7693,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               publishedGeneration,
             );
           },
-          runMode === 'full'
+          extras: runMode === 'full'
             ? {
                 onFirstRecord: (at) => {
                   if (current() && firstRecordAt === undefined)
@@ -7522,7 +7701,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 },
               }
             : {},
-        )
+        },
+      });
+      void this.activeDispatchSession?.cancel().catch(() => undefined);
+      this.activeDispatchSession = session;
+      void session.result
         .then((result) => {
           if (current()) {
             const runtimePages = Object.values(result.runtimeRead?.pages ?? {});
@@ -7561,12 +7744,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 timing,
               );
             if (completedResult.localResult && this.project?.ref) {
-              void this.federatedQuery
-                .associateLocalResult(
-                  this.project.ref,
-                  queryId,
-                  completedResult.localResult,
-                )
+              void Promise.resolve(session.associateLocalResult?.(
+                this.project.ref,
+                queryId,
+                completedResult.localResult,
+              ))
                 .then(() =>
                   current() ? this.refreshLocalHistory() : undefined,
                 )
@@ -7594,6 +7776,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           }
         })
         .finally(() => {
+          if (this.activeDispatchSession !== session) void session.dispose();
           if (lifetime !== this.federatedRunLifetime) return;
           if (current()) this.running.set(false);
           else {
@@ -7618,6 +7801,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           ? SHARED_QUERY_RUN_MESSAGE
           : GITHUB_QUERY_RUN_MESSAGE,
       );
+      return;
+    }
+    if (this.queryState.isNew || this.queryState.isSaving || this.isChanged) {
+      this.runError.set('Save this query before running its agent revision.');
       return;
     }
     const environment = this.envId;
@@ -7725,11 +7912,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.resultPageRows.set([]);
     this.resultPageLoading.set(true);
     try {
-      const rows = await this.federatedQuery.getPage(
-        next,
-        set,
-        this.selectedHistoricalResult() ?? result?.localResult,
-      );
+      const historicalRef = this.selectedHistoricalResult();
+      const rows = historicalRef || result?.localResult
+        ? await this.federatedQuery.getPage(next, set, historicalRef ?? result?.localResult)
+        : await this.activeDispatchSession?.getPage?.(next, set);
+      if (!rows) throw new Error('The result pages are unavailable.');
       const current = this.runResult();
       if (
         selection === this.historySelection &&
@@ -7851,7 +8038,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private stopFederatedRun(): void {
     const lifetime = this.federatedRunLifetime;
-    void this.federatedQuery.dispose().catch((error: unknown) => {
+    const session = this.activeDispatchSession;
+    this.activeDispatchSession = undefined;
+    void (session?.cancel() ?? Promise.resolve()).catch((error: unknown) => {
       if (lifetime === this.federatedRunLifetime)
         this.localHistoryError.set(
           error instanceof Error
@@ -7895,6 +8084,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.localHistoryLoading.set(true);
     this.localHistoryError.set(undefined);
     try {
+      await this.activeDispatchSession?.cancel();
+      this.activeDispatchSession = undefined;
       await this.federatedQuery.dispose();
       if (!current()) return;
       const opened = await this.federatedQuery.openLocalResult(id);
@@ -8064,8 +8255,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.investigationContext.isCurrentScope(requestScope) &&
       this.currentQueryIdentity() === queryIdentity &&
       this.currentResultTargetIdentity() === targetIdentity;
-    this.semanticApi.runQuery(request).subscribe({
-      next: (response) => {
+    const projectRef = this.project?.ref;
+    if (!projectRef) return;
+    const session = this.queryDispatch.start({
+      projectRef,
+      definition: executedDefinition,
+      queryId: request.queryId,
+      environment: request.environment,
+      securityContextId: request.securityContextId,
+      target: { kind: 'local-agent', agentStoreId: projectRef.storeId },
+      agentRequest: request,
+    });
+    void this.activeDispatchSession?.cancel().catch(() => undefined);
+    this.activeDispatchSession = session;
+    void session.result.then((response) => {
         // Task 15 item 4 — discard a late response for a scope the user has since left
         // (project/environment/principal switch mid-flight): api-contract.md "late
         // responses from another scope are discarded".
@@ -8096,11 +8299,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryRunTiming.set(timing);
         this.commitSuccessfulResult(response, executedDefinition, timing);
         this.running.set(false);
-      },
-      error: (err: unknown) => {
+      }).catch((err: unknown) => {
         if (current()) this.handleRunError(err, request, requestScope);
-      },
-    });
+      }).finally(() => {
+        if (this.activeDispatchSession === session) this.activeDispatchSession = undefined;
+        void session.dispose();
+        if (current()) this.running.set(false);
+      });
   }
 
   private handleRunError(
