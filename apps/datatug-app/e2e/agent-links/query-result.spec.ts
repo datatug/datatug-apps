@@ -123,6 +123,30 @@ test.describe('query result link', () => {
     );
   });
 
+  test('Back with no history goes to the project of the result', async ({
+    page,
+    linkDaemon,
+  }) => {
+    linkDaemon.writeResult('e2e-back', [
+      '--db',
+      DB_REF,
+      '--from',
+      'Invoice',
+      '--limit',
+      '2',
+      '--no-policies',
+    ]);
+    await page.goto(linkDaemon.resultLink('e2e-back', 'table'));
+    await expect(page.locator('sneat-datatug-project-menu')).toContainText(
+      'Queries',
+      { timeout: 30_000 },
+    );
+    await page.locator('ion-back-button').first().click();
+    await expect(page).toHaveURL(
+      new RegExp(`/store/http-127\\.0\\.0\\.1:\\d+/project/${DEMO_PROJECT}$`),
+    );
+  });
+
   test('Run again sends the saved query once, on the press, and Back shows the saved rows', async ({
     page,
     linkDaemon,

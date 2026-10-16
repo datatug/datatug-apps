@@ -62,6 +62,7 @@ import { AuthorCurrentRowComponent } from '../../queries/query/page/author-curre
 import { parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../services/project/project.service';
+import { linkBackHref } from '../link-route';
 import { agentBaseUrl } from '../../services/repo/agent-url';
 import {
   AgentLinkApiService,
@@ -225,6 +226,8 @@ export class QueryResultPageComponent {
   readonly viewLabels = VIEW_LABELS;
   readonly rerunLimit = RERUN_LIMIT;
   readonly storeId = signal('');
+  /** Where Back goes with no history: the project of the result when it is selected, else the store's page. */
+  readonly backHref = signal('/');
   readonly state = signal<ResultState>({ kind: 'loading' });
   readonly view = signal<ResultView>('table');
   readonly row = signal(1);
@@ -286,6 +289,7 @@ export class QueryResultPageComponent {
           const storeId = routeParam(snapshot, routingParamStoreId) ?? '';
           const id = routeParam(snapshot, routingParamResultId);
           this.storeId.set(storeId);
+          this.backHref.set(linkBackHref(storeId, undefined));
           this.state.set({ kind: 'loading' });
           this.resetRerun();
           if (!isLoopbackStore(storeId)) {
@@ -404,6 +408,7 @@ export class QueryResultPageComponent {
     const url = this.router.url;
     const ids = meta ? resultDbIds(meta) : undefined;
     const storeId = this.storeId();
+    this.backHref.set(linkBackHref(storeId, undefined));
     if (!ids || !storeId) {
       this.navContext.selectResultProject(url);
       return;
@@ -418,6 +423,7 @@ export class QueryResultPageComponent {
             this.navContext.selectResultProject(url);
             return;
           }
+          this.backHref.set(linkBackHref(storeId, ids.project));
           const known = summary.environments?.some((e) => e.id === ids.env);
           this.navContext.selectResultProject(
             url,

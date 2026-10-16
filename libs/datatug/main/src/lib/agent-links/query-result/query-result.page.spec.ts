@@ -189,6 +189,8 @@ describe('QueryResultPageComponent', () => {
       projectId: 'demo',
       storeId: STORE,
     });
+    // With no history, Back goes to the project of the result.
+    expect(m.page.backHref()).toBe(`/store/${STORE}/project/demo`);
     expect(m.selectResultProject).toHaveBeenLastCalledWith(
       expect.any(String),
       expect.objectContaining({ ref: { projectId: 'demo', storeId: STORE } }),

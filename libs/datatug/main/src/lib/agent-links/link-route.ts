@@ -6,6 +6,7 @@ import {
   routingParamStoreId,
   routingParamTableType,
 } from '../core/datatug-routing-params';
+import { projectPageHref } from '../nav/project-page-href';
 import { AgentTableRef } from './agent-link-api.service';
 import { SCHEMA_QUERY_PARAM, tableIdentity } from './table-identity';
 
@@ -56,4 +57,21 @@ export function recordsLimit(param: string | null | undefined): number {
   const n = Number(param);
   if (n < 1) return DEFAULT_RECORDS_LIMIT;
   return Math.min(n, MAX_RECORDS_LIMIT);
+}
+
+/**
+ * Where the back button of an agent-link page goes when the page has no history (the link was opened in a fresh tab):
+ * the home of the project the page is for, else the store's own page (its projects). Always an address of this app.
+ */
+export function linkBackHref(
+  storeId: string,
+  projectId: string | undefined,
+): string {
+  if (projectId && storeId) {
+    const href = projectPageHref({ storeId, projectId });
+    if (href !== '/') return href;
+  }
+  return storeId
+    ? `/store/${encodeURIComponent(storeId).replace(/%3A/gi, ':')}`
+    : '/';
 }
