@@ -7,3 +7,5 @@ When changing visible copy or selectors, search all browser and unit specs for t
 For a group of related changes, keep them on one integration branch and PR. Run the required build, test, E2E, and CLI journey checks once against the final combined head before landing. If the head changes after that run, rerun the affected required checks against the new head.
 
 Full E2E is expensive and belongs at the integration gate. Focused tests still run during development. Do not disable required checks or skip the coverage gate to reduce runtime.
+
+CI runs the Chromium app suite and Query mobile WebKit suite in separate jobs after build. Keep both in the required `e2e` aggregate so either failure blocks landing. A head change requires a fresh aggregate verdict for that exact commit.

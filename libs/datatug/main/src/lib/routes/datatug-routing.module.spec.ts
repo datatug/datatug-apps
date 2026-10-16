@@ -70,11 +70,17 @@ describe('datatugRoutes', () => {
       (candidate) => candidate.path === 'detective',
     );
     expect(detective?.children?.map((child) => child.path)).toEqual([
+      'scenarios/:scenarioId',
       'scenario/:scenarioId',
       '',
       ':caseId',
     ]);
-    const detail = detective?.children?.[0];
+    const publicDetail = detective?.children?.[0];
+    const publicComponent = await publicDetail?.loadComponent?.();
+    expect((publicComponent as { name?: string })?.name).toBe(
+      'PublicScenariosPageComponent',
+    );
+    const detail = detective?.children?.[1];
     const component = await detail?.loadComponent?.();
     expect((component as { name?: string })?.name).toBe(
       'ScenarioDetailPageComponent',
