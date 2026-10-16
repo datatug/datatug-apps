@@ -52,6 +52,12 @@ describe('GitHub App callback before application bootstrap', () => {
     expect(p.replaceState).toHaveBeenCalledOnce();
     expect(p.window.__datatugTakeGitHubAuthorization?.()).toBeUndefined();
   });
+  it('scrubs and transfers only the denial state so the matching OAuth draft can recover', () => {
+    const p = page('?error=access_denied&state=denied-state');
+    expect(p.replaceState).toHaveBeenCalledWith(null, '', '/github/callback');
+    expect(p.window.__datatugTakeGitHubAuthorization?.()).toEqual({ error: 'access_denied', state: 'denied-state' });
+    expect(p.storage.setItem).not.toHaveBeenCalled();
+  });
   it.each([
     '/github;x=1/callback;y=2', '/github/callback(menu:help)',
     '/(github/callback)', '/%67ithub/%63allback', '//github/callback',

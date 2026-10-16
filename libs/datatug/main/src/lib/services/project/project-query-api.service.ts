@@ -94,7 +94,8 @@ export interface CreateGithubProject {
   readonly title: string;
   readonly spaceID: string;
   readonly billingIntent: ProjectBillingIntent;
-  readonly operationId: string;
+  readonly operationID: string;
+  readonly ciEnabled: boolean;
   readonly github: {
     readonly repositoryID: number;
     readonly owner: string;
@@ -107,14 +108,65 @@ export interface CreateGithubProject {
 }
 
 export interface CreatedGithubProject {
-  readonly id: string;
-  readonly storage: 'github.com';
-  readonly project: string;
+  readonly status: 'pending_merge';
+  readonly setupPR: {
+    readonly url: string;
+    readonly number: number;
+    readonly headBranch: string;
+    readonly baseBranch: string;
+    readonly commit: string;
+    readonly repositoryID: number;
+  };
+}
+
+export interface GithubProjectCreateStatus {
+  readonly operationID: string;
+  readonly status:
+    | 'initializing'
+    | 'pending_merge'
+    | 'merged_ready'
+    | 'closed_unmerged'
+    | 'failed'
+    | 'needs_review';
+  readonly setupPR?: CreatedGithubProject['setupPR'];
+  readonly projectID?: string;
+  readonly errorCode?: string;
+}
+
+export interface PendingGithubProjectSetup {
+  readonly operationID: string;
+  readonly status: 'initializing' | 'pending_merge' | 'needs_review' | 'closed_unmerged' | 'failed';
   readonly spaceID: string;
-  readonly sharedProjectID: string;
+  readonly projectID: string;
+  readonly title: string;
+  readonly repositoryID: number;
+  readonly owner: string;
+  readonly name: string;
+  readonly folder: string;
   readonly branch: string;
-  readonly branchHead: string;
-  readonly revision: string;
+  readonly ciEnabled: boolean;
+  readonly expectedHead: string;
+  readonly templateID: string;
+  readonly templateCommit: string;
+  readonly billingIntent: ProjectBillingIntent;
+  readonly setupPR?: CreatedGithubProject['setupPR'];
+}
+
+export interface PendingGithubProjectSetupsResponse {
+  readonly setups: readonly PendingGithubProjectSetup[];
+  readonly truncated: boolean;
+}
+
+export interface GithubProjectCreateStatusRequest {
+  readonly operationID: string;
+  readonly repositoryID: number;
+  readonly owner: string;
+  readonly name: string;
+}
+
+export interface GithubReauthorizationRequest {
+  readonly ref: IProjectRef;
+  readonly requiredScopes: readonly ('repo' | 'workflow')[];
 }
 
 /** Store-specific transport only. Cloud always uses the shared Firebase auth bridge; no provider token or private fallback. */
@@ -122,6 +174,8 @@ export interface CreatedGithubProject {
 export class ProjectQueryApiService {
   private readonly deniedReads = new Subject<IProjectRef>();
   readonly authorityDenied = this.deniedReads.asObservable();
+  private readonly githubReauthorization = new Subject<GithubReauthorizationRequest>();
+  readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
   private readonly api = inject(SneatApiService);
   private readonly http = inject(HttpClient);
   private readonly storeApi = inject(StoreApiService);
@@ -234,11 +288,18 @@ export class ProjectQueryApiService {
       return request.pipe(
         tap({
           error: (error) => {
+            const status = error?.status;
+            const errorCode = apiErrorCode(error);
+            const isGitHub = ref.storeId === 'github' || ref.storeId === 'github.com';
+            const requiresReauthorization = errorCode === 'reauthorization_required';
+            const denied = [401, 403].includes(status) || (isGitHub && requiresReauthorization);
             if (
-              (ref.projectApi === 'cloud' || isSharedProjectRef(ref)) &&
-              [401, 403].includes(error?.status)
+              denied &&
+              (ref.projectApi === 'cloud' || isSharedProjectRef(ref))
             )
               this.deniedReads.next(ref);
+            if (isGitHub && ([401, 403].includes(status) || requiresReauthorization))
+              this.githubReauthorization.next({ ref, requiredScopes: ['repo'] });
           },
         }),
       );
@@ -372,4 +433,35 @@ export class ProjectQueryApiService {
       { params: { store: 'github.com' } },
     );
   }
+
+  createStatus(request: GithubProjectCreateStatusRequest): Observable<GithubProjectCreateStatus> {
+    return this.api.get<GithubProjectCreateStatus>(
+      'datatug/projects/create_project/status',
+      new HttpParams({ fromObject: { ...request, store: 'github.com' } }),
+    );
+  }
+
+  pendingGithubProjectSetups(): Observable<PendingGithubProjectSetupsResponse> {
+    return this.api.get<PendingGithubProjectSetupsResponse>(
+      'datatug/github/projects/pending-setups',
+    );
+  }
+
+  reportGithubReauthorizationRequired(
+    ref: IProjectRef,
+    requiredScopes: readonly ('repo' | 'workflow')[] = ['repo'],
+  ): void {
+    this.deniedReads.next(ref);
+    this.githubReauthorization.next({ ref, requiredScopes });
+  }
+}
+
+function apiErrorCode(error: unknown): string | undefined {
+  if (!error || typeof error !== 'object') return undefined;
+  const value = error as {
+    code?: unknown;
+    error?: { code?: unknown; error?: { code?: unknown } };
+  };
+  const code = value.error?.error?.code ?? value.error?.code ?? value.code;
+  return typeof code === 'string' ? code : undefined;
 }

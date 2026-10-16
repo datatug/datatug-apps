@@ -45,6 +45,9 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (project?.ref; as projectRef) {
+    <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
+  }
   <ng-template #personalQueries>
       @if (semanticPersonalCopies().length) {
         <ion-item lines="none">
