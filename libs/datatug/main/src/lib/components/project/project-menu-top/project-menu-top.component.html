@@ -60,8 +60,8 @@
   <ion-menu-toggle autoHide="false">
     <ion-item
       button
-      [routerLink]="['/incidents']"
-      [queryParams]="incidentQueryParams()"
+      [routerLink]="incidentsProjectRoute()"
+      [queryParams]="isDemoProject() ? undefined : incidentQueryParams()"
       routerDirection="root"
       data-testid="incidents-project-menu-item"
     >

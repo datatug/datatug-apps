@@ -18,6 +18,8 @@ import { Subject } from 'rxjs';
 import { ContextEntry, ContextRun, ContextSession, ContextSubject, ContextValue, SessionScope, contextOpaqueId, contextScopeKey, sameContextScope } from './session-context-contract';
 import { LegacyContextImportService, LegacyImportPreview } from './legacy-context-import.service';
 import { SessionWorkspaceService } from './session-workspace.service';
+import { PublicDemoInvestigationPreviewComponent } from '../detective/public-demo-investigation-preview.component';
+import { isCanonicalPublicDemo } from '../detective/public-scenario-catalog';
 
 @Component({
   selector: 'sneat-datatug-session-workspace',
@@ -27,7 +29,7 @@ import { SessionWorkspaceService } from './session-workspace.service';
   imports: [FormsModule, AuthPanelComponent, IonTabs, IonTabBar, IonTabButton, IonItem, IonLabel,
     IonButton, IonButtons, IonSpinner, IonModal, IonHeader, IonToolbar, IonTitle,
     IonContent, IonFooter, IonInput, IonSelect, IonSelectOption, IonCheckbox,
-    IonTextarea, IonNote, IonAlert],
+    IonTextarea, IonNote, IonAlert, PublicDemoInvestigationPreviewComponent],
 })
 export class SessionWorkspaceShellComponent {
   readonly workspace = inject(SessionWorkspaceService);
@@ -91,6 +93,8 @@ export class SessionWorkspaceShellComponent {
   readonly formError = signal('');
   readonly focusTabId = signal('');
   private readonly project = signal<IProjectRef | undefined>(undefined);
+  protected readonly projectResolved = signal(false);
+  protected readonly publicDemo = computed(() => isCanonicalPublicDemo(this.project()));
   private routeGeneration = 0;
   private runHistorySessionId = '';
   private runHistoryCursor?: string;
@@ -131,7 +135,7 @@ export class SessionWorkspaceShellComponent {
       const project = this.project();
       if (project) void this.openProject(project);
     });
-    this.tracker.projectRef.pipe(takeUntilDestroyed()).subscribe((project) => { this.project.set(project); void this.openProject(project); });
+    this.tracker.projectRef.pipe(takeUntilDestroyed()).subscribe((project) => { this.project.set(project); this.projectResolved.set(true); void this.openProject(project); });
     this.router.events.pipe(filter((event) => event instanceof NavigationEnd), takeUntilDestroyed()).subscribe(() => { void this.focusRoute(); });
   }
 
@@ -140,6 +144,7 @@ export class SessionWorkspaceShellComponent {
     if (project && this.workspace.agentReconnectRequired()) await this.openProject(project);
   }
   private async openProject(project: IProjectRef): Promise<void> {
+    if (isCanonicalPublicDemo(project)) return;
     await this.workspace.openProject(project);
     await this.focusRoute();
   }

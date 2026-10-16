@@ -30,6 +30,7 @@ import {
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
 import { addIcons } from 'ionicons';
 import { chatbubblesOutline, warningOutline } from 'ionicons/icons';
 
@@ -222,9 +223,15 @@ export class ProjectMenuTopComponent implements OnDestroy {
     return pages.sort((left, right) => left.title.localeCompare(right.title));
   }
 
-  private readonly projectState = signal<IProjectContext | undefined>(undefined);
-  get project(): IProjectContext | undefined { return this.projectState(); }
-  set project(value: IProjectContext | undefined) { this.projectState.set(value); }
+  private readonly projectState = signal<IProjectContext | undefined>(
+    undefined,
+  );
+  get project(): IProjectContext | undefined {
+    return this.projectState();
+  }
+  set project(value: IProjectContext | undefined) {
+    this.projectState.set(value);
+  }
   readonly metadataOnly = signal(false);
   public currentFolder: Observable<string | undefined>;
 
@@ -288,6 +295,18 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   projectPageUrl(page: ProjectTopLevelPage): string {
     return projectPageHref(this.project?.ref, page, this.router?.url);
+  }
+
+  isDemoProject(): boolean {
+    return isCanonicalPublicDemo(this.project?.ref);
+  }
+
+  incidentsProjectRoute(): UrlTree | string {
+    const projectRef = this.project?.ref;
+    if (isCanonicalPublicDemo(projectRef) && this.router && projectRef) {
+      return this.router.parseUrl(projectPageHref(projectRef, 'incidents'));
+    }
+    return '/incidents';
   }
 
   projectPageRoute(page: ProjectTopLevelPage): UrlTree | string {
