@@ -124,6 +124,9 @@ function validCatalog(raw: ConnectionCatalog): boolean {
                     @if (edition.id === 'chinook-postgresql' && edition.readiness === 'public-api' && chinookQueryHref()) {
                       · <a [href]="chinookQueryHref()">Explore PostgreSQL artist track totals</a>
                     }
+                    @if (edition.storage === 'postgresql' && edition.readiness === 'public-api') {
+                      · <a [routerLink]="['/demo', 'ovdb', edition.id]" [attr.data-testid]="'explore-postgresql-' + edition.dataset">Explore PostgreSQL in DataTug (read-only via OpenVaultDB)</a>
+                    }
                     @if (edition.storage === 'sqlite') {
                       · <a [routerLink]="['/demo', 'sqlite', edition.dataset]" [attr.data-testid]="'explore-local-' + edition.dataset">Explore SQLite in DataTug (editable copy in this browser)</a>
                     }

@@ -9,18 +9,24 @@
 
 <ion-content color="light">
   <div class="detective-page">
-    @if (scope.unsupported()) {
+    @if (publicDemo()) {
+      <sneat-datatug-public-scenarios-page [showHeader]="false" />
+      <ion-card>
+        <ion-card-content>
+          <p>
+            To investigate and record progress, start a private demo in your
+            Personal Space.
+          </p>
+          <sneat-datatug-detective-demo-starter destination="detective" />
+        </ion-card-content>
+      </ion-card>
+    } @else if (scope.unsupported()) {
       <ion-card
         ><ion-card-content role="status"
-          >Detective is unavailable for this project reference.
-          @if (publicDemo()) {
-            <p>
-              Start a private demo in your Personal Space to investigate and
-              resume a Case.
-            </p>
-            <sneat-datatug-detective-demo-starter destination="detective" />
-          }</ion-card-content
-      ></ion-card>
+          >Detective is unavailable for this project
+          reference.</ion-card-content
+        ></ion-card
+      >
     } @else if (!scope.context()) {
       <ion-card
         ><ion-card-content role="status"
@@ -350,8 +356,7 @@
                 @for (check of relevantChecks(); track check.id) {
                   <ion-item
                     button
-                    [routerLink]="checkUrl(check.id)"
-                    [queryParams]="{ caseId: item.id }"
+                    [routerLink]="pageRoute(checkUrl(check.id), { caseId: item.id })"
                     ><ion-label
                       ><h3>{{ check.title }}</h3>
                       <p>
@@ -440,8 +445,7 @@
                         <ion-button
                           slot="end"
                           fill="clear"
-                          [routerLink]="checkUrl(step.ref)"
-                          [queryParams]="{ caseId: item.id }"
+                          [routerLink]="pageRoute(checkUrl(step.ref), { caseId: item.id })"
                           >Open Check</ion-button
                         >
                       } @else {
@@ -1286,7 +1290,7 @@
             /></ion-item>
             <ion-list>
               @for (item of cases(); track item.id) {
-                <ion-item button [routerLink]="caseUrl(item.id)"
+                <ion-item button [routerLink]="pageRoute(caseUrl(item.id))"
                   ><ion-label
                     ><h2>{{ item.title }}</h2>
                     <p>

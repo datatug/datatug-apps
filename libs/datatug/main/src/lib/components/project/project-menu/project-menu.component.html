@@ -5,15 +5,12 @@
     <ion-item-divider color="light">
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="project">Project</ion-segment-button>
-        <ion-segment-button value="queries" title="Active Queries">
-          <ion-icon name="terminal-outline" color="medium" />
-        </ion-segment-button>
         <ion-segment-button
-          value="boards"
-          style="text-transform: none"
-          title="Active Boards"
+          value="queries"
+          title="Active Queries"
+          aria-label="Active Queries"
         >
-          <ion-icon name="easel-outline" color="medium" />
+          <ion-icon name="terminal-outline" color="medium" />
         </ion-segment-button>
       </ion-segment>
     </ion-item-divider>
@@ -22,14 +19,6 @@
     }
     @if (tab === 'queries') {
       <sneat-datatug-queries-menu />
-    }
-    @if (tab === 'boards') {
-      <ion-item-divider color="light">
-        <ion-label color="medium">Active boards</ion-label>
-      </ion-item-divider>
-      <ion-item>
-        <ion-label color="medium">Not implemented yet</ion-label>
-      </ion-item>
     }
   </ion-card>
 }
