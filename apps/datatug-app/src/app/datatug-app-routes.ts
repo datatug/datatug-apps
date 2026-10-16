@@ -279,6 +279,22 @@ export const demoSqliteMatcher = (segments: UrlSegment[], group: UrlSegmentGroup
   return null;
 };
 
+/**
+ * `/demo/ovdb[/<database>[/table/<table>]]`: DemoDB.dev's "Explore PostgreSQL in DataTug" opens a hosted, read-only
+ * PostgreSQL edition (`<dataset>-postgresql`) through the public OpenVaultDB server (DemoOvdbPageComponent). Matched
+ * like demoSqliteMatcher: literal segments case-insensitively, the table name with its case.
+ */
+export const demoOvdbMatcher = (segments: UrlSegment[], group: UrlSegmentGroup): UrlMatchResult | null => {
+  if (hasOutletGroup(group)) return null;
+  const names = segments.map((segment) => segment.path.toLowerCase());
+  if (names[0] !== 'demo' || names[1] !== 'ovdb') return null;
+  if (segments.length === 2) return { consumed: segments };
+  if (segments.length === 3) return { consumed: segments, posParams: { database: segments[2] } };
+  if (segments.length === 5 && names[3] === 'table')
+    return { consumed: segments, posParams: { database: segments[2], table: segments[4] } };
+  return null;
+};
+
 export const checkoutOrRoot: CanMatchFn = () =>
   datatugProfileOnly() ? true : inject(Router).parseUrl('/');
 
@@ -343,6 +359,13 @@ export const routes: Routes = [
     canMatch: [checkoutOrRoot],
     loadComponent: () =>
       import('@sneat/datatug-main').then((m) => m.loadDemoSqlitePage()),
+  },
+  {
+    matcher: demoOvdbMatcher,
+    // DataTug profile only, like /demo/sqlite.
+    canMatch: [checkoutOrRoot],
+    loadComponent: () =>
+      import('@sneat/datatug-main').then((m) => m.loadDemoOvdbPage()),
   },
   {
     matcher: legacyChinookDemoMatcher,

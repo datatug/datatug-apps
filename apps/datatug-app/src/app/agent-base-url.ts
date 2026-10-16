@@ -59,3 +59,26 @@ export function agentBaseUrlOfPath(pathname: string): string {
     ? NO_AGENT_BASE_URL
     : `${getStoreUrl(storeId)}/datatug`;
 }
+
+/** The loopback agent named by an explicit `/store/<id>` route; unlike the API base fallback, this never guesses. */
+export function explicitAgentOriginOfPath(
+  pathname: string,
+): string | undefined {
+  const storeId = storeIdOfStorePath(pathname);
+  if (!storeId || GITHUB_STORE_IDS.includes(storeId)) return undefined;
+  let url: URL;
+  try {
+    url = new URL(getStoreUrl(storeId), location.href);
+  } catch {
+    return undefined;
+  }
+  if (
+    (url.protocol === 'http:' || url.protocol === 'https:') &&
+    !url.username &&
+    !url.password &&
+    ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+  ) {
+    return url.origin;
+  }
+  return undefined;
+}

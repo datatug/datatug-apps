@@ -79,4 +79,18 @@ describe('takeAgentLinkCode', () => {
     expect(hist.replaceState).toHaveBeenCalledOnce();
     expect(hist.replaceState.mock.calls[0][2]).not.toContain('code=');
   });
+
+  it('never cuts into a key holding &code=, as the router leaves it bare in the address bar after a reload', () => {
+    const key = '{"T":"x&code=1&"}';
+    // As daemon url writes it: one code, then the encoded key.
+    const first = open(RECORD_PATH, '?schema=', `#code=${CODE}&pk=${encodeURIComponent(key)}`);
+    expect(first.result?.code).toBe(CODE);
+    // The router re-serializes the decoded fragment with encodeURI, leaving & bare; a reload reads that.
+    const rewritten = '#' + encodeURI(decodeURIComponent(first.hist.replaceState.mock.calls[0][2].split('#')[1]));
+    expect(rewritten).toContain('x&code=1&');
+    const reload = open(RECORD_PATH, '?schema=', rewritten);
+    expect(reload.result).toBeUndefined();
+    expect(reload.hist.replaceState).not.toHaveBeenCalled();
+    expect(decodeURIComponent(rewritten.slice(1))).toBe(`pk=${key}`);
+  });
 });

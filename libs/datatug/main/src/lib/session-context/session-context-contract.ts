@@ -1,3 +1,5 @@
+import type { ContextQuerySource } from './session-query-scope';
+import type { DetectiveOperationScope } from './session-detective-contract';
 import type { TypedValue, TypedValueKind } from '@sneat/datatug-semantic';
 
 /** Additive sessioncontext wire contract; the command owner is DataTug Core. */
@@ -103,8 +105,10 @@ export interface ContextRun {
 }
 export interface ContextMessage { readonly id: string; readonly sessionId: string; readonly inputSnapshotId: string; readonly role: 'user' | 'assistant'; readonly text: string; readonly createdAt: string; }
 export interface ContextCapabilities {
+  readonly nativeDetective?: boolean;
+  readonly operationScope?: DetectiveOperationScope;
   readonly schemaVersion: 1; readonly actorId: string; readonly databaseId: string; readonly projectId: string;
-  readonly environments: readonly (SessionScope & { readonly title?: string })[];
+  readonly environments: readonly (SessionScope & { readonly title?: string; readonly querySources?: readonly ContextQuerySource[] })[];
   readonly actions: readonly ContextCommand['action'][];
   readonly subjects?: readonly {
     readonly id: string; readonly label: string; readonly subject: ContextSubject;

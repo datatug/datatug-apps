@@ -162,12 +162,16 @@ const SHAPES: readonly { readonly name: string; readonly pattern: RegExp }[] = [
 
 /** Files where a match is right, and why. Each must still match (so this list cannot go stale). */
 const ALLOWED: Readonly<Record<string, string>> = {
+  'apps/datatug-app/src/app/telemetry/link-privacy.ts':
+    'matches the legacy table/view route only to redact sensitive telemetry; it neither constructs a project address nor extracts project identity, and sentry-privacy.spec.ts verifies the scrubbing',
   'apps/datatug-app/src/app/cli-chat-capability.ts':
     "the CLI bridge's chat path is for CLI agents only (/store/<id>/project/<id>/chat), left as it is on purpose (G-A1c); cli-chat-capability.spec.ts proves the short address does not match it",
   'libs/datatug/main/src/lib/pages/signed-in/environment/environment-page.component.ts':
     'writes the address of a STORE page (/store/<id>), the back button of the environment page, not of a project',
   'libs/datatug/main/src/lib/pages/signed-in/project/project-page.component.html':
     'writes the address of a STORE page (/store/<id>), the back button of the project page, not of a project',
+  'libs/datatug/main/src/lib/session-context/session-detective-recovery-link.ts':
+    'builds the non-project native Check recovery route for a local agent store; it does not build or parse a project address',
 };
 
 function sourcesUnder(dir: string): string[] {

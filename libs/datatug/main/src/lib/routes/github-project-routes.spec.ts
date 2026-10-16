@@ -206,6 +206,8 @@ describe('the routes as registered', () => {
         .filter((r) => !githubProjectRoutes.includes(r))
         .map((r) => r.path),
     ).toEqual([
+      'native-check-status/:recoveryId',
+      'store/:storeId/native-check-status/:recoveryId',
       'new-project',
       'github/callback',
       '',

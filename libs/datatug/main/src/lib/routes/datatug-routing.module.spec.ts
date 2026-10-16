@@ -48,6 +48,8 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'query', 'genre-mix'])).toBe(true);
     expect(matches([...base, 'sessions'])).toBe(true);
     expect(matches([...base, 'sessions', 's1', 'composer'])).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'checks', 'invoice-check'])).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'detective', 'invoice-case'])).toBe(true);
     expect(matches([...base, 'sessions', 's1', 'query', 'genre-mix'])).toBe(true);
     const encoded = new DefaultUrlSerializer().parse(
       '/space/S1/store/firestore/project/P1/query/folder%2Fgenre-mix',
@@ -61,6 +63,10 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'sessions', 's1', 'env', 'local'])).toBe(false);
     expect(matches([...base, 'env', 'local'])).toBe(false);
   });
+  it('places metadata recovery routes before content-guarded project routes', () => {
+    expect(datatugRoutes.slice(0, 2).map(route => route.path)).toEqual(['native-check-status/:recoveryId', 'store/:storeId/native-check-status/:recoveryId']);
+    for (const route of datatugRoutes.slice(0, 2)) { expect(route.canActivate).toBeUndefined(); expect(route.canMatch).toBeUndefined(); }
+  });
   it('resolves a cold scenario URL before the Case detail route', async () => {
     const project = datatugRoutes.find(
       (candidate) =>
@@ -70,11 +76,17 @@ describe('datatugRoutes', () => {
       (candidate) => candidate.path === 'detective',
     );
     expect(detective?.children?.map((child) => child.path)).toEqual([
+      'scenarios/:scenarioId',
       'scenario/:scenarioId',
       '',
       ':caseId',
     ]);
-    const detail = detective?.children?.[0];
+    const publicDetail = detective?.children?.[0];
+    const publicComponent = await publicDetail?.loadComponent?.();
+    expect((publicComponent as { name?: string })?.name).toBe(
+      'PublicScenariosPageComponent',
+    );
+    const detail = detective?.children?.[1];
     const component = await detail?.loadComponent?.();
     expect((component as { name?: string })?.name).toBe(
       'ScenarioDetailPageComponent',

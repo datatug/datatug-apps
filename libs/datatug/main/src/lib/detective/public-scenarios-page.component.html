@@ -1,0 +1,159 @@
+@if (showHeader) {
+  <ion-header>
+    <ion-toolbar>
+      <ion-buttons slot="start">
+        <ion-menu-button />
+        <ion-back-button [defaultHref]="scenariosHref()" />
+      </ion-buttons>
+      <ion-title>Scenario</ion-title>
+    </ion-toolbar>
+  </ion-header>
+  <ion-content color="light">
+    <ng-container [ngTemplateOutlet]="body" />
+  </ion-content>
+} @else {
+  <ng-container [ngTemplateOutlet]="body" />
+}
+
+<ng-template #body>
+  <main
+    class="detective-page public-scenarios"
+    aria-labelledby="public-scenarios-heading"
+  >
+    @if (!isDemo()) {
+      <h1 id="public-scenarios-heading">Public Scenarios unavailable</h1>
+      <ion-card>
+        <ion-card-content role="status">
+          Public Scenarios are available from the canonical DataTug demo
+          project.
+        </ion-card-content>
+      </ion-card>
+    } @else {
+      @if (listing()) {
+        <header class="section-heading">
+          <div>
+            <h1 id="public-scenarios-heading" tabindex="-1">
+              Public Scenarios
+            </h1>
+            <p>
+              Browse public walkthroughs built from the Chinook demo. Open the
+              saved query and Check linked from each guide.
+            </p>
+          </div>
+        </header>
+        <ion-note class="scope-note"
+          >Public guides are read-only; use a private Case to record
+          progress.</ion-note
+        >
+      }
+
+      @if (!listing() && !scenario()) {
+        <h1 id="public-scenarios-heading">Scenario</h1>
+      }
+
+      @if (loading()) {
+        <div class="busy-line" role="status">
+          <ion-spinner name="dots" />
+          {{ listing() ? 'Loading Scenarios…' : 'Loading Scenario…' }}
+        </div>
+      }
+      @if (error()) {
+        <div class="feedback error" role="alert">
+          <p>{{ error() }}</p>
+          <ion-button fill="outline" (click)="retry()">Retry</ion-button>
+        </div>
+      }
+
+      @if (listing() && !loading() && !error()) {
+        @if (scenarios().length) {
+          <ion-list aria-label="Public Scenarios">
+            @for (item of scenarios(); track item.id) {
+              <ion-item [routerLink]="scenarioHref(item.id)" detail>
+                <ion-label class="ion-text-wrap">
+                  <h2>{{ item.title }}</h2>
+                  <p>
+                    {{
+                      item.description || item.steps.length + ' manual steps'
+                    }}
+                  </p>
+                </ion-label>
+              </ion-item>
+            }
+          </ion-list>
+        } @else {
+          <ion-card>
+            <ion-card-content role="status">
+              No public Scenarios are available in this demo yet.
+            </ion-card-content>
+          </ion-card>
+        }
+      }
+
+      @if (!listing() && scenario(); as item) {
+        <article>
+          <ion-card>
+            <ion-list lines="full">
+              <ion-item color="light" lines="full">
+                <ion-label class="ion-text-wrap">
+                  <h1 id="public-scenarios-heading">{{ item.title }}</h1>
+                  <p>{{ item.id }} · version {{ item.version }}</p>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+            <ion-card-content>
+              @if (item.description) {
+                <p>{{ item.description }}</p>
+              }
+              <p>
+                This public guide has {{ item.steps.length }} manual
+                {{ item.steps.length === 1 ? 'step' : 'steps' }}.
+              </p>
+              @if (item.inputs.length) {
+                <h2>Required context</h2>
+                <ion-list>
+                  @for (input of item.inputs; track input.name) {
+                    <ion-item>
+                      <ion-label class="ion-text-wrap">
+                        <strong>{{ input.name }}</strong>
+                        <p>
+                          {{ input.type }} · {{ input.cardinality }}
+                          @if (input.required) {
+                            · required
+                          }
+                        </p>
+                      </ion-label>
+                    </ion-item>
+                  }
+                </ion-list>
+              }
+              <h2>Manual steps</h2>
+              <ion-list aria-label="Scenario steps">
+                @for (step of item.steps; track step.id; let index = $index) {
+                  <ion-item>
+                    <ion-label class="ion-text-wrap">
+                      <h3>{{ index + 1 }}. {{ stepInstruction(step) }}</h3>
+                      <a [href]="stepHref(step)">{{ stepTarget(step) }}</a>
+                      <p>{{ stepLabel(step) }} in the public demo project</p>
+                    </ion-label>
+                  </ion-item>
+                }
+              </ion-list>
+              <p class="muted">
+                This public Scenario cannot be edited or applied here. Open a
+                private Case to record progress.
+              </p>
+              <a [routerLink]="scenariosHref()">Back to public Scenarios</a>
+            </ion-card-content>
+          </ion-card>
+        </article>
+      } @else if (!listing() && missing()) {
+        <ion-card>
+          <ion-card-content role="alert">
+            Scenario {{ scenarioId() }} was not found in the public demo.
+            <p><a [routerLink]="scenariosHref()">Browse public Scenarios</a></p>
+          </ion-card-content>
+        </ion-card>
+      }
+    }
+  </main>
+</ng-template>

@@ -1,4 +1,8 @@
-import { CUSTOM_ELEMENTS_SCHEMA, ChangeDetectorRef } from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  ChangeDetectorRef,
+  ElementRef,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
@@ -40,7 +44,9 @@ describe('EnvDbPage', () => {
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
         {
           provide: EnvironmentService,
-          useValue: { getCatalogTables: vi.fn(() => of({ tables: [], views: [] })) },
+          useValue: {
+            getCatalogTables: vi.fn(() => of({ tables: [], views: [] })),
+          },
         },
         {
           provide: ActivatedRoute,
@@ -64,6 +70,76 @@ describe('EnvDbPage', () => {
 
     fixture = TestBed.createComponent(EnvDbPageComponent);
     component = fixture.componentInstance;
+  });
+
+  it('registers count tooltips on the real grid and explains metadata using the event/cell contract', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    const grid = document.createElement('div');
+    document.body.appendChild(grid);
+    const page = component as unknown as {
+      createTabulator(): void;
+      tabulator: import('tabulator-tables').Tabulator & {
+        modules: Record<string, unknown>;
+      };
+    };
+    component.gridElRef = new ElementRef(grid);
+    page.createTabulator();
+    try {
+      await new Promise<void>((resolve) =>
+        page.tabulator.on('tableBuilt', resolve),
+      );
+      expect(page.tabulator.modules['tooltip']).toBeTruthy();
+      expect(warn.mock.calls.flat().join(' ')).not.toContain(
+        'Invalid column definition option: tooltip',
+      );
+      const data = {
+        t: {
+          columns: [{ name: '<b>Title</b>', dbType: 'text' }],
+          foreignKeys: [{ name: 'author_fk', columns: ['AuthorId'] }],
+          referencedBy: [
+            {
+              schema: 'public',
+              name: 'Book',
+              foreignKeys: [{ name: 'book_fk' }],
+            },
+          ],
+        },
+      };
+      const cell = {
+        getData: () => data,
+      } as unknown as import('tabulator-tables').CellComponent;
+      const expected = {
+        cols: 'COLUMNS:\n<b>Title</b>: text',
+        fks: 'FOREIGN KEYS:\nauthor_fk (AuthorId)',
+        refsBy: 'REFERENCED BY:\npublic.Book (book_fk)',
+      };
+      for (const [field, text] of Object.entries(expected)) {
+        const tooltip = page.tabulator.getColumn(field).getDefinition().tooltip;
+        expect(typeof tooltip).toBe('function');
+        if (typeof tooltip !== 'function')
+          throw new Error('Missing count tooltip');
+        const content = tooltip(
+          new MouseEvent('mousemove'),
+          cell,
+          () => undefined,
+        ) as HTMLElement;
+        expect(content.textContent).toBe(text);
+        expect(content.querySelector('b')).toBeNull();
+        expect(content.style.whiteSpace).toBe('pre-wrap');
+        const empty = tooltip(
+          new MouseEvent('mousemove'),
+          {
+            getData: () => ({ t: {} }),
+          } as unknown as import('tabulator-tables').CellComponent,
+          () => undefined,
+        ) as HTMLElement;
+        expect(empty.textContent).toMatch(/:\nNone$/);
+      }
+    } finally {
+      page.tabulator.destroy();
+      grid.remove();
+      warn.mockRestore();
+    }
   });
 
   it('should create', () => {
@@ -104,7 +180,9 @@ describe('EnvDbPage — project ref wiring', () => {
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
         {
           provide: EnvironmentService,
-          useValue: { getCatalogTables: vi.fn(() => of({ tables: [], views: [] })) },
+          useValue: {
+            getCatalogTables: vi.fn(() => of({ tables: [], views: [] })),
+          },
         },
         {
           provide: ActivatedRoute,
