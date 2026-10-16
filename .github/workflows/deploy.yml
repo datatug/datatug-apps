@@ -16,9 +16,12 @@ name: Deploy (Cloudflare)
 # job is skipped (no deploy):
 #   1. the CI run was a push to main of this repository;
 #   2. the commit CI validated is the commit cf-deploy will check out
-#      (GITHUB_SHA = main's tip at trigger time). If main moved on, the newer
-#      commit deploys after its own CI, so an older commit that finishes CI late
-#      can never overwrite a newer deploy;
+#      (GITHUB_SHA) AND is main's CURRENT tip, read live from the API when the
+#      gate runs. An older commit (a late CI finish, or "Re-run jobs" on an old
+#      deploy run, which keeps its old SHA) is never deployed over a newer one;
+#      the newer commit deploys after its own CI. Not covered: a push landing
+#      between this check and publish (the newer commit's own deploy then runs
+#      after this one, via the concurrency group). Details: deploy-gate.sh.
 #   3. that CI run's `deploy-gate` job concluded `success`. The lane list lives
 #      in ci.yml next to the lanes. It covers every lane except the live-API
 #      PostgreSQL demo lane (e2e-demo-postgresql: an outage of
@@ -31,7 +34,9 @@ name: Deploy (Cloudflare)
 # Manual `workflow_dispatch` (needs write access) is limited to main's tip and
 # re-checks the same gate for that commit, so it is a redeploy button, not a
 # bypass. For an emergency only: tick `override_ci_gate` and give a reason; the
-# reason and actor are logged in the run summary. Never from another branch.
+# (sanitised, single-line, length-capped) reason and actor are logged in the run
+# summary. The override skips only the CI check, never the main-tip check, and
+# never works from another branch.
 on:
   workflow_run:
     workflows: [CI]
@@ -76,6 +81,7 @@ jobs:
           REPO: ${{ github.repository }}
           REF: ${{ github.ref }}
           SHA: ${{ github.sha }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
           ACTOR: ${{ github.actor }}
           WR_ID: ${{ github.event.workflow_run.id }}
           WR_SHA: ${{ github.event.workflow_run.head_sha }}
