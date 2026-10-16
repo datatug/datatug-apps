@@ -18,28 +18,54 @@ interface TutorialRuntimeState {
   readonly scope: string;
   readonly selections: Readonly<Record<string, string>>;
   readonly dispatch: (action: BoardSessionAction) => void;
+  readonly navigation?: TutorialNavigation;
+}
+
+export interface TutorialNavigation {
+  readonly next: () => void;
+  readonly previous: () => void;
+  readonly canNext: boolean;
+  readonly canPrevious: boolean;
+  readonly nextTitle: string;
+  readonly limitation?: string;
 }
 
 /** Page-scoped browser memory. It neither reads nor writes project storage. */
 @Injectable()
 export class TutorialBoardRuntime {
   readonly state = signal<TutorialRuntimeState | undefined>(undefined);
+  readonly notice = signal<
+    | {
+        readonly cardId: string;
+        readonly title: string;
+        readonly detail: string;
+      }
+    | undefined
+  >(undefined);
 
   publish(
     ref: IProjectRef,
     session: TutorialBoardSession,
     dispatch: (action: BoardSessionAction) => void,
+    navigation?: TutorialNavigation,
   ): void {
     const scope = projectRefToString(ref);
     this.state.set(
       scope
-        ? { session, scope, selections: session.presentation, dispatch }
+        ? {
+            session,
+            scope,
+            selections: session.presentation,
+            dispatch,
+            navigation,
+          }
         : undefined,
     );
   }
 
   clear(): void {
     this.state.set(undefined);
+    this.notice.set(undefined);
   }
 
   activeFor(

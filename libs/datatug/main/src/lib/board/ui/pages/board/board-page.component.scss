@@ -60,6 +60,19 @@
   margin: 1.1rem 0 0.5rem;
   font-weight: 650;
 }
+.tutorial-announcement {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+.tutorial-panel h3:focus-visible,
+.tutorial-panel p[tabindex]:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 3px;
+}
 .tutorial-controls,
 .tutorial-card-buttons {
   display: flex;

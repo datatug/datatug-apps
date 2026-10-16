@@ -1050,11 +1050,15 @@ export class TutorialBoardSession {
   get canPrevious(): boolean {
     return this.controlValue === 'guided' && this.cursor > 0;
   }
+  /** Shared action-count admission for UI drivers; undo can make room for a new action. */
+  get canAppendAction(): boolean {
+    return this.cursor < MAX_ACTIONS;
+  }
   get canNext(): boolean {
     return (
       this.controlValue === 'guided' &&
       (this.cursor < this.actions.length ||
-        (this.cursor < MAX_ACTIONS && !!this.nextCanonicalAction()))
+        (this.canAppendAction && !!this.nextCanonicalAction()))
     );
   }
   /** Complete means canonical card placement; presentation edits remain until Restart. */

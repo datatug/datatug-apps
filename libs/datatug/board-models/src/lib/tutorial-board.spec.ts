@@ -930,11 +930,13 @@ describe('standard session editing actions', () => {
       ).toBe(true);
     const before = storage.getItem(session.storageKey);
     expect(session.canNext).toBe(false);
+    expect(session.canAppendAction).toBe(false);
     expect(session.next()).toBe(false);
     expect(session.dispatch(reveal[0])).toBe(false);
     expect(storage.getItem(session.storageKey)).toBe(before);
     expect(session.previous()).toBe(true);
     expect(session.canNext).toBe(true);
+    expect(session.canAppendAction).toBe(true);
     expect(session.next()).toBe(true);
     expect(storage.getItem(session.storageKey)).toBe(before);
   });

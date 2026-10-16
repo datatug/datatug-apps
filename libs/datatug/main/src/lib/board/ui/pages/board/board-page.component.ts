@@ -7,6 +7,9 @@ import {
   inject,
   signal,
   untracked,
+  afterNextRender,
+  ElementRef,
+  Injector,
 } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import {
@@ -145,6 +148,9 @@ interface TutorialStatus {
   providers: [QueryParamsService, ParameterLookupService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
+  private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
+  private readonly injector = inject(Injector);
+  private focusGeneration = 0;
   private readonly tutorialRuntime =
     inject(TutorialBoardRuntime, { optional: true }) ??
     new TutorialBoardRuntime();
@@ -179,6 +185,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly tutorialLoading = signal(false);
   readonly tutorialError = signal<string | undefined>(undefined);
   readonly authoringError = signal<string | undefined>(undefined);
+  readonly tutorialAnnouncement = signal('');
   readonly tutorialGuide = signal<
     ReturnType<typeof currentTutorialStep> | undefined
   >(undefined);
@@ -440,6 +447,8 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   private clearTutorial(): void {
+    this.focusGeneration++;
+    this.tutorialAnnouncement.set('');
     this.tutorialRuntime.clear();
     this.tutorialGuide.set(undefined);
     this.authoringError.set(undefined);
@@ -527,14 +536,26 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       canNext:
         session.control === 'guided' &&
         (history.cursor < history.actions.length ||
-          !!this.tutorialGuide()?.step.action),
+          (session.canAppendAction && !!this.tutorialGuide()?.step.action)),
       canPrevious: session.canPrevious,
       isComplete: session.isComplete,
     });
     const ref = this.projectRef();
     if (ref)
-      this.tutorialRuntime.publish(ref, session, (action) =>
-        this.editTutorial(action),
+      this.tutorialRuntime.publish(
+        ref,
+        session,
+        (action) => this.editTutorial(action),
+        session.control === 'guided'
+          ? {
+              next: () => this.addNextTutorialCard(),
+              previous: () => this.previousTutorialStep(),
+              canNext: this.tutorialStatus()?.canNext ?? false,
+              canPrevious: session.canPrevious,
+              nextTitle: this.tutorialGuide()?.step.title ?? '',
+              limitation: this.tutorialGuide()?.step.limitation,
+            }
+          : undefined,
       );
   }
 
@@ -542,31 +563,123 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     const session = this.tutorialSession;
     if (!session || session.control !== 'guided') return;
     const history = session.history;
+    const step = currentTutorialStep(session).step;
     if (history.cursor < history.actions.length) {
-      if (session.next()) this.publishTutorial();
+      const action = history.actions[history.cursor];
+      if (session.next()) {
+        this.publishTutorial();
+        this.focusTutorialChange(action.cardId, step.title, step.detail);
+      }
       return;
     }
-    const action = currentTutorialStep(session).step.action;
-    if (action && session.dispatch(action)) this.publishTutorial();
+    const action = step.action;
+    if (action && session.dispatch(action)) {
+      this.publishTutorial();
+      this.focusTutorialChange(action.cardId, step.title, step.detail);
+    }
   }
 
   previousTutorialStep(): void {
-    if (this.tutorialSession?.previous()) this.publishTutorial();
+    const session = this.tutorialSession;
+    const history = session?.history;
+    const action = history?.actions[(history?.cursor ?? 0) - 1];
+    if (session?.previous()) {
+      this.publishTutorial();
+      this.focusTutorialChange(
+        action?.cardId,
+        'Previous step restored',
+        this.tutorialGuide()?.step.detail ?? '',
+      );
+    }
   }
 
   restartTutorial(): void {
     this.tutorialSession?.restart();
     this.publishTutorial();
+    this.focusTutorialChange(
+      undefined,
+      'Tutorial restarted',
+      'Your browser-session canvas is empty again.',
+    );
   }
 
   takeTutorialControl(): void {
     this.tutorialSession?.takeControl();
     this.publishTutorial();
+    this.focusTutorialChange(
+      undefined,
+      'You have control',
+      'Edit widgets in this browser session.',
+      '[data-tutorial-authoring-focus]',
+    );
   }
 
   resumeTutorial(): void {
     this.tutorialSession?.resume();
     this.publishTutorial();
+    this.focusTutorialChange(
+      undefined,
+      'Guide resumed',
+      this.tutorialGuide()?.step.detail ?? '',
+    );
+  }
+
+  private focusTutorialChange(
+    cardId: string | undefined,
+    title: string,
+    detail: string,
+    fallback?: string,
+  ): void {
+    const generation = ++this.focusGeneration;
+    this.tutorialRuntime.notice.set(
+      cardId ? { cardId, title, detail } : undefined,
+    );
+    this.tutorialAnnouncement.set(
+      `${title}. ${detail} Next: ${this.tutorialGuide()?.step.title ?? ''}.`,
+    );
+    afterNextRender(
+      () => {
+        if (generation !== this.focusGeneration || !this.tutorialActive())
+          return;
+        const root = this.element.nativeElement;
+        const target =
+          (cardId
+            ? (Array.from(
+                root.querySelectorAll<HTMLElement>(
+                  '[data-tutorial-card-heading], [data-board-card-id]',
+                ),
+              ).find(
+                (element) =>
+                  element.getAttribute('data-tutorial-card-heading') === cardId,
+              ) ??
+              Array.from(
+                root.querySelectorAll<HTMLElement>('[data-board-card-id]'),
+              ).find(
+                (element) =>
+                  element.getAttribute('data-board-card-id') === cardId,
+              ))
+            : undefined) ??
+          root.querySelector<HTMLElement>(
+            fallback ??
+              (!this.visibleTutorialCards().length
+                ? '[data-tutorial-empty-focus]'
+                : '[data-tutorial-guide-focus]'),
+          );
+        target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+        target?.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
+
+  explainSourceLimit(index: number): void {
+    const target = this.element.nativeElement.querySelector<HTMLElement>(
+      `#source-composition-limit-${index}`,
+    );
+    this.tutorialAnnouncement.set(
+      target?.textContent?.trim() ?? 'Source composition is unavailable.',
+    );
+    target?.focus();
   }
 
   editTutorial(action: BoardSessionAction): void {

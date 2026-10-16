@@ -77,22 +77,32 @@
       } @else if (tutorialError()) {
         <p role="alert">{{ tutorialError() }}</p>
       } @else if (tutorialBoard()) {
-        <p class="tutorial-progress" role="status" aria-live="polite">
+        <p class="tutorial-progress">
           {{ visibleTutorialCards().length }} of
           {{ visibleTutorialCards().length + hiddenTutorialCards().length }}
           cards in your board.
           {{
-            tutorialStatus()?.isComplete
-              ? 'All saved cards are in place.'
-              : 'Add a card to continue.'
+            tutorialGuide()?.step.action
+              ? 'Next: ' + tutorialGuide()?.step.title
+              : 'Review the source limitation or take control.'
           }}
+        </p>
+        <p
+          class="tutorial-announcement"
+          role="status"
+          aria-live="polite"
+          aria-atomic="true"
+        >
+          {{ tutorialAnnouncement() }}
         </p>
         @if (tutorialGuide(); as guide) {
           <section class="tutorial-step" aria-label="Current tutorial step">
             <p class="tutorial-eyebrow">
               Step {{ guide.index + 1 }} of {{ tutorialStepCount() }}
             </p>
-            <h3>{{ guide.step.title }}</h3>
+            <h3 tabindex="-1" data-tutorial-guide-focus>
+              {{ guide.step.title }}
+            </h3>
             <p>{{ guide.step.detail }}</p>
             @if (guide.step.limitation) {
               <p role="status">{{ guide.step.limitation }}</p>
@@ -105,7 +115,9 @@
             aria-label="Your empty tutorial canvas"
           >
             <span class="tutorial-canvas-icon" aria-hidden="true">▥</span>
-            <h3>Your canvas starts here</h3>
+            <h3 tabindex="-1" data-tutorial-empty-focus>
+              Your canvas starts here
+            </h3>
             <p>
               Next: <strong>{{ nextCard.title || nextCard.id }}</strong>
             </p>
@@ -117,7 +129,7 @@
             <button
               type="button"
               (click)="addNextTutorialCard()"
-              [disabled]="tutorialStatus()?.control !== 'guided'"
+              [disabled]="!tutorialStatus()?.canNext"
             >
               Add the first card
             </button>
@@ -188,7 +200,9 @@
                         )
                       "
                       [disabled]="item.index === 0"
-                      [attr.aria-label]="'Move ' + item.card.title + ' up'"
+                      [attr.aria-label]="
+                        'Move ' + (item.card.title || item.card.id) + ' up'
+                      "
                     >
                       ↑
                     </button>
@@ -202,7 +216,9 @@
                         )
                       "
                       [disabled]="item.index === item.rowLength - 1"
-                      [attr.aria-label]="'Move ' + item.card.title + ' down'"
+                      [attr.aria-label]="
+                        'Move ' + (item.card.title || item.card.id) + ' down'
+                      "
                     >
                       ↓
                     </button>
@@ -229,6 +245,9 @@
             class="tutorial-editors"
             aria-label="Edit widgets in this session"
           >
+            <h3 tabindex="-1" data-tutorial-authoring-focus>
+              Edit widgets in this session
+            </h3>
             @for (
               editor of tutorialEditors();
               track editor.key;
@@ -425,14 +444,18 @@
                   }
                   <button
                     type="button"
-                    disabled
+                    aria-disabled="true"
+                    (click)="explainSourceLimit(editorIndex)"
                     [attr.aria-describedby]="
                       'source-composition-limit-' + editorIndex
                     "
                   >
-                    Add another source
+                    Add another source (unavailable)
                   </button>
-                  <p [id]="'source-composition-limit-' + editorIndex">
+                  <p
+                    [id]="'source-composition-limit-' + editorIndex"
+                    tabindex="-1"
+                  >
                     A second source is unavailable until separate execution and
                     composition are supported. Use a separate saved-query tab
                     for independent inspection; missing provider rights keep a

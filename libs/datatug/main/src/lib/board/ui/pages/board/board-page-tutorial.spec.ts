@@ -1,6 +1,8 @@
 import {
   CUSTOM_ELEMENTS_SCHEMA,
   provideZonelessChangeDetection,
+  Component,
+  input,
 } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -14,6 +16,29 @@ import { ParameterLookupService } from '../../../../components/parameters/parame
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
+import { BoardCardComponent } from '../../components/board-card/board-card.component';
+import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
+import { IProjectRef } from '../../../../core/project-context';
+
+@Component({
+  selector: 'sneat-datatug-board',
+  imports: [BoardCardComponent],
+  template: `@for (row of boardDef()?.rows; track $index) {
+    @for (card of row.cards; track card.id) {
+      <sneat-datatug-board-card
+        [boarCardDef]="card"
+        [boardId]="boardDef()?.id"
+        [projectRef]="projectRef()"
+      />
+    }
+  }`,
+})
+class TutorialBoardDom {
+  readonly boardDef = input<Board>();
+  readonly projectRef = input<IProjectRef>();
+  readonly boardContext = input<unknown>();
+  readonly readBoardForRun = input<unknown>();
+}
 
 const ref = {
   storeId: 'github.com',
@@ -39,6 +64,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     board: Board = saved,
     initialMode: string | null = null,
     renderUi = false,
+    renderCards = false,
   ) {
     const mode = new BehaviorSubject<string | null>(initialMode);
     const queryParamMap = mode.asObservable().pipe(
@@ -92,7 +118,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     })
       .overrideComponent(BoardPageComponent, {
         set: {
-          imports: [],
+          imports: renderCards ? [TutorialBoardDom] : [],
           ...(renderUi
             ? {}
             : {
@@ -100,8 +126,11 @@ describe('BoardPage same-route tutorial overlay', () => {
                   '<p class="display-count">{{ displayBoard()?.rows?.[0]?.cards?.length ?? "none" }}</p>',
               }),
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
+          providers: [TutorialBoardRuntime],
         },
+      })
+      .overrideComponent(BoardCardComponent, {
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
     const fixture = TestBed.createComponent(BoardPageComponent);
@@ -184,6 +213,221 @@ describe('BoardPage same-route tutorial overlay', () => {
     expect(page.displayBoard()?.id).toBe('other');
     expect(page.tutorialBoard()).toBeUndefined();
     fixture.destroy();
+  });
+
+  it('disables guide and empty-canvas Next at the shared action cap while preserving redo', async () => {
+    const { fixture, page } = await harness(saved, 'tutorial', true);
+    await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
+    page.takeTutorialControl();
+    const card = saved.rows?.[0].cards?.[0];
+    if (!card) throw new Error('Missing card');
+    for (let index = 0; index < 128; index++) {
+      page.addTutorialCard(card);
+      page.removeTutorialCard(card);
+    }
+    page.resumeTutorial();
+    await fixture.whenStable();
+    expect(page.tutorialStatus()?.canNext).toBe(false);
+    const buttons = () =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          'button',
+        ) as NodeListOf<HTMLButtonElement>,
+      );
+    expect(
+      buttons().find((button) => button.textContent?.trim() === 'Next Step')
+        ?.disabled,
+    ).toBe(true);
+    expect(
+      buttons().find(
+        (button) => button.textContent?.trim() === 'Add the first card',
+      )?.disabled,
+    ).toBe(true);
+    page.previousTutorialStep();
+    expect(page.tutorialStatus()?.canNext).toBe(true);
+    page.addNextTutorialCard();
+    expect(page.tutorialStatus()?.canNext).toBe(false);
+    expect(page.visibleTutorialCards()).toHaveLength(0);
+    fixture.destroy();
+  });
+
+  it('uses the card ID for move labels when its title is absent', async () => {
+    const board: Board = {
+      ...saved,
+      rows: [
+        {
+          cards: [
+            { id: 'untitled', title: '' },
+            { id: 'second', title: 'Second' },
+          ],
+        },
+      ],
+    };
+    const { fixture, page } = await harness(board, 'tutorial', true);
+    await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
+    page.addNextTutorialCard();
+    page.addNextTutorialCard();
+    page.takeTutorialControl();
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Move untitled up"]'),
+    ).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Move untitled down"]'),
+    ).toBeTruthy();
+    expect(fixture.nativeElement.innerHTML).not.toContain('Move undefined');
+    fixture.destroy();
+  });
+
+  it('keeps keyboard focus and in-canvas continuation on each changed card, announces views/tabs, and exposes the source limit', async () => {
+    const board: Board = {
+      ...saved,
+      rows: [
+        {
+          cards: [
+            {
+              id: 'race',
+              title: 'Orders race',
+              widget: {
+                name: 'chart',
+                data: {
+                  sources: [{ id: 'orders', queryId: 'demodb/orders' }],
+                  chart: {
+                    type: 'bar-race',
+                    periodColumn: 'month',
+                    categoryColumn: 'country',
+                    valueColumn: 'orders',
+                    unit: 'orders',
+                    grain: 'month',
+                    onDuplicate: 'reject',
+                    mode: 'period',
+                    topN: 10,
+                  },
+                  defaultView: 'chart',
+                },
+              },
+            },
+            {
+              id: 'inspect',
+              title: 'Inspection',
+              widget: {
+                name: 'tabs',
+                data: {
+                  tabs: [
+                    {
+                      id: 'sqlite',
+                      title: 'SQLite',
+                      widget: {
+                        name: 'SQL',
+                        data: { sql: { queryId: 'demodb/orders' } },
+                      },
+                    },
+                    {
+                      id: 'pg',
+                      title: 'PostgreSQL',
+                      widget: {
+                        name: 'SQL',
+                        data: { sql: { queryId: 'demodb/countries' } },
+                      },
+                    },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const scroll = vi.fn();
+    const descriptor = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      'scrollIntoView',
+    );
+    Object.defineProperty(HTMLElement.prototype, 'scrollIntoView', {
+      value: scroll,
+      configurable: true,
+    });
+    const { fixture, page } = await harness(board, 'tutorial', true, true);
+    await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
+    await fixture.whenStable();
+    const activate = async (label: string, withinCard = false) => {
+      const scope = withinCard
+        ? fixture.nativeElement.querySelector('.tutorial-card-guide')
+        : fixture.nativeElement;
+      const button = Array.from(
+        scope.querySelectorAll('button') as NodeListOf<HTMLButtonElement>,
+      ).find((button) => button.textContent?.trim() === label);
+      if (!button) throw new Error(`Missing ${label}`);
+      button.focus();
+      expect(document.activeElement).toBe(button);
+      // A native button's keyboard activation delivers a click.
+      button.click();
+      await fixture.whenStable();
+    };
+    await activate('Add the first card');
+    expect(
+      document.activeElement?.getAttribute('data-tutorial-card-heading'),
+    ).toBe('race');
+    expect(document.activeElement?.textContent).toContain('Add Orders race');
+    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
+    await activate('Next Step', true);
+    expect(document.activeElement?.textContent).toContain(
+      'Inspect the source rows',
+    );
+    expect(
+      fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
+    ).toContain('Inspect the source rows');
+    expect(
+      page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
+    ).toHaveProperty('defaultView', 'grid');
+    expect(
+      fixture.nativeElement.querySelector('.tutorial-progress').textContent,
+    ).toContain('Return to the paused race');
+    await activate('Next Step', true);
+    expect(document.activeElement?.textContent).toContain(
+      'Return to the paused race',
+    );
+    await activate('Next Step', true);
+    expect(
+      document.activeElement?.getAttribute('data-tutorial-card-heading'),
+    ).toBe('inspect');
+    await activate('Next Step', true);
+    expect(document.activeElement?.textContent).toContain('Inspect PostgreSQL');
+    expect(
+      fixture.nativeElement.querySelector('.tutorial-card-guide').textContent,
+    ).toContain('Adding a second source is unavailable');
+    expect(
+      fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
+    ).toContain('Inspect PostgreSQL');
+    await activate('Previous Step', true);
+    expect(document.activeElement?.textContent).toContain(
+      'Previous step restored',
+    );
+    await activate('Take Control');
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-authoring-focus'),
+    ).toBe(true);
+    const unavailable = fixture.nativeElement.querySelector(
+      'button[aria-disabled="true"]',
+    ) as HTMLButtonElement;
+    expect(unavailable.disabled).toBe(false);
+    unavailable.focus();
+    expect(document.activeElement).toBe(unavailable);
+    unavailable.click();
+    expect(document.activeElement?.id).toContain('source-composition-limit-');
+    expect(document.activeElement?.textContent).toContain('unavailable');
+    await activate('Restart');
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-empty-focus'),
+    ).toBe(true);
+    fixture.destroy();
+    if (descriptor)
+      Object.defineProperty(
+        HTMLElement.prototype,
+        'scrollIntoView',
+        descriptor,
+      );
+    else Reflect.deleteProperty(HTMLElement.prototype, 'scrollIntoView');
   });
 
   it('uses real guide actions and tab authoring controls, preserves edited references, and restores only session storage', async () => {

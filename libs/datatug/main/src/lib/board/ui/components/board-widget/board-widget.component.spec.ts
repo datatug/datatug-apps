@@ -3,7 +3,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { BehaviorSubject, of, Subject, throwError, firstValueFrom } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import {
   Board,
   BoardWidget,
@@ -545,56 +545,89 @@ describe('BoardWidgetComponent', () => {
     expect(tabs.activePath()).toEqual(['id:grid']);
   });
 
-  it('does not persist saved-query choices in tutorial mode', async () => {
-    const ref = { storeId: 'github.com', projectId: 'r@o@@v1.0.0' };
-    const queryId = 'demodb/chinook-top-customer-spend';
-    fixture.componentRef.setInput('projectRef', ref);
-    fixture.componentRef.setInput('boardId', 'board1');
-    fixture.componentRef.setInput('cardId', 'top');
-    fixture.componentRef.setInput('widgetDef', {
-      name: 'SQL',
-      data: { sql: { queryId } },
-    });
-    fixture.componentRef.setInput('readBoardForRun', () =>
-      of({
-        id: 'board1',
-        title: 'Board',
-        rows: [
-          {
-            cards: [
-              {
-                id: 'top',
-                title: 'Top',
-                widget: { name: 'SQL', data: { sql: { queryId } } },
-              },
-            ],
-          },
-        ],
-      }),
-    );
-    fixture.detectChanges();
+  it('does not persist saved-query choices in an active exact showcase session', async () => {
     await router.navigateByUrl('/?mode=tutorial');
-    const readBoard = fixture.componentInstance.readBoardForRun();
-    if (!readBoard) throw new Error('Missing board reader');
-    const canonical = await firstValueFrom(readBoard(ref, 'board1'));
+    const ref = {
+      storeId: 'github.com',
+      projectId: 'datatug-demo-project@datatug@demo-project-1',
+    };
+    const queryId = 'demodb/chinook-top-customer-spend';
+    const widget: BoardWidget = { name: 'SQL', data: { sql: { queryId } } };
+    const canonical: Board = {
+      id: 'showcase',
+      title: 'Board',
+      rows: [{ cards: [{ id: 'top', title: 'Top', widget }] }],
+    };
     const session = await TutorialBoardSession.open(canonical, 'scope');
     session.dispatch({ type: 'add-card', cardId: 'top' });
     TestBed.inject(TutorialBoardRuntime).publish(ref, session, () => undefined);
-    fixture.detectChanges();
-    expect(fixture.componentInstance.sessionOnly()).toBe(true);
-    const save = vi.spyOn(fixture.componentInstance.choices, 'selectQuery');
-    fixture.componentInstance.rememberChoice();
     run.mockResolvedValue({
       recordset: { columns: [], rows: [] },
       truncated: false,
       provenance: { source: 'test' },
     });
-    await fixture.componentInstance.run();
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'showcase');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('widgetDef', widget);
+    fixture.componentRef.setInput('readBoardForRun', () => of(canonical));
+    const save = vi.spyOn(fixture.componentInstance.choices, 'selectQuery');
+    fixture.detectChanges();
+    expect(fixture.componentInstance.sessionOnly()).toBe(true);
+    fixture.componentInstance.rememberChoice();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.running()).toBe(false),
+    );
     expect(save).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain(
       'Choices stay in this tutorial session.',
     );
   });
+
+  it.each(['tutorial', 'tutoril'])(
+    'runs an ordinary board and retains preference behavior with stray mode=%s',
+    async (mode) => {
+      await router.navigateByUrl('/?mode=' + mode);
+      const ref = { storeId: 'github.com', projectId: 'r@o@@v1.0.0' };
+      const widget = {
+        name: 'SQL',
+        data: { sql: { queryId: 'demodb/chinook-top-customer-spend' } },
+      };
+      const read = vi.fn(() =>
+        of({
+          id: 'board1',
+          title: 'Ordinary board',
+          rows: [{ cards: [{ id: 'top', title: 'Top', widget }] }],
+        }),
+      );
+      run.mockResolvedValue({
+        recordset: { columns: [], rows: [] },
+        truncated: false,
+        provenance: { source: 'test' },
+      });
+      fixture.componentRef.setInput('projectRef', ref);
+      fixture.componentRef.setInput('boardId', 'board1');
+      fixture.componentRef.setInput('cardId', 'top');
+      fixture.componentRef.setInput('widgetDef', widget);
+      fixture.componentRef.setInput('readBoardForRun', read);
+      const save = vi
+        .spyOn(fixture.componentInstance.choices, 'selectQuery')
+        .mockReturnValue(true);
+      fixture.detectChanges();
+      expect(fixture.componentInstance.sessionOnly()).toBe(false);
+      expect(fixture.componentInstance.canRemember()).toBe(true);
+      await fixture.componentInstance.run();
+      expect(read).toHaveBeenCalledTimes(1);
+      expect(run).toHaveBeenCalledTimes(1);
+      expect(fixture.componentInstance.runError()).toBeUndefined();
+      expect(save).toHaveBeenCalledWith(
+        ref,
+        'board1',
+        'demodb/chinook-top-customer-spend',
+      );
+    },
+  );
 
   it('retains one card result while switching sibling tabs with the same query', async () => {
     const queryId = 'demodb/chinook-top-customer-spend';
@@ -1524,7 +1557,7 @@ describe('BoardWidgetComponent', () => {
     expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps the admitted snapshot when a session action switches chart/grid presentation', async () => {
+  it('keeps the admitted snapshot for session views and invalidates it when leaving the active tutorial', async () => {
     vi.mocked(executeSavedPublicChartQuery).mockResolvedValue(countryResult());
     await router.navigateByUrl('/?mode=tutorial');
     const canonical = {
@@ -1565,9 +1598,32 @@ describe('BoardWidgetComponent', () => {
     }
     expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(1);
     expect(getQuery).toHaveBeenCalledTimes(2);
+    let resolveNormal:
+      | ((result: ReturnType<typeof countryResult>) => void)
+      | undefined;
+    vi.mocked(executeSavedPublicChartQuery).mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveNormal = resolve;
+        }),
+    );
+    // BoardPage restores the canonical widget when leaving the session overlay.
+    fixture.componentRef.setInput('widgetDef', countryWidget);
+    await router.navigateByUrl('/');
+    fixture.detectChanges();
+    await vi.waitFor(() =>
+      expect(executeSavedPublicChartQuery).toHaveBeenCalledTimes(2),
+    );
+    expect(fixture.componentInstance.sessionOnly()).toBe(false);
+    expect(fixture.componentInstance.result()).toBeUndefined();
+    resolveNormal?.(countryResult());
+    await vi.waitFor(() =>
+      expect(fixture.componentInstance.running()).toBe(false),
+    );
+    expect(fixture.componentInstance.result()).toBeTruthy();
   });
 
-  it('aborts an old source binding, ignores its late reply, and invalidates a held result on mode change', async () => {
+  it('aborts an old source binding, ignores its late reply, and ignores stray mode on an ordinary board', async () => {
     const widget = configureBoundChart([
       { id: 'country', value: 'France' },
       { id: 'limit', value: 5 },
@@ -1610,10 +1666,12 @@ describe('BoardWidgetComponent', () => {
     run.mockResolvedValue(countryResult());
     await fixture.componentInstance.run();
     expect(run.mock.calls[1][0].parameters.country.value).toBe('Spain');
-    expect(fixture.componentInstance.result()).toBeTruthy();
+    const held = fixture.componentInstance.result();
+    expect(held).toBeTruthy();
     await router.navigateByUrl('/?mode=tutorial');
     fixture.detectChanges();
-    expect(fixture.componentInstance.result()).toBeUndefined();
+    expect(fixture.componentInstance.result()).toBe(held);
+    expect(fixture.componentInstance.sessionOnly()).toBe(false);
     expect(run).toHaveBeenCalledTimes(2);
   });
 });

@@ -251,8 +251,11 @@ export class BoardWidgetComponent {
   readonly canRemember = computed(
     () => !this.sessionOnly() && this.choices.canPersist(this.projectRef()),
   );
-  readonly sessionOnly = computed(() =>
-    ['tutorial', 'tutoril'].includes(this.queryParams().get('mode') ?? ''),
+  readonly sessionOnly = computed(
+    () =>
+      this.showcase() &&
+      ['tutorial', 'tutoril'].includes(this.queryParams().get('mode') ?? '') &&
+      !!this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId()),
   );
   readonly level = input<number>();
   readonly widgetPath = input<readonly string[]>([]);
