@@ -27,6 +27,8 @@ export interface SemanticHeaderParams extends IHeaderParams {
       >
       @if (sortLabel()) {
         <span class="sort" aria-hidden="true" data-testid="header-sort">{{ sortLabel() }}</span>
+      } @else if (sortable()) {
+        <span class="sort idle" aria-hidden="true" data-testid="header-sort-idle">⇅</span>
       }
       @if (menu()) {
         <button
@@ -59,7 +61,7 @@ export interface SemanticHeaderParams extends IHeaderParams {
     </button>
   </div>`,
   styles: [
-    ':host{width:100%;min-width:0}.heading{display:flex;flex-direction:column;gap:3px;align-items:flex-start}.heading>span{overflow:hidden;text-overflow:ellipsis;max-width:100%}button{font:inherit;font-size:11px;line-height:16px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--ion-color-medium);border-radius:5px;padding:1px 5px;background:transparent;color:var(--ion-color-medium-shade);cursor:pointer}button.mapped{color:var(--ion-color-primary);border-color:var(--ion-color-primary)}button.checking{color:var(--ion-color-medium-shade);border-color:var(--ion-color-medium)}button.review{color:var(--ion-color-warning-shade);border-color:var(--ion-color-warning)}button:focus-visible{outline:2px solid var(--ion-color-primary);outline-offset:2px}small{margin-left:5px}.name-row{display:flex;align-items:center;gap:4px;max-width:100%}.name{overflow:hidden;text-overflow:ellipsis}.name.sortable{cursor:pointer}.sort{font-size:10px}button.menu{border:0;padding:0 4px;font-size:14px;line-height:16px;color:var(--ion-color-medium-shade)}',
+    ':host{width:100%;min-width:0}.heading{display:flex;flex-direction:column;gap:3px;align-items:flex-start}.heading>span{overflow:hidden;text-overflow:ellipsis;max-width:100%}button{font:inherit;font-size:11px;line-height:16px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;border:1px solid var(--ion-color-medium);border-radius:5px;padding:1px 5px;background:transparent;color:var(--ion-color-medium-shade);cursor:pointer}button.mapped{color:var(--ion-color-primary);border-color:var(--ion-color-primary)}button.checking{color:var(--ion-color-medium-shade);border-color:var(--ion-color-medium)}button.review{color:var(--ion-color-warning-shade);border-color:var(--ion-color-warning)}button:focus-visible{outline:2px solid var(--ion-color-primary);outline-offset:2px}small{margin-left:5px}.name-row{display:flex;align-items:center;gap:4px;max-width:100%}.name{overflow:hidden;text-overflow:ellipsis}.name.sortable{cursor:pointer}.sort{font-size:10px}.sort.idle{opacity:.45}button.menu{border:0;padding:0 4px;font-size:14px;line-height:16px;color:var(--ion-color-medium-shade)}',
   ],
 })
 export class SemanticColumnHeaderComponent implements IHeaderAngularComp, OnDestroy {

@@ -23,6 +23,8 @@ export type SavedResultBannerState =
       readonly rowsKept: number;
       readonly hasMore: boolean;
       readonly notice?: string;
+      /** The database and environment the query ran in (`chinook-local · environment local`), when the project has them. */
+      readonly database?: string;
       readonly summary: readonly string[];
       /** Parameters whose list values the editor cannot hold; named, never their values. */
       readonly skippedParameters: readonly string[];
@@ -90,6 +92,11 @@ const VIEW_LABEL: Record<string, string> = {
             }
           </nav>
         </div>
+        @if (s.database) {
+          <p class="saved-result-database" data-testid="saved-result-database">
+            Database {{ s.database }}
+          </p>
+        }
         @if (s.notice) {
           <p class="saved-result-notice" data-testid="saved-result-notice">
             {{ s.notice }}
@@ -152,7 +159,8 @@ const VIEW_LABEL: Record<string, string> = {
       gap: 0.75rem;
       margin-left: auto;
     }
-    .saved-result-notice {
+    .saved-result-notice,
+    .saved-result-database {
       margin: 0.4rem 0 0;
     }
     .saved-result-summary {

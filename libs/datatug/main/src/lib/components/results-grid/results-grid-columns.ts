@@ -188,6 +188,17 @@ const TYPE_NAME: Record<ColumnKind, string> = {
 };
 
 /**
+ * The name of the record-identity column some sources add to a recordset (`$key`). Its cells are an internal
+ * placeholder, not data: the grid keeps the column (the rows keep their identity) but never shows it, offers it in
+ * the column chooser or exports it.
+ */
+export const INTERNAL_KEY_COLUMN = '$key';
+
+export function isInternalKeyColumn(name: string | undefined | null): boolean {
+  return name === INTERNAL_KEY_COLUMN;
+}
+
+/**
  * The base AG Grid column of a recordset column: type-based alignment, filter, sort and formatting, the minimum and
  * maximum widths that bound auto-sizing, a tooltip with the full text, and a dimmed `null`. Callers spread it and
  * add what is theirs (a header component, a renderer).
@@ -208,6 +219,14 @@ export function resultColumnDef(
     valueFormatter: (p) => formatCell(p.value as GridCell, kind),
     tooltipValueGetter: (p) => (isNullCell(p) ? NULL_TEXT : String(p.value)),
     cellClassRules: { 'dt-rg-null': isNullCell },
+    ...(isInternalKeyColumn(column.name)
+      ? {
+          hide: true,
+          lockVisible: true,
+          suppressColumnsToolPanel: true,
+          suppressFiltersToolPanel: true,
+        }
+      : {}),
   };
 }
 

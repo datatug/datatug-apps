@@ -186,6 +186,13 @@
   gap: 0.75rem;
   align-items: stretch;
 }
+.result-author-data-enabled.result-author-data-collapsed {
+  grid-template-columns: minmax(0, 1fr);
+}
+.author-current-row-toggle {
+  display: flex;
+  justify-content: flex-end;
+}
 @media (max-width: 700px) {
   .author-row-details-shortcut {
     display: flex;

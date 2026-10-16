@@ -37,6 +37,7 @@ class GridStubComponent {
   readonly autoSizeStrategy = input<unknown>();
   readonly enableCellTextSelection = input<unknown>();
   readonly tooltipShowDelay = input<unknown>();
+  readonly suppressMenuHide = input<unknown>();
   readonly sideBar = input<unknown>();
   readonly statusBar = input<unknown>();
   readonly rowGroupPanelShow = input<unknown>();
@@ -110,6 +111,9 @@ describe('ResultsGridComponent', () => {
       });
       expect(def).not.toHaveProperty('enableRowGroup');
       expect(def).not.toHaveProperty('enablePivot');
+      // The column menu button and the sort indicator are reachable on every header, not only on hover.
+      expect(grid?.suppressMenuHide()).toBe(true);
+      expect(def).toMatchObject({ unSortIcon: true });
       expect(grid?.enableCellTextSelection()).toBe(true);
       expect(grid?.autoSizeStrategy()).toEqual({ type: 'fitCellContents' });
       const ids = (grid?.columnDefs() as { colId: string }[]).map(
