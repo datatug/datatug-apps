@@ -256,3 +256,29 @@ describe('datatugProjectRoutes — "servers" route (S160, NG04002 regression)', 
     expect(harness.routeNativeElement).toBeTruthy();
   });
 });
+
+describe('public sample investigation routes', () => {
+  it('matches sample Session and Incident details before the generic Sessions shell', () => {
+    const sessionExample = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'sessions/examples/:exampleId',
+    );
+    const sessionShell = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'sessions',
+    );
+    const incidentExample = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'incidents/examples/:exampleId',
+    );
+    const incidentList = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'incidents',
+    );
+    expect(sessionExample).toBeGreaterThanOrEqual(0);
+    expect(sessionExample).toBeLessThan(sessionShell);
+    expect(incidentExample).toBeLessThan(incidentList);
+    expect(datatugProjectRoutes[sessionExample].data).toEqual({
+      section: 'sessions',
+    });
+    expect(datatugProjectRoutes[incidentExample].data).toEqual({
+      section: 'incidents',
+    });
+  });
+});

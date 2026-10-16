@@ -1,0 +1,183 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-menu-button />
+      @if (exampleId()) {
+        <ion-back-button [defaultHref]="listHref()" />
+      }
+    </ion-buttons>
+    <ion-title>{{
+      section() === 'sessions' ? 'Sample Session' : 'Sample Incident'
+    }}</ion-title>
+  </ion-toolbar>
+</ion-header>
+<ion-content color="light">
+  @if (!projectReady()) {
+    <section class="detective-page" role="status">
+      Loading project context…
+    </section>
+  } @else if (!isCanonicalDemo()) {
+    <section
+      class="detective-page"
+      aria-labelledby="sample-unavailable-heading"
+    >
+      <h1 id="sample-unavailable-heading">
+        Sample
+        {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }} unavailable
+      </h1>
+      <ion-card
+        ><ion-card-content role="status"
+          >Read-only investigation samples are available only from the canonical
+          public DataTug demo project.</ion-card-content
+        ></ion-card
+      >
+      <ion-button fill="outline" [routerLink]="projectHref('overview')"
+        >Back to project</ion-button
+      >
+    </section>
+  } @else if (listing()) {
+    <section
+      class="detective-page public-demo-investigations"
+      aria-labelledby="sample-list-heading"
+    >
+      <h1 id="sample-list-heading">
+        Sample {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }}
+      </h1>
+      <p>
+        Curated, read-only examples from the Chinook demo. These are sample
+        content, not saved workspace records.
+      </p>
+      <ion-note class="scope-note"
+        >Explore the example, then open its public query or a Check.</ion-note
+      >
+      <ion-list
+        [attr.aria-label]="
+          section() === 'sessions' ? 'Sample Sessions' : 'Sample Incidents'
+        "
+      >
+        <ion-item [routerLink]="exampleHref()" detail>
+          <ion-label class="ion-text-wrap"
+            ><h2>{{ sample().title }}</h2>
+            <p>{{ sample().description }}</p></ion-label
+          >
+        </ion-item>
+      </ion-list>
+      <ng-container [ngTemplateOutlet]="continuation" />
+    </section>
+  } @else if (!example()) {
+    <section class="detective-page" aria-labelledby="sample-missing-heading">
+      <h1 id="sample-missing-heading">
+        Sample
+        {{ section() === 'sessions' ? 'Session' : 'Incident' }} unavailable
+      </h1>
+      <ion-card
+        ><ion-card-content role="status"
+          >This sample ID is not in the public demo catalog. No saved changes
+          were made.</ion-card-content
+        ></ion-card
+      >
+      <ion-button fill="outline" [routerLink]="listHref()"
+        >Back to
+        {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }}</ion-button
+      >
+    </section>
+  } @else {
+    <article
+      class="detective-page public-demo-investigations"
+      aria-labelledby="sample-detail-heading"
+    >
+      <h1 id="sample-detail-heading">{{ sample().title }}</h1>
+      <ion-note class="scope-note"
+        >Read-only sample
+        {{ section() === 'sessions' ? 'Session' : 'Incident' }} · public demo ·
+        no saved changes</ion-note
+      >
+      <ion-card
+        ><ion-card-content>
+          <p>{{ sample().story }}</p>
+          <h2>Investigation context</h2>
+          <dl>
+            <dt>Dataset</dt>
+            <dd>Chinook</dd>
+            <dt>Baseline</dt>
+            <dd>Published pinned demo data</dd>
+            <dt>Expected customers</dt>
+            <dd>60</dd>
+            <dt>Observed customers</dt>
+            <dd>59</dd>
+          </dl>
+          <h2>Continue the investigation</h2>
+          <ion-list aria-label="Public investigation links">
+            <ion-item [routerLink]="queryHref()" detail
+              ><ion-label class="ion-text-wrap"
+                ><h3>Customer inventory</h3>
+                <p>
+                  demodb/chinook-customer-inventory · inspect the saved public
+                  query.
+                </p></ion-label
+              ></ion-item
+            >
+            <ion-item
+              [routerLink]="checkHref('chinook-customer-coverage')"
+              detail
+              ><ion-label class="ion-text-wrap"
+                ><h3>Verify customer coverage</h3>
+                <p>
+                  chinook-customer-coverage · open the Check to run it.
+                </p></ion-label
+              ></ion-item
+            >
+            <ion-item
+              [routerLink]="checkHref('chinook-customer-coverage-failure')"
+              detail
+              ><ion-label class="ion-text-wrap"
+                ><h3>Inspect intentional failure</h3>
+                <p>
+                  chinook-customer-coverage-failure · open the Check to run it.
+                </p></ion-label
+              ></ion-item
+            >
+          </ion-list>
+        </ion-card-content></ion-card
+      >
+      <ion-button fill="outline" [routerLink]="listHref()"
+        >Back to
+        {{ section() === 'sessions' ? 'Sessions' : 'Incidents' }}</ion-button
+      >
+      <ng-container [ngTemplateOutlet]="continuation" />
+    </article>
+  }
+  <ng-template #continuation>
+    <ion-card>
+      <ion-card-content>
+        @if (section() === 'sessions') {
+          <p>
+            Continue in a private Detective demo with saved Sessions after
+            sign-in. This sample makes no saved changes.
+          </p>
+          <sneat-datatug-detective-demo-starter destination="sessions" />
+          <p>
+            Already using the CLI? Open the web UI link printed by
+            <code>datatug serve</code>, choose your project, and open Sessions.
+            Enable writes on the local server to save changes.
+          </p>
+        } @else {
+          <p>
+            Create and link Incidents in a private Detective demo after sign-in.
+            This public sample makes no saved changes.
+          </p>
+          <sneat-datatug-detective-demo-starter destination="detective" />
+          <p>
+            Already using the CLI? Open the web UI link printed by
+            <code>datatug serve</code>, choose your project, and open Incidents.
+            Enable writes on the local server to save changes.
+          </p>
+        }
+        <p>
+          <a href="https://datatug.io/apps/cli/">Set up the DataTug CLI</a>
+          for the full local workflow.
+        </p>
+      </ion-card-content>
+    </ion-card>
+  </ng-template>
+</ion-content>
