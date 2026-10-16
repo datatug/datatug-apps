@@ -79,7 +79,7 @@ interface CliSession {
 @Component({
   selector: 'datatug-cli-chat-page',
   standalone: true,
-  imports: [FormsModule, AgGridAngular, IonButton, IonButtons, IonContent, IonFooter, IonHeader, IonItem, IonLabel, IonMenuButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar],
+  imports: [FormsModule, AgGridAngular, AgGridReadyDirective, IonButton, IonButtons, IonContent, IonFooter, IonHeader, IonItem, IonLabel, IonMenuButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar],
   template: `
     <div class="ion-page">
       <ion-header><ion-toolbar>

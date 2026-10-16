@@ -28,7 +28,7 @@ import { ITextQueryRequest } from '../models/definition/query-def';
 @Component({
   selector: 'sneat-datatug-session-composer', changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [SessionChinookQueryService],
-  imports: [DatatugServicesStoreModule, FormsModule, AgGridAngular, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonFooter, IonItem, IonLabel, IonCheckbox, IonTextarea, IonSelect, IonSelectOption, IonModal, IonInput],
+  imports: [DatatugServicesStoreModule, FormsModule, AgGridAngular, AgGridReadyDirective, IonHeader, IonToolbar, IonTitle, IonButtons, IonButton, IonContent, IonFooter, IonItem, IonLabel, IonCheckbox, IonTextarea, IonSelect, IonSelectOption, IonModal, IonInput],
   template: `
     <ion-header><ion-toolbar><ion-title>Session composer</ion-title></ion-toolbar></ion-header>
     @if (workspace.snapshotFor(sessionId())) { <ion-content>

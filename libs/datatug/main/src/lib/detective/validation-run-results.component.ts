@@ -28,7 +28,7 @@ import { CheckRun, DetectiveExecutionRef } from './models';
   selector: 'sneat-validation-run-results',
   templateUrl: './validation-run-results.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [DatePipe, IonButton, IonItem, IonLabel, IonList, AgGridAngular],
+  imports: [DatePipe, IonButton, IonItem, IonLabel, IonList, AgGridAngular, AgGridReadyDirective],
 })
 export class ValidationRunResultsComponent {
   readonly run = input.required<CheckRun>();
