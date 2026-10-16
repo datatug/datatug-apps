@@ -9,13 +9,13 @@ import {
   type PublicSqliteOutputColumn,
   type PublicSqliteRelationshipReceipt,
 } from './public-sqlite-tugql';
-import { demoSqliteCatalog } from './demo-sqlite-catalog';
+import { PUBLIC_CHINOOK_BUNDLED_FIXTURE, PUBLIC_CHINOOK_BUNDLED_CANDIDATE } from './public-sqlite-source-identity';
 import {
   publicSqliteComparisonTarget,
   type ComparisonFixtureTarget,
 } from './public-sqlite-comparison';
 
-const CHINOOK_FIXTURE = demoSqliteCatalog.chinook;
+const CHINOOK_FIXTURE = PUBLIC_CHINOOK_BUNDLED_FIXTURE;
 const PUBLIC_COMPARISON_SCHEMA_SHA256 =
   '8392c76c7fd8da3bce20d1cec2c60223692a08915787f5c7393cec1c0b6acb94';
 const MAX_ROWS = 1000;
@@ -211,7 +211,12 @@ export async function readComparisonFixture(
   const pinned = publicSqliteComparisonTarget(target.id);
   if (JSON.stringify(target) !== JSON.stringify(pinned))
     throw new Error('The comparison target differs from its browser pin.');
-  const response = await fetch(pinned.url, {
+  // Keep the admitted provider descriptor; download its exact bytes from the
+  // shipped mirrors. Author and Run share the same baseline.
+  const mirror = pinned.id === 'chinook-baseline' ? CHINOOK_FIXTURE : PUBLIC_CHINOOK_BUNDLED_CANDIDATE;
+  if (mirror.sha256 !== pinned.sha256 || mirror.bytes !== pinned.bytes)
+    throw new Error('The comparison mirror differs from its browser pin.');
+  const response = await fetch(mirror.url, {
     redirect: 'error',
     credentials: 'omit',
     cache: 'no-store',

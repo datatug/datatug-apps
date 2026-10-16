@@ -1,0 +1,40 @@
+{
+  "format": "datatug-browser-sqlite-source-rights/v1",
+  "sourceRights": [
+    {
+      "sourceId": "ovdb:https%3A%2F%2Fgithub.com%2Fdemo-db%2Fchinook/chinook",
+      "source": {
+        "serverId": "https://github.com/demo-db/chinook",
+        "databaseId": "chinook"
+      },
+      "declaration": {
+        "spdx": "MIT",
+        "url": "https://github.com/demo-db/chinook/blob/85ad3b4d4014dd5a6ee506410beee99771801811/data-source/LICENSE.md"
+      },
+      "declarationScope": "database",
+      "declaredAt": {
+        "serverId": "https://github.com/demo-db/chinook",
+        "databaseId": "chinook"
+      },
+      "evidenceOrigin": "publisher-verified",
+      "pins": [
+        {
+          "role": "provider",
+          "repository": "https://github.com/demo-db/chinook",
+          "revision": "85ad3b4d4014dd5a6ee506410beee99771801811",
+          "path": "artifacts/data/chinook.sqlite",
+          "sha256": "7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15",
+          "bytes": 1007616
+        }
+      ],
+      "attribution": {
+        "text": "Chinook Database copyright (c) 2008-2024 Luis Rocha; preserve the bundled MIT notice.",
+        "url": "https://github.com/demo-db/chinook"
+      },
+      "transformations": []
+    }
+  ],
+  "usedSourceIds": [
+    "ovdb:https%3A%2F%2Fgithub.com%2Fdemo-db%2Fchinook/chinook"
+  ]
+}
