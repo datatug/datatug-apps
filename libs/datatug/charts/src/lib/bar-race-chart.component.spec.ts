@@ -84,4 +84,21 @@ describe('BarRaceChartComponent presentation controls', () => {
       vi.useRealTimers();
     }
   });
+
+  it('stops playback when the host starts loading a replacement result', () => {
+    vi.useFakeTimers();
+    try {
+      const chart = component({ period: view('period'), cumulative: view('cumulative') });
+      chart.togglePlayback();
+      expect(chart.playing).toBe(true);
+      chart.loading = true;
+      chart.ngOnChanges({ loading: { currentValue: true, previousValue: false, firstChange: false, isFirstChange: () => false } } as SimpleChanges);
+      expect(chart.playing).toBe(false);
+      vi.advanceTimersByTime(2000);
+      expect(chart.frameIndex).toBe(0);
+      chart.ngOnDestroy();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });

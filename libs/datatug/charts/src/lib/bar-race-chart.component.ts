@@ -105,6 +105,7 @@ export class BarRaceChartComponent implements AfterViewInit, OnChanges, OnDestro
       this.validationError = this.validateViews();
       this.topN = Math.min(10, this.maxTopN);
     }
+    if (this.loading || this.error) this.stop();
     this.render();
   }
 
