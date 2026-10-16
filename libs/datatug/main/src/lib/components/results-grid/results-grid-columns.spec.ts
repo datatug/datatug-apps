@@ -10,6 +10,7 @@ import {
   compareNumberCells,
   formatCell,
   gridCell,
+  isInternalKeyColumn,
   resultColumnDef,
 } from './results-grid-columns';
 
@@ -193,5 +194,25 @@ describe('row number column', () => {
       filter: false,
       suppressNavigable: true,
     });
+  });
+});
+
+describe('the internal $key column', () => {
+  it('is hidden from the grid, the column chooser and the filters, but stays a column of the rows', () => {
+    expect(isInternalKeyColumn('$key')).toBe(true);
+    expect(isInternalKeyColumn('InvoiceId')).toBe(false);
+    expect(isInternalKeyColumn(undefined)).toBe(false);
+    const def = resultColumnDef({ name: '$key', type: 'string' }, 'c0');
+    expect(def).toMatchObject({
+      colId: 'c0',
+      field: 'c0',
+      hide: true,
+      lockVisible: true,
+      suppressColumnsToolPanel: true,
+      suppressFiltersToolPanel: true,
+    });
+  });
+  it('leaves every other column visible', () => {
+    expect(resultColumnDef({ name: 'InvoiceId', type: 'integer' }, 'c1').hide).toBeUndefined();
   });
 });

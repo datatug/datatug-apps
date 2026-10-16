@@ -58,6 +58,17 @@ describe('SavedResultBannerComponent', () => {
     expect(q('saved-result-view-table')).toBeNull();
   });
 
+  it('names the database and environment the query ran in, in every mode', () => {
+    const { q } = mount(shown({ database: 'chinook-local · environment local' }));
+    expect(q('saved-result-database')?.textContent).toContain(
+      'Database chinook-local · environment local',
+    );
+  });
+
+  it('names no database when the result has none in a project', () => {
+    expect(mount(shown()).q('saved-result-database')).toBeNull();
+  });
+
   it('keeps an unreadable time as it is', () => {
     const { q } = mount(shown({ savedAt: 'yesterday' }));
     expect(q('saved-result-badge')?.textContent).toContain(
