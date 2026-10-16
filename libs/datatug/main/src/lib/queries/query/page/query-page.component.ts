@@ -92,6 +92,7 @@ import {
   isInternalKeyColumn,
   resultColumnDef,
 } from '../../../components/results-grid/results-grid-columns';
+import { gridStateKey } from '../../../components/results-grid/results-grid-state';
 import { addIcons } from 'ionicons';
 import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
 import {
@@ -2237,9 +2238,33 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const query = this.semanticPersonalCopies().find(item => item.id === id);
     if (query && this.project) this.semanticNav.goQuery(this.project, query, 'edit');
   }
+  /**
+   * Where the result grid remembers its layout (column order, widths, visibility, pinning, sort, density): ids only,
+   * never a row value, a filter or the query text. A stored result is its own context; otherwise the saved query, else
+   * the data source.
+   */
+  public resultGridStateKey(): string | undefined {
+    const project = this.project?.ref.projectId;
+    const resultId = this.savedResultId();
+    if (resultId)
+      return gridStateKey({ project, context: resultId, kind: 'result' });
+    if (this.queryId)
+      return gridStateKey({ project, context: this.queryId, kind: 'query' });
+    return gridStateKey({
+      project,
+      context: this.selectedSource(),
+      kind: 'source',
+    });
+  }
   public readonly resultGridColumnDefs = computed<ColDef<QueryResultGridRow>[]>(
     () => {
       const result = this.runResult();
+      // Primary-key columns of a stored result are identifiers whatever their name: their digits are never grouped.
+      const keyNames = new Set(
+        (this.savedResultMeta()?.columns ?? [])
+          .filter((c) => (c.pk ?? 0) > 0)
+          .map((c) => c.name),
+      );
       const receipt = result?.publicSqliteReceipt;
       const canOfferLookup =
         !!result &&
@@ -2256,7 +2281,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
             canOfferLookup;
           return {
-            ...resultColumnDef(column, columnId),
+            ...resultColumnDef(
+              { ...column, primaryKey: keyNames.has(column.name) },
+              columnId,
+            ),
             headerComponent: SemanticColumnHeaderComponent,
             headerComponentParams: {
               meaningLabel: this.semanticColumnLabel(index),
@@ -2448,12 +2476,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorRowDetailsOpen.set(false);
     }
   }
-  public readonly authorResultRowSelection = {
-    mode: 'singleRow' as const,
-    enableClickSelection: true,
-    checkboxes: false,
-    headerCheckbox: false,
-  };
   public readonly authorRowDetailsOpen = signal(false);
   private authorRowDetailsShowEditorAfterDismiss = false;
   private authorRowDetailsFocusGeneration = 0;
@@ -3525,10 +3547,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public authorResultSelectionChanged(
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
+    // The grid's checkboxes select rows for export and copy. The Current row is the focused or clicked row, never
+    // the checked ones, so a selection change only keeps the api.
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
-    const row = event.selectedNodes?.find((node) => node.isSelected())?.data;
-    this.setAuthorResultRow(row);
   }
 
   public authorResultCellFocused(
@@ -3537,19 +3559,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!this.isTextQueryWorkspace() || event.rowIndex === null) return;
     this.authorResultGridApi = event.api;
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
-    const row = node?.data;
-    const snapshot = row && this.resultGridRowSnapshots.get(row);
-    if (
-      snapshot &&
-      snapshot.result === this.runResult() &&
-      snapshot.rows === this.visibleResultRows() &&
-      snapshot.recordset === this.displayedRecordset() &&
-      snapshot.resultSetId === this.relatedResultSet() &&
-      snapshot.resultPageIndex === this.resultPageIndex() &&
-      snapshot.resultGeneration === this.displayedResultGeneration()
-    )
-      node?.setSelected?.(true, true);
-    this.setAuthorResultRow(row);
+    this.setAuthorResultRow(node?.data);
   }
 
   public authorResultRowClicked(

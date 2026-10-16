@@ -10,7 +10,10 @@ import {
   compareNumberCells,
   formatCell,
   gridCell,
+  groupNumberText,
+  isIdentifierColumnName,
   isInternalKeyColumn,
+  isLikelyTruncated,
   resultColumnDef,
 } from './results-grid-columns';
 
@@ -149,9 +152,14 @@ describe('resultColumnDef', () => {
     const fmt = d.valueFormatter as (p: { value: unknown }) => string;
     expect(fmt({ value: 'true' })).toBe('✓');
     expect(fmt({ value: null })).toBe('null');
-    const tip = d.tooltipValueGetter as (p: { value: unknown }) => string;
-    expect(tip({ value: null })).toBe('null');
-    expect(tip({ value: 'x' })).toBe('x');
+    const tip = d.tooltipValueGetter as (p: {
+      value: unknown;
+      column?: { getActualWidth: () => number };
+    }) => string | undefined;
+    // No tooltip for a NULL, nor for text that fits the column; the full text where it probably does not.
+    expect(tip({ value: null })).toBeUndefined();
+    expect(tip({ value: 'x', column: { getActualWidth: () => 200 } })).toBeUndefined();
+    expect(tip({ value: 'x'.repeat(80), column: { getActualWidth: () => 200 } })).toBe('x'.repeat(80));
     const rule = (
       d.cellClassRules as Record<string, (p: { value: unknown }) => boolean>
     )['dt-rg-null'];
@@ -214,5 +222,71 @@ describe('the internal $key column', () => {
   });
   it('leaves every other column visible', () => {
     expect(resultColumnDef({ name: 'InvoiceId', type: 'integer' }, 'c1').hide).toBeUndefined();
+  });
+});
+
+describe('number grouping', () => {
+  const sep = (1234.5).toLocaleString().replace(/[0-9]/g, '');
+  const group = sep[0];
+  const decimal = sep[1];
+  it('groups the integer part, keeps decimals and every digit of a wide integer', () => {
+    expect(groupNumberText('1234567')).toBe(['1', '234', '567'].join(group));
+    expect(groupNumberText('-1234')).toBe(`-1${group}234`);
+    expect(groupNumberText('1234.50')).toBe(`1${group}234${decimal}50`);
+    expect(groupNumberText('9007199254740993')).toBe(
+      ['9', '007', '199', '254', '740', '993'].join(group),
+    );
+    expect(groupNumberText('999')).toBe('999');
+  });
+  it.each(['1e10', '007', '12 345', 'NaN', '', '1,234', '+5', '1234.'])(
+    'leaves %j as it is',
+    (text) => {
+      expect(groupNumberText(text)).toBe(text);
+    },
+  );
+  it.each([
+    ['Id', true],
+    ['id', true],
+    ['InvoiceId', true],
+    ['customerID', true],
+    ['customer_id', true],
+    ['ApiKey', true],
+    ['key', true],
+    ['order_key', true],
+    ['Total', false],
+    ['Paid', false],
+    ['Valid', false],
+    ['Monkey', false],
+    ['Quantity', false],
+    ['', false],
+  ])('%j is an identifier: %s', (name, expected) => {
+    expect(isIdentifierColumnName(name)).toBe(expected);
+  });
+  it('groups a quantity column but not an id, a key or a primary key', () => {
+    const fmt = (name: string, primaryKey = false, type = 'integer') =>
+      resultColumnDef({ name, type, primaryKey }, 'c')
+        .valueFormatter as (p: { value: unknown }) => string;
+    expect(fmt('Total')({ value: '1234567' })).toBe(groupNumberText('1234567'));
+    expect(fmt('InvoiceId')({ value: '1234567' })).toBe('1234567');
+    expect(fmt('SessionKey')({ value: '1234567' })).toBe('1234567');
+    expect(fmt('Number', true)({ value: '1234567' })).toBe('1234567');
+    expect(fmt('Total', false, 'string')({ value: '1234567' })).toBe('1234567');
+    expect(fmt('Total')({ value: null })).toBe('null');
+  });
+  it('still right-aligns numbers', () => {
+    expect(resultColumnDef({ name: 'Total', type: 'decimal' }, 'c').type).toBe('dtNumber');
+    expect(RESULTS_GRID_COLUMN_TYPES['dtNumber']['cellClass']).toBe('ag-right-aligned-cell');
+  });
+});
+
+describe('tooltips', () => {
+  it('names the column and its type in the header tooltip', () => {
+    expect(resultColumnDef({ name: 'Total', type: 'decimal' }, 'c').headerTooltip).toBe('Total (decimal)');
+    expect(resultColumnDef({ name: 'Total' }, 'c').headerTooltip).toBe('Total');
+  });
+  it('estimates truncation from the width', () => {
+    expect(isLikelyTruncated('abc', 100)).toBe(false);
+    expect(isLikelyTruncated('a'.repeat(100), 200)).toBe(true);
+    expect(isLikelyTruncated('abc', undefined)).toBe(true);
   });
 });

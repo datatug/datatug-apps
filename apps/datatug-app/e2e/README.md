@@ -144,6 +144,19 @@ Prompt section, the other result views and Back. Its checks of the query text an
 editor-ready result members and `query results annotate` (datatug-cli #431, after v0.100.1); against an older binary
 they are skipped and the strip's "older DataTug" message is asserted instead.
 
+`results-grid.spec.ts` covers the community toolbar of the shared results grid on a stored result opened in the
+editor: the column chooser (hide, order, pin, show all, reset), the layout and density remembered across a refresh
+(localStorage keys of ids only, never a value), Autosize, row checkboxes with "CSV selected" and "Copy selected", the
+keyboard and a 360 px wide screen. Its first test (the grid's columns in the table's order, with no `$key`) needs
+**datatug 0.102.1 or later** (datatug-cli #435) and is skipped against an older binary (the fixture reads `datatug
+version`). For CI to run it, set the repository variable `DATATUG_LINKS_CLI_REF` to `v0.102.1` or later.
+
+Running the suite on a computer that already has a real daemon on port 8989: the fixture's daemon would adopt it
+(see above). Run the binary through a wrapper that may not connect to that port, so the throwaway daemon picks
+another one and the real one is never contacted, e.g. on macOS
+`exec sandbox-exec -p '(version 1)(allow default)(deny network-outbound (remote ip "localhost:8989"))' /path/to/datatug "$@"`
+as `DATATUG_BIN`.
+
 ## Running the journey suite
 
 ```sh
