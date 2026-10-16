@@ -5840,7 +5840,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.changeDetector.markForCheck();
       if (effectiveDefinition?.federation?.nativeGraph)
         void this.refreshLocalHistory();
-      if (this.queryState.environments && !this.queryState.activeEnv) {
+      const hasBoundSqlConnection =
+        effectiveDefinition?.request.queryType === QueryType.SQL &&
+        !!effectiveDefinition.connectionId;
+      if (
+        this.queryState.environments &&
+        !this.queryState.activeEnv &&
+        !this.queryState.isLoading &&
+        !hasBoundSqlConnection
+      ) {
         this.setActiveEnv(this.queryState.environments[0].id);
       }
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
