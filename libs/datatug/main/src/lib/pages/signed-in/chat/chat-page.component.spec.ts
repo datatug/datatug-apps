@@ -6,7 +6,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChatJoinService } from '../../../chat/chat-join.service';
-import { ChatProviderService } from '../../../chat/chat-provider.service';
+import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
 import { ChatSessionService } from '../../../chat/chat-session.service';
 import { ChatTurn } from '../../../chat/chat.types';
 import { emptyChatWorkspace } from '../../../chat/chat-workspace';
@@ -126,6 +126,7 @@ describe('ChatPageComponent failed turns', () => {
               },
             ]),
             selectedId: signal('p1'),
+            preset: (name: string) => providerPresets[name],
           },
         },
       ],
@@ -147,6 +148,50 @@ describe('ChatPageComponent failed turns', () => {
       dtql: '{}',
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     }));
+  });
+
+  it('explains why a fresh visitor cannot send and opens the existing provider flow', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    component.providers.providers.set([]);
+    component.providers.selectedId.set(undefined);
+    await fixture.whenStable();
+    const setup = (fixture.nativeElement as HTMLElement).querySelector('[aria-label="AI provider setup"]');
+    expect(setup?.textContent).toContain('Add your own AI provider');
+    expect(setup?.textContent).toContain('provider API key');
+    expect(setup?.textContent).toContain('directly from this browser');
+    const add = setup?.querySelector('ion-button');
+    add?.dispatchEvent(new Event('click'));
+    await fixture.whenStable();
+    expect(component.providerModalOpen()).toBe(true);
+    expect(component.providerChoice()).toBe('');
+    component.closeProviderModal();
+    await fixture.whenStable();
+    expect(component.providerModalOpen()).toBe(false);
+    expect(component.providers.providers()).toEqual([]);
+    expect(component.selectedProvider()).toBeUndefined();
+  });
+
+  it('hides provider setup when a provider is saved', async () => {
+    await render([]);
+    const component = fixture.componentInstance;
+    component.providers.providers.set([]);
+    component.providers.selectedId.set(undefined);
+    component.providers.save = (draft) => {
+      const provider = { ...draft, id: 'saved' };
+      component.providers.providers.set([provider]);
+      return provider;
+    };
+    component.providers.select = (id) => component.providers.selectedId.set(id);
+    component.selectProvider('__add_provider__');
+    await fixture.whenStable();
+    component.updateDraft('apiKey', 'test-key');
+    component.saveProvider();
+    await fixture.whenStable();
+    expect(component.providerModalOpen()).toBe(false);
+    expect(component.providerChoice()).toBe('saved');
+    expect(component.selectedProvider()?.id).toBe('saved');
+    expect((fixture.nativeElement as HTMLElement).querySelector('[aria-label="AI provider setup"]')).toBeNull();
   });
 
   it('shows a saved engine failure in plain language, with the engine text behind an expandable detail', async () => {
