@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 test('FK JOIN candidates execute against real Chinook, chain, persist, and accept the agent action', async ({ page }) => {
   test.setTimeout(120_000);

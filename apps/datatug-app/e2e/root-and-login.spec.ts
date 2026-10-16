@@ -1,4 +1,5 @@
-import { expect, Page, test } from '@playwright/test';
+import { Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 const clientErrorPatterns = [
   /NG\d{4}/,

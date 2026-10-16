@@ -1,4 +1,5 @@
-import { expect, test, type Locator, type Page } from '@playwright/test';
+import { type Locator, type Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';

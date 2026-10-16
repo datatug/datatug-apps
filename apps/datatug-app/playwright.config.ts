@@ -1,5 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
 
+// Specs import `test` from ./e2e/helpers/demodb-guard, which serves *.demodb.dev from local fixtures (the app downloads
+// chinook.sqlite itself) and fails a test that sends a live request.
 const e2ePort = process.env.DATATUG_E2E_PORT || '4200';
 
 export default defineConfig({
@@ -20,8 +22,10 @@ export default defineConfig({
   testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'demo-sqlite*.spec.ts', 'demo-postgresql*.spec.ts'],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
+  globalSetup: './e2e/helpers/demodb-fixtures-setup.ts',
   reporter: [
     ['list'],
+    ['./e2e/helpers/demodb-request-reporter.ts'],
     [
       'html',
       {

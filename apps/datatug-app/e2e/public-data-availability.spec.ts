@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { expect, test, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { activePage } from './journey/helpers/active-page';
 
 /** Synthetic project metadata, actual app-pinned canonical index bytes. No

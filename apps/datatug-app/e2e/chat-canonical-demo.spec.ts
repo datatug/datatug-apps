@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 test('the advertised GitHub Chinook demo seeds all tables, attaches context and executes a bounded query', async ({ page }, testInfo) => {
   test.setTimeout(90_000);

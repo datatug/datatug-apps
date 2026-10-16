@@ -1,5 +1,52 @@
 # datatug-app e2e
 
+## Lane matrix: which lanes run when, and which touch live hosts
+
+CI is `.github/workflows/ci.yml`. A lane that needs a live third-party host never runs on pull requests, merge groups
+or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 about 25,500 CI requests for one
+`chinook.demodb.dev` file got the whole demodb.dev zone rate limited with HTTP 429).
+
+| Lane (job) | pull_request / merge_group / push | nightly `schedule` | In `deploy-gate` | Live hosts |
+| --- | --- | --- | --- | --- |
+| `build`, `test` | yes | yes | yes | none |
+| `e2e-checkout` | yes, `nx affected` | yes | yes | none |
+| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
+| `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | yes | none: pinned files from local fixtures |
+| `e2e-demo-handoff` | yes, `nx affected` | yes | yes | none (local build, third parties stubbed) |
+| `journey e2e (real datatug-cli agent)` | yes, always | yes | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
+| `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | same | yes (may be `skipped`) | none |
+| `e2e-demo-postgresql` | no | yes | no | `cloud.openvaultdb.com` |
+| `e2e` (strict roll-up of every lane) | no | yes | no | via the lanes above |
+| `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | no | `*.demodb.dev`, Chromium only |
+
+`deploy-gate` requires exact `success` for its lanes (only `agent-links` may be `skipped`), so a lane that is
+`skipped` because `nx affected` found nothing still reports `success` (the job runs, its step is a no-op). A job that is
+skipped by an `if:` does not gate anything even if it is a required check; that is why the live-host lanes are kept
+out of `needs`.
+
+### DemoDB fixtures (`e2e-demo-sqlite`)
+
+`helpers/demodb-guard.ts` (every spec imports `test` from it; it is an automatic fixture) answers every `*.demodb.dev`
+request locally. The 5 pinned SQLite files come from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's
+globalSetup running `node scripts/fetch-demodb-fixtures.mjs`: they are taken from the public `demo-db/<dataset>` GitHub
+repositories and accepted only when size and SHA-256 equal the catalog pin. A valid file is never requested again, so a
+warm cache makes 0 requests and a cold one 1 per file, none of them to demodb.dev. `corpus.json` and the six dataset
+home pages are committed in `e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in
+`provenance.json`). CI caches the SQLite directory by the hash of the catalog and the script (restore, then save even
+when tests fail). Every lane therefore sends ZERO requests to demodb.dev, cold or warm.
+
+* Fixture mode (default): the live request budget is 0; a test that sends one fails, and a demodb.dev URL with no
+  fixture is aborted.
+* `DEMODB_E2E_MODE=live` (only the manual `DemoDB live smoke` workflow): real hosts, each URL at most once per run
+  (repeats are answered from memory), at most `DEMODB_E2E_MAX_LIVE_REQUESTS` (15) per test and
+  `DEMODB_E2E_MAX_RUN_LIVE_REQUESTS` (120) per run, Playwright retries 0, stop at the first failure.
+* HTTP 429 from a DemoDB host (or from `cloud.openvaultdb.com` in the PostgreSQL lane) trips a breaker: no more
+  requests, no retry, a message naming the URL. `e2e-demo-postgresql` has retries 0 and a per-test budget of 40
+  (`DEMODB_E2E_MAX_OVDB_REQUESTS`).
+* Every run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE) at the end of the lane log.
+* `scripts/check-demo-sqlite-catalog.mjs --online` and `check-demo-postgresql-catalog.mjs --online` are manual only
+  and are in no CI path.
+
 ## Subscription checkout
 
 `checkout-journey.spec.ts` runs the real Sneat sign-in/sign-up components against

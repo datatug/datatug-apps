@@ -1,4 +1,5 @@
-import { BrowserContext, expect, test } from '@playwright/test';
+import { BrowserContext } from '@playwright/test';
+import { DEMODB_HOST, expect, test } from './helpers/demodb-guard';
 // The catalog is plain TypeScript with no Angular imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
@@ -17,7 +18,8 @@ import {
  *
  * The CTA hrefs are absolute (https://datatug.app/...), so the browser context maps both origins instead of
  * touching real hosts: https://datatug.app/** is answered by THIS suite's built DataTug app (the web server in
- * playwright.demo-sqlite.config.ts), and the DemoDB hosts are either the live demodb.dev (default) or a locally
+ * playwright.demo-sqlite.config.ts), and the DemoDB hosts are either the pinned local fixtures (default; the live
+ * demodb.dev only with DEMODB_E2E_MODE=live) or a locally
  * built DemoDB website served by `wrangler dev --env local` (set DEMODB_SITE_LOCAL_URL=http://localhost:<port>,
  * whose <dataset>.localhost hosts the Worker serves; see demo-db/websites). Everything else is cut off.
  *
@@ -26,7 +28,7 @@ import {
  */
 
 const DATATUG_ORIGIN = 'https://datatug.app';
-const DEMODB = /(^|\.)demodb\.dev$/;
+const DEMODB = DEMODB_HOST;
 const LOCAL_SITE = process.env['DEMODB_SITE_LOCAL_URL']?.replace(/\/$/, '');
 const CTA_TEXT = 'Explore SQLite in DataTug';
 
@@ -49,7 +51,9 @@ async function mapOrigins(
       return route.fulfill({ response });
     }
     if (DEMODB.test(url.hostname)) {
-      if (!LOCAL_SITE) return route.continue();
+      // No local site: fall through to the guard (helpers/demodb-guard.ts), which answers the DemoDB pages and
+      // files from the local fixtures (or, only with DEMODB_E2E_MODE=live, from the live hosts, once per URL).
+      if (!LOCAL_SITE) return route.fallback();
       const local = new URL(LOCAL_SITE);
       const sub =
         url.hostname === 'demodb.dev'

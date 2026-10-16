@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 // Hub `product-profiles` (spec/features/product-profiles/README.md) and
 // `incidents` (spec/features/incidents/README.md) — plan Task 9 scaffold
