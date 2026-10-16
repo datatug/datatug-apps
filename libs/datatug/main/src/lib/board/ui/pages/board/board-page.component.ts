@@ -8,8 +8,7 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -36,11 +35,20 @@ import {
 } from 'rxjs/operators';
 import { EMPTY, Subject, combineLatest } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
-import { Board } from '@datatug/board-models';
+import {
+  Board,
+  BoardCard,
+  TutorialBoardSession,
+  TutorialControl,
+} from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
-import { IProjectRef, equalProjectRef } from '../../../../core/project-context';
+import {
+  IProjectRef,
+  equalProjectRef,
+  projectRefToString,
+} from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { AgentContextService } from '@sneat/datatug-semantic';
@@ -48,6 +56,7 @@ import { agentBaseUrl } from '../../../../services/repo/agent-url';
 import {
   IParameterDef,
   IParamWithDefAndValue,
+  IParameterValueWithoutID,
 } from '../../../../models/definition/parameter';
 import { IProjBoard } from '../../../../models/definition/project';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
@@ -60,10 +69,19 @@ import { BoardComponent } from '../../components/board/board.component';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
+import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
+
+interface TutorialStatus {
+  readonly control: TutorialControl;
+  readonly canNext: boolean;
+  readonly canPrevious: boolean;
+  readonly isComplete: boolean;
+}
 
 @Component({
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
+  styleUrl: './board-page.component.scss',
   imports: [
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
@@ -82,7 +100,6 @@ import { BoardReadForRun } from '../../../core/board-read-for-run';
     DatatugServicesNavModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
-    FormsModule,
     // BoardServiceModule,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -109,6 +126,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly choices = inject(BoardChoicesService);
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router, { optional: true });
   private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
@@ -129,6 +147,45 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly projBoard = signal<IProjBoard | undefined>(undefined);
 
   readonly boardDef = signal<Board | undefined>(undefined);
+  readonly tutorialRequested = signal(false);
+  readonly tutorialBoard = signal<Board | undefined>(undefined);
+  readonly tutorialStatus = signal<TutorialStatus | undefined>(undefined);
+  readonly tutorialLoading = signal(false);
+  readonly tutorialError = signal<string | undefined>(undefined);
+  readonly tutorialAvailable = computed(() =>
+    isShowcaseTutorialBoard(this.projectRef(), this.boardDef()),
+  );
+  readonly tutorialActive = computed(
+    () => this.tutorialRequested() && this.tutorialAvailable(),
+  );
+  readonly displayBoard = computed(() =>
+    this.tutorialActive() ? this.tutorialBoard() : this.boardDef(),
+  );
+  readonly hiddenTutorialCards = computed(() => {
+    const saved = this.boardDef();
+    const working = this.tutorialBoard();
+    if (!saved || !working) return [];
+    const visible = new Set(
+      (working.rows ?? []).flatMap((row) =>
+        (row.cards ?? []).map((card) => card.id),
+      ),
+    );
+    return (saved.rows ?? [])
+      .flatMap((row) => row.cards ?? [])
+      .filter((card) => !visible.has(card.id));
+  });
+  readonly visibleTutorialCards = computed(() =>
+    (this.tutorialBoard()?.rows ?? []).flatMap((row, rowIndex) =>
+      (row.cards ?? []).map((card, index) => ({
+        card,
+        rowIndex,
+        index,
+        rowLength: row.cards?.length ?? 0,
+      })),
+    ),
+  );
+  private tutorialSession?: TutorialBoardSession;
+  private tutorialGeneration = 0;
   readonly favoriteError = signal<string | undefined>(undefined);
   readonly canSaveFavorite = computed(() =>
     this.choices.canPersist(this.projectRef()),
@@ -142,7 +199,13 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   toggleFavorite(): void {
     const ref = this.projectRef();
     const id = this.boardId();
-    if (ref && id && this.boardDef() && this.canSaveFavorite()) {
+    if (
+      ref &&
+      id &&
+      this.boardDef() &&
+      !this.tutorialActive() &&
+      this.canSaveFavorite()
+    ) {
       this.favoriteError.set(
         this.choices.setFavorite(ref, id, !this.choicesForBoard().favorite)
           ? undefined
@@ -163,6 +226,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly loadError = signal<string | undefined>(undefined);
 
   readonly parameters = signal<IParamWithDefAndValue[] | undefined>(undefined);
+  readonly parameterErrors = signal<Readonly<Record<string, string>>>({});
 
   defaultHref?: string;
   readonly envId = signal<string | null | undefined>('LOCAL');
@@ -178,19 +242,37 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const ref = this.projectRef();
-      const local = ref?.projectApi === 'local' && !['github', 'github.com', 'firestore'].includes(ref.storeId);
+      const local =
+        ref?.projectApi === 'local' &&
+        !['github', 'github.com', 'firestore'].includes(ref.storeId);
       const hosted = ref?.storeId === 'firestore' && !!ref.spaceID;
-      const securityContextId = local ? this.agentContext.contextFor(agentBaseUrl(ref.storeId)).securityContextId() : undefined;
-      untracked(() => this.boardContext.update((context) => ({
-        ...context,
-        securityContextId,
-        executionTarget: local ? { kind: 'local-agent', agentStoreId: ref.storeId } : hosted ? { kind: 'hosted-cloud' } : undefined,
-      })));
+      const securityContextId = local
+        ? this.agentContext
+            .contextFor(agentBaseUrl(ref.storeId))
+            .securityContextId()
+        : undefined;
+      untracked(() =>
+        this.boardContext.update((context) => ({
+          ...context,
+          securityContextId,
+          executionTarget: local
+            ? { kind: 'local-agent', agentStoreId: ref.storeId }
+            : hosted
+              ? { kind: 'hosted-cloud' }
+              : undefined,
+        })),
+      );
     });
     this.route.queryParamMap.pipe(takeUntil(this.destroyed$)).subscribe({
       next: (queryParamMap) => {
         const envId = queryParamMap.get('env');
         if (envId) this.dataTugNavContext.setCurrentEnvironment(envId);
+        const requested = queryParamMap.get('mode') === 'tutorial';
+        if (requested !== this.tutorialRequested()) {
+          this.tutorialRequested.set(requested);
+          this.clearTutorial();
+          if (requested) void this.openTutorial();
+        }
       },
       error: (err) =>
         this.errorLogger.logError(err, 'Failed to get query parameters'),
@@ -200,7 +282,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       .subscribe({
         next: (env) => {
           this.envId.set(env?.id);
-          this.boardContext.update((context) => ({ ...context, environment: env?.id ?? undefined }));
+          this.boardContext.update((context) => ({
+            ...context,
+            environment: env?.id ?? undefined,
+          }));
           if (env?.id) this.queryParamsService.setQueryParameter('env', env.id);
         },
         error: (err) =>
@@ -220,9 +305,15 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.storeId.set(ref?.storeId);
           this.projectId.set(ref?.projectId);
           this.boardId.set(id);
+          this.clearTutorial();
           this.boardDef.set(undefined);
           this.projBoard.set(undefined);
           this.parameters.set(undefined);
+          this.parameterErrors.set({});
+          this.boardContext.update((context) => ({
+            ...context,
+            parameters: {},
+          }));
           this.loadError.set(undefined);
           this.favoriteError.set(undefined);
           this.loading.set(true);
@@ -250,8 +341,152 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         this.projBoard.set(board as IProjBoard);
         this.boardDef.set(board);
         this.parameters.set(this.resolveParameters());
+        for (const def of board?.parameters ?? []) {
+          const parameter = this.parameters()?.find(
+            (parameter) => parameter.def.id === def.id,
+          );
+          if (parameter && def.defaultValue !== undefined)
+            this.setParameterValue(parameter, def.defaultValue);
+        }
         this.loading.set(false);
+        if (this.tutorialRequested()) void this.openTutorial();
       });
+  }
+
+  private clearTutorial(): void {
+    this.tutorialGeneration++;
+    this.tutorialSession = undefined;
+    this.tutorialBoard.set(undefined);
+    this.tutorialStatus.set(undefined);
+    this.tutorialLoading.set(false);
+    this.tutorialError.set(undefined);
+  }
+
+  private async openTutorial(): Promise<void> {
+    const board = this.boardDef();
+    const ref = this.projectRef();
+    if (
+      !this.tutorialRequested() ||
+      !isShowcaseTutorialBoard(ref, board) ||
+      !board ||
+      !ref
+    )
+      return;
+    const scope = projectRefToString(ref);
+    if (!scope) return;
+    const generation = ++this.tutorialGeneration;
+    this.tutorialLoading.set(true);
+    this.tutorialBoard.set(undefined);
+    this.tutorialError.set(undefined);
+    try {
+      const session = await TutorialBoardSession.openBrowser(board, scope);
+      if (
+        generation !== this.tutorialGeneration ||
+        !this.tutorialRequested() ||
+        this.boardDef() !== board
+      )
+        return;
+      this.tutorialSession = session;
+      this.publishTutorial();
+    } catch (error) {
+      if (generation !== this.tutorialGeneration) return;
+      this.errorLogger.logError(error, 'Failed to open tutorial board');
+      this.tutorialError.set(
+        'This tutorial could not be opened. You can still view the completed board.',
+      );
+    } finally {
+      if (generation === this.tutorialGeneration)
+        this.tutorialLoading.set(false);
+    }
+  }
+
+  private publishTutorial(): void {
+    const session = this.tutorialSession;
+    if (!session) return;
+    const cards = new Map(
+      (session.canonical.rows ?? []).flatMap((row) =>
+        (row.cards ?? []).map((card) => [card.id, card] as const),
+      ),
+    );
+    const working = session.board;
+    // Keep existing card and widget inputs stable across action replay. The
+    // session returns a fresh clone, while query results live in widget state.
+    this.tutorialBoard.set({
+      ...working,
+      rows: working.rows?.map((row) => ({
+        ...row,
+        cards: row.cards?.map((card) => cards.get(card.id) ?? card),
+      })),
+    });
+    this.tutorialStatus.set({
+      control: session.control,
+      canNext: session.canNext,
+      canPrevious: session.canPrevious,
+      isComplete: session.isComplete,
+    });
+  }
+
+  addNextTutorialCard(): void {
+    if (this.tutorialSession?.next()) this.publishTutorial();
+  }
+
+  previousTutorialStep(): void {
+    if (this.tutorialSession?.previous()) this.publishTutorial();
+  }
+
+  restartTutorial(): void {
+    this.tutorialSession?.restart();
+    this.publishTutorial();
+  }
+
+  takeTutorialControl(): void {
+    this.tutorialSession?.takeControl();
+    this.publishTutorial();
+  }
+
+  resumeTutorial(): void {
+    this.tutorialSession?.resume();
+    this.publishTutorial();
+  }
+
+  addTutorialCard(card: BoardCard): void {
+    if (this.tutorialSession?.dispatch({ type: 'add-card', cardId: card.id }))
+      this.publishTutorial();
+  }
+
+  removeTutorialCard(card: BoardCard): void {
+    if (
+      this.tutorialSession?.dispatch({ type: 'remove-card', cardId: card.id })
+    )
+      this.publishTutorial();
+  }
+
+  moveTutorialCard(card: BoardCard, rowIndex: number, index: number): void {
+    if (
+      this.tutorialSession?.dispatch({
+        type: 'move-card',
+        cardId: card.id,
+        toRow: rowIndex,
+        toIndex: index,
+      })
+    )
+      this.publishTutorial();
+  }
+
+  showFullBoard(): void {
+    void this.router?.navigate([], {
+      relativeTo: this.route,
+      queryParams: { mode: null },
+      queryParamsHandling: 'merge',
+    });
+  }
+
+  buildStepByStep(): void {
+    void this.router?.navigate([], {
+      relativeTo: this.route,
+      queryParams: { mode: 'tutorial' },
+      queryParamsHandling: 'merge',
+    });
   }
 
   /**
@@ -265,6 +500,138 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     return defs?.map((def) => ({ def: def as IParameterDef, val: '' }));
   }
 
+  parameterText(parameter: IParamWithDefAndValue): string {
+    return parameter.val == null ? '' : String(parameter.val);
+  }
+
+  setParameterValue(parameter: IParamWithDefAndValue, raw: unknown): void {
+    if (!this.parameters()?.some((current) => current.def === parameter.def))
+      return;
+    let value: IParameterValueWithoutID | undefined;
+    let error: string | undefined;
+    try {
+      value = this.parseParameterValue(parameter.def, raw);
+    } catch (reason) {
+      error =
+        reason instanceof Error
+          ? reason.message
+          : 'This parameter value is invalid.';
+    }
+    this.parameters.update((parameters) =>
+      parameters?.map((current) =>
+        current.def === parameter.def
+          ? {
+              ...current,
+              val:
+                typeof raw === 'string' ||
+                typeof raw === 'number' ||
+                typeof raw === 'boolean'
+                  ? raw
+                  : undefined,
+            }
+          : current,
+      ),
+    );
+    this.parameterErrors.update((errors) => {
+      const next = { ...errors };
+      if (error) next[parameter.def.id] = error;
+      else delete next[parameter.def.id];
+      return next;
+    });
+    // Publish a fresh context even for a cleared/invalid value, so every card
+    // cancels pending work and cannot display results from the previous input.
+    this.boardContext.update((context) => {
+      const parameters = { ...context.parameters };
+      if (value) parameters[parameter.def.id] = value;
+      else delete parameters[parameter.def.id];
+      return { ...context, parameters };
+    });
+  }
+
+  private parseParameterValue(
+    def: IParameterDef,
+    raw: unknown,
+  ): IParameterValueWithoutID | undefined {
+    const invalid = (message: string): never => {
+      throw new Error(message);
+    };
+    if (raw == null || raw === '') {
+      if (def.isRequired !== false)
+        return invalid(`Enter a value for ${def.title || def.id}.`);
+      return undefined;
+    }
+    if (
+      def.isMultiValue ||
+      !['string', 'number', 'boolean'].includes(typeof raw)
+    )
+      return invalid('Enter a single parameter value.');
+    const text = String(raw);
+    switch (def.type) {
+      case 'integer': {
+        const number = Number(text);
+        if (!/^-?(0|[1-9][0-9]*)$/.test(text) || !Number.isSafeInteger(number))
+          return invalid(
+            'Enter a whole number within the supported integer range.',
+          );
+        return { type: def.type, value: number };
+      }
+      case 'number':
+      case 'float':
+      case 'money': {
+        const number = Number(text);
+        if (
+          !/^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:e[+-]?[0-9]+)?$/i.test(
+            text,
+          ) ||
+          !Number.isFinite(number)
+        )
+          return invalid('Enter a finite number.');
+        return { type: def.type, value: number };
+      }
+      case 'boolean':
+      case 'bit':
+        if (raw === true || text === 'true' || text === '1')
+          return { type: def.type, value: true };
+        if (raw === false || text === 'false' || text === '0')
+          return { type: def.type, value: false };
+        return invalid('Enter true or false.');
+      case 'date':
+      case 'datetime': {
+        const date = text.slice(0, 10);
+        if (
+          !/^\d{4}-\d{2}-\d{2}$/.test(date) ||
+          !Number.isFinite(Date.parse(date + 'T00:00:00Z')) ||
+          new Date(date + 'T00:00:00Z').toISOString().slice(0, 10) !== date ||
+          (def.type === 'date'
+            ? text !== date
+            : !/^\d{4}-\d{2}-\d{2}T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(?:Z|[+-](?:[01]\d|2[0-3]):[0-5]\d)$/.test(
+                text,
+              ) || !Number.isFinite(Date.parse(text)))
+        )
+          return invalid(
+            def.type === 'date'
+              ? 'Enter an ISO date (YYYY-MM-DD).'
+              : 'Enter an ISO date and time including its timezone.',
+          );
+        return { type: def.type, value: text };
+      }
+      case 'string':
+      case 'text':
+      case 'UUID':
+      case 'GUID':
+        if (
+          (def.minLength !== undefined && text.length < def.minLength) ||
+          (def.maxLength !== undefined && text.length > def.maxLength)
+        )
+          return invalid('The parameter text is outside its allowed length.');
+        return { type: def.type, value: text };
+      default:
+        return invalid(
+          `Manual entry is unavailable for parameter type ${def.type}.`,
+        );
+    }
+  }
+
   ngOnInit() {
     try {
       this.defaultHref = location.pathname.split('/').slice(0, -1).join('/');
@@ -274,7 +641,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   lookup(p: IParamWithDefAndValue): void {
-    if (this.projectRef()?.projectApi || this.projectRef()?.branch) return;
+    const ref = this.projectRef();
+    const boardId = this.boardId();
+    if (ref?.projectApi || ref?.branch) return;
     const storeId = this.storeId();
     const projectId = this.projectId();
     const envId = this.envId();
@@ -291,11 +660,11 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       .lookupParameterValue(p.def, storeId, projectId, envId)
       .subscribe({
         next: (v) => {
-          p.val = v.value;
-          this.boardContext.update((boardContext) => ({
-            ...boardContext,
-            parameters: { ...boardContext.parameters, [p.def.id]: v },
-          }));
+          if (
+            equalProjectRef(ref, this.projectRef()) &&
+            this.boardId() === boardId
+          )
+            this.setParameterValue(p, v.value);
         },
         error: (err) =>
           this.errorLogger.logError(err, 'Failed to lookup parameter value'),

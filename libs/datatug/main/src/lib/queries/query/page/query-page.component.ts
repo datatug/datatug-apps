@@ -31,6 +31,8 @@ import {
 } from '@dalgo/core';
 import { parseDocument as parseYamlDocument } from 'yaml';
 import { NgTemplateOutlet } from '@angular/common';
+import { HeldResultPresentationComponent } from '../../../board/ui/components/held-result-presentation/held-result-presentation.component';
+import { prepareQueryResultChart, queryResultChartOptions } from './query-result-chart';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { IEnvironmentFull } from '../../../models/definition/environments';
@@ -738,7 +740,9 @@ let queryParameterEditorId = 0;
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
-    AgGridAngular, AgGridReadyDirective,
+    AgGridAngular,
+    AgGridReadyDirective,
+    HeldResultPresentationComponent,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
     SneatDatatugPageTitleComponent,
@@ -1733,6 +1737,52 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly runResult = signal<FederatedQueryResult | undefined>(
     undefined,
   );
+  /** Presentation choices belong to the current held result, never the query definition. */
+  public readonly resultChartView = signal<'grid' | 'chart'>('grid');
+  public readonly resultChartCategory = signal('');
+  public readonly resultChartMeasure = signal('');
+  public readonly resultChartOptions = computed(() => {
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    return result && recordset
+      ? queryResultChartOptions(result, recordset, this.resultTotalRows())
+      : { categories: [], measures: [], reason: 'Run a query to choose chart columns.' };
+  });
+  public readonly resultChartFields = computed(() => ({
+    categoryColumn: this.resultChartCategory(),
+    measureColumn: this.resultChartMeasure(),
+    title: 'Saved query result',
+  }));
+  public readonly resultChartReason = computed(() => {
+    const options = this.resultChartOptions();
+    if (options.reason) return options.reason;
+    if (!options.categories.includes(this.resultChartCategory()) ||
+        !options.measures.includes(this.resultChartMeasure()))
+      return 'Choose a category and count column to chart this result.';
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    if (!result || !recordset) return 'Run a query to choose chart columns.';
+    const prepared = prepareQueryResultChart(result, recordset, this.resultChartFields());
+    return prepared.ok ? '' : prepared.message;
+  });
+  public readonly resultChartVisible = computed(() =>
+    this.resultChartView() === 'chart' && !this.resultChartReason(),
+  );
+  public readonly resultChartHeld = computed(() => {
+    const result = this.runResult();
+    const recordset = this.displayedRecordset();
+    return result && recordset ? { ...result, recordset } : null;
+  });
+  public setResultChartCategory(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.resultChartCategory.set(value);
+    this.resultChartView.set('grid');
+  }
+  public setResultChartMeasure(event: Event): void {
+    const value = (event.target as HTMLSelectElement).value;
+    this.resultChartMeasure.set(value);
+    this.resultChartView.set('grid');
+  }
   private readonly executionCopyFeedback = signal<
     | {
         readonly receipt: PublicSqliteExecutionReceipt;
@@ -6705,6 +6755,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     ++this.resultPageRequestGeneration;
     this.resultPageLoading.set(false);
     this.displayedResultGeneration.update((generation) => generation + 1);
+    this.resultChartView.set('grid');
+    this.resultChartCategory.set('');
+    this.resultChartMeasure.set('');
     this.runResult.set(result);
   }
 
@@ -8111,6 +8164,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!result || !['affiliations', 'locations', 'aliases'].includes(set))
       return;
     ++this.historySelection;
+    this.resultChartView.set('grid');
+    this.resultChartCategory.set('');
+    this.resultChartMeasure.set('');
     this.relatedResultSet.set(set);
     this.resultPageIndex.set(0);
     this.resultPageRows.set(

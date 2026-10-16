@@ -1,15 +1,26 @@
-<ion-segment [(ngModel)]="selectedTab">
-  @for (tab of tabsWidgetDef()?.tabs || []; track tab.title) {
-    <ion-segment-button [value]="tab.title">
-      <ion-label style="text-transform: none">{{ tab.title }}</ion-label>
-    </ion-segment-button>
+@if (level() >= maxDepth) {
+  <p role="alert">This board has too many nested tabs to display.</p>
+} @else if (tabs().length) {
+  <ion-segment
+    [value]="active()!.key"
+    (ionChange)="select($any($event).detail.value)"
+    aria-label="Board tabs"
+  >
+    @for (entry of tabs(); track entry.key) {
+      <ion-segment-button [value]="entry.key">
+        <ion-label style="text-transform: none">{{
+          entry.tab.title
+        }}</ion-label>
+      </ion-segment-button>
+    }
+  </ion-segment>
+  @if (active()!.tab.widget) {
+    <ng-container
+      *ngComponentOutlet="boardWidgetComponent(); inputs: childInputs()"
+    />
+  } @else {
+    <p role="status">This tab has no widget.</p>
   }
-</ion-segment>
-@for (tab of tabsWidgetDef()?.tabs || []; track tab.title) {
-  @if ((tab.title === selectedTab && level()) || level() === 0) {
-    <!--		<sneat-datatug-board-widget-->
-    <!--			[level]="level + 1"-->
-    <!--			[widgetDef]="tab.widget"-->
-    <!--		/>-->
-  }
+} @else {
+  <p role="status">This board has no tabs.</p>
 }
