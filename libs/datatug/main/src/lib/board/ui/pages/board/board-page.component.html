@@ -13,7 +13,7 @@
     <ion-row>
       <ion-col size="12" class="ion-padding-start">
         <h1>{{ projBoard()?.title || 'Board' }}</h1>
-        @if (boardDef() && canSaveFavorite()) {
+        @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
           <ion-button fill="outline" (click)="toggleFavorite()">
             {{
               choicesForBoard().favorite
@@ -25,7 +25,7 @@
           @if (favoriteError()) {
             <p role="alert">{{ favoriteError() }}</p>
           }
-        } @else if (boardDef()) {
+        } @else if (boardDef() && !tutorialActive()) {
           <p>Favorites are unavailable for local agent projects.</p>
         }
       </ion-col>
@@ -42,6 +42,153 @@
     <p class="ion-padding" role="alert">{{ loadError() }}</p>
   }
 
+  @if (tutorialAvailable() && !tutorialActive()) {
+    <section class="tutorial-entry" aria-label="Build this board step by step">
+      <div>
+        <strong>Explore how this dashboard is built</strong>
+        <p>
+          The completed saved board is ready to explore. You can also build a
+          working copy in this browser session.
+        </p>
+      </div>
+      <button type="button" (click)="buildStepByStep()">
+        Build Step by Step
+      </button>
+    </section>
+  }
+
+  @if (tutorialActive()) {
+    <section class="tutorial-panel" aria-labelledby="tutorial-heading">
+      <div class="tutorial-heading">
+        <div>
+          <p class="tutorial-eyebrow">Session-only working copy</p>
+          <h2 id="tutorial-heading">Build this dashboard</h2>
+          <p>
+            Your changes stay in this browser session. The saved board remains
+            complete.
+          </p>
+        </div>
+        <button type="button" (click)="showFullBoard()">
+          Show Full Dashboard
+        </button>
+      </div>
+      @if (tutorialLoading()) {
+        <p role="status">Opening your working copy…</p>
+      } @else if (tutorialError()) {
+        <p role="alert">{{ tutorialError() }}</p>
+      } @else if (tutorialBoard()) {
+        <p class="tutorial-progress" role="status" aria-live="polite">
+          {{ visibleTutorialCards().length }} of
+          {{
+            visibleTutorialCards().length + hiddenTutorialCards().length
+          }}
+          cards in your board.
+          {{
+            tutorialStatus()?.isComplete
+              ? 'All saved cards are in place.'
+              : 'Add a card to continue.'
+          }}
+        </p>
+        <div class="tutorial-controls" role="group" aria-label="Tutorial steps">
+          @if (tutorialStatus()?.control === 'guided') {
+            <button
+              type="button"
+              (click)="previousTutorialStep()"
+              [disabled]="!tutorialStatus()?.canPrevious"
+            >
+              Previous
+            </button>
+            <button
+              type="button"
+              (click)="addNextTutorialCard()"
+              [disabled]="!tutorialStatus()?.canNext"
+            >
+              Add Next Card
+            </button>
+            <button type="button" (click)="takeTutorialControl()">
+              Take Control
+            </button>
+          } @else {
+            <button type="button" (click)="resumeTutorial()">
+              Resume Guide
+            </button>
+          }
+          <button type="button" (click)="restartTutorial()">Restart</button>
+        </div>
+        @if (tutorialStatus()?.control === 'free') {
+          <div class="tutorial-free" aria-label="Edit this working copy">
+            <div>
+              <h3>Available cards</h3>
+              @for (card of hiddenTutorialCards(); track card.id) {
+                <div class="tutorial-card-action">
+                  <span>{{ card.title || card.id }}</span>
+                  <button
+                    type="button"
+                    (click)="addTutorialCard(card)"
+                    [attr.aria-label]="'Add ' + (card.title || card.id)"
+                  >
+                    Add
+                  </button>
+                </div>
+              } @empty {
+                <p>All saved cards are on your board.</p>
+              }
+            </div>
+            <div>
+              <h3>Cards on your board</h3>
+              @for (item of visibleTutorialCards(); track item.card.id) {
+                <div class="tutorial-card-action">
+                  <span>{{ item.card.title || item.card.id }}</span>
+                  <div class="tutorial-card-buttons">
+                    <button
+                      type="button"
+                      (click)="
+                        moveTutorialCard(
+                          item.card,
+                          item.rowIndex,
+                          item.index - 1
+                        )
+                      "
+                      [disabled]="item.index === 0"
+                      [attr.aria-label]="'Move ' + item.card.title + ' up'"
+                    >
+                      ↑
+                    </button>
+                    <button
+                      type="button"
+                      (click)="
+                        moveTutorialCard(
+                          item.card,
+                          item.rowIndex,
+                          item.index + 1
+                        )
+                      "
+                      [disabled]="item.index === item.rowLength - 1"
+                      [attr.aria-label]="'Move ' + item.card.title + ' down'"
+                    >
+                      ↓
+                    </button>
+                    <button
+                      type="button"
+                      (click)="removeTutorialCard(item.card)"
+                      [attr.aria-label]="
+                        'Remove ' + (item.card.title || item.card.id)
+                      "
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              } @empty {
+                <p>No cards in the working copy yet.</p>
+              }
+            </div>
+          </div>
+        }
+      }
+    </section>
+  }
+
   @if (boardDef() && parameters()?.length) {
     <ion-card>
       @if (lookupUnavailable()) {
@@ -50,10 +197,24 @@
           parameter values manually.
         </p>
       }
+      <p class="ion-padding">
+        Parameter changes clear previous results. Run or refresh a card to use
+        the new values.
+      </p>
       @for (p of parameters(); track p.def.id) {
         <ion-item [title]="'@' + p.def.id">
           <ion-label color="medium">{{ p.def.title || p.def.id }}</ion-label>
-          <ion-input [placeholder]="p.def.type" [(ngModel)]="p.val" />
+          <ion-input
+            [placeholder]="p.def.type"
+            [value]="parameterText(p)"
+            [attr.aria-invalid]="parameterErrors()[p.def.id] ? 'true' : null"
+            [attr.aria-describedby]="
+              parameterErrors()[p.def.id]
+                ? 'board-parameter-error-' + p.def.id
+                : null
+            "
+            (ionInput)="setParameterValue(p, $event.detail.value)"
+          />
           <ion-buttons slot="end">
             @if (p.def.lookup && !lookupUnavailable()) {
               <ion-button
@@ -66,13 +227,22 @@
             }
           </ion-buttons>
         </ion-item>
+        @if (parameterErrors()[p.def.id]; as error) {
+          <p
+            role="alert"
+            class="ion-padding-horizontal"
+            [id]="'board-parameter-error-' + p.def.id"
+          >
+            {{ error }}
+          </p>
+        }
       }
     </ion-card>
   }
 
-  @if (boardDef()) {
+  @if (displayBoard(); as board) {
     <sneat-datatug-board
-      [boardDef]="boardDef()"
+      [boardDef]="board"
       [boardContext]="boardContext()"
       [projectRef]="projectRef()"
       [readBoardForRun]="readBoardForRun"
