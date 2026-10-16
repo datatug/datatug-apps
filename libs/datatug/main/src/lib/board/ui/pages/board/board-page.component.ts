@@ -189,6 +189,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly tutorialGuide = signal<
     ReturnType<typeof currentTutorialStep> | undefined
   >(undefined);
+  readonly tutorialProgressCue = computed(() => {
+    const status = this.tutorialStatus();
+    if (status?.control === 'free')
+      return 'Editing freely. Resume the guide or restart this session.';
+    if (this.tutorialGuide()?.step.action)
+      return status?.canNext
+        ? `Next: ${this.tutorialGuide()?.step.title}`
+        : 'Session action limit reached. Use Previous or Restart to continue.';
+    return 'Review the source limitation or take control.';
+  });
   readonly tutorialStepCount = computed(() =>
     this.boardDef() ? tutorialSteps(this.boardDef() as Board).length : 0,
   );
@@ -365,6 +375,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.tutorialRequested.set(requested);
           this.clearTutorial();
           if (requested) void this.openTutorial();
+          else if (this.boardDef()) this.focusSavedBoardHeading();
         }
       },
       error: (err) =>
@@ -486,11 +497,25 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         return;
       this.tutorialSession = session;
       this.publishTutorial();
+      this.focusTutorialChange(
+        undefined,
+        'Tutorial opened',
+        'Your working copy stays in this browser session.',
+        this.visibleTutorialCards().length
+          ? '[data-tutorial-route-heading]'
+          : '[data-tutorial-empty-focus]',
+      );
     } catch (error) {
       if (generation !== this.tutorialGeneration) return;
       this.errorLogger.logError(error, 'Failed to open tutorial board');
       this.tutorialError.set(
         'This tutorial could not be opened. You can still view the completed board.',
+      );
+      this.focusTutorialChange(
+        undefined,
+        'Tutorial unavailable',
+        'You can still view the completed board.',
+        '[data-tutorial-route-heading]',
       );
     } finally {
       if (generation === this.tutorialGeneration)
@@ -552,7 +577,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
               previous: () => this.previousTutorialStep(),
               canNext: this.tutorialStatus()?.canNext ?? false,
               canPrevious: session.canPrevious,
-              nextTitle: this.tutorialGuide()?.step.title ?? '',
+              cue: this.tutorialProgressCue(),
               limitation: this.tutorialGuide()?.step.limitation,
             }
           : undefined,
@@ -635,7 +660,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       cardId ? { cardId, title, detail } : undefined,
     );
     this.tutorialAnnouncement.set(
-      `${title}. ${detail} Next: ${this.tutorialGuide()?.step.title ?? ''}.`,
+      `${title}. ${detail} ${this.tutorialProgressCue()}`,
     );
     afterNextRender(
       () => {
@@ -672,6 +697,27 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     );
   }
 
+  private focusSavedBoardHeading(): void {
+    const generation = ++this.focusGeneration;
+    const board = this.boardDef();
+    afterNextRender(
+      () => {
+        if (
+          generation !== this.focusGeneration ||
+          this.tutorialActive() ||
+          this.boardDef() !== board
+        )
+          return;
+        const heading = this.element.nativeElement.querySelector<HTMLElement>(
+          '[data-board-page-heading]',
+        );
+        heading?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
+        heading?.focus({ preventScroll: true });
+      },
+      { injector: this.injector },
+    );
+  }
+
   explainSourceLimit(index: number): void {
     const target = this.element.nativeElement.querySelector<HTMLElement>(
       `#source-composition-limit-${index}`,
@@ -692,8 +738,11 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       return;
     }
     session.takeControl();
+    this.focusGeneration++;
+    this.tutorialRuntime.notice.set(undefined);
     this.authoringError.set(undefined);
     this.publishTutorial();
+    this.tutorialAnnouncement.set(this.tutorialProgressCue());
   }
 
   addTutorialTab(editor: TutorialEditor, title: string, queryId: string): void {

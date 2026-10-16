@@ -8,7 +8,7 @@
     </h3>
     <p>{{ notice.detail }}</p>
     @if (tutorialRuntime?.state()?.navigation; as navigation) {
-      <p>Next: {{ navigation.nextTitle }}</p>
+      <p>{{ navigation.cue }}</p>
       @if (navigation.limitation) {
         <p role="status">{{ navigation.limitation }}</p>
       }

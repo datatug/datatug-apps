@@ -26,7 +26,7 @@ export interface TutorialNavigation {
   readonly previous: () => void;
   readonly canNext: boolean;
   readonly canPrevious: boolean;
-  readonly nextTitle: string;
+  readonly cue: string;
   readonly limitation?: string;
 }
 

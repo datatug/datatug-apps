@@ -228,6 +228,12 @@ describe('BoardPage same-route tutorial overlay', () => {
     page.resumeTutorial();
     await fixture.whenStable();
     expect(page.tutorialStatus()?.canNext).toBe(false);
+    expect(
+      fixture.nativeElement.querySelector('.tutorial-progress').textContent,
+    ).toContain('Session action limit reached');
+    expect(
+      fixture.nativeElement.querySelector('.tutorial-progress').textContent,
+    ).not.toContain('Next:');
     const buttons = () =>
       Array.from(
         fixture.nativeElement.querySelectorAll(
@@ -276,6 +282,93 @@ describe('BoardPage same-route tutorial overlay', () => {
       fixture.nativeElement.querySelector('[aria-label="Move untitled down"]'),
     ).toBeTruthy();
     expect(fixture.nativeElement.innerHTML).not.toContain('Move undefined');
+    fixture.destroy();
+  });
+
+  it('moves keyboard focus on tutorial route entry, exit, and restored-session entry', async () => {
+    const { fixture, page, mode, navigate, route } = await harness(
+      saved,
+      null,
+      true,
+      true,
+    );
+    const button = (label: string) => {
+      const target = Array.from(
+        fixture.nativeElement.querySelectorAll(
+          'button',
+        ) as NodeListOf<HTMLButtonElement>,
+      ).find((button) => button.textContent?.trim() === label);
+      if (!target) throw new Error(`Missing ${label}`);
+      return target;
+    };
+    const entry = button('Build Step by Step');
+    entry.focus();
+    entry.click();
+    expect(navigate).toHaveBeenCalledWith([], {
+      relativeTo: route,
+      queryParams: { mode: 'tutorial' },
+      queryParamsHandling: 'merge',
+    });
+    mode.next('tutorial');
+    await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
+    await fixture.whenStable();
+    expect(entry.isConnected).toBe(false);
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-empty-focus'),
+    ).toBe(true);
+    button('Add the first card').click();
+    await fixture.whenStable();
+    const exit = button('Show Full Dashboard');
+    exit.focus();
+    exit.click();
+    expect(navigate).toHaveBeenLastCalledWith([], {
+      relativeTo: route,
+      queryParams: { mode: null },
+      queryParamsHandling: 'merge',
+    });
+    mode.next(null);
+    await fixture.whenStable();
+    expect(exit.isConnected).toBe(false);
+    expect(
+      document.activeElement?.hasAttribute('data-board-page-heading'),
+    ).toBe(true);
+    expect(document.activeElement?.textContent?.trim()).toBe('Saved showcase');
+    expect(page.displayBoard()?.rows?.[0].cards).toHaveLength(2);
+    button('Build Step by Step').focus();
+    button('Build Step by Step').click();
+    mode.next('tutorial');
+    await vi.waitFor(() =>
+      expect(page.tutorialBoard()?.rows?.[0].cards).toHaveLength(1),
+    );
+    await fixture.whenStable();
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-route-heading'),
+    ).toBe(true);
+    expect(document.activeElement?.textContent?.trim()).toBe('Build this dashboard');
+    fixture.destroy();
+  });
+
+  it('clears the guided card notice and uses the free-edit cue for a direct session edit', async () => {
+    const { fixture, page } = await harness(saved, 'tutorial', true, true);
+    await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
+    page.addNextTutorialCard();
+    await fixture.whenStable();
+    const runtime = fixture.debugElement.injector.get(TutorialBoardRuntime);
+    expect(runtime.notice()).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('.tutorial-card-guide'),
+    ).toBeTruthy();
+    page.editTutorial({ type: 'add-card', cardId: 'second' });
+    await fixture.whenStable();
+    expect(runtime.notice()).toBeUndefined();
+    expect(
+      fixture.nativeElement.querySelector('.tutorial-card-guide'),
+    ).toBeNull();
+    const progress =
+      fixture.nativeElement.querySelector('.tutorial-progress').textContent;
+    expect(progress).toContain('Editing freely');
+    expect(progress).not.toContain('Next:');
+    expect(page.tutorialAnnouncement()).not.toContain('Next:');
     fixture.destroy();
   });
 

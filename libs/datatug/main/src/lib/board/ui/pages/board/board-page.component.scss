@@ -69,6 +69,8 @@
   white-space: nowrap;
 }
 .tutorial-panel h3:focus-visible,
+.tutorial-panel h2:focus-visible,
+h1[data-board-page-heading]:focus-visible,
 .tutorial-panel p[tabindex]:focus-visible {
   outline: 3px solid #2563eb;
   outline-offset: 3px;
