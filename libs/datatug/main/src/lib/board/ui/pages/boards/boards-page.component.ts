@@ -6,6 +6,7 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { Router, RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -45,6 +46,8 @@ import { DatatugServicesProjectModule } from '../../../../services/project/datat
 import { DatatugServicesStoreModule } from '../../../../services/repo/datatug-services-store.module';
 import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/datatug-services-unsorted.module';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
+import { BoardChoicesService } from '../../../core/board-choices.service';
+import { projectPageHref } from '../../../../nav/project-page-href';
 
 @Component({
   selector: 'sneat-datatug-boards',
@@ -78,6 +81,7 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
     IonMenuButton,
     IonToolbar,
     IonContent,
+    RouterLink,
   ],
 })
 export class BoardsPageComponent implements OnInit, OnDestroy {
@@ -85,6 +89,22 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly foldersService = inject(DatatugFoldersService);
+  private readonly choices = inject(BoardChoicesService);
+  private readonly router = inject(Router);
+  readonly favoriteBoards = computed(() => {
+    const ref = this.project()?.ref;
+    return ref
+      ? (this.boards() || []).filter(
+          (board) => this.choices.read(ref, board.id).favorite,
+        )
+      : [];
+  });
+  boardLink(id: string) {
+    const ref = this.project()?.ref;
+    return ref
+      ? this.router.parseUrl(projectPageHref(ref, ['board', id]))
+      : undefined;
+  }
 
   // Signals, not plain fields: this app is zoneless
   // (provideZonelessChangeDetection(), main.ts). Both are written from

@@ -12,6 +12,7 @@ import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
 import { QueryType } from '../../../../models/definition/query-def';
 import { BoardWidgetComponent } from '../board-widget/board-widget.component';
+import { BoardReadForRun } from '../../../core/board-read-for-run';
 
 @Injectable()
 export class BoardCardTabService {
@@ -44,4 +45,6 @@ export class BoardCardComponent {
   readonly boarCardDef = input<BoardCard>();
   readonly boardContext = input<IBoardContext>();
   readonly projectRef = input<IProjectRef>();
+  readonly boardId = input<string>();
+  readonly readBoardForRun = input<BoardReadForRun>();
 }

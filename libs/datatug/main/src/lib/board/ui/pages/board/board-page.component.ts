@@ -32,16 +32,13 @@ import {
   switchMap,
   takeUntil,
 } from 'rxjs/operators';
-import { EMPTY, Subject, combineLatest } from 'rxjs';
+import { EMPTY, Subject, combineLatest, throwError } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { Board } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
-import {
-  IProjectRef,
-  projectRefToString,
-} from '../../../../core/project-context';
+import { IProjectRef, equalProjectRef } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import {
@@ -56,6 +53,8 @@ import { DatatugServicesUnsortedModule } from '../../../../services/unsorted/dat
 import { DatatugBoardService } from '../../../core/datatug-board.service';
 import { BoardComponent } from '../../components/board/board.component';
 import { SneatDatatugPageTitleComponent } from '../../../../components/page-title/sneat-datatug-page-title.component';
+import { BoardChoicesService } from '../../../core/board-choices.service';
+import { BoardReadForRun } from '../../../core/board-read-for-run';
 
 @Component({
   selector: 'sneat-datatug-board-page',
@@ -103,6 +102,7 @@ import { SneatDatatugPageTitleComponent } from '../../../../components/page-titl
 export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly boardService = inject(DatatugBoardService);
+  private readonly choices = inject(BoardChoicesService);
   private readonly route = inject(ActivatedRoute);
   private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
@@ -123,6 +123,28 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly projBoard = signal<IProjBoard | undefined>(undefined);
 
   readonly boardDef = signal<Board | undefined>(undefined);
+  readonly favoriteError = signal<string | undefined>(undefined);
+  readonly choicesForBoard = computed(() =>
+    this.choices.read(this.projectRef(), this.boardId() || undefined),
+  );
+  readonly readBoardForRun: BoardReadForRun = (ref, id) =>
+    ref.projectApi || ref.branch
+      ? throwError(
+          () => new Error('This project connection cannot re-read boards yet.'),
+        )
+      : this.boardService.getBoard(ref.storeId, ref.projectId, id);
+
+  toggleFavorite(): void {
+    const ref = this.projectRef();
+    const id = this.boardId();
+    if (ref && id && this.boardDef()) {
+      this.favoriteError.set(
+        this.choices.setFavorite(ref, id, !this.choicesForBoard().favorite)
+          ? undefined
+          : 'This browser could not save the favorite. Please try again.',
+      );
+    }
+  }
   readonly projectRef = signal<IProjectRef | undefined>(undefined);
   readonly unsupportedProject = computed(() => {
     const ref = this.projectRef();
@@ -170,9 +192,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           id: params.get(routingParamBoard),
         })),
         distinctUntilChanged(
-          (a, b) =>
-            a.id === b.id &&
-            projectRefToString(a.ref) === projectRefToString(b.ref),
+          (a, b) => a.id === b.id && equalProjectRef(a.ref, b.ref),
         ),
         switchMap(({ ref, id }) => {
           this.projectRef.set(ref);
@@ -183,6 +203,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.projBoard.set(undefined);
           this.parameters.set(undefined);
           this.loadError.set(undefined);
+          this.favoriteError.set(undefined);
           this.loading.set(true);
           if (!ref) return EMPTY;
           // The Board reader accepts only store and project IDs, so a

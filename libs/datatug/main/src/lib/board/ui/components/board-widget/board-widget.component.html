@@ -1,5 +1,5 @@
-@let definition = widgetDef();
-@switch (definition?.name) {
+@let widget = widgetDef();
+@switch (widget?.name) {
   @case ('tabs') {
     <sneat-datatug-tabs-widget
       [level]="level()"
@@ -12,21 +12,79 @@
       @if (sqlWidgetDef()?.title) {
         <p>{{ sqlWidgetDef()?.title }}</p>
       }
+      @if (remembered()) {
+        <p role="status">Last selected from this board in this browser</p>
+      }
+      @if (definitionLoading()) {
+        <p role="status">Checking saved query…</p>
+      } @else if (unsupportedReason(); as reason) {
+        <p role="status">{{ reason }}</p>
+      } @else if (definition()) {
+        <ion-button [disabled]="running()" (click)="run()">{{
+          running() ? 'Running…' : 'Run on board'
+        }}</ion-button>
+      }
       @if (queryUrlTree(); as urlTree) {
-        <ion-button [routerLink]="urlTree"> Open saved query </ion-button>
+        <ion-button [routerLink]="urlTree" (click)="rememberChoice()">
+          Open saved query
+        </ion-button>
       } @else {
         <p role="status">This saved query is unavailable.</p>
+      }
+      @if (runError(); as error) {
+        <p role="alert">{{ error }}</p>
+      }
+      @if (choiceError(); as error) {
+        <p role="alert">{{ error }}</p>
+      }
+      @if (result(); as answer) {
+        @if (!answer.recordset.rows.length) {
+          <p role="status">Query completed with no rows.</p>
+        } @else {
+          <p role="status">
+            {{ answer.recordset.rows.length }} rows returned{{
+              answer.truncated ? ' (limited)' : ''
+            }}.
+          </p>
+          <div class="board-result-scroll">
+            <table>
+              <thead>
+                <tr>
+                  @for (column of answer.recordset.columns; track $index) {
+                    <th scope="col">{{ column.name }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of visibleRows(); track $index) {
+                  <tr>
+                    @for (cell of row; track $index) {
+                      <td>{{ displayCell(cell) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+          @if (answer.recordset.rows.length > visibleRows().length) {
+            <p>
+              Showing the first {{ visibleRows().length }} rows. Open the saved
+              query to inspect more.
+            </p>
+          }
+        }
+        <p>{{ answer.provenance.source }}</p>
       }
     </div>
   }
   @default {
     <div class="ion-margin-top">
-      @if (!definition) {
+      @if (!widget) {
         No widget definition
-      } @else if (!definition.name) {
+      } @else if (!widget.name) {
         No widget name
       } @else {
-        To be implemented: {{ definition.name }}
+        To be implemented: {{ widget.name }}
       }
     </div>
   }

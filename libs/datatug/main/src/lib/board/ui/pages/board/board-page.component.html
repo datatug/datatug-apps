@@ -13,6 +13,19 @@
     <ion-row>
       <ion-col size="12" class="ion-padding-start">
         <h1>{{ projBoard()?.title || 'Board' }}</h1>
+        @if (boardDef()) {
+          <ion-button fill="outline" (click)="toggleFavorite()">
+            {{
+              choicesForBoard().favorite
+                ? 'Remove from favorites'
+                : 'Add to favorites'
+            }}
+          </ion-button>
+          <p>Favorites are saved in this browser.</p>
+          @if (favoriteError()) {
+            <p role="alert">{{ favoriteError() }}</p>
+          }
+        }
       </ion-col>
     </ion-row>
   </ion-grid>
@@ -54,6 +67,7 @@
       [boardDef]="boardDef()"
       [boardContext]="boardContext()"
       [projectRef]="projectRef()"
+      [readBoardForRun]="readBoardForRun"
     />
   }
 </ion-content>
