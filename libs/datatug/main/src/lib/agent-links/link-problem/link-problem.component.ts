@@ -59,11 +59,9 @@ export function linkProblemText(
         title: `The DataTug agent at ${agentAddress(ref?.storeId)} cannot be reached.`,
         hints: [
           'Start it with: datatug daemon start, then press Check again. A started agent may not accept this link any more; then press Check again on the card in Claude Code for a fresh link.',
-          ...(blockingBrowser
-            ? [
-                'This browser may block datatug.app from reaching the agent. Open the link in Chrome on the computer that runs the agent.',
-              ]
-            : []),
+          blockingBrowser
+            ? 'This browser may block datatug.app from reaching the agent, and the built-in browser of an AI tool usually cannot reach a local agent. Open the link in Chrome on the computer that runs the agent.'
+            : 'If the agent is running, the request may be blocked by the browser or an extension (an ad blocker, Brave Shields, or the built-in browser of an AI tool, which usually cannot reach a local agent). Open the link in Chrome.',
         ],
       };
     case 'link-expired':

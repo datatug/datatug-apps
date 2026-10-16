@@ -52,10 +52,15 @@ describe('LinkProblemComponent (AC:unresolvable-link-names-the-problem)', () => 
     expect(linkProblemText('agent-unreachable', undefined, false).title).toContain('this computer');
   });
 
-  it('advises Chrome only where the browser may block loopback', () => {
-    expect(linkProblemText('agent-unreachable', REF, true).hints.join(' ')).toContain('Chrome');
-    expect(linkProblemText('agent-unreachable', REF, false).hints.join(' ')).not.toContain('Chrome');
+  it('names the browser or an extension, and the built-in browser of AI tools, for an unreachable agent', () => {
+    const blocking = linkProblemText('agent-unreachable', REF, true).hints.join(' ');
+    expect(blocking).toContain('built-in browser of an AI tool usually cannot reach a local agent');
+    expect(blocking).toContain('Chrome');
+    const other = linkProblemText('agent-unreachable', REF, false).hints.join(' ');
+    expect(other).toContain('blocked by the browser or an extension');
+    expect(other).toContain('built-in browser of an AI tool');
     expect(linkProblemText('table-not-found', REF, true).hints.join(' ')).not.toContain('Chrome');
+    expect(linkProblemText('link-expired', REF, true).hints.join(' ')).not.toContain('extension');
   });
 });
 
