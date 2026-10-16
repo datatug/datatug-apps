@@ -2,6 +2,7 @@
 
 import { BOARD_WIDGET_NAME_HTTP } from './widget-http';
 import { BOARD_WIDGET_NAME_SQL } from './widget-sql';
+import { BOARD_WIDGET_NAME_CHART } from './widget-chart';
 
 /** The `BoardWidget.name` value that selects {@link TabsWidgetDef} (boards.go literal `"tabs"`). */
 export const BOARD_WIDGET_NAME_TABS = 'tabs' as const;
@@ -17,7 +18,8 @@ export const BOARD_WIDGET_NAME_TABS = 'tabs' as const;
 export type BoardWidgetName =
   | typeof BOARD_WIDGET_NAME_SQL
   | typeof BOARD_WIDGET_NAME_HTTP
-  | typeof BOARD_WIDGET_NAME_TABS;
+  | typeof BOARD_WIDGET_NAME_TABS
+  | typeof BOARD_WIDGET_NAME_CHART;
 
 /**
  * Mirrors `BoardWidget` (boards.go) field for field. `data` stays `unknown`
