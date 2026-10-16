@@ -111,7 +111,16 @@ jobs:
             vite-${{ runner.os }}-
 
       - name: nx test affected
-        run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }}
+        run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }} --outputStyle=stream
+
+      - name: Upload main Vitest diagnostics
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: datatug-main-vitest-diagnostics
+          path: coverage/libs/datatug/main/vitest-results.json
+          if-no-files-found: warn
+          retention-days: 7
 
   # Independent browser suites use separate runners so their app servers,
   # Playwright artifacts and Nx state cannot contend. Keep app and query-mobile
