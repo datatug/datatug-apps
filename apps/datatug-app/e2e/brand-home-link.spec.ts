@@ -27,8 +27,12 @@ for (const safeAreaTop of [0, 20]) {
 
     await page.locator('sneat-login ion-back-button').click();
     await expect(page).toHaveURL('/home');
+    await expect(page.locator('sneat-login')).toBeHidden();
     await expect
       .poll(async () => (await homeHeader.boundingBox())?.height)
+      .toBe(homeBounds.height);
+    await expect
+      .poll(async () => (await homeContent.boundingBox())?.y)
       .toBe(homeBounds.height);
   });
 }
