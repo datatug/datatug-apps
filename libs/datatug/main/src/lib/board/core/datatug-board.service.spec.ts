@@ -1,8 +1,13 @@
+import { HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 import { DatatugApiService } from '../../services/base/datatug-api.service';
 
 import { DatatugBoardService } from './datatug-board.service';
-import { datatugApiRealProviders, expectDatatugApiRequest } from '../../services/base/datatug-api.test-helpers';
+import {
+  datatugApiRealProviders,
+  datatugApiTestBaseUrl,
+  datatugApiTestToken,
+} from '../../services/base/datatug-api.test-helpers';
 import { CreateNamedRequest } from '../../dto/requests';
 
 describe('BoardService', () => {
@@ -40,7 +45,15 @@ describe('DatatugBoardService DataTug API base URL', () => {
         name: 'Board',
       } as CreateNamedRequest)
       .subscribe();
-    // Keeps today's URL shape, including the double slash after `v0/`.
-    expectDatatugApiRequest('POST', '/datatug/boards/create_board');
+    const http = TestBed.inject(HttpTestingController);
+    const request = http.expectOne(
+      `${datatugApiTestBaseUrl}datatug/boards/create_board?project=project_1&store=firestore`,
+    );
+    expect(request.request.method).toBe('POST');
+    expect(request.request.params.get('project')).toBe('project_1');
+    expect(request.request.headers.get('Authorization')).toBe(
+      `Bearer ${datatugApiTestToken}`,
+    );
+    http.verify();
   });
 });

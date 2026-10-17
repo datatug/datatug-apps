@@ -75,7 +75,7 @@ export class DatatugBoardService {
       return throwError(() => new Error(GITHUB_READ_ONLY_MESSAGE));
     }
     return this.sneatApiService.post<ICreateProjectItemRequest, { id: string }>(
-      `/datatug/boards/create_board?project=${projectRef.projectId}&store=${projectRef.storeId}`,
+      `datatug/boards/create_board?project=${projectRef.projectId}&store=${projectRef.storeId}`,
       { title: request.name, folder: '~' },
       {
         params: { project: projectRef.projectId },
