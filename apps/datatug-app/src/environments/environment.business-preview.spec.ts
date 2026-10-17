@@ -1,6 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { DatatugApiBaseUrl } from '@sneat/datatug-semantic';
+import { DATATUG_CHECKOUT_FORCE_TEST } from '../app/checkout/checkout-force-test';
 import {
   TEST_CHECKOUT_ORIGIN,
   TEST_PREVIEW_PROJECT_ORIGIN,
@@ -31,6 +32,13 @@ describe('Business project preview environment', () => {
       `${TEST_PREVIEW_PROJECT_ORIGIN}/v0/`,
     );
     expect(TestBed.inject(SneatApiBaseUrl)).toBe(DefaultSneatAppApiBaseUrl);
+  });
+
+  it('forces every checkout rail to TEST', () => {
+    TestBed.configureTestingModule({
+      providers: [...datatugEnvironmentProviders],
+    });
+    expect(TestBed.inject(DATATUG_CHECKOUT_FORCE_TEST)).toBe(true);
   });
 
   it('provides no SneatApiBaseUrl override', () => {

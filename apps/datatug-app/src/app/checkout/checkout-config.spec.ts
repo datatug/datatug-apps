@@ -1,4 +1,6 @@
 import { checkoutRail, checkoutSelection } from './checkout-config.mjs';
+const TEST_ORIGIN = 'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app';
+const normal = 'https://api.sneat.cloud/v0/';
 
 describe('checkout rails', () => {
   it('selects explicit TEST checkout with only the fixed isolated backend', () => {
@@ -152,4 +154,69 @@ it('preserves Business purchase identity, destination and mode independently of 
     expect(
       checkoutSelection('?planID=datatug-business-usage-annual' + suffix),
     ).toBeNull();
+});
+
+describe('checkout rails with forceTest (the Business project preview build)', () => {
+  it('selects TEST for a default Pro selection, which is LIVE without the flag', () => {
+    expect(
+      checkoutRail('?plan=pro&period=monthly', false, normal),
+    ).toMatchObject({ mode: 'live' });
+    expect(
+      checkoutRail('?plan=pro&period=monthly', false, normal, true),
+    ).toEqual({
+      chosen: { period: 'monthly', plan: 'datatug-pro-monthly' },
+      mode: 'test',
+      apiOrigin: TEST_ORIGIN,
+    });
+  });
+
+  it('selects TEST for a Business selection, whatever the query string', () => {
+    expect(
+      checkoutRail('?plan=business&period=yearly', false, normal, true),
+    ).toMatchObject({ mode: 'test', apiOrigin: TEST_ORIGIN });
+    expect(
+      checkoutRail(
+        '?planID=datatug-business-usage-monthly&spaceID=space_1',
+        false,
+        normal,
+        true,
+      ),
+    ).toMatchObject({ mode: 'test', apiOrigin: TEST_ORIGIN });
+  });
+
+  it('never selects LIVE, even with an explicit LIVE-looking query, and still needs a valid selection', () => {
+    for (const search of [
+      '?plan=pro&period=monthly&checkout=live',
+      '?plan=pro&period=monthly&origin=https%3A%2F%2Fevil.invalid',
+      '?plan=pro&period=monthly&account=other',
+    ]) {
+      const rail = checkoutRail(search, false, normal, true);
+      expect(rail === null || rail.mode === 'test').toBe(true);
+      expect(rail === null || rail.apiOrigin === TEST_ORIGIN).toBe(true);
+    }
+    expect(
+      checkoutRail(
+        '?plan=pro&period=monthly&account=other',
+        false,
+        normal,
+        true,
+      ),
+    ).toBeNull();
+    expect(checkoutRail('?plan=unknown', false, normal, true)).toBeNull();
+  });
+
+  it('refuses a LIVE return session instead of rebinding it to TEST', () => {
+    expect(
+      checkoutRail('?mode=live&session_id=cs_live_paid', true, normal, true),
+    ).toBeNull();
+    expect(
+      checkoutRail('?mode=test&session_id=cs_test_paid', true, normal, true),
+    ).toMatchObject({ mode: 'test', apiOrigin: TEST_ORIGIN });
+  });
+
+  it('keeps the default rail unchanged when the flag is false', () => {
+    expect(
+      checkoutRail('?plan=pro&period=monthly', false, normal, false),
+    ).toEqual(checkoutRail('?plan=pro&period=monthly', false, normal));
+  });
 });

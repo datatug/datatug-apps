@@ -10,6 +10,7 @@ import {
 } from '@sneat/components';
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutRail } from './checkout-config.mjs';
+import { DATATUG_CHECKOUT_FORCE_TEST } from './checkout-force-test';
 import { checkoutApi } from './checkout-api.mjs';
 import { manageableBusinessSpaces } from './business-checkout-spaces';
 
@@ -85,12 +86,19 @@ export function managedSubscription(
 export function provideSubscriptionSettings(): Provider {
   return {
     provide: SUBSCRIPTION_SETTINGS,
-    deps: [SneatAuthStateService, SneatUserService, Router, SneatApiBaseUrl],
+    deps: [
+      SneatAuthStateService,
+      SneatUserService,
+      Router,
+      SneatApiBaseUrl,
+      DATATUG_CHECKOUT_FORCE_TEST,
+    ],
     useFactory: (
       authState: SneatAuthStateService,
       users: SneatUserService,
       router: Router,
       origin: string,
+      forceTest: boolean,
     ): SubscriptionSettingsPort => {
       const state = toSignal(users.userState);
       const auth = appCheckoutAuth(
@@ -104,6 +112,7 @@ export function provideSubscriptionSettings(): Provider {
           `plan=pro&period=monthly${mode === 'test' ? '&checkout=test' : ''}`,
           false,
           origin,
+          forceTest,
         );
         if (!rail || rail.mode !== mode)
           throw new Error('Invalid subscription rail');

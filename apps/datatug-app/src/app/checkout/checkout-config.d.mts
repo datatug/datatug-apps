@@ -17,6 +17,7 @@ export function checkoutRail(
   search: string,
   returning: boolean,
   normalApiBaseUrl: string,
+  forceTest?: boolean,
 ): {
   chosen: CheckoutSelection | { mode: 'test' | 'live'; sessionId: string };
   mode: 'test' | 'live';

@@ -6,6 +6,7 @@ import {
   TEST_PREVIEW_PROJECT_ORIGIN,
 } from '../app/checkout/checkout-config.mjs';
 import { datatugAppEnvironmentConfig as productionConfig } from './environment.prod';
+import { DATATUG_CHECKOUT_FORCE_TEST } from '../app/checkout/checkout-force-test';
 
 // Business project preview on http://localhost:18782 (serve configuration
 // `business-preview` in apps/datatug-app/project.json). Only DataTug API calls
@@ -36,4 +37,6 @@ export const datatugEnvironmentProviders: Provider[] = [
     provide: DatatugApiBaseUrl,
     useValue: `${TEST_PREVIEW_PROJECT_ORIGIN}/v0/`,
   },
+  // Every checkout rail, Pro and Business, selects TEST in this build.
+  { provide: DATATUG_CHECKOUT_FORCE_TEST, useValue: true },
 ];
