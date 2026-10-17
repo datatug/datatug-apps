@@ -2,7 +2,7 @@ import { projectApiQuery } from '../../nav/project-api-routing';
 import { type IProjectSummary } from '../../models/definition/project';
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import {
   formatGithubProjectApiKey,
   readGithubProjectId,
@@ -176,7 +176,7 @@ export class ProjectQueryApiService {
   readonly authorityDenied = this.deniedReads.asObservable();
   private readonly githubReauthorization = new Subject<GithubReauthorizationRequest>();
   readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   private readonly http = inject(HttpClient);
   private readonly storeApi = inject(StoreApiService);
 

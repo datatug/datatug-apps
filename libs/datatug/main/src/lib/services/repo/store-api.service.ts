@@ -1,11 +1,8 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { Observable, throwError } from 'rxjs';
-import {
-  IHttpRequestOptions,
-  ISneatApiService,
-  SneatApiService,
-} from '@sneat/api';
+import { IHttpRequestOptions, ISneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { buildAgentUrl } from './agent-url';
 
@@ -31,7 +28,7 @@ export class StoreApiService {
   // throws NG0203 when reached from a UI event handler (no injection context).
   // Only `firestore` is supported by the factory and it is the same root
   // singleton returned here, so behaviour is unchanged.
-  private readonly sneatApiService: ISneatApiService = inject(SneatApiService);
+  private readonly sneatApiService: ISneatApiService = inject(DatatugApiService);
   private readonly httpClient = inject(HttpClient);
 
   private static getUrl(repo: string, path: string): string {

@@ -9,6 +9,7 @@ export * from './charting/bar-race';
 export * from './charting/orders-monthly-country-count';
 export * from './lib/models/models';
 export * from './lib/tokens/datatug-agent-base-url.token';
+export * from './lib/tokens/datatug-api-base-url.token';
 export { SemanticApiService } from './lib/services/semantic-api.service';
 // prettier-ignore
 export { AgentContextService, type AgentContextHandle } from './lib/services/agent-context.service';

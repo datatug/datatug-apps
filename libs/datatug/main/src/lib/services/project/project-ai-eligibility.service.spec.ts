@@ -1,10 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpParams } from '@angular/common/http';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { firstValueFrom, of } from 'rxjs';
 import { IProjectRef } from '../../core/project-context';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { ProjectAIEligibilityService } from './project-ai-eligibility.service';
+import { datatugApiRealProviders, expectDatatugApiRequest } from '../base/datatug-api.test-helpers';
+
 
 describe('ProjectAIEligibilityService', () => {
   const get = vi.fn();
@@ -15,7 +17,7 @@ describe('ProjectAIEligibilityService', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectAIEligibilityService,
-        { provide: SneatApiService, useValue: { get } },
+        { provide: DatatugApiService, useValue: { get } },
         { provide: ProjectQueryApiService, useValue: { capabilities } },
       ],
     });
@@ -75,5 +77,27 @@ describe('ProjectAIEligibilityService', () => {
       'Project AI access could not be verified.',
     );
     expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectAIEligibilityService DataTug API base URL', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectAIEligibilityService,
+        ...datatugApiRealProviders(),
+        { provide: ProjectQueryApiService, useValue: { capabilities: vi.fn() } },
+      ],
+    });
+  });
+
+  it('reads Firestore sponsor eligibility from the DataTug API base URL', () => {
+    const ref: IProjectRef = {
+      storeId: 'firestore',
+      projectId: 'project_1',
+      spaceID: 'space_1',
+    };
+    TestBed.inject(ProjectAIEligibilityService).read(ref).subscribe();
+    expectDatatugApiRequest('GET', 'datatug/projects/ai_eligibility');
   });
 });

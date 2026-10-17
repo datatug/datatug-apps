@@ -115,6 +115,12 @@ export function pricingReturnUrl(period, mode) {
 
 export const TEST_CHECKOUT_ORIGIN =
   'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app';
+// The datatug-cloud-preview bare origin (no `/v0/`) that the Business project
+// preview serve configuration sends DataTug API calls to. It is not checkout:
+// business-checkout-config.ts never trusts it, so checkout stays on
+// TEST_CHECKOUT_ORIGIN. Verify after the service is created.
+export const TEST_PREVIEW_PROJECT_ORIGIN =
+  'https://datatug-cloud-preview-354fvnqbaa-ey.a.run.app';
 export function checkoutRail(search, returning, normalApiBaseUrl) {
   const chosen = returning
     ? returnSelection(search)

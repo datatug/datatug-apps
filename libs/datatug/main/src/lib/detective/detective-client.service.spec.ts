@@ -4,12 +4,14 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import { of, throwError } from 'rxjs';
 import {
   DetectiveClientService,
   detectiveErrorMessage,
 } from './detective-client.service';
+import { datatugApiRealProviders, expectDatatugApiRequest } from '../services/base/datatug-api.test-helpers';
+
 
 const context = {
   kind: 'agent' as const,
@@ -28,7 +30,7 @@ describe('DetectiveClientService', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: SneatApiService, useValue: api },
+        { provide: DatatugApiService, useValue: api },
       ],
     });
     vi.clearAllMocks();
@@ -633,5 +635,25 @@ describe('DetectiveClientService', () => {
     });
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('securityContextId');
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('snapshot');
+  });
+});
+
+describe('DetectiveClientService DataTug API base URL', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [DetectiveClientService, ...datatugApiRealProviders()],
+    });
+  });
+
+  it('reads the shared Space Detective state from the DataTug API base URL', () => {
+    TestBed.inject(DetectiveClientService)
+      .state({
+        kind: 'cloud' as const,
+        storage: 'firestore' as const,
+        spaceID: 'S1',
+        project: 'P1',
+      } as never)
+      .subscribe();
+    expectDatatugApiRequest('GET', 'datatug/detective/state');
   });
 });

@@ -89,3 +89,16 @@ collapsed-by-default row, Sneat.Work copyright link, and the same
 `build-info-version`, `build-info-hash`) this app's e2e suite
 (`apps/datatug-app/e2e/build-info.spec.ts`) asserts against, scoped under
 the `sneat-app-version` element.
+
+## Business project preview (port 18782)
+
+The local Business project preview serves the app on `http://localhost:18782`,
+the one origin datatug-cloud-preview admits. Its serve configuration
+(`business-preview` in `apps/datatug-app/project.json`) swaps in
+`environment.business-preview.ts`, which sends only DataTug API calls
+(`DatatugApiBaseUrl`) to the datatug-cloud-preview origin. Sneat identity and
+checkout keep their normal origins.
+
+```sh
+pnpm nx run datatug-app:serve:business-preview
+```

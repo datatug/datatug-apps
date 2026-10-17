@@ -8,7 +8,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import { of, throwError } from 'rxjs';
 import { SessionContextApiService } from './session-context-api.service';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
@@ -17,6 +17,8 @@ import {
   ContextCommand,
   ContextReceipt,
 } from './session-context-contract';
+import { datatugApiRealProviders, expectDatatugApiRequest } from '../services/base/datatug-api.test-helpers';
+
 
 const localProject = { storeId: 'http-localhost:8989', projectId: 'chinook' };
 const capabilities: ContextCapabilities = {
@@ -100,7 +102,7 @@ describe('SessionContextApiService command wire boundary', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         SessionContextApiService,
-        { provide: SneatApiService, useValue: { post } },
+        { provide: DatatugApiService, useValue: { post } },
       ],
     });
     const service = TestBed.inject(SessionContextApiService);
@@ -230,7 +232,7 @@ describe('SessionContextApiService GitHub branch admission', () => {
         provideHttpClient(),
         provideHttpClientTesting(),
         SessionContextApiService,
-        { provide: SneatApiService, useValue: { get, post } },
+        { provide: DatatugApiService, useValue: { get, post } },
         { provide: ProjectQueryApiService, useValue: { branches } },
       ],
     });
@@ -327,4 +329,19 @@ describe('SessionContextApiService GitHub branch admission', () => {
       expect(post).not.toHaveBeenCalled();
     },
   );
+});
+
+describe('SessionContextApiService DataTug API base URL', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [SessionContextApiService, ...datatugApiRealProviders()],
+    });
+  });
+
+  it('reads cloud capabilities from the DataTug API base URL', () => {
+    TestBed.inject(SessionContextApiService)
+      .capabilities({ storeId: 'firestore', projectId: 'project_1' })
+      .catch(() => undefined);
+    expectDatatugApiRequest('GET', 'datatug/session-context/capabilities');
+  });
 });
