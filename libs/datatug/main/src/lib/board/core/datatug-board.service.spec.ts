@@ -47,7 +47,9 @@ describe('DatatugBoardService DataTug API base URL', () => {
       .subscribe();
     const http = TestBed.inject(HttpTestingController);
     const request = http.expectOne(
-      `${datatugApiTestBaseUrl}datatug/boards/create_board?project=project_1&store=firestore`,
+      (req) =>
+        req.url ===
+        `${datatugApiTestBaseUrl}datatug/boards/create_board?project=project_1&store=firestore`,
     );
     expect(request.request.method).toBe('POST');
     expect(request.request.params.get('project')).toBe('project_1');
