@@ -56,7 +56,7 @@
     "@openvaultdb/inprocess": "github:openvaultdb/openvaultdb-ts#20e656b9996f3ad8303293e77f968438df72c786&path:/packages/inprocess",
     "@sentry/angular": "10.70.0",
     "@sentry/browser": "10.70.0",
-    "@sneat/api": "0.27.6",
+    "@sneat/api": "0.27.36",
     "@sneat/app-auth": "0.27.6",
     "@sneat/auth-core": "0.27.30",
     "@sneat/auth-models": "0.27.6",
