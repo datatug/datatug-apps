@@ -1,11 +1,4 @@
 <ion-app [class.compact-header-mode]="compactHeader()">
-  @if (checkoutAuth()) {
-    <header class="auth-brand">
-      <a routerLink="/home" [attr.aria-label]="profile.brandName + ' home'">{{
-        profile.brandName
-      }}</a>
-    </header>
-  }
   <!--
     Compact application header for narrow layouts (UX brief §1): when the
     side panel is hidden there was no header/menu affordance at all. Sits
@@ -46,7 +39,6 @@
     </ion-header>
   }
   <ion-split-pane
-    [class.authentication]="checkoutAuth()"
     contentId="main-content"
     [when]="paneWhen()"
   >

@@ -58,11 +58,8 @@ it('hides and restores the panel after navigation without recreating the router 
   expect(menu.style.display).toBe('none');
   await TestBed.inject(Router).navigateByUrl('/sso?returnTo=%2Fsubscribe');
   await fixture.whenStable();
-  expect(
-    fixture.nativeElement
-      .querySelector('.auth-brand a')
-      .getAttribute('aria-label'),
-  ).toBe('DataTug home');
+  expect(menu.style.display).toBe('none');
+  expect(fixture.nativeElement.querySelector('.auth-brand')).toBeNull();
   await TestBed.inject(Router).navigateByUrl('/home');
   await fixture.whenStable();
   expect(menu.style.display).toBe('');
