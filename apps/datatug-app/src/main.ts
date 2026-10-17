@@ -12,7 +12,12 @@ import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
 import { provideGithubRedirectCapture } from './github-redirect-capture';
 import { TelegramAuthService } from '@sneat/auth-core';
-import { authRoutes, ssoRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
+import {
+  AUTH_PANEL_UI_CONFIG,
+  authRoutes,
+  ssoRoutes,
+  TelegramLoginConfig,
+} from '@sneat/auth-ui';
 import {
   APP_INFO,
   EnvConfigToken,
@@ -192,6 +197,13 @@ bootstrapApplication(DatatugAppComponent, {
     {
       provide: TelegramLoginConfig,
       useValue: { botID: 'SneatBot', localBotID: 'AlextDevBot' },
+    },
+    {
+      provide: AUTH_PANEL_UI_CONFIG,
+      useValue: {
+        showQuickLoginHeader: false,
+        quickLoginProviders: ['google.com', 'microsoft.com', 'github.com'],
+      },
     },
     // App-specific providers
     {
