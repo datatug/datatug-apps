@@ -102,3 +102,11 @@ checkout keep their normal origins.
 ```sh
 pnpm nx run datatug-app:serve:business-preview
 ```
+
+In this build Business checkout is TEST only: its LIVE origin is null and LIVE
+is off. Open Pro checkout with `?checkout=test`. Without that flag the personal
+Pro rail still uses `SneatApiBaseUrl` (production's `https` origin), which the
+plan leaves alone, so only the server's origin allow-lists stop a LIVE purchase
+from `localhost:18782`. datatug-cloud-preview answers 404 to everything except
+the project read, save and create routes, so Detective, session context, GitHub
+connection and AI eligibility pages will fail on this origin.
