@@ -124,12 +124,7 @@ export const TEST_PREVIEW_PROJECT_ORIGIN =
 // `forceTest` is true only in the Business project preview build
 // (DATATUG_CHECKOUT_FORCE_TEST). Every rail then selects TEST, whatever the
 // query string says, and a LIVE return is refused rather than rebound to TEST.
-export function checkoutRail(
-  search,
-  returning,
-  normalApiBaseUrl,
-  forceTest = false,
-) {
+export function checkoutRail(search, returning, normalApiBaseUrl, forceTest) {
   const chosen = returning
     ? returnSelection(search)
     : checkoutSelection(search);

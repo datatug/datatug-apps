@@ -17,7 +17,7 @@ export function purchaseRecoveryPort(
   users: SneatUserService,
   router: Router,
   normalOrigin: string,
-  forceTest = false,
+  forceTest: boolean,
 ): SubscriptionRecoveryPort {
   const auth = appCheckoutAuth(
     authState,
