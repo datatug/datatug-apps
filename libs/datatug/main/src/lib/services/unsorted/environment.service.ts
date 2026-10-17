@@ -2,7 +2,7 @@ import { Injectable, inject } from '@angular/core';
 import { IRecord } from '@sneat/data';
 import { Observable, of, throwError, forkJoin } from 'rxjs';
 
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
 import { switchMap, startWith, tap } from 'rxjs/operators';
 import { IProjectRef } from '../../core/project-context';
@@ -42,7 +42,7 @@ const envSummaryCache: Record<string, IEnvironmentSummary> = {};
 @Injectable({ providedIn: 'root' })
 export class EnvironmentService {
   private readonly projectContextService = inject(ProjectContextService);
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   private readonly projectService = inject(ProjectService);
   private readonly storeApiService = inject(StoreApiService);
   private readonly githubReader = inject(GithubProjectReaderService);

@@ -7,7 +7,7 @@ import {
   PrivateTokenStoreService,
   SneatAuthStateService,
 } from '@sneat/auth-core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../../../services/base/datatug-api.service';
 import { ErrorLogger } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
 import { BehaviorSubject, Subject, of } from 'rxjs';
@@ -85,7 +85,7 @@ describe('real cold shared overview route and metadata read', () => {
           datatugRoutes.filter((r) => r.path?.startsWith('space/')),
         ),
         { provide: HttpClient, useValue: http },
-        { provide: SneatApiService, useValue: api },
+        { provide: DatatugApiService, useValue: api },
         { provide: PrivateTokenStoreService, useValue: {} },
         { provide: SneatAuthStateService, useValue: { authState: auth } },
         { provide: Firestore, useValue: {} },

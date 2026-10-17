@@ -1,3 +1,4 @@
+import { Provider } from '@angular/core';
 import { IEnvironmentConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
@@ -33,3 +34,7 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
 export const datatugDemoConfig: DatatugDemoConfig = {
   enabled: false,
 };
+
+// No DataTug API override: DataTug calls use SneatApiBaseUrl, as before.
+// The Business project preview build replaces this file (environment.business-preview.ts).
+export const datatugEnvironmentProviders: Provider[] = [];

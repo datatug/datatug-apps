@@ -167,6 +167,26 @@
               "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
             }
           ]
+        },
+        "business-preview": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/datatug-app/src/environments/environment.ts",
+              "with": "apps/datatug-app/src/environments/environment.business-preview.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/build-info.ts",
+              "with": "apps/datatug-app/src/build-info.generated.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/ag-grid-license.ts",
+              "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
+            }
+          ]
         }
       },
       "defaultConfiguration": "production"
@@ -187,6 +207,10 @@
         },
         "sso-e2e": {
           "buildTarget": "datatug-app:build:sso-e2e"
+        },
+        "business-preview": {
+          "buildTarget": "datatug-app:build:business-preview",
+          "port": 18782
         }
       },
       "defaultConfiguration": "development",

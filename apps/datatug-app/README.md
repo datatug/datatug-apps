@@ -89,3 +89,27 @@ collapsed-by-default row, Sneat.Work copyright link, and the same
 `build-info-version`, `build-info-hash`) this app's e2e suite
 (`apps/datatug-app/e2e/build-info.spec.ts`) asserts against, scoped under
 the `sneat-app-version` element.
+
+## Business project preview (port 18782)
+
+The local Business project preview serves the app on `http://localhost:18782`,
+the one origin datatug-cloud-preview admits. Its serve configuration
+(`business-preview` in `apps/datatug-app/project.json`) swaps in
+`environment.business-preview.ts`, which sends only DataTug API calls
+(`DatatugApiBaseUrl`) to the datatug-cloud-preview origin. Sneat identity keeps
+its normal origin, and checkout is forced to TEST (see below).
+
+```sh
+pnpm nx run datatug-app:serve:business-preview
+```
+
+In this build every checkout rail is TEST. `DATATUG_CHECKOUT_FORCE_TEST` is true
+(`environment.business-preview.ts`), so `checkoutRail` selects TEST for every valid
+Pro and Business selection, with or without `?checkout=test`. A LIVE return
+session is refused rather than rebound to TEST. Business's LIVE origin is null and
+LIVE is off in this build. `SneatApiBaseUrl` is unchanged, and production is unchanged
+because the flag defaults to false.
+
+datatug-cloud-preview answers 404 to everything except
+the project read, save and create routes, so Detective, session context, GitHub
+connection and AI eligibility pages will fail on this origin.
