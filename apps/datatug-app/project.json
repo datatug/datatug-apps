@@ -310,6 +310,14 @@
         "command": "playwright test -c apps/datatug-app/playwright.context-bag-provider.config.ts --forbid-only"
       }
     },
+    "e2e-business-preview": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-business-preview"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.business-preview.config.ts --forbid-only"
+      }
+    },
     "e2e-checkout": {
       "executor": "nx:run-commands",
       "cache": false,
