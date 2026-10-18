@@ -8,6 +8,7 @@ test('server showcase and tutorial hold complete results without SQLite download
   const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
   if (!source) throw new Error('Set DATATUG_E2E_GITHUB_FAKE to the paired committed demo checkout.');
   test.setTimeout(180_000);
+  page.setDefaultTimeout(15_000);
   await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: source }]);
   // The fake project reader also owns raw.githubusercontent.com; let this
   // different repository serve its real SHA-pinned rights publications.
@@ -30,17 +31,24 @@ test('server showcase and tutorial hold complete results without SQLite download
     ['Northwind · server countries', '21 rows · 2 columns', 'northwind', 21],
     ['Chinook · customer billing', '10 rows · 6 columns', 'chinook', 10],
   ] as const) {
-    await inspector.getByRole('tab', { name: tab, exact: true }).click();
+    const tabHost = inspector.locator('ion-segment-button').filter({ hasText: tab });
+    await expect(tabHost).toHaveText(tab);
+    await tabHost.click();
     const before = queries().length;
-    await inspector.getByRole('button', { name: 'Run on board', exact: true }).click();
-    await expect(inspector).toContainText(summary, { timeout: 60_000 });
+    await Promise.all([
+      page.waitForResponse(response => response.request().method() === 'POST' &&
+        response.url() === `https://ovdb.demodb.dev/v1/databases/${database}/dtql`, { timeout: 30_000 }),
+      inspector.getByRole('button', { name: 'Run on board', exact: true }).click(),
+    ]);
+    await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
+    await expect(inspector).toContainText(summary, { timeout: 30_000 });
     await expect(inspector.locator('table tbody tr')).toHaveCount(rowCount);
     expect(queries().length).toBeGreaterThan(before);
     expect(queries().at(-1)).toContain(`/databases/${database}/dtql`);
   }
   const count = queries().length;
   await race.getByRole('button', { name: 'Source rows', exact: true }).click();
-  await expect(race.locator('table tbody tr')).toHaveCount(25);
+  await expect(race.locator('sneat-datatug-held-result-presentation table tbody tr')).toHaveCount(25);
   await race.getByRole('button', { name: 'Chart', exact: true }).click();
   expect(queries()).toHaveLength(count);
   expect(downloads()).toEqual([]);
@@ -52,7 +60,7 @@ test('server showcase and tutorial hold complete results without SQLite download
   await expect(tutorialRace).toContainText('830 source orders', { timeout: 60_000 });
   const tutorialCount = queries().length;
   await tutorialRace.getByRole('button', { name: 'Source rows', exact: true }).click();
-  await expect(tutorialRace.locator('table tbody tr')).toHaveCount(25);
+  await expect(tutorialRace.locator('sneat-datatug-held-result-presentation table tbody tr')).toHaveCount(25);
   await tutorialRace.getByRole('button', { name: 'Chart', exact: true }).click();
   expect(queries()).toHaveLength(tutorialCount);
   expect(downloads()).toEqual([]);
