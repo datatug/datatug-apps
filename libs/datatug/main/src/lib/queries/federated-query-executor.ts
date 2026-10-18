@@ -211,6 +211,9 @@ export type FederatedQueryResult = Omit<RunQueryResponse, 'provenance'> & {
   readonly nativeStream?: true;
   /** Worker staging marker for a complete ordinary /dtql response. */
   readonly nativeDirect?: true;
+  /** Validated ordinary envelope, distinct from a protected execution receipt. */
+  readonly ordinaryComplete?: true;
+  readonly ordinarySources?: readonly { readonly database: string; readonly collection: string }[];
   /** Local browser execution has no server issued execution profile or retention receipt. */
   readonly provenance: RunQueryResponse['provenance'] | BrowserResultProvenance;
   readonly browserExecution?: {

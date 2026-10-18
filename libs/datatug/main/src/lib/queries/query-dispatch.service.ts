@@ -1,3 +1,4 @@
+import { executeSavedPublicChartQuery, isSavedPublicChartQueryId } from './public-data/public-chart-query';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { type RunQueryRequest, type RunQueryResponse, decodeSourceRightsEvidence } from '@sneat/datatug-semantic';
@@ -126,10 +127,30 @@ export class QueryDispatchService {
     return { request: boundRequest, plan: resolveQueryDispatchPlan(boundRequest, connection ? { connections: [connection] } : undefined) };
   }
 
-  async execute(request: QueryDispatchRequest): Promise<FederatedQueryResult> {
+  async execute(request: QueryDispatchRequest, options?: { readonly maxRows: number }): Promise<FederatedQueryResult> {
     const session = this.start(request);
-    try { return await session.result; }
-    finally { await session.dispose(); }
+    try {
+      const result = await session.result;
+      if (!options) return result;
+      const total = result.totalRows ?? result.recordset.rows.length;
+      if (!Number.isSafeInteger(options.maxRows) || options.maxRows < 1 || options.maxRows > 1000 ||
+        !Number.isSafeInteger(total) || total < result.recordset.rows.length || total > options.maxRows)
+        throw new QueryDispatchError(`This board accepts at most ${options.maxRows} result rows. Narrow the saved query.`);
+      if (result.hasMore || result.truncated)
+        throw new QueryDispatchError('This board requires a complete saved query result. Narrow the query.');
+      if (total === result.recordset.rows.length) return result;
+      if (!session.getPage) throw new QueryDispatchError('This runtime cannot read the complete result.');
+      const rows: (typeof result.recordset.rows)[number][] = [];
+      for (let index = 0; rows.length < total; index++) {
+        request.signal?.throwIfAborted();
+        const page = await session.getPage(index);
+        if (!page.length || rows.length + page.length > total)
+          throw new QueryDispatchError('The saved query result pages are incomplete.');
+        rows.push(...page);
+      }
+      request.signal?.throwIfAborted();
+      return { ...result, recordset: { ...result.recordset, rows } };
+    } finally { await session.dispose(); }
   }
 
   start(request: QueryDispatchRequest): QueryExecutionSession {
@@ -191,6 +212,12 @@ export class QueryDispatchService {
     request: QueryDispatchRequest,
     onFederation: (service: FederatedQueryService) => void,
   ): Promise<FederatedQueryResult> {
+    // Existing publisher admission validates exact saved text, source and full rows.
+    if (request.queryId && isSavedPublicChartQueryId(request.queryId) &&
+      !request.target && !request.runtimeBinding && !request.runtimeSelectionId) {
+      const captured = captureQueryDispatchRequest(request);
+      return executeSavedPublicChartQuery(request.queryId, captured.definition, { signal: captured.signal });
+    }
     const { request: captured, plan } = await this.plan(request);
     if (captured.signal?.aborted) throw abortError();
     if (plan.target.kind === 'ovdb-federation') {

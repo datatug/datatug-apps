@@ -36,6 +36,7 @@ import {
   SourceRightsNoticeComponent,
   type BrowserPublicApiChartRecordset,
   type BrowserSqliteChartRecordset,
+  type ServerChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
 import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
@@ -45,6 +46,8 @@ import {
 } from '../held-result-presentation/held-result-presentation.component';
 import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
+import { isSavedPublicChartQueryId } from '../../../../queries/public-data/public-chart-query';
+import { BoardQueryResults } from '../../../core/board-query-results.service';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -59,7 +62,8 @@ export interface BoardResultSnapshot {
   readonly result:
     | FederatedQueryResult
     | BrowserPublicApiChartRecordset
-    | BrowserSqliteChartRecordset;
+    | BrowserSqliteChartRecordset
+    | ServerChartRecordset;
   readonly identity?: string;
   readonly previous?: BoardResultSnapshot;
 }
@@ -89,6 +93,7 @@ export class BoardWidgetComponent {
   });
   private readonly queries = inject(QueriesService);
   private readonly dispatcher = inject(QueryDispatchService);
+  private readonly heldQueries = inject(BoardQueryResults, { optional: true });
   private readonly destroyRef = inject(DestroyRef);
   private activeRun?: AbortController;
   private activeIdentity?: string;
@@ -157,7 +162,8 @@ export class BoardWidgetComponent {
   });
   readonly browserSnapshot = computed(() => {
     const result = this.result();
-    return !!result && 'runtime' in result && result.runtime === 'browser-sqlite';
+    return ( !!result && 'runtime' in result && result.runtime === 'browser-sqlite'
+    );
   });
   readonly chartView = signal<'chart' | 'grid'>('chart');
   readonly chartWidgetDef = computed(() =>
@@ -197,7 +203,7 @@ export class BoardWidgetComponent {
     if (widget?.chart?.type !== 'bar-race' || !result) return {};
     if (
       !('runtime' in result) ||
-      !['browser-public-api', 'browser-sqlite'].includes(result.runtime)
+      !['browser-public-api', 'browser-sqlite', 'server'].includes(result.runtime,)
     )
       return { error: 'This race requires an admitted public chart result.' };
     const transform = widget.sources[0]?.transform;
@@ -408,7 +414,7 @@ export class BoardWidgetComponent {
         );
         queueMicrotask(() => {
           if (!this.destroyed && this.executionIdentity() === identity)
-            void this.run();
+            void this.run(true);
         });
       });
     });
@@ -452,12 +458,16 @@ export class BoardWidgetComponent {
       )
     )
       return 'This widget uses a query language this board cannot run.';
-    if (definition.federation)
-      return 'This saved query needs its admitted federation session. Open it to run the full query.';
     return undefined;
   }
 
   projectRuntimeLabel(): string {
+    if (
+      (this.definition()?.federation ||
+        isSavedPublicChartQueryId(this.queryId() ?? '')) &&
+      this.selectedRuntimeId() === 'snapshot'
+    )
+      return 'Read-only OVDB server';
     switch (this.boardContext()?.executionTarget?.kind) {
       case 'local-agent':
         return 'Local agent';
@@ -479,7 +489,7 @@ export class BoardWidgetComponent {
     this.selectedRuntimeId.set(selectionId);
   }
 
-  async run(): Promise<void> {
+  async run(reuse = false): Promise<void> {
     const ref = this.projectRef();
     const boardId = this.boardId();
     const cardId = this.cardId();
@@ -499,6 +509,8 @@ export class BoardWidgetComponent {
     )
       return;
     if (
+      !this.definition()?.federation &&
+      !isSavedPublicChartQueryId(queryId) &&
       this.definition()?.request.queryType !== QueryType.SQL &&
       this.selectedRuntimeId() === 'snapshot' &&
       (!this.boardContext()?.executionTarget ||
@@ -642,7 +654,7 @@ export class BoardWidgetComponent {
         throw new Error(
           'This saved query changed. Reopen the board before running it.',
         );
-      const result = await this.dispatcher.execute({
+      const execute = (signal: AbortSignal) => this.dispatcher.execute({
               projectRef: ref,
               definition,
               queryId,
@@ -659,8 +671,33 @@ export class BoardWidgetComponent {
                 ? { runtimeBinding: context.runtimeBinding }
                 : {}),
               parameters,
-              signal: controller.signal,
-            });
+              signal,
+          },
+          { maxRows: 1000 },
+        );
+      const scope = JSON.stringify({
+        ref,
+        boardId,
+        context,
+        actor,
+        tutorial: this.sessionOnly(),
+        revision: this.dispatcher.runtimeRevision(),
+      });
+      const key = JSON.stringify({
+        queryId,
+        definition,
+        selectedRuntimeId,
+        parameters,
+      });
+      const rawResult = this.heldQueries
+        ? await this.heldQueries.read(
+            scope,
+            key, controller.signal,
+            reuse,
+            execute,
+          )
+        : await execute(controller.signal);
+      const result = this.chartResult(rawResult, definition);
       if (
         this.stillCurrent(
           generation,
@@ -723,6 +760,38 @@ export class BoardWidgetComponent {
       )
         this.running.set(false);
     }
+  }
+
+  /** Only the validated complete ordinary server path can supply chart evidence. */
+  private chartResult(
+    result: FederatedQueryResult,
+    definition: IQueryDef,
+  ): BoardResultSnapshot['result'] {
+    const tables = definition.federation?.tables;
+    if (
+      !result.nativeDirect ||
+      !result.ordinaryComplete ||
+      tables?.length !== 1 ||
+      result.totalRows !== result.recordset.rows.length ||
+      result.hasMore ||
+      result.truncated ||
+      !result.provenance.executionProfile ||
+      result.ordinarySources?.length !== 1 ||
+      result.ordinarySources[0].database !== tables[0].database ||
+      result.ordinarySources[0].collection !== tables[0].name
+    )
+      return result;
+    return {
+      ...result,
+      runtime: 'server',
+      complete: true,
+      hasMore: false,
+      provenance: {
+        ...result.provenance,
+        executionProfile: result.provenance.executionProfile,
+        collection: tables[0].name,
+      },
+    };
   }
 
   setChartView(view: 'chart' | 'grid'): void {
