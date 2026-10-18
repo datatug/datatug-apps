@@ -1,3 +1,4 @@
+import type { GithubProjectCopySource } from './github-project-copy-source';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
@@ -12,12 +13,14 @@ export class NewProjectService {
     store?: 'github',
     returnUrl = this.router.url,
     continuation?: BusinessGithubContinuation,
+    source?: GithubProjectCopySource,
   ): void {
     const safeReturnUrl = safeNewProjectReturnUrl(returnUrl);
     void this.router
       .navigate(['/new-project'], {
         queryParams: {
           ...(store ? { store } : {}),
+          ...(source ? { source: JSON.stringify(source) } : {}),
           // These values are request intent only. The creation endpoint still
           // verifies current Business authority for this actor and Space.
           ...(continuation

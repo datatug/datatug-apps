@@ -40,6 +40,12 @@ describe('NewProjectService', () => {
     });
   });
 
+  it('carries the immutable copy source and demo return path into setup', () => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'demo', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    service.navigateToNewProjectPage('github', '/demo/sqlite/chinook', undefined, source);
+    expect(navigate).toHaveBeenCalledWith(['/new-project'], { queryParams: { store: 'github', source: JSON.stringify(source), returnUrl: '/demo/sqlite/chinook' } });
+  });
+
   it('carries consumed Business checkout context into project creation as request intent', () => {
     service.navigateToNewProjectPage('github', '/', {
       billingIntent: 'space_business',

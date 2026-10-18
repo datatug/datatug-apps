@@ -1,3 +1,4 @@
+import { readGithubProjectCopySource, type GithubProjectCopySource } from './github-project-copy-source';
 import {
   Component,
   Injector,
@@ -63,6 +64,8 @@ import {
 } from './business-github-continuation';
 
 interface NewProjectDraft {
+  readonly source?: GithubProjectCopySource;
+  readonly returnUrl?: string;
   readonly actorID?: string;
   readonly githubActorID?: string;
   readonly store: 'cloud' | 'github';
@@ -127,6 +130,9 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly router = inject(Router);
   private readonly nav = inject(DatatugNavService);
   readonly store = signal<'cloud' | 'github'>('cloud');
+  readonly copySource = signal<GithubProjectCopySource | undefined>(undefined);
+  private readonly invalidCopySource = signal(false);
+  private readonly requestedCopySource = signal<GithubProjectCopySource | undefined>(undefined);
   readonly title = signal('');
   readonly githubFolder = signal('datatug');
   readonly spaceID = signal('');
@@ -189,6 +195,21 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly authStatus = signal<AuthStatus | undefined>(undefined);
   private returnUrl = '/';
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
+
+  private applyRequestedCopySource(): void {
+    const source = this.requestedCopySource();
+    if (source && !this.isCreateRetryLocked() && !this.isSetupLocked()) {
+      this.copySource.set(source);
+      this.store.set('github');
+    }
+  }
+
+  protected copyDestinationSummary(): string {
+    const resolved = this.resolvedCreateRequest()?.github;
+    const repository = resolved ?? this.githubRepos().find((repo) => repo.id === this.selectedRepo()) ?? parseGithubRepositoryURL(this.githubRepositoryURL());
+    if (!repository) return 'Choose a repository below';
+    return `${repository.owner}/${repository.name}/${resolved?.folder ?? this.githubFolder()} · ${resolved?.branch ?? (this.branch() || 'repository default branch')}`;
+  }
 
   createSpace(): void {
     const title = this.spaceTitle().trim();
@@ -325,11 +346,25 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
   ngOnInit(): void {
     const draft = readNewProjectDraft();
+    this.returnUrl = safeNewProjectReturnUrl(
+      this.route.snapshot.queryParamMap.get('returnUrl') ?? draft?.returnUrl,
+    );
     const storeParam = this.route.snapshot.queryParamMap.get('store');
     if (storeParam !== null) {
       this.store.set(storeParam === 'github' ? 'github' : 'cloud');
     }
     this.restoreDraftForCurrentActor(draft);
+    const sourceParam = this.route.snapshot.queryParamMap.get('source');
+    if (sourceParam) {
+      try {
+        const source = readGithubProjectCopySource(JSON.parse(sourceParam));
+        if (!source) throw new Error();
+        // A saved uncertain operation must be recovered before switching sources.
+        this.requestedCopySource.set(source);
+        this.applyRequestedCopySource();
+        this.store.set('github');
+      } catch { this.invalidCopySource.set(true); this.formError.set('The source project link is invalid. Return to the demo and try again.'); }
+    }
     const oauthResult = this.route.snapshot.queryParamMap.get('oauthResult');
     if (oauthResult === 'actor-changed') {
       this.oauthResumePending.set(false);
@@ -342,9 +377,6 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.formError.set('GitHub authorization was canceled or did not grant the required repository and workflow access. Review the repository and try again.');
       this.saveDraft();
     }
-    this.returnUrl = safeNewProjectReturnUrl(
-      this.route.snapshot.queryParamMap.get('returnUrl'),
-    );
     if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
     if (oauthResult === 'success') this.resumeOAuthDraftIfReady();
     if (
@@ -551,6 +583,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.saveDraft();
   }
   create(): void {
+    if (this.invalidCopySource()) {
+      this.formError.set('The source project link is invalid. Return to the demo and try again.');
+      return;
+    }
     if (this.isCreating() || this.isSetupLocked()) return;
     if (this.createNeedsSameOperationRetry() && this.createConflictNeedsStatusCheck()) {
       this.refreshSetupStatus();
@@ -632,7 +668,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         name: address.name,
         folder: folder.folder,
       },
-      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+      ...(this.copySource() ? { source: this.copySource() } : { template: DATATUG_DEMO_PROJECT_TEMPLATE }),
       ciEnabled: this.ciEnabled(),
     };
     const currentBranch = this.branch();
@@ -944,7 +980,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private replayPendingCreate(setup: PendingGithubProjectSetup): void {
     const actor = this.userID();
     if (!actor || this.isRefreshingPendingSetup(setup)) return;
-    if (setup.templateID !== DATATUG_DEMO_PROJECT_TEMPLATE.id || setup.templateCommit !== DATATUG_DEMO_PROJECT_TEMPLATE.commit) {
+    if (!setup.source && (setup.templateID !== DATATUG_DEMO_PROJECT_TEMPLATE.id || setup.templateCommit !== DATATUG_DEMO_PROJECT_TEMPLATE.commit)) {
       this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'This setup uses a different project template version. Refresh the pending setup list before retrying.' }));
       return;
     }
@@ -965,7 +1001,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         branch: setup.branch,
         expectedBranchHead: setup.expectedHead,
       },
-      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+      ...(setup.source ? { source: setup.source } : { template: DATATUG_DEMO_PROJECT_TEMPLATE }),
     };
     this.pendingGithubSetupRefreshes.update((set) => new Set([...set, setup.operationID]));
     this.pendingGithubSetupErrors.update((errors) => {
@@ -1240,6 +1276,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private saveDraft(): boolean {
     try {
       const draft: NewProjectDraft = {
+        source: this.copySource(),
+        returnUrl: this.returnUrl,
         actorID: this.userID(),
         githubActorID: this.restoredDraft()?.githubActorID,
         store: this.store(),
@@ -1341,6 +1379,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private applyDraft(draft: NewProjectDraft): void {
     const storeParam = this.route.snapshot.queryParamMap.get('store');
     if (storeParam === null) this.store.set(draft.store);
+    this.copySource.set(draft.source);
     this.title.set(draft.title);
     this.githubFolder.set(draft.githubFolder);
     this.githubRepositoryURL.set(draft.githubRepositoryURL ?? '');
@@ -1379,6 +1418,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.spaces().some((space) => space.id === draft.spaceID)
     )
       this.spaceID.set(draft.spaceID ?? '');
+    this.applyRequestedCopySource();
   }
 }
 
@@ -1390,6 +1430,8 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
     if (!value || typeof value !== 'object') return undefined;
     const draft = value as Partial<NewProjectDraft>;
     return {
+      source: readGithubProjectCopySource(draft.source),
+      returnUrl: safeNewProjectReturnUrl(draft.returnUrl),
       actorID:
         typeof draft.actorID === 'string'
           ? draft.actorID.slice(0, 128)
@@ -1492,8 +1534,8 @@ function isPendingGithubProjectSetup(value: unknown): value is PendingGithubProj
     typeof setup.branch === 'string' && setup.branch.length > 0 && setup.branch.length <= 255 && !Array.from(setup.branch).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) &&
     typeof setup.ciEnabled === 'boolean' &&
     typeof setup.expectedHead === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.expectedHead) &&
-    typeof setup.templateID === 'string' && setup.templateID.length <= 100 &&
-    typeof setup.templateCommit === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.templateCommit) &&
+    (setup.source !== undefined ? !!readGithubProjectCopySource(setup.source) : (typeof setup.templateID === 'string' && setup.templateID.length <= 100 &&
+    typeof setup.templateCommit === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.templateCommit))) &&
     (setup.billingIntent === 'personal_pro' || setup.billingIntent === 'space_business') &&
     (setup.setupPR === undefined || isSafeFullSetupPR(setup.setupPR))
   );
@@ -1525,6 +1567,7 @@ function samePendingSetupBinding(
     left.branch === right.branch &&
     left.ciEnabled === right.ciEnabled &&
     left.expectedHead === right.expectedHead &&
+    JSON.stringify(left.source) === JSON.stringify(right.source) &&
     left.templateID === right.templateID &&
     left.templateCommit === right.templateCommit &&
     left.billingIntent === right.billingIntent;
@@ -1553,6 +1596,7 @@ function isCreateGithubProject(value: unknown): value is CreateGithubProject {
   if (!value || typeof value !== 'object') return false;
   const request = value as Partial<CreateGithubProject>;
   return (
+    (request.source === undefined || !!readGithubProjectCopySource(request.source)) &&
     typeof request.operationID === 'string' &&
     /^[0-9a-f-]{36}$/i.test(request.operationID) &&
     typeof request.title === 'string' &&
@@ -1598,6 +1642,11 @@ function githubProjectCreateFailure(error: unknown): {
     case 'reauthorization_required':
       return {
         message: 'Reconnect GitHub, then try creating the project again.',
+        retrySameOperation: false,
+      };
+    case 'source_too_large':
+      return {
+        message: 'This private project is too large to copy through GitHub setup. Clone the repository with Git and use the DataTug CLI.',
         retrySameOperation: false,
       };
     case 'workflow_conflict':

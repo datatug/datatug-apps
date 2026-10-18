@@ -195,6 +195,68 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it('copies the selected immutable source and restores it after refresh', async () => {
+    const source = { kind: 'github-project', repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const h = await harness(false, { source: JSON.stringify(source), store: 'github' });
+    h.component.ngOnInit();
+    h.select();
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({ source });
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
+    expect(JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null').source).toEqual(source);
+    const restored = await harness(false, { store: 'github' }, true, true);
+    restored.component.ngOnInit();
+    expect(restored.component.copySource()).toEqual(source);
+  });
+
+  it('preserves the demo cancel path through denied OAuth and a refresh', async () => {
+    const h = await harness(false, { store: 'github', returnUrl: '/demo/sqlite/chinook' });
+    h.component.ngOnInit();
+    h.select();
+    h.component['saveDraft']();
+    const callback = await harness(false, { store: 'github', oauthResult: 'denied' }, true, true);
+    callback.component.ngOnInit();
+    expect(JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null').returnUrl).toBe('/demo/sqlite/chinook');
+    const refreshed = await harness(false, { store: 'github' }, true, true);
+    refreshed.component.ngOnInit();
+    refreshed.component.cancel();
+    expect(refreshed.router.navigateByUrl).toHaveBeenCalledWith('/demo/sqlite/chinook', { replaceUrl: true });
+  });
+
+  it('keeps explicit copy intent after deferred actor draft restoration', async () => {
+    const prior = await harness();
+    prior.select();
+    prior.component['saveDraft']();
+    const source = { kind: 'github-project', repositoryID: 42, owner: 'datatug', name: 'demo', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const h = await harness(false, { source: JSON.stringify(source), store: 'github' }, false, true, 'authenticating');
+    h.component.ngOnInit();
+    expect(h.component.copySource()).toEqual(source);
+    h.userState.next({ status: 'authenticated', user: { uid: 'actor' }, record: { spaces: { space: { title: 'My Space' } } } });
+    h.select();
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({ source });
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
+  });
+
+  it('replays pending copies with the exact source and no template fallback', async () => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'source', name: 'project', folder: 'demo', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const h = await harness();
+    const setup = { ...pendingSetup, source, templateID: '', templateCommit: '' };
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [setup], truncated: false }));
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](setup);
+    expect(h.create.mock.calls[0][0]).toMatchObject({ source });
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
+  });
+
+  it('rejects invalid copy intent instead of falling back to the template', async () => {
+    const h = await harness(false, { source: '{}', store: 'github' });
+    h.component.ngOnInit();
+    h.select();
+    h.component.create();
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it('rediscovers and replays the same initializing setup after session storage is gone', async () => {
     const h = await harness();
     h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
@@ -1253,6 +1315,15 @@ describe('New project through authenticated common API', () => {
     expect(retryRequest.github.expectedBranchHead).toBe('main-head');
     expect(retryRequest.operationID).not.toBe(firstRequest.operationID);
   });
+  it('explains a bounded private-source refusal and offers the CLI path', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() => throwError(() => ({ status: 413, error: { error: { code: 'source_too_large' } } })));
+    h.component.create();
+    expect(h.component['formError']()).toContain('DataTug CLI');
+    expect(h.component['createNeedsSameOperationRetry']()).toBe(false);
+  });
+
   it('unlocks a typed workflow conflict without reusing its stale branch request', async () => {
     const h = await harness();
     h.select();

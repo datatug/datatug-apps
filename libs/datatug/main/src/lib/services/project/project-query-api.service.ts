@@ -1,3 +1,4 @@
+import type { GithubProjectCopySource } from '../../project/new-project/github-project-copy-source';
 import { projectApiQuery } from '../../nav/project-api-routing';
 import { type IProjectSummary } from '../../models/definition/project';
 import { inject, Injectable } from '@angular/core';
@@ -104,7 +105,8 @@ export interface CreateGithubProject {
     readonly branch: string;
     readonly expectedBranchHead: string;
   };
-  readonly template: typeof DATATUG_DEMO_PROJECT_TEMPLATE;
+  readonly template?: typeof DATATUG_DEMO_PROJECT_TEMPLATE;
+  readonly source?: GithubProjectCopySource;
 }
 
 export interface CreatedGithubProject {
@@ -146,6 +148,7 @@ export interface PendingGithubProjectSetup {
   readonly branch: string;
   readonly ciEnabled: boolean;
   readonly expectedHead: string;
+  readonly source?: GithubProjectCopySource;
   readonly templateID: string;
   readonly templateCommit: string;
   readonly billingIntent: ProjectBillingIntent;

@@ -1,3 +1,4 @@
+import { ErrorLogger } from '@sneat/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter, type Params } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
@@ -21,6 +22,7 @@ async function setup(params: Params, environment: LocalDemoDbEnvironment = fakeE
     imports: [DemoSqlitePageComponent],
     providers: [
       provideRouter([]),
+      { provide: ErrorLogger, useValue: { logErrorHandler: () => () => undefined } },
       { provide: ActivatedRoute, useValue: { paramMap, snapshot: { paramMap: paramMap.value } } },
       { provide: LOCAL_DEMODB_RUNTIME_LOADER, useValue: loader },
       { provide: LOCAL_DEMODB_ENVIRONMENT, useValue: environment },
@@ -42,6 +44,26 @@ async function setup(params: Params, environment: LocalDemoDbEnvironment = fakeE
 
 describe('DemoSqlitePageComponent', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('offers exactly two copies after ready, keeps browsing after dismiss and reopens local instructions', async () => {
+    const { q, runtimes, settle } = await setup({ dataset: 'chinook' });
+    expect(q('project-copy-offer')).toBeNull();
+    await vi.waitFor(() => expect(runtimes).toHaveLength(1));
+    runtimes[0].open({ imported: true });
+    await vi.waitFor(async () => { await settle(); expect(q('project-copy-github')).not.toBeNull(); });
+    expect(q('project-copy-local')).not.toBeNull();
+    q('project-copy-local')?.click();
+    await settle();
+    expect(q('project-copy-local-instructions')?.textContent).toContain('datatug serve --project ./my-datatug-project/demo-project-1');
+    expect(q('project-copy-local-instructions')?.textContent).toContain('OPFS');
+    q('project-copy-dismiss')?.click();
+    await settle();
+    expect(q('project-copy-offer')).toBeNull();
+    expect(q('ovdb-table-list')).not.toBeNull();
+    q('project-copy-reopen')?.click();
+    await settle();
+    expect(q('project-copy-offer')).not.toBeNull();
+  });
 
   it('lists the datasets for /demo/sqlite', async () => {
     const { q, el, loader } = await setup({});
