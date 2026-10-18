@@ -1,3 +1,4 @@
+import * as publicQueries from './public-data/public-chart-query';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -45,6 +46,38 @@ describe('QueryDispatchService transport boundary', () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+
+  it('runs exact publisher-admitted saved DTQL through the existing API admission without SQLite', async () => {
+    const admitted = { ...result, totalRows: 830 } as unknown as Awaited<
+      ReturnType<typeof publicQueries.executeSavedPublicChartQuery>
+    >;
+    const admission = vi
+      .spyOn(publicQueries, 'executeSavedPublicChartQuery')
+      .mockResolvedValueOnce(admitted);
+    try {
+      const definition = {
+        ...sqlDefinition(),
+        id: 'northwind-orders-full-sqlite',
+        request: { queryType: QueryType.DTQL, text: 'pinned query' },
+      };
+      const response = await service.execute({
+        projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition,
+        queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID,
+      });
+      expect(response).toBe(admitted);
+      expect(admission).toHaveBeenCalledWith(
+        publicQueries.PUBLIC_ORDERS_QUERY_ID,
+        definition,
+        { signal: expect.any(AbortSignal) },
+      );
+      expect(browser).not.toHaveBeenCalled();
+      expect(github).not.toHaveBeenCalled();
+      expect(catalog).not.toHaveBeenCalled();
+    } finally {
+      admission.mockRestore();
+    }
+  });
 
   it('keeps a folder-qualified local query identity and full semantic request', async () => {
     const request: QueryDispatchRequest = {
@@ -366,5 +399,81 @@ describe('QueryDispatchService transport boundary', () => {
     } finally {
       run.mockRestore(); getPage.mockRestore(); dispose.mockRestore();
     }
+  });
+});
+
+describe('bounded board result assembly', () => {
+  const request = {
+    projectRef: { storeId: 'github', projectId: 'demo' },
+    definition: sqlDefinition(),
+  } as QueryDispatchRequest;
+  const row = [{ type: 'integer' as const, value: '1' }];
+  it('assembles all 830 retained rows before disposing the one execution session', async () => {
+    const service = Object.create(
+      QueryDispatchService.prototype,
+    ) as QueryDispatchService;
+    const getPage = vi.fn(async (index: number) =>
+      Array.from({ length: Math.min(100, 830 - index * 100) }, () => row),
+    );
+    const dispose = vi.fn(async () => undefined);
+    service.start = vi
+      .fn()
+      .mockReturnValue({
+        result: Promise.resolve({
+          ...result,
+          totalRows: 830,
+          recordset: {
+            ...result.recordset,
+            rows: Array.from({ length: 100 }, () => row),
+          },
+        }),
+        getPage,
+        dispose,
+      });
+    expect(
+      (await service.execute(request, { maxRows: 1000 })).recordset.rows,
+    ).toHaveLength(830);
+    expect(service.start).toHaveBeenCalledOnce();
+    expect(getPage).toHaveBeenCalledTimes(9);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+  it.each([1001, -1, 1.5])(
+    'rejects invalid or excessive total %s before reading pages',
+    async (totalRows) => {
+      const service = Object.create(
+        QueryDispatchService.prototype,
+      ) as QueryDispatchService;
+      const dispose = vi.fn(async () => undefined);
+      const getPage = vi.fn();
+      service.start = vi
+        .fn()
+        .mockReturnValue({
+          result: Promise.resolve({ ...result, totalRows }),
+          getPage,
+          dispose,
+        });
+      await expect(
+        service.execute(request, { maxRows: 1000 }),
+      ).rejects.toThrow();
+      expect(getPage).not.toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledOnce();
+    },
+  );
+  it('rejects missing retained pages without publishing a partial result', async () => {
+    const service = Object.create(
+      QueryDispatchService.prototype,
+    ) as QueryDispatchService;
+    const dispose = vi.fn(async () => undefined);
+    service.start = vi
+      .fn()
+      .mockReturnValue({
+        result: Promise.resolve({ ...result, totalRows: 830 }),
+        getPage: async () => [],
+        dispose,
+      });
+    await expect(service.execute(request, { maxRows: 1000 })).rejects.toThrow(
+      'incomplete',
+    );
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });

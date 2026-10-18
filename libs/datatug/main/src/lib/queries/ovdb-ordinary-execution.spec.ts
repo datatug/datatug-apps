@@ -68,6 +68,21 @@ describe('ordinary OVDB result execution', () => {
     expect(firstRecord).not.toHaveBeenCalled();
   });
 
+  it.each([{ hasMore: true }, { truncated: true }, { execution: { rowsReturned: 2 } }])(
+    'does not stage or expose rows from a partial envelope %j', async (partial) => {
+      const sink = vi.fn(async () => undefined);
+      const firstRecord = vi.fn();
+      await expect(consumeOvdbOrdinaryQuery(
+        Response.json({ records: [{ data: { CustomerId: 1 } }], columns: ['CustomerId'],
+          complete: true, execution: { rowsReturned: 1 }, ...partial }),
+        createHostedDemoDbQuery('new-query'), 'https://ovdb.demodb.dev', 'chinook', rights(),
+        undefined, undefined, undefined, { onFirstRecord: firstRecord, onNativeRecord: sink },
+      )).rejects.toThrow();
+      expect(sink).not.toHaveBeenCalled();
+      expect(firstRecord).not.toHaveBeenCalled();
+    },
+  );
+
   it('does not report a first record for an empty ordinary result', async () => {
     const firstRecord = vi.fn();
     const result = await consumeOvdbOrdinaryQuery(

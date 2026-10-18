@@ -27,6 +27,22 @@ export async function consumeOvdbOrdinaryQuery(
   const result = await readOvdbOrdinaryResult(response, signal);
   signal?.throwIfAborted();
   rights.acceptWholeQuery(result.evidence as Record<string, unknown>);
+  const execution = result.evidence['execution'] as Record<string, unknown>;
+  const sources = execution['sources'];
+  const ordinarySources =
+    Array.isArray(sources) &&
+    sources.every(
+      (source) =>
+        source &&
+        typeof source === 'object' &&
+        typeof source.database === 'string' &&
+        typeof source.collection === 'string',
+    )
+      ? sources.map((source) => ({
+          database: source.database as string,
+          collection: source.collection as string,
+        }))
+      : undefined;
   const columns = ovdbResultColumns(result.columns, definition);
   const preview: Readonly<Record<string, unknown>>[] = [];
   let previewBytes = 0;
@@ -70,6 +86,10 @@ export async function consumeOvdbOrdinaryQuery(
     totalRows: result.records.length,
     hasMore: false,
     nativeDirect: true,
+    ...(ordinarySources ? { ordinarySources } : {}),
+    ...(result.evidence['complete'] === true
+      ? { ordinaryComplete: true as const }
+      : {}),
     limitations: [],
     bindingsApplied: [],
     truncated: false,

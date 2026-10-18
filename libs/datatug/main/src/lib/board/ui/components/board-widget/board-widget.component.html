@@ -174,7 +174,11 @@
         <p role="alert">{{ error }}</p>
       }
       @if (result(); as answer) {
-        @if (browserSnapshot()) {
+        @if (
+          browserSnapshot() ||
+          ('runtime' in answer && answer.runtime === 'server') ||
+          definition()?.federation
+        ) {
           <sneat-datatug-held-result-presentation [result]="answer" />
         } @else {
           @if (!answer.recordset.rows.length) {

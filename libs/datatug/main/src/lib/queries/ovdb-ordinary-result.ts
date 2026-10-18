@@ -93,6 +93,8 @@ export async function readOvdbOrdinaryResult(
   const document = decoded as Record<string, unknown>;
   if (
     (document['complete'] !== undefined && document['complete'] !== true) ||
+    (document['hasMore'] !== undefined && document['hasMore'] !== false) ||
+    (document['truncated'] !== undefined && document['truncated'] !== false) ||
     !Array.isArray(document['records']) ||
     document['records'].length > maximumRows ||
     !Array.isArray(document['columns']) ||
@@ -105,6 +107,11 @@ export async function readOvdbOrdinaryResult(
     Array.isArray(document['execution'])
   )
     throw new Error('OVDB returned an invalid ordinary query result.');
+  const execution = document['execution'] as Record<string, unknown>;
+  if (execution['rowsReturned'] !== undefined &&
+    (!Number.isSafeInteger(execution['rowsReturned']) ||
+      execution['rowsReturned'] !== document['records'].length))
+    throw new Error('OVDB ordinary query result row count does not match its execution evidence.');
   const columns = document['columns'] as string[];
   const records: OvdbStreamRecord[] = [];
   for (const entry of document['records']) {
