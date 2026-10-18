@@ -188,7 +188,10 @@ test.describe('Chinook as a local SQLite copy', () => {
     await page.getByTestId('record-input-GenreId').locator('input').fill('901');
     const name = page.getByTestId('record-input-Name').locator('input');
     await expect(name).toBeDisabled();
-    await page.getByTestId('record-null-Name').uncheck();
+    // Ionic renders aria-checked asynchronously; await it after the user click.
+    const nullToggle = page.getByTestId('record-null-Name');
+    await nullToggle.click();
+    await expect(nullToggle).not.toBeChecked();
     await expect(name).toBeEnabled();
     await name.fill('Created in browser');
     await page.getByTestId('record-save').click();
