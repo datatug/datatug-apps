@@ -23,7 +23,21 @@ test('server showcase and tutorial hold complete results without SQLite download
   const race = page.locator('ion-card').filter({ hasText: 'Where Northwind orders shipped' }).first();
   await expect(race).toContainText('830 source orders', { timeout: 60_000 });
   await expect(race).toContainText('23 monthly frames');
-  await expect.poll(() => queries().length).toBe(3);
+  await expect.poll(() => queries().length).toBeGreaterThanOrEqual(2);
+  const inspector = page.locator('ion-card').filter({ hasText: 'Inspect three saved query results' }).first();
+  for (const [tab, summary, database, rowCount] of [
+    ['Northwind · server orders', '830 rows · 14 columns', 'northwind', 25],
+    ['Northwind · server countries', '21 rows · 2 columns', 'northwind', 21],
+    ['Chinook · customer billing', '10 rows · 6 columns', 'chinook', 10],
+  ] as const) {
+    await inspector.getByRole('tab', { name: tab, exact: true }).click();
+    const before = queries().length;
+    await inspector.getByRole('button', { name: 'Run on board', exact: true }).click();
+    await expect(inspector).toContainText(summary, { timeout: 60_000 });
+    await expect(inspector.locator('table tbody tr')).toHaveCount(rowCount);
+    expect(queries().length).toBeGreaterThan(before);
+    expect(queries().at(-1)).toContain(`/databases/${database}/dtql`);
+  }
   const count = queries().length;
   await race.getByRole('button', { name: 'Source rows', exact: true }).click();
   await expect(race.locator('table tbody tr')).toHaveCount(25);

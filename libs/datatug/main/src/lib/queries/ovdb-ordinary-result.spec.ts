@@ -37,6 +37,32 @@ describe('released OVDB ordinary DTQL result', () => {
       await expect(readOvdbOrdinaryResult(response(body))).rejects.toThrow();
   });
 
+  it.each([
+    { hasMore: true }, { truncated: true },
+    { hasMore: 'false' }, { truncated: 'false' },
+    { hasMore: null }, { truncated: null },
+  ])('rejects explicit partial or malformed completion flags %j', async (flags) => {
+    await expect(readOvdbOrdinaryResult(response(JSON.stringify({
+      records: [{ data: { id: 1 } }], columns: ['id'],
+      complete: true, execution: { rowsReturned: 1 }, ...flags,
+    })))).rejects.toThrow('invalid ordinary query result');
+  });
+
+  it.each([0, 2, -1, 1.5, '1', null])('rejects inconsistent execution row count %j', async (rowsReturned) => {
+    await expect(readOvdbOrdinaryResult(response(JSON.stringify({
+      records: [{ data: { id: 1 } }], columns: ['id'],
+      complete: true, execution: { rowsReturned },
+    })))).rejects.toThrow('row count does not match');
+  });
+
+  it('accepts explicit complete flags only with matching execution row count', async () => {
+    const result = await readOvdbOrdinaryResult(response(JSON.stringify({
+      records: [{ data: { id: 1 } }], columns: ['id'],
+      complete: true, hasMore: false, truncated: false, execution: { rowsReturned: 1 },
+    })));
+    expect(result.records).toHaveLength(1);
+  });
+
   it('bounds the response independently of Content-Length', async () => {
     const large = 'x'.repeat(8 * 1024 * 1024 + 1);
     await expect(readOvdbOrdinaryResult(response(large))).rejects.toThrow(
