@@ -19,6 +19,7 @@ Feature specifications for this project.
 | [Browser Chat Phase 5 FK JOIN exploration](browser-chat-phase-5/README.md) | Approved | Discover and apply deterministic FK JOIN candidates from browser Chat result grids. |
 | [Checkout Journey](checkout-journey/README.md) | Implementing | Review of deployed Pro and Business checkout and a shared purchase flow with post-payment Business space linking. |
 | [In-browser query dispatch](browser-query-dispatch/README.md) | Stable | Resolve saved query definitions and explicit execution targets through one browser dispatcher while preserving project storage identity, runtime capability and result envelopes. |
+| [Copy a demo DataTug project](demo-project-copy/README.md) | Draft | Offer GitHub and local Git project copies after a browser SQLite demo is ready. |
 
 ## Open Questions
 

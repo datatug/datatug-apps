@@ -1,3 +1,4 @@
+import { ProjectCopyOfferComponent } from '../../project/new-project/project-copy-offer.component';
 // /demo/sqlite/:dataset — "Explore SQLite in DataTug" from a DemoDB.dev database page.
 //
 // Entry: the DemoDB site's link (https://datatug.app/demo/sqlite/<id>), the demo
@@ -61,6 +62,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
   selector: 'sneat-datatug-demo-sqlite-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ProjectCopyOfferComponent,
     NgTemplateOutlet,
     RouterLink,
     IonBackButton,
@@ -182,6 +184,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
             </ion-card>
           }
           @case ('ready') {
+            <sneat-datatug-project-copy-offer />
             @if (replacedNotice()) {
               <ion-card color="warning" data-testid="demo-sqlite-replaced">
                 <ion-item lines="none" color="warning">

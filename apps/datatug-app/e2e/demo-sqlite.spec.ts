@@ -135,6 +135,53 @@ async function openDataset(page: Page, dataset: string, table?: string): Promise
   await expect(page.getByTestId(table ? 'ovdb-rows' : 'ovdb-table-list')).toBeVisible({ timeout: 90_000 });
 }
 
+test('project copy choices are optional and local instructions preserve SQLite editing', async ({ page, context }) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  test.skip(!source, 'requires the offline demo project checkout');
+  if (!source) return;
+  await installPinnedChinookSqlite(context, source);
+  await openDataset(page, 'chinook', 'Artist');
+  await expect(page.getByTestId('project-copy-offer')).toBeVisible();
+  await expect(page.getByTestId('project-copy-github')).toBeVisible();
+  await expect(page.locator('[data-testid=project-copy-github], [data-testid=project-copy-local]')).toHaveCount(2);
+  await page.getByTestId('project-copy-local').click();
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('git clone https://github.com/datatug/datatug-demo-project.git my-datatug-project');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--as local --role admin --allow-writes --open-browser');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('OPFS');
+  await page.getByTestId('project-copy-dismiss').click();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await editName(page, SQLITE_ORIGINAL_ARTIST_1, 'Project copy stays optional');
+  await page.getByTestId('project-copy-reopen').click();
+  await expect(page.getByTestId('project-copy-offer')).toBeVisible();
+});
+
+test('demo project GitHub choice carries verified source into the existing setup form', async ({ page, context }) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  test.skip(!source, 'requires the offline demo project checkout');
+  if (!source) return;
+  await installPinnedChinookSqlite(context, source);
+  const commit = 'a'.repeat(40);
+  const tree = 'b'.repeat(40);
+  await context.route('https://api.github.com/repos/datatug/datatug-demo-project**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = path.endsWith('/commits/main') ? { sha: commit, commit: { tree: { sha: 'c'.repeat(40) } } }
+      : path.includes('/git/trees/') ? { tree: [{ path: 'demo-project-1', type: 'tree', sha: tree }] }
+      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main' };
+    await route.fulfill({ json });
+  });
+  await openDataset(page, 'chinook');
+  await page.getByTestId('project-copy-github').click();
+  await expect(page).toHaveURL(/\/new-project\?/);
+  await expect(page.getByTestId('project-copy-summary')).toContainText(`demo-project-1 at ${commit.slice(0, 10)}`);
+  await expect(page.getByTestId('project-copy-summary')).not.toContainText(commit);
+  await expect(page.locator('ion-title').filter({ hasText: 'Copy DataTug Project' })).toBeVisible();
+  await expect(page.locator('ion-footer').getByText('Copy project', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('project-copy-summary')).toContainText('Choose a repository below');
+  await page.getByTitle('Cancel', { exact: true }).click();
+  await expect(page).toHaveURL(/\/demo\/sqlite\/chinook$/);
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+});
+
 const rows = (page: Page): Locator => page.getByTestId('ovdb-rows').locator('tbody tr');
 const rowWith = (page: Page, text: string): Locator => rows(page).filter({ hasText: text });
 const nameCell = (page: Page, name: string): Locator => page.getByRole('cell', { name, exact: true });
