@@ -1,6 +1,6 @@
 import { HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
 import { catchError, map, switchMap } from 'rxjs/operators';
@@ -125,7 +125,7 @@ function readActivityContext(value: unknown): QueryActivityContext {
  */
 @Injectable({ providedIn: 'root' })
 export class GitHubProjectActivityService {
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   private readonly auth = inject(SneatAuthStateService);
   private readonly projects = inject(ProjectContextService);
   private readonly projectQueries = inject(ProjectQueryApiService);

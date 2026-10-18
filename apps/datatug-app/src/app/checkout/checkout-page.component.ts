@@ -40,6 +40,7 @@ import { CheckoutPriceSummaryComponent } from './checkout-price-summary.componen
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
 import { checkoutChoice, checkoutRail } from './checkout-config.mjs';
+import { DATATUG_CHECKOUT_FORCE_TEST } from './checkout-force-test';
 import {
   createCheckoutFlow,
   createReturnFlow,
@@ -96,6 +97,7 @@ export class CheckoutPageComponent implements OnDestroy {
   private readonly auth = inject(SneatAuthStateService);
   private readonly userService = inject(SneatUserService);
   private readonly normalApiBaseUrl = inject(SneatApiBaseUrl);
+  private readonly forceTestCheckout = inject(DATATUG_CHECKOUT_FORCE_TEST);
   private readonly spaceNav = inject(SPACE_NAV_SERVICE, { optional: true });
   private readonly userState = toSignal(this.userService.userState);
   private readonly authState = toSignal(this.auth.authState);
@@ -193,6 +195,7 @@ export class CheckoutPageComponent implements OnDestroy {
       search.toString(),
       this.returning(),
       this.normalApiBaseUrl,
+      this.forceTestCheckout,
     );
     const chosen = rail?.chosen;
     const selected = !this.returning()

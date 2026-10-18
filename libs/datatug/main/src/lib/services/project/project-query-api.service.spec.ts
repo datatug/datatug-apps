@@ -5,7 +5,7 @@ import {
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { provideHttpClient } from '@angular/common/http';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { readGithubProjectId } from '@datatug/project-address';
 import { of, firstValueFrom, throwError } from 'rxjs';
 import {
@@ -18,6 +18,8 @@ import {
 import { StoreApiService } from '../repo/store-api.service';
 import { toProjectQueryWire } from '../../queries/project-query-contract';
 import { createHostedDemoDbQuery } from '../../queries/hosted-demo-db-query';
+import { datatugApiRealProviders, expectDatatugApiRequest } from '../base/datatug-api.test-helpers';
+
 
 describe('ProjectQueryApiService', () => {
   const api = {
@@ -53,7 +55,7 @@ describe('ProjectQueryApiService', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectQueryApiService,
-        { provide: SneatApiService, useValue: api },
+        { provide: DatatugApiService, useValue: api },
         { provide: HttpClient, useValue: http },
         { provide: StoreApiService, useValue: storeApi },
       ],
@@ -443,7 +445,7 @@ it('emits explicit private read authority denial without treating a network fail
   TestBed.configureTestingModule({
     providers: [
       ProjectQueryApiService,
-      { provide: SneatApiService, useValue: { get } },
+      { provide: DatatugApiService, useValue: { get } },
       { provide: HttpClient, useValue: {} },
     ],
   });
@@ -478,7 +480,7 @@ it('clears private GitHub query scope and requests reconnect only for typed reau
   TestBed.configureTestingModule({
     providers: [
       ProjectQueryApiService,
-      { provide: SneatApiService, useValue: { get } },
+      { provide: DatatugApiService, useValue: { get } },
       { provide: HttpClient, useValue: {} },
     ],
   });
@@ -519,7 +521,7 @@ it('discovers pending GitHub setup operations through the authenticated common A
   TestBed.configureTestingModule({
     providers: [
       ProjectQueryApiService,
-      { provide: SneatApiService, useValue: { get } },
+      { provide: DatatugApiService, useValue: { get } },
       { provide: HttpClient, useValue: {} },
     ],
   });
@@ -539,7 +541,7 @@ describe('ProjectQueryApiService qualified local runtime compatibility', () => {
         ProjectQueryApiService,
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: SneatApiService, useValue: { get: vi.fn() } },
+        { provide: DatatugApiService, useValue: { get: vi.fn() } },
       ],
     });
   });
@@ -637,5 +639,28 @@ describe('ProjectQueryApiService qualified local runtime compatibility', () => {
       title: 'Feature project',
     });
     http.verify();
+  });
+});
+
+describe('ProjectQueryApiService DataTug API base URL', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectQueryApiService,
+        ...datatugApiRealProviders(),
+        { provide: StoreApiService, useValue: { get: vi.fn() } },
+      ],
+    });
+  });
+
+  it('reads the connection catalog from the DataTug API base URL', () => {
+    const ref = {
+      storeId: 'github.com',
+      projectId: 'demo@buyer@project',
+      projectApi: 'cloud' as const,
+      branch: 'work',
+    };
+    TestBed.inject(ProjectQueryApiService).connectionCatalog(ref).subscribe();
+    expectDatatugApiRequest('GET', 'datatug/projects/connection_catalog');
   });
 });

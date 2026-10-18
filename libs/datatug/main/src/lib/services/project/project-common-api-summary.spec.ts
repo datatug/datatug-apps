@@ -1,6 +1,6 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import {
   PrivateTokenStoreService,
   SneatAuthStateService,
@@ -34,7 +34,7 @@ it('keeps registered private summaries separate, cancels revoked auth, and refus
       { provide: PrivateTokenStoreService, useValue: {} },
       { provide: ErrorLogger, useValue: { logError: vi.fn() } },
       { provide: HttpClient, useValue: http },
-      { provide: SneatApiService, useValue: {} },
+      { provide: DatatugApiService, useValue: {} },
       {
         provide: DatatugStoreServiceFactory,
         useValue: { getDatatugStoreService: () => ({ getProjectSummary }) },

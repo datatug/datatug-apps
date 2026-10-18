@@ -12,10 +12,12 @@ export function checkoutChoice(
 ): { test: boolean } | null;
 export function pricingReturnUrl(period: string | null, mode: string): string;
 export const TEST_CHECKOUT_ORIGIN: string;
+export const TEST_PREVIEW_PROJECT_ORIGIN: string;
 export function checkoutRail(
   search: string,
   returning: boolean,
   normalApiBaseUrl: string,
+  forceTest: boolean,
 ): {
   chosen: CheckoutSelection | { mode: 'test' | 'live'; sessionId: string };
   mode: 'test' | 'live';

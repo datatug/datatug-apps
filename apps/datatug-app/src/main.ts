@@ -53,6 +53,7 @@ import {
   datatugBusinessCheckoutApiOrigin,
   datatugBusinessCheckoutLiveApiOrigin,
   datatugBusinessCheckoutLiveEnabled,
+  datatugEnvironmentProviders,
 } from './environments/environment';
 import { withoutDataTugTracking } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
@@ -104,6 +105,7 @@ configureAgGrid(AG_GRID_LICENSE_KEY);
 
 bootstrapApplication(DatatugAppComponent, {
   providers: [
+    ...datatugEnvironmentProviders,
     provideZonelessChangeDetection(),
     provideCheckoutAnalyticsPrivacy(),
     provideCheckoutPurchaseRecovery(),

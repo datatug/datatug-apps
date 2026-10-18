@@ -1,6 +1,6 @@
 import { HttpParams } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { BehaviorSubject, Subject, firstValueFrom, of } from 'rxjs';
 import { IProjectRef } from '../../core/project-context';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -8,6 +8,8 @@ import { ProjectContextService } from './project-context.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { GitHubProjectActivityService } from './github-project-activity.service';
 import { ProjectQueryCapabilities } from '../../queries/project-query-contract';
+import { datatugApiRealProviders, expectDatatugApiRequest } from '../base/datatug-api.test-helpers';
+
 
 describe('GitHubProjectActivityService', () => {
   const ref: IProjectRef = {
@@ -40,7 +42,7 @@ describe('GitHubProjectActivityService', () => {
           useValue: { authState: authState.asObservable() },
         },
         { provide: ProjectQueryApiService, useValue: { capabilities } },
-        { provide: SneatApiService, useValue: { get, post } },
+        { provide: DatatugApiService, useValue: { get, post } },
       ],
     });
     projects = TestBed.inject(ProjectContextService);
@@ -257,5 +259,47 @@ describe('GitHubProjectActivityService', () => {
       'activity scope could not be verified',
     );
     expect(get).not.toHaveBeenCalled();
+  });
+});
+
+describe('GitHubProjectActivityService DataTug API base URL', () => {
+  const ref: IProjectRef = {
+    storeId: 'github.com',
+    projectId: 'owner/repo',
+    projectApi: 'cloud',
+    branch: 'main',
+  };
+
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [
+        GitHubProjectActivityService,
+        ProjectContextService,
+        {
+          provide: SneatAuthStateService,
+          useValue: {
+            authState: new BehaviorSubject({
+              status: 'authenticated',
+              user: { uid: 'actor-one' },
+            }).asObservable(),
+          },
+        },
+        {
+          provide: ProjectQueryApiService,
+          useValue: {
+            capabilities: vi.fn(() =>
+              of({ activityScope: { spaceID: 'business_space', projectID: 'shared_project' } }),
+            ),
+          },
+        },
+        ...datatugApiRealProviders(),
+      ],
+    });
+    TestBed.inject(ProjectContextService).setCurrent(ref);
+  });
+
+  it('resolves the activity context from the DataTug API base URL', () => {
+    TestBed.inject(GitHubProjectActivityService).resolve(ref).subscribe();
+    expectDatatugApiRequest('GET', 'datatug/projects/query_activity_context');
   });
 });
