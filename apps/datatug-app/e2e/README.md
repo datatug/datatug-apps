@@ -325,7 +325,7 @@ and every other allow-listed route) go to the preview origin and return 2xx, and
 that a saved query of the project renders. It never enters a card, saves a
 query, or reaches a checkout or Stripe host, and keeps traces, video and
 screenshots off, and refuses to run with `--trace on`, `--reporter html`,
-video/screenshot flags or `DEBUG=pw:*`. Every non-GET DataTug API call, and any
+video/screenshot flags or any non-empty `DEBUG` variable (including `DEBUG=*`). Every non-GET DataTug API call, and any
 DataTug API call outside the preview origin, is aborted and fails the test. It is not part of the default CI run
 (`playwright.config.ts` ignores it); `playwright.business-preview.config.ts`
 runs it.
