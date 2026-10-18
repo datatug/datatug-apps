@@ -186,7 +186,11 @@ test.describe('Chinook as a local SQLite copy', () => {
     await openDataset(page, 'chinook', 'Genre');
     await page.getByTestId('record-create').click();
     await page.getByTestId('record-input-GenreId').locator('input').fill('901');
-    await page.getByTestId('record-input-Name').locator('input').fill('Created in browser');
+    const name = page.getByTestId('record-input-Name').locator('input');
+    await expect(name).toBeDisabled();
+    await page.getByTestId('record-null-Name').uncheck();
+    await expect(name).toBeEnabled();
+    await name.fill('Created in browser');
     await page.getByTestId('record-save').click();
     await expect(page.getByTestId('ovdb-record')).toContainText('GenreId 901');
     await expect(nameCell(page, 'Created in browser')).toBeVisible();

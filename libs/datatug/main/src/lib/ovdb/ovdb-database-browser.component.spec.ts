@@ -53,6 +53,11 @@ describe('OvdbDatabaseBrowserComponent', () => {
     const name = fields.find((field) => field.name === 'Name');
     if (!key || !name) throw new Error('Missing Artist fields');
     expect(q('record-input-ArtistId')?.getAttribute('aria-label')).toBe('ArtistId');
+    const nameInput = q('record-input-Name') as HTMLElement & { disabled: boolean };
+    expect(nameInput.disabled).toBe(true);
+    q('record-null-Name')?.dispatchEvent(new CustomEvent('ionChange', { detail: { checked: false } }));
+    await settle();
+    expect(nameInput.disabled).toBe(false);
     editor.setText(key, 'bad');
     await editor.save();
     await settle();
