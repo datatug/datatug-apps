@@ -1,6 +1,6 @@
 <ion-header>
   <ion-toolbar color="light">
-    <ion-title>{{ setupStatus() === 'needs_review' ? 'Project setup needs review' : setupStatus() === 'pending_merge' ? 'Project setup awaiting merge' : 'New DataTug Project' }}</ion-title>
+    <ion-title>{{ setupStatus() === 'needs_review' ? 'Project setup needs review' : setupStatus() === 'pending_merge' ? 'Project setup awaiting merge' : copySource() ? 'Copy DataTug Project' : 'New DataTug Project' }}</ion-title>
     <ion-buttons slot="end">
       <ion-button color="medium" title="Cancel" (click)="cancel()">
         <ion-icon name="close-outline" />
@@ -13,7 +13,7 @@
   <ion-item lines="full">
     <ion-label class="ion-text-wrap" data-testid="project-copy-summary">
       <h2>Copy project</h2>
-      <p>Source: {{ source.owner }}/{{ source.name }}/{{ source.folder }} at {{ source.commit }}</p>
+      <p>Source: {{ source.owner }}/{{ source.name }}/{{ source.folder }} at {{ source.commit.slice(0, 10) }}</p>
       <p>Destination: {{ copyDestinationSummary() }}</p>
       <p>Your editable SQLite database stays in this browser. Copying the project does not export it.</p>
     </ion-label>
@@ -265,7 +265,7 @@
     <ion-buttons slot="end">
       @if (!isSetupLocked()) { <ion-button (click)="create()" [disabled]="isCreating()">
         <ion-icon name="save-outline" slot="start" />
-        <ion-label>{{ isCreateRetryLocked() ? 'Retry same project operation' : 'Create new project' }}</ion-label>
+        <ion-label>{{ isCreateRetryLocked() ? 'Retry same project operation' : copySource() ? 'Copy project' : 'Create new project' }}</ion-label>
       </ion-button> }
     </ion-buttons>
   </ion-toolbar>

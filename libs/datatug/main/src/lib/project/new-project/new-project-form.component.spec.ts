@@ -200,6 +200,9 @@ describe('New project through authenticated common API', () => {
     const h = await harness(false, { source: JSON.stringify(source), store: 'github' });
     h.component.ngOnInit();
     h.select();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.querySelector('ion-title').textContent).toBe('Copy DataTug Project');
     h.component.create();
     expect(h.create.mock.calls[0][0]).toMatchObject({ source });
     expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
@@ -207,6 +210,14 @@ describe('New project through authenticated common API', () => {
     const restored = await harness(false, { store: 'github' }, true, true);
     restored.component.ngOnInit();
     expect(restored.component.copySource()).toEqual(source);
+  });
+
+  it('retains creation labels when no copy source is selected', async () => {
+    const h = await harness();
+    h.component.ngOnInit();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.querySelector('ion-title').textContent).toBe('New DataTug Project');
   });
 
   it('preserves the demo cancel path through denied OAuth and a refresh', async () => {

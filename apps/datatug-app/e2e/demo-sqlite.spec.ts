@@ -172,7 +172,10 @@ test('demo project GitHub choice carries verified source into the existing setup
   await openDataset(page, 'chinook');
   await page.getByTestId('project-copy-github').click();
   await expect(page).toHaveURL(/\/new-project\?/);
-  await expect(page.getByTestId('project-copy-summary')).toContainText(`demo-project-1 at ${commit}`);
+  await expect(page.getByTestId('project-copy-summary')).toContainText(`demo-project-1 at ${commit.slice(0, 10)}`);
+  await expect(page.getByTestId('project-copy-summary')).not.toContainText(commit);
+  await expect(page.locator('ion-title').filter({ hasText: 'Copy DataTug Project' })).toBeVisible();
+  await expect(page.locator('ion-footer').getByText('Copy project', { exact: true })).toBeVisible();
   await expect(page.getByTestId('project-copy-summary')).toContainText('Choose a repository below');
   await page.getByTitle('Cancel', { exact: true }).click();
   await expect(page).toHaveURL(/\/demo\/sqlite\/chinook$/);
