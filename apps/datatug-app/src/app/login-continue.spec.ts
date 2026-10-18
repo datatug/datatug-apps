@@ -120,6 +120,11 @@ describe('the shared login page of a signed-in user on DataTug (NG04002 on "Cont
 
   it('takes the user to the DataTug home, not to the Sneat space, when they click Continue', async () => {
     await openLoginPage();
+    // The login page also redirects a signed-in user onward from its constructor, which already lands on /home.
+    // Put the router back on /login so the /home assertion below can only be satisfied by the click's own navigation.
+    await fixture.whenStable();
+    await router.navigateByUrl('/login');
+    expect(router.url).toBe('/login');
     const navigations: string[] = [];
     const original = router.navigateByUrl.bind(router);
     vi.spyOn(router, 'navigateByUrl').mockImplementation((url, extras) => {
