@@ -32,7 +32,9 @@ export const BUSINESS_PREVIEW_SKIP_MESSAGE =
  * Refuses to run when anything could record the filled password: a trace,
  * video or screenshot (config or CLI such as `--trace on`), a reporter other
  * than the plain console ones (`--reporter html` attaches error context), or
- * Playwright API logging (`DEBUG=pw:api`). Call it before any sign-in.
+ * any non-empty `DEBUG` variable (`DEBUG=pw:api` makes Playwright log the filled
+ * password, and `DEBUG=*` or `DEBUG=1` turns that logging on too). Call it
+ * before any sign-in.
  */
 export function assertNoCredentialCapture(testInfo: TestInfo): void {
   const use = testInfo.project.use;
@@ -43,10 +45,10 @@ export function assertNoCredentialCapture(testInfo: TestInfo): void {
     use.video !== 'off' ||
     use.screenshot !== 'off' ||
     reporters.some((name) => !['list', 'line', 'dot'].includes(name)) ||
-    /pw:|playwright/.test(debug)
+    debug !== ''
   )
     throw new Error(
-      'The TEST buyer sign-in requires trace, video and screenshot off, a console-only reporter (list, line or dot) and no DEBUG=pw:*. Run it through playwright.business-preview.config.ts without those flags.',
+      'The TEST buyer sign-in requires trace, video and screenshot off, a console-only reporter (list, line or dot) and no DEBUG variable at all (unset it, even DEBUG=*). Run it through playwright.business-preview.config.ts without those flags.',
     );
 }
 
