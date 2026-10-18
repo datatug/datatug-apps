@@ -31,11 +31,12 @@ import {
   initialOvdbInput,
   ovdbFormFields,
   ovdbRecordChanges,
+  parseOvdbInput,
   type OvdbDisplayValue,
   type OvdbFieldInput,
   type OvdbFormField,
 } from '../../../../ovdb/ovdb-record-form';
-import { deleteOvdbRecord, describeOvdbError, updateOvdbRecord } from '../../../../ovdb/ovdb-records';
+import { createOvdbRecord, ovdbCreateKeyField, type OvdbRow, deleteOvdbRecord, describeOvdbError, updateOvdbRecord } from '../../../../ovdb/ovdb-records';
 
 export type OvdbRecordChange = 'saved' | 'deleted';
 
@@ -58,11 +59,11 @@ export type OvdbRecordChange = 'saved' | 'deleted';
     IonSpinner,
   ],
   template: `
-    @if (record(); as rec) {
+    @if (displayRecord(); as rec) {
       <ion-card data-testid="ovdb-record">
         <ion-card-header>
-          <ion-card-title>{{ collection() }} · {{ keyLabel() }}</ion-card-title>
-          @if (!editing()) {
+          <ion-card-title>{{ collection() }} · {{ creating() ? 'Create record' : keyLabel() }}</ion-card-title>
+          @if (!editing() && !creating()) {
             <ion-buttons>
               @if (actions().edit) {
                 <ion-button data-testid="record-edit" fill="outline" size="small" [disabled]="busy()" (click)="startEdit()">Edit</ion-button>
@@ -85,9 +86,10 @@ export type OvdbRecordChange = 'saved' | 'deleted';
                 {{ field.name }}
                 <ion-note>{{ field.declaredType }}{{ field.key ? ' · primary key' : '' }}</ion-note>
               </ion-label>
-              @if (editing() && field.editable) {
+              @if ((editing() || creating()) && field.editable) {
                 <ion-input
                   [attr.data-testid]="'record-input-' + field.name"
+                  [attr.aria-label]="field.name"
                   type="text"
                   [inputmode]="inputMode(field)"
                   [value]="inputOf(field).text"
@@ -120,12 +122,12 @@ export type OvdbRecordChange = 'saved' | 'deleted';
           }
         </ion-list>
         <ion-card-content>
-          @if (editing()) {
+          @if (editing() || creating()) {
             <ion-button data-testid="record-save" [disabled]="busy()" (click)="save()">
               @if (busy()) {
                 <ion-spinner name="dots" />
               } @else {
-                Save
+                {{ creating() ? 'Create record' : 'Save' }}
               }
             </ion-button>
             <ion-button data-testid="record-cancel" fill="clear" [disabled]="busy()" (click)="cancelEdit()">Cancel</ion-button>
@@ -153,6 +155,10 @@ export class OvdbRecordEditorComponent {
   readonly collection = input.required<string>();
   readonly record = input<Readonly<Record<string, unknown>> | undefined>(undefined);
   readonly changed = output<OvdbRecordChange>();
+  readonly creating = input(false);
+  readonly created = output<OvdbRow>();
+  readonly cancelled = output<void>();
+  protected readonly displayRecord = computed(() => this.creating() ? {} : this.record());
 
   protected readonly editing = signal(false);
   protected readonly busy = signal(false);
@@ -164,7 +170,8 @@ export class OvdbRecordEditorComponent {
 
   protected readonly actions = computed(() => ovdbRecordActions(this.connection().descriptor, this.collection()));
   protected readonly fields = computed(() =>
-    ovdbFormFields(ovdbCollectionSchema(this.connection().descriptor, this.collection()), this.record() ?? {}),
+    ovdbFormFields(ovdbCollectionSchema(this.connection().descriptor, this.collection()), this.record() ?? {}).map((field) =>
+      this.creating() && field.key ? { ...field, editable: true, lockedReason: undefined } : field),
   );
   protected readonly keyLabel = computed(() => {
     const keyField = this.actions().keyField;
@@ -177,10 +184,12 @@ export class OvdbRecordEditorComponent {
     effect(() => {
       this.record();
       this.collection();
+      const creating = this.creating();
       untracked(() => {
         this.editing.set(false);
         this.errors.set({});
         this.error.set('');
+        if (creating) this.startEdit();
       });
     });
   }
@@ -201,7 +210,9 @@ export class OvdbRecordEditorComponent {
     const record = this.record() ?? {};
     const inputs: Record<string, OvdbFieldInput> = {};
     for (const field of this.fields()) {
-      if (field.editable) inputs[field.name] = initialOvdbInput(field, record[field.name]);
+      if (field.editable) inputs[field.name] = this.creating()
+        ? { text: '', isNull: field.nullable }
+        : initialOvdbInput(field, record[field.name]);
     }
     this.inputs.set(inputs);
     this.errors.set({});
@@ -211,6 +222,7 @@ export class OvdbRecordEditorComponent {
   }
 
   cancelEdit(): void {
+    if (this.creating()) this.cancelled.emit();
     this.editing.set(false);
     this.errors.set({});
     this.error.set('');
@@ -228,6 +240,7 @@ export class OvdbRecordEditorComponent {
   }
 
   async save(): Promise<void> {
+    if (this.creating()) return this.create();
     const record = this.record();
     const keyField = this.actions().keyField;
     if (!record || !keyField || !this.actions().edit || this.busy()) return;
@@ -246,6 +259,32 @@ export class OvdbRecordEditorComponent {
       this.editing.set(false);
       this.notice.set('Saved.');
       this.changed.emit('saved');
+    } catch (error) {
+      this.error.set(describeOvdbError(error, 'save'));
+    } finally {
+      this.busy.set(false);
+    }
+  }
+
+  private async create(): Promise<void> {
+    const keyField = ovdbCreateKeyField(this.connection().descriptor, this.collection());
+    if (!keyField || this.busy()) return;
+    const data: Record<string, unknown> = {};
+    const errors: Record<string, string> = {};
+    for (const field of this.fields()) {
+      if (!field.editable) continue;
+      const parsed = parseOvdbInput(field, this.inputOf(field));
+      if (parsed.ok) data[field.name] = parsed.value;
+      else errors[field.name] = parsed.error;
+    }
+    const key = data[keyField];
+    if (typeof key === 'string' && (!key.trim() || key.includes('/'))) errors[keyField] = 'Enter a non-empty record key without slashes.';
+    this.errors.set(errors);
+    this.error.set('');
+    if (Object.keys(errors).length) return;
+    this.busy.set(true);
+    try {
+      this.created.emit(await createOvdbRecord(this.connection(), this.collection(), data));
     } catch (error) {
       this.error.set(describeOvdbError(error, 'save'));
     } finally {

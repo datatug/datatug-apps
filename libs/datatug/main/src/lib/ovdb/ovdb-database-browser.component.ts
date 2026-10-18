@@ -31,7 +31,7 @@ import {
 } from './ovdb-connection';
 import { OvdbConfirmService } from './ovdb-confirm.service';
 import { displayOvdbValue, ovdbFormFields, type OvdbDisplayValue } from './ovdb-record-form';
-import { OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
+import { getOvdbRecord, ovdbCreateKeyField, OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
 import { ovdbCollectionSchema } from './ovdb-connection';
 
 @Component({
@@ -115,6 +115,9 @@ import { ovdbCollectionSchema } from './ovdb-connection';
               <ion-badge color="medium">{{ list.length }}{{ list.length === pageSize ? '+' : '' }}</ion-badge>
             }
           </ion-card-title>
+          @if (canCreate()) {
+            <ion-button data-testid="record-create" size="small" [disabled]="creating() || resetting()" (click)="creating.set(true)">Create record</ion-button>
+          }
           <p class="ovdb-subtitle"><a [routerLink]="basePath()">All tables</a></p>
         </ion-card-header>
         <ion-card-content>
@@ -155,7 +158,12 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           }
         </ion-card-content>
       </ion-card>
-      @if (selected(); as row) {
+      @if (creating()) {
+        <sneat-datatug-ovdb-record-editor
+          [connection]="liveConnection()" [collection]="table()!" [creating]="true"
+          (created)="recordCreated($event)" (cancelled)="creating.set(false)"
+        />
+      } @else if (selected(); as row) {
         <sneat-datatug-ovdb-record-editor
           [connection]="liveConnection()"
           [collection]="table()!"
@@ -201,10 +209,16 @@ export class OvdbDatabaseBrowserComponent {
   });
   protected readonly caps = computed(() => ovdbUiCapabilities(this.liveConnection().descriptor));
   protected readonly tables = computed(() => ovdbCollections(this.liveConnection().descriptor));
+  protected readonly creating = signal(false);
+  protected readonly createdRow = signal<OvdbRow | undefined>(undefined);
+  protected readonly canCreate = computed(() => {
+    const table = this.table();
+    return !!table && !!ovdbCreateKeyField(this.liveConnection().descriptor, table);
+  });
   protected readonly rows = signal<readonly OvdbRow[] | undefined>(undefined);
   protected readonly loadError = signal('');
   protected readonly selectedKey = signal<string | undefined>(undefined);
-  protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()));
+  protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()) ?? (this.createdRow()?.key === this.selectedKey() ? this.createdRow() : undefined));
   protected readonly columns = computed(() => {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
@@ -225,6 +239,8 @@ export class OvdbDatabaseBrowserComponent {
       untracked(() => {
         this.descriptorOverride.set(undefined);
         this.selectedKey.set(undefined);
+        this.creating.set(false);
+        this.createdRow.set(undefined);
         void this.load(connection, table);
       });
     });
@@ -240,6 +256,7 @@ export class OvdbDatabaseBrowserComponent {
   /** Selects a row; for a key press, stops the page from scrolling on Space. */
   protected select(row: OvdbRow, event?: Event): void {
     event?.preventDefault();
+    this.creating.set(false);
     this.selectedKey.set(row.key);
   }
 
@@ -265,9 +282,30 @@ export class OvdbDatabaseBrowserComponent {
     }
   }
 
-  protected async recordChanged(change: OvdbRecordChange): Promise<void> {
-    if (change === 'deleted') this.selectedKey.set(undefined);
+  protected async recordCreated(row: OvdbRow): Promise<void> {
+    this.creating.set(false);
+    this.createdRow.set(row);
+    this.selectedKey.set(row.key);
     await this.reload();
+  }
+
+  protected async recordChanged(change: OvdbRecordChange): Promise<void> {
+    if (change === 'deleted') { this.selectedKey.set(undefined); this.createdRow.set(undefined); }
+    const created = this.createdRow();
+    const table = this.table();
+    const connection = this.liveConnection();
+    await this.reload();
+    if (change === 'saved' && created && table && !this.rows()?.some((row) => row.key === created.key)) {
+      const keyField = ovdbCreateKeyField(connection.descriptor, table);
+      if (keyField) {
+        try {
+          const row = await getOvdbRecord(connection, table, created.data[keyField] as string | number);
+          if (this.table() === table && this.liveConnection() === connection) this.createdRow.set(row);
+        } catch (error) {
+          this.loadError.set(describeOvdbError(error, 'load'));
+        }
+      }
+    }
   }
 
   async resetDatabase(): Promise<void> {
@@ -311,6 +349,8 @@ export class OvdbDatabaseBrowserComponent {
         );
       }
       this.selectedKey.set(undefined);
+      this.createdRow.set(undefined);
+      this.creating.set(false);
       await this.reload();
     } catch (error) {
       this.resetError.set(describeOvdbError(error, 'reset'));

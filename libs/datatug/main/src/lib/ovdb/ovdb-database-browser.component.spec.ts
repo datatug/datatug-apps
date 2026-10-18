@@ -1,4 +1,6 @@
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { OvdbRecordEditorComponent } from '../pages/signed-in/env-db-table/ovdb-record-editor/ovdb-record-editor.component';
 import { provideRouter } from '@angular/router';
 import { describe, expect, it, vi } from 'vitest';
 import { demoSqliteCatalog } from '../queries/demo-sqlite-catalog';
@@ -40,6 +42,48 @@ async function setup(table?: string, options: {
 }
 
 describe('OvdbDatabaseBrowserComponent', () => {
+  it('creates a typed record, selects it, keeps duplicate errors in the form, and resets', async () => {
+    const { fixture, q, settle, local, component } = await setup('Artist');
+    await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
+    q('record-create')?.click();
+    await settle();
+    const editor = fixture.debugElement.query(By.directive(OvdbRecordEditorComponent)).componentInstance as OvdbRecordEditorComponent;
+    const fields = editor['fields']();
+    const key = fields.find((field) => field.name === 'ArtistId');
+    const name = fields.find((field) => field.name === 'Name');
+    if (!key || !name) throw new Error('Missing Artist fields');
+    expect(q('record-input-ArtistId')?.getAttribute('aria-label')).toBe('ArtistId');
+    editor.setText(key, 'bad');
+    await editor.save();
+    await settle();
+    expect(q('record-field-ArtistId')?.textContent).toContain('whole number');
+    editor.setText(key, '1');
+    editor.setText(name, 'Duplicate');
+    await editor.save();
+    await settle();
+    expect(q('record-error')?.textContent).toContain('already exists');
+    expect(q('record-save')).not.toBeNull();
+    editor.setText(key, '4');
+    editor.setNull(name, true);
+    await editor.save();
+    await vi.waitFor(async () => { await settle(); expect(q('ovdb-record')?.textContent).toContain('ArtistId 4'); });
+    await vi.waitFor(async () => { await settle(); expect(q('ovdb-rows')?.querySelectorAll('tbody tr')).toHaveLength(4); });
+    expect(q('record-field-Name')?.textContent).toContain('NULL');
+    expect(local.modified.value).toBe(true);
+    await component.resetDatabase();
+    await settle();
+    expect(local.database.tables['Artist']).toHaveLength(3);
+    expect(q('ovdb-record')).toBeNull();
+  });
+
+  it('hides Create for a composite key and read-only capability', async () => {
+    const { q } = await setup('PlaylistTrack');
+    expect(q('record-create')).toBeNull();
+    TestBed.resetTestingModule();
+    const readonly = await setup('Artist', { database: new MemorySqliteDatabase(undefined, undefined, { read: true, query: true, write: false, delete: false, reset: false, persistent: true }) });
+    expect(readonly.q('record-create')).toBeNull();
+  });
+
   it('lands in the table list with links to each table', async () => {
     const { q, el } = await setup();
     expect(q('ovdb-table-list')).not.toBeNull();

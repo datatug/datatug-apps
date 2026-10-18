@@ -180,6 +180,31 @@ async function expectMemoryOnlyBehaviour(page: Page): Promise<void> {
 }
 
 test.describe('Chinook as a local SQLite copy', () => {
+  test('creates a record, rejects a duplicate, and persists until reset', async ({ page }) => {
+    test.setTimeout(180_000);
+    const persistent = await hasOpfs(page);
+    await openDataset(page, 'chinook', 'Genre');
+    await page.getByTestId('record-create').click();
+    await page.getByTestId('record-input-GenreId').locator('input').fill('901');
+    await page.getByTestId('record-input-Name').locator('input').fill('Created in browser');
+    await page.getByTestId('record-save').click();
+    await expect(page.getByTestId('ovdb-record')).toContainText('GenreId 901');
+    await expect(nameCell(page, 'Created in browser')).toBeVisible();
+    await page.getByTestId('record-create').click();
+    await page.getByTestId('record-input-GenreId').locator('input').fill('901');
+    await page.getByTestId('record-save').click();
+    await expect(page.getByTestId('record-error')).toContainText('already');
+    await page.getByTestId('record-cancel').click();
+    await page.reload();
+    await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
+    if (persistent) await expect(nameCell(page, 'Created in browser')).toBeVisible();
+    else await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
+    await page.getByTestId('reset-database').click();
+    await confirmAlert(page, 'Reset Database');
+    await expect(page.getByTestId('reset-message')).toContainText('reset');
+    await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
+  });
+
   test('browse, edit, delete and reset all persist across reloads', async ({ page, context }) => {
     test.setTimeout(240_000);
     const demodb = trackDemodbRequests(context);
