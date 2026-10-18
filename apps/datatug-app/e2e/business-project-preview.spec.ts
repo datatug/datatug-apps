@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import type { Request, Response } from '@playwright/test';
 import { TEST_PREVIEW_PROJECT_ORIGIN } from '../src/app/checkout/checkout-config.mjs';
 import {
+  assertNoCredentialCapture,
   BUSINESS_PREVIEW_PROJECT_ENV,
   BUSINESS_PREVIEW_SKIP_MESSAGE,
   DEFAULT_BUSINESS_PREVIEW_PROJECT,
@@ -51,14 +52,39 @@ test.describe.configure({ mode: 'serial' });
 
 const isProjectRoute = (url: URL) =>
   PREVIEW_PROJECT_ROUTES.includes(url.pathname);
-const isProbe = (method: string) => method === 'GET' || method === 'POST';
+const isRead = (method: string) => method === 'GET';
+const DATATUG_API_PATH = '/v0/datatug/';
 
 test('a signed-in TEST Business buyer opens the Business project from datatug-cloud-preview', async ({
   page,
-}) => {
+}, testInfo) => {
+  assertNoCredentialCapture(testInfo);
+
   // Nothing in this journey may reach a payment rail or telemetry.
   await page.route('**/v0/checkout/**', (route) => route.abort());
-  await page.route('**/api.stripe.com/**', (route) => route.abort());
+  await page.route(
+    (url) =>
+      url.hostname === 'stripe.com' || url.hostname.endsWith('.stripe.com'),
+    (route) => route.abort(),
+  );
+  // Read-only, and only against datatug-cloud-preview: abort every DataTug API
+  // call that is not a GET (save_query, create_project and anything else that
+  // mutates), and every DataTug API call on another origin, so a wrong build
+  // can never reach production. The aborted ones are also recorded and fail
+  // the test below.
+  const blocked: string[] = [];
+  await page.route(
+    (url) => url.pathname.startsWith(DATATUG_API_PATH),
+    (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const read = isRead(request.method()) || request.method() === 'OPTIONS';
+      if (read && url.origin === TEST_PREVIEW_PROJECT_ORIGIN)
+        return route.fallback();
+      blocked.push(`${request.method()} ${url.origin}${url.pathname}`);
+      return route.abort();
+    },
+  );
   await page.route(
     /(?:sentry\.io|posthog\.com|google-analytics\.com)/,
     (route) => route.abort(),
@@ -68,18 +94,27 @@ test('a signed-in TEST Business buyer opens the Business project from datatug-cl
 
   const projectRequests: Request[] = [];
   const projectResponses: Response[] = [];
+  const failedRequests: string[] = [];
   page.on('request', (request) => {
-    if (isProbe(request.method()) && isProjectRoute(new URL(request.url())))
+    if (isRead(request.method()) && isProjectRoute(new URL(request.url())))
       projectRequests.push(request);
   });
   page.on('response', (response) => {
     const request = response.request();
-    if (isProbe(request.method()) && isProjectRoute(new URL(response.url())))
+    if (isRead(request.method()) && isProjectRoute(new URL(response.url())))
       projectResponses.push(response);
   });
+  page.on('requestfailed', (request) => {
+    if (isRead(request.method()) && isProjectRoute(new URL(request.url())))
+      failedRequests.push(new URL(request.url()).pathname);
+  });
 
-  const summary = page.waitForResponse(
-    (r) => new URL(r.url()).pathname === '/v0/datatug/projects/project_summary',
+  const summary = page.waitForResponse((r) =>
+    r
+      .url()
+      .startsWith(
+        `${TEST_PREVIEW_PROJECT_ORIGIN}/v0/datatug/projects/project_summary`,
+      ),
   );
   const [summaryResponse] = await Promise.all([
     summary,
@@ -87,8 +122,12 @@ test('a signed-in TEST Business buyer opens the Business project from datatug-cl
   ]);
   expect(summaryResponse.status(), 'project_summary status').toBeLessThan(300);
 
-  const allQueries = page.waitForResponse(
-    (r) => new URL(r.url()).pathname === '/v0/datatug/queries/all_queries',
+  const allQueries = page.waitForResponse((r) =>
+    r
+      .url()
+      .startsWith(
+        `${TEST_PREVIEW_PROJECT_ORIGIN}/v0/datatug/queries/all_queries`,
+      ),
   );
   const [queriesResponse] = await Promise.all([
     allQueries,
@@ -102,6 +141,8 @@ test('a signed-in TEST Business buyer opens the Business project from datatug-cl
   };
 
   // Every project API call went to datatug-cloud-preview, and none failed.
+  expect(blocked, 'DataTug API calls the guard had to abort').toEqual([]);
+  expect(failedRequests, 'failed allow-listed requests').toEqual([]);
   expect(projectRequests.length).toBeGreaterThan(0);
   for (const request of projectRequests)
     expect(new URL(request.url()).origin, 'project API origin').toBe(

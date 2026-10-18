@@ -22,8 +22,9 @@ export default defineConfig({
         command:
           'pnpm nx run datatug-app:serve:business-preview --host localhost',
         url: 'http://localhost:18782',
-        // An owned preview already on 18782 is reused, never replaced.
-        reuseExistingServer: true,
+        // Never adopt whatever already listens on 18782: it could be a build
+        // that talks to production. An occupied port is an error.
+        reuseExistingServer: false,
         timeout: 240_000,
         gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
       }

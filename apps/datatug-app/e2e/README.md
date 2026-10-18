@@ -324,7 +324,9 @@ only). It asserts that the project API calls (`project_summary`, `all_queries`
 and every other allow-listed route) go to the preview origin and return 2xx, and
 that a saved query of the project renders. It never enters a card, saves a
 query, or reaches a checkout or Stripe host, and keeps traces, video and
-screenshots off. It is not part of the default CI run
+screenshots off, and refuses to run with `--trace on`, `--reporter html`,
+video/screenshot flags or `DEBUG=pw:*`. Every non-GET DataTug API call, and any
+DataTug API call outside the preview origin, is aborted and fails the test. It is not part of the default CI run
 (`playwright.config.ts` ignores it); `playwright.business-preview.config.ts`
 runs it.
 
@@ -343,6 +345,6 @@ DATATUG_BUSINESS_PREVIEW_BUYER_EMAIL=... DATATUG_BUSINESS_PREVIEW_BUYER_PASSWORD
   pnpm nx run datatug-app:e2e-business-preview
 ```
 
-The target serves `datatug-app:serve:business-preview` itself (or reuses a server
-already on port 18782). The port and the host name `localhost` matter:
+The target serves `datatug-app:serve:business-preview` itself and refuses an
+occupied port 18782 (free it first). The port and the host name `localhost` matter:
 datatug-cloud-preview admits only the origin `http://localhost:18782`.

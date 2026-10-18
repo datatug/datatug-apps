@@ -1,4 +1,4 @@
-import { type Page, expect } from '@playwright/test';
+import { type Page, type TestInfo, expect } from '@playwright/test';
 
 /**
  * The environment variables the Business project preview journey needs. The
@@ -27,6 +27,28 @@ export const hasBusinessPreviewBuyer = (): boolean =>
 export const BUSINESS_PREVIEW_SKIP_MESSAGE =
   `Set ${BUSINESS_PREVIEW_BUYER_EMAIL_ENV} and ${BUSINESS_PREVIEW_BUYER_PASSWORD_ENV} ` +
   `(the designated TEST buyer; optionally ${BUSINESS_PREVIEW_BUYER_UID_ENV}) to run the live Business preview journey.`;
+
+/**
+ * Refuses to run when anything could record the filled password: a trace,
+ * video or screenshot (config or CLI such as `--trace on`), a reporter other
+ * than the plain console ones (`--reporter html` attaches error context), or
+ * Playwright API logging (`DEBUG=pw:api`). Call it before any sign-in.
+ */
+export function assertNoCredentialCapture(testInfo: TestInfo): void {
+  const use = testInfo.project.use;
+  const reporters = testInfo.config.reporter.map(([name]) => name);
+  const debug = process.env['DEBUG'] ?? '';
+  if (
+    use.trace !== 'off' ||
+    use.video !== 'off' ||
+    use.screenshot !== 'off' ||
+    reporters.some((name) => !['list', 'line', 'dot'].includes(name)) ||
+    /pw:|playwright/.test(debug)
+  )
+    throw new Error(
+      'The TEST buyer sign-in requires trace, video and screenshot off, a console-only reporter (list, line or dot) and no DEBUG=pw:*. Run it through playwright.business-preview.config.ts without those flags.',
+    );
+}
 
 const FIREBASE_PROJECT = 'sneat-eur3-1';
 
