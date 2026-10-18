@@ -156,6 +156,7 @@ describe('DataTug app routes', () => {
       'debug',
       '',
       '',
+      'space/:spaceType/:spaceId', // a Sneat space has no page in DataTug: the post-login target goes to the profile home
     ]);
   });
 
