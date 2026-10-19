@@ -42,6 +42,15 @@ guarded('and guarded again', async ({ context }) => {
  * "unexpectedly passes", the proxy is forwarding (a dev server started without the lane's environment, e.g. reused locally
  * outside CI) and the claim "public OVDB hosts are never reached" is not true for that run.
  */
+guarded('the dev-server OVDB proxy answers 403 with the refusal header in fixture mode', async ({ request }) => {
+  guarded.skip(process.env['DEMODB_E2E_MODE'] === 'live', 'live mode forwards by design');
+  // A plain API request, not a browser context: it is not observed by the guard, so this asserts the proxy alone and stays a
+  // normal test. (The negative control below runs under test.fail(), which would also pass on any unrelated failure.)
+  const response = await request.get('/__datatug_public_ovdb/cloud/v1/databases/chinook-postgresql', { failOnStatusCode: false });
+  expect(response.status()).toBe(403);
+  expect(response.headers()['x-datatug-ovdb-refused'] ?? '').toContain('openvaultdb.com');
+});
+
 guarded('an app request through the dev-server OVDB proxy is refused and counted as an escape', async ({ page }, testInfo) => {
   testInfo.annotations.push({ type: 'demodb-expected-escape', description: 'negative control: the guard must flag this request' });
   guarded.skip(process.env['DEMODB_E2E_MODE'] === 'live', 'live mode forwards by design');

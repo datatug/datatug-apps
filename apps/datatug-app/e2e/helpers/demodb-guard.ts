@@ -115,11 +115,11 @@ export interface DemodbGuard {
   head(request: APIRequestContext, url: string): Promise<{ status: number; headers: Record<string, string> }>;
 }
 
-/** The counter of the running test; requests of a context created outside a test land in `orphan`. */
+/** The counter of the running test; requests of a context created outside a test land in `orphan` (guarded, reported and checked when the worker ends). */
 const orphan = new Counter();
 let current: Counter = orphan;
-/** Whether the running test is passive (no route, counters and escape detection only); see `demodbPassive`. */
-let currentPassive = true;
+/** Whether the running test is passive (no route, counters and escape detection only); see `demodbPassive`. False outside a test. */
+let currentPassive = false;
 
 const rules: Rules = {
   live: DEMODB_LIVE,
@@ -143,6 +143,7 @@ const dropEncoding = (headers: Record<string, string>): Record<string, string> =
 
 const observed = new WeakSet<BrowserContext>();
 const routed = new WeakSet<BrowserContext>();
+const routes = new WeakMap<BrowserContext, { matcher: (url: URL) => boolean; handler: (route: Route) => Promise<void> }>();
 
 /** Test hook: whether the guard's route is installed on a context (see demodb-guard-selftest.spec.ts). */
 export const hasGuardRoute = (context: BrowserContext): boolean => routed.has(context);
@@ -183,31 +184,40 @@ function observe(context: BrowserContext): void {
 async function installRoute(context: BrowserContext): Promise<void> {
   if (routed.has(context)) return;
   routed.add(context);
-  await context.route(
-    (url) => DEMODB_HOST.test(url.hostname),
-    async (route: Route) => {
-      const request = route.request();
-      const url = new URL(request.url());
-      const counter = current;
-      counter.bump(url.hostname, 'handled');
-      if (request.method() === 'OPTIONS') {
-        return route.fulfill({
-          status: 204,
-          headers: { ...CORS, 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, HEAD, OPTIONS' },
-        });
-      }
-      const result = await resolve_(url, request.method(), 'range' in request.headers(), counter, async () => {
-        const response = await route.fetch();
-        return { status: response.status(), headers: dropEncoding(response.headers()), body: await response.body() };
+  const matcher = (url: URL): boolean => DEMODB_HOST.test(url.hostname);
+  const handler = async (route: Route): Promise<void> => {
+    const request = route.request();
+    const url = new URL(request.url());
+    const counter = current;
+    counter.bump(url.hostname, 'handled');
+    if (request.method() === 'OPTIONS') {
+      return route.fulfill({
+        status: 204,
+        headers: { ...CORS, 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, HEAD, OPTIONS' },
       });
-      if ('abort' in result) {
-        console.error(`[demodb-guard] ${result.abort}`);
-        return route.abort();
-      }
-      if (process.env['DEMODB_GUARD_DEBUG']) console.error(`[demodb-guard] ${request.method()} ${url.href} -> ${result.status} (${result.body.length} bytes)`);
-      return route.fulfill({ status: result.status, headers: result.headers, body: result.body });
-    },
-  );
+    }
+    const result = await resolve_(url, request.method(), 'range' in request.headers(), counter, async () => {
+      const response = await route.fetch();
+      return { status: response.status(), headers: dropEncoding(response.headers()), body: await response.body() };
+    });
+    if ('abort' in result) {
+      console.error(`[demodb-guard] ${result.abort}`);
+      return route.abort();
+    }
+    if (process.env['DEMODB_GUARD_DEBUG']) console.error(`[demodb-guard] ${request.method()} ${url.href} -> ${result.status} (${result.body.length} bytes)`);
+    return route.fulfill({ status: result.status, headers: result.headers, body: result.body });
+  };
+  routes.set(context, { matcher, handler });
+  await context.route(matcher, handler);
+}
+
+/** Removes the route again (a passive test's own context is created before the test's option is known). */
+async function removeRoute(context: BrowserContext): Promise<void> {
+  const installed = routes.get(context);
+  if (!installed) return;
+  routes.delete(context);
+  routed.delete(context);
+  await context.unroute(installed.matcher, installed.handler);
 }
 
 function summarise(counter: Counter): Record<string, HostCounts> {
@@ -238,6 +248,14 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
       }) as Browser['newContext'];
       await use(browser);
       browser.newContext = original;
+      // Contexts created outside a test (beforeAll, worker fixtures) are guarded like any other and counted here; whatever
+      // they sent must not have escaped or gone live in fixture mode.
+      const outside = summarise(orphan);
+      const outsideSum = (kind: Kind): number => Object.values(outside).reduce((n, host) => n + host[kind], 0);
+      if (Object.keys(outside).length) console.error(`[demodb-guard] requests from contexts created outside a test: ${JSON.stringify(outside)}`);
+      if (outsideSum('escaped') > 0 || (!DEMODB_LIVE && outsideSum('live') > 0)) {
+        throw new Error(`DemoDB requests from contexts created outside a test escaped the guard or went live: ${JSON.stringify(outside)}`);
+      }
     },
     { scope: 'worker' },
   ],
@@ -247,7 +265,8 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
       current = counter;
       currentPassive = demodbPassive;
       observe(context);
-      if (!demodbPassive) await installRoute(context);
+      if (demodbPassive) await removeRoute(context);
+      else await installRoute(context);
       const guard: DemodbGuard = {
         counts: counter.counts,
         async get(request, href) {
@@ -277,7 +296,7 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
 
       const summary = summarise(counter);
       current = orphan;
-      currentPassive = true;
+      currentPassive = false;
       testInfo.annotations.push({ type: 'demodb-requests', description: JSON.stringify({ mode: DEMODB_LIVE ? 'live' : 'fixture', hosts: summary }) });
       const tripped = readBreaker();
       if (tripped) throw new Error(tripped);
