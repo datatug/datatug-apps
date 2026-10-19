@@ -1,3 +1,4 @@
+import parameterWireCases from './__fixtures__/board-parameter-wire.json';
 import {
   validateBoardPresentation,
   validChartSpec,
@@ -56,6 +57,50 @@ const board = () => ({
   ],
 });
 describe('whole-board presentation admission', () => {
+  it.each([NaN, Infinity, -Infinity])(
+    'rejects non-finite integer/bit defaults before JSON serialization: %s',
+    (value) => {
+      for (const type of ['integer', 'bit']) {
+        const data = {
+          sources: [{ id: 'q', queryId: 'q' }],
+          chart: {
+            type: 'bar',
+            categoryColumn: 'country',
+            valueColumn: 'orders',
+          },
+          parameters: [{ id: 'n', type, defaultValue: value }],
+        };
+        expect(() => validateChartDefinition(data)).toThrow(
+          'Invalid chart parameters.',
+        );
+      }
+    },
+  );
+
+  // Core json.Unmarshal(Board) + Board.Validate interoperability matrix;
+  // integer/bit defaults follow the coordinated JSON-safe integer patch.
+  // No Go/WASM dependency at test runtime; the same payloads exercise all TS entry paths.
+  it.each(parameterWireCases)(
+    'matches Core raw parameter/source/transform wire: $name',
+    ({ data, expectedValid }) => {
+      const raw = {
+        id: 'b',
+        title: 'Board',
+        rows: [{ cards: [{ id: 'c', widget: { name: 'chart', data } }] }],
+      };
+      const original = JSON.stringify(raw);
+      for (const validate of [
+        () => validateChartDefinition(data),
+        () => validateBoardPresentation(raw),
+        () =>
+          replayBoardActions(raw as Board, [{ type: 'add-card', cardId: 'c' }]),
+      ]) {
+        if (expectedValid) expect(validate).not.toThrow();
+        else expect(validate).toThrow();
+      }
+      expect(JSON.stringify(raw)).toBe(original);
+    },
+  );
   it.each([undefined, null, {}, { tabs: null }, { tabs: [] }])(
     'preserves Core-valid empty tabs %j through raw admission and tutorial replay',
     (data) => {

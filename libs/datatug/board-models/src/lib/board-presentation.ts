@@ -1,3 +1,4 @@
+import { validBoardParameterDefinitions } from './widget-parameter';
 import type { Board } from './board';
 import type { ChartWidgetDef, ChartSpec } from './widget-chart';
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -93,7 +94,7 @@ export function validateChartDefinition(
     );
   if (chart.series && sources.length !== 1)
     throw new Error('Grouped bars require one source.');
-  const bindings = (items: unknown): boolean =>
+  const validSourceBindings = (items: unknown): boolean =>
     items == null ||
     (Array.isArray(items) &&
       items.every(
@@ -107,7 +108,7 @@ export function validateChartDefinition(
           !(item['value'] != null && item['boardParameterId']),
       ) &&
       new Set(items.map((item) => item['id'])).size === items.length);
-  if (!bindings(value['parameters']))
+  if (!validBoardParameterDefinitions(value['parameters']))
     throw new Error('Invalid chart parameters.');
   const ids = new Set<string>();
   for (const source of sources) {
@@ -117,7 +118,7 @@ export function validateChartDefinition(
       !text(source['id']) ||
       !text(source['queryId']) ||
       ids.has(source['id']) ||
-      !bindings(source['parameters'])
+      !validSourceBindings(source['parameters'])
     )
       throw new Error('Chart sources need distinct IDs and saved queries.');
     ids.add(source['id']);
