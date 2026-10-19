@@ -323,6 +323,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     const ref = this.projectRef();
     return !!(ref?.projectApi || ref?.branch);
   });
+  readonly presentationReset = signal(0);
   readonly loading = signal(true);
   readonly loadError = signal<string | undefined>(undefined);
 
@@ -460,6 +461,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   private clearTutorial(): void {
+    this.presentationReset.update((value) => value + 1);
     this.focusGeneration++;
     this.tutorialAnnouncement.set('');
     this.tutorialRuntime.clear();
@@ -621,6 +623,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   restartTutorial(): void {
+    this.presentationReset.update((value) => value + 1);
     this.tutorialSession?.restart();
     this.publishTutorial();
     this.focusTutorialChange(
@@ -669,13 +672,12 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         if (generation !== this.focusGeneration || !this.tutorialActive())
           return;
         const root = this.element.nativeElement;
-        const target =
-          root.querySelector<HTMLElement>(
-            fallback ??
-              (!this.visibleTutorialCards().length
-                ? '[data-tutorial-empty-focus]'
-                : '[data-tutorial-guide-focus]'),
-          );
+        const target = root.querySelector<HTMLElement>(
+          fallback ??
+            (!this.visibleTutorialCards().length
+              ? '[data-tutorial-empty-focus]'
+              : '[data-tutorial-guide-focus]'),
+        );
         target?.scrollIntoView?.({ block: 'start', behavior: 'auto' });
         target?.focus({ preventScroll: true });
       },
@@ -770,6 +772,26 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     });
   }
 
+  setTutorialSeriesColumn(
+    editor: TutorialEditor,
+    seriesId: string,
+    valueColumn: string,
+  ): void {
+    const chart = editor.chart?.chart;
+    if (!chart?.series) return;
+    this.editTutorial({
+      type: 'set-chart-spec',
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+      spec: {
+        ...chart,
+        series: chart.series.map((item) =>
+          item.id === seriesId ? { ...item, valueColumn } : item,
+        ),
+      },
+    });
+  }
+
   setTutorialChart(editor: TutorialEditor, field: string, value: string): void {
     if (
       !editor.chart ||
@@ -828,6 +850,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   showFullBoard(): void {
+    this.presentationReset.update((value) => value + 1);
     void this.router?.navigate([], {
       relativeTo: this.route,
       queryParams: { mode: null },

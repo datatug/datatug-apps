@@ -1,3 +1,9 @@
+import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
+import {
+  admitComparisonChart,
+  filterHeldOrders,
+} from './held-presentation-admission';
+import { prepareGroupedBars } from '../held-result-presentation/grouped-bars';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -31,6 +37,7 @@ import { QueryDispatchService } from '../../../../queries/query-dispatch.service
 import { QueryDispatchError } from '../../../../queries/query-dispatch';
 import type { QueryRuntimeOption } from '../../../../queries/query-runtime-registry.service';
 import {
+  chartEvidenceError,
   prepareBarRace,
   transformOrdersMonthlyCountryCount,
   SourceRightsNoticeComponent,
@@ -83,6 +90,30 @@ export interface BoardResultSnapshot {
   ],
 })
 export class BoardWidgetComponent {
+  readonly presentationSelection = inject(BoardPresentationSelection, {
+    optional: true,
+  });
+  readonly selectedCountry = computed(() =>
+    this.presentationSelection?.value(this.chartWidgetDef()?.chart.selectionId),
+  );
+  readonly filteredPresentation = computed(() => {
+    const filter = this.sqlWidgetDef()?.sql.presentationFilter;
+    return filterHeldOrders(
+      this.result(),
+      this.queryId() ?? '',
+      filter,
+      this.presentationSelection?.value(filter?.selectionId),
+    );
+  });
+  clearCountry(): void {
+    this.presentationSelection?.clear(
+      this.sqlWidgetDef()?.sql.presentationFilter?.selectionId,
+    );
+  }
+  selectCountry(country: string): void {
+    const id = this.chartWidgetDef()?.chart.selectionId;
+    if (id) this.presentationSelection?.select(id, country);
+  }
   private readonly tutorialRuntime = inject(TutorialBoardRuntime, {
     optional: true,
   });
@@ -162,7 +193,8 @@ export class BoardWidgetComponent {
   });
   readonly browserSnapshot = computed(() => {
     const result = this.result();
-    return ( !!result && 'runtime' in result && result.runtime === 'browser-sqlite'
+    return (
+      !!result && 'runtime' in result && result.runtime === 'browser-sqlite'
     );
   });
   readonly chartView = signal<'chart' | 'grid'>('chart');
@@ -189,6 +221,7 @@ export class BoardWidgetComponent {
       ? {
           categoryColumn: widget.chart.categoryColumn,
           measureColumn: widget.chart.valueColumn,
+          series: widget.chart.series,
           title: widget.title ?? 'Query results',
           unit: widget.chart.unit,
         }
@@ -203,7 +236,9 @@ export class BoardWidgetComponent {
     if (widget?.chart?.type !== 'bar-race' || !result) return {};
     if (
       !('runtime' in result) ||
-      !['browser-public-api', 'browser-sqlite', 'server'].includes(result.runtime,)
+      !['browser-public-api', 'browser-sqlite', 'server'].includes(
+        result.runtime,
+      )
     )
       return { error: 'This race requires an admitted public chart result.' };
     const transform = widget.sources[0]?.transform;
@@ -306,6 +341,8 @@ export class BoardWidgetComponent {
       this.chartView.set(this.chartWidgetDef()?.defaultView ?? 'chart'),
     );
     this.destroyRef.onDestroy(() => {
+      const id = this.chartWidgetDef()?.chart.selectionId;
+      if (id) this.presentationSelection?.clear(id);
       this.destroyed = true;
       this.generation++;
       this.activeRun?.abort();
@@ -654,24 +691,26 @@ export class BoardWidgetComponent {
         throw new Error(
           'This saved query changed. Reopen the board before running it.',
         );
-      const execute = (signal: AbortSignal) => this.dispatcher.execute({
-              projectRef: ref,
-              definition,
-              queryId,
-              environment: context?.environment,
-              ...(selectedRuntimeId !== 'snapshot'
-                ? { runtimeSelectionId: selectedRuntimeId }
-                : context?.executionTarget
-                  ? { target: context.executionTarget }
-                  : {}),
-              ...(context?.securityContextId
-                ? { securityContextId: context.securityContextId }
+      const execute = (signal: AbortSignal) =>
+        this.dispatcher.execute(
+          {
+            projectRef: ref,
+            definition,
+            queryId,
+            environment: context?.environment,
+            ...(selectedRuntimeId !== 'snapshot'
+              ? { runtimeSelectionId: selectedRuntimeId }
+              : context?.executionTarget
+                ? { target: context.executionTarget }
                 : {}),
-              ...(context?.runtimeBinding
-                ? { runtimeBinding: context.runtimeBinding }
-                : {}),
-              parameters,
-              signal,
+            ...(context?.securityContextId
+              ? { securityContextId: context.securityContextId }
+              : {}),
+            ...(context?.runtimeBinding
+              ? { runtimeBinding: context.runtimeBinding }
+              : {}),
+            parameters,
+            signal,
           },
           { maxRows: 1000 },
         );
@@ -692,7 +731,8 @@ export class BoardWidgetComponent {
       const rawResult = this.heldQueries
         ? await this.heldQueries.read(
             scope,
-            key, controller.signal,
+            key,
+            controller.signal,
             reuse,
             execute,
           )
@@ -767,7 +807,46 @@ export class BoardWidgetComponent {
     result: FederatedQueryResult,
     definition: IQueryDef,
   ): BoardResultSnapshot['result'] {
+    const chart = this.chartWidgetDef()?.chart;
     const tables = definition.federation?.tables;
+    if (chart?.series) {
+      if (
+        'runtime' in result &&
+        (result.runtime === 'browser-public-api' ||
+          result.runtime === 'browser-sqlite' ||
+          result.runtime === 'server')
+      ) {
+        const admitted = result as
+          | BrowserPublicApiChartRecordset
+          | BrowserSqliteChartRecordset
+          | ServerChartRecordset;
+        if (
+          !admitted.complete ||
+          admitted.hasMore ||
+          admitted.truncated ||
+          chartEvidenceError(admitted)
+        )
+          throw new Error(
+            'This chart source needs a complete admitted result.',
+          );
+      } else if (tables?.length === 1) {
+        if (
+          !result.nativeDirect ||
+          !result.ordinaryComplete ||
+          result.totalRows !== result.recordset.rows.length ||
+          result.hasMore ||
+          result.truncated ||
+          !result.provenance.executionProfile ||
+          result.ordinarySources?.length !== 1 ||
+          result.ordinarySources[0].database !== tables[0].database ||
+          result.ordinarySources[0].collection !== tables[0].name
+        )
+          throw new Error(
+            'This chart source needs a complete admitted single-source result.',
+          );
+      } else admitComparisonChart(result, definition);
+      prepareGroupedBars(result, chart.categoryColumn, chart.series);
+    }
     if (
       !result.nativeDirect ||
       !result.ordinaryComplete ||

@@ -192,6 +192,11 @@ describe('BoardPage same-route tutorial overlay', () => {
     });
     mode.next(null);
     expect(page.displayBoard()?.rows?.[0].cards).toHaveLength(2);
+    const canonical = JSON.stringify(page.boardDef());
+    page.showFullBoard();
+    page.showFullBoard();
+    expect(JSON.stringify(page.displayBoard())).toBe(canonical);
+    expect(JSON.stringify(page.boardDef())).toBe(canonical);
     mode.next('tutorial');
     expect(page.displayBoard()).toBeUndefined();
     await vi.waitFor(() =>

@@ -17,11 +17,17 @@ Visitor opens the showcase inspector, selects the comparison tab and presses Run
 
 ## Approach
 
-Extend the existing native planner from `{database,sources}` to a root/database endpoint plan. Use the existing source-rights preflight, deadlines, redirect refusal, bounded ordinary reader, result sink and generic inspection components. Require exact unique physical-source equality, `complete:true`, `route:in-memory`, exact rowsReturned and typed row/column validation for root responses before exposure. Keep legacy native database behavior compatible. Persist the comparison as two small saved-query files using `cloud.openvaultdb.com`; optionally add an inspector grid tab. The server endpoint is already verified: HTTP200, CORS for datatug.app, 17 rows, 93 Northwind and59 Chinook input rows, 39ms execution. Grouped bars, linked country filtering, core model changes and clone-offer files are subsequent work.
+Extend the existing native planner from `{database,sources}` to a root/database endpoint plan. Use the existing source-rights preflight, deadlines, redirect refusal, bounded ordinary reader, result sink and generic inspection components. Require exact unique physical-source equality, `complete:true`, `route:in-memory`, exact rowsReturned and typed row/column validation for root responses before exposure. Keep legacy native database behavior compatible. Persist the comparison as two small saved-query files using `cloud.openvaultdb.com`; optionally add an inspector grid tab. The server endpoint is already verified: HTTP200, CORS for datatug.app, 17 rows, 93 Northwind and59 Chinook input rows, 39ms execution. Grouped bars, linked country filtering and Core model changes were deferred from the initial transport/inspector work and are now specified as the coordinated follow-on slice below. Clone-offer files remain separate.
 
 Contract sketch: `NativePlan = {database?: string, sources: PlannedNativeSource[]}` where missing database means `/v1/dtql`; every root source is explicitly database-qualified; root selection requires aggregation, grouping, HAVING or ordering. Flat detail joins retain existing visible-row continuation paging. The ordinary consumer receives planned sources and execution path, validates all evidence first, then converts columns and rows. Compare `(database,collection)` identities as a set, reject duplicates, omissions and additions. Preserve integer/decimal precision guards. Saved comparison uses an inner equality country join, separate `COUNT(DISTINCT source.CustomerId)` aggregates, qualified ordering and limit100. No aliases are fabricated.
 
-Files: Apps `queries/federated-query-executor.ts`, `queries/ovdb-ordinary-execution.ts`, a pure result typing helper if needed, focused native/ordinary tests and one focused browser journey. Demo Project `queries/demodb/customer-country-comparison-server.query.{json,dtql}` and existing showcase board only. No API, Worker, infrastructure or datatug-core changes are required for this delivery. Independent plan review r1: root reported APPROVED, blockers=0, majors=0, minors=0; global-only native eligibility was confirmed by root to preserve flat-detail continuation. Run focused unit tests and lint through Nx, one bounded real browser query, and existing project-copy preflight; preserve its500KiB budget.
+Initial transport/inspector files: Apps `queries/federated-query-executor.ts`, `queries/ovdb-ordinary-execution.ts`, a pure result typing helper, focused native/ordinary tests and one focused browser journey; Demo Project `queries/demodb/customer-country-comparison-server.query.{json,dtql}` and the showcase inspector. That initial delivery required no API, Worker, infrastructure or datatug-core changes. Independent plan review r1: root reported APPROVED, blockers=0, majors=0, minors=0; global-only native eligibility was confirmed by root to preserve flat-detail continuation. The new visual presentation slice below has its own Core provider contract and review.
+
+### Follow-on visual comparison journey
+
+The visitor opens the completed board and sees a paired Northwind/Chinook customer-country chart beside the existing Northwind country chart, with the inspector on its separate full-width row. One native root POST supplies the comparison's 17 exact shared labels. Chart/grid toggle and keyboard focus reveal both series without a rerun. Selecting a country only filters the already held, complete publisher-verified 830-row Orders detail by exact `ShipCountry`; its caption describes orders shipped to that country, shows `X of 830`, and offers Clear. No selection goes through `boardContext`, query parameters or storage. An unverified/partial Orders result is visibly unsupported. This linked view does not join people or orders across businesses, and UK remains different from United Kingdom. Tutorial restart/Show Full clears the selection. One-option SQL runtime select is hidden while preserving real working-copy choices.
+
+Core's `board-multi-series-chart` Feature and Plan own the single release containing `series`, `selectionId` and SQL `presentationFilter`. Consume it first in backend, Cloud, CLI, Demo Project validation and Apps. Apps mirrors Core's wire in `widget-chart.ts`, `widget-sql.ts` and tutorial validation, plus a shared whole-board runtime validator for raw GitHub and tutorial boards. Existing `BoardWidget.chartResult` only promotes one-table profiled ordinary results, so add a narrow two-source native-root chart admission path in the current board widget/held-result presentation: verify `ordinaryComplete`, `nativeDirect`, exact planned physical source pair, `totalRows`/materialized row equality and typed columns, with neutral unprofiled provenance. Do not cast it to the one-table `ServerChartRecordset` arm or weaken backend result decoding. Use the current complete Orders public admission/receipt, not an invented completion flag. Keep execution identity tied to actual project/query/environment/actor/runtime inputs; presentation selection lives in a separate narrow board-scoped state. Do not add DTQL parameter execution or run a new query when selecting/Clearing. Deploy the compatible Apps parser, runtime validator, tutorial and renderer and record its exact production build before publishing the new Demo board; keep the old public board until that gate passes.
 
 ## Tasks
 
@@ -53,11 +59,54 @@ Run the focused query/browser journey with the paired committed demo tree and a 
 
 Remove locally fabricated protected profiles from ordinary, streaming and browser result builders while preserving API-issued profile metadata and browser receipt labels. Place the existing DemoProject inspector in its own full-width row and enable native Ionic scrolling/focus selection. Check separate desktop/mobile contexts against captured anonymous public read responses, one query across held-result tab changes and no invented source terms. Preserve tab IDs, saved query references and other chart slots. Root independently reviews screenshots and lands both repositories.
 
+### Task 5: Mirror and present the released paired bar wire
+
+**Verifies:** native-server-federation#ac:paired-chart, native-server-federation#ac:raw-board-validation
+**Status:** planning
+
+After the Core release and consumer checks, add the exact discriminated two-to-eight-series `bar` wire to board models, tutorial guard and authoring path while preserving legacy `valueColumn` and bar-race behavior. Add a bounded whole-board runtime pass for raw GitHub boards as well as tutorial/Show Full: validate all rows/cards and active/inactive nested tabs to depth32, typed/map forms, empty placeholders, closed new fields, producer uniqueness and resolved references. Extend existing chart presentation for every declared two-to-eight series, with one zero baseline/common numeric scale, stable colors/legend, visible exact values and keyboard selection. Preserve zero values and reject duplicate categories or invalid/imprecise numeric cells. Stage and validate all 17 typed rows before bars appear. Chart/grid toggle reuses held raw rows; existing bar-race preparation and focus remain stable.
+
+### Task 6: Admit the two-source native root result without invented profile
+
+**Verifies:** native-server-federation#ac:root-chart-admission, native-server-federation#ac:paired-chart
+**Status:** planning
+
+Keep the existing one-table `chartResult` conversion unchanged. Add a distinct ordinary-root presentation helper/arm that requires `nativeDirect`, `ordinaryComplete`, exact planned Northwind Customers and Chinook Customer physical sources, no paging, `totalRows === recordset.rows.length === 17` and all declared typed category/measure cells before publishing bars. Preserve neutral no-profile provenance and actual source rights. Reject absent/extra sources, truncated/incomplete or malformed columns/rows before chart callbacks. Do not fabricate an execution profile, collection, right or protected execution reference and do not relax backend Result decoding. The ordinary inspector remains functional.
+
+### Task 7: Bind only the declared local detail presentation
+
+**Verifies:** native-server-federation#ac:linked-orders
+**Status:** planning
+
+Introduce one board-scoped ephemeral selection keyed by the saved chart's `selectionId`, and consume it only in SQL widgets with matching `presentationFilter`. Bind the detail widget to `demodb/northwind-orders-full-sqlite`, whose default execution is the public OVDB server despite its historical name. Require the existing saved-text hash/scope admission and publisher-verified complete Orders proof: valid source rights, `complete:true`, `hasMore:false`, `truncated:false`, canonical digest and receipt row count matching all830 held rows. Compare typed `ShipCountry` strings exactly, filtering a presentation projection while retaining the original rows/receipt. Show `X of 830 orders shipped to`, zero/unsupported states and Clear. Assert rapid latest-wins interaction, restoration order, no extra request on toggle/select/Clear and unchanged unrelated execution/cache identities, race playback and focus.
+
+### Task 8: Preserve tutorial and runtime smoothness
+
+**Verifies:** native-server-federation#ac:tutorial-and-runtime
+**Status:** planning
+
+Keep selection in the active board view only, clear it on disappearing chart, tutorial restart/Show Full and route exit, and test back/forward without storage writes. Hide the SQL runtime picker when `workingCopies().length===0`; keep its runtime caption, keyboard behavior and real multi-choice switch. Match the tutorial's cross-source step to the actually available paired chart.
+
+### Task 9: Publish the paired board and prove it live
+
+**Verifies:** native-server-federation#ac:paired-chart, native-server-federation#ac:root-chart-admission, native-server-federation#ac:raw-board-validation, native-server-federation#ac:linked-orders, native-server-federation#ac:tutorial-and-runtime
+**Status:** planning
+
+Keep the public Demo board at its working `eaba7b052fff26ad16a21649cf536c59b68d61a5` shape until a compatible Apps parser, whole-board validator, tutorial and renderer has merged, deployed and produced an exact-build production receipt. After that gate, retain the inspector full-width row, place the paired card in the neighboring six-column slot, bind the native comparison plus `demodb/northwind-orders-full-sqlite`, and run backend `TestCloneCurrentProjectCheckout` against its existing 500 KiB source-proof and 768 KiB operation caps. Validate Core/Apps/backend/Cloud/CLI/Demo consumer versions, focused tests and lint, then publish Demo HEAD and run a real 1440px/375px deployed browser journey with exact request counts and source receipt. Independent review and root-owned landing apply to each repo. Distinguish local preview from deployed production acceptance.
+
 ### Local browser resource ownership
 
 The single Playwright acceptance run owns port4328 through the existing tools/serve-checkout-provider.mjs. Playwright terminates its child server at run completion; explicit teardown is SIGTERM to that recorded child if interrupted. No persistent daemon or shared browser is used.
 
 Follow-through polish uses a Playwright-owned localhost44375 server, with separate desktop1440px/mobile375px contexts and no shared-browser resize. The runner tears down its server; retained screenshots and a receipt distinguish captured network reads from live production acceptance.
+
+## Visual slice candidate progress
+
+Local macOS implementation in coordinated WB task `showcase-country-comparison` now includes Tasks5–8's wire/parser, whole-board/nested validation, grouped held-result renderer, separate selection state, narrow root admission, verified Orders projection, tutorial lifecycle and meaningful runtime choices. Generic series accept finite typed signed/fractional numbers on one common scale including zero; exact decimal strings are refused rather than coerced. The showcase's separate admission requires all17 rows and nonnegative integer customer counts. Prototype-name selection IDs are ordinary own keys.
+
+Focused model, chart, admission and legacy widget tests pass. Desktop/mobile fixture checks exercise exact sidecar/root sources and settled query counts, selection/Clear without execution or storage mutation, race settings/focus, retry and partial Orders refusal. A synthetic nonmatch checks zero without claiming it as a real17-country result. Tutorial fixture checks every current stage against the exact canonical board plus Previous/Next, restart, Show Full and route exit. Final exact-head screenshots/CI/review remain required.
+
+Task9 remains gated: local Demo candidate only, with no public push before released Core consumers and the compatible deployed Apps build are verified by root. The local fixture owns transient port44376; Playwright tears it down. Retained canonical4330 is untouched. No provider mutation, raw SQL parameter execution, source remapping or query-text change is introduced.
 
 ## Open Questions
 

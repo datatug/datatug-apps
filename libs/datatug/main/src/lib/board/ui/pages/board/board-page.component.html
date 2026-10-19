@@ -411,18 +411,36 @@
                           )
                         "
                     /></label>
-                    <label
-                      >Measure column
-                      <input
-                        [value]="chart.chart.valueColumn"
-                        (change)="
-                          setTutorialChart(
-                            editor,
-                            'valueColumn',
-                            $any($event.target).value
-                          )
-                        "
-                    /></label>
+                    @if (chart.chart.series; as series) {
+                      @for (item of series; track item.id) {
+                        <label
+                          >{{ item.title }} measure column
+                          <input
+                            [value]="item.valueColumn"
+                            (change)="
+                              setTutorialSeriesColumn(
+                                editor,
+                                item.id,
+                                $any($event.target).value
+                              )
+                            "
+                          />
+                        </label>
+                      }
+                    } @else {
+                      <label
+                        >Measure column
+                        <input
+                          [value]="chart.chart.valueColumn"
+                          (change)="
+                            setTutorialChart(
+                              editor,
+                              'valueColumn',
+                              $any($event.target).value
+                            )
+                          "
+                      /></label>
+                    }
                   }
                   <h4>Independent source bindings</h4>
                   @for (source of chart.sources; track source.id) {
@@ -533,6 +551,7 @@
   ) {
     <sneat-datatug-board
       [boardDef]="displayBoard()"
+      [selectionReset]="presentationReset()"
       [boardContext]="boardContext()"
       [projectRef]="projectRef()"
       [readBoardForRun]="readBoardForRun"
