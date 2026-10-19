@@ -1,3 +1,4 @@
+import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CUSTOM_ELEMENTS_SCHEMA, PLATFORM_ID, signal } from '@angular/core';
@@ -9,6 +10,7 @@ import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import {
   Board,
   BoardWidget,
+  ChartWidgetDef,
   TutorialBoardSession,
 } from '@datatug/board-models';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -57,6 +59,7 @@ describe('BoardWidgetComponent', () => {
       imports: [BoardWidgetComponent],
       providers: [
         TutorialBoardRuntime,
+        BoardPresentationSelection,
         { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
         {
@@ -1074,6 +1077,18 @@ describe('BoardWidgetComponent', () => {
       },
     };
   }
+
+  it('clears a chart producer without interpreting chart data as a SQL definition', () => {
+    const data = countryWidget.data as ChartWidgetDef;
+    configureShowcase({ ...countryWidget, data: { ...data, chart: { ...data.chart, selectionId: 'country' } } });
+    const component = fixture.componentInstance;
+    expect(component.sqlWidgetDef()).toBeUndefined();
+    component.selectCountry('Canada');
+    expect(component.selectedCountry()).toBe('Canada');
+    expect(() => component.clearCountry()).not.toThrow();
+    expect(component.selectedCountry()).toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+  });
 
   it('runs a saved server DTQL definition by default without choosing a working copy', async () => {
     configureShowcase();

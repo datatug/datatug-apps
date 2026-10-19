@@ -104,6 +104,82 @@ for (const [name, viewport] of [
         await page.evaluate(() => JSON.stringify({ ...sessionStorage })),
       ).toBe(storage);
       await expect(inspector).toContainText('orders shipped to Canada');
+      await expect(paired).toContainText('Selected country: Canada');
+      const sort = paired.getByRole('combobox', { name: 'Chart order' });
+      const interactionStart = performance.now();
+      for (const [value, first] of [
+        ['country', 'Argentina'],
+        ['series:0', 'USA'],
+        ['series:1', 'USA'],
+        ['difference', 'Germany'],
+      ]) {
+        await sort.focus();
+        await sort.selectOption(value);
+        await expect(sort).toBeFocused();
+        await expect(paired.locator('.grouped-bars strong').first()).toHaveText(
+          first,
+        );
+        await expect(paired.locator('.grouped-bars > li')).toHaveCount(17);
+        await expect(canada).toHaveAttribute('aria-pressed', 'true');
+      }
+      await paired.getByRole('button', { name: 'Rows', exact: true }).click();
+      await expect(paired).toContainText('Selected country: Canada');
+      await paired
+        .getByRole('button', { name: 'Clear country', exact: true })
+        .click();
+      await expect(inspector).toContainText('830 rows · 14 columns');
+      await paired.getByRole('button', { name: 'Chart', exact: true }).click();
+      await expect(sort).toHaveValue('difference');
+      await canada.click();
+      await race
+        .getByRole('button', { name: 'Monthly trend', exact: true })
+        .click();
+      const monthly = race.getByRole('region', {
+        name: 'Monthly orders trend',
+      });
+      await expect(monthly).toContainText(
+        '830 orders · 23 calendar months · orders per month',
+      );
+      await expect(monthly).toContainText('boundary months may be partial');
+      await expect(monthly.locator('svg')).toBeVisible();
+      await monthly.screenshot({
+        path: testInfo.outputPath(`monthly-${name}.png`),
+      });
+      await monthly.locator('summary').click();
+      await expect(monthly.locator('tbody tr')).toHaveCount(23);
+      await expect(monthly.locator('tfoot td')).toHaveText('830');
+      const monthlySum = await monthly
+        .locator('tbody td')
+        .evaluateAll((cells) =>
+          cells.reduce((sum, cell) => sum + Number(cell.textContent), 0),
+        );
+      expect(monthlySum).toBe(830);
+      await race
+        .getByRole('button', { name: 'Source rows', exact: true })
+        .click();
+      await expect(
+        race.locator('sneat-datatug-held-result-presentation'),
+      ).toContainText('830 rows');
+      await race.getByRole('button', { name: 'Chart', exact: true }).click();
+      await expect(
+        race.getByRole('slider', { name: 'Choose month' }),
+      ).toHaveValue(racePosition);
+      expect(posts).toEqual(baseline);
+      expect(
+        await page.evaluate(() => JSON.stringify({ ...sessionStorage })),
+      ).toBe(storage);
+      await testInfo.attach(`bounded-interaction-${name}.json`, {
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fixedRows: 830,
+          months: 23,
+          groupedRows: 17,
+          sortModes: 4,
+          wallMilliseconds: performance.now() - interactionStart,
+          boundary:
+            'fixture browser interaction including Playwright waits and screenshot; not a live server benchmark',
+        }),
+      });
       await inspector
         .getByRole('button', { name: 'Clear country', exact: true })
         .click();
@@ -182,7 +258,7 @@ for (const scenario of ['retry', 'partial-orders', 'synthetic-zero'] as const) {
         ledger.posts.filter((value) => value === 'comparison'),
       ).toHaveLength(1);
       await paired
-        .getByRole('button', { name: 'Refresh chart', exact: true })
+        .getByRole('button', { name: 'Retry chart', exact: true })
         .click();
       await expect(paired.locator('.grouped-bars > li')).toHaveCount(17);
       expect(
@@ -191,6 +267,18 @@ for (const scenario of ['retry', 'partial-orders', 'synthetic-zero'] as const) {
     } else {
       await expect(paired.locator('.grouped-bars > li')).toHaveCount(17);
       if (scenario === 'partial-orders') {
+        const race = page
+          .locator('ion-card')
+          .filter({ hasText: 'Where Northwind orders shipped' })
+          .first();
+        await race
+          .getByRole('button', { name: 'Monthly trend', exact: true })
+          .click();
+        const monthly = race.getByRole('region', {
+          name: 'Monthly orders trend',
+        });
+        await expect(monthly.getByRole('alert')).toBeVisible();
+        await expect(monthly.locator('table')).toHaveCount(0);
         await paired
           .getByRole('button', {
             name: 'Canada Northwind 3 Chinook 8',
@@ -267,7 +355,11 @@ test('distinct inspector tabs run lazily once, reuse held rows and preserve expl
   await inspector
     .getByRole('button', { name: 'Run on board', exact: true })
     .click();
-  await expect.poll(() => ledger.posts.filter(value => value === 'inspector-counts').length).toBe(2);
+  await expect
+    .poll(
+      () => ledger.posts.filter((value) => value === 'inspector-counts').length,
+    )
+    .toBe(2);
   await expect(
     inspector.getByRole('button', { name: 'Run on board', exact: true }),
   ).toBeEnabled();

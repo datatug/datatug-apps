@@ -978,3 +978,99 @@ describe('standard session editing actions', () => {
     ).toEqual(session.board);
   });
 });
+
+describe('tutorial-only held presentation views', () => {
+  it('replays trend/rows/race without modifying the Board wire, preserves old set-view and restores the cursor', async () => {
+    const storage = new MemoryStorage();
+    const session = await TutorialBoardSession.open(
+      editable,
+      'presentation',
+      storage,
+    );
+    for (const action of reveal) session.dispatch(action);
+    const before = JSON.stringify(session.board);
+    expect(
+      session.dispatch({
+        type: 'set-presentation-view',
+        cardId: 'race',
+        view: 'trend',
+      }),
+    ).toBe(true);
+    expect(session.presentationView('race')).toBe('trend');
+    expect(JSON.stringify(session.board)).toBe(before);
+    const restored = await TutorialBoardSession.open(
+      editable,
+      'presentation',
+      storage,
+    );
+    expect(restored.presentationView('race')).toBe('trend');
+    expect(
+      restored.dispatch({
+        type: 'set-presentation-view',
+        cardId: 'race',
+        view: 'grid',
+      }),
+    ).toBe(true);
+    expect(restored.presentationView('race')).toBe('grid');
+    expect(restored.previous()).toBe(true);
+    expect(restored.presentationView('race')).toBe('trend');
+    expect(restored.next()).toBe(true);
+    expect(
+      restored.dispatch({
+        type: 'set-presentation-view',
+        cardId: 'race',
+        view: 'chart',
+      }),
+    ).toBe(true);
+    expect(JSON.stringify(restored.board)).toBe(before);
+    expect(
+      restored.dispatch({ type: 'set-view', cardId: 'chart', view: 'grid' }),
+    ).toBe(true);
+    expect(chartData(restored.board).defaultView).toBe('grid');
+    expect(restored.dispatch({ type: 'remove-card', cardId: 'race' })).toBe(
+      true,
+    );
+    expect(restored.presentationView('race')).toBeUndefined();
+    restored.restart();
+    expect(restored.presentationView('race')).toBeUndefined();
+  });
+
+  it('rejects unsupported or forged presentation views and requires a present raw Orders race for trend', async () => {
+    const session = await TutorialBoardSession.open(editable, 'presentation');
+    expect(
+      session.dispatch({
+        type: 'set-presentation-view',
+        cardId: 'race',
+        view: 'trend',
+      }),
+    ).toBe(false);
+    for (const action of reveal) session.dispatch(action);
+    expect(
+      session.dispatch({
+        type: 'set-presentation-view',
+        cardId: 'chart',
+        view: 'trend',
+      }),
+    ).toBe(false);
+    expect(
+      session.dispatch(
+        unsafeAction({
+          type: 'set-presentation-view',
+          cardId: 'race',
+          view: 'javascript',
+        }),
+      ),
+    ).toBe(false);
+    expect(
+      session.dispatch(
+        unsafeAction({
+          type: 'set-presentation-view',
+          cardId: 'race',
+          view: 'trend',
+          unknown: true,
+        }),
+      ),
+    ).toBe(false);
+    expect(session.presentationView('constructor')).toBeUndefined();
+  });
+});

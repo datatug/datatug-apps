@@ -18,12 +18,23 @@ const canonical: Board = {
           widget: {
             name: 'chart',
             data: {
-              sources: [{ id: 'orders', queryId: 'demodb/orders' }],
+              sources: [
+                {
+                  id: 'orders',
+                  queryId: 'demodb/orders',
+                  transform: {
+                    name: 'orders-monthly-country-count',
+                    orderIdColumn: 'OrderID',
+                    dateColumn: 'OrderDate',
+                    countryColumn: 'ShipCountry',
+                  },
+                },
+              ],
               chart: {
                 type: 'bar-race',
-                periodColumn: 'month',
-                categoryColumn: 'country',
-                valueColumn: 'orders',
+                periodColumn: 'period',
+                categoryColumn: 'category',
+                valueColumn: 'value',
                 unit: 'orders',
                 grain: 'month',
                 onDuplicate: 'reject',
@@ -104,8 +115,9 @@ describe('tutorial scenario uses standard session actions', () => {
     expect(currentTutorialStep(session).step.title).toContain('Add Orders');
     for (const type of [
       'add-card',
-      'set-view',
-      'set-view',
+      'set-presentation-view',
+      'set-presentation-view',
+      'set-presentation-view',
       'add-card',
       'add-card',
       'select-tab',
@@ -142,7 +154,7 @@ describe('tutorial scenario uses standard session actions', () => {
       'project',
       storage,
     );
-    for (let index = 0; index < 5; index++) {
+    for (let index = 0; index < 6; index++) {
       const action = currentTutorialStep(session).step.action;
       if (!action) throw new Error('Missing guide action');
       expect(session.dispatch(action)).toBe(true);
@@ -154,7 +166,7 @@ describe('tutorial scenario uses standard session actions', () => {
       'inspect',
     ]);
     expect(currentTutorialStep(session)).toMatchObject({
-      index: 5,
+      index: 6,
       step: { title: 'Inspect Northwind · SQLite countries' },
     });
     const persisted = JSON.parse(storage.getItem(session.storageKey) ?? 'null');
@@ -166,7 +178,7 @@ describe('tutorial scenario uses standard session actions', () => {
       storage,
     );
     expect(restored.history.actions[1]).toMatchObject({
-      type: 'set-view',
+      type: 'set-presentation-view',
       widgetPath: [],
     });
     expect(restored.board.rows?.[0].cards?.map((card) => card.id)).toEqual([
@@ -175,7 +187,7 @@ describe('tutorial scenario uses standard session actions', () => {
       'inspect',
     ]);
     expect(currentTutorialStep(restored)).toMatchObject({
-      index: 5,
+      index: 6,
       step: { title: 'Inspect Northwind · SQLite countries' },
     });
     const action = currentTutorialStep(restored).step.action;
@@ -183,7 +195,7 @@ describe('tutorial scenario uses standard session actions', () => {
     if (!action) throw new Error('Missing guide action');
     expect(restored.dispatch(action)).toBe(true);
     const finalStep = currentTutorialStep(restored);
-    expect(finalStep.index).toBe(6);
+    expect(finalStep.index).toBe(7);
     expect(finalStep.step.limitation).toContain('Chinook billing');
     expect(finalStep.step.limitation).toContain('Northwind chart');
     expect(finalStep.step.limitation).not.toContain('PostgreSQL');
@@ -193,7 +205,9 @@ describe('tutorial scenario uses standard session actions', () => {
     const session = await TutorialBoardSession.open(canonical, 'project');
     session.next();
     session.next();
-    expect(currentTutorialStep(session).step.action?.type).toBe('set-view');
+    expect(currentTutorialStep(session).step.action?.type).toBe(
+      'set-presentation-view',
+    );
     session.takeControl();
     session.dispatch({ type: 'remove-card', cardId: 'race' });
     session.resume();
@@ -204,7 +218,9 @@ describe('tutorial scenario uses standard session actions', () => {
     const action = currentTutorialStep(session).step.action;
     if (!action) throw new Error('Missing restore action');
     session.dispatch(action);
-    expect(currentTutorialStep(session).step.action?.type).toBe('set-view');
+    expect(currentTutorialStep(session).step.action?.type).toBe(
+      'set-presentation-view',
+    );
     session.restart();
     expect(currentTutorialStep(session).index).toBe(0);
   });

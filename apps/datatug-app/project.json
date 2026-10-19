@@ -5,6 +5,15 @@
   "sourceRoot": "apps/datatug-app/src",
   "prefix": "sneat",
   "targets": {
+    "typecheck-showcase-e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit --project apps/datatug-app/tsconfig.showcase-e2e.json"
+      },
+      "cache": false,
+      "inputs": ["default"],
+      "outputs": []
+    },
     "stamp-build-info": {
       "executor": "nx:run-commands",
       "options": {

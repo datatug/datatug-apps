@@ -372,3 +372,83 @@ describe('grouped held-result view', () => {
     );
   });
 });
+
+it('keeps selected country and Clear outside view-specific content while native sorting preserves held rows and focus', async () => {
+  await TestBed.configureTestingModule({
+    imports: [HeldResultPresentationComponent],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+  const held = {
+    ...result([]),
+    recordset: {
+      columns: [
+        { name: 'country', type: 'string' },
+        { name: 'n', type: 'integer' },
+        { name: 'c', type: 'integer' },
+      ],
+      rows: [
+        ['USA', 13, 13],
+        ['Canada', 3, 8],
+        ['Brazil', 9, 2],
+      ].map(([country, n, c]) => [
+        { type: 'string' as const, value: String(country) },
+        { type: 'integer' as const, value: String(n) },
+        { type: 'integer' as const, value: String(c) },
+      ]),
+    },
+  };
+  const before = JSON.stringify(held);
+  fixture.componentRef.setInput('result', held);
+  fixture.componentRef.setInput('fields', {
+    categoryColumn: 'country',
+    title: 'Country comparison',
+    unit: 'customer records',
+    series: [
+      { id: 'northwind', title: 'Northwind', valueColumn: 'n' },
+      { id: 'chinook', title: 'Chinook', valueColumn: 'c' },
+    ],
+  });
+  fixture.componentRef.setInput('selectionEnabled', true);
+  fixture.componentRef.setInput('selectedCategory', 'Canada');
+  await fixture.whenStable();
+  const select = fixture.nativeElement.querySelector(
+    'select[aria-label="Chart order"]',
+  ) as HTMLSelectElement;
+  const names = () =>
+    [...fixture.nativeElement.querySelectorAll('.grouped-bars strong')].map(
+      (node) => (node as HTMLElement).textContent?.trim(),
+    );
+  expect(select.value).toBe('country');
+  expect(names()).toEqual(['Brazil', 'Canada', 'USA']);
+  select.focus();
+  select.value = 'difference';
+  select.dispatchEvent(new Event('change'));
+  await fixture.whenStable();
+  expect(names()).toEqual(['Brazil', 'USA', 'Canada']);
+  expect(document.activeElement).toBe(select);
+  expect(fixture.nativeElement.textContent).toContain(
+    'Selected country: Canada',
+  );
+  expect(
+    [...fixture.nativeElement.querySelectorAll('.grouped-bars button')]
+      .find((node) => (node as HTMLElement).textContent?.includes('Canada'))
+      ?.getAttribute('aria-pressed'),
+  ).toBe('true');
+  fixture.componentInstance.view.set('grid');
+  await fixture.whenStable();
+  expect(fixture.nativeElement.textContent).toContain(
+    'Selected country: Canada',
+  );
+  expect(
+    fixture.nativeElement.querySelector('tbody tr td').textContent,
+  ).toContain('USA');
+  const cleared = vi.fn();
+  fixture.componentInstance.selectionCleared.subscribe(cleared);
+  const clear = [...fixture.nativeElement.querySelectorAll('button')].find(
+    (node) => (node as HTMLElement).textContent?.trim() === 'Clear country',
+  ) as HTMLButtonElement;
+  clear.click();
+  expect(cleared).toHaveBeenCalledOnce();
+  expect(JSON.stringify(held)).toBe(before);
+  expect(fixture.componentInstance.result).toBe(held);
+});

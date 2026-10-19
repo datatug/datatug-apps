@@ -3,6 +3,17 @@
   [class.embedded]="embedded"
   aria-label="Data visualization and result rows"
 >
+  @if (grouped && fields?.series; as series) {
+    <sneat-datatug-held-result-controls
+      [series]="series"
+      [categoryLabel]="fields.categoryColumn || 'Category'"
+      [order]="groupedOrder()"
+      [differenceAvailable]="differenceAvailable()"
+      [selectedCategory]="selectionEnabled ? selectedCategory : null"
+      (orderChanged)="setGroupedOrder($event)"
+      (cleared)="selectionCleared.emit()"
+    />
+  }
   @if (loading) {
     <p class="state" role="status">Loading result…</p>
   } @else if (error) {
@@ -71,7 +82,7 @@
         class="grouped-bars"
         [attr.aria-label]="fields.title || 'Grouped category values'"
       >
-        @for (group of grouped.groups; track group.category) {
+        @for (group of orderedGroups(); track group.category) {
           <li>
             <button
               type="button"

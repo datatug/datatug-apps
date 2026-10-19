@@ -39,6 +39,7 @@ import type { QueryRuntimeOption } from '../../../../queries/query-runtime-regis
 import {
   chartEvidenceError,
   prepareBarRace,
+  prepareOrdersMonthlyTrend,
   transformOrdersMonthlyCountryCount,
   SourceRightsNoticeComponent,
   type BrowserPublicApiChartRecordset,
@@ -46,7 +47,11 @@ import {
   type ServerChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
-import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
+import {
+  BarRaceChartComponent,
+  OrdersMonthlyTrendComponent,
+  type BarRaceChartViews,
+} from '@datatug/charts';
 import {
   HeldResultPresentationComponent,
   type CategoryBarFields,
@@ -85,6 +90,7 @@ export interface BoardResultSnapshot {
     RouterLink,
     IonButton,
     BarRaceChartComponent,
+    OrdersMonthlyTrendComponent,
     HeldResultPresentationComponent,
     SourceRightsNoticeComponent,
   ],
@@ -107,7 +113,8 @@ export class BoardWidgetComponent {
   });
   clearCountry(): void {
     this.presentationSelection?.clear(
-      this.sqlWidgetDef()?.sql.presentationFilter?.selectionId,
+      this.sqlWidgetDef()?.sql.presentationFilter?.selectionId ??
+        this.chartWidgetDef()?.chart.selectionId,
     );
   }
   selectCountry(country: string): void {
@@ -197,7 +204,7 @@ export class BoardWidgetComponent {
       !!result && 'runtime' in result && result.runtime === 'browser-sqlite'
     );
   });
-  readonly chartView = signal<'chart' | 'grid'>('chart');
+  readonly chartView = signal<'chart' | 'grid' | 'trend'>('chart');
   readonly chartWidgetDef = computed(() =>
     this.widgetDef()?.name === 'chart'
       ? (this.widgetDef()?.data as ChartWidgetDef)
@@ -227,13 +234,42 @@ export class BoardWidgetComponent {
         }
       : null;
   });
+  private readonly raceDefinition = computed(
+    () => {
+      const widget = this.chartWidgetDef();
+      return widget?.chart.type === 'bar-race'
+        ? { chart: widget.chart, transform: widget.sources[0]?.transform }
+        : undefined;
+    },
+    { equal: (left, right) => JSON.stringify(left) === JSON.stringify(right) },
+  );
+  readonly monthlyTrend = computed(() => {
+    const race = this.raceDefinition(),
+      result = this.result();
+    if (!race?.transform)
+      return {
+        error: 'Monthly trend requires the declared raw Orders transform.',
+      };
+    if (!result) return {};
+    if (
+      !('runtime' in result) ||
+      !['browser-public-api', 'browser-sqlite', 'server'].includes(
+        result.runtime,
+      )
+    )
+      return {
+        error: 'Monthly trend requires a complete admitted Orders result.',
+      };
+    const trend = prepareOrdersMonthlyTrend(result, race.transform);
+    return trend.ok ? { data: trend.data } : { error: trend.message };
+  });
   readonly preparedRace = computed<{
     views?: BarRaceChartViews;
     error?: string;
   }>(() => {
-    const widget = this.chartWidgetDef();
+    const race = this.raceDefinition();
     const result = this.result();
-    if (widget?.chart?.type !== 'bar-race' || !result) return {};
+    if (!race || !result) return {};
     if (
       !('runtime' in result) ||
       !['browser-public-api', 'browser-sqlite', 'server'].includes(
@@ -241,7 +277,7 @@ export class BoardWidgetComponent {
       )
     )
       return { error: 'This race requires an admitted public chart result.' };
-    const transform = widget.sources[0]?.transform;
+    const transform = race.transform;
     const transformed = transform
       ? transformOrdersMonthlyCountryCount(result, transform)
       : undefined;
@@ -249,12 +285,12 @@ export class BoardWidgetComponent {
     const source = transformed?.ok ? transformed.data.recordset : result;
     const spec = {
       kind: 'bar-race' as const,
-      periodColumn: widget.chart.periodColumn,
-      categoryColumn: widget.chart.categoryColumn,
-      measureColumn: widget.chart.valueColumn,
-      unit: widget.chart.unit,
-      onDuplicate: widget.chart.onDuplicate,
-      topN: widget.chart.topN,
+      periodColumn: race.chart.periodColumn,
+      categoryColumn: race.chart.categoryColumn,
+      measureColumn: race.chart.valueColumn,
+      unit: race.chart.unit,
+      onDuplicate: race.chart.onDuplicate,
+      topN: race.chart.topN,
     };
     const period = prepareBarRace(source, { ...spec, mode: 'period' });
     const cumulative = prepareBarRace(source, { ...spec, mode: 'cumulative' });
@@ -309,8 +345,8 @@ export class BoardWidgetComponent {
   readonly tabsWidgetDef = computed(
     () => this.widgetDef()?.data as TabsWidgetDef | undefined,
   );
-  readonly sqlWidgetDef = computed(
-    () => this.widgetDef()?.data as SQLWidgetDef | undefined,
+  readonly sqlWidgetDef = computed(() =>
+    this.widgetDef()?.name === 'SQL' ? this.widgetDef()?.data as SQLWidgetDef | undefined : undefined,
   );
   readonly queryId = computed(() =>
     this.widgetDef()?.name === 'chart'
@@ -336,10 +372,38 @@ export class BoardWidgetComponent {
     return { ...ref, projectId: githubProjectAddressForRef(ref) };
   }
 
+  private readonly initialPresentationView = computed(
+    () => {
+      const active =
+        !!this.sessionOnly() &&
+        !!this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId());
+      return {
+        scope: JSON.stringify([
+          this.projectRef(),
+          this.boardId(),
+          this.cardId(),
+          this.widgetPath(),
+          active,
+        ]),
+        view:
+          (active
+            ? this.tutorialRuntime?.presentationView(
+                this.cardId(),
+                this.widgetPath(),
+              )
+            : undefined) ??
+          this.chartWidgetDef()?.defaultView ??
+          'chart',
+      };
+    },
+    {
+      equal: (left, right) =>
+        left.scope === right.scope && left.view === right.view,
+    },
+  );
+
   constructor() {
-    effect(() =>
-      this.chartView.set(this.chartWidgetDef()?.defaultView ?? 'chart'),
-    );
+    effect(() => this.chartView.set(this.initialPresentationView().view));
     this.destroyRef.onDestroy(() => {
       const id = this.chartWidgetDef()?.chart.selectionId;
       if (id) this.presentationSelection?.clear(id);
@@ -873,20 +937,10 @@ export class BoardWidgetComponent {
     };
   }
 
-  setChartView(view: 'chart' | 'grid'): void {
-    const cardId = this.cardId();
-    if (
-      cardId &&
-      this.sessionOnly() &&
-      this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId())
-    ) {
-      this.tutorialRuntime.dispatch({
-        type: 'set-view',
-        cardId,
-        widgetPath: this.widgetPath(),
-        view,
-      });
-    } else this.chartView.set(view);
+  setChartView(view: 'chart' | 'grid' | 'trend'): void {
+    // Manual view choices are ephemeral even in a tutorial. Guide actions own replay.
+    if (view === 'trend' && !this.raceDefinition()?.transform) return;
+    this.chartView.set(view);
   }
 
   /** At most one held result per identity, with a small card-local history. */

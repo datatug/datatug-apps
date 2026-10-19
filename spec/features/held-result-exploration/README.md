@@ -1,12 +1,12 @@
 ---
 format: https://specscore.md/feature-specification
-status: Draft
+status: Implementing
 ---
 
 # Feature: Reusable held result exploration
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/held-result-exploration?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/held-result-exploration?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/held-result-exploration?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/held-result-exploration?op=request-change) |
-**Status:** Draft
+**Status:** Implementing
 **Source Ideas:** —
 
 ## Summary
@@ -49,7 +49,7 @@ Given the same admitted paired rows, when Country, Northwind, Chinook or Differe
 
 ### AC: monthly-trend
 
-Given an eligible Orders race with the existing complete publisher-verified raw result, when Monthly trend is selected, then every unique valid order contributes once by raw OrderDate to a chronological calendar-month count; gaps are zero-filled. The showcase displays all 23 months totaling 830 orders, independent of race Top N or selected frame. Units/date range and an accessible monthly-data alternative are explicit. Partial, unverified, malformed/duplicate/invalid-date data fails visibly without dropping rows or claiming completeness; empty results are honest. The generic preparation/view is reusable for eligible Orders races without a persisted line-chart wire, new query, provider schema or dependency.
+Given an eligible Orders race with the existing complete publisher-verified raw result, when Monthly trend is selected, then every unique valid order contributes once by raw OrderDate to a chronological calendar-month count; gaps are zero-filled. The showcase displays all 23 months totaling 830 orders, independent of race Top N or selected frame. Units, observed minimum/maximum raw OrderDate and an accessible monthly-data alternative are explicit; boundary months may cover only part of the sample period and are never presented as evidence of business decline. Partial, unverified, malformed/duplicate/invalid-date data fails visibly without dropping rows or claiming completeness; empty results are honest. The generic preparation/view is reusable for eligible Orders races without a persisted line-chart wire, new query, provider schema or dependency.
 
 ### AC: tutorial-lifecycle
 
