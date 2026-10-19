@@ -1,8 +1,8 @@
 {
   "format": "datatug-demodb-fixtures-provenance/v1",
   "source": "github.com/demo-db/websites",
-  "commit": "792ce70b3816c66dca766f14ea87c65549e83234",
-  "built": "2026-10-16 with `pnpm install --frozen-lockfile && pnpm build` in a fresh clone (no request to demodb.dev; provider repos are the commits pinned in config/databases.json)",
+  "commit": "f9290e6616573b182dd16e21d06d8ebea4cdac38",
+  "built": "2026-10-19 with `pnpm install --frozen-lockfile && pnpm build` in a fresh clone of demo-db/websites (post static-hosting cutover, includes chunked AdventureWorks); no request to any demodb.dev host. Provider repos are the commits pinned in config/databases.json.",
   "mapping": {
     "corpus.json": "dist/corpus.json (served as https://demodb.dev/corpus.json)",
     "pages/<dataset>.html": "dist/_db/<dataset>/index.html (served as https://<dataset>.demodb.dev/)"
@@ -10,8 +10,8 @@
   "sqliteFiles": "not committed: scripts/fetch-demodb-fixtures.mjs downloads them from github.com/demo-db/<dataset> and verifies the SHA-256 pins of demo-sqlite-catalog.ts",
   "refresh": "rebuild demo-db/websites at the commit you want, copy the two outputs above, update this file; the live smoke workflow (manual) compares them with the live site",
   "sha256": {
-    "corpus.json": "add9822481ea0ba0fb03839281c370828e3d5fd283ba739d7d804dc9bbfa9eb1",
-    "pages/adventureworks.html": "9bc2110043cf5742e35cc4af0495518838fa51b158488b70d08f61daf0f645aa",
+    "corpus.json": "9aace4d4ead0d9632936f53963b19d9b27684f710aa029af7a93a2f6a0451a83",
+    "pages/adventureworks.html": "1b44d69b1303279e45e0cc40a75d67dc2a438982a888d69b09575a8276b1b1bc",
     "pages/chinook.html": "50d860f1c4e04bca1ffb636987bf0656ef22510c6b7ec6ce5cb7e8686485c431",
     "pages/employees.html": "2b4b026c4edb7f96869d2c188d8a8350cf12269dbf207a95973873ec214cd4bc",
     "pages/northwind.html": "18dcb835770d0c6888eece653787ab753ce97656b85daccec9d0b3ec161ca116",

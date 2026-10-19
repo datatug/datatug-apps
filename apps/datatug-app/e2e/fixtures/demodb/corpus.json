@@ -13373,13 +13373,14 @@
           "availableRepresentations": [
             {
               "format": "json",
-              "url": "https://adventureworks.demodb.dev/data/json/adventureworks.Production.TransactionHistory.json",
+              "url": "https://adventureworks.demodb.dev/data/json/adventureworks.Production.TransactionHistory.json.parts.json",
               "bytes": 1181484,
               "sha256": "48306a19c78d6133d8d0dbc0572f749fad239115dad0b9e4104fe2046ded7b9e",
               "compression": "gzip",
               "decodedBytes": 27882778,
               "decodedSha256": "8898aee28d27cef1b791073887fb59a2ede1fd8b6430bebc036678cccceb8c1c",
-              "note": "The browser receives decoded content from this encoded gzip export."
+              "delivery": "demodb-chunked-export/v1",
+              "note": "Published as gzip chunks: url is a demodb-chunked-export/v1 manifest; join the parts in order and gunzip."
             },
             {
               "format": "csv",
@@ -13388,7 +13389,7 @@
               "sha256": "c1828e9a816c958f0a27cf5e2385eaad1279ecef601bd5cfb3bdad88169413ce"
             }
           ],
-          "sampleExportUrl": "https://adventureworks.demodb.dev/data/json/adventureworks.Production.TransactionHistory.json"
+          "sampleExportUrl": "https://adventureworks.demodb.dev/data/json/adventureworks.Production.TransactionHistory.json.parts.json"
         },
         {
           "name": "Production.TransactionHistoryArchive",
@@ -15868,13 +15869,14 @@
           "availableRepresentations": [
             {
               "format": "json",
-              "url": "https://adventureworks.demodb.dev/data/json/adventureworks.Sales.SalesOrderDetail.json",
+              "url": "https://adventureworks.demodb.dev/data/json/adventureworks.Sales.SalesOrderDetail.json.parts.json",
               "bytes": 4168245,
               "sha256": "4e0d4ffbb379870ebadc184e8a401ef74144f4c4dfe8c89766ae1d9890458cbc",
               "compression": "gzip",
               "decodedBytes": 37748159,
               "decodedSha256": "e4e766e89990301509c702a58264d39fba59831067f45c04c629581c2c0fb0b6",
-              "note": "The browser receives decoded content from this encoded gzip export."
+              "delivery": "demodb-chunked-export/v1",
+              "note": "Published as gzip chunks: url is a demodb-chunked-export/v1 manifest; join the parts in order and gunzip."
             },
             {
               "format": "csv",
@@ -15883,7 +15885,7 @@
               "sha256": "c5912e7e667110b7b415e5fd4c1d32af440997e2c688ca112fdf2f3313e61ce5"
             }
           ],
-          "sampleExportUrl": "https://adventureworks.demodb.dev/data/json/adventureworks.Sales.SalesOrderDetail.json"
+          "sampleExportUrl": "https://adventureworks.demodb.dev/data/json/adventureworks.Sales.SalesOrderDetail.json.parts.json"
         },
         {
           "name": "Sales.SalesOrderHeader",
@@ -19813,7 +19815,8 @@
       "exports": [
         {
           "format": "sqlite",
-          "url": "https://adventureworks.demodb.dev/data/adventureworks.sqlite",
+          "url": "https://adventureworks.demodb.dev/data/adventureworks.sqlite.parts.json",
+          "delivery": "demodb-chunked-export/v1",
           "bytes": 35367459,
           "sha256": "5516328f621cbbe21083a20f325bc1a6f841e6f709bb6d8bebfebbf48b81d203",
           "compression": "gzip",
@@ -19822,7 +19825,8 @@
         },
         {
           "format": "sql",
-          "url": "https://adventureworks.demodb.dev/data/adventureworks.sql",
+          "url": "https://adventureworks.demodb.dev/data/adventureworks.sql.parts.json",
+          "delivery": "demodb-chunked-export/v1",
           "bytes": 19280448,
           "sha256": "d3887bf4538178ee68cb6fdee0498f758c45e80d7c87ac6fd578b1b96f6a06e7",
           "compression": "gzip",
@@ -19831,7 +19835,8 @@
         },
         {
           "format": "json",
-          "url": "https://adventureworks.demodb.dev/data/adventureworks.json",
+          "url": "https://adventureworks.demodb.dev/data/adventureworks.json.parts.json",
+          "delivery": "demodb-chunked-export/v1",
           "bytes": 20173827,
           "sha256": "4f1a70cadc1285637b04fbc39bc4229007b8b4dae99bd56cba76cc17565cd750",
           "compression": "gzip",
@@ -19840,7 +19845,8 @@
         },
         {
           "format": "yaml",
-          "url": "https://adventureworks.demodb.dev/data/adventureworks.yaml",
+          "url": "https://adventureworks.demodb.dev/data/adventureworks.yaml.parts.json",
+          "delivery": "demodb-chunked-export/v1",
           "bytes": 20344717,
           "sha256": "79a04f636e8a153e94ce316b8d1add843b8ddbb380d54898dc4c06e1797c829a",
           "compression": "gzip",
@@ -19849,7 +19855,8 @@
         },
         {
           "format": "postgresql",
-          "url": "https://adventureworks.demodb.dev/data/adventureworks.postgresql.sql",
+          "url": "https://adventureworks.demodb.dev/data/adventureworks.postgresql.sql.parts.json",
+          "delivery": "demodb-chunked-export/v1",
           "bytes": 19384568,
           "sha256": "cd9f921fc07d4fae2fcef65de1ea90dcbce6afbd70e56708d3fc4d9d2fefa6a4",
           "compression": "gzip",
@@ -19858,7 +19865,8 @@
         },
         {
           "format": "mysql",
-          "url": "https://adventureworks.demodb.dev/data/adventureworks.mysql.sql",
+          "url": "https://adventureworks.demodb.dev/data/adventureworks.mysql.sql.parts.json",
+          "delivery": "demodb-chunked-export/v1",
           "bytes": 19075672,
           "sha256": "ebf7f04774805174ee7ac6bbb35d8e76dd496aa2190ed3811d4ba1fa5d6f9b24",
           "compression": "gzip",
