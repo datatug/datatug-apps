@@ -87,6 +87,7 @@ class GridStubComponent {
   readonly rowData = input<unknown>();
   readonly defaultColDef = input<Record<string, unknown>>();
   readonly headerHeight = input<unknown>();
+  readonly floatingFiltersHeight = input<unknown>();
   readonly rowSelection = input<unknown>();
   readonly selectionColumnDef = input<unknown>();
   readonly rowHeight = input<unknown>();
@@ -198,6 +199,8 @@ describe('ResultsGridComponent', () => {
       expect(grid?.suppressMenuHide()).toBe(true);
       expect(def).toMatchObject({ unSortIcon: true });
       expect(grid?.enableCellTextSelection()).toBe(true);
+      // The floating-filter row sits before row 1: its height is a ratchet on the fold, not the grid's default.
+      expect(grid?.floatingFiltersHeight()).toBe(40);
       expect(grid?.autoSizeStrategy()).toEqual({ type: 'fitCellContents' });
       const ids = (grid?.columnDefs() as { colId: string }[]).map(
         (c) => c.colId,
