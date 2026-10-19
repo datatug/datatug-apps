@@ -21,6 +21,7 @@ export async function boundedResponseBytes(
   if (!reader) return { bytes: 0, raw: new Uint8Array() };
   const chunks: Uint8Array[] = [];
   let bytes = 0;
+  let reachedEnd = false;
   const abort = (): void => {
     void reader.cancel(signal?.reason).catch(() => undefined);
   };
@@ -30,7 +31,7 @@ export async function boundedResponseBytes(
       signal?.throwIfAborted();
       const item = await reader.read();
       signal?.throwIfAborted();
-      if (item.done) break;
+      if (item.done) { reachedEnd = true; break; }
       onBytes?.(item.value.byteLength);
       bytes += item.value.byteLength;
       if (bytes > remaining)
@@ -46,7 +47,7 @@ export async function boundedResponseBytes(
     return { bytes, raw: all };
   } finally {
     signal?.removeEventListener('abort', abort);
-    await reader.cancel().catch(() => undefined);
+    if (!reachedEnd) await reader.cancel().catch(() => undefined);
     reader.releaseLock();
   }
 }
