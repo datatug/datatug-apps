@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';
+const projectID = 'demo-local-sneat-app';
 
 test('signed-in user connects, queries, removes a view and revokes the Google grant', async ({
   page,
@@ -11,6 +12,58 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     { data: { email, password, returnSecureToken: true } },
   );
   expect(seededUser.ok()).toBe(true);
+  const { localId } = (await seededUser.json()) as { localId: string };
+  const personalID = `personal_${localId}`;
+  const userDocument = await page.request.patch(
+    `http://127.0.0.1:8180/v1/projects/${projectID}/databases/(default)/documents/users/${localId}`,
+    {
+      data: {
+        fields: {
+          title: { stringValue: 'Cloud Logs Fixture' },
+          email: { stringValue: email },
+          emailIsVerified: { booleanValue: true },
+          spaces: {
+            mapValue: {
+              fields: {
+                [personalID]: {
+                  mapValue: {
+                    fields: {
+                      title: { stringValue: 'Personal' },
+                      type: { stringValue: 'personal' },
+                      roles: {
+                        arrayValue: {
+                          values: [{ stringValue: 'owner' }],
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          spaceIDs: {
+            arrayValue: { values: [{ stringValue: personalID }] },
+          },
+        },
+      },
+    },
+  );
+  expect(userDocument.ok()).toBe(true);
+  const personalSpace = await page.request.patch(
+    `http://127.0.0.1:8180/v1/projects/${projectID}/databases/(default)/documents/spaces/${personalID}`,
+    {
+      data: {
+        fields: {
+          title: { stringValue: 'Personal' },
+          type: { stringValue: 'personal' },
+          userIDs: {
+            arrayValue: { values: [{ stringValue: localId }] },
+          },
+        },
+      },
+    },
+  );
+  expect(personalSpace.ok()).toBe(true);
   await page.goto('/checkout/sign-in?plan=pro&period=monthly&checkout=test');
   const checkout = page.locator(
     'datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible):has([data-checkout-page="authentication"])',
