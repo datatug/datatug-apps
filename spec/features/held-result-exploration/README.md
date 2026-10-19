@@ -53,11 +53,11 @@ Given an eligible Orders race with the existing complete publisher-verified raw 
 
 ### AC: tutorial-lifecycle
 
-Given any existing tutorial stage, when Next/Previous, Restart or Show Full is used, then the existing driver predictably demonstrates trend, source rows and race and reaches the same canonical board/card/query identities as direct full mode. Repeated full-mode entry is idempotent. Selection clears at restart/Show Full/route exit and when its producer disappears. Tutorial cursor/action restoration may use its existing bounded session storage; manual sort/view/select/Clear are ephemeral. Trend is session presentation state, never a new Core ChartDefaultView or saved board field.
+Given any existing tutorial stage, when Next/Previous, Restart or Show Full is used, then the existing driver predictably demonstrates trend, source rows and race and reaches the same canonical board/card/query identities as direct full mode. Repeated full-mode entry is idempotent. Selection clears at restart/Show Full/route exit and when its producer disappears. Tutorial cursor/action restoration may use its existing bounded session storage; card-level Chart/Monthly trend/Source rows, sort/select/Clear are ephemeral; Take Control’s Result view authoring control remains an intentional bounded tutorial edit with undo/redo/session restoration and no canonical mutation. Trend is session presentation state, never a new Core ChartDefaultView or saved board field.
 
 ### AC: execution-integrity
 
-Given settled held results, when sort/view/select/Clear changes, then no extra query, save, storage write, SQLite/WASM download or mutation occurs; result order/provenance and genuine rights/profile evidence are retained. Race frame/mode/Top N and applicable focus survive view changes; inactive playback pauses. Refresh/retry executes exactly one fresh request with existing abort/latest-wins behavior. Lazy tabs retain held results and explicit Run behavior.
+Given settled held results, when card-level presentation view, sort/select/Clear changes, then no extra query, save, storage write, SQLite/WASM download or mutation occurs; result order/provenance and genuine rights/profile evidence are retained. Race frame/mode/Top N and applicable focus survive view changes; inactive playback pauses. Refresh/retry executes exactly one fresh request with existing abort/latest-wins behavior. Lazy tabs retain held results and explicit Run behavior.
 
 ### AC: acceptance-evidence
 
