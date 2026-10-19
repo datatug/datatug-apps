@@ -23,6 +23,7 @@ export interface LocalDemoDbRuntime {
   ready(): Promise<LocalDemoDbOpenReport>;
   role(): LocalDemoDbRole;
   onRoleChange(listener: (role: LocalDemoDbRole) => void): () => void;
+  export(options?: { maxBytes?: number }): Promise<Uint8Array>;
   close(): void;
 }
 

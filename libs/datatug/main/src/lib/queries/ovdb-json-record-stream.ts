@@ -98,6 +98,7 @@ export async function readOvdbEarlyError(response: Response, signal?: AbortSigna
   const decoder = new TextDecoder('utf-8', { fatal: true });
   let body = '';
   let size = 0;
+  let reachedEnd = false;
   try {
     for (;;) {
       signal?.throwIfAborted();
@@ -110,7 +111,7 @@ export async function readOvdbEarlyError(response: Response, signal?: AbortSigna
         if (signal?.aborted) abort();
         reader.read().then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort));
       });
-      if (part.done) break;
+      if (part.done) { reachedEnd = true; break; }
       size += part.value.byteLength;
       if (size > 16 * 1024) return undefined;
       body += decoder.decode(part.value, { stream: true });
@@ -122,7 +123,10 @@ export async function readOvdbEarlyError(response: Response, signal?: AbortSigna
   } catch {
     signal?.throwIfAborted();
     return undefined;
-  } finally { void reader.cancel().catch(() => undefined); }
+  } finally {
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
+  }
 }
 
 function footerFromJson(json: string, observed: ReadonlySet<string>, relational: boolean,
@@ -167,6 +171,7 @@ export async function readOvdbJsonRecordStream(
   if (response.headers.get('Content-Type')?.split(';', 1)[0].trim().toLowerCase() !== expectedMime)
     throw new Error('OVDB query stream has an unexpected content type.');
   const reader = response.body.getReader();
+  let reachedEnd = false;
   const decoder = new TextDecoder('utf-8', { fatal: true });
   const prefix = '{"records":[';
   let prefixIndex = 0;
@@ -257,7 +262,7 @@ export async function readOvdbJsonRecordStream(
         if (signal?.aborted) abort();
         reader.read().then(resolve, reject).finally(() => signal?.removeEventListener('abort', abort));
       });
-      if (part.done) break;
+      if (part.done) { reachedEnd = true; break; }
       bytes += part.value.byteLength;
       if (bytes > limits.bytes)
         throw new Error('OVDB query stream exceeds the browser byte limit.');
@@ -269,6 +274,7 @@ export async function readOvdbJsonRecordStream(
     return { footer: footerFromJson(footerParts.join('') + footerPart, observed, relational,
       negotiatedErrors), rows, bytes };
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
 }

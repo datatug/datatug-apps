@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { TypedValue } from '../contract/types';
 import { prepareBarRace, type BrowserPublicApiChartRecordset } from './bar-race';
-import { transformOrdersMonthlyCountryCount, type OrdersMonthlyCountryCountSpec } from './orders-monthly-country-count';
+import { prepareOrdersMonthlyTrend, transformOrdersMonthlyCountryCount, type OrdersMonthlyCountryCountSpec } from './orders-monthly-country-count';
 
 const text = (value: string): TypedValue => ({ type: 'string', value });
 const integer = (value: number): TypedValue => ({ type: 'integer', value: String(value) });
@@ -147,5 +147,99 @@ describe('transformOrdersMonthlyCountryCount', () => {
     expect(transformOrdersMonthlyCountryCount(input([first, first]), spec)).toMatchObject({ ok: false, code: 'ROW' });
     expect(transformOrdersMonthlyCountryCount(input([[integer(1), text('2016-02-30'), text('France')]]), spec)).toMatchObject({ ok: false, code: 'ROW' });
     expect(transformOrdersMonthlyCountryCount(input([[integer(1), text('2016-07-04'), text(' ')]]), spec)).toMatchObject({ ok: false, code: 'ROW' });
+  });
+});
+
+describe('complete held Orders monthly trend', () => {
+  it('includes all raw 830 orders in 23 months independently of country rank or input order', () => {
+    const rows: TypedValue[][] = Array.from({ length: 830 }, (_, index) => {
+      const month = 6 + (index % 23);
+      return [
+        integer(10248 + index),
+        text(
+          `${2016 + Math.floor(month / 12)}-${String((month % 12) + 1).padStart(2, '0')}-04`,
+        ),
+        text(index % 29 === 0 ? 'Sparse country' : 'Other country'),
+      ];
+    }).reverse();
+    const held = input(rows),
+      before = JSON.stringify(held);
+    const trend = prepareOrdersMonthlyTrend(held, spec);
+    expect(trend.ok).toBe(true);
+    if (!trend.ok) return;
+    expect(trend.data.months).toHaveLength(23);
+    expect(trend.data.months[0].period).toBe('2016-07');
+    expect(trend.data.months.at(-1)?.period).toBe('2018-05');
+    expect(
+      trend.data.months.reduce((sum, month) => sum + month.orders, 0),
+    ).toBe(830);
+    expect(trend.data.orderCount).toBe(830);
+    expect(trend.data.firstDate).toBe('2016-07-04');
+    expect(trend.data.lastDate).toBe('2018-05-04');
+    expect(JSON.stringify(held)).toBe(before);
+  });
+
+  it('fills missing calendar months with zero without shifting dates or dropping sparse countries', () => {
+    const trend = prepareOrdersMonthlyTrend(
+      input([
+        [integer(1), text('2024-03-31'), text('A')],
+        [integer(2), text('2024-01-01'), text('B')],
+        [integer(3), text('2024-03-01'), text('C')],
+      ]),
+      spec,
+    );
+    expect(trend).toMatchObject({
+      ok: true,
+      data: {
+        orderCount: 3,
+        dateColumn: 'OrderDate',
+        months: [
+          { period: '2024-01', orders: 1 },
+          { period: '2024-02', orders: 0 },
+          { period: '2024-03', orders: 2 },
+        ],
+      },
+    });
+  });
+
+  it('refuses partial, receipt-mismatched, duplicate and invalid raw Orders instead of dropping rows', () => {
+    const row = [integer(1), text('2024-02-29'), text('A')];
+    const held = input([row]);
+    expect(prepareOrdersMonthlyTrend({ ...held, hasMore: true }, spec).ok).toBe(
+      false,
+    );
+    expect(
+      prepareOrdersMonthlyTrend({ ...held, complete: false }, spec).ok,
+    ).toBe(false);
+    expect(
+      prepareOrdersMonthlyTrend(
+        {
+          ...held,
+          publicApiReceipt: { ...held.publicApiReceipt, rowsReturned: 2 },
+        },
+        spec,
+      ).ok,
+    ).toBe(false);
+    expect(prepareOrdersMonthlyTrend(input([row, row]), spec).ok).toBe(false);
+    for (const date of ['2023-02-29', '2024-01-01T12:00:00Z', '', '2024-13-01'])
+      expect(
+        prepareOrdersMonthlyTrend(
+          input([[integer(1), text(date), text('A')]]),
+          spec,
+        ).ok,
+      ).toBe(false);
+    expect(
+      prepareOrdersMonthlyTrend(
+        input([[integer(1), { type: 'null' }, text('A')]]),
+        spec,
+      ).ok,
+    ).toBe(false);
+  });
+
+  it('reports an empty admitted result honestly', () => {
+    expect(prepareOrdersMonthlyTrend(input([]), spec)).toEqual({
+      ok: true,
+      data: { months: [], orderCount: 0, dateColumn: 'OrderDate' },
+    });
   });
 });

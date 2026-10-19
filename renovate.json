@@ -2,5 +2,14 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "pnpm-workspace.yaml defaults minimumReleaseAge to 1 day (1440 min) and pnpm install fails on younger @sneat/* versions; wait 2 days so Renovate never proposes a version pnpm will reject.",
+      "matchPackageNames": [
+        "@sneat/**"
+      ],
+      "minimumReleaseAge": "2 days"
+    }
   ]
 }

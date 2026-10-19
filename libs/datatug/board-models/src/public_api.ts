@@ -35,6 +35,8 @@ export {
   ChartSourceTransform,
   ChartSpec,
   BarChartSpec,
+  MultiSeriesBarChartSpec,
+  ChartSeries,
   BarRaceChartSpec,
   ChartType,
   ChartDefaultView,
@@ -62,3 +64,9 @@ export {
   BoardParameterDef,
   BoardParameterFieldRef,
 } from './lib/widget-parameter';
+
+// Whole-board new-field validation for raw GitHub and tutorial reads.
+export {
+  validateBoardPresentation,
+  validChartSpec,
+} from './lib/board-presentation';

@@ -4,6 +4,7 @@
   "peerDependencies": {
     "@angular/common": ">=22.0.0 <23.0.0",
     "@angular/core": ">=22.0.0 <23.0.0",
+    "@sneat/api": "0.27.37",
     "@ionic/angular": ">=9.0.0 <10.0.0",
     "ionicons": "*",
     "rxjs": "^7.8.0",

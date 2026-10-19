@@ -1,0 +1,1106 @@
+[
+  {
+    "name": "no declarations",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": null
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "typed string default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "country",
+          "type": "string",
+          "title": "Country",
+          "defaultValue": "Canada"
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "typed number default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "number",
+          "defaultValue": 2.5
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "typed boolean default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "b",
+          "type": "boolean",
+          "defaultValue": false
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "integer no default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer"
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "integer JSON default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": 1
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "bit JSON default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "b",
+          "type": "bit",
+          "defaultValue": 1
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "null default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": null
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "unknown type default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "custom",
+          "defaultValue": {
+            "x": 1
+          }
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "missing type",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "country"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "missing id",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "type": "string"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "wrong string default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "country",
+          "type": "string",
+          "defaultValue": 1
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "wrong number default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "number",
+          "defaultValue": "2.5"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "wrong boolean default",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "b",
+          "type": "boolean",
+          "defaultValue": 1
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "duplicate declaration ids",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string"
+        },
+        {
+          "id": "x",
+          "type": "number"
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "unknown declaration field",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string",
+          "value": "Canada"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "definition metadata",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string",
+          "isRequired": true,
+          "isMultiValue": false,
+          "minLength": -1,
+          "maxLength": 10,
+          "meta": {
+            "entity": "e",
+            "field": "f"
+          },
+          "lookup": {
+            "db": "d",
+            "sql": "q",
+            "keyFields": ["key"]
+          }
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "wrong flag",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string",
+          "isRequired": "yes"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "fractional length",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string",
+          "maxLength": 2.5
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "unknown metadata",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string",
+          "meta": {
+            "extra": true
+          }
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "unknown lookup",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "x",
+          "type": "string",
+          "lookup": {
+            "extra": true
+          }
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "constant source binding",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "parameters": [
+            {
+              "id": "country",
+              "value": "Canada"
+            }
+          ]
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "board source binding",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "parameters": [
+            {
+              "id": "country",
+              "boardParameterId": "country"
+            }
+          ]
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "query default binding",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "parameters": [
+            {
+              "id": "country"
+            }
+          ]
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "duplicate source binding",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "parameters": [
+            {
+              "id": "x"
+            },
+            {
+              "id": "x"
+            }
+          ]
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "conflicting source binding",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "parameters": [
+            {
+              "id": "x",
+              "value": false,
+              "boardParameterId": "x"
+            }
+          ]
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "declaration in source",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "parameters": [
+            {
+              "id": "x",
+              "type": "string"
+            }
+          ]
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "independent legacy sources",
+    "data": {
+      "sources": [
+        {
+          "id": "a",
+          "queryId": "a"
+        },
+        {
+          "id": "b",
+          "queryId": "b"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "race one source",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "race two sources",
+    "data": {
+      "sources": [
+        {
+          "id": "a",
+          "queryId": "a"
+        },
+        {
+          "id": "b",
+          "queryId": "b"
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "mapped transform",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "transform": {
+            "name": "orders-monthly-country-count",
+            "orderIdColumn": "OrderID",
+            "dateColumn": "OrderDate",
+            "countryColumn": "ShipCountry"
+          }
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "null transform",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "transform": null
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "unknown transform field",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "transform": {
+            "name": "orders-monthly-country-count",
+            "orderIdColumn": "OrderID",
+            "dateColumn": "OrderDate",
+            "countryColumn": "ShipCountry",
+            "extra": true
+          }
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "duplicate transform inputs",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "transform": {
+            "name": "orders-monthly-country-count",
+            "orderIdColumn": "OrderID",
+            "dateColumn": "OrderID",
+            "countryColumn": "ShipCountry"
+          }
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "missing transform input",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q",
+          "transform": {
+            "name": "orders-monthly-country-count"
+          }
+        }
+      ],
+      "chart": {
+        "type": "bar-race",
+        "categoryColumn": "category",
+        "valueColumn": "value",
+        "periodColumn": "period",
+        "grain": "month",
+        "mode": "period",
+        "topN": 10,
+        "onDuplicate": "reject",
+        "unit": "orders"
+      }
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "integer safe maximum",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": 9007199254740991
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "integer safe minimum",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": -9007199254740991
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "bit legacy integral value",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "bit",
+          "defaultValue": 10
+        }
+      ]
+    },
+    "expectedValid": true
+  },
+  {
+    "name": "integer fractional",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": 2.5
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "bit fractional",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "bit",
+          "defaultValue": 0.5
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "integer unsafe",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": 9007199254740992
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "bit unsafe negative",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "bit",
+          "defaultValue": -9007199254740992
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "integer string",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": "10"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "bit string",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "bit",
+          "defaultValue": "1"
+        }
+      ]
+    },
+    "expectedValid": false
+  },
+  {
+    "name": "integer boolean",
+    "data": {
+      "sources": [
+        {
+          "id": "q",
+          "queryId": "q"
+        }
+      ],
+      "chart": {
+        "type": "bar",
+        "categoryColumn": "country",
+        "valueColumn": "orders"
+      },
+      "parameters": [
+        {
+          "id": "n",
+          "type": "integer",
+          "defaultValue": true
+        }
+      ]
+    },
+    "expectedValid": false
+  }
+]

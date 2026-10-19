@@ -361,3 +361,37 @@ TEST payment suite must use a separate explicit opt-in. An existing paid return
 may be checked read-only by supplying `DATATUG_CHECKOUT_TEST_RETURN_SESSION`.
 No configured credentials or executed authenticated provider result are implied
 by adding this fixture/workflow.
+
+## Business project preview (live, opt-in)
+
+`business-project-preview.spec.ts` signs the designated TEST Business buyer in to
+the `business-preview` build on `http://localhost:18782` and opens the pinned
+Business project against the deployed datatug-cloud-preview (Stripe TEST keys
+only). It asserts that the project API calls (`project_summary`, `all_queries`
+and every other allow-listed route) go to the preview origin and return 2xx, and
+that a saved query of the project renders. It never enters a card, saves a
+query, or reaches a checkout or Stripe host, and keeps traces, video and
+screenshots off, and refuses to run with `--trace on`, `--reporter html`,
+video/screenshot flags or any non-empty `DEBUG` variable (including `DEBUG=*`). Every non-GET DataTug API call, and any
+DataTug API call outside the preview origin, is aborted and fails the test. It is not part of the default CI run
+(`playwright.config.ts` ignores it); `playwright.business-preview.config.ts`
+runs it.
+
+The buyer comes only from the environment. Without the first two variables every
+case is skipped and no dev server is started.
+
+| Variable | Meaning |
+| --- | --- |
+| `DATATUG_BUSINESS_PREVIEW_BUYER_EMAIL` | the TEST buyer's email |
+| `DATATUG_BUSINESS_PREVIEW_BUYER_PASSWORD` | the TEST buyer's password |
+| `DATATUG_BUSINESS_PREVIEW_BUYER_UID` | optional: the signed-in uid must equal it |
+| `DATATUG_BUSINESS_PREVIEW_PROJECT` | optional: `<repository>@<owner>@<folder>`, default is the preview's pinned project |
+
+```sh
+DATATUG_BUSINESS_PREVIEW_BUYER_EMAIL=... DATATUG_BUSINESS_PREVIEW_BUYER_PASSWORD=... \
+  pnpm nx run datatug-app:e2e-business-preview
+```
+
+The target serves `datatug-app:serve:business-preview` itself and refuses an
+occupied port 18782 (free it first). The port and the host name `localhost` matter:
+datatug-cloud-preview admits only the origin `http://localhost:18782`.

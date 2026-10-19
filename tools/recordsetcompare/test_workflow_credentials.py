@@ -8,7 +8,7 @@ TOKEN_ENV = "GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}"
 
 
 def builds_or_serves_app(step):
-    if re.search(r"(?:--target=(?:build|e2e)|datatug-app:(?:build|e2e)|tools/recordsetcompare/build_app\.py)", step):
+    if re.search(r"(?:--target=(?:build|e2e)|datatug-app:(?:build|e2e(?:-[\w-]+)?)|tools/recordsetcompare/build_app\.py)", step):
         return True
     # Direct Playwright runs also spawn the configured Nx dev server. A prior
     # production build does not remove that online verification dependency.
@@ -39,7 +39,7 @@ class PrivateCoreWorkflowTests(unittest.TestCase):
                 for step in re.split(r"(?m)(?=^      - )", job):
                     if "gh release download" in step:
                         self.assertNotIn(TOKEN_ENV, step)
-        self.assertEqual(count, 10)
+        self.assertEqual(count, 11)
 
     def test_artifact_action_requests_only_core_read_permissions(self):
         action = (ROOT / ".github/actions/private-core-artifact/action.yml").read_text()

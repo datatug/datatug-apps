@@ -291,6 +291,23 @@ class ConsumeTests(unittest.TestCase):
         self.assertEqual(asset_timeout, consume.DOWNLOAD_TIMEOUT_SECONDS)
         self.assertTrue(opener.responses[0].closed)
 
+    def test_asset_404_explains_missing_environment_credential_without_exposing_values(self):
+        for configured in (False, True):
+            with self.subTest(configured=configured):
+                error = HTTPError("https://api.github.com/asset", 404, "Not Found", Message(), io.BytesIO())
+                opener = FakeAssetOpener(b"", error=error)
+                environment = {"GH_TOKEN": "private-test-token"} if configured else {}
+                with patch.dict(consume.os.environ, environment, clear=True):
+                    with self.assertRaises(consume.VerificationError) as raised:
+                        self.download(opener)
+                message = str(raised.exception)
+                self.assertIn("HTTP 404", message)
+                self.assertNotIn("private-test-token", message)
+                self.assertEqual("does not inherit gh's stored login" in message, not configured)
+                if not configured:
+                    self.assertIn("GH_TOKEN or GITHUB_TOKEN", message)
+                self.assertEqual(len(opener.calls), 1)
+
     def test_streaming_download_accepts_direct_api_response_and_reads_in_bounded_chunks(self):
         body = bytes(range(256)) * 500
         self.lock["archiveBytes"] = len(body)

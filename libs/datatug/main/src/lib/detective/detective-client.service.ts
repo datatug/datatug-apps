@@ -4,7 +4,7 @@ import {
   HttpParams,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import type { RunQueryResponse } from '@sneat/datatug-semantic';
 import { Observable, throwError } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
@@ -184,7 +184,7 @@ export const detectiveOperationId = (): string =>
 @Injectable({ providedIn: 'root' })
 export class DetectiveClientService {
   private readonly http = inject(HttpClient);
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   private readonly pendingOperations = new Map<string, string>();
 
   private cloudParams(

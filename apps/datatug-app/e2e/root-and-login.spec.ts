@@ -70,8 +70,66 @@ test('renders the login page', async ({ page }) => {
   await page.goto('/login');
 
   await expect(page.getByText('Login @ DataTug.app')).toBeVisible();
-  await expect(page.getByText('Quick login')).toBeVisible();
+  await expect(
+    page.getByRole('link', { name: 'Return to DataTug.app' }),
+  ).toHaveCount(0);
+  await expect(page.getByText('Quick login')).toHaveCount(0);
   await expect(page.getByText('Login with Google')).toBeVisible();
+  await expect(page.getByText('Login with Microsoft')).toBeVisible();
+  await expect(page.getByText('Login with GitHub')).toBeVisible();
+  await expect(page.getByText('Login with Apple')).toHaveCount(0);
+  await expect(page.getByText('Login with Facebook')).toHaveCount(0);
+  await expect(page.locator('sneat-login-with-telegram')).toHaveCount(0);
   await expect(page.locator('sneat-login')).toBeVisible();
   expect(clientErrors).toEqual([]);
+});
+
+test('keeps login controls inline on an iPhone viewport', async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/login');
+
+  const tabs = page.locator('sneat-email-login-form ion-segment-button');
+  await expect(tabs).toHaveCount(2);
+  for (const tab of await tabs.all()) {
+    await expect(tab).toBeVisible();
+    const icon = await tab.locator('ion-icon').boundingBox();
+    const label = await tab.locator('ion-label').boundingBox();
+    if (!icon || !label) {
+      throw new Error('The login tab icon and label must have visible bounds');
+    }
+    expect(icon.x + icon.width).toBeLessThan(label.x);
+    expect(
+      Math.abs(icon.y + icon.height / 2 - label.y - label.height / 2),
+    ).toBeLessThan(8);
+  }
+
+  await tabs.filter({ hasText: 'Sign in' }).click();
+  const actions = page.locator('.email-login-actions ion-button:visible');
+  await expect(actions).toHaveCount(3);
+  await expect(page.locator('.password-button-suffix')).toHaveCount(1);
+  await expect(page.locator('.password-button-suffix')).toBeHidden();
+  for (const button of await actions.all()) {
+    await expect(button).toBeVisible();
+  }
+  const boxes = await Promise.all(
+    (await actions.all()).map(async (button) => {
+      const box = await button.boundingBox();
+      if (!box) {
+        throw new Error('The login action must have visible bounds');
+      }
+      return box;
+    }),
+  );
+  expect(boxes).toHaveLength(3);
+  const [first, , last] = boxes;
+  if (!first || !last) {
+    throw new Error('The login actions must contain three buttons');
+  }
+  expect(
+    boxes.every(
+      (box) =>
+        Math.abs(box.y + box.height / 2 - first.y - first.height / 2) < 4,
+    ),
+  ).toBe(true);
+  expect(last.x + last.width).toBeLessThanOrEqual(375);
 });

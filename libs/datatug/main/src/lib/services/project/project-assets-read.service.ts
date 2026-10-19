@@ -18,6 +18,7 @@ import {
 } from '../../models/definition/environments';
 import { Board } from '@datatug/board-models';
 import { IEntity } from '../../models/definition/metapedia/entity';
+import { ProjectService } from './project.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import {
   GithubProjectReaderService,
@@ -73,6 +74,7 @@ function safeEnvironmentPresentation(
 @Injectable({ providedIn: 'root' })
 export class ProjectAssetsReadService {
   private readonly api = inject(ProjectQueryApiService);
+  private readonly project = inject(ProjectService);
   private readonly github = inject(GithubProjectReaderService);
 
   private githubProject(ref: IProjectRef): Observable<string> {
@@ -81,6 +83,15 @@ export class ProjectAssetsReadService {
 
   private isUnsupported(ref: IProjectRef): boolean {
     return ref.spaceID !== undefined || isSharedProjectRef(ref);
+  }
+
+  private isUnqualifiedLocal(ref: IProjectRef): boolean {
+    return (
+      ref.branch === undefined &&
+      ref.projectApi === undefined &&
+      ref.spaceID === undefined &&
+      !['github', 'github.com', 'firestore'].includes(ref.storeId)
+    );
   }
 
   private invalidTransport(ref: IProjectRef): Observable<never> | undefined {
@@ -144,6 +155,14 @@ export class ProjectAssetsReadService {
         ),
       );
     }
+    if (this.isUnqualifiedLocal(ref))
+      return this.project
+        .getFull(ref)
+        .pipe(
+          map((project) =>
+            (project.boards ?? []).map(({ id, title }) => ({ id, title })),
+          ),
+        );
     return this.api.boards<IProjBoard[]>(ref);
   }
 
@@ -267,6 +286,10 @@ export class ProjectAssetsReadService {
         ),
       );
     }
+    if (this.isUnqualifiedLocal(ref))
+      return this.project
+        .getFull(ref)
+        .pipe(map((project) => project.environments ?? []));
     return this.api.environments<IEnvironmentFull[]>(ref);
   }
 }

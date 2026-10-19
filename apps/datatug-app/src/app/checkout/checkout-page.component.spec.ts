@@ -1,7 +1,7 @@
 import { DatePipe } from '@angular/common';
 import { CheckoutPriceSummaryComponent } from './checkout-price-summary.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { CUSTOM_ELEMENTS_SCHEMA, Provider } from '@angular/core';
 import {
   ActivatedRoute,
   ParamMap,
@@ -18,6 +18,7 @@ import {
 } from '@sneat/auth-core';
 import { BehaviorSubject, of } from 'rxjs';
 import { CheckoutPageComponent } from './checkout-page.component';
+import { DATATUG_CHECKOUT_FORCE_TEST } from './checkout-force-test';
 
 const mount = vi.fn().mockResolvedValue({ destroy: vi.fn() });
 vi.mock('./checkout-provider.mjs', () => ({
@@ -94,6 +95,7 @@ async function render(
   recordUID = 'buyer',
   spaces = {},
   authOnly = false,
+  extraProviders: Provider[] = [],
 ) {
   states = new BehaviorSubject(initial);
   queries = new BehaviorSubject(convertToParamMap(query));
@@ -137,6 +139,7 @@ async function render(
           },
         },
       },
+      ...extraProviders,
     ],
   })
     .overrideComponent(CheckoutPageComponent, {
@@ -725,4 +728,35 @@ it('restores the prior tab title on checkout exit and titles a cached re-entry a
   expect(document.title).toBe('Complete your DataTug Pro subscription');
   fixture.destroy();
   expect(document.title).toBe('DataTug.app');
+});
+
+describe('checkout page rail with the preview flag', () => {
+  const modeOf = () =>
+    (
+      fixture.componentInstance as unknown as { mode(): 'test' | 'live' }
+    ).mode();
+
+  it('ends in TEST mode for a Pro selection when the preview forces TEST', async () => {
+    await render(
+      { plan: 'pro', period: 'monthly' },
+      false,
+      authenticated,
+      'buyer',
+      {},
+      false,
+      [{ provide: DATATUG_CHECKOUT_FORCE_TEST, useValue: true }],
+    );
+    expect(modeOf()).toBe('test');
+    expect(fetcher.mock.calls.length).toBeGreaterThan(0);
+    for (const [url] of fetcher.mock.calls) {
+      expect(new URL(String(url)).origin).toBe(
+        'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app',
+      );
+    }
+  });
+
+  it('keeps LIVE mode for the same Pro selection with the default flag', async () => {
+    await render({ plan: 'pro', period: 'monthly' }, false, authenticated);
+    expect(modeOf()).toBe('live');
+  });
 });

@@ -1,0 +1,37 @@
+{
+  "observedAt": "2026-10-19T03:44:41.991129+00:00",
+  "journey": "local Chromium canonical public GitHub showcase, no source fixtures",
+  "page": "http://127.0.0.1:4330/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase",
+  "demoComparisonIntroducedBy": "354ed5e168e33db7a5da0ba78ccc27922f7dd836",
+  "overview": {
+    "sourceOrders": 830,
+    "monthlyFrames": 23,
+    "automatic": true
+  },
+  "comparison": {
+    "visibleRows": 17,
+    "visibleColumns": 3,
+    "canada": {
+      "northwindCustomers": 3,
+      "chinookCustomers": 8
+    },
+    "units": "customer records per source, not shared people",
+    "scope": "exact shared country labels; UK variants, nulls and source-exclusive labels excluded"
+  },
+  "network": {
+    "canonicalRootEndpoint": "https://cloud.openvaultdb.com/v1/dtql",
+    "transportEndpoint": "http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/dtql",
+    "rootQueryPosts": 1,
+    "status": 200,
+    "cloudCapabilityDatabases": [
+      "northwind",
+      "chinook"
+    ],
+    "sqliteOrWasmDownloads": 0,
+    "credentialsObserved": false
+  },
+  "lineage": "Visible Source and usage details names https://cloud.openvaultdb.com/v1/dtql (direct OVDB). Canonical source rights remain enforced before row publication.",
+  "captureBoundary": "Playwright cannot retain this completed worker response body. This is UI/network evidence, not an archived raw envelope. Strict complete/route/physical-source/type checks remain executor and worker unit gates. No query was reissued solely to obtain an envelope.",
+  "screenshot": "/Users/alex/projects/.wb/evidence/local-federation-preview/local-federation.png",
+  "testResult": "1 passed (3.5s)"
+}

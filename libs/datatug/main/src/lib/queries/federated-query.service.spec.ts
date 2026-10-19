@@ -1,5 +1,8 @@
+import { TestBed } from '@angular/core/testing';
+import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PUBLIC_OVDB_LOOPBACK_MODE } from './public-ovdb-dev-transport';
 import { FederatedQueryService } from './federated-query.service';
 import { QueryType, type IQueryDef } from '../models/definition/query-def';
 import { graphFixturePlan } from './public-data/native-graph.spec-helper';
@@ -67,6 +70,7 @@ describe('federated query worker boundary', () => {
       service: FederatedQueryService,
       extras?: Parameters<FederatedQueryService['run']>[5],
     ) => {
+      const previousWorker = FakeWorker.last;
       const run = service.run(
         definition,
         undefined,
@@ -75,9 +79,34 @@ describe('federated query worker boundary', () => {
         undefined,
         extras,
       );
-      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      await vi.waitFor(() => {
+        expect(FakeWorker.last).not.toBe(previousWorker);
+        expect(FakeWorker.last?.posted.length).toBe(1);
+      });
       return { run, worker: FakeWorker.last as FakeWorker };
     };
+
+    it('passes only app-owned dev mode and preserves progress, source and finished callbacks', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const progress = vi.fn(), source = vi.fn(), finished = vi.fn();
+      TestBed.configureTestingModule({ providers: [
+        { provide: PUBLIC_OVDB_DEV_TRANSPORT, useValue: PUBLIC_OVDB_LOOPBACK_MODE },
+      ] });
+      const service = TestBed.inject(FederatedQueryService);
+      const run = service.run(definition, progress, '', 'full', finished, { onSourceLoaded: source });
+      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      const worker = currentWorker();
+      expect(worker.posted[0]).toMatchObject({ devTransport: PUBLIC_OVDB_LOOPBACK_MODE, token: '' });
+      const event = { stage: 'loading', rowsLoaded: 3, rowsProcessed: 0 };
+      worker.send({ type: 'progress', progress: event });
+      worker.send({ type: 'source', event: sourceEvent });
+      worker.send({ type: 'finished', totalRows: 3 });
+      worker.send({ type: 'result', result: { ...result, totalRows: 3 } });
+      await run;
+      expect(progress).toHaveBeenCalledWith(event);
+      expect(source).toHaveBeenCalledWith(sourceEvent);
+      expect(finished).toHaveBeenCalledWith(3);
+    });
 
     it('hands each finished source to the run, and ignores the message when no one listens', async () => {
       vi.stubGlobal('Worker', FakeWorker);

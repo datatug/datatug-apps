@@ -1,3 +1,4 @@
+import { createPublicOvdbDevFetch, type PublicOvdbDevTransport } from './public-ovdb-dev-transport';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef } from '../models/definition/query-def';
 import {
@@ -238,6 +239,7 @@ self.onmessage = (
         token: string;
         mode?: FederatedQueryMode;
         staticSource?: StaticOvdbSource;
+        devTransport?: PublicOvdbDevTransport;
         deadline?: number;
         storageId?: string;
       }
@@ -442,7 +444,7 @@ self.onmessage = (
           onStorageOwned: (name) => self.postMessage({ type: 'storage', name }),
           ...(message.staticSource
             ? { fetch: createStaticOvdbFetch(message.staticSource), disableNativeStream: true }
-            : {}),
+            : message.devTransport ? { fetch: createPublicOvdbDevFetch(message.devTransport) } : {}),
           onSourceLoaded: (event) =>
             self.postMessage({ type: 'source', event }),
           onFirstRecord: () =>
