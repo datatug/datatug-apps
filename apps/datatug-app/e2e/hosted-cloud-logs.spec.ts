@@ -280,10 +280,12 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await page.evaluate((uid) => {
     sessionStorage.setItem(
       'datatug:google-cloud-logs:finish-key',
-      JSON.stringify({ uid, finishKey: 'tab-key' }),
+      JSON.stringify({ uid, finishKey: 'K'.repeat(43) }),
     );
   }, localId);
-  await page.goto('/my/cloud-logs?googleLogs=complete&receipt=opaque-receipt');
+  await page.goto(
+    `/my/cloud-logs?googleLogs=complete&receipt=${'R'.repeat(43)}`,
+  );
   await expect(page).toHaveURL(/\/my\/cloud-logs$/);
   await expect(
     page
@@ -298,7 +300,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     calls.find((call) =>
       call.path.endsWith('/me/google-log-grants/oauth/finish'),
     )?.body,
-  ).toEqual({ receipt: 'opaque-receipt', finishKey: 'tab-key' });
+  ).toEqual({ receipt: 'R'.repeat(43), finishKey: 'K'.repeat(43) });
   expect(
     await page.evaluate(() =>
       sessionStorage.getItem('datatug:google-cloud-logs:finish-key'),

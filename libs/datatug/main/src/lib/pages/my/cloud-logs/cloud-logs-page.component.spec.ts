@@ -11,6 +11,7 @@ import {
 } from './cloud-logs-api.service';
 import { CloudLogsPageComponent } from './cloud-logs-page.component';
 import { HostedCloudLogsAccessService } from './hosted-cloud-logs-access.service';
+import { preserveCloudLogsReturnForAuthRecovery } from './cloud-logs-auth-return';
 
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
@@ -155,7 +156,7 @@ describe('CloudLogsPageComponent', () => {
   it('finishes a replayed or new-tab callback without staying in loading state', async () => {
     window.__datatugTakeGoogleLogsReturn = () => ({
       status: 'complete',
-      receipt: 'opaque-receipt',
+      receipt: 'R'.repeat(43),
     });
     fixture = TestBed.createComponent(CloudLogsPageComponent);
     component = fixture.componentInstance;
@@ -169,14 +170,14 @@ describe('CloudLogsPageComponent', () => {
   });
 
   it('finishes a callback once across same-user access refreshes', async () => {
-    const finishKey = 'attempt-a';
+    const finishKey = 'A'.repeat(43);
     sessionStorage.setItem(
       'datatug:google-cloud-logs:finish-key',
       JSON.stringify({ uid: 'test-user', finishKey }),
     );
     window.__datatugTakeGoogleLogsReturn = () => ({
       status: 'complete',
-      receipt: 'receipt-a',
+      receipt: 'R'.repeat(43),
     });
     api.finishGoogleAuthorization.mockReturnValue(
       of({ id: 'grant-a', email: 'a@example.test', state: 'active' }),
@@ -196,20 +197,52 @@ describe('CloudLogsPageComponent', () => {
 
     expect(api.finishGoogleAuthorization).toHaveBeenCalledOnce();
     expect(api.finishGoogleAuthorization).toHaveBeenCalledWith({
-      receipt: 'receipt-a',
+      receipt: 'R'.repeat(43),
       finishKey,
     });
+  });
+
+  it('does not finish a saved callback after a newer same-user attempt replaces its key', async () => {
+    const original = { uid: 'test-user', finishKey: 'A'.repeat(43) };
+    const newer = { uid: 'test-user', finishKey: 'B'.repeat(43) };
+    sessionStorage.setItem(
+      'datatug:google-cloud-logs:finish-key',
+      JSON.stringify(original),
+    );
+    window.__datatugTakeGoogleLogsReturn = () => {
+      delete window.__datatugTakeGoogleLogsReturn;
+      return { status: 'complete', receipt: 'R'.repeat(43) };
+    };
+    expect(preserveCloudLogsReturnForAuthRecovery()).toBe('saved');
+    sessionStorage.setItem(
+      'datatug:google-cloud-logs:finish-key',
+      JSON.stringify(newer),
+    );
+
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+
+    expect(api.finishGoogleAuthorization).not.toHaveBeenCalled();
+    expect(component.notice()).toContain('did not complete');
+    expect(
+      JSON.parse(
+        sessionStorage.getItem('datatug:google-cloud-logs:finish-key') ??
+          'null',
+      ),
+    ).toEqual(newer);
   });
 
   it('does not let a stale finish delete the next user’s binding', async () => {
     const pending = new Subject<GoogleLogGrant>();
     sessionStorage.setItem(
       'datatug:google-cloud-logs:finish-key',
-      JSON.stringify({ uid: 'test-user', finishKey: 'attempt-a' }),
+      JSON.stringify({ uid: 'test-user', finishKey: 'A'.repeat(43) }),
     );
     window.__datatugTakeGoogleLogsReturn = () => ({
       status: 'complete',
-      receipt: 'receipt-a',
+      receipt: 'R'.repeat(43),
     });
     api.finishGoogleAuthorization.mockReturnValue(pending);
 
@@ -218,8 +251,8 @@ describe('CloudLogsPageComponent', () => {
     fixture.detectChanges();
     await Promise.resolve();
     expect(api.finishGoogleAuthorization).toHaveBeenCalledWith({
-      receipt: 'receipt-a',
-      finishKey: 'attempt-a',
+      receipt: 'R'.repeat(43),
+      finishKey: 'A'.repeat(43),
     });
 
     access.state.set({ status: 'checking' });
@@ -229,7 +262,7 @@ describe('CloudLogsPageComponent', () => {
     accessState.next({ status: 'allowed' });
     const nextBinding = JSON.stringify({
       uid: 'next-user',
-      finishKey: 'attempt-b',
+      finishKey: 'B'.repeat(43),
     });
     sessionStorage.setItem(
       'datatug:google-cloud-logs:finish-key',

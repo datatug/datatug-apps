@@ -41,6 +41,7 @@ import {
 import { HostedCloudLogsAccessService } from './hosted-cloud-logs-access.service';
 import {
   cloudLogsFinishKeyStorageKey,
+  discardPendingCloudLogsOAuthReturn,
   readCloudLogsFinishKeyBinding,
   takeCloudLogsOAuthReturn,
   type CloudLogsFinishKeyBinding,
@@ -686,7 +687,7 @@ export class CloudLogsPageComponent {
             finishBinding,
           );
         } else if (completedCallback?.status === 'failed') {
-          this.clearFinishKey(finishBinding?.finishKey);
+          this.clearFinishKey(finishBinding);
           this.notice.set(
             'Google account connection did not complete. You can try again.',
           );
@@ -768,9 +769,14 @@ export class CloudLogsPageComponent {
         target.protocol !== 'https:' ||
         target.hostname !== 'accounts.google.com' ||
         typeof finishKey !== 'string' ||
-        !finishKey
+        !/^[A-Za-z0-9_-]{43}$/.test(finishKey)
       )
         throw new Error('The authorization link was invalid.');
+      if (!discardPendingCloudLogsOAuthReturn()) {
+        throw new Error(
+          'This browser could not clear the previous connection return. Reload and try again.',
+        );
+      }
       try {
         sessionStorage.setItem(
           cloudLogsFinishKeyStorageKey,
@@ -791,11 +797,14 @@ export class CloudLogsPageComponent {
     }
   }
 
-  private clearFinishKey(expectedFinishKey?: string): void {
-    if (!expectedFinishKey) return;
+  private clearFinishKey(expectedBinding?: CloudLogsFinishKeyBinding): void {
+    if (!expectedBinding) return;
     try {
       const current = readCloudLogsFinishKeyBinding();
-      if (current?.finishKey === expectedFinishKey) {
+      if (
+        current?.uid === expectedBinding.uid &&
+        current.finishKey === expectedBinding.finishKey
+      ) {
         sessionStorage.removeItem(cloudLogsFinishKeyStorageKey);
       }
     } catch {
@@ -809,12 +818,18 @@ export class CloudLogsPageComponent {
     binding?: CloudLogsFinishKeyBinding,
   ): Promise<void> {
     if (!this.isCurrentAccess(generation)) return;
+    const currentBinding = readCloudLogsFinishKeyBinding();
+    const bindingIsCurrent =
+      !!binding &&
+      currentBinding?.uid === binding.uid &&
+      currentBinding.finishKey === binding.finishKey;
     if (
       !receipt ||
       !binding?.finishKey ||
+      !bindingIsCurrent ||
       !this.hostedCloudLogsAccess.isCurrentUser(binding.uid)
     ) {
-      this.clearFinishKey(binding?.finishKey);
+      if (bindingIsCurrent) this.clearFinishKey(binding);
       this.notice.set(
         binding?.finishKey
           ? 'This Google connection returned under a different sign-in. Start again to connect the account.'
@@ -842,7 +857,7 @@ export class CloudLogsPageComponent {
         this.notice.set(oauthFinishErrorMessage(error));
       }
     } finally {
-      this.clearFinishKey(binding.finishKey);
+      this.clearFinishKey(binding);
       if (this.isCurrentAccess(generation))
         await this.loadConnections(generation);
     }

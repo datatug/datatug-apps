@@ -22,6 +22,12 @@ export const cloudLogsFinishKeyStorageKey =
 const pendingCloudLogsReturnStorageKey =
   'datatug:google-cloud-logs:pending-return';
 const pendingReturnTtlMs = 10 * 60 * 1000;
+// Firebase UIDs are limited to 128 characters. The hosted backend generates
+// finish keys and receipts as 32-byte base64url values (43 characters).
+const maxUidLength = 128;
+const maxBindingStorageLength = 1024;
+const maxPendingReturnStorageLength = 2048;
+const opaqueIdPattern = /^[A-Za-z0-9_-]{43}$/;
 
 declare global {
   interface Window {
@@ -39,6 +45,11 @@ export function preserveCloudLogsReturnForAuthRecovery(): PreserveCloudLogsRetur
   if (typeof window === 'undefined') return 'none';
   const callback = window.__datatugTakeGoogleLogsReturn?.();
   if (!callback) return 'none';
+
+  if (!discardPendingReturn()) {
+    restoreCallback(callback);
+    return 'unavailable';
+  }
 
   const binding = readCloudLogsFinishKeyBinding();
   if (!binding) {
@@ -71,6 +82,10 @@ export function takeCloudLogsOAuthReturn():
   if (typeof window === 'undefined') return undefined;
   const callback = window.__datatugTakeGoogleLogsReturn?.();
   if (callback) {
+    if (!discardPendingReturn()) {
+      restoreCallback(callback);
+      return undefined;
+    }
     return { callback, binding: readCloudLogsFinishKeyBinding() };
   }
 
@@ -82,14 +97,27 @@ export function takeCloudLogsOAuthReturn():
   }
   if (!raw) return undefined;
 
+  if (raw.length > maxPendingReturnStorageLength) {
+    removePendingReturnIfCurrent(raw);
+    return undefined;
+  }
   const pending = parsePendingReturn(raw);
-  removePendingReturnIfCurrent(raw);
+  if (!removePendingReturnIfCurrent(raw)) return undefined;
   if (!pending) return undefined;
+  const currentBinding = readCloudLogsFinishKeyBinding();
+  if (!sameBinding(pending.binding, currentBinding)) {
+    return { callback: { status: 'failed' } };
+  }
   if (pending.expiresAt < Date.now()) {
     return { callback: { status: 'failed' }, binding: pending.binding };
   }
 
   return { callback: pending.callback, binding: pending.binding };
+}
+
+/** Clear a preserved callback when a newer authorization attempt starts. */
+export function discardPendingCloudLogsOAuthReturn(): boolean {
+  return typeof window === 'undefined' || discardPendingReturn();
 }
 
 export function readCloudLogsFinishKeyBinding():
@@ -98,12 +126,9 @@ export function readCloudLogsFinishKeyBinding():
   if (typeof window === 'undefined') return undefined;
   try {
     const raw = window.sessionStorage.getItem(cloudLogsFinishKeyStorageKey);
-    if (!raw) return undefined;
+    if (!raw || raw.length > maxBindingStorageLength) return undefined;
     const value = JSON.parse(raw) as Partial<CloudLogsFinishKeyBinding>;
-    return typeof value.uid === 'string' &&
-      !!value.uid &&
-      typeof value.finishKey === 'string' &&
-      !!value.finishKey
+    return isValidBinding(value)
       ? { uid: value.uid, finishKey: value.finishKey }
       : undefined;
   } catch {
@@ -117,16 +142,15 @@ function parsePendingReturn(raw: string): PendingCloudLogsOAuthReturn | undefine
     if (
       value.version !== 1 ||
       typeof value.expiresAt !== 'number' ||
+      !Number.isFinite(value.expiresAt) ||
+      value.expiresAt > Date.now() + pendingReturnTtlMs ||
       !value.binding ||
-      typeof value.binding.uid !== 'string' ||
-      !value.binding.uid ||
-      typeof value.binding.finishKey !== 'string' ||
-      !value.binding.finishKey ||
+      !isValidBinding(value.binding) ||
       !value.callback ||
       (value.callback.status !== 'failed' &&
         (value.callback.status !== 'complete' ||
           typeof value.callback.receipt !== 'string' ||
-          !value.callback.receipt))
+          !opaqueIdPattern.test(value.callback.receipt)))
     ) {
       return undefined;
     }
@@ -136,17 +160,45 @@ function parsePendingReturn(raw: string): PendingCloudLogsOAuthReturn | undefine
   }
 }
 
-function removePendingReturnIfCurrent(expected: string): void {
+function removePendingReturnIfCurrent(expected: string): boolean {
   try {
-    if (
-      window.sessionStorage.getItem(pendingCloudLogsReturnStorageKey) ===
-      expected
-    ) {
-      window.sessionStorage.removeItem(pendingCloudLogsReturnStorageKey);
-    }
+    if (window.sessionStorage.getItem(pendingCloudLogsReturnStorageKey) !== expected)
+      return false;
+    window.sessionStorage.removeItem(pendingCloudLogsReturnStorageKey);
+    return window.sessionStorage.getItem(pendingCloudLogsReturnStorageKey) === null;
   } catch {
     // Session storage may be blocked; no callback value is logged or exposed.
+    return false;
   }
+}
+
+function discardPendingReturn(): boolean {
+  try {
+    const raw = window.sessionStorage.getItem(pendingCloudLogsReturnStorageKey);
+    return raw === null || removePendingReturnIfCurrent(raw);
+  } catch {
+    return false;
+  }
+}
+
+function isValidBinding(
+  value: Partial<CloudLogsFinishKeyBinding>,
+): value is CloudLogsFinishKeyBinding {
+  if (
+    typeof value.uid !== 'string' ||
+    typeof value.finishKey !== 'string' ||
+    !opaqueIdPattern.test(value.finishKey)
+  )
+    return false;
+  const uidLength = Array.from(value.uid).length;
+  return uidLength > 0 && uidLength <= maxUidLength;
+}
+
+function sameBinding(
+  left: CloudLogsFinishKeyBinding | undefined,
+  right: CloudLogsFinishKeyBinding | undefined,
+): boolean {
+  return !!left && !!right && left.uid === right.uid && left.finishKey === right.finishKey;
 }
 
 function restoreCallback(callback: CloudLogsOAuthReturn): void {
