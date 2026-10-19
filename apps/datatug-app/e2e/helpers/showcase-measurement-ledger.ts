@@ -356,3 +356,28 @@ export async function installShowcaseMeasurementLedger(
     },
   };
 }
+
+/** Reconcile after awaited diagnostics/metadata work, and persist failure before rejecting. */
+export async function finalizeShowcaseMeasurement(
+  ledger: Awaited<ReturnType<typeof installShowcaseMeasurementLedger>>,
+  receipt: Record<string, unknown>,
+  persist: () => Promise<void>,
+  diagnosticFailure?: Error,
+): Promise<void> {
+  let failure: unknown = diagnosticFailure;
+  try {
+    await ledger.drain();
+    ledger.healthy();
+    if (ledger.summary().pendingQueries)
+      throw new Error('Queries remained pending at measurement finalization.');
+  } catch (error) {
+    failure ??= error;
+  }
+  if (failure) receipt['status'] = 'FAIL';
+  receipt['status'] ??= 'FAIL';
+  receipt['summary'] = ledger.summary();
+  receipt['violations'] = ledger.violations;
+  receipt['requests'] = ledger.rows;
+  await persist();
+  if (failure) throw failure;
+}

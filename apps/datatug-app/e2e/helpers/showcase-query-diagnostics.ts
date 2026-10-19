@@ -392,9 +392,14 @@ export async function installShowcaseQueryDiagnostics(
   page: Page,
 ) {
   await context.addInitScript(installFetchDiagnostics);
-  const network = await installNetworkDiagnostics(
-    await context.newCDPSession(page),
-  );
+  const session = await context.newCDPSession(page);
+  let network: Awaited<ReturnType<typeof installNetworkDiagnostics>>;
+  try {
+    network = await installNetworkDiagnostics(session);
+  } catch (error) {
+    await session.detach().catch(() => undefined);
+    throw error;
+  }
   return {
     async finish() {
       let fetch: FetchDiagnostic[] = [];

@@ -5,7 +5,10 @@ import {
   type APIRequestContext,
   type Locator,
 } from '@playwright/test';
-import { installShowcaseMeasurementLedger } from './helpers/showcase-measurement-ledger';
+import {
+  finalizeShowcaseMeasurement,
+  installShowcaseMeasurementLedger,
+} from './helpers/showcase-measurement-ledger';
 
 const origin = 'https://datatug.app';
 const boardURL =
@@ -164,9 +167,9 @@ test('bounded deployed showcase network and held-result measurement', async ({
   const ledger = await installShowcaseMeasurementLedger(context, {
     maxQueries: initialDiagnostic ? 3 : 12,
   });
-  const diagnostics = initialDiagnostic
-    ? await installShowcaseQueryDiagnostics(context, page)
-    : undefined;
+  let diagnostics:
+    | Awaited<ReturnType<typeof installShowcaseQueryDiagnostics>>
+    | undefined;
   const receipt: Record<string, unknown> = {
     observedAt: new Date().toISOString(),
     source: 'actual public production browser requests',
@@ -253,6 +256,8 @@ test('bounded deployed showcase network and held-result measurement', async ({
     );
   };
   try {
+    if (initialDiagnostic)
+      diagnostics = await installShowcaseQueryDiagnostics(context, page);
     receipt['identityBefore'] = await deploymentIdentity(
       request,
       expectedAppSHA,
@@ -620,22 +625,30 @@ test('bounded deployed showcase network and held-result measurement', async ({
     ledger.healthy();
     receipt['status'] = 'PASS';
   } finally {
+    let diagnosticFailure: Error | undefined;
     if (diagnostics) {
       try {
-        receipt['diagnostics'] = await diagnostics.finish();
+        const evidence = await diagnostics.finish();
+        receipt['diagnostics'] = evidence;
+        if (evidence.fetchUnavailable)
+          diagnosticFailure = new Error('Fetch diagnostics were unavailable.');
       } catch {
         receipt['diagnostics'] = { unavailable: true };
+        diagnosticFailure = new Error(
+          'Query diagnostics could not be finalized.',
+        );
       }
     }
-    await ledger.drain();
-    receipt['status'] ??= 'FAIL';
     receipt['timings'] = timings;
-    receipt['summary'] = ledger.summary();
-    receipt['violations'] = ledger.violations;
-    receipt['requests'] = ledger.rows;
-    await testInfo.attach('actual-production-showcase-measurement', {
-      body: JSON.stringify(receipt, null, 2),
-      contentType: 'application/json',
-    });
+    await finalizeShowcaseMeasurement(
+      ledger,
+      receipt,
+      () =>
+        testInfo.attach('actual-production-showcase-measurement', {
+          body: JSON.stringify(receipt, null, 2),
+          contentType: 'application/json',
+        }),
+      diagnosticFailure,
+    );
   }
 });

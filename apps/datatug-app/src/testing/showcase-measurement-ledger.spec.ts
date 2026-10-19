@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { BrowserContext, Request, Route } from '@playwright/test';
 import { describe, expect, it, vi } from 'vitest';
-import { installShowcaseMeasurementLedger } from '../../e2e/helpers/showcase-measurement-ledger';
+import {
+  finalizeShowcaseMeasurement,
+  installShowcaseMeasurementLedger,
+} from '../../e2e/helpers/showcase-measurement-ledger';
 
 const ordersQuery = readFileSync(
   resolve(
@@ -83,6 +86,40 @@ describe('opt-in production measurement protection without network', () => {
     expect(fourth.proceed).not.toHaveBeenCalled();
     expect(() => ledger.healthy()).toThrow('budget');
   });
+
+  it.each(['budget', 'request-failure'] as const)(
+    'persists FAIL before rejecting a late %s observed during final drain',
+    async (late) => {
+      const { ledger, send, events } = await harness(3);
+      ledger.phase('initial', 3, { orders: 3 });
+      const req = Object.assign(request(queryURL), {
+        failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+      });
+      await send(req);
+      if (late === 'budget') {
+        await send(request(queryURL));
+        await send(request(queryURL));
+      }
+      const receipt: Record<string, unknown> = { status: 'PASS' };
+      vi.spyOn(ledger, 'drain').mockImplementationOnce(async () => {
+        if (late === 'budget') await send(request(queryURL));
+        else events.emit('requestfailed', req);
+      });
+      const persist = vi.fn(async () => {
+        expect(receipt['status']).toBe('FAIL');
+        expect(receipt['violations']).not.toEqual([]);
+        expect(receipt['summary']).toMatchObject(
+          late === 'budget'
+            ? { queryAttempts: 4, protectedAbortAttempts: 1 }
+            : { queryFailed: 1 },
+        );
+      });
+      await expect(
+        finalizeShowcaseMeasurement(ledger, receipt, persist),
+      ).rejects.toThrow(late === 'budget' ? 'budget' : 'Query failed');
+      expect(persist).toHaveBeenCalledOnce();
+    },
+  );
 
   it.each([200, 503])(
     'retains response status %s before an aborted body and still rejects the failure',

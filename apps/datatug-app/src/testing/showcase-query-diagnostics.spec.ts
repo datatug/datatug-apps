@@ -1,11 +1,17 @@
 import { EventEmitter } from 'node:events';
-import type { CDPSession } from '@playwright/test';
+import type { BrowserContext, CDPSession, Page } from '@playwright/test';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   installFetchDiagnostics,
   installNetworkDiagnostics,
+  installShowcaseQueryDiagnostics,
   type FetchDiagnostic,
 } from '../../e2e/helpers/showcase-query-diagnostics';
+
+import {
+  finalizeShowcaseMeasurement,
+  installShowcaseMeasurementLedger,
+} from '../../e2e/helpers/showcase-measurement-ledger';
 
 const url = 'https://ovdb.demodb.dev/v1/databases/northwind/dtql';
 const diagnosticGlobal = globalThis as typeof globalThis & {
@@ -66,6 +72,40 @@ function requested(requestId: string, address = url) {
 }
 
 describe('passive bounded query CDP metadata without network', () => {
+  it('detaches partial CDP setup and retains a FAIL receipt before propagating its original rejection', async () => {
+    const fake = session();
+    const failure = new Error('Network.enable rejected');
+    fake.send.mockRejectedValueOnce(failure);
+    const context = {
+      addInitScript: vi.fn(async () => undefined),
+      newCDPSession: vi.fn(async () => fake.cdp),
+      on: vi.fn(),
+      route: vi.fn(async () => undefined),
+    } as unknown as BrowserContext;
+    const ledger = await installShowcaseMeasurementLedger(context, {
+      maxQueries: 3,
+    });
+    const receipt: Record<string, unknown> = {};
+    const persist = vi.fn(async () => {
+      expect(receipt).toMatchObject({
+        status: 'FAIL',
+        summary: { queryAttempts: 0 },
+      });
+    });
+    await expect(
+      (async () => {
+        try {
+          await installShowcaseQueryDiagnostics(context, {} as Page);
+        } finally {
+          await finalizeShowcaseMeasurement(ledger, receipt, persist);
+        }
+      })(),
+    ).rejects.toBe(failure);
+    expect(persist).toHaveBeenCalledOnce();
+    expect(fake.detach).toHaveBeenCalledOnce();
+    expect(fake.events.eventNames()).toEqual([]);
+  });
+
   it('correlates headers/data/failure and keeps only sanitized bounded fields', async () => {
     const fake = session();
     const diagnostics = await installNetworkDiagnostics(fake.cdp);
