@@ -622,7 +622,7 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
 export class CloudLogsPageComponent {
   private queryGeneration = 0;
   private accessGeneration = 0;
-  private hasAccess = false;
+  private readonly hasAccess = signal(false);
   readonly hostedCloudLogsAccess = inject(HostedCloudLogsAccessService);
   private readonly api = inject(CloudLogsApiService);
   readonly pageState = signal<PageState>('loading');
@@ -668,13 +668,13 @@ export class CloudLogsPageComponent {
       .pipe(takeUntilDestroyed())
       .subscribe((state) => {
         if (state.status !== 'allowed') {
-          if (this.hasAccess) ++this.accessGeneration;
-          this.hasAccess = false;
+          if (this.hasAccess()) ++this.accessGeneration;
+          this.hasAccess.set(false);
           this.clearAccessBoundData();
           return;
         }
-        if (this.hasAccess) return;
-        this.hasAccess = true;
+        if (this.hasAccess()) return;
+        this.hasAccess.set(true);
         const generation = this.accessGeneration;
         const completedCallback = callback;
         const finishBinding = callbackBinding;
@@ -1131,7 +1131,7 @@ export class CloudLogsPageComponent {
 
   private isCurrentAccess(generation: number): boolean {
     return (
-      this.hasAccess &&
+      this.hasAccess() &&
       generation === this.accessGeneration &&
       this.hostedCloudLogsAccess.state().status === 'allowed'
     );
