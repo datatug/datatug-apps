@@ -380,4 +380,19 @@ export async function finalizeShowcaseMeasurement(
   receipt['requests'] = ledger.rows;
   await persist();
   if (failure) throw failure;
+  // Attachment persistence itself yields to browser events. Reconcile once more
+  // synchronously after that last await; a new failure gets one corrected receipt.
+  // Playwright then has two same-name attachments: the last FAIL supersedes the provisional one.
+  try {
+    ledger.healthy();
+    if (ledger.summary().pendingQueries)
+      throw new Error('Queries remained pending after receipt persistence.');
+  } catch (error) {
+    receipt['status'] = 'FAIL';
+    receipt['summary'] = ledger.summary();
+    receipt['violations'] = ledger.violations;
+    receipt['requests'] = ledger.rows;
+    await persist();
+    throw error;
+  }
 }

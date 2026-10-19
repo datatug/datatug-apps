@@ -121,6 +121,44 @@ describe('opt-in production measurement protection without network', () => {
     },
   );
 
+  it.each(['budget', 'request-failure'] as const)(
+    'corrects a tentative receipt and rejects a late %s during persistence',
+    async (late) => {
+      const { ledger, send, events } = await harness(3);
+      ledger.phase('initial', 3, { orders: 3 });
+      const receipt: Record<string, unknown> = { status: 'PASS' };
+      const persisted: Record<string, unknown>[] = [];
+      const persist = vi.fn(async () => {
+        persisted.push(
+          JSON.parse(JSON.stringify(receipt)) as Record<string, unknown>,
+        );
+        if (persisted.length !== 1) return;
+        if (late === 'budget')
+          for (let index = 0; index < 4; index++) await send(request(queryURL));
+        else {
+          const req = Object.assign(request(queryURL), {
+            failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+          });
+          await send(req);
+          events.emit('requestfailed', req);
+        }
+      });
+      await expect(
+        finalizeShowcaseMeasurement(ledger, receipt, persist),
+      ).rejects.toThrow(late === 'budget' ? 'budget' : 'Query failed');
+      expect(persist).toHaveBeenCalledTimes(2);
+      expect(persisted[0]['status']).toBe('PASS');
+      expect(persisted[1]).toMatchObject({
+        status: 'FAIL',
+        summary:
+          late === 'budget'
+            ? { queryAttempts: 4, protectedAbortAttempts: 1 }
+            : { queryFailed: 1 },
+      });
+      expect(persisted[1]['violations']).not.toEqual([]);
+    },
+  );
+
   it.each([200, 503])(
     'retains response status %s before an aborted body and still rejects the failure',
     async (status) => {
