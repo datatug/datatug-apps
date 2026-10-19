@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';
@@ -96,7 +97,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   );
   await expect(passwordInput).toBeVisible();
   await passwordInput.fill(password);
-  await page.getByRole('button', { name: /Sign in.*with password/ }).click();
+  await page.getByRole('button', { name: SIGN_IN_BUTTON }).click();
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
   ).toBeVisible({ timeout: 20_000 });

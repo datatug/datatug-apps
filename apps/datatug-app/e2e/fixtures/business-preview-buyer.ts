@@ -1,4 +1,5 @@
 import { type Page, type TestInfo, expect } from '@playwright/test';
+import { SIGN_IN_BUTTON } from '../helpers/sign-in-button';
 
 /**
  * The environment variables the Business project preview journey needs. The
@@ -74,7 +75,7 @@ export async function signInBusinessPreviewBuyer(page: Page): Promise<void> {
     await page.locator('ion-segment-button[value="in"]').click();
     await page.locator('ion-input[name="email"] input').fill(email);
     await page.locator('ion-input[type="password"] input').fill(password);
-    await page.getByRole('button', { name: /Sign in.*with password/ }).click();
+    await page.getByRole('button', { name: SIGN_IN_BUTTON }).click();
     await expect
       .poll(
         () =>

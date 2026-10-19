@@ -1,4 +1,5 @@
 import { expect, test, type Page } from '@playwright/test';
+import { SIGN_IN_BUTTON, SIGN_IN_BUTTON_TEXT } from './helpers/sign-in-button';
 
 // Local Firebase identity and Sneat record; payment/reconciliation HTTP is a
 // contract fake. No provider payment or deployed permission mutation is made.
@@ -162,12 +163,12 @@ async function signIn(page: Page, email: string) {
     password,
   );
   const signInButton = page.getByRole('button', {
-    name: /Sign in.*with password/,
+    name: SIGN_IN_BUTTON,
   });
   await signInButton.scrollIntoViewIfNeeded();
   // Wait for Ionic's host property as well as Playwright's native actionability.
   await expect(
-    page.locator('ion-button').filter({ hasText: /Sign in.*with password/s }),
+    page.locator('ion-button').filter({ hasText: SIGN_IN_BUTTON_TEXT }),
   ).toHaveJSProperty('disabled', false);
   await expect(signInButton).toBeEnabled();
   await signInButton.click();
@@ -964,7 +965,7 @@ test('shared subscriptions preserve independent plans, confirm cancellation and 
   await page.locator('ion-segment-button[value="in"]').click();
   await page.locator('ion-input[name="email"] input').fill(email);
   await page.locator('ion-input[type="password"] input').fill(password);
-  await page.getByRole('button', { name: /Sign in.*with password/ }).click();
+  await page.getByRole('button', { name: SIGN_IN_BUTTON }).click();
   const settings = page.locator(
     'datatug-subscription-settings-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible) sneat-subscription-settings',
   );
