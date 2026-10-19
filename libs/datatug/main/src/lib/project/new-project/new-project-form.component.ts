@@ -1270,10 +1270,6 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const actor = this.userID();
     const operation = this.operationID();
     const token = this.demoContinuation ?? (actor && operation ? this.demoContinuations.find(actor, operation, source) : undefined);
-    if (!token && source?.owner === 'datatug' && source.name === 'datatug-demo-project' && this.demoContinuation) {
-      this.formError.set('Project files are ready, but the edited browser continuation is unavailable. Return to the demo to keep your data.');
-      return;
-    }
     if (token && source && actor) {
       const continuation = this.demoContinuations.bind(token, actor, source, operation, ref);
       if (!continuation) {
