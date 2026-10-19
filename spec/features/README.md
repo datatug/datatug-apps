@@ -21,6 +21,7 @@ Feature specifications for this project.
 | [In-browser query dispatch](browser-query-dispatch/README.md) | Stable | Resolve saved query definitions and explicit execution targets through one browser dispatcher while preserving project storage identity, runtime capability and result envelopes. |
 | [Copy a demo DataTug project](demo-project-copy/README.md) | Draft | Offer GitHub and local Git project copies after a browser SQLite demo is ready. |
 | [Continue an edited demo database in my project](demo-database-handoff/README.md) | Draft | Carry the active edited SQLite database through optional GitHub and local project ownership without silently switching data. |
+| [Native server federation for saved queries](native-server-federation/README.md) | Draft | Execute a qualified multi-database saved DTQL plan in one bounded OVDB server request and validate physical sources before exposing rows. |
 
 ## Open Questions
 
