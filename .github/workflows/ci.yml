@@ -294,6 +294,10 @@ jobs:
             pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
           fi
 
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
+
       - name: Upload checkout journey traces
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
@@ -355,6 +359,10 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: pnpm nx run datatug-app:e2e-cloud-logs --skip-nx-cache
+
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
 
       - name: Upload hosted Cloud Logging browser results
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && failure() }}
@@ -466,6 +474,10 @@ jobs:
           path: tmp/demodb-fixtures
           key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
 
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
+
       - name: Upload app Playwright report and traces
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -559,6 +571,10 @@ jobs:
         with:
           path: tmp/demodb-fixtures
           key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
+
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
 
       - name: Upload query mobile WebKit Playwright report and traces
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
@@ -662,6 +678,10 @@ jobs:
         with:
           path: tmp/demodb-fixtures
           key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
+
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
 
       - name: Upload demo SQLite e2e report
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
@@ -792,6 +812,10 @@ jobs:
           else
             pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
           fi
+
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
 
       - name: Upload demo hand-off e2e report
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
@@ -1024,6 +1048,10 @@ jobs:
           DATATUG_BIN: ${{ env.DATATUG_SESSION_BIN }}
         run: pnpm exec playwright test -c apps/datatug-app/playwright.session-continuity.config.ts
 
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
+
       - name: Upload Playwright report
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
         uses: actions/upload-artifact@v7
@@ -1128,6 +1156,10 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_DEMO_DIR: ${{ github.workspace }}/datatug-demo-project/demo-project-1
         run: pnpm nx run datatug-app:e2e-agent-links --skip-nx-cache
+
+      - name: Print DemoDB request report
+        if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
+        run: cat "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md 2>/dev/null || echo 'no DemoDB request report was written'
 
       - name: Upload Playwright report
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
