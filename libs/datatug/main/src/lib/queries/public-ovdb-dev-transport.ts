@@ -58,7 +58,7 @@ export function createPublicOvdbDevFetch(
       !allowed ||
       headers.has('Authorization') ||
       headers.has('Cookie') ||
-      [...headers.keys()].some(name => !publicHeaders.has(name)) ||
+      [...headers.keys()].some(name => !publicHeaders.has(name.toLowerCase())) ||
       credentials === 'include'
     )
       return fetcher(input, init);
