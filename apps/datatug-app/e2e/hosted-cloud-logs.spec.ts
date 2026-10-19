@@ -276,12 +276,10 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
       .getByText('investigator@example.test', { exact: true }),
   ).toBeVisible();
   await page
-    .getByLabel('Google Cloud project ID')
-    .locator('input')
+    .locator('ion-input[aria-label="Google Cloud project ID"] input')
     .fill('billing-prod');
   await page
-    .getByLabel('Full log view resource name')
-    .locator('input')
+    .locator('ion-input[aria-label="Full log view resource name"] input')
     .fill(
       'projects/billing-prod/locations/global/buckets/_Default/views/hosted',
     );
@@ -292,9 +290,13 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     ),
   ).toBeVisible();
   await page.getByRole('button', { name: 'View logs' }).click();
-  await page.getByLabel('Order ID').locator('input').fill('order-4');
-  await page.getByLabel('Correlation ID').locator('input').fill('corr-9');
-  await page.getByLabel('Service').locator('input').fill('billing-api');
+  await page.locator('ion-input[aria-label="Order ID"] input').fill('order-4');
+  await page
+    .locator('ion-input[aria-label="Correlation ID"] input')
+    .fill('corr-9');
+  await page
+    .locator('ion-input[aria-label="Service"] input')
+    .fill('billing-api');
   await page.getByRole('button', { name: 'Find evidence' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'result cap reached' }),
