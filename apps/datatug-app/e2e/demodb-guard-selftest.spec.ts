@@ -42,7 +42,8 @@ guarded('and guarded again', async ({ context }) => {
  * "unexpectedly passes", the proxy is forwarding (a dev server started without the lane's environment, e.g. reused locally
  * outside CI) and the claim "public OVDB hosts are never reached" is not true for that run.
  */
-guarded('an app request through the dev-server OVDB proxy is refused and counted as an escape', async ({ page }) => {
+guarded('an app request through the dev-server OVDB proxy is refused and counted as an escape', async ({ page }, testInfo) => {
+  testInfo.annotations.push({ type: 'demodb-expected-escape', description: 'negative control: the guard must flag this request' });
   guarded.skip(process.env['DEMODB_E2E_MODE'] === 'live', 'live mode forwards by design');
   guarded.fail();
   await page.goto('/');

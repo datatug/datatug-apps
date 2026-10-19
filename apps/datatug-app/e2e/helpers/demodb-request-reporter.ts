@@ -16,11 +16,18 @@ export default class DemodbRequestReporter implements Reporter {
   private readonly hosts = new Map<string, Row>();
   private mode = process.env['DEMODB_E2E_MODE'] === 'live' ? 'live' : 'fixture';
   private tests = 0;
+  private expectedEscapes = 0;
 
   onTestEnd(test: TestCase): void {
     const note = test.annotations.filter((annotation) => annotation.type === 'demodb-requests').at(-1);
     if (!note?.description) return;
     this.tests += 1;
+    // The guard self-test deliberately sends one request the guard must flag (a negative control, `test.fail()`): it is
+    // not an escape of the lane. Nothing else may carry this annotation.
+    if (test.annotations.some((annotation) => annotation.type === 'demodb-expected-escape')) {
+      this.expectedEscapes += 1;
+      return;
+    }
     const parsed = JSON.parse(note.description) as { mode: string; hosts: Record<string, Row> };
     this.mode = parsed.mode;
     for (const [host, counts] of Object.entries(parsed.hosts)) {
@@ -52,7 +59,7 @@ export default class DemodbRequestReporter implements Reporter {
     const markdown = [
       `### DemoDB request report: ${lane}`,
       '',
-      `Mode \`${this.mode}\`, ${this.tests} guarded test attempts. **Live requests to \`*.demodb.dev\`: ${live}** (budget ${budget}). **Escaped the guard: ${escaped}.**`,
+      `Mode \`${this.mode}\`, ${this.tests} guarded test attempts. **Live requests to \`*.demodb.dev\`: ${live}** (budget ${budget}). **Escaped the guard: ${escaped}.**${this.expectedEscapes ? ` (${this.expectedEscapes} deliberate negative-control request not counted)` : ''}`,
       '',
       '| host | asked | fixture | memory | LIVE | refused | escaped |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
