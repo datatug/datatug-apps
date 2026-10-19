@@ -1,6 +1,12 @@
 import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef, GridReadyEvent, SelectionChangedEvent } from 'ag-grid-community';
+import type {
+  CellKeyDownEvent,
+  FullWidthCellKeyDownEvent,
+  ColDef,
+  GridReadyEvent,
+  SelectionChangedEvent,
+} from 'ag-grid-community';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
@@ -9,6 +15,8 @@ import {
   inject,
   signal,
 } from '@angular/core';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -30,25 +38,24 @@ import {
   PersonalLogErrorCode,
   PersonalLogQueryResult,
 } from './cloud-logs-api.service';
+import { HostedCloudLogsAccessService } from './hosted-cloud-logs-access.service';
+import {
+  cloudLogsFinishKeyStorageKey,
+  discardPendingCloudLogsOAuthReturn,
+  readCloudLogsFinishKeyBinding,
+  takeCloudLogsOAuthReturn,
+  type CloudLogsFinishKeyBinding,
+} from './cloud-logs-auth-return';
 
 type PageState = 'loading' | 'ready' | 'error';
 type QueryState = 'idle' | 'loading' | 'ready' | 'error';
-const finishKeyStorageKey = 'datatug:google-cloud-logs:finish-key';
-
-declare global {
-  interface Window {
-    __datatugTakeGoogleLogsReturn?: () => {
-      status: 'complete' | 'failed';
-      receipt: string;
-    };
-  }
-}
 
 @Component({
   selector: 'sneat-datatug-cloud-logs-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
-    AgGridAngular, AgGridReadyDirective,
+    AgGridAngular,
+    AgGridReadyDirective,
     IonBackButton,
     IonButton,
     IonButtons,
@@ -59,6 +66,7 @@ declare global {
     IonSelectOption,
     IonTitle,
     IonToolbar,
+    RouterLink,
   ],
   template: `
     <ion-header
@@ -71,10 +79,12 @@ declare global {
     >
     <ion-content color="light"
       ><main class="page">
+        @if (hostedCloudLogsAccess.state().status === 'allowed') {
         <h1>Personal Google Cloud log views</h1>
         <p>
           Connect your Google account and one project-local log view. DataTug
-          reads current entries when you search; it does not save log payloads.
+            reads current entries when you search; it does not save log
+            payloads.
         </p>
         @if (notice()) {
           <p role="status" class="notice">{{ notice() }}</p>
@@ -106,9 +116,10 @@ declare global {
                       grant.revocationConfirmed === false)
                   ) {
                     <p role="alert" class="error">
-                      Google did not confirm revocation of an earlier grant for
-                      this account. Review Google Account access controls before
-                      relying on the disconnect; reconnecting is not guaranteed.
+                        Google did not confirm revocation of an earlier grant
+                        for this account. Review Google Account access controls
+                        before relying on the disconnect; reconnecting is not
+                        guaranteed.
                     </p>
                   }
                 </div>
@@ -166,8 +177,8 @@ declare global {
           <section class="card" aria-labelledby="connect-heading">
             <h2 id="connect-heading">Add a log view</h2>
             <p>
-              Enter the Google Cloud project ID and full log view resource name,
-              such as
+                Enter the Google Cloud project ID and full log view resource
+                name, such as
               <code
                 >projects/example/locations/global/buckets/_Default/views/my-view</code
               >. DataTug probes your access before enabling this view.
@@ -265,8 +276,8 @@ declare global {
                   </p>
                 } @else if (inactiveReason() === 'reconnect_required') {
                   <p role="status">
-                    Google authorization expired. Reconnect the Google account,
-                    then probe this view again.
+                      Google authorization expired. Reconnect the Google
+                      account, then probe this view again.
                   </p>
                   <ion-button (click)="startAuthorization()"
                     >Reconnect Google account</ion-button
@@ -311,16 +322,19 @@ declare global {
                       (ionChange)="severity.set($event.detail.value)"
                     >
                       <ion-select-option value="">All</ion-select-option
-                      ><ion-select-option value="DEBUG">DEBUG</ion-select-option
+                        ><ion-select-option value="DEBUG"
+                          >DEBUG</ion-select-option
                       ><ion-select-option value="INFO">INFO</ion-select-option
                       ><ion-select-option value="NOTICE"
                         >NOTICE</ion-select-option
                       ><ion-select-option value="WARNING"
                         >WARNING</ion-select-option
-                      ><ion-select-option value="ERROR">ERROR</ion-select-option
+                        ><ion-select-option value="ERROR"
+                          >ERROR</ion-select-option
                       ><ion-select-option value="CRITICAL"
                         >CRITICAL</ion-select-option
-                      ><ion-select-option value="ALERT">ALERT</ion-select-option
+                        ><ion-select-option value="ALERT"
+                          >ALERT</ion-select-option
                       ><ion-select-option value="EMERGENCY"
                         >EMERGENCY</ion-select-option
                       >
@@ -385,11 +399,25 @@ declare global {
                         : ''
                     }}
                   </p>
-                  <p id="cloud-log-grid-help">Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
-                  <ag-grid-angular *datatugAgGridReady class="log-grid"
-                    [rowData]="gridEntries()" [columnDefs]="columns" [defaultColDef]="defaultColumn"
-                    [rowSelection]="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }"
-                    (gridReady)="nameGrid($event)" (selectionChanged)="selectionChanged($event)" (cellKeyDown)="activateEntry($event)" />
+                    <p id="cloud-log-grid-help">
+                      Newest entries first. Select a row, or focus a cell and
+                      press Enter or Space, to inspect its evidence.
+                    </p>
+                    <ag-grid-angular
+                      *datatugAgGridReady
+                      class="log-grid"
+                      [rowData]="gridEntries()"
+                      [columnDefs]="columns"
+                      [defaultColDef]="defaultColumn"
+                      [rowSelection]="{
+                        mode: 'singleRow',
+                        checkboxes: false,
+                        enableClickSelection: true,
+                      }"
+                      (gridReady)="nameGrid($event)"
+                      (selectionChanged)="selectionChanged($event)"
+                      (cellKeyDown)="activateEntry($event)"
+                    />
                   @if (selectedEntry(); as entry) {
                           <section
                             class="details"
@@ -420,35 +448,71 @@ declare global {
                               <dd>{{ entry.parseStatus || 'Parsed' }}</dd>
                               <dt>Evidence reference</dt>
                               <dd>
-                                <code>{{
-                                  entry.sourceRef || 'Unavailable'
-                                }}</code>
+                            <code>{{ entry.sourceRef || 'Unavailable' }}</code>
                               </dd>
                             </dl>
-                            @if (entry.sourceRef) { <button type="button" (click)="copyReference(entry)">Copy evidence reference</button> }
-                            @if (entry.fields) { <h3>Structured fields</h3><pre>{{ fieldsText(entry) }}</pre> }
+                        @if (entry.sourceRef) {
+                          <button type="button" (click)="copyReference(entry)">
+                            Copy evidence reference
+                          </button>
+                        }
+                        @if (entry.fields) {
+                          <h3>Structured fields</h3>
+                          <pre>{{ fieldsText(entry) }}</pre>
+                        }
                             @if (entry.raw || entry.fields) {
                               <h3>Raw entry</h3>
                               <pre>{{ rawText(entry) }}</pre>
                             }
                             <p>
                               Record navigation requires a destination from the
-                              current DataTug project. These source values are
-                              shown as evidence only.
+                          current DataTug project. These source values are shown
+                          as evidence only.
                             </p>
                           </section>
                   }
-
                 }
               }
             </section>
           }
         }
+        } @else if (hostedCloudLogsAccess.state().status === 'checking') {
+          <p role="status" aria-live="polite">
+            Checking access to Cloud Logging…
+          </p>
+        } @else if (hostedCloudLogsAccess.state().status === 'error') {
+          <p role="alert">
+            Could not verify access to Cloud Logging. Retry the check or return
+            to My.
+          </p>
+          <ion-button (click)="retryAccessCheck()"
+            >Retry access check</ion-button
+          >
+          <ion-button fill="clear" routerLink="/my">Return to My</ion-button>
+        } @else if (hostedCloudLogsAccess.state().status === 'auth-error') {
+          <p role="alert">
+            We could not verify your Sneat sign-in. Sign in again to continue.
+          </p>
+          <ion-button fill="clear" routerLink="/login">Sign in again</ion-button>
+          <ion-button fill="clear" (click)="retryAuthentication()"
+            >Reload sign-in check</ion-button
+          >
+        } @else {
+          <p role="status">
+            This account does not have access to hosted Cloud Logging.
+          </p>
+          <ion-button fill="clear" routerLink="/my">Return to My</ion-button>
+        }
       </main></ion-content
     >
   `,
   styles: `
-    .log-grid { display: block; height: 420px; width: 100%; min-width: 0; }
+    .log-grid {
+      display: block;
+      height: 420px;
+      width: 100%;
+      min-width: 0;
+    }
     .page {
       max-width: 1000px;
       margin: 0 auto;
@@ -552,12 +616,14 @@ declare global {
         align-items: flex-start;
         flex-direction: column;
       }
-
     }
   `,
 })
 export class CloudLogsPageComponent {
   private queryGeneration = 0;
+  private accessGeneration = 0;
+  private readonly hasAccess = signal(false);
+  readonly hostedCloudLogsAccess = inject(HostedCloudLogsAccessService);
   private readonly api = inject(CloudLogsApiService);
   readonly pageState = signal<PageState>('loading');
   readonly pageError = signal('');
@@ -595,18 +661,50 @@ export class CloudLogsPageComponent {
     !this.busy();
 
   constructor() {
-    const callback = this.scrubOAuthCallback();
-    if (callback?.status === 'complete') {
-      void this.finishAuthorization(callback.receipt);
-    } else {
-      void this.loadConnections();
-    }
-    if (callback?.status === 'failed') {
-      this.clearFinishKey();
-      this.notice.set(
-        'Google account connection did not complete. You can try again.',
-      );
-    }
+    const oauthReturn = takeCloudLogsOAuthReturn();
+    let callback = oauthReturn?.callback;
+    let callbackBinding = oauthReturn?.binding;
+    this.hostedCloudLogsAccess.state$
+      .pipe(takeUntilDestroyed())
+      .subscribe((state) => {
+        if (state.status !== 'allowed') {
+          if (this.hasAccess()) ++this.accessGeneration;
+          this.hasAccess.set(false);
+          this.clearAccessBoundData();
+          return;
+        }
+        if (this.hasAccess()) return;
+        this.hasAccess.set(true);
+        const generation = this.accessGeneration;
+        const completedCallback = callback;
+        const finishBinding = callbackBinding;
+        callback = undefined;
+        callbackBinding = undefined;
+        if (completedCallback?.status === 'complete') {
+          void this.finishAuthorization(
+            completedCallback.receipt,
+            generation,
+            finishBinding,
+          );
+        } else if (completedCallback?.status === 'failed') {
+          this.clearFinishKey(finishBinding);
+          this.notice.set(
+            'Google account connection did not complete. You can try again.',
+          );
+          void this.loadConnections(generation);
+        } else {
+          void this.loadConnections(generation);
+        }
+      }
+    );
+  }
+
+  retryAccessCheck(): void {
+    this.hostedCloudLogsAccess.retry();
+  }
+
+  retryAuthentication(): void {
+    window.location.reload();
   }
 
   inputValue(event: Event): string {
@@ -619,11 +717,13 @@ export class CloudLogsPageComponent {
     return `${this.connections().filter((connection) => connection.grantId === grant.id).length} connected log views`;
   }
 
-  async loadConnections(): Promise<void> {
+  async loadConnections(generation = this.accessGeneration): Promise<void> {
+    if (!this.isCurrentAccess(generation)) return;
     this.pageState.set('loading');
     this.pageError.set('');
     try {
       const current = await firstValueFrom(this.api.list());
+      if (!this.isCurrentAccess(generation)) return;
       this.grants.set(current.grants);
       this.connections.set(current.connections);
       if (
@@ -637,18 +737,28 @@ export class CloudLogsPageComponent {
         );
       this.pageState.set('ready');
     } catch (error) {
+      if (!this.isCurrentAccess(generation)) return;
       this.pageError.set(errorMessage(error));
       this.pageState.set('error');
     }
   }
 
   async startAuthorization(): Promise<void> {
+    const generation = this.accessGeneration;
+    if (!this.isCurrentAccess(generation)) return;
+    const uid = this.hostedCloudLogsAccess.currentUserId();
+    if (!uid) return;
     this.busy.set(true);
     this.pageError.set('');
     try {
       const { authorizationUrl, finishKey } = await firstValueFrom(
         this.api.startGoogleAuthorization(),
       );
+      if (
+        !this.isCurrentAccess(generation) ||
+        !this.hostedCloudLogsAccess.isCurrentUser(uid)
+      )
+        return;
       let target: URL;
       try {
         target = new URL(authorizationUrl);
@@ -659,11 +769,19 @@ export class CloudLogsPageComponent {
         target.protocol !== 'https:' ||
         target.hostname !== 'accounts.google.com' ||
         typeof finishKey !== 'string' ||
-        !finishKey
+        !/^[A-Za-z0-9_-]{43}$/.test(finishKey)
       )
         throw new Error('The authorization link was invalid.');
+      if (!discardPendingCloudLogsOAuthReturn()) {
+        throw new Error(
+          'This browser could not clear the previous connection return. Reload and try again.',
+        );
+      }
       try {
-        sessionStorage.setItem(finishKeyStorageKey, finishKey);
+        sessionStorage.setItem(
+          cloudLogsFinishKeyStorageKey,
+          JSON.stringify({ uid, finishKey } satisfies CloudLogsFinishKeyBinding),
+        );
       } catch {
         throw new Error(
           'This browser could not securely keep the connection request for the redirect. Check session storage settings and try again.',
@@ -671,51 +789,63 @@ export class CloudLogsPageComponent {
       }
       window.location.assign(authorizationUrl);
     } catch (error) {
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentAccess(generation)) this.busy.set(false);
     }
   }
 
-  /** Scrub the short-lived receipt before this page starts any API or telemetry work. */
-  private scrubOAuthCallback():
-    | { status: 'complete'; receipt: string }
-    | { status: 'failed' }
-    | undefined {
-    const callback = window.__datatugTakeGoogleLogsReturn?.();
-    if (!callback) return undefined;
-    return callback.status === 'complete'
-      ? { status: 'complete', receipt: callback.receipt }
-      : { status: 'failed' };
-  }
-
-  private clearFinishKey(): void {
+  private clearFinishKey(expectedBinding?: CloudLogsFinishKeyBinding): void {
+    if (!expectedBinding) return;
     try {
-      sessionStorage.removeItem(finishKeyStorageKey);
+      const current = readCloudLogsFinishKeyBinding();
+      if (
+        current?.uid === expectedBinding.uid &&
+        current.finishKey === expectedBinding.finishKey
+      ) {
+        sessionStorage.removeItem(cloudLogsFinishKeyStorageKey);
+      }
     } catch {
       // Storage can be disabled by the browser; the key was never exposed to the URL.
     }
   }
 
-  private async finishAuthorization(receipt: string): Promise<void> {
-    let finishKey = '';
-    try {
-      finishKey = sessionStorage.getItem(finishKeyStorageKey) ?? '';
-    } catch {
-      // Treat unavailable tab storage as a failed or replayed return.
-    }
-    if (!receipt || !finishKey) {
-      this.clearFinishKey();
+  private async finishAuthorization(
+    receipt: string,
+    generation: number,
+    binding?: CloudLogsFinishKeyBinding,
+  ): Promise<void> {
+    if (!this.isCurrentAccess(generation)) return;
+    const currentBinding = readCloudLogsFinishKeyBinding();
+    const bindingIsCurrent =
+      !!binding &&
+      currentBinding?.uid === binding.uid &&
+      currentBinding.finishKey === binding.finishKey;
+    if (
+      !receipt ||
+      !binding?.finishKey ||
+      !bindingIsCurrent ||
+      !this.hostedCloudLogsAccess.isCurrentUser(binding.uid)
+    ) {
+      if (bindingIsCurrent) this.clearFinishKey(binding);
       this.notice.set(
-        'This Google connection request expired or was already used. Start again to connect the account.',
+        binding?.finishKey
+          ? 'This Google connection returned under a different sign-in. Start again to connect the account.'
+          : 'This Google connection request expired or was already used. Start again to connect the account.',
       );
-      await this.loadConnections();
+      await this.loadConnections(generation);
       return;
     }
     try {
       const grant = await firstValueFrom(
-        this.api.finishGoogleAuthorization({ receipt, finishKey }),
+        this.api.finishGoogleAuthorization({
+          receipt,
+          finishKey: binding.finishKey,
+        }),
       );
+      if (!this.isCurrentAccess(generation)) return;
       this.grants.update((grants) => [
         ...grants.filter((candidate) => candidate.id !== grant.id),
         grant,
@@ -723,15 +853,20 @@ export class CloudLogsPageComponent {
       this.selectedGrantId.set(grant.id);
       this.notice.set(`Connected Google account ${grant.email}.`);
     } catch (error) {
-      this.notice.set(oauthFinishErrorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.notice.set(oauthFinishErrorMessage(error));
+      }
     } finally {
-      this.clearFinishKey();
-      await this.loadConnections();
+      this.clearFinishKey(binding);
+      if (this.isCurrentAccess(generation))
+        await this.loadConnections(generation);
     }
   }
 
   async connectView(): Promise<void> {
     if (!this.canConnect()) return;
+    const generation = this.accessGeneration;
+    if (!this.isCurrentAccess(generation)) return;
     this.busy.set(true);
     this.pageError.set('');
     try {
@@ -742,13 +877,15 @@ export class CloudLogsPageComponent {
           logViewId: this.logViewId().trim(),
         }),
       );
+      if (!this.isCurrentAccess(generation)) return;
       this.projectId.set('');
       this.logViewId.set('');
-      await this.loadConnections();
+      await this.loadConnections(generation);
     } catch (error) {
+      if (this.isCurrentAccess(generation))
       this.pageError.set(errorMessage(error));
     } finally {
-      this.busy.set(false);
+      if (this.isCurrentAccess(generation)) this.busy.set(false);
     }
   }
 
@@ -768,27 +905,34 @@ export class CloudLogsPageComponent {
   }
 
   async removeView(connection: PersonalLogConnection): Promise<void> {
+    const generation = this.accessGeneration;
+    if (!this.isCurrentAccess(generation)) return;
     this.busyConnectionId.set(connection.id);
     this.pageError.set('');
     try {
       await firstValueFrom(this.api.remove(connection.id));
+      if (!this.isCurrentAccess(generation)) return;
       this.connections.update((connections) =>
         connections.filter((candidate) => candidate.id !== connection.id),
       );
       if (this.selectedConnection()?.id === connection.id)
         this.clearSelection();
     } catch (error) {
+      if (this.isCurrentAccess(generation))
       this.pageError.set(errorMessage(error));
     } finally {
-      this.busyConnectionId.set('');
+      if (this.isCurrentAccess(generation)) this.busyConnectionId.set('');
     }
   }
 
   async disconnect(grant: GoogleLogGrant): Promise<void> {
+    const generation = this.accessGeneration;
+    if (!this.isCurrentAccess(generation)) return;
     this.busyGrantId.set(grant.id);
     this.pageError.set('');
     try {
       const result = await firstValueFrom(this.api.disconnect(grant.id));
+      if (!this.isCurrentAccess(generation)) return;
       this.confirmGrantId.set('');
       this.grants.update((grants) =>
         grants.map((candidate) =>
@@ -820,14 +964,17 @@ export class CloudLogsPageComponent {
           : 'All views for this account are disabled. Google access revocation is being completed.',
       );
     } catch (error) {
+      if (this.isCurrentAccess(generation))
       this.pageError.set(errorMessage(error));
     } finally {
-      this.busyGrantId.set('');
+      if (this.isCurrentAccess(generation)) this.busyGrantId.set('');
     }
   }
 
   async runQuery(event?: Event): Promise<void> {
     event?.preventDefault();
+    const accessGeneration = this.accessGeneration;
+    if (!this.isCurrentAccess(accessGeneration)) return;
     const generation = ++this.queryGeneration;
     const connection = this.selectedConnection();
     const from = toUtc(this.fromTime());
@@ -867,6 +1014,7 @@ export class CloudLogsPageComponent {
         }),
       );
       if (
+        !this.isCurrentAccess(accessGeneration) ||
         generation !== this.queryGeneration ||
         this.selectedConnection()?.id !== connection.id
       )
@@ -876,6 +1024,7 @@ export class CloudLogsPageComponent {
       this.queryState.set('ready');
     } catch (error) {
       if (
+        !this.isCurrentAccess(accessGeneration) ||
         generation !== this.queryGeneration ||
         this.selectedConnection()?.id !== connection.id
       )
@@ -898,13 +1047,24 @@ export class CloudLogsPageComponent {
   }
 
   readonly gridEntries = computed(() => [...this.entries()]);
-  readonly defaultColumn: ColDef = { resizable: true, sortable: false, minWidth: 120 };
+  readonly defaultColumn: ColDef = {
+    resizable: true,
+    sortable: false,
+    minWidth: 120,
+  };
   readonly columns: ColDef<PersonalLogEntry>[] = [
     { field: 'timestamp', headerName: 'Timestamp', width: 210 },
     { field: 'severity', headerName: 'Severity', width: 110, minWidth: 100 },
     { field: 'service', headerName: 'Service', width: 160 },
     { field: 'source', headerName: 'Source', width: 160 },
-    { field: 'message', headerName: 'Message', minWidth: 280, flex: 1, wrapText: true, autoHeight: true },
+    {
+      field: 'message',
+      headerName: 'Message',
+      minWidth: 280,
+      flex: 1,
+      wrapText: true,
+      autoHeight: true,
+    },
   ];
   nameGrid(event: GridReadyEvent): void {
     event.api.setGridAriaProperty('label', 'Cloud Logging entries');
@@ -913,16 +1073,27 @@ export class CloudLogsPageComponent {
   selectionChanged(event: SelectionChangedEvent): void {
     this.selectedEntry.set(event.api.getSelectedRows()[0] ?? null);
   }
-  activateEntry(event: CellKeyDownEvent<PersonalLogEntry> | FullWidthCellKeyDownEvent<PersonalLogEntry>): void {
+  activateEntry(
+    event:
+      | CellKeyDownEvent<PersonalLogEntry>
+      | FullWidthCellKeyDownEvent<PersonalLogEntry>,
+  ): void {
     if (event.event instanceof KeyboardEvent && event.event.key === 'Enter') {
       event.event.preventDefault();
       event.node.setSelected(true);
     }
   }
-  fieldsText(entry: PersonalLogEntry): string { return JSON.stringify(entry.fields, null, 2); }
+  fieldsText(entry: PersonalLogEntry): string {
+    return JSON.stringify(entry.fields, null, 2);
+  }
   async copyReference(entry: PersonalLogEntry): Promise<void> {
-    try { await navigator.clipboard.writeText(entry.sourceRef ?? ''); }
-    catch { this.queryError.set('Clipboard access is unavailable; select the reference text to copy it.'); }
+    try {
+      await navigator.clipboard.writeText(entry.sourceRef ?? '');
+    } catch {
+      this.queryError.set(
+        'Clipboard access is unavailable; select the reference text to copy it.',
+      );
+    }
   }
   field(entry: PersonalLogEntry, key: string): string {
     if (entry.fields?.[key] != null) return String(entry.fields[key]);
@@ -956,6 +1127,37 @@ export class CloudLogsPageComponent {
     this.inactiveReason.set(null);
     this.queryState.set('idle');
     this.queryError.set('');
+  }
+
+  private isCurrentAccess(generation: number): boolean {
+    return (
+      this.hasAccess() &&
+      generation === this.accessGeneration &&
+      this.hostedCloudLogsAccess.state().status === 'allowed'
+    );
+  }
+
+  private clearAccessBoundData(): void {
+    this.queryGeneration++;
+    this.pageState.set('loading');
+    this.pageError.set('');
+    this.grants.set([]);
+    this.connections.set([]);
+    this.selectedGrantId.set('');
+    this.projectId.set('');
+    this.logViewId.set('');
+    this.busy.set(false);
+    this.busyGrantId.set('');
+    this.busyConnectionId.set('');
+    this.confirmGrantId.set('');
+    this.notice.set('');
+    this.selectedConnection.set(null);
+    this.queryState.set('idle');
+    this.queryError.set('');
+    this.inactiveReason.set(null);
+    this.entries.set([]);
+    this.result.set(null);
+    this.selectedEntry.set(null);
   }
 }
 
