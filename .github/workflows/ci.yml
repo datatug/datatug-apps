@@ -65,7 +65,7 @@ jobs:
       - name: Install SpecScore for metadata validation
         if: steps.classify.outputs.mode == 'metadata-only'
         env:
-          SPECSCORE_VERSION: v0.38.3
+          SPECSCORE_VERSION: v0.53.1
         run: |
           curl -fsSL https://specscore.md/install/get-cli | sh
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
