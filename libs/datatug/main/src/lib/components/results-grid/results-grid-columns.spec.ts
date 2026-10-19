@@ -203,6 +203,12 @@ describe('row number column', () => {
       suppressNavigable: true,
     });
   });
+
+  it('is lean: a 44px start, tight header padding, so a narrow result fits beside the 44px checkbox column', () => {
+    expect(ROW_NUMBER_COLUMN).toMatchObject({ width: 44, minWidth: 36 });
+    expect(ROW_NUMBER_COLUMN.headerClass).toContain('dt-rg-row-number-header');
+    expect(ROW_NUMBER_COLUMN.cellClass).toContain('dt-rg-row-number');
+  });
 });
 
 describe('the internal $key column', () => {

@@ -58,6 +58,12 @@ const SELECTION_COLUMN_DEF = {
 } as const;
 /** Row height of the compact density; the comfortable density is the theme's own. */
 const COMPACT_ROW_HEIGHT = 28;
+/**
+ * Height of the floating-filter row under the column headers. AG Grid's own default is the (tall) header height; the
+ * inputs stay usable at 40px (the control itself is 28px) and the row, which sits before the first result row, costs
+ * 24px less of the fold.
+ */
+export const FLOATING_FILTERS_HEIGHT = 40;
 const SAVE_DELAY_MS = 300;
 const STATUS_MS = 5000;
 
@@ -299,6 +305,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
         [rowData]="rowData()"
         [defaultColDef]="defaultColDef()"
         [headerHeight]="headerHeight()"
+        [floatingFiltersHeight]="floatingFiltersHeight"
         [rowHeight]="rowHeight()"
         [rowSelection]="rowSelection"
         [selectionColumnDef]="selectionColumnDef"
@@ -466,6 +473,11 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     sneat-datatug-results-grid .dt-rg-row-number {
       color: var(--ion-color-medium, #888);
     }
+    /* A short number needs no 16px gutters: the row-number column fits its digits at about 45px instead of 61px. */
+    sneat-datatug-results-grid .ag-header-cell.dt-rg-row-number-header,
+    sneat-datatug-results-grid .ag-cell.dt-rg-row-number {
+      padding-inline: 8px;
+    }
   `,
 })
 export class ResultsGridComponent {
@@ -490,6 +502,7 @@ export class ResultsGridComponent {
   readonly selectionChanged = output<SelectionChangedEvent<GridRow>>();
   readonly cellFocused = output<CellFocusedEvent<GridRow>>();
 
+  readonly floatingFiltersHeight = FLOATING_FILTERS_HEIGHT;
   readonly columnTypes = RESULTS_GRID_COLUMN_TYPES;
   readonly autoSize = { type: 'fitCellContents' } as const;
   readonly rowSelection = ROW_SELECTION;

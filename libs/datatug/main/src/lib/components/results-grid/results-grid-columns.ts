@@ -312,8 +312,8 @@ export const ROW_NUMBER_COLUMN: ColDef<GridRow> = {
   headerName: '#',
   valueGetter: (p) =>
     p.node?.rowIndex != null ? String(p.node.rowIndex + 1) : '',
-  width: 64,
-  minWidth: 48,
+  width: 44,
+  minWidth: 36,
   maxWidth: 96,
   pinned: 'left',
   lockPinned: true,
@@ -325,6 +325,6 @@ export const ROW_NUMBER_COLUMN: ColDef<GridRow> = {
   suppressMovable: true,
   suppressNavigable: true,
   suppressHeaderMenuButton: true,
-  headerClass: 'ag-right-aligned-header',
+  headerClass: ['ag-right-aligned-header', 'dt-rg-row-number-header'],
   cellClass: ['ag-right-aligned-cell', 'dt-rg-row-number'],
 };
