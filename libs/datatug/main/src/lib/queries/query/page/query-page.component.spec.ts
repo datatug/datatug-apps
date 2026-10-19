@@ -6938,6 +6938,35 @@ select (
     },
   );
 
+  it('updates the native Current row disclosure expanded state on every toggle', async () => {
+    const template = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      'utf8',
+    );
+    const control = template.match(
+      /<(?:ion-button|button)\b[^>]*data-testid="author-current-row-toggle"[\s\S]*?<\/(?:ion-button|button)\s*>/u,
+    )?.[0];
+    expect(control).toBeDefined();
+    component = await createComponent({}, queryDef, control);
+    runFixture.detectChanges();
+    const button = runFixture.nativeElement.querySelector(
+      'button[data-testid="author-current-row-toggle"]',
+    ) as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+    expect(button?.type).toBe('button');
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    button?.click();
+    await runFixture.whenStable();
+    expect(component.currentRowPaneOpen()).toBe(false);
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+    expect(button?.textContent).toContain('▸ Current row');
+    button?.click();
+    await runFixture.whenStable();
+    expect(component.currentRowPaneOpen()).toBe(true);
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    expect(button?.textContent).toContain('▾ Current row');
+  });
+
   it('maps the current result page to safe AG Grid columns and preserves exact typed values', async () => {
     component = await createComponent();
     component.runResult.set({

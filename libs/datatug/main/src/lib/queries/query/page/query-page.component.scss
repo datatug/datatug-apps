@@ -196,6 +196,20 @@
   display: flex;
   justify-content: flex-end;
 }
+.author-current-row-toggle button {
+  border: 0;
+  background: transparent;
+  color: var(--ion-color-primary);
+  font: inherit;
+  font-size: 0.8125rem;
+  min-height: 44px;
+  padding: 0.25rem 0.75rem;
+  cursor: pointer;
+}
+.author-current-row-toggle button:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 2px;
+}
 @media (max-width: 700px) {
   .author-row-details-shortcut {
     display: flex;

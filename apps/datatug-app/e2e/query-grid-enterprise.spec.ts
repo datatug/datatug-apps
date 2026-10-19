@@ -42,7 +42,8 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
   await expect(grid.getByTestId('results-grid-count')).toContainText('17 rows');
   await expect(grid.getByTestId('results-grid-export-excel')).toBeVisible();
   const rowPane = page
-    .getByTestId('author-current-row-toggle')
+    .getByRole('button', { name: /Current row/ })
+    .and(page.getByTestId('author-current-row-toggle'))
     .filter({ visible: true });
   if ((await rowPane.getAttribute('aria-expanded')) === 'true')
     await rowPane.click();

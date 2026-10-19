@@ -1777,14 +1777,12 @@
       }
       @if (isTextQueryWorkspace() && displayedRecordset() && !resultChartVisible()) {
         <div class="author-current-row-toggle">
-          <ion-button
-            size="small"
-            fill="clear"
+          <button
+            type="button"
             data-testid="author-current-row-toggle"
             [attr.aria-expanded]="currentRowPaneOpen()"
             (click)="toggleCurrentRowPane()"
-            >{{ currentRowPaneOpen() ? '▾ Current row' : '▸ Current row' }}</ion-button
-          >
+          >{{ currentRowPaneOpen() ? '▾ Current row' : '▸ Current row' }}</button>
         </div>
       }
       @if (
