@@ -110,6 +110,14 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
+    path: 'my/cloud-logs',
+    ...SNEAT_AUTH_GUARDS,
+    loadComponent: () =>
+      import('../pages/my/cloud-logs/cloud-logs-page.component').then(
+        (m) => m.CloudLogsPageComponent,
+      ),
+  },
+  {
     // Read-only "explore my raw data" transparency viewer, rooted at
     // `/spaces/{spaceId}` (see space-explorer-page.component.ts). The
     // spaceId is a route param for this first slice — a "my spaces" list

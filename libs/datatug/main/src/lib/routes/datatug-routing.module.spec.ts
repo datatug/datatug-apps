@@ -11,6 +11,19 @@ import {
 } from '../core/datatug-routing-params';
 
 describe('datatugRoutes', () => {
+  it('keeps hosted personal Cloud Logging behind the standard signed-in guards', async () => {
+    const route = datatugRoutes.find(
+      (candidate) => candidate.path === 'my/cloud-logs',
+    );
+    expect(route?.canActivate).toEqual(
+      datatugRoutes.find((candidate) => candidate.path === 'my')?.canActivate,
+    );
+    const component = await route?.loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'CloudLogsPageComponent',
+    );
+  });
+
   it('admits Space overview, queries, Checks, Detective and session routes', () => {
     const route = datatugRoutes.find(
       (candidate) =>
