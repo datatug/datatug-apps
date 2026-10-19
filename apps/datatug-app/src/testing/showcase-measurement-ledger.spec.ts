@@ -46,7 +46,7 @@ async function harness() {
     } as unknown as Route);
     return { proceed, abort };
   };
-  return { ledger, send };
+  return { ledger, send, events };
 }
 
 describe('opt-in production measurement protection without network', () => {
@@ -68,6 +68,66 @@ describe('opt-in production measurement protection without network', () => {
       protectedAbortAttempts: 1,
     });
     expect(() => ledger.healthy()).toThrow('budget');
+  });
+
+  it.each([200, 503])(
+    'retains response status %s before an aborted body and still rejects the failure',
+    async (status) => {
+      const { ledger, send, events } = await harness();
+      ledger.phase('initial', 1, { orders: 1 });
+      const req = Object.assign(request(queryURL), {
+        failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+      });
+      await send(req);
+      events.emit('response', {
+        request: () => req,
+        status: () => status,
+        headers: () => ({
+          'content-type': 'application/json; charset=utf-8',
+          'set-cookie': 'never-record-this-secret',
+        }),
+      });
+      expect(ledger.rows[0]).toMatchObject({
+        status,
+        responseContentType: 'application/json',
+        outcome: 'pending',
+      });
+      expect(ledger.rows[0].responseReceivedAtMs).toBeTypeOf('number');
+      events.emit('requestfailed', req);
+      expect(ledger.rows[0]).toMatchObject({
+        status,
+        outcome: 'failed',
+        failure: 'net::ERR_ABORTED',
+      });
+      expect(ledger.summary()).toMatchObject({
+        queryFailed: 1,
+        queryFinished: 0,
+        querySizeMissing: 1,
+      });
+      expect(() => ledger.healthy()).toThrow('Query failed: orders');
+      expect(JSON.stringify(ledger.rows)).not.toContain(
+        'never-record-this-secret',
+      );
+      expect(JSON.stringify(ledger.rows)).not.toContain('set-cookie');
+    },
+  );
+
+  it('retains a failure without response headers without inventing status or successful bytes', async () => {
+    const { ledger, send, events } = await harness();
+    ledger.phase('initial', 1, { orders: 1 });
+    const req = Object.assign(request(queryURL), {
+      failure: () => ({ errorText: 'net::ERR_FAILED' }),
+    });
+    await send(req);
+    events.emit('requestfailed', req);
+    expect(ledger.rows[0].status).toBeUndefined();
+    expect(ledger.rows[0].responseReceivedAtMs).toBeUndefined();
+    expect(ledger.summary()).toMatchObject({
+      queryFailed: 1,
+      encodedQueryResponseBodyBytes: 0,
+      querySizeMissing: 1,
+    });
+    expect(() => ledger.healthy()).toThrow('Query failed: orders');
   });
 
   it('enforces the absolute 12-query cap even if a phase allows more', async () => {

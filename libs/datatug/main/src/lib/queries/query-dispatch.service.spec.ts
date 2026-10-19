@@ -60,12 +60,17 @@ describe('QueryDispatchService transport boundary', () => {
         id: 'northwind-orders-full-sqlite',
         request: { queryType: QueryType.DTQL, text: 'pinned query' },
       };
+      const parent = new AbortController();
       const response = await service.execute({
+        signal: parent.signal,
         projectRef: { storeId: 'github.com', projectId: 'demo' },
         definition,
         queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID,
       });
       expect(response).toBe(admitted);
+      expect(admission.mock.calls[0][2]?.signal?.aborted).toBe(false);
+      parent.abort();
+      expect(admission.mock.calls[0][2]?.signal?.aborted).toBe(false);
       expect(admission).toHaveBeenCalledWith(
         publicQueries.PUBLIC_ORDERS_QUERY_ID,
         definition,
@@ -77,6 +82,47 @@ describe('QueryDispatchService transport boundary', () => {
     } finally {
       admission.mockRestore();
     }
+  });
+
+  it.each(['cancel', 'dispose', 'parent-abort'] as const)('still aborts pending public work on %s', async (termination) => {
+    const parent = new AbortController();
+    let signal: AbortSignal | undefined;
+    const admission = vi.spyOn(publicQueries, 'executeSavedPublicChartQuery').mockImplementationOnce((_id, _definition, options) => {
+      signal = options?.signal;
+      return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }));
+    });
+    try {
+      const session = service.start({ projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition: sqlDefinition(), queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID, signal: parent.signal });
+      if (termination === 'parent-abort') parent.abort();
+      else await session[termination]();
+      expect(signal?.aborted).toBe(true);
+      await expect(session.result).rejects.toMatchObject({ name: 'AbortError' });
+      await session.dispose();
+    } finally { admission.mockRestore(); }
+  });
+
+  it('keeps explicit cancellation after successful delivery distinct from normal disposal', async () => {
+    const admission = vi.spyOn(publicQueries, 'executeSavedPublicChartQuery').mockResolvedValueOnce(result as unknown as Awaited<ReturnType<typeof publicQueries.executeSavedPublicChartQuery>>);
+    try {
+      const session = service.start({ projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition: sqlDefinition(), queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID });
+      await session.result;
+      const signal = admission.mock.calls[0][2]?.signal;
+      expect(signal?.aborted).toBe(false);
+      await session.cancel();
+      expect(signal?.aborted).toBe(true);
+    } finally { admission.mockRestore(); }
+  });
+
+  it('cleans up a rejected execution by aborting its owned signal', async () => {
+    const failure = new Error('Rejected result');
+    const admission = vi.spyOn(publicQueries, 'executeSavedPublicChartQuery').mockRejectedValueOnce(failure);
+    try {
+      await expect(service.execute({ projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition: sqlDefinition(), queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID })).rejects.toBe(failure);
+      expect(admission.mock.calls[0][2]?.signal?.aborted).toBe(true);
+    } finally { admission.mockRestore(); }
   });
 
   it('keeps a folder-qualified local query identity and full semantic request', async () => {
@@ -363,6 +409,25 @@ describe('QueryDispatchService transport boundary', () => {
     } finally {
       timeout.mockRestore();
     }
+  });
+
+  it('keeps successful federation pages alive through complete execution and then disposes once', async () => {
+    const paged = { ...result, totalRows: 3 } as Awaited<ReturnType<FederatedQueryService['run']>>;
+    const run = vi.spyOn(FederatedQueryService.prototype, 'run').mockResolvedValue(paged);
+    const dispose = vi.spyOn(FederatedQueryService.prototype, 'dispose').mockResolvedValue();
+    const getPage = vi.spyOn(FederatedQueryService.prototype, 'getPage').mockImplementation(async (index) => {
+      expect(dispose).not.toHaveBeenCalled();
+      const rows = paged.recordset.rows.map(row => [...row]);
+      return index === 0 ? [...rows, ...rows] : rows;
+    });
+    try {
+      const output = await service.execute({ projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+        definition: { ...sqlDefinition(), federation: { ovdbBaseUrl: 'https://db.example', tables: [] } },
+        target: { kind: 'ovdb-federation' } }, { maxRows: 3 });
+      expect(output.recordset.rows).toHaveLength(3);
+      expect(getPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+      expect(dispose).toHaveBeenCalledOnce();
+    } finally { run.mockRestore(); getPage.mockRestore(); dispose.mockRestore(); }
   });
 
   it('owns federation pages and cancellation independently for concurrent sessions', async () => {
