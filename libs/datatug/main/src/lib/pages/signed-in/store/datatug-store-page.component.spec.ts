@@ -596,7 +596,7 @@ describe('StorePageComponent', () => {
       expect(authState.observed).toBe(false);
     });
 
-    it.each([0, 503])(
+    it.each([0, 503, null])(
       'renders a deferred project failure (%s) without a manual event',
       async (status) => {
         const agent = new Subject<IAgentState>();
@@ -614,15 +614,26 @@ describe('StorePageComponent', () => {
         agent.next({ lastCheckedAt: new Date(), isNotAvailable: false });
         await f.whenStable();
         expect(html(f)).toContain('Loading...');
-        projects.error({ name: 'HttpErrorResponse', ok: false, status });
+        const failure =
+          status === null
+            ? null
+            : { name: 'HttpErrorResponse', ok: false, status };
+        projects.error(failure);
         await f.whenStable();
         expect(html(f)).not.toContain('Loading...');
         if (status === 0)
           expect(html(f)).toContain('Agent is offline or not available');
-        else
+        else {
           expect(
-            f.nativeElement.querySelector('sneat-datatug-error-card'),
-          ).not.toBeNull();
+            f.nativeElement.querySelector('sneat-datatug-error-card')
+              ?.textContent,
+          ).toContain('Could not load projects from this store.');
+          expect(TestBed.inject(ErrorLogger).logError).toHaveBeenCalledWith(
+            failure,
+            expect.any(String),
+            { show: false },
+          );
+        }
         f.destroy();
       },
     );

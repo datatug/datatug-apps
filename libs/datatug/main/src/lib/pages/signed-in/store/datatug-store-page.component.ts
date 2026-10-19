@@ -208,7 +208,9 @@ export class DatatugStorePageComponent
 
   public readonly storeId = signal<string | null | undefined>(undefined);
   public readonly projects = signal<IProjectBase[] | undefined>(undefined);
-  public readonly error = signal<unknown>(undefined);
+  public readonly error = signal<{ readonly message: string } | undefined>(
+    undefined,
+  );
 
   /**
    * The page title shows this instead of the raw `storeId` so an agent
@@ -384,7 +386,7 @@ export class DatatugStorePageComponent
         error: (err) => {
           this.isLoading.set(false);
           if (
-            err.name === 'HttpErrorResponse' &&
+            err?.name === 'HttpErrorResponse' &&
             err.ok === false &&
             err.status === 0
           ) {
@@ -401,7 +403,9 @@ export class DatatugStorePageComponent
               `Failed to get list of projects hosted by agent [${storeId}]`,
               { show: false },
             );
-            this.error.set(err);
+            this.error.set({
+              message: 'Could not load projects from this store.',
+            });
           }
         },
       });
