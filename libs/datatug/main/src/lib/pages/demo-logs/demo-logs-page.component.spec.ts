@@ -86,6 +86,16 @@ describe('DemoLogsPageComponent', () => {
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
   });
 
+  it('keeps evidence visible and announces clipboard failures', async () => {
+    const { fixture, el } = await setup();
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+    await fixture.componentInstance.copyReference(evidence);
+    await fixture.whenStable();
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain('Clipboard access is unavailable');
+    expect(el.querySelector('ag-grid-angular')).not.toBeNull();
+    expect(fixture.componentInstance.state()).toBe('ready');
+  });
+
   it('keeps a local source token in memory and refuses to send it to a remote URL', async () => {
     const { fixture, requests, el } = await setup();
     fixture.componentInstance.ownerToken.set('local-secret');

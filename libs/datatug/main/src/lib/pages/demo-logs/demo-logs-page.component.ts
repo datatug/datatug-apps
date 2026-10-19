@@ -68,7 +68,7 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
         </form>
 
         @if (state() === 'loading') { <p role="status">Reading the configured source…</p> }
-        @if (state() === 'error') { <p role="alert" class="error">{{ error() }}</p> }
+        @if (error()) { <p role="alert" class="error">{{ error() }}</p> }
         @if (state() === 'ready' && rows().length === 0) { <p role="status">No entries matched this bounded query.</p> }
         @if (state() === 'ready' && rows().length > 0) {
           <p role="status">{{ rows().length }} entries{{ rows().length === 100 ? ' · result limit reached' : '' }}</p>

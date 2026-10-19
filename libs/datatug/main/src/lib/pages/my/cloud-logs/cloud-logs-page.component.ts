@@ -756,6 +756,7 @@ export class CloudLogsPageComponent {
     this.entries.set([]);
     this.result.set(null);
     this.queryState.set('idle');
+    this.queryError.set('');
     this.selectedEntry.set(null);
     this.inactiveReason.set(null);
     this.orderId.set('');
@@ -945,6 +946,7 @@ export class CloudLogsPageComponent {
     this.selectedEntry.set(null);
     this.inactiveReason.set(null);
     this.queryState.set('idle');
+    this.queryError.set('');
   }
 }
 

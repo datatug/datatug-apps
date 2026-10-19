@@ -204,6 +204,9 @@ describe('CloudLogsPageComponent', () => {
     fixture.detectChanges();
     expect(event.defaultPrevented).toBe(true);
     expect(fixture.nativeElement.querySelector('#cloud-entry-details')?.textContent).toContain('svc');
+    component.queryError.set('Previous view error');
+    component.selectConnection(connections[1]);
+    expect(component.queryError()).toBe('');
 
   });
 
