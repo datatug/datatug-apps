@@ -115,6 +115,13 @@ describe('DemoSqlitePageComponent', () => {
     });
     expect(q('demo-sqlite-replaced')?.textContent).toContain('Demo DB updated; your local edits were reset.');
     expect(q('ovdb-status')?.textContent).toBe('Local copy (memory only)');
+    const offer = q('project-copy-offer');
+    if (!offer) throw new Error('Expected project copy offer');
+    for (const warning of ['demo-sqlite-replaced', 'demo-sqlite-not-persistent']) {
+      const notice = q(warning);
+      if (!notice) throw new Error(`Expected ${warning}`);
+      expect(notice.compareDocumentPosition(offer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 
   it('asks before a large download: Continue shows phased progress, then the tables', async () => {
