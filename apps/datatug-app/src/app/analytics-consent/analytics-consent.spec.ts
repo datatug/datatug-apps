@@ -162,6 +162,7 @@ describe('analytics consent', () => {
             send_page_view: false,
             page_location: 'https://datatug.app/',
             page_referrer: '',
+            page_title: 'DataTug',
           },
         ],
       ]);
@@ -213,9 +214,9 @@ describe('analytics consent', () => {
         page_referrer: 'https://datatug.app/project/github.com/datatug/demo',
       };
       expect(calls(f).slice(before)).toEqual([
-        ['set', first],
+        ['set', { ...first, page_title: 'DataTug' }],
         ['event', 'page_view', { ...first, page_title: 'DataTug' }],
-        ['set', second],
+        ['set', { ...second, page_title: 'DataTug' }],
         ['event', 'page_view', { ...second, page_title: 'DataTug' }],
       ]);
     });
@@ -280,7 +281,23 @@ describe('analytics consent', () => {
       expect(consent.bannerVisible()).toBe(false);
       expect(f.win.dataLayer).toBeUndefined();
       expect(f.appended).toEqual([]);
-      expect(f.cookieWrites).toEqual([]);
+      // Cookies an earlier visit left are removed even though GA never ran on this page.
+      expect(f.cookieWrites).toHaveLength(6);
+      expect(f.cookieWrites[0]).toBe(`_ga=; ${COOKIE_EXPIRY}`);
+    });
+
+    it('a no after a memory-only accept and a reload still deletes the cookies, once per cookie and domain', () => {
+      const f = fixture();
+      f.state.storageBroken = 'both';
+      const consent = createAnalyticsConsent(f.env, ID);
+      consent.start();
+      consent.choose('denied');
+      expect(f.cookieWrites).toHaveLength(6);
+      const before = f.cookieWrites.length;
+      consent.choose('granted');
+      consent.choose('denied');
+      // Withdrawing a live GA deletes once, in disable(), not twice.
+      expect(f.cookieWrites.length - before).toBe(6);
     });
 
     it('withdrawal: consent update, ga-disable and the _ga cookies deleted on the host and its parent domain', () => {
@@ -353,7 +370,14 @@ describe('analytics consent', () => {
       expect(f.win['ga-disable-' + ID]).toBe(false);
       expect(calls(f).slice(before)).toEqual([
         ['consent', 'update', { analytics_storage: 'granted' }],
-        ['set', { page_location: 'https://datatug.app/', page_referrer: '' }],
+        [
+          'set',
+          {
+            page_location: 'https://datatug.app/',
+            page_referrer: '',
+            page_title: 'DataTug',
+          },
+        ],
         [
           'event',
           'page_view',
@@ -561,11 +585,19 @@ describe('analytics consent', () => {
         const location = 'https://datatug.app' + LINK_PAGE_PATH;
         expect(
           calls(f).find((entry) => entry[0] === 'config')?.[2],
-        ).toMatchObject({ page_location: location, page_referrer: location });
+        ).toMatchObject({
+          page_location: location,
+          page_referrer: location,
+          page_title: 'DataTug',
+        });
         expect(calls(f).filter((entry) => entry[0] === 'event')).toEqual([]);
         expect(calls(f).at(-1)).toEqual([
           'set',
-          { page_location: location, page_referrer: location },
+          {
+            page_location: location,
+            page_referrer: location,
+            page_title: 'DataTug',
+          },
         ]);
         expect(JSON.stringify(calls(f))).not.toMatch(/agent1|orders|secret/);
       },

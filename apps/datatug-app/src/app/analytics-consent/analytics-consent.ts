@@ -13,6 +13,8 @@ export const ANALYTICS_CONSENT_KEY = 'datatug.analytics-consent.v1';
 
 export type AnalyticsChoice = 'granted' | 'denied';
 
+const PAGE_TITLE = 'DataTug';
+
 export const GTAG_SRC = 'https://www.googletagmanager.com/gtag/js?id=';
 
 /** What a page view of a link page (table, view, records, record, result) is reported as: never its identifiers. */
@@ -161,6 +163,7 @@ export function createAnalyticsConsent(
         send_page_view: false,
         page_location: scrubbedLocation(),
         page_referrer: scrubbedReferrer(),
+        page_title: PAGE_TITLE,
       });
       const script = env.document.createElement('script');
       script.async = true;
@@ -207,13 +210,14 @@ export function createAnalyticsConsent(
   function sendPageView(): void {
     const page_location = scrubbedLocation();
     const page_referrer = scrubbedReferrer();
-    gtag('set', { page_location, page_referrer });
+    // The title too: auto-collected events send document.title, which on a link page names its project.
+    gtag('set', { page_location, page_referrer, page_title: PAGE_TITLE });
     // A link page's view is not reported at all: only the scrubbed location rides along on its other events.
     if (!isLinkRoute(env.location().pathname)) {
       gtag('event', 'page_view', {
         page_location,
         page_referrer,
-        page_title: 'DataTug',
+        page_title: PAGE_TITLE,
       });
     }
   }
@@ -238,6 +242,7 @@ export function createAnalyticsConsent(
     choice,
     bannerVisible: () => allowed() && choice() === undefined,
     choose(next) {
+      const wasEnabled = enabled;
       try {
         env.storage().setItem(ANALYTICS_CONSENT_KEY, next);
         memory = undefined;
@@ -245,6 +250,8 @@ export function createAnalyticsConsent(
         memory = next;
       }
       refresh();
+      // A no removes cookies an earlier visit left (memory-only accept, then reload), when GA was off on this page.
+      if (next === 'denied' && !wasEnabled) deleteCookies();
     },
     pageView() {
       navigated = true;
