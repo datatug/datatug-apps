@@ -75,17 +75,19 @@ async function bounded(response: Response, signal: AbortSignal): Promise<Uint8Ar
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let reachedEnd = false;
   try {
     while (true) {
       if (signal.aborted) return reject('The public country-count request was cancelled.');
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       size += value.byteLength;
       if (size > MAX_BYTES) return reject('The public country-count response exceeds the browser limit.');
       chunks.push(value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   const bytes = new Uint8Array(size);
   let offset = 0;

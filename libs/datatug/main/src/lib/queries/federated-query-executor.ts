@@ -322,6 +322,7 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let reachedEnd = false;
   try {
     for (;;) {
       effective.throwIfAborted();
@@ -334,12 +335,15 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
         if (effective.aborted) abort();
         reader.read().then(resolve, reject).finally(() => effective.removeEventListener('abort', abort));
       });
-      if (part.done) break;
+      if (part.done) { reachedEnd = true; break; }
       size += part.value.byteLength;
       if (size > 1024 * 1024) throw new Error('OVDB capability discovery exceeds the browser limit.');
       chunks.push(part.value);
     }
-  } finally { void reader.cancel().catch(() => undefined); }
+  } finally {
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
+  }
   const bytes = new Uint8Array(size);
   let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }

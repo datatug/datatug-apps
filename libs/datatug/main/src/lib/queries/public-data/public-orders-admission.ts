@@ -65,17 +65,19 @@ async function boundedBytes(response: Response, maximum: number, signal: AbortSi
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let reachedEnd = false;
   try {
     while (true) {
       if (signal.aborted) return reject('The public source request was cancelled.');
       const { value, done } = await reader.read();
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       size += value.byteLength;
       if (size > maximum) return reject('The public source response exceeds the browser size limit.');
       chunks.push(value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   const bytes = new Uint8Array(size);
   let offset = 0;
