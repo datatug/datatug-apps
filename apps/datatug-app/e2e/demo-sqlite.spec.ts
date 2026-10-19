@@ -48,8 +48,10 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
       id: 'live-artist-names', title: 'Live artist names', type: 'DTQL', connectionId: 'chinook-sqlite',
       recordsets: [{ columns: [{ name: 'Name', type: 'string' }] }],
     }));
+    // limit 1000: a board card needs a COMPLETE result (query-dispatch.service.ts execute(): hasMore -> "Narrow the query" since
+    // 1c6ec429); Artist has 275 rows, so the old limit of 100 made the card show an error instead of the rows.
     writeFileSync(join(project, 'queries/demodb/live-artist-names.query.dtql'),
-      'from:\n  name: "Artist"\nlimit: 100\n');
+      'from:\n  name: "Artist"\nlimit: 1000\n');
     execFileSync('git', ['-C', checkout, 'add', '-A']);
     execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
       'commit', '--quiet', '-m', 'Create saved working copy query']);

@@ -412,7 +412,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: f40286a57ea3a04b93875335234665ece2595ed0
+          ref: 1e7d7ea16d76d5b09844c9f14a9c12e871d42efb
           path: datatug-demo-project
 
       - name: Verify pinned GitHub API tree and raw source
@@ -420,7 +420,7 @@ jobs:
         run: |
           set -euo pipefail
           sha="$(git -C datatug-demo-project rev-parse HEAD)"
-          test "$sha" = 'f40286a57ea3a04b93875335234665ece2595ed0'
+          test "$sha" = '1e7d7ea16d76d5b09844c9f14a9c12e871d42efb'
           test "$(gh api "repos/datatug/datatug-demo-project/commits/$sha" --jq .sha)" = "$sha"
           tree="$(gh api "repos/datatug/datatug-demo-project/git/trees/$sha?recursive=1" --jq '[.truncated, ([.tree[].path] | index("demo-project-1/entities/Album/Album.entity.json") != null), ([.tree[].path] | index("demo-project-1/queries/customers/customer-invoices.query.json") != null)] | @json')"
           test "$tree" = '[false,true,true]'
@@ -518,7 +518,7 @@ jobs:
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: f40286a57ea3a04b93875335234665ece2595ed0
+          ref: 1e7d7ea16d76d5b09844c9f14a9c12e871d42efb
           path: datatug-demo-project
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
