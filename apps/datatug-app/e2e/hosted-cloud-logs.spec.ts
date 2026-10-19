@@ -6,16 +6,23 @@ const password = 'local-cloud-logs-fixture-password';
 test('signed-in user connects, queries, removes a view and revokes the Google grant', async ({
   page,
 }) => {
+  const seededUser = await page.request.post(
+    'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=e2e',
+    { data: { email, password, returnSecureToken: true } },
+  );
+  expect(seededUser.ok()).toBe(true);
   await page.goto('/checkout/sign-in?plan=pro&period=monthly&checkout=test');
   const checkout = page.locator(
     'datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible):has([data-checkout-page="authentication"])',
   );
   await expect(checkout).toHaveCount(1);
+  await page.getByRole('tab', { name: 'Sign in' }).click();
   await page.locator('ion-input[name="email"] input').fill(email);
-  await page.locator('ion-input[name="first_name"] input').fill('Cloud');
-  await page.locator('ion-input[name="last_name"] input').fill('Logs');
-  await page.locator('ion-input[type="password"] input').fill(password);
-  await page.getByRole('button', { name: 'Sign up', exact: true }).click();
+  const passwordInput = page.locator(
+    'ion-input[type="password"] input:not(.cloned-input)',
+  );
+  await passwordInput.fill(password);
+  await page.getByRole('button', { name: /Sign in.*with password/ }).click();
   await expect(
     page.getByText(`Signed in as ${email}`, { exact: true }),
   ).toBeVisible({ timeout: 20_000 });
