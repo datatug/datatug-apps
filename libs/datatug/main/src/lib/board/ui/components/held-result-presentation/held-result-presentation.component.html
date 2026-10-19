@@ -115,7 +115,9 @@
             aria-label="Number of categories shown"
           >
             @for (count of topNOptions; track count) {
-              <option [value]="count">{{ count }}</option>
+              <option [value]="count" [selected]="count === topN()">
+                {{ count }}
+              </option>
             }
           </select>
         </label>

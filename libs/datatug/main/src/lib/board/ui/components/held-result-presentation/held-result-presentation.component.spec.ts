@@ -45,6 +45,33 @@ const rows = [
 ] as const satisfies readonly (readonly TypedValue[])[];
 
 describe('held result presentation', () => {
+  it('initializes the native Top N option to the rendered count and changes both together', async () => {
+    await TestBed.configureTestingModule({
+      imports: [HeldResultPresentationComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+    fixture.componentRef.setInput('fields', fields);
+    fixture.componentRef.setInput(
+      'result',
+      result(
+        Array.from({ length: 15 }, (_, i) => [
+          { type: 'string', value: `Country ${i}` },
+          { type: 'integer', value: String(i + 1) },
+        ]),
+      ),
+    );
+    fixture.detectChanges();
+    const select: HTMLSelectElement =
+      fixture.nativeElement.querySelector('select');
+    expect(select.value).toBe('10');
+    expect(fixture.nativeElement.querySelectorAll('.bars li')).toHaveLength(10);
+    select.value = '5';
+    select.dispatchEvent(new Event('change'));
+    fixture.detectChanges();
+    expect(select.value).toBe('5');
+    expect(fixture.nativeElement.querySelectorAll('.bars li')).toHaveLength(5);
+  });
+
   it('sorts one admitted snapshot into bars and preserves source row references', () => {
     const prepared = prepareCategoryBars(result(rows), fields);
     expect(prepared).toEqual({
