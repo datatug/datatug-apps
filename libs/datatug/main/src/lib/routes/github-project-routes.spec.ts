@@ -217,6 +217,7 @@ describe('the routes as registered', () => {
       'incidents/:storeId/:incidentId/record',
       'incidents/:storeId/:incidentId',
       'my',
+      'my/cloud-logs/recovery',
       'my/cloud-logs',
       'explore/:spaceId',
       'explore-vault',
