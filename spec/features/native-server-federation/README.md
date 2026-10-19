@@ -43,7 +43,7 @@ Given an ordinary JSON or native stream result without a protected execution rec
 
 ### AC: readable-inspector
 
-Given the showcase inspector, then it occupies its own full-width row while neighboring chart cards remain unchanged. Long tab titles scroll horizontally on narrow screens; keyboard focus selects and reveals the active tab. Switching tabs or chart/grid views reuses existing query/result identities without rerunning held queries.
+Given the showcase inspector, then it occupies its own full-width row while neighboring chart cards remain unchanged. Long tab titles scroll horizontally on narrow screens; keyboard focus selects and reveals the active tab, with stable tab/panel accessible associations. Switching tabs or chart/grid views reuses existing query/result identities without rerunning held queries.
 
 ### AC: journey
 

@@ -28,6 +28,9 @@ import {
   imports: [IonSegment, IonSegmentButton, IonLabel, NgComponentOutlet],
 })
 export class TabsWidgetComponent {
+  private static nextID = 0;
+  readonly panelID = `board-tabs-${TabsWidgetComponent.nextID++}-panel`;
+  tabDOMID(key: string): string { return `${this.panelID}-tab-${encodeURIComponent(key)}`; }
   private readonly tutorialRuntime = inject(TutorialBoardRuntime, {
     optional: true,
   });

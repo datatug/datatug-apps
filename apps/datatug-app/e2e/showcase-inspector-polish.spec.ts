@@ -42,13 +42,19 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await page.keyboard.press('ArrowRight');
       await expect(segment).toHaveJSProperty('value', 'id:shared-customer-countries');
       await expect(tabs.nth(2).locator('button')).toBeFocused();
+      const tabID = await tabs.nth(2).getAttribute('id');
+      const panel = inspector.getByRole('tabpanel');
+      expect(tabID).toBeTruthy();
+      await expect(panel).toHaveAttribute('aria-labelledby', tabID ?? 'missing-tab');
+      await expect(tabs.nth(2)).toHaveAttribute('aria-controls', await panel.getAttribute('id') ?? 'missing-panel');
       await expect.poll(() => tabs.nth(2).evaluate(el => {
         const label = el.querySelector('ion-label');
         const box = el.getBoundingClientRect(), rail = el.parentElement?.getBoundingClientRect();
         return !!rail && !!label && label.scrollWidth <= label.clientWidth && box.left >= rail.left - 1 && box.right <= rail.right + 1;
       })).toBe(true);
-      await inspector.getByRole('button', { name: 'Run on board', exact: true }).click();
+      // Selecting this showcase tab auto-runs it; do not accidentally request an explicit second run.
       await expect(inspector).toContainText('17 rows · 3 columns');
+      await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
       const details = inspector.locator('.source-details');
       await details.locator('summary').click();
       await expect(details).toContainText('live · OVDB server');
@@ -60,11 +66,29 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await tabs.nth(1).click();
       await tabs.nth(2).click();
       await expect(inspector).toContainText('17 rows · 3 columns');
+      await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
       expect(posts).toBe(1);
+      await Promise.all([page.waitForResponse(response => response.url() === 'https://cloud.openvaultdb.com/v1/dtql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: 'Run on board', exact: true }).click()]);
+      await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
+      expect(posts).toBe(2);
       await inspector.scrollIntoViewIfNeeded();
       await inspector.screenshot({ path: testInfo.outputPath(`inspector-${name}.png`) });
       await page.screenshot({ path: testInfo.outputPath(`board-context-${name}.png`), fullPage: true });
-      await testInfo.attach('acceptance-boundary', { body: JSON.stringify({ source: 'captured public anonymous OVDB responses', viewport, posts, expected: 'full-width inspector; readable focused tab;17 rows; live · OVDB server; no invented terms; one query across tab changes', observed: 'all assertions passed' }), contentType: 'application/json' });
+      if (name === 'mobile') {
+        const table = inspector.locator('.table-scroll');
+        await table.evaluate(el => { el.scrollLeft = el.scrollWidth; });
+        await expect.poll(() => inspector.locator('table th').last().evaluate(el => {
+          const edge = el.getBoundingClientRect(), rail = el.closest('.table-scroll')?.getBoundingClientRect();
+          return !!rail && edge.left >= rail.left && edge.right <= rail.right + 1;
+        })).toBe(true);
+        await table.screenshot({ path: testInfo.outputPath('mobile-comparison-right-columns.png') });
+      }
+      if (!(await details.evaluate(el => (el as HTMLDetailsElement).open))) await details.locator('summary').click();
+      await details.scrollIntoViewIfNeeded();
+      await expect(details).toContainText('live · OVDB server');
+      await details.screenshot({ path: testInfo.outputPath(`provenance-${name}.png`) });
+      expect(posts).toBe(2);
+      await testInfo.attach('acceptance-boundary', { body: JSON.stringify({ source: 'captured public anonymous OVDB responses', viewport, posts, expected: 'full-width inspector; readable focused tab;17 rows; live · OVDB server; no invented terms; one query across tab changes; explicit Run sends one additional request', observed: 'all assertions passed' }), contentType: 'application/json' });
     });
   });
 }
