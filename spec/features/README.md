@@ -23,6 +23,7 @@ Feature specifications for this project.
 | [Continue an edited demo database in my project](demo-database-handoff/README.md) | Draft | Carry the active edited SQLite database through optional GitHub and local project ownership without silently switching data. |
 | [Native server federation for saved queries](native-server-federation/README.md) | Draft | Execute a qualified multi-database saved DTQL plan in one bounded OVDB server request and validate physical sources before exposing rows. |
 | [Local preview of public server federation](local-federation-preview/README.md) | Draft | Run real public OVDB queries from the loopback development app through a fixed same-origin transport while retaining canonical source admission. |
+| [Reusable held result exploration](held-result-exploration/README.md) | Draft | Explore admitted held results with clear actions, stable sorting and complete monthly Orders trends without extra execution. |
 
 ## Open Questions
 

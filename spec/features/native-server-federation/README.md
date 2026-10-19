@@ -15,7 +15,7 @@ Execute a qualified multi-database saved DTQL plan in one bounded OVDB server re
 
 ## Problem
 
-Qualified queries spanning multiple databases currently fall back to browser scans, although the existing OVDB server supports the whole document at `/v1/dtql`. A reproducible comparison must execute on that server and preserve its physical-source receipt.
+The original browser-scan fallback could not provide a truthful bounded whole-document server comparison. The landed native root path now executes at `/v1/dtql` and preserves physical-source evidence; continuing acceptance must distinguish verified source/fixture behavior from real-network mechanism and authenticated copy evidence.
 
 ## Behavior
 
@@ -83,9 +83,9 @@ Given `?mode=tutorial`, when a visitor moves back and forward, restarts or choos
 
 ## Validation snapshot
 
-The production app build and main/app Nx lint targets passed; TypeScript spec checking passed. The focused native/ordinary/rights/continuation regression batch passed101 tests across10 files, followed by a focused exact-integer typing regression. Demo Project PR50 passes focused project/board/query validation. The existing backend clone test measured683 files,502455-byte source proof and503264-byte final operation before the final87-character inspector title reduction; both are below unchanged limits.
+The paired visual slice is landed and deployed: Apps reviewed `2f791963` → production `db2f1a94f92f2041accd6bc044fe70c3a507ed8b`, Demo54 reviewed `47694e125f1ad28e0463411646c2c876b8623971` → public `0952fc54531d663b4df56f4654640763e2f913d1`. Independent exact-head source and captured-read browser reviews passed, including eight fixture cases, old boards, tutorial reload, reduced motion and desktop/mobile layout. Root observed real17-country results (Canada3/8, USA13/13) and complete Orders830→30→830 on Canada/Clear. The landed local tutorial's eight stages, Restart and Show Full were observed.
 
-The local built-app Chromium journey reached the comparison tab and Run. Capability discovery to cloud.openvaultdb.com failed from the localhost preview origin before a root POST; this is not claimed as browser acceptance. The retained trace is in the task coverage/native-federation-browser directory. Root must verify the real deployed datatug.app origin and network after landing. Public server capability evidence is recorded in 2026-10-19-server-observation.json. No source scans or fabricated comparison data were substituted.
+The authoritative release/live receipt is `/Users/alex/projects/.wb/reports/showcase-country-comparison/final-release-and-live-dashboard.json`; exact-head reviews are `/Users/alex/projects/.wb/reviews/datatug-apps-country-comparison-2f791963.md` and `/Users/alex/projects/.wb/reviews/datatug-apps-country-browser-2f791963.md`. These receipts supersede the earlier localhost capability-discovery failure and candidate-only publication notes. Live request-count/no-save instrumentation and authenticated TEST project-copy continuation remain unverified; Tasks3/9 retain those gaps. Tutorial cursor/action storage is intentional; country selection remains ephemeral.
 
 ## Open Questions
 

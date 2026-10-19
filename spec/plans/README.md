@@ -17,6 +17,7 @@ Canonical index of all plans in this repository. Each plan is a single Markdown 
 | [local-federation-preview](local-federation-preview/README.md) | Draft | local-federation-preview | 2026-10-19 | showcase-interaction-design |
 | [native-server-federation](native-server-federation/README.md) | Draft | native-server-federation | 2026-10-19 | showcase-interaction-design |
 | [shared-checkout](shared-checkout/README.md) | Executing | checkout-journey | 2026-10-12 | alex |
+| [showcase-exploration-polish](showcase-exploration-polish/README.md) | Draft | held-result-exploration | 2026-10-19 | clone_offer_polish |
 
 ## Recently Closed
 
