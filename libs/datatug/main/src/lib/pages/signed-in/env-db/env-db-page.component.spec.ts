@@ -425,7 +425,7 @@ describe('EnvDbPage catalog read lifecycle', () => {
     expect(component.loading()).toBe(false);
     expect(
       fixture.nativeElement.querySelector('[role="alert"]').textContent,
-    ).toContain('check the local agent');
+    ).toContain('check your connection');
     fixture.destroy();
     expect(full.observed).toBe(false);
     expect(params.observed).toBe(false);

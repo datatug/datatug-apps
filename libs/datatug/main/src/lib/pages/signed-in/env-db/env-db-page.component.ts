@@ -289,7 +289,7 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   private catalogFailed(error: unknown): void {
     this.loading.set(false);
     this.loadError.set(
-      'Database catalog unavailable. A registered database needs a scan before its tables can be browsed. If it was already scanned, check the local agent and try again.',
+      'Database catalog unavailable. A registered database needs a scan before its tables can be browsed. If it was already scanned, check your connection and try again.',
     );
     this.errorLogger.logError(error, 'Failed to load catalog tables');
   }
