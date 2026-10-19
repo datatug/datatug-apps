@@ -116,13 +116,15 @@ declare global {
                   <div
                     class="revoke-confirm"
                     role="group"
-                    aria-label="Confirm Google account disconnect"
+                    aria-label="Confirm Google access revocation"
                   >
                     <p>
-                      This disables every connected view and asks Google to
-                      revoke this integration grant. Revocation can affect every
-                      scope and client in the integration’s isolated Google
-                      OAuth project.
+                      This disables all DataTug log views for this Google
+                      account and asks Google to revoke this account’s
+                      permissions for the shared Sneat app. Other Sneat or
+                      DataTug clients using this Google authorization may ask
+                      you to grant permission again. Your Sneat account will
+                      remain. Use Remove view to disconnect just one log view.
                     </p>
                     <ion-button
                       color="danger"
@@ -130,8 +132,8 @@ declare global {
                       (click)="disconnect(grant)"
                       >{{
                         busyGrantId() === grant.id
-                          ? 'Disconnecting…'
-                          : 'Confirm disconnect'
+                          ? 'Revoking access…'
+                          : 'Confirm revocation'
                       }}</ion-button
                     >
                     <ion-button
@@ -149,7 +151,7 @@ declare global {
                       grant.state !== 'active' || busyGrantId() === grant.id
                     "
                     (click)="confirmGrantId.set(grant.id)"
-                    >Disconnect Google account</ion-button
+                    >Revoke Google access</ion-button
                   >
                 }
               </article>
@@ -612,7 +614,7 @@ export class CloudLogsPageComponent {
   }
   grantLabel(grant: GoogleLogGrant): string {
     if (grant.state === 'revocation_pending')
-      return 'Disconnect requested. Google access cleanup is in progress.';
+      return 'Google access revocation requested. Cleanup is in progress.';
     if (grant.state === 'retired') return 'Disconnected';
     return `${this.connections().filter((connection) => connection.grantId === grant.id).length} connected log views`;
   }
