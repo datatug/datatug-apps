@@ -25,7 +25,7 @@ or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 a
 skipped by an `if:` does not gate anything even if it is a required check; that is why the live-host lanes are kept
 out of `needs`.
 
-### Keeping every lane off DemoDB: four layers
+### Keeping every lane off DemoDB and the public OpenVaultDB API: five layers
 
 All lanes that run on a pull request, merge group or push (above, plus the manual dispatch of `agent-links`) are covered by:
 
@@ -43,8 +43,14 @@ All lanes that run on a pull request, merge group or push (above, plus the manua
 3. **CI maps the DemoDB names to `0.0.0.0` in `/etc/hosts`** (`.github/actions/block-demodb`, host list from the catalog,
    `scripts/demodb-hosts.mjs`) and proves it with a failing `curl`. That covers Firefox, WebKit, Node's `request`, and
    the `datatug` CLI processes. Fixtures are answered by the route before any name lookup, so the block does not break them.
-4. **The report.** Every Playwright run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE, refused,
-   ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), and fails the run when
+4. **The dev server's public OVDB proxy** (`tools/public-ovdb-proxy.cjs`) forwards the app's calls to `https://ovdb.demodb.dev` and
+   `https://cloud.openvaultdb.com` from Node, where layers 1-3 cannot see them. Lanes that start the dev server give it
+   `DATATUG_PUBLIC_OVDB_UPSTREAM=refuse` (`demodbServerEnv`): it answers 403 + `x-datatug-ovdb-refused` and the guard counts the
+   refusal as an escape. `demodb-guard-selftest.spec.ts` holds a negative control for it. A dev server that is already running
+   (`reuseExistingServer` outside CI) keeps its own environment: stop it before a local `nx e2e`. The block action and the
+   Chromium rule also cover `openvaultdb.com`, `www.` and `cloud.`; the nightly live PostgreSQL lane uses neither.
+5. **The report.** Every Playwright run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE, refused,
+   ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), writes `coverage/demodb-request-report-<job>-<pid>.md` (one file per Playwright run) and prints all of them in a late CI step, and fails the run when
    anything escaped or a live budget was exceeded. The `journey`, `session-continuity`, `agent-links`, `checkout`, `hand-off`
    and `cloud-logs` configs report too.
 
@@ -71,8 +77,10 @@ the websites repo and copying the outputs). The `journey` lane downloads nothing
 * A rate-limit answer (HTTP 429, or a Cloudflare block page: 403/503/52x with `cf-mitigated`, or an error 1015/1020/1027
   page) trips a breaker kept in a file, so every worker of the run, also one started after a failure, refuses every
   further request. `e2e-demo-postgresql` has retries 0, `maxFailures` 1 and a per-test budget of 40 requests to
-  `cloud.openvaultdb.com` (`DEMODB_E2E_MAX_OVDB_REQUESTS`), refused once spent. `helpers/demodb-guard-state.unit.ts` tests
-  the state (run in the `test` job).
+  `cloud.openvaultdb.com` (`DEMODB_E2E_MAX_OVDB_REQUESTS`), refused once spent. `helpers/demodb-guard-state.unit.ts` and
+  `helpers/demodb-guard-logic.unit.ts` test the state and the request logic (run in the `test` job together with
+  `scripts/mutate-demodb-guard.mjs`, which breaks the budget, count-before-send, breaker and 52x rules one at a time and
+  requires the tests to fail).
 * `scripts/check-demo-sqlite-catalog.mjs --online` and `check-demo-postgresql-catalog.mjs --online` are manual only and are
   in no CI path.
 

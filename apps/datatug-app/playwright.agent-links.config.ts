@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
+import { demodbChromiumLaunch, demodbReporter, demodbServerEnv } from './e2e/helpers/demodb-config';
 
 /**
  * Card links (Feature claude-mod-web-links): the pages a DataTug Claude Code mod card links to, opened against a
@@ -39,6 +39,7 @@ export default defineConfig({
     command: `pnpm nx run datatug-app:serve:development --host 127.0.0.1 --port ${port} --allowed-hosts datatug.localhost`,
     url: `http://127.0.0.1:${port}`,
     reuseExistingServer: !process.env['CI'],
+    env: demodbServerEnv,
     timeout: 180_000,
   },
 });

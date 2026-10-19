@@ -1,5 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
-import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
+import { demodbChromiumLaunch, demodbReporter, demodbServerEnv } from './e2e/helpers/demodb-config';
 
 // Specs import `test` from ./e2e/helpers/demodb-guard, which serves *.demodb.dev from local fixtures (the app downloads
 // chinook.sqlite itself) and fails a test that sends a live request.
@@ -82,6 +82,7 @@ export default defineConfig({
     command: `pnpm nx run datatug-app:serve:development --host localhost --port ${e2ePort}`,
     url: `http://localhost:${e2ePort}`,
     reuseExistingServer: !process.env.CI,
+    env: demodbServerEnv,
     timeout: 120_000,
   },
   projects: [

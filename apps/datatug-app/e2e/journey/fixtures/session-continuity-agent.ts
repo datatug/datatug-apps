@@ -1,7 +1,4 @@
-import { test as base, expect, useDemodbGuardPassively } from '../../helpers/demodb-guard';
-
-// This lane only talks to a local agent: count and detect DemoDB requests, but install no route (see the helper).
-useDemodbGuardPassively();
+import { test as base, expect } from '../../helpers/demodb-guard';
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -10,6 +7,9 @@ import { createServer } from 'node:net';
 
 /** One real writable CLI, private storage and a dynamic port per test. No AI provider. */
 export const test = base.extend<{ continuityLink: string }>({
+  // This lane only talks to a local agent: count and detect DemoDB requests but install no route, for the tests of THIS fixture
+  // only (see `demodbPassive` in helpers/demodb-guard.ts).
+  demodbPassive: [true, { option: true }] as never,
   continuityLink: async ({ baseURL }, use, testInfo) => {
     const external = process.env['DATATUG_SESSION_CONTINUITY_LINK_FILE'];
     if (external) {

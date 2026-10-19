@@ -1,12 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
-import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
+import { demodbReporter } from './e2e/helpers/demodb-config';
 
 // /demo/ovdb/<dataset>-postgresql: a hosted, read-only PostgreSQL DemoDB edition opened through the public OpenVaultDB
 // server (https://cloud.openvaultdb.com), never Neon directly. The suite runs the real BUILT app (`serve:production`)
 // in Chromium and Firefox and calls the REAL live API: nothing here replaces the OVDB server or the database, so
 // the suite needs the network and is tolerant to what the live server does (a cold start takes up to ~6 s, and a mount
 // that is still pending answers 503 database_unavailable for a moment): long waits and the app's own retry back-off.
-// Playwright itself NEVER retries a test here (retries 0): a retry is another round of live requests, and an HTTP 429
+// This is the live lane by design: no resolver rule here (cloud.openvaultdb.com must resolve). Playwright itself NEVER retries a test here (retries 0): a retry is another round of live requests, and an HTTP 429
 // (rate limit) must stop the run, not be amplified (see e2e/helpers/demodb-guard.ts for the same rule on demodb.dev).
 // Each test has a request budget (demo-postgresql.spec.ts) and the run prints per-host request counts at the end. The app is served as https://datatug.app (see demo-postgresql.spec.ts), so the server's real CORS
 // allow-list is exercised too. WebKit is left out: it adds no PostgreSQL-specific behaviour (no OPFS, workers or
@@ -45,7 +45,7 @@ export default defineConfig({
     timeout: 180_000,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
   ],
 });

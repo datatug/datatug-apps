@@ -1,7 +1,4 @@
-import { test as base, expect, useDemodbGuardPassively } from '../../helpers/demodb-guard';
-
-// This lane only talks to a local agent: count and detect DemoDB requests, but install no route (see the helper).
-useDemodbGuardPassively();
+import { test as base, expect } from '../../helpers/demodb-guard';
 import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
@@ -578,6 +575,9 @@ async function startAgent(
 
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type -- matches Playwright's own TestType<{}, W> shape
 export const test = base.extend<{}, JourneyWorkerFixtures>({
+  // This lane only talks to a local agent: count and detect DemoDB requests but install no route, for the tests of THIS fixture
+  // only (see `demodbPassive` in helpers/demodb-guard.ts).
+  demodbPassive: [true, { option: true }] as never,
   agentServer: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use, workerInfo) => {

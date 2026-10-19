@@ -1,6 +1,6 @@
 name: 'Block DemoDB hosts'
 description: >
-  Makes every DemoDB host (demodb.dev, www, ovdb and one sub-domain per catalog dataset) unreachable from this runner by mapping
+  Makes every DemoDB host (demodb.dev, www, ovdb and one sub-domain per catalog dataset) and the public OpenVaultDB API (openvaultdb.com, cloud.openvaultdb.com) unreachable from this runner by mapping
   it to 0.0.0.0 in /etc/hosts. Backstop under the Playwright guard (apps/datatug-app/e2e/helpers/demodb-guard.ts): it also covers
   Firefox, WebKit, Node and the datatug CLI, and a context or request the guard's route cannot see. The guard still serves the
   fixtures: they are answered by the route before any name lookup. Run it early in every CI job that executes tests or app code.
@@ -8,18 +8,21 @@ description: >
 runs:
   using: 'composite'
   steps:
-    - name: Map DemoDB hosts to 0.0.0.0 and prove they are unreachable
+    - name: Map DemoDB and OpenVaultDB hosts to 0.0.0.0 and prove it
       shell: bash
       run: |
         set -euo pipefail
         node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | sed 's/^/0.0.0.0 /' | sudo tee -a /etc/hosts > /dev/null
         count="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | wc -l)"
         echo "Blocked $count DemoDB host names in /etc/hosts"
-        # Positive control: the block must work, or the zero in the request report proves nothing.
-        for host in demodb.dev chinook.demodb.dev ovdb.demodb.dev; do
-          if curl -sS --max-time 5 -o /dev/null "https://$host/"; then
-            echo "::error title=DemoDB block::$host is still reachable after the hosts block"
+        # Proof, without any network: the system resolver must answer 0.0.0.0 for a sample of every family (the DemoDB apex, a dataset
+        # sub-domain, the OVDB API on demodb.dev, and both public OpenVaultDB names). getent reads /etc/hosts and, for names that
+        # are not there, would ask DNS: such a name fails this check.
+        for host in demodb.dev chinook.demodb.dev ovdb.demodb.dev openvaultdb.com cloud.openvaultdb.com; do
+          answer="$(getent hosts "$host" | awk '{print $1}' | head -1)"
+          if [ "$answer" != "0.0.0.0" ]; then
+            echo "::error title=DemoDB block::$host resolves to '${answer:-nothing}', not 0.0.0.0, after the hosts block"
             exit 1
           fi
         done
-        echo "DemoDB hosts are unreachable from this runner (checked demodb.dev, chinook.demodb.dev, ovdb.demodb.dev)"
+        echo "DemoDB and OpenVaultDB hosts resolve to 0.0.0.0 (checked demodb.dev, chinook.demodb.dev, ovdb.demodb.dev, openvaultdb.com, cloud.openvaultdb.com)"

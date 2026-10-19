@@ -1,20 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { APIRequestContext, Browser, BrowserContext, expect, Route, test as base, TestInfo } from '@playwright/test';
-import {
-  bumpLiveRun,
-  isRateLimited,
-  liveRunCount,
-  memoGet,
-  memoSet,
-  rateLimitMessage,
-  readBreaker,
-  Stored,
-  tripBreaker,
-} from './demodb-guard-state';
+import { Counter, type HostCounts, type Kind, resolveRequest, type Rules } from './demodb-guard-logic';
+import { readBreaker, type Stored } from './demodb-guard-state';
 
 /**
- * Keeps the e2e suites off the live DemoDB hosts (demodb.dev and every *.demodb.dev, including ovdb.demodb.dev).
+ * Keeps the e2e suites off the live DemoDB hosts (demodb.dev and every *.demodb.dev, including ovdb.demodb.dev) and off the
+ * public OpenVaultDB API (openvaultdb.com, cloud.openvaultdb.com).
  *
  * Why: on 2026-10-16 about 25,500 CI requests for chinook.demodb.dev/data/chinook.sqlite got the whole demodb.dev
  * Cloudflare zone rate limited (HTTP 429 for every DemoDB site). Every Playwright test opens a fresh browser context,
@@ -23,10 +15,14 @@ import {
  * Layers (the first is this file, the others are the backstop; CI runs all of them):
  *  1. Every browser context of every test gets a route for the DemoDB hosts: the `browser` fixture is wrapped so that
  *     `browser.newContext()` (also the one inside `newPage()` and the built-in `context` fixture) installs it. A
- *     request that still reaches the network is counted as "escaped" and fails the test. (Real-agent lanes use the guard
- *     passively: counters and escape detection, no route; see useDemodbGuardPassively.)
- *  2. Chromium resolves *.demodb.dev to nothing (helpers/demodb-config.ts), and CI maps the DemoDB names to 0.0.0.0 in
- *     /etc/hosts (.github/actions/block-demodb) for Firefox, WebKit, Node (`request`) and the datatug CLI.
+ *     request that still reaches the network is counted as "escaped" and fails the test. Tests of the real-agent lanes use
+ *     the guard passively (the `demodbPassive` option, per test): counters and escape detection, no route.
+ *  2. Chromium resolves the DemoDB and openvaultdb.com names to nothing (helpers/demodb-config.ts), and CI maps them to
+ *     0.0.0.0 in /etc/hosts (.github/actions/block-demodb) for Firefox, WebKit, Node (`request`) and the datatug CLI.
+ *  3. The dev server forwards the app's public OVDB calls from Node (tools/public-ovdb-proxy.cjs), which none of the layers
+ *     above can see. Lanes that start it set DATATUG_PUBLIC_OVDB_UPSTREAM=refuse (demodbServerEnv): the proxy answers 403 with
+ *     x-datatug-ovdb-refused and this guard counts that as an escape. Only a dev server started by the lane gets this: a
+ *     server already running (reuseExistingServer outside CI) keeps its own environment, so stop it before a local `nx e2e`.
  *
  * Two modes, picked by DEMODB_E2E_MODE:
  *  - `fixture` (default): every DemoDB request is answered locally: the SQLite files from DEMODB_FIXTURE_DIR (default
@@ -48,7 +44,8 @@ import {
  * the end of the run and writes them to $GITHUB_STEP_SUMMARY.
  */
 
-export const DEMODB_HOST = /(^|\.)demodb\.dev$/;
+/** Every host the guard watches: the DemoDB zone and the public OpenVaultDB API. */
+export const DEMODB_HOST = /(^|\.)(demodb\.dev|openvaultdb\.com)$/;
 export const DEMODB_LIVE = process.env['DEMODB_E2E_MODE'] === 'live';
 const MAX_LIVE_PER_TEST = Number(process.env['DEMODB_E2E_MAX_LIVE_REQUESTS'] || 15);
 const MAX_LIVE_PER_RUN = Number(process.env['DEMODB_E2E_MAX_RUN_LIVE_REQUESTS'] || 120);
@@ -60,32 +57,12 @@ const committedDir = (): string => join(__dirname, '../fixtures/demodb');
 export const fixtureDir = (): string =>
   resolve(process.env['DEMODB_FIXTURE_DIR'] || join(__dirname, '../../../../tmp/demodb-fixtures'));
 
-export interface HostCounts {
-  /** Requests the page/worker/test asked for (request events of every guarded context). */
-  total: number;
-  /** Requests that entered the guard's route handler (`total - handled`: answered by another route of the spec, or none). */
-  handled: number;
-  /** Of those, answered from the fixture directory. */
-  fixture: number;
-  /** Of those, answered from the live memo (a URL already fetched live in this run). */
-  memo: number;
-  /** Of those, sent to the real host. */
-  live: number;
-  /** Of those, refused (no fixture, budget spent, breaker tripped, OVDB API). */
-  refused: number;
-  /**
-   * Requests that reached the NETWORK instead of being answered locally: a response from a real server address, or a
-   * failed name lookup / connection (what the hosts block and the Chromium resolver rule turn them into). A request that
-   * another route (a spec's own `context.route`) fulfilled never counts: it did not leave the machine.
-   */
-  escaped: number;
-}
-
 const CORS = { 'access-control-allow-origin': '*', 'access-control-expose-headers': '*' };
 
 function fixtureFile(url: URL): { path: string; contentType: string } | undefined {
   const dir = fixtureDir();
   const committed = committedDir();
+  if (!/(^|\.)demodb\.dev$/.test(url.hostname)) return undefined;
   const sub = url.hostname.replace(/\.?demodb\.dev$/, '');
   if (url.hostname === 'demodb.dev' && url.pathname === '/corpus.json') {
     return { path: join(committed, 'corpus.json'), contentType: 'application/json' };
@@ -117,8 +94,8 @@ function fromFixture(url: URL, method: string): Stored | undefined {
 
 /** Why a fixture-mode request for a URL without a fixture is refused. */
 function refusalFor(url: URL): string {
-  if (url.hostname === 'ovdb.demodb.dev') {
-    return `Refused ${url.href}: the OVDB API on ovdb.demodb.dev has no fixtures and is never reached from CI. Use DEMODB_E2E_MODE=live for the manual smoke.`;
+  if (url.hostname === 'ovdb.demodb.dev' || /(^|\.)openvaultdb\.com$/.test(url.hostname)) {
+    return `Refused ${url.href}: the OVDB API (${url.hostname}) has no fixtures and is never reached from CI. Use DEMODB_E2E_MODE=live for the manual smoke.`;
   }
   if (/\.parts\.json$|\.part[0-9]*\.gz$|\.gz$/.test(url.pathname)) {
     return `Refused ${url.href}: the chunked AdventureWorks download (manifest and gzip parts) has no fixtures. Its opt-in tests run only in live mode.`;
@@ -138,69 +115,22 @@ export interface DemodbGuard {
   head(request: APIRequestContext, url: string): Promise<{ status: number; headers: Record<string, string> }>;
 }
 
-type Kind = keyof HostCounts;
-
-class Counter {
-  readonly counts = new Map<string, HostCounts>();
-  bump(host: string, kind: Kind): void {
-    const entry = this.counts.get(host) ?? { total: 0, handled: 0, fixture: 0, memo: 0, live: 0, refused: 0, escaped: 0 };
-    entry[kind] += 1;
-    this.counts.set(host, entry);
-  }
-  sum(kind: Kind): number {
-    let n = 0;
-    for (const entry of this.counts.values()) n += entry[kind];
-    return n;
-  }
-}
-
 /** The counter of the running test; requests of a context created outside a test land in `orphan`. */
 const orphan = new Counter();
 let current: Counter = orphan;
+/** Whether the running test is passive (no route, counters and escape detection only); see `demodbPassive`. */
+let currentPassive = true;
 
-/** Answers one DemoDB request under the mode's rules. `live` is how to reach the real host (called only within budget). */
-async function resolveRequest(
-  url: URL,
-  method: string,
-  hasRange: boolean,
-  counter: Counter,
-  live: () => Promise<Stored>,
-): Promise<Stored | { abort: string }> {
-  const refuse = (message: string): { abort: string } => {
-    counter.bump(url.hostname, 'refused');
-    return { abort: message };
-  };
-  const tripped = readBreaker();
-  if (tripped) return refuse(tripped);
-  if (!DEMODB_LIVE) {
-    const hit = fromFixture(url, method);
-    if (hit) {
-      counter.bump(url.hostname, 'fixture');
-      return hit;
-    }
-    return refuse(refusalFor(url));
-  }
-  const key = `${method} ${url.href}`;
-  const cached = hasRange ? undefined : memoGet(key);
-  if (cached) {
-    counter.bump(url.hostname, 'memo');
-    return cached;
-  }
-  // Budgets are enforced BEFORE the request is sent. Every live request spends budget, a retry by the app included.
-  if (counter.sum('live') >= MAX_LIVE_PER_TEST) {
-    return refuse(`Refused ${url.href}: this test has spent its live budget of ${MAX_LIVE_PER_TEST} requests to the DemoDB hosts (DEMODB_E2E_MAX_LIVE_REQUESTS).`);
-  }
-  if (liveRunCount() >= MAX_LIVE_PER_RUN) {
-    return refuse(`Refused ${url.href}: the run has spent its live budget of ${MAX_LIVE_PER_RUN} requests to the DemoDB hosts (DEMODB_E2E_MAX_RUN_LIVE_REQUESTS).`);
-  }
-  bumpLiveRun();
-  counter.bump(url.hostname, 'live');
-  const response = await live();
-  const blocked = isRateLimited(response.status, response.headers, response.status === 200 ? '' : response.body.subarray(0, 4096).toString('utf8'));
-  if (blocked) return { abort: tripBreaker(rateLimitMessage(url.href, response.status, response.headers['retry-after'])) };
-  if (response.status === 200 && !hasRange && response.body.length <= MEMO_LIMIT_BYTES) memoSet(key, response);
-  return response;
-}
+const rules: Rules = {
+  live: DEMODB_LIVE,
+  maxLivePerTest: MAX_LIVE_PER_TEST,
+  maxLivePerRun: MAX_LIVE_PER_RUN,
+  memoLimitBytes: MEMO_LIMIT_BYTES,
+  fixture: fromFixture,
+  refusal: refusalFor,
+};
+const resolve_ = (url: URL, method: string, hasRange: boolean, counter: Counter, live: () => Promise<Stored>) =>
+  resolveRequest(rules, url, method, hasRange, counter, live);
 
 const dropEncoding = (headers: Record<string, string>): Record<string, string> => {
   const copy = { ...headers };
@@ -211,34 +141,32 @@ const dropEncoding = (headers: Record<string, string>): Record<string, string> =
   return copy;
 };
 
-const installed = new WeakSet<BrowserContext>();
+const observed = new WeakSet<BrowserContext>();
+const routed = new WeakSet<BrowserContext>();
 
-/**
- * Passive mode: count requests and detect escapes on every context, but install NO route. For lanes that talk only to a
- * local agent and have no reason to ask DemoDB for anything (journey, session-continuity, agent-links): a route makes
- * Chromium intercept every request, which slows those long flows enough to hit their test timeouts on a CI runner. The
- * hosts block and the Chromium resolver rule stop a DemoDB request there; the listeners turn it into a failed test.
- * Call at import time from the fixture module of such a lane.
- */
-let passive = false;
-export function useDemodbGuardPassively(): void {
-  passive = true;
-}
+/** Test hook: whether the guard's route is installed on a context (see demodb-guard-selftest.spec.ts). */
+export const hasGuardRoute = (context: BrowserContext): boolean => routed.has(context);
 
-/** Puts the DemoDB route and the request counters on a context. Idempotent. */
-async function installOnContext(context: BrowserContext): Promise<void> {
-  if (installed.has(context)) return;
-  installed.add(context);
+/** Counters and escape detection on a context. Idempotent. Needs no route. */
+function observe(context: BrowserContext): void {
+  if (observed.has(context)) return;
+  observed.add(context);
   context.on('request', (request) => {
     const host = new URL(request.url()).hostname;
     if (DEMODB_HOST.test(host)) current.bump(host, 'total');
   });
   // Escapes: only what actually left the machine counts (see HostCounts.escaped).
   context.on('response', async (response) => {
-    const host = new URL(response.url()).hostname;
-    if (!DEMODB_HOST.test(host)) return;
+    const url = new URL(response.url());
+    // The dev server's public OVDB proxy refused to forward this request: the app tried to reach a public OVDB host.
+    const refusedUpstream = response.headers()['x-datatug-ovdb-refused'];
+    if (refusedUpstream) {
+      current.bump(new URL(refusedUpstream).hostname, 'escaped');
+      return;
+    }
+    if (!DEMODB_HOST.test(url.hostname)) return;
     try {
-      if (await response.serverAddr()) current.bump(host, 'escaped');
+      if (await response.serverAddr()) current.bump(url.hostname, 'escaped');
     } catch {
       // the page closed before the address could be read
     }
@@ -249,7 +177,12 @@ async function installOnContext(context: BrowserContext): Promise<void> {
       current.bump(host, 'escaped');
     }
   });
-  if (passive) return;
+}
+
+/** Installs the DemoDB route on a context. Idempotent. */
+async function installRoute(context: BrowserContext): Promise<void> {
+  if (routed.has(context)) return;
+  routed.add(context);
   await context.route(
     (url) => DEMODB_HOST.test(url.hostname),
     async (route: Route) => {
@@ -263,7 +196,7 @@ async function installOnContext(context: BrowserContext): Promise<void> {
           headers: { ...CORS, 'access-control-allow-headers': '*', 'access-control-allow-methods': 'GET, HEAD, OPTIONS' },
         });
       }
-      const result = await resolveRequest(url, request.method(), 'range' in request.headers(), counter, async () => {
+      const result = await resolve_(url, request.method(), 'range' in request.headers(), counter, async () => {
         const response = await route.fetch();
         return { status: response.status(), headers: dropEncoding(response.headers()), body: await response.body() };
       });
@@ -281,15 +214,26 @@ function summarise(counter: Counter): Record<string, HostCounts> {
   return Object.fromEntries([...counter.counts.entries()].sort(([a], [b]) => a.localeCompare(b)));
 }
 
-export const test = base.extend<{ demodbGuard: DemodbGuard }, { browser: Browser }>({
-  // Worker-scoped: every context created from this browser (newContext, newPage, the `context` fixture, contexts a spec or a
-  // fixture creates by hand) gets the guard, so no test can open a context that skips it.
+export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boolean }, { browser: Browser }>({
+  /**
+   * Passive mode, per test (set it in a fixture module with `demodbPassive: [true, { option: true }]`, or in a project's
+   * `use`): count requests and detect escapes on every context, but install NO route. For lanes that talk only to a local
+   * agent and have no reason to ask DemoDB for anything (journey, session-continuity, agent-links): a route makes Chromium
+   * intercept every request, which slows those long flows enough to hit their test timeouts on a CI runner. The hosts block
+   * and the Chromium resolver rule stop a DemoDB request there; the listeners turn it into a failed test. It applies to the
+   * tests that use this option only, never to other specs that happen to run in the same worker.
+   */
+  demodbPassive: [false, { option: true }],
+  // Worker-scoped: every context created from this browser (newContext, newPage, contexts a spec or a fixture creates by
+  // hand during a test) gets the guard. The built-in `context` fixture is created before the test's own fixture below runs, so
+  // that one is routed by `demodbGuard`.
   browser: [
     async ({ browser }, use) => {
       const original = browser.newContext.bind(browser);
       browser.newContext = (async (...args: Parameters<Browser['newContext']>) => {
         const context = await original(...args);
-        await installOnContext(context);
+        observe(context);
+        if (!currentPassive) await installRoute(context);
         return context;
       }) as Browser['newContext'];
       await use(browser);
@@ -298,17 +242,19 @@ export const test = base.extend<{ demodbGuard: DemodbGuard }, { browser: Browser
     { scope: 'worker' },
   ],
   demodbGuard: [
-    async ({ context }, use, testInfo: TestInfo) => {
+    async ({ context, demodbPassive }, use, testInfo: TestInfo) => {
       const counter = new Counter();
       current = counter;
-      await installOnContext(context);
+      currentPassive = demodbPassive;
+      observe(context);
+      if (!demodbPassive) await installRoute(context);
       const guard: DemodbGuard = {
         counts: counter.counts,
         async get(request, href) {
           const url = new URL(href);
           counter.bump(url.hostname, 'total');
           counter.bump(url.hostname, 'handled');
-          const result = await resolveRequest(url, 'GET', false, counter, async () => {
+          const result = await resolve_(url, 'GET', false, counter, async () => {
             const response = await request.get(href, { maxRedirects: 0, failOnStatusCode: false });
             return { status: response.status(), headers: response.headers(), body: await response.body() };
           });
@@ -319,7 +265,7 @@ export const test = base.extend<{ demodbGuard: DemodbGuard }, { browser: Browser
           const url = new URL(href);
           counter.bump(url.hostname, 'total');
           counter.bump(url.hostname, 'handled');
-          const result = await resolveRequest(url, 'HEAD', false, counter, async () => {
+          const result = await resolve_(url, 'HEAD', false, counter, async () => {
             const response = await request.head(href, { maxRedirects: 0, failOnStatusCode: false });
             return { status: response.status(), headers: response.headers(), body: Buffer.alloc(0) };
           });
@@ -331,12 +277,13 @@ export const test = base.extend<{ demodbGuard: DemodbGuard }, { browser: Browser
 
       const summary = summarise(counter);
       current = orphan;
+      currentPassive = true;
       testInfo.annotations.push({ type: 'demodb-requests', description: JSON.stringify({ mode: DEMODB_LIVE ? 'live' : 'fixture', hosts: summary }) });
       const tripped = readBreaker();
       if (tripped) throw new Error(tripped);
       const sum = (kind: Kind): number => Object.values(summary).reduce((n, host) => n + host[kind], 0);
       const budget = DEMODB_LIVE ? MAX_LIVE_PER_TEST : 0;
-      expect(sum('escaped'), `DemoDB requests that reached the network (the guard's route did not answer them): ${JSON.stringify(summary)}`).toBe(0);
+      expect(sum('escaped'), `DemoDB / OpenVaultDB requests that reached the network (the guard did not answer them): ${JSON.stringify(summary)}`).toBe(0);
       // Fixture mode refuses what has no fixture (page assets, the OVDB API) and the test goes on; they show in the report.
       // In live mode a refusal means a budget or the breaker stopped a request the test needed: that is a failure.
       if (DEMODB_LIVE) expect(sum('refused'), `DemoDB requests refused by the guard (budget spent): ${JSON.stringify(summary)}`).toBe(0);

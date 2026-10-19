@@ -46,6 +46,8 @@ test('rate limits are recognised: 429, and Cloudflare block pages on 403/503', (
   assert.equal(isRateLimited(403, { 'cf-mitigated': 'challenge' }), true);
   assert.equal(isRateLimited(403, { server: 'cloudflare' }, '<title>Error 1027</title> You are being rate limited'), true);
   assert.equal(isRateLimited(503, { server: 'cloudflare' }, '<h1>Error 1015</h1> rate limited'), true);
+  for (const status of [520, 522, 525, 530]) assert.equal(isRateLimited(status, { 'cf-mitigated': 'block' }), true, `HTTP ${status}`);
+  assert.equal(isRateLimited(522, { server: 'cloudflare' }, 'Error 1015 You are being rate limited'), true);
   assert.equal(isRateLimited(503, {}, 'database_unavailable'), false);
   assert.equal(isRateLimited(403, { server: 'nginx' }, 'forbidden'), false);
 });

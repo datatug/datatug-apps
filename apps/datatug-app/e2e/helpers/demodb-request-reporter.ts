@@ -1,7 +1,7 @@
 import { appendFileSync, mkdirSync, writeFileSync } from 'node:fs';
 import { dirname } from 'node:path';
 import type { Reporter, TestCase } from '@playwright/test/reporter';
-import type { HostCounts } from './demodb-guard';
+import type { HostCounts } from './demodb-guard-logic';
 
 type Row = HostCounts;
 
@@ -9,7 +9,7 @@ type Row = HostCounts;
  * Prints, at the end of a run, how many requests went to each *.demodb.dev / OpenVaultDB host: asked for by the browser
  * (asked), answered from fixtures, from the live memo, sent to the real host (LIVE), refused, and ESCAPED (reached the network instead of being
  * answered locally: a real server address, or a failed name lookup / connection). The same table goes to $GITHUB_STEP_SUMMARY (Nx truncates
- * long job logs, the summary does not) and to DEMODB_REPORT_FILE (in CI by default coverage/demodb-request-report-<job>.md, which the lane prints in a later step). It fails the run when anything escaped, and in
+ * long job logs, the summary does not) and to DEMODB_REPORT_FILE (in CI by default coverage/demodb-request-report-<job>-<pid>.md, one file per Playwright run, which the lane prints in a later step). It fails the run when anything escaped, and in
  * live mode when the live total exceeds DEMODB_E2E_MAX_RUN_LIVE_REQUESTS (default 120).
  */
 export default class DemodbRequestReporter implements Reporter {
@@ -65,7 +65,7 @@ export default class DemodbRequestReporter implements Reporter {
       const file =
         process.env['DEMODB_REPORT_FILE'] ||
         (process.env['GITHUB_JOB'] && process.env['GITHUB_WORKSPACE']
-          ? `${process.env['GITHUB_WORKSPACE']}/coverage/demodb-request-report-${process.env['GITHUB_JOB']}.md`
+          ? `${process.env['GITHUB_WORKSPACE']}/coverage/demodb-request-report-${process.env['GITHUB_JOB']}-${process.pid}.md`
           : undefined);
       if (file) {
         mkdirSync(dirname(file), { recursive: true });
