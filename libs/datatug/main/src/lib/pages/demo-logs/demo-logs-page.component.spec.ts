@@ -9,14 +9,16 @@ import { DemoLogsPageComponent } from './demo-logs-page.component';
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
   selector: 'ag-grid-angular',
-  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="rowClicked.emit({ data: row })">{{ row.message }}</button> }`,
+  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="selectionChanged.emit({ api: { getSelectedRows: selectedRows(row) } })">{{ row.message }}</button> }`,
 })
 class GridStubComponent {
   readonly rowData = input<Array<Record<string, unknown>>>([]);
   readonly columnDefs = input<unknown>();
   readonly defaultColDef = input<unknown>();
   readonly rowSelection = input<unknown>();
-  readonly rowClicked = output<unknown>();
+  selectedRows(row: Record<string, unknown>) { return () => [row]; }
+  readonly selectionChanged = output<unknown>();
+  readonly gridReady = output<unknown>();
   readonly cellKeyDown = output<unknown>();
 }
 

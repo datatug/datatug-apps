@@ -13,14 +13,16 @@ import { CloudLogsPageComponent } from './cloud-logs-page.component';
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
   selector: 'ag-grid-angular',
-  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="rowClicked.emit({ data: row })">{{ row.message }}</button> }`,
+  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="selectionChanged.emit({ api: { getSelectedRows: selectedRows(row) } })">{{ row.message }}</button> }`,
 })
 class GridStubComponent {
   readonly rowData = input<Array<Record<string, unknown>>>([]);
   readonly columnDefs = input<unknown>();
   readonly defaultColDef = input<unknown>();
   readonly rowSelection = input<unknown>();
-  readonly rowClicked = output<unknown>();
+  selectedRows(row: Record<string, unknown>) { return () => [row]; }
+  readonly selectionChanged = output<unknown>();
+  readonly gridReady = output<unknown>();
   readonly cellKeyDown = output<unknown>();
 }
 
@@ -200,7 +202,13 @@ describe('CloudLogsPageComponent', () => {
     });
     expect(component.columns.map(column => column.field)).toEqual(['timestamp', 'severity', 'service', 'source', 'message']);
     const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
-    component.activateEntry({ data: component.entries()[0], event } as Parameters<typeof component.activateEntry>[0]);
+    const setGridAriaProperty = vi.fn();
+    component.nameGrid({ api: { setGridAriaProperty } } as unknown as Parameters<typeof component.nameGrid>[0]);
+    expect(setGridAriaProperty.mock.calls).toEqual([['label', 'Cloud Logging entries'], ['describedby', 'cloud-log-grid-help']]);
+    const setSelected = vi.fn();
+    component.activateEntry({ node: { setSelected }, event } as unknown as Parameters<typeof component.activateEntry>[0]);
+    expect(setSelected).toHaveBeenCalledWith(true);
+    component.selectionChanged({ api: { getSelectedRows: () => component.entries() } } as unknown as Parameters<typeof component.selectionChanged>[0]);
     fixture.detectChanges();
     expect(event.defaultPrevented).toBe(true);
     expect(fixture.nativeElement.querySelector('#cloud-entry-details')?.textContent).toContain('svc');

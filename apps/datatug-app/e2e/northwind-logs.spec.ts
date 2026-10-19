@@ -208,7 +208,8 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     await expect(
       page.getByRole('status').filter({ hasText: '6 entries' }),
     ).toBeVisible();
-    const timeline = page.locator('.log-grid');
+    const timeline = page.getByRole('grid', { name: 'Log evidence entries', exact: true });
+    await expect(timeline).toHaveAttribute('aria-describedby', 'log-grid-help');
     await expect(timeline.getByRole('columnheader')).toHaveText(['Timestamp', 'Severity', 'Service', 'Source', 'Message']);
     await expect(timeline.locator('.ag-row')).toHaveCount(6);
     await expect(timeline).toContainText(
@@ -251,7 +252,16 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     const focusedCell = timeline.locator('.ag-row').first().locator('[role="gridcell"]').first();
     await focusedCell.focus();
     await focusedCell.press('Enter');
-    await expect(page.locator('.entry-details')).toBeVisible();
+    const selectedRow = timeline.locator('.ag-row').first();
+    await expect(selectedRow).toHaveAttribute('aria-selected', 'true');
+    await expect(timeline.locator('.ag-row[aria-selected="true"]')).toHaveCount(1);
+    await expect(page.locator('.entry-details')).toContainText('Shipment update deferred');
+    await focusedCell.press('Space');
+    await expect(selectedRow).toHaveAttribute('aria-selected', 'false');
+    await expect(page.locator('.entry-details')).toHaveCount(0);
+    await focusedCell.press('Space');
+    await expect(selectedRow).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.entry-details')).toContainText('Shipment update deferred');
     await page.setViewportSize({ width: 1280, height: 720 });
     const severity = page.getByLabel('Severity');
     await severity.selectOption('ERROR');

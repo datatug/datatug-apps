@@ -318,7 +318,16 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
   await page.getByRole('button', { name: 'Copy evidence reference' }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('versioned:fixture:entry-1');
-  const grid = page.locator('.log-grid');
+  const grid = page.getByRole('grid', { name: 'Cloud Logging entries', exact: true });
+  await expect(grid).toHaveAttribute('aria-describedby', 'cloud-log-grid-help');
+  await expect(grid.locator('.ag-row').first()).toHaveAttribute('aria-selected', 'true');
+  const messageCell = grid.getByRole('gridcell', { name: 'Invoice request failed', exact: true });
+  await messageCell.press('Space');
+  await expect(grid.locator('.ag-row').first()).toHaveAttribute('aria-selected', 'false');
+  await expect(page.locator('.details')).toHaveCount(0);
+  await messageCell.press('Space');
+  await expect(grid.locator('.ag-row').first()).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.details')).toContainText('Synthetic failure evidence');
   await expect(grid.getByRole('columnheader')).toHaveText(['Timestamp', 'Severity', 'Service', 'Source', 'Message']);
   await grid.screenshot({ path: testInfo.outputPath('cloud-log-grid-desktop.png') });
   await page.setViewportSize({ width: 375, height: 812 });

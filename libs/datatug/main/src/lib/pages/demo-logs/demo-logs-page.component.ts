@@ -3,7 +3,7 @@
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef } from 'ag-grid-community';
+import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef, GridReadyEvent, SelectionChangedEvent } from 'ag-grid-community';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
@@ -73,10 +73,10 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
         @if (state() === 'ready' && rows().length > 0) {
           <p role="status">{{ rows().length }} entries{{ rows().length === 100 ? ' · result limit reached' : '' }}</p>
           <p id="log-grid-help">Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
-          <ag-grid-angular *datatugAgGridReady class="log-grid" aria-label="Log evidence entries"
+          <ag-grid-angular *datatugAgGridReady class="log-grid"
             [rowData]="gridRows()" [columnDefs]="columns" [defaultColDef]="defaultColumn"
             [rowSelection]="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }"
-            (rowClicked)="selectedKey.set($event.data?.key ?? '')" (cellKeyDown)="activateEntry($event)" />
+            (gridReady)="nameGrid($event)" (selectionChanged)="selectionChanged($event)" (cellKeyDown)="activateEntry($event)" />
           @if (selectedRow(); as row) {
                   <section class="entry-details" aria-label="Entry details">
                     <dl>
@@ -149,10 +149,17 @@ export class DemoLogsPageComponent {
     { field: 'source', headerName: 'Source', width: 160 },
     { field: 'message', headerName: 'Message', minWidth: 280, flex: 1, wrapText: true, autoHeight: true },
   ];
+  nameGrid(event: GridReadyEvent): void {
+    event.api.setGridAriaProperty('label', 'Log evidence entries');
+    event.api.setGridAriaProperty('describedby', 'log-grid-help');
+  }
+  selectionChanged(event: SelectionChangedEvent): void {
+    this.selectedKey.set(event.api.getSelectedRows()[0]?.key ?? '');
+  }
   activateEntry(event: CellKeyDownEvent | FullWidthCellKeyDownEvent): void {
-    if (event.event instanceof KeyboardEvent && ['Enter', ' '].includes(event.event.key)) {
+    if (event.event instanceof KeyboardEvent && event.event.key === 'Enter') {
       event.event.preventDefault();
-      this.selectedKey.set(event.data?.key ?? '');
+      event.node.setSelected(true);
     }
   }
   #request = 0;

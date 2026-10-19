@@ -1,6 +1,6 @@
 import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
-import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef } from 'ag-grid-community';
+import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef, GridReadyEvent, SelectionChangedEvent } from 'ag-grid-community';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
@@ -383,11 +383,11 @@ declare global {
                         : ''
                     }}
                   </p>
-                  <p>Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
-                  <ag-grid-angular *datatugAgGridReady class="log-grid" aria-label="Cloud Logging entries"
+                  <p id="cloud-log-grid-help">Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
+                  <ag-grid-angular *datatugAgGridReady class="log-grid"
                     [rowData]="gridEntries()" [columnDefs]="columns" [defaultColDef]="defaultColumn"
                     [rowSelection]="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }"
-                    (rowClicked)="selectedEntry.set($event.data ?? null)" (cellKeyDown)="activateEntry($event)" />
+                    (gridReady)="nameGrid($event)" (selectionChanged)="selectionChanged($event)" (cellKeyDown)="activateEntry($event)" />
                   @if (selectedEntry(); as entry) {
                           <section
                             class="details"
@@ -904,10 +904,17 @@ export class CloudLogsPageComponent {
     { field: 'source', headerName: 'Source', width: 160 },
     { field: 'message', headerName: 'Message', minWidth: 280, flex: 1, wrapText: true, autoHeight: true },
   ];
+  nameGrid(event: GridReadyEvent): void {
+    event.api.setGridAriaProperty('label', 'Cloud Logging entries');
+    event.api.setGridAriaProperty('describedby', 'cloud-log-grid-help');
+  }
+  selectionChanged(event: SelectionChangedEvent): void {
+    this.selectedEntry.set(event.api.getSelectedRows()[0] ?? null);
+  }
   activateEntry(event: CellKeyDownEvent<PersonalLogEntry> | FullWidthCellKeyDownEvent<PersonalLogEntry>): void {
-    if (event.event instanceof KeyboardEvent && ['Enter', ' '].includes(event.event.key)) {
+    if (event.event instanceof KeyboardEvent && event.event.key === 'Enter') {
       event.event.preventDefault();
-      this.selectedEntry.set(event.data ?? null);
+      event.node.setSelected(true);
     }
   }
   fieldsText(entry: PersonalLogEntry): string { return JSON.stringify(entry.fields, null, 2); }
