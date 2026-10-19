@@ -54,7 +54,8 @@ describe('DemoSqlitePageComponent', () => {
     expect(q('project-copy-local')).not.toBeNull();
     q('project-copy-local')?.click();
     await settle();
-    expect(q('project-copy-local-instructions')?.textContent).toContain('datatug serve --project ./my-datatug-project/demo-project-1');
+    expect(q('project-copy-local-instructions')?.textContent).toContain('Download edited SQLite');
+    expect(q('project-copy-file-path')).not.toBeNull();
     expect(q('project-copy-local-instructions')?.textContent).toContain('OPFS');
     q('project-copy-dismiss')?.click();
     await settle();

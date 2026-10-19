@@ -59,6 +59,7 @@ export interface DemoDbSessionLike {
   }>;
   connect(protocol: typeof fetchPortProtocol): BridgePort;
   subscribe(listener: (event: { readonly type: string; readonly role?: string }) => void): () => void;
+  export(options?: { maxBytes?: number }): Promise<Uint8Array>;
   close(): void;
 }
 
@@ -173,6 +174,7 @@ export function createLocalDemoDbRuntime(
       session.subscribe((event) => {
         if (event.type === 'role' && event.role) listener(event.role);
       }),
+    export: (options) => session.export(options),
     close: () => {
       fetch.dispose();
       port.close();

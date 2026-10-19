@@ -1,3 +1,5 @@
+import { DemoProjectContinuationService } from './demo-project-continuation.service';
+import { demoSqliteCatalog } from '../../queries/demo-sqlite-catalog';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -108,7 +110,7 @@ async function harness(
   const router = {
     navigate: vi.fn(() => Promise.resolve(true)),
     navigateByUrl: vi.fn(() => Promise.resolve(true)),
-    parseUrl: vi.fn(),
+    parseUrl: vi.fn((path: string) => ({ path, queryParams: {} as Record<string, unknown> })),
     serializeUrl: vi.fn(),
   };
   const connection = {
@@ -195,6 +197,48 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it.each(['current', 'rediscovered'] as const)('continues the edited database after %s setup reaches merged_ready', async (kind) => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const token = new DemoProjectContinuationService().create({ dataset: 'chinook', canonicalSha256: demoSqliteCatalog.chinook.sha256, table: 'Artist', source });
+    const h = await harness(false, { source: JSON.stringify(source), store: 'github', demoContinuation: token });
+    h.component.ngOnInit();
+    expect(h.component.title()).toBe('Chinook project');
+    expect(h.component.githubFolder()).toBe('chinook-datatug');
+    expect(h.component.spaceID()).toBe('space');
+    h.select();
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('demoContinuation');
+    expect(JSON.stringify(h.create.mock.calls[0][0])).not.toContain('runtime-');
+    if (kind === 'current') {
+      h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready' }) as never);
+      h.component['refreshSetupStatus']();
+    } else {
+      const operation = h.component['operationID']();
+      const pending = { ...pendingSetup, operationID: operation as string, source, status: 'pending_merge' as const, setupPR: created.setupPR };
+      h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready' }) as never);
+      h.component['pendingGithubSetups'].set([pending]);
+      h.component['resumePendingSetup'](pending);
+    }
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.router.navigateByUrl).toHaveBeenCalledWith(expect.objectContaining({ queryParams: expect.objectContaining({ demoContinuation: token, branch: 'work', projectApi: 'cloud' }) }), { replaceUrl: true });
+    const continued = TestBed.inject(DemoProjectContinuationService).read(token);
+    expect(continued).toMatchObject({ actorID: 'actor', destination: { projectApi: 'cloud', branch: 'work' }, table: 'Artist' });
+  });
+
+  it('keeps missing browser continuation visible when a copied demo setup is rediscovered', async () => {
+    const h = await harness();
+    h.component.ngOnInit();
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const pending = { ...pendingSetup, source, status: 'pending_merge' as const, setupPR: created.setupPR };
+    h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready' }) as never);
+    h.component['pendingGithubSetups'].set([pending]);
+    h.component['resumePendingSetup'](pending);
+    expect(h.component['pendingGithubSetupErrors']()[pending.operationID]).toContain('continuation is unavailable');
+    expect(h.component['pendingGithubSetups']()).toContain(pending);
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
   it('copies the selected immutable source and restores it after refresh', async () => {
     const source = { kind: 'github-project', repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
     const h = await harness(false, { source: JSON.stringify(source), store: 'github' });
