@@ -655,7 +655,9 @@ export class CloudLogsPageComponent {
       }
       if (
         target.protocol !== 'https:' ||
-        target.hostname !== 'accounts.google.com'
+        target.hostname !== 'accounts.google.com' ||
+        typeof finishKey !== 'string' ||
+        !finishKey
       )
         throw new Error('The authorization link was invalid.');
       try {
