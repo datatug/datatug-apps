@@ -23,7 +23,8 @@ import {
  * Layers (the first is this file, the others are the backstop; CI runs all of them):
  *  1. Every browser context of every test gets a route for the DemoDB hosts: the `browser` fixture is wrapped so that
  *     `browser.newContext()` (also the one inside `newPage()` and the built-in `context` fixture) installs it. A
- *     request that still reaches the network is counted as "escaped" and fails the test.
+ *     request that still reaches the network is counted as "escaped" and fails the test. (Real-agent lanes use the guard
+ *     passively: counters and escape detection, no route; see useDemodbGuardPassively.)
  *  2. Chromium resolves *.demodb.dev to nothing (helpers/demodb-config.ts), and CI maps the DemoDB names to 0.0.0.0 in
  *     /etc/hosts (.github/actions/block-demodb) for Firefox, WebKit, Node (`request`) and the datatug CLI.
  *
@@ -212,6 +213,18 @@ const dropEncoding = (headers: Record<string, string>): Record<string, string> =
 
 const installed = new WeakSet<BrowserContext>();
 
+/**
+ * Passive mode: count requests and detect escapes on every context, but install NO route. For lanes that talk only to a
+ * local agent and have no reason to ask DemoDB for anything (journey, session-continuity, agent-links): a route makes
+ * Chromium intercept every request, which slows those long flows enough to hit their test timeouts on a CI runner. The
+ * hosts block and the Chromium resolver rule stop a DemoDB request there; the listeners turn it into a failed test.
+ * Call at import time from the fixture module of such a lane.
+ */
+let passive = false;
+export function useDemodbGuardPassively(): void {
+  passive = true;
+}
+
 /** Puts the DemoDB route and the request counters on a context. Idempotent. */
 async function installOnContext(context: BrowserContext): Promise<void> {
   if (installed.has(context)) return;
@@ -236,6 +249,7 @@ async function installOnContext(context: BrowserContext): Promise<void> {
       current.bump(host, 'escaped');
     }
   });
+  if (passive) return;
   await context.route(
     (url) => DEMODB_HOST.test(url.hostname),
     async (route: Route) => {

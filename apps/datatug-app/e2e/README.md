@@ -34,8 +34,10 @@ All lanes that run on a pull request, merge group or push (above, plus the manua
    `demodb.dev` and every sub-domain. It answers from fixtures, refuses what has none, and counts every request. A request
    that still reaches the network (a response from a real server address, or a failed name lookup / connection) is counted
    as *escaped* and fails the test; one that a spec's own route fulfils from bundled bytes does not leave the machine and is not.
-   `chat-phase4.spec.ts` is the one deliberate exception (Chromium aborts its `/favicon.ico` navigation while a route is
-   installed); layers 2 and 3 cover it.
+   `chat-phase4.spec.ts` is a deliberate exception (Chromium aborts its `/favicon.ico` navigation while a route is
+   installed), and the real-agent lanes (`journey`, `session-continuity`, `agent-links`) use the guard *passively*: they count
+   requests and detect escapes on every context but install no route, because interception of every request slowed those
+   long flows into their test timeouts on CI runners; for them layers 2 and 3 do the blocking and layer 4 the proof.
 2. **Chromium resolves every `*.demodb.dev` name to nothing** (`helpers/demodb-config.ts`, `--host-resolver-rules`; not in
    live mode).
 3. **CI maps the DemoDB names to `0.0.0.0` in `/etc/hosts`** (`.github/actions/block-demodb`, host list from the catalog,

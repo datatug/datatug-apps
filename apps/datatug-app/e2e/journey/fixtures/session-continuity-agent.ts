@@ -1,4 +1,7 @@
-import { test as base, expect } from '../../helpers/demodb-guard';
+import { test as base, expect, useDemodbGuardPassively } from '../../helpers/demodb-guard';
+
+// This lane only talks to a local agent: count and detect DemoDB requests, but install no route (see the helper).
+useDemodbGuardPassively();
 import { spawn } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, rm, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
