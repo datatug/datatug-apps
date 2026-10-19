@@ -5,6 +5,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
 import {
   CloudLogsApiService,
+  GoogleLogGrant,
   PersonalLogConnection,
   PersonalLogQueryResult,
 } from './cloud-logs-api.service';
@@ -153,6 +154,42 @@ describe('CloudLogsPageComponent', () => {
     ).map((element) => element.textContent?.trim());
     expect(statuses).toContain('No Google account is connected yet.');
     expect(statuses).toContain('No log views connected.');
+  });
+
+  it('does not revoke shared Google access when confirmation is canceled', async () => {
+    const grants: GoogleLogGrant[] = [
+      { id: 'grant-a', email: 'investigator@example.test', state: 'active' },
+    ];
+    api.list.mockReturnValue(of({ grants, connections: [connections[0]] }));
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const buttons = () =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll('ion-button'),
+      ) as HTMLElement[];
+    buttons()
+      .find((button) => button.textContent?.trim() === 'Revoke Google access')
+      ?.click();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'permissions for the shared Sneat app',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Use Remove view to disconnect just one log view.',
+    );
+    buttons()
+      .find((button) => button.textContent?.trim() === 'Cancel')
+      ?.click();
+    fixture.detectChanges();
+
+    expect(component.confirmGrantId()).toBe('');
+    expect(api.disconnect).not.toHaveBeenCalled();
+    expect(api.remove).not.toHaveBeenCalled();
   });
 
   it('explains IAM permission failure without offering OAuth reconnect', async () => {

@@ -361,12 +361,12 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await page
     .locator('article.account')
     .filter({ hasText: 'investigator@example.test' })
-    .getByRole('button', { name: 'Disconnect Google account' })
+    .getByRole('button', { name: 'Revoke Google access' })
     .click();
   await expect(
-    page.getByText(/asks Google to revoke this integration grant/),
+    page.getByText(/permissions for the shared Sneat app/),
   ).toBeVisible();
-  await page.getByRole('button', { name: 'Confirm disconnect' }).click();
+  await page.getByRole('button', { name: 'Confirm revocation' }).click();
   await expect(
     page
       .getByRole('status')
