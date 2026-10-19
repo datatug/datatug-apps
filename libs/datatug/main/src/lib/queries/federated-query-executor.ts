@@ -74,8 +74,8 @@ export function federatedVisibleMode(definition: IQueryDef): {
   const config = definition.federation;
   if (!config) return { supported: false, defaultMode: 'full' };
   try {
-    if (nativeDatabase(definition))
-      return { supported: false, defaultMode: 'full', reason: 'A whole-database query streams its complete result.' };
+    if (nativeQueryPlan(definition))
+      return { supported: false, defaultMode: 'full', reason: 'A whole-query execution returns its complete result.' };
     const parsed = parseDTQL((definition.request as ITextQueryRequest).text, {
       tables: config.tables,
     });
@@ -269,7 +269,7 @@ function ovdbBaseUrl(raw: string): string {
   return currentDemoDbOvdbUrl(url.href.replace(/\/$/, ''));
 }
 
-function nativeDatabase(definition: IQueryDef): { database: string; sources: PlannedNativeSource[] } | undefined {
+function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: PlannedNativeSource[] } | undefined {
   const config = definition.federation;
   if (!config || config.lookups?.length || config.bounds || definition.request.queryType !== 'DTQL') return undefined;
   const parsed = parseDTQL((definition.request as ITextQueryRequest).text, { tables: config.tables });
@@ -292,8 +292,17 @@ function nativeDatabase(definition: IQueryDef): { database: string; sources: Pla
     relation.joins.forEach((join) => visit(join.from));
   };
   visit(parsed.from);
-  if (!fullyQualified || !sources.length || new Set(sources.map((source) => source.database)).size !== 1) return undefined;
-  return { database: sources[0].database, sources };
+  if (!fullyQualified || !sources.length) return undefined;
+  const unique = [...new Map(sources.map((source) => [JSON.stringify([source.database, source.name]), source])).values()];
+  const multipleDatabases = new Set(unique.map((source) => source.database)).size > 1;
+  // Detail joins keep their existing visible-row continuation contract.
+  // Global queries need all inputs and can execute as one whole server plan.
+  if (multipleDatabases && parsed.groupBy === undefined && parsed.having === undefined &&
+    !parsed.orders.length && !parsed.columns?.some((column) => column.expression !== undefined && containsAggregate(column.expression))) return undefined;
+  return {
+    ...(!multipleDatabases ? { database: unique[0].database } : {}),
+    sources: unique,
+  };
 }
 
 interface PlannedNativeSource { readonly database: string; readonly name: string }
@@ -356,7 +365,7 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
 
 async function runNativeOrdinary(
   definition: IQueryDef,
-  database: string,
+  database: string | undefined,
   sources: readonly PlannedNativeSource[],
   base: string,
   token: string,
@@ -383,8 +392,9 @@ async function runNativeOrdinary(
     admittedServerId(config, base),
   );
   signal?.throwIfAborted();
+  const path = database === undefined ? '/v1/dtql' : `/v1/databases/${encodeURIComponent(database)}/dtql`;
   const response = await fetcher(
-    `${base}/v1/databases/${encodeURIComponent(database)}/dtql`,
+    `${base}${path}`,
     {
       method: 'POST',
       headers: {
@@ -399,18 +409,19 @@ async function runNativeOrdinary(
   );
   if (response.redirected || !response.ok) {
     const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
-    throw new Error(mapped ?? `OVDB ${database} whole-query execution failed (${response.status}).`);
+    throw new Error(mapped ?? `OVDB ${database ?? 'cross-database'} whole-query execution failed (${response.status}).`);
   }
   return consumeOvdbOrdinaryQuery(
     response,
     definition,
     base,
-    database,
+    database ?? '',
     rights,
     signal,
     onProgress,
     onOutputPage,
     observer,
+    database === undefined ? sources : undefined,
   );
 }
 
@@ -533,7 +544,7 @@ export async function runFederatedQuery(
     throw new Error(SAVED_SCENARIO_PUBLICATION_BLOCKER);
   const bounds = definition.federation?.bounds;
   if (!bounds) {
-    const native = runObserver.disableNativeStream ? undefined : nativeDatabase(definition);
+    const native = runObserver.disableNativeStream ? undefined : nativeQueryPlan(definition);
     if (native) {
       const config = definition.federation;
       if (!config) throw new Error('This query has no direct OVDB configuration.');
@@ -545,6 +556,18 @@ export async function runFederatedQuery(
         throw new Error('The OVDB query deadline has expired.');
       const timeout = AbortSignal.timeout(remaining);
       const nativeSignal = signal ? AbortSignal.any([signal, timeout]) : timeout;
+      if (native.database === undefined) {
+        // Select the root route before reading any source rows. Failure here or
+        // in the server request must never turn into a client-side table scan.
+        for (const database of new Set(native.sources.map((source) => source.database))) {
+          const capability = await streamCapability(base, database, fetcher, headers,
+            admittedServerId(config, base), nativeSignal);
+          if (!capability.ordinary && !capability.streaming)
+            throw new Error('OVDB cross-database execution requires DTQL capability for every database.');
+        }
+        return runNativeOrdinary(definition, undefined, native.sources, base, token,
+          onProgress, onOutputPage, nativeSignal, runObserver);
+      }
       const capability = await streamCapability(base, native.database, fetcher, headers,
         admittedServerId(config, base), nativeSignal);
       if (capability.streaming)
