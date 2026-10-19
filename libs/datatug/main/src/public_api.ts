@@ -32,3 +32,7 @@ export const loadDemoSqlitePage = () =>
 // DemoDB.dev "Explore PostgreSQL in DataTug": the app routes /demo/ovdb/:database to this page (datatug-app-routes.ts).
 export const loadDemoOvdbPage = () =>
   import('./lib/pages/demo-ovdb/demo-ovdb-page.component').then((m) => m.DemoOvdbPageComponent);
+
+// Direct OVDB evidence view: fields are explicitly mapped in DataTug, not OVDB.
+export const loadDemoLogsPage = () =>
+  import('./lib/pages/demo-logs/demo-logs-page.component').then((m) => m.DemoLogsPageComponent);

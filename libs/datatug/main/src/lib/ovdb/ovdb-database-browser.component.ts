@@ -164,6 +164,11 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           (created)="recordCreated($event)" (cancelled)="creating.set(false)"
         />
       } @else if (selected(); as row) {
+        @if (relatedEvidence(); as link) {
+          @if (table() === link.collection && row.data[link.field] !== null && row.data[link.field] !== undefined) {
+            <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="{ order: row.data[link.field] }">Related log evidence</ion-button>
+          }
+        }
         <sneat-datatug-ovdb-record-editor
           [connection]="liveConnection()"
           [collection]="table()!"
@@ -193,6 +198,10 @@ export class OvdbDatabaseBrowserComponent {
   readonly basePath = input.required<readonly string[]>();
   readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
+  /** Optional explicit mapping supplied by a demo/project, never inferred from the OVDB engine. */
+  readonly relatedEvidence = input<{ readonly collection: string; readonly field: string; readonly path: string } | undefined>();
+  /** Deep-linked record id. Local keyed sources may load it beyond the first grid page. */
+  readonly focusRecordId = input<string | undefined>();
   /** Extra status shown in the header (for example "Local copy ready"). */
   readonly statusText = input<string>('');
   /** Added to the Reset Database confirmation (for example that a reset needs the network). */
@@ -212,6 +221,7 @@ export class OvdbDatabaseBrowserComponent {
   protected readonly tables = computed(() => ovdbCollections(this.liveConnection().descriptor));
   protected readonly creating = signal(false);
   protected readonly createdRow = signal<OvdbRow | undefined>(undefined);
+  protected readonly focusedRow = signal<OvdbRow | undefined>(undefined);
   protected readonly canCreate = computed(() => {
     const table = this.table();
     return !!table && !!ovdbCreateKeyField(this.liveConnection().descriptor, table);
@@ -219,7 +229,7 @@ export class OvdbDatabaseBrowserComponent {
   protected readonly rows = signal<readonly OvdbRow[] | undefined>(undefined);
   protected readonly loadError = signal('');
   protected readonly selectedKey = signal<string | undefined>(undefined);
-  protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()) ?? (this.createdRow()?.key === this.selectedKey() ? this.createdRow() : undefined));
+  protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()) ?? (this.focusedRow()?.key === this.selectedKey() ? this.focusedRow() : undefined) ?? (this.createdRow()?.key === this.selectedKey() ? this.createdRow() : undefined));
   protected readonly columns = computed(() => {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
@@ -237,11 +247,13 @@ export class OvdbDatabaseBrowserComponent {
     effect(() => {
       const connection = this.connection();
       const table = this.table();
+      this.focusRecordId();
       untracked(() => {
         this.descriptorOverride.set(undefined);
         this.selectedKey.set(undefined);
         this.creating.set(false);
         this.createdRow.set(undefined);
+        this.focusedRow.set(undefined);
         void this.load(connection, table);
       });
     });
@@ -258,6 +270,7 @@ export class OvdbDatabaseBrowserComponent {
   protected select(row: OvdbRow, event?: Event): void {
     event?.preventDefault();
     this.creating.set(false);
+    this.focusedRow.set(undefined);
     this.selectedKey.set(row.key);
   }
 
@@ -276,6 +289,15 @@ export class OvdbDatabaseBrowserComponent {
       const rows = await listOvdbRows(connection, table);
       if (epoch !== this.#loadEpoch) return;
       this.rows.set(rows);
+      const focus = this.focusRecordId();
+      if (focus && this.liveConnection().descriptor.capabilities.read === true) {
+        const row = await getOvdbRecord(connection, table, focus);
+        if (epoch !== this.#loadEpoch) return;
+        if (row) {
+          this.focusedRow.set(row);
+          this.selectedKey.set(row.key);
+        }
+      }
     } catch (error) {
       if (epoch !== this.#loadEpoch) return;
       this.rows.set(undefined);

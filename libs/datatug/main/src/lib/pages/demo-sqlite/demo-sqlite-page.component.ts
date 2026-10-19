@@ -204,6 +204,8 @@ const installLabels: Record<DemoDbInstallStep, string> = {
                 [connection]="connection"
                 [basePath]="basePath()"
                 [table]="tableParam()"
+                [focusRecordId]="focusRecordId()"
+                [relatedEvidence]="entry()?.dataset === 'northwind' ? northwindLogMapping : undefined"
                 [statusText]="persistent() ? 'Local copy ready' : 'Local copy (memory only)'"
                 [resetNote]="resetNote()"
               />
@@ -241,6 +243,17 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
     this.route.paramMap.pipe(map((params) => params.get('table') ?? undefined)),
     { initialValue: this.route.snapshot.paramMap.get('table') ?? undefined },
   );
+  protected readonly focusRecordId = toSignal(
+    this.route.queryParamMap.pipe(map((params) => {
+      const value = params.get('record');
+      return value && /^\d{1,10}$/.test(value) ? value : undefined;
+    })),
+    { initialValue: (() => {
+      const value = this.route.snapshot.queryParamMap.get('record');
+      return value && /^\d{1,10}$/.test(value) ? value : undefined;
+    })() },
+  );
+  protected readonly northwindLogMapping = { collection: 'Orders', field: 'OrderID', path: '/demo/logs' } as const;
   protected readonly entry = computed<DemoSqliteCatalogEntry | undefined>(() => findDemoSqliteDataset(this.datasetParam()));
   protected readonly session = signal<LocalDemoDbSession | undefined>(undefined);
   protected readonly state = computed<LocalDemoDbState>(() => this.session()?.state() ?? { kind: 'checking' });
