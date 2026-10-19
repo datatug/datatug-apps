@@ -126,8 +126,10 @@ describe('CloudLogsPageComponent', () => {
     fixture.detectChanges();
 
     const statuses = Array.from(
-      fixture.nativeElement.querySelectorAll('[role="status"]'),
-    ).map((element: Element) => element.textContent?.trim());
+      fixture.nativeElement.querySelectorAll(
+        '[role="status"]',
+      ) as NodeListOf<Element>,
+    ).map((element) => element.textContent?.trim());
     expect(statuses).toContain('No Google account is connected yet.');
     expect(statuses).toContain('No log views connected.');
   });
