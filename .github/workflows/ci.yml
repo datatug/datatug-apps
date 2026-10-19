@@ -221,7 +221,7 @@ jobs:
       - name: DemoDB guard unit tests, mutation check and public OVDB proxy test
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
-          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./apps/datatug-app/e2e/helpers/ts-extensionless.mjs --test apps/datatug-app/e2e/helpers/demodb-guard-logic.unit.ts apps/datatug-app/e2e/helpers/demodb-guard-state.unit.ts
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./apps/datatug-app/e2e/helpers/ts-extensionless.mjs --test apps/datatug-app/e2e/helpers/demodb-guard-logic.unit.ts apps/datatug-app/e2e/helpers/demodb-guard-state.unit.ts apps/datatug-app/e2e/helpers/demodb-request-reporter.unit.ts
           node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/mutate-demodb-guard.mjs
           node --test tools/public-ovdb-proxy.unit.cjs
 
@@ -547,6 +547,10 @@ jobs:
           repository: datatug/datatug-demo-project
           ref: 1e7d7ea16d76d5b09844c9f14a9c12e871d42efb
           path: datatug-demo-project
+
+      - name: Verify the pinned demo checkout
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        run: test "$(git -C datatug-demo-project rev-parse HEAD)" = '1e7d7ea16d76d5b09844c9f14a9c12e871d42efb'
 
       - name: Derive appropriate SHAs for base and head for nx affected commands
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}

@@ -12,23 +12,32 @@ type Row = HostCounts;
  * long job logs, the summary does not) and to DEMODB_REPORT_FILE (in CI by default coverage/demodb-request-report-<job>-<pid>.md, one file per Playwright run, which the lane prints in a later step). It fails the run when anything escaped, and in
  * live mode when the live total exceeds DEMODB_E2E_MAX_RUN_LIVE_REQUESTS (default 120).
  */
+/** Whether a test is the guard self-test, the only file allowed to mark a deliberate escape. */
+const isSelftest = (test: TestCase): boolean => /(^|[\\/])demodb-guard-selftest\.spec\.ts$/.test(test.location?.file ?? '');
+
 export default class DemodbRequestReporter implements Reporter {
   private readonly hosts = new Map<string, Row>();
   private mode = process.env['DEMODB_E2E_MODE'] === 'live' ? 'live' : 'fixture';
   private tests = 0;
-  private expectedEscapes = 0;
+  /** Negative-control tests (only the guard self-test may be one) whose requests are reported but not counted. */
+  private readonly excluded = { tests: 0, total: 0, escaped: 0 };
 
   onTestEnd(test: TestCase): void {
     const note = test.annotations.filter((annotation) => annotation.type === 'demodb-requests').at(-1);
     if (!note?.description) return;
     this.tests += 1;
-    // The guard self-test deliberately sends one request the guard must flag (a negative control, `test.fail()`): it is
-    // not an escape of the lane. Nothing else may carry this annotation.
-    if (test.annotations.some((annotation) => annotation.type === 'demodb-expected-escape')) {
-      this.expectedEscapes += 1;
+    const parsed = JSON.parse(note.description) as { mode: string; hosts: Record<string, Row> };
+    // The guard self-test deliberately sends one request the guard must flag (a negative control, `test.fail()`): that is
+    // not an escape of the lane. The annotation is honoured for that one file only; any other test that carries it is a
+    // normal test, its escapes count and fail the lane.
+    if (isSelftest(test) && test.annotations.some((annotation) => annotation.type === 'demodb-expected-escape')) {
+      this.excluded.tests += 1;
+      for (const counts of Object.values(parsed.hosts)) {
+        this.excluded.total += counts.total ?? 0;
+        this.excluded.escaped += counts.escaped ?? 0;
+      }
       return;
     }
-    const parsed = JSON.parse(note.description) as { mode: string; hosts: Record<string, Row> };
     this.mode = parsed.mode;
     for (const [host, counts] of Object.entries(parsed.hosts)) {
       const sum = this.hosts.get(host) ?? { total: 0, handled: 0, fixture: 0, memo: 0, live: 0, refused: 0, escaped: 0 };
@@ -37,12 +46,20 @@ export default class DemodbRequestReporter implements Reporter {
     }
   }
 
+  /** The totals the run is judged on. */
+  verdict(): { live: number; escaped: number; budget: number; failed: boolean } {
+    const live = [...this.hosts.entries()].filter(([host]) => /(^|\.)demodb\.dev$/.test(host)).reduce((sum, [, counts]) => sum + counts.live, 0);
+    const escaped = [...this.hosts.values()].reduce((sum, counts) => sum + counts.escaped, 0);
+    const budget = this.mode === 'live' ? Number(process.env['DEMODB_E2E_MAX_RUN_LIVE_REQUESTS'] || 120) : 0;
+    return { live, escaped, budget, failed: escaped > 0 || live > budget };
+  }
+
   async onEnd(): Promise<{ status: 'failed' } | undefined> {
     const rows = [...this.hosts.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const demodb = rows.filter(([host]) => /(^|\.)demodb\.dev$/.test(host));
-    const live = demodb.reduce((sum, [, counts]) => sum + counts.live, 0);
-    const escaped = rows.reduce((sum, [, counts]) => sum + counts.escaped, 0);
-    const budget = this.mode === 'live' ? Number(process.env['DEMODB_E2E_MAX_RUN_LIVE_REQUESTS'] || 120) : 0;
+    const { live, escaped, budget, failed } = this.verdict();
+    const excludedNote = this.excluded.tests
+      ? `${this.excluded.tests} negative-control test(s) not counted: ${this.excluded.total} request(s) asked, ${this.excluded.escaped} flagged as escaped`
+      : '';
     const lane = process.env['GITHUB_JOB'] || process.env['DEMODB_REPORT_LANE'] || 'local';
 
     const lines = [
@@ -53,13 +70,14 @@ export default class DemodbRequestReporter implements Reporter {
           `  ${host.padEnd(36)} ${String(c.total).padStart(6)} ${String(c.fixture).padStart(8)} ${String(c.memo).padStart(7)} ${String(c.live).padStart(5)} ${String(c.refused).padStart(8)} ${String(c.escaped).padStart(8)}`,
       ),
       `  live requests to *.demodb.dev: ${live} (run budget ${budget}); requests that escaped the guard: ${escaped}`,
+      ...(excludedNote ? [`  ${excludedNote}`] : []),
     ];
     console.log(['', ...lines, ''].join('\n'));
 
     const markdown = [
       `### DemoDB request report: ${lane}`,
       '',
-      `Mode \`${this.mode}\`, ${this.tests} guarded test attempts. **Live requests to \`*.demodb.dev\`: ${live}** (budget ${budget}). **Escaped the guard: ${escaped}.**${this.expectedEscapes ? ` (${this.expectedEscapes} deliberate negative-control request not counted)` : ''}`,
+      `Mode \`${this.mode}\`, ${this.tests} guarded test attempts. **Live requests to \`*.demodb.dev\`: ${live}** (budget ${budget}). **Escaped the guard: ${escaped}.**${excludedNote ? ` (${excludedNote})` : ''}`,
       '',
       '| host | asked | fixture | memory | LIVE | refused | escaped |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
@@ -82,7 +100,7 @@ export default class DemodbRequestReporter implements Reporter {
       console.error(`DemoDB request report could not be written: ${(error as Error).message}`);
     }
 
-    if (escaped > 0 || live > budget) {
+    if (failed) {
       console.error(`DemoDB request rules broken: ${escaped} escaped, ${live} live (budget ${budget})`);
       return { status: 'failed' };
     }

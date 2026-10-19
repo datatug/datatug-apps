@@ -115,11 +115,11 @@ export interface DemodbGuard {
   head(request: APIRequestContext, url: string): Promise<{ status: number; headers: Record<string, string> }>;
 }
 
-/** The counter of the running test; requests of a context created outside a test land in `orphan`. */
+/** The counter of the running test; requests of a context created outside a test land in `orphan` (guarded, reported and checked when the worker ends). */
 const orphan = new Counter();
 let current: Counter = orphan;
-/** Whether the running test is passive (no route, counters and escape detection only); see `demodbPassive`. */
-let currentPassive = true;
+/** Whether the running test is passive (no route, counters and escape detection only); see `demodbPassive`. False outside a test. */
+let currentPassive = false;
 
 const rules: Rules = {
   live: DEMODB_LIVE,
@@ -238,6 +238,14 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
       }) as Browser['newContext'];
       await use(browser);
       browser.newContext = original;
+      // Contexts created outside a test (beforeAll, worker fixtures) are guarded like any other and counted here; whatever
+      // they sent must not have escaped or gone live in fixture mode.
+      const outside = summarise(orphan);
+      const outsideSum = (kind: Kind): number => Object.values(outside).reduce((n, host) => n + host[kind], 0);
+      if (Object.keys(outside).length) console.error(`[demodb-guard] requests from contexts created outside a test: ${JSON.stringify(outside)}`);
+      if (outsideSum('escaped') > 0 || (!DEMODB_LIVE && outsideSum('live') > 0)) {
+        throw new Error(`DemoDB requests from contexts created outside a test escaped the guard or went live: ${JSON.stringify(outside)}`);
+      }
     },
     { scope: 'worker' },
   ],
@@ -277,7 +285,7 @@ export const test = base.extend<{ demodbGuard: DemodbGuard; demodbPassive: boole
 
       const summary = summarise(counter);
       current = orphan;
-      currentPassive = true;
+      currentPassive = false;
       testInfo.annotations.push({ type: 'demodb-requests', description: JSON.stringify({ mode: DEMODB_LIVE ? 'live' : 'fixture', hosts: summary }) });
       const tripped = readBreaker();
       if (tripped) throw new Error(tripped);
