@@ -2,14 +2,24 @@ import {
   CUSTOM_ELEMENTS_SCHEMA,
   ChangeDetectorRef,
   ElementRef,
+  provideZonelessChangeDetection,
 } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
-import { NavController } from '@ionic/angular';
+import { FormsModule } from '@angular/forms';
+import {
+  IonInput,
+  IonSegment,
+  IonSegmentButton,
+  IonButton,
+  NavController,
+} from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
+import { of, Subject } from 'rxjs';
+import { IProjectFull } from '../../../models/definition/project';
+import { ICatalogTables } from '../../../models/definition/apis/database';
 
 import { EnvDbPageComponent } from './env-db-page.component';
 import { ProjectService } from '../../../services/project/project.service';
@@ -194,7 +204,10 @@ describe('EnvDbPage — project ref wiring', () => {
                 projectId: 'demo-project',
               }),
             ),
-            snapshot: { paramMap: convertToParamMap({}), params: {} },
+            snapshot: {
+              paramMap: convertToParamMap({}),
+              params: { environmentId: 'local', dbCatalogId: 'db' },
+            },
           },
         },
       ],
@@ -304,5 +317,117 @@ describe('EnvDbPage dependency injection', () => {
 
   it('resolves ProjectService, which is provided by a module and never `providedIn: root`', () => {
     expect(TestBed.inject(ProjectService, null)).toBeTruthy();
+  });
+});
+
+describe('EnvDbPage catalog read lifecycle', () => {
+  let fixture: ComponentFixture<EnvDbPageComponent>;
+  let full: Subject<IProjectFull>;
+  let catalog: Subject<ICatalogTables>;
+  let params: Subject<ReturnType<typeof convertToParamMap>>;
+  let getCatalogTables: ReturnType<typeof vi.fn>;
+  const routeParams = {
+    storeId: 'localhost:8989',
+    projectId: 'demo',
+    environmentId: 'local',
+    dbCatalogId: 'registered',
+  };
+
+  beforeEach(async () => {
+    full = new Subject();
+    catalog = new Subject();
+    params = new Subject();
+    getCatalogTables = vi.fn(() => catalog);
+    await TestBed.configureTestingModule({
+      imports: [EnvDbPageComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        { provide: ProjectService, useValue: { getFull: vi.fn(() => full) } },
+        { provide: EnvironmentService, useValue: { getCatalogTables } },
+        { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: params,
+            queryParamMap: of(convertToParamMap({})),
+            snapshot: {
+              params: routeParams,
+              paramMap: convertToParamMap(routeParams),
+            },
+          },
+        },
+      ],
+    })
+      .overrideComponent(EnvDbPageComponent, {
+        set: {
+          imports: [
+            FormsModule,
+            IonInput,
+            IonSegment,
+            IonSegmentButton,
+            IonButton,
+          ],
+          providers: [],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        },
+      })
+      .compileComponents();
+    fixture = TestBed.createComponent(EnvDbPageComponent);
+    fixture.detectChanges();
+    params.next(convertToParamMap(routeParams));
+    await fixture.whenStable();
+  });
+
+  it('renders deferred unscanned/error feedback without a fake empty catalog and retries deliberately', async () => {
+    const component = fixture.componentInstance;
+    full.next({
+      id: 'demo',
+      title: 'Demo',
+      access: 'private',
+      dbServers: [],
+      environments: [{ id: 'local', title: 'Local' }],
+    });
+    catalog.error(new Error('dbModel is empty'));
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]').textContent,
+    ).toContain('needs a scan');
+    expect(component.loading()).toBe(false);
+    expect(component.envDb).toBeUndefined();
+    expect(
+      fixture.nativeElement.querySelector('ion-card[hidden]'),
+    ).not.toBeNull();
+    catalog = new Subject();
+    fixture.nativeElement.querySelector('ion-button').click();
+    await fixture.whenStable();
+    expect(component.loading()).toBe(true);
+    full.next({ id: 'demo', title: 'Demo', access: 'private', dbServers: [] });
+    expect(getCatalogTables).toHaveBeenCalledTimes(2);
+    // An admitted empty catalog is a successful result, distinct from a failed read.
+    catalog.next({ tables: [], views: [] });
+    await fixture.whenStable();
+    expect(component.envDb?.tables).toEqual([]);
+    expect(component.loading()).toBe(false);
+    expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
+  });
+
+  it('renders project-read failures and cancels pending catalog reads on scope change and destroy', async () => {
+    const component = fixture.componentInstance;
+    full.next({ id: 'demo', title: 'Demo', access: 'private', dbServers: [] });
+    expect(catalog.observed).toBe(true);
+    params.next(convertToParamMap({ ...routeParams, dbCatalogId: 'other' }));
+    expect(catalog.observed).toBe(false);
+    catalog.next({ tables: [], views: [] });
+    expect(component.envDb).toBeUndefined();
+    full.error(new Error('agent unavailable'));
+    await fixture.whenStable();
+    expect(component.loading()).toBe(false);
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]').textContent,
+    ).toContain('check the local agent');
+    fixture.destroy();
+    expect(full.observed).toBe(false);
+    expect(params.observed).toBe(false);
   });
 });

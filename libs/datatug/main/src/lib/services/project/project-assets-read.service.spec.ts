@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, of, throwError } from 'rxjs';
+import { ProjectService } from './project.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { ProjectAssetsReadService } from './project-assets-read.service';
 import { GithubProjectReaderService } from '../repo/github/github-project-reader.service';
@@ -11,6 +12,14 @@ describe('ProjectAssetsReadService', () => {
     entities: vi.fn(() => of([])),
     entity: vi.fn(() => of({ id: 'x' })),
     environments: vi.fn(() => of([])),
+  };
+  const full = {
+    getFull: vi.fn(() =>
+      of({
+        environments: [{ id: 'local', title: 'Local' }],
+        boards: [{ id: 'working', title: 'Working copy' }],
+      }),
+    ),
   };
   const github = {
     listDirectory: vi.fn(() => of([{ name: 'b1', type: 'dir' as const }])),
@@ -35,9 +44,57 @@ describe('ProjectAssetsReadService', () => {
       providers: [
         ProjectAssetsReadService,
         { provide: ProjectQueryApiService, useValue: api },
+        { provide: ProjectService, useValue: full },
         { provide: GithubProjectReaderService, useValue: github },
       ],
     });
+  });
+
+  it('reads unqualified local overview assets from the working copy without a branch probe', async () => {
+    const ref = { storeId: 'http-127.0.0.1:44082', projectId: 'demo' };
+    const service = TestBed.inject(ProjectAssetsReadService);
+    expect(await firstValueFrom(service.boards(ref))).toEqual([
+      { id: 'working', title: 'Working copy' },
+    ]);
+    expect(await firstValueFrom(service.environments(ref))).toEqual([
+      { id: 'local', title: 'Local' },
+    ]);
+    expect(full.getFull).toHaveBeenCalledWith(ref);
+    expect(api.boards).not.toHaveBeenCalled();
+    expect(api.environments).not.toHaveBeenCalled();
+  });
+
+  it('keeps explicitly qualified local reads on the branch-aware API without downgrade', async () => {
+    const service = TestBed.inject(ProjectAssetsReadService);
+    for (const ref of [
+      { storeId: 'localhost:8989', projectId: 'demo', branch: 'topic' },
+      {
+        storeId: 'localhost:8989',
+        projectId: 'demo',
+        branch: 'topic',
+        projectApi: 'local' as const,
+      },
+      { storeId: 'firestore', projectId: 'demo' },
+    ]) {
+      await firstValueFrom(service.boards(ref));
+      await firstValueFrom(service.environments(ref));
+      expect(api.boards).toHaveBeenCalledWith(ref);
+      expect(api.environments).toHaveBeenCalledWith(ref);
+    }
+    expect(full.getFull).not.toHaveBeenCalled();
+    api.boards.mockReturnValueOnce(
+      throwError(() => new Error('Branch unavailable')),
+    );
+    await expect(
+      firstValueFrom(
+        service.boards({
+          storeId: 'localhost:8989',
+          projectId: 'demo',
+          branch: 'topic',
+        }),
+      ),
+    ).rejects.toThrow('Branch unavailable');
+    expect(full.getFull).not.toHaveBeenCalled();
   });
 
   it('uses branch-qualified GitHub addresses for every public project asset read', async () => {
@@ -98,7 +155,12 @@ describe('ProjectAssetsReadService', () => {
   it('fails closed for malformed or incompatible projectApi qualifiers on every asset read', async () => {
     const service = TestBed.inject(ProjectAssetsReadService);
     const badRefs = [
-      { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: '' as never, branch: 'topic' },
+      {
+        storeId: 'github.com',
+        projectId: 'repo@owner@folder',
+        projectApi: '' as never,
+        branch: 'topic',
+      },
       {
         storeId: 'github.com',
         projectId: 'repo@owner@folder',

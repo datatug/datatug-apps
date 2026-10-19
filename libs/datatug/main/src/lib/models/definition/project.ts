@@ -1,3 +1,4 @@
+import { Board } from '@datatug/board-models';
 import { IStore } from './store';
 import { IEnvironmentFull } from './environments';
 import { IDbModelFull } from './dbmodels';
@@ -25,6 +26,7 @@ export interface IProjectBase {
 }
 
 export interface IProjectFull extends IProjectBase {
+  readonly boards?: readonly Board[];
   environments?: IEnvironmentFull[];
   dbModels?: IDbModelFull[];
   dbServers: IProjDbServerFull[];
