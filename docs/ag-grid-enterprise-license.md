@@ -52,7 +52,7 @@ in the Community table still works with no key.
 
 ### Query Editor analytics contract
 
-The licensed grid shows the group drop zone immediately. Drag a column there, choose an aggregation through its column menu/tool panel, select a range containing an eligible numeric measure, and press **Chart selected range** (or use the native chart context menu). No grouping or chart is created automatically. The linked chart follows local filters and grouping; sort/filter/focus do not close it. Changing the result, schema or page closes charts and clears their old ranges.
+The licensed grid shows the group drop zone immediately. Drag a column there, choose an aggregation through its column menu/tool panel, select a range containing an eligible numeric measure, and press **Chart selected range** (or use the native chart context menu). No grouping or chart is created automatically. Grouping/aggregation stay in the current session; grouping or dragging into the group zone does not auto-hide source columns in the remembered manual layout. Explicit chooser/menu hide/show still persists. The linked chart follows local filters and grouping; sort/filter/focus do not close it. Changing the result, schema or page closes charts and clears their old ranges.
 
 Analytics operate on the rows currently supplied to the grid, not every row at the server. Query Editor identifies the loaded page and more-rows state; grouping, range selection, charts and filtering never fetch another page. Synthetic group/footer rows do not become a Current row, raw row export or source-row count.
 

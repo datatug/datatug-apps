@@ -1,6 +1,12 @@
 import type { ColDef } from 'ag-grid-community';
 import type { GridCell, GridRow } from './results-grid-columns';
 
+/** Grouping is session-only; automatic hiding must not contaminate the saved manual column layout. */
+export const ENTERPRISE_GROUP_VISIBILITY = {
+  suppressGroupChangesColumnVisibility: true,
+  suppressDragLeaveHidesColumns: true,
+} as const;
+
 /** Normalize a bounded decimal representation without first rounding it through Number. */
 function decimalKey(text: string): string | undefined {
   const match = /^(-?)(\d+)(?:\.(\d+))?(?:e([+-]?\d+))?$/i.exec(text);

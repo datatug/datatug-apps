@@ -9,6 +9,13 @@ import { AgGridAngular } from 'ag-grid-angular';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ResultsGridComponent } from './results-grid.component';
 import { resultColumnDef } from './results-grid-columns';
+import {
+  createGrid,
+  ModuleRegistry,
+  AllCommunityModule,
+  type GridApi,
+} from 'ag-grid-community';
+import { RowGroupingModule } from 'ag-grid-enterprise';
 
 /** A column as the grid's api hands it out. */
 const col = (
@@ -95,6 +102,8 @@ class GridStubComponent {
   readonly sideBar = input<unknown>();
   readonly statusBar = input<unknown>();
   readonly rowGroupPanelShow = input<unknown>();
+  readonly suppressGroupChangesColumnVisibility = input<unknown>();
+  readonly suppressDragLeaveHidesColumns = input<unknown>();
   readonly cellSelection = input<unknown>();
   readonly enableCharts = input<unknown>();
   readonly processCellForClipboard = input<unknown>();
@@ -171,6 +180,9 @@ describe('ResultsGridComponent', () => {
       expect(grid?.excelStyles()).toBeUndefined();
       expect(grid?.statusBar()).toBeUndefined();
       expect(grid?.rowGroupPanelShow()).toBeUndefined();
+      expect(grid?.suppressGroupChangesColumnVisibility()).toBeUndefined();
+      expect(grid?.suppressDragLeaveHidesColumns()).toBeUndefined();
+      expect((cmp as ResultsGridComponent).enterprise()).toBe(false);
       expect(grid?.cellSelection()).toBeUndefined();
       expect(grid?.enableCharts()).toBe(false);
       const def = grid?.defaultColDef() ?? {};
@@ -295,6 +307,11 @@ describe('ResultsGridComponent', () => {
       expect(grid?.sideBar()).toBeTruthy();
       expect(grid?.statusBar()).toBeTruthy();
       expect(grid?.rowGroupPanelShow()).toBe('always');
+      expect(grid?.suppressGroupChangesColumnVisibility()).toBe(true);
+      expect(grid?.suppressDragLeaveHidesColumns()).toBe(true);
+      expect(
+        (el.querySelector('ag-grid-angular') as HTMLElement).style.height,
+      ).toContain('520px');
       expect(grid?.cellSelection()).toBe(true);
       expect(grid?.enableCharts()).toBe(true);
       expect(grid?.defaultColDef()).toMatchObject({
@@ -700,5 +717,84 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
       cmp.moveColumn('c0', 1);
       expect(api.moveColumns).not.toHaveBeenCalled();
     });
+  });
+  it('keeps native grouping/drag visibility session-only while resize and explicit hide survive a recreated grid', async () => {
+    ModuleRegistry.registerModules([AllCommunityModule, RowGroupingModule]);
+    configureAgGrid('test-only');
+    await ensureAgGrid({
+      community: async () => ({ registerAgGridCommunity: () => undefined }),
+      enterprise: async () => ({ registerAgGridEnterprise: () => undefined }),
+    });
+    const {
+      fixture,
+      cmp,
+      grid: stub,
+    } = await mount(
+      [
+        { c0: 'Canada', c1: '2' },
+        { c0: 'USA', c1: '3' },
+      ],
+      KEY,
+      2,
+    );
+    fixture.componentRef.setInput('columnDefs', [
+      resultColumnDef({ name: 'Country', type: 'string' }, 'c0'),
+      resultColumnDef({ name: 'Quantity', type: 'integer' }, 'c1'),
+    ]);
+    fixture.detectChanges();
+    expect(stub?.suppressGroupChangesColumnVisibility()).toBe(true);
+    const hosts: HTMLElement[] = [],
+      apis: GridApi[] = [];
+    const native = () => {
+      const host = document.createElement('div');
+      document.body.append(host);
+      hosts.push(host);
+      const nativeApi = createGrid(host, {
+        theme: 'legacy',
+        columnDefs: cmp.defs(),
+        rowData: cmp.rowData(),
+        defaultColDef: cmp.defaultColDef(),
+        ...cmp.groupVisibility,
+        onColumnVisible: () => cmp.onLayoutChanged(),
+        onColumnResized: (event) => cmp.onColumnResized(event),
+      });
+      apis.push(nativeApi);
+      cmp.onGridReady({ api: nativeApi } as never);
+      return nativeApi;
+    };
+    try {
+      const first = native();
+      first.setRowGroupColumns(['c0']);
+      first.setColumnWidths([{ key: 'c1', newWidth: 150 }]);
+      await vi.waitFor(() =>
+        expect(
+          JSON.parse(localStorage.getItem(KEY) ?? '{}').cols?.find(
+            (c: { colId: string }) => c.colId === 'c0',
+          )?.hide,
+        ).toBe(false),
+      );
+      expect(
+        first.getColumnState().find((c) => c.colId === 'c0'),
+      ).toMatchObject({ rowGroup: true, hide: false });
+      first.setColumnsVisible(['c1'], false);
+      await vi.waitFor(() =>
+        expect(
+          JSON.parse(localStorage.getItem(KEY) ?? '{}').cols?.find(
+            (c: { colId: string }) => c.colId === 'c1',
+          )?.hide,
+        ).toBe(true),
+      );
+      first.destroy();
+      const restored = native();
+      expect(
+        restored.getColumnState().find((c) => c.colId === 'c0'),
+      ).toMatchObject({ rowGroup: false, hide: false });
+      expect(
+        restored.getColumnState().find((c) => c.colId === 'c1'),
+      ).toMatchObject({ hide: true, width: 150 });
+    } finally {
+      for (const api of apis) if (!api.isDestroyed()) api.destroy();
+      for (const host of hosts) host.remove();
+    }
   });
 });

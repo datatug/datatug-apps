@@ -89,7 +89,10 @@ const ENTERPRISE_STATUS_BAR = {
   ],
 };
 
-import { analyticsColumns } from './results-grid-analytics';
+import {
+  analyticsColumns,
+  ENTERPRISE_GROUP_VISIBILITY,
+} from './results-grid-analytics';
 import {
   RAW_RESULT_EXCEL_STYLES,
   rawResultCell,
@@ -328,7 +331,8 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       <ag-grid-angular
         *datatugAgGridReady
         class="ag-theme-quartz"
-        style="height: 100%; width: 100%"
+        style="width: 100%"
+        [style.height]="enterprise() ? '520px' : '100%'"
         [columnDefs]="defs()"
         [columnTypes]="columnTypes"
         [rowData]="rowData()"
@@ -348,6 +352,16 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
         [suppressMenuHide]="true"
         [sideBar]="enterprise() ? sideBar : undefined"
         [statusBar]="enterprise() ? statusBar : undefined"
+        [suppressGroupChangesColumnVisibility]="
+          enterprise()
+            ? groupVisibility.suppressGroupChangesColumnVisibility
+            : undefined
+        "
+        [suppressDragLeaveHidesColumns]="
+          enterprise()
+            ? groupVisibility.suppressDragLeaveHidesColumns
+            : undefined
+        "
         [rowGroupPanelShow]="enterprise() ? 'always' : undefined"
         [cellSelection]="enterprise() ? true : undefined"
         [enableCharts]="enterprise()"
@@ -486,11 +500,10 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     }
     sneat-datatug-results-grid.dt-rg-enterprise {
       height: auto;
-      min-height: 680px;
     }
     .dt-rg-enterprise .dt-rg-host {
-      /* Reserve space for native grouping/filter/header/status chrome plus several usable data rows. */
-      min-height: 480px;
+      /* The grid child has a definite height; grow the page around it, rather than resolving 100% of auto. */
+      flex: none;
     }
     .dt-rg-host {
       flex: 1 1 auto;
@@ -548,6 +561,7 @@ export class ResultsGridComponent {
   readonly autoSize = { type: 'fitCellContents' } as const;
   readonly rowSelection = ROW_SELECTION;
   readonly selectionColumnDef = SELECTION_COLUMN_DEF;
+  readonly groupVisibility = ENTERPRISE_GROUP_VISIBILITY;
   readonly rawExcelStyles = RAW_RESULT_EXCEL_STYLES;
   readonly sideBar = ENTERPRISE_SIDE_BAR;
   readonly statusBar = ENTERPRISE_STATUS_BAR;
