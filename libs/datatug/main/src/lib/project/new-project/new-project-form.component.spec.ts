@@ -6,7 +6,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { addIcons } from 'ionicons';
 import { closeOutline, saveOutline } from 'ionicons/icons';
-import { ErrorLogger } from '@sneat/core';
+import { ErrorLogger, type SpaceType } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -74,7 +74,7 @@ async function harness(
   authenticated = true,
   preserveDraft = false,
   initialStatus?: 'authenticating' | 'authenticated' | 'notAuthenticated',
-  spaceRecords: Record<string, { title: string }> = freshUser
+  spaceRecords: Record<string, { title?: string; type?: SpaceType }> = freshUser
     ? {}
     : { space: { title: 'My Space' } },
   actorID = 'actor',
@@ -523,6 +523,33 @@ describe('New project through authenticated common API', () => {
     expect(h.component['pendingGithubSetupErrors']()).toEqual({});
     expect(h.reportGithubReauthorizationRequired).not.toHaveBeenCalled();
     expect(h.nav.goProject).not.toHaveBeenCalled();
+  });
+
+  it('renders nonblank Space labels using named title, type and exact ID fallbacks without changing selection', async () => {
+    const h = await harness(false, { store: 'github', spaceID: 'personal-space' }, true, false, undefined, {
+      named: { title: '  Team Data  ', type: 'group' },
+      'personal-space': { title: '  ', type: 'personal' },
+      'untitled-space': {},
+    });
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    const picker = h.fixture.debugElement.queryAll(By.css('ion-select'))
+      .find(select => select.componentInstance.value === 'personal-space');
+    expect(picker).toBeTruthy();
+    const options = Array.from(picker?.nativeElement.querySelectorAll('ion-select-option') ?? []) as HTMLElement[];
+    expect(options.map(option => option.textContent?.trim())).toEqual(['Team Data', 'Personal', 'untitled-space']);
+    expect(options.map(option => (option as unknown as { value: string }).value)).toEqual(['named', 'personal-space', 'untitled-space']);
+    expect(h.component.spaceID()).toBe('personal-space');
+  });
+
+  it('keeps the untitled Space ID and existing Personal Pro intent in the create payload', async () => {
+    const h = await harness(false, { store: 'github' }, true, false, undefined, {
+      'personal-space': { title: '', type: 'personal' },
+    });
+    h.select('personal-space');
+    h.component.create();
+    await vi.waitFor(() => expect(h.create).toHaveBeenCalledOnce());
+    expect(h.create.mock.calls[0][0]).toMatchObject({ spaceID: 'personal-space', billingIntent: 'personal_pro' });
   });
 
   it('preselects a requested checkout Space only when it belongs to the signed-in user', async () => {

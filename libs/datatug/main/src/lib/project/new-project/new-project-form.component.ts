@@ -1,3 +1,4 @@
+import { TitleCasePipe } from '@angular/common';
 import { DemoProjectContinuationService, validContinuationToken } from './demo-project-continuation.service';
 import { findDemoSqliteDataset } from '../../queries/demo-sqlite-catalog';
 import { projectPageHref } from '../../nav/project-page-href';
@@ -250,7 +251,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           }
           this.spaces.update((spaces) => [
             ...spaces.filter((value) => value.id !== space.id),
-            { id: space.id, title: space.dbo?.title || title },
+            { id: space.id, title: space.dbo?.title?.trim() || title },
           ]);
           this.spaceID.set(space.id);
           this.spaceTitle.set('');
@@ -276,6 +277,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         ? 'space_business'
         : 'personal_pro',
     );
+    const titleCase = new TitleCasePipe();
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
@@ -283,7 +285,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.spaces.set(
           Object.entries(state.record?.spaces ?? {}).map(([id, space]) => ({
             id,
-            title: space.title,
+            title: space.title?.trim() || titleCase.transform(space.type)?.trim() || id,
           })),
         );
         const savedSpaceID =
