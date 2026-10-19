@@ -1,5 +1,5 @@
 import type { Board } from './board';
-import type { ChartSpec } from './widget-chart';
+import type { ChartWidgetDef, ChartSpec } from './widget-chart';
 const record = (value: unknown): value is Record<string, unknown> =>
   !!value && typeof value === 'object' && !Array.isArray(value);
 const text = (value: unknown): value is string =>
@@ -71,6 +71,87 @@ export function validChartSpec(value: unknown): value is ChartSpec {
   );
 }
 
+/** Shared raw-wire admission for saved charts and tutorial edits. */
+export function validateChartDefinition(
+  value: unknown,
+): asserts value is ChartWidgetDef {
+  if (
+    !record(value) ||
+    !keys(value, ['title', 'parameters', 'sources', 'chart', 'defaultView']) ||
+    !validChartSpec(value['chart']) ||
+    !Array.isArray(value['sources']) ||
+    !value['sources'].length ||
+    (value['defaultView'] !== undefined &&
+      !['', 'chart', 'grid'].includes(String(value['defaultView'])))
+  )
+    throw new Error('Invalid chart configuration.');
+  const chart = value['chart'];
+  const sources = value['sources'];
+  if (chart.type === 'bar-race' && sources.length !== 1)
+    throw new Error(
+      'The board wire contract requires one source for a bar race.',
+    );
+  if (chart.series && sources.length !== 1)
+    throw new Error('Grouped bars require one source.');
+  const bindings = (items: unknown): boolean =>
+    items == null ||
+    (Array.isArray(items) &&
+      items.every(
+        (item) =>
+          record(item) &&
+          keys(item, ['id', 'value', 'boardParameterId']) &&
+          typeof item['id'] === 'string' &&
+          !!item['id'] &&
+          (item['boardParameterId'] === undefined ||
+            typeof item['boardParameterId'] === 'string') &&
+          !(item['value'] != null && item['boardParameterId']),
+      ) &&
+      new Set(items.map((item) => item['id'])).size === items.length);
+  if (!bindings(value['parameters']))
+    throw new Error('Invalid chart parameters.');
+  const ids = new Set<string>();
+  for (const source of sources) {
+    if (
+      !record(source) ||
+      !keys(source, ['id', 'queryId', 'parameters', 'transform']) ||
+      !text(source['id']) ||
+      !text(source['queryId']) ||
+      ids.has(source['id']) ||
+      !bindings(source['parameters'])
+    )
+      throw new Error('Chart sources need distinct IDs and saved queries.');
+    ids.add(source['id']);
+    const transform = source['transform'];
+    if (transform == null) continue;
+    if (
+      !record(transform) ||
+      !keys(transform, [
+        'name',
+        'orderIdColumn',
+        'dateColumn',
+        'countryColumn',
+      ]) ||
+      transform['name'] !== 'orders-monthly-country-count' ||
+      !text(transform['orderIdColumn']) ||
+      !text(transform['dateColumn']) ||
+      !text(transform['countryColumn']) ||
+      new Set([
+        transform['orderIdColumn'],
+        transform['dateColumn'],
+        transform['countryColumn'],
+      ]).size !== 3 ||
+      chart.type !== 'bar-race' ||
+      chart.periodColumn !== 'period' ||
+      chart.categoryColumn !== 'category' ||
+      chart.valueColumn !== 'value' ||
+      chart.onDuplicate !== 'reject'
+    )
+      throw new Error(
+        'The Orders transform requires its canonical race mapping.',
+      );
+  }
+}
+
 /** Bounded pass across inactive tabs too. Does not execute or rewrite legacy widget data. */
 export function validateBoardPresentation(board: unknown): readonly string[] {
   const producers = new Set<string>(),
@@ -91,35 +172,7 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
     if (!record(widget)) return fail();
     const data = widget['data'];
     if (widget['name'] === 'chart') {
-      if (
-        !record(data) ||
-        !validChartSpec(data['chart']) ||
-        !Array.isArray(data['sources']) ||
-        !data['sources'].length
-      )
-        return fail();
-      if (
-        !keys(data, [
-          'title',
-          'parameters',
-          'sources',
-          'chart',
-          'defaultView',
-        ]) ||
-        (data['defaultView'] !== undefined &&
-          !['chart', 'grid'].includes(String(data['defaultView'])))
-      )
-        fail();
-      const sources = data['sources'];
-      if (
-        sources.some(
-          (source) =>
-            !record(source) || !text(source['id']) || !text(source['queryId']),
-        ) ||
-        new Set(sources.map((source) => source['id'])).size !== sources.length
-      )
-        fail();
-      if (data['chart'].series && sources.length !== 1) fail();
+      validateChartDefinition(data);
       const selection = data['chart'].selectionId;
       if (selection) {
         if (producers.has(selection)) fail();
@@ -150,7 +203,10 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
         references.push(filter['selectionId']);
       }
     } else if (widget['name'] === 'tabs') {
-      if (!record(data) || !Array.isArray(data['tabs'])) return fail();
+      if (data == null) return;
+      if (!record(data)) return fail();
+      if (data['tabs'] == null) return;
+      if (!Array.isArray(data['tabs'])) return fail();
       for (const tab of data['tabs']) {
         if (!record(tab)) return fail();
         visit(tab['widget'], depth + 1);

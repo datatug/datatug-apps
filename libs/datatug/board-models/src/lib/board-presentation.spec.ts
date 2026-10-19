@@ -1,6 +1,7 @@
 import {
   validateBoardPresentation,
   validChartSpec,
+  validateChartDefinition,
 } from './board-presentation';
 import { replayBoardActions } from './tutorial-board';
 import type { Board } from './board';
@@ -55,6 +56,117 @@ const board = () => ({
   ],
 });
 describe('whole-board presentation admission', () => {
+  it.each([undefined, null, {}, { tabs: null }, { tabs: [] }])(
+    'preserves Core-valid empty tabs %j through raw admission and tutorial replay',
+    (data) => {
+      const empty = {
+        id: 'empty',
+        title: 'Empty',
+        rows: [
+          {
+            cards: [
+              {
+                id: 'placeholder',
+                title: 'Placeholder',
+                widget: { name: 'tabs', data },
+              },
+            ],
+          },
+        ],
+      };
+      expect(validateBoardPresentation(empty)).toEqual([]);
+      expect(
+        replayBoardActions(empty as Board, [
+          { type: 'add-card', cardId: 'placeholder' },
+        ]).board,
+      ).toEqual(empty);
+    },
+  );
+  it('shares closed source/transform admission while preserving legacy independent sources and SQL fields', () => {
+    const legacy = {
+      sources: [
+        { id: 'a', queryId: 'a' },
+        { id: 'b', queryId: 'b' },
+      ],
+      chart: { type: 'bar', categoryColumn: 'country', valueColumn: 'n' },
+    };
+    expect(() => validateChartDefinition(legacy)).not.toThrow();
+    const race = {
+      type: 'bar-race',
+      categoryColumn: 'category',
+      valueColumn: 'value',
+      periodColumn: 'period',
+      unit: 'orders',
+      grain: 'month',
+      mode: 'period',
+      onDuplicate: 'reject',
+      topN: 10,
+    };
+    const transform = {
+      name: 'orders-monthly-country-count',
+      orderIdColumn: 'OrderID',
+      dateColumn: 'OrderDate',
+      countryColumn: 'ShipCountry',
+    };
+    const definition = {
+      sources: [{ id: 'orders', queryId: 'orders', transform }],
+      chart: race,
+    };
+    expect(() => validateChartDefinition(definition)).not.toThrow();
+    expect(() =>
+      validateChartDefinition({
+        ...definition,
+        sources: [{ id: 'orders', queryId: 'orders', transform: null }],
+      }),
+    ).not.toThrow();
+    for (const invalid of [
+      {
+        ...definition,
+        sources: [...definition.sources, { id: 'second', queryId: 'second' }],
+      },
+      { ...definition, chart: chart() },
+      {
+        ...definition,
+        sources: [{ ...definition.sources[0], expression: 'run()' }],
+      },
+      ...[
+        {},
+        { ...transform, extra: true },
+        { ...transform, dateColumn: 'OrderID' },
+        { ...transform, countryColumn: '' },
+      ].map((t) => ({
+        ...definition,
+        sources: [{ id: 'orders', queryId: 'orders', transform: t }],
+      })),
+    ]) {
+      expect(() => validateChartDefinition(invalid)).toThrow();
+      expect(() =>
+        validateBoardPresentation({
+          rows: [{ cards: [{ widget: { name: 'chart', data: invalid } }] }],
+        }),
+      ).toThrow();
+    }
+    expect(() =>
+      validateBoardPresentation({
+        rows: [
+          {
+            cards: [
+              {
+                widget: {
+                  name: 'SQL',
+                  data: {
+                    legacy: true,
+                    sql: { queryId: 'orders', legacy: true },
+                  },
+                },
+              },
+            ],
+          },
+        ],
+      }),
+    ).not.toThrow();
+  });
+
   it('admits raw nested producers/references and empty tabs, including two through eight series', () => {
     expect(validateBoardPresentation(board())).toEqual(['country']);
     for (let n = 2; n <= 8; n++)

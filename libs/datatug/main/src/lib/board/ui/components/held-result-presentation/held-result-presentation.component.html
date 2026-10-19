@@ -1,4 +1,8 @@
-<section class="result" aria-label="Data visualization and result rows">
+<section
+  class="result"
+  [class.embedded]="embedded"
+  aria-label="Data visualization and result rows"
+>
   @if (loading) {
     <p class="state" role="status">Loading result…</p>
   } @else if (error) {
@@ -7,10 +11,12 @@
     <p class="state" role="status">Run this card to see its results.</p>
   } @else {
     <header class="summary">
-      <div>
-        <span class="eyebrow">Result explorer</span>
-        <h2>{{ fields?.title || 'Query results' }}</h2>
-      </div>
+      @if (!embedded) {
+        <div>
+          <span class="eyebrow">Result explorer</span>
+          <h2>{{ fields?.title || 'Query results' }}</h2>
+        </div>
+      }
       <p>
         {{ result.recordset.rows.length }} rows ·
         {{ result.recordset.columns.length }} columns
@@ -127,9 +133,16 @@
           <li>
             <button
               type="button"
-              (click)="inspectBar(bar.sourceRow)"
+              [attr.aria-pressed]="
+                selectionEnabled ? selectedCategory === bar.category : null
+              "
+              (click)="
+                selectionEnabled
+                  ? categorySelected.emit(bar.category)
+                  : inspectBar(bar.sourceRow)
+              "
               [attr.aria-label]="
-                'Inspect ' +
+                (selectionEnabled ? 'Select ' : 'Inspect ') +
                 bar.category +
                 ': ' +
                 bar.value +
@@ -146,6 +159,16 @@
               ></span>
               <strong>{{ numberFormat.format(bar.value) }}</strong>
             </button>
+            @if (selectionEnabled) {
+              <button
+                type="button"
+                class="inspect-category"
+                (click)="inspectBar(bar.sourceRow)"
+                [attr.aria-label]="'Inspect ' + bar.category + ' row'"
+              >
+                Inspect row
+              </button>
+            }
           </li>
         } @empty {
           <li class="empty">No category rows in this result.</li>

@@ -131,6 +131,8 @@ export class HeldResultPresentationComponent implements OnChanges {
   @Input() defaultView: 'chart' | 'grid' = 'chart';
   /** Parent owns the row/grid switch; bar clicks inspect this held snapshot in place. */
   @Input() chartOnly = false;
+  /** The enclosing board card already supplies the visible title and purpose. */
+  @Input() embedded = false;
   @Input() selectionEnabled = false;
   @Input() selectedCategory: string | null = null;
   @Output() readonly categorySelected = new EventEmitter<string>();
@@ -192,24 +194,14 @@ export class HeldResultPresentationComponent implements OnChanges {
   }
 
   groupedWidth(value: number): number {
-    return (
-      (Math.abs(value) /
-        Math.max(
-          Number.EPSILON,
-          (this.grouped?.maximum ?? 0) - (this.grouped?.minimum ?? 0),
-        )) *
-      100
-    );
+    const span = (this.grouped?.maximum ?? 0) - (this.grouped?.minimum ?? 0);
+    return span === 0 ? 0 : (Math.abs(value) / span) * 100;
   }
   groupedLeft(value: number): number {
-    return (
-      ((Math.min(0, value) - (this.grouped?.minimum ?? 0)) /
-        Math.max(
-          Number.EPSILON,
-          (this.grouped?.maximum ?? 0) - (this.grouped?.minimum ?? 0),
-        )) *
-      100
-    );
+    const span = (this.grouped?.maximum ?? 0) - (this.grouped?.minimum ?? 0);
+    return span === 0
+      ? 0
+      : ((Math.min(0, value) - (this.grouped?.minimum ?? 0)) / span) * 100;
   }
   get bars(): readonly CategoryBar[] {
     return this.prepared?.ok ? this.prepared.bars.slice(0, this.topN()) : [];

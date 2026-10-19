@@ -1,5 +1,6 @@
 import {
   validChartSpec,
+  validateChartDefinition,
   validateBoardPresentation,
 } from './board-presentation';
 import type { Board, BoardCard } from './board';
@@ -432,6 +433,12 @@ function tabKey(tab: TabWidget, index: number): string {
 
 function tabsDefinition(widget: BoardWidget | undefined): TabsWidgetDef {
   if (
+    widget?.name === 'tabs' &&
+    (widget.data == null ||
+      (isRecord(widget.data) && widget.data['tabs'] == null))
+  )
+    return { ...(isRecord(widget.data) ? widget.data : {}), tabs: [] };
+  if (
     widget?.name !== 'tabs' ||
     !isRecord(widget.data) ||
     !Array.isArray(widget.data['tabs']) ||
@@ -526,40 +533,9 @@ function chartDefinition(widget: BoardWidget | undefined): ChartWidgetDef {
   if (widget?.name !== 'chart' || !isRecord(widget.data))
     throw new Error('This operation requires a chart widget.');
   const data = widget.data as unknown as ChartWidgetDef;
-  if (
-    !validChartSpec(data.chart) ||
-    !Array.isArray(data.sources) ||
-    !data.sources.length ||
-    data.sources.length > MAX_CARDS
-  )
+  validateChartDefinition(data);
+  if (data.sources.length > MAX_CARDS)
     throw new Error('Invalid chart configuration.');
-  const ids = new Set<string>();
-  for (const source of data.sources) {
-    if (
-      !isRecord(source) ||
-      !identifier(source.id) ||
-      !identifier(source.queryId) ||
-      ids.has(source.id)
-    )
-      throw new Error('Chart sources need distinct IDs and saved queries.');
-    ids.add(source.id);
-    if (
-      source.transform &&
-      (source.transform.name !== 'orders-monthly-country-count' ||
-        data.chart.type !== 'bar-race' ||
-        data.chart.periodColumn !== 'period' ||
-        data.chart.categoryColumn !== 'category' ||
-        data.chart.valueColumn !== 'value' ||
-        data.chart.onDuplicate !== 'reject')
-    )
-      throw new Error(
-        'The Orders transform requires its canonical race mapping.',
-      );
-  }
-  if (data.chart.type === 'bar-race' && data.sources.length !== 1)
-    throw new Error(
-      'The board wire contract requires one source for a bar race.',
-    );
   return data;
 }
 

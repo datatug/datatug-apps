@@ -409,3 +409,22 @@ select:focus-visible {
   border-left: 1px solid #6f8098;
   z-index: 1;
 }
+
+.result.embedded {
+  border: 0;
+  border-radius: 0;
+}
+.embedded .summary {
+  padding: 0;
+  justify-content: flex-start;
+}
+.embedded .summary p {
+  margin-block: 0.5rem;
+}
+.embedded .view-switch {
+  margin: 0.25rem 0 0.5rem;
+}
+.inspect-category {
+  min-height: 2.75rem;
+  margin-block: 0.25rem;
+}

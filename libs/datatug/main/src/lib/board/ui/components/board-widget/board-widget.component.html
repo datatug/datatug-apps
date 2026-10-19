@@ -61,6 +61,7 @@
         </div>
         <div [hidden]="chartView() !== 'grid'">
           <sneat-datatug-held-result-presentation
+            [embedded]="true"
             [result]="result() ?? null"
             [loading]="running()"
             [error]="runError() ?? null"
@@ -106,6 +107,7 @@
           <ion-button [routerLink]="tree">Open saved query</ion-button>
         }
         <sneat-datatug-held-result-presentation
+          [embedded]="true"
           [result]="result() ?? null"
           [fields]="barFields()"
           [selectionEnabled]="!!chartWidgetDef()?.chart?.selectionId"
@@ -189,7 +191,9 @@
               {{ presentation.country }}
             </p>
           }
-          <button type="button" (click)="clearCountry()">Clear country</button>
+          <button class="clear-country" type="button" (click)="clearCountry()">
+            Clear country
+          </button>
         </div>
       }
       @if (presentation.result; as answer) {

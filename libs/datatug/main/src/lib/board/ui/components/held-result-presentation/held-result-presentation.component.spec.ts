@@ -45,6 +45,42 @@ const rows = [
 ] as const satisfies readonly (readonly TypedValue[])[];
 
 describe('held result presentation', () => {
+  it('selects a legacy bar without changing the held view, retains a separate inspect action, and clears pressed state', async () => {
+    await TestBed.configureTestingModule({
+      imports: [HeldResultPresentationComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+    const held = result(rows);
+    fixture.componentRef.setInput('fields', fields);
+    fixture.componentRef.setInput('result', held);
+    fixture.componentRef.setInput('selectionEnabled', true);
+    fixture.componentRef.setInput('embedded', true);
+    fixture.detectChanges();
+    const selected = vi.fn();
+    fixture.componentInstance.categorySelected.subscribe(selected);
+    const button: HTMLButtonElement =
+      fixture.nativeElement.querySelector('.bars li > button');
+    button.focus();
+    button.click();
+    fixture.detectChanges();
+    expect(selected).toHaveBeenCalledWith('Germany');
+    expect(fixture.componentInstance.view()).toBe('chart');
+    expect(fixture.componentInstance.result).toBe(held);
+    expect(document.activeElement).toBe(button);
+    fixture.componentRef.setInput('selectedCategory', 'Germany');
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-pressed')).toBe('true');
+    fixture.componentRef.setInput('selectedCategory', null);
+    fixture.detectChanges();
+    expect(button.getAttribute('aria-pressed')).toBe('false');
+    expect(fixture.nativeElement.querySelector('h2')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Result explorer');
+    fixture.nativeElement.querySelector('.inspect-category').click();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.view()).toBe('grid');
+    expect(fixture.nativeElement.querySelector('.inspection')).not.toBeNull();
+  });
+
   it('initializes the native Top N option to the rendered count and changes both together', async () => {
     await TestBed.configureTestingModule({
       imports: [HeldResultPresentationComponent],
@@ -213,6 +249,53 @@ describe('held result presentation', () => {
 });
 
 describe('grouped held-result view', () => {
+  it.each([
+    [1e-20, 2e-20, 50, 100],
+    [-1e-20, -2e-20, 50, 100],
+    [-1e-20, 2e-20, 100 / 3, 200 / 3],
+    [0, 0, 0, 0],
+  ])(
+    'scales tiny finite values %s/%s without an epsilon floor',
+    async (a, b, wa, wb) => {
+      await TestBed.configureTestingModule({
+        imports: [HeldResultPresentationComponent],
+      }).compileComponents();
+      const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+      fixture.componentRef.setInput('result', {
+        ...result([]),
+        recordset: {
+          columns: [
+            { name: 'category', type: 'string' },
+            { name: 'a', type: 'number' },
+            { name: 'b', type: 'number' },
+          ],
+          rows: [
+            [
+              { type: 'string', value: 'Tiny' },
+              { type: 'number', value: a },
+              { type: 'number', value: b },
+            ],
+          ],
+        },
+      });
+      fixture.componentRef.setInput('fields', {
+        categoryColumn: 'category',
+        series: [
+          { id: 'a', title: 'A', valueColumn: 'a' },
+          { id: 'b', title: 'B', valueColumn: 'b' },
+        ],
+        unit: 'units',
+      });
+      fixture.detectChanges();
+      const bars = fixture.nativeElement.querySelectorAll('.bar-fill');
+      expect(parseFloat(bars[0].style.width)).toBeCloseTo(wa);
+      expect(parseFloat(bars[1].style.width)).toBeCloseTo(wb);
+      expect(Number.isFinite(fixture.componentInstance.groupedLeft(0))).toBe(
+        true,
+      );
+    },
+  );
+
   it('renders every declared series with exact signed/fractional values and keeps focused selection on the same held chart', async () => {
     await TestBed.configureTestingModule({
       imports: [HeldResultPresentationComponent],
