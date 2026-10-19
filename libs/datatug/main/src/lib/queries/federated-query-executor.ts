@@ -481,7 +481,7 @@ async function runNativeStream(
     recordset: { columns, rows }, totalRows: count, hasMore: false, nativeStream: true,
     limitations: [], bindingsApplied: [], truncated: false,
     provenance: { source: `${base}/v1/databases/${database} (direct OVDB)`, queryId: definition.id,
-      mode: 'live', observedAt: new Date().toISOString(), executionProfile: 'protected' },
+      mode: 'live', observedAt: new Date().toISOString() },
   };
 }
 
@@ -985,7 +985,6 @@ async function runFederatedQueryInternal(
         queryId: definition.id,
         mode: 'live',
         observedAt: new Date().toISOString(),
-        executionProfile: 'protected',
       },
     });
     const fetchPages = async function* (
@@ -1248,7 +1247,6 @@ async function runFederatedQueryInternal(
           queryId: definition.id,
           mode: 'live',
           observedAt: new Date().toISOString(),
-          executionProfile: 'protected',
         },
       };
     }
@@ -1366,7 +1364,6 @@ async function runFederatedQueryInternal(
         queryId: definition.id,
         mode: 'live',
         observedAt: new Date().toISOString(),
-        executionProfile: 'protected',
       },
     };
   } catch (error) {

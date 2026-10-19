@@ -72,6 +72,19 @@ describe('held result presentation', () => {
     });
   });
 
+  it.each([undefined, 'protected'] as const)('reports ordinary OVDB without inventing a profile and preserves an issued profile: %s', async (profile) => {
+    await TestBed.configureTestingModule({ imports: [HeldResultPresentationComponent] }).compileComponents();
+    const fixture = TestBed.createComponent(HeldResultPresentationComponent);
+    fixture.componentRef.setInput('fields', fields);
+    fixture.componentRef.setInput('result', { ...result(rows), nativeDirect: true,
+      provenance: { source: 'https://cloud.openvaultdb.com/v1/dtql (direct OVDB)', mode: 'live', observedAt: '2026-10-19T00:00:00Z', ...(profile ? { executionProfile: profile } : {}) } });
+    fixture.detectChanges();
+    const text = fixture.nativeElement.querySelector('.source-details').textContent;
+    expect(text).toContain(profile ?? 'OVDB server');
+    if (!profile) expect(text).not.toContain('protected');
+    expect(text).not.toContain('MIT');
+  });
+
   it('keeps chart and row inspection on the same held result', async () => {
     await TestBed.configureTestingModule({
       imports: [HeldResultPresentationComponent],

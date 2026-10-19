@@ -209,7 +209,8 @@
                 ? 'Browser public API'
                 : sqliteReceipt
                   ? 'Browser SQLite'
-                  : result.provenance.executionProfile || 'not reported'
+                  : result.provenance.executionProfile ||
+                    (ovdbServerExecution ? 'OVDB server' : 'not reported')
             }}
           </dd>
         </div>

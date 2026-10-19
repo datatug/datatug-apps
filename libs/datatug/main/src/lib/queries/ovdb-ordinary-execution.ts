@@ -123,7 +123,6 @@ export async function consumeOvdbOrdinaryQuery(
       queryId: definition.id,
       mode: 'live',
       observedAt: new Date().toISOString(),
-      executionProfile: 'protected',
     },
   };
 }

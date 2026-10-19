@@ -37,6 +37,14 @@ Given pending discovery or result reads, when execution is cancelled or fails, t
 ### AC: comparison
 
 Given the saved demo query, when run against the real server, then 17 rows include Canada 3/8 and USA 13/13, with explicit units and exact-label exclusions.
+### AC: truthful-provenance
+
+Given an ordinary JSON or native stream result without a protected execution receipt, then locally constructed provenance never invents a protected profile. Source details identify OVDB server execution neutrally, preserve genuine API-supplied profiles and retain absent source terms without inventing a licence. Browser runtime receipt labels remain unchanged.
+
+### AC: readable-inspector
+
+Given the showcase inspector, then it occupies its own full-width row while neighboring chart cards remain unchanged. Long tab titles scroll horizontally on narrow screens; keyboard focus selects and reveals the active tab. Switching tabs or chart/grid views reuses existing query/result identities without rerunning held queries.
+
 ### AC: journey
 
 Given the existing inspector tab and saved query route, when a visitor runs and inspects the comparison and revisits the result, then it works in the real browser without extra taps or client scans; existing native single-database focused tests pass and demo project-copy preflight remains within 500 KiB.

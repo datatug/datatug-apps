@@ -3,6 +3,8 @@
 } @else if (tabs().length) {
   <ion-segment
     [value]="active()!.key"
+    [scrollable]="true"
+    [selectOnFocus]="true"
     (ionChange)="select($any($event).detail.value)"
     aria-label="Board tabs"
   >
