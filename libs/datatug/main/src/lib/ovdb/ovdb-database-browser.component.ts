@@ -289,12 +289,18 @@ export class OvdbDatabaseBrowserComponent {
       const rows = await listOvdbRows(connection, table);
       if (epoch !== this.#loadEpoch) return;
       this.rows.set(rows);
-      if (focusRecordId && this.liveConnection().descriptor.capabilities.read === true) {
-        const row = await getOvdbRecord(connection, table, focusRecordId);
+      const selectedFocusedKey = this.focusedRow()?.key === this.selectedKey() ? this.selectedKey() : undefined;
+      const keyedId = focusRecordId ?? (selectedFocusedKey ? this.focusRecordId() : undefined);
+      if (keyedId && this.liveConnection().descriptor.capabilities.read === true) {
+        const row = await getOvdbRecord(connection, table, keyedId);
         if (epoch !== this.#loadEpoch) return;
+        if (!focusRecordId && this.selectedKey() !== selectedFocusedKey) return;
         if (row) {
           this.focusedRow.set(row);
-          this.selectedKey.set(row.key);
+          if (focusRecordId) this.selectedKey.set(row.key);
+        } else if (selectedFocusedKey) {
+          this.focusedRow.set(undefined);
+          this.selectedKey.set(undefined);
         }
       }
     } catch (error) {

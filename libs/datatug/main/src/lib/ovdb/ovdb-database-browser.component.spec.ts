@@ -126,6 +126,31 @@ describe('OvdbDatabaseBrowserComponent', () => {
     expect(q('row-2')?.getAttribute('aria-current')).toBe('true');
   });
 
+  it('refreshes a saved deep-linked record outside the first grid page', async () => {
+    const database = new MemorySqliteDatabase();
+    for (let id = 4; id <= 104; id++) database.tables['Artist'].push({ ArtistId: id, Name: `Artist ${id}` });
+    database.tables['Artist'].push({ ArtistId: 11039, Name: 'Before save' });
+    const { fixture, q, settle } = await setup('Artist', { database });
+    fixture.componentRef.setInput('focusRecordId', '11039');
+    await vi.waitFor(async () => {
+      await settle();
+      expect(q('ovdb-rows')?.querySelectorAll('tbody tr')).toHaveLength(100);
+      expect(q('record-field-Name')?.textContent).toContain('Before save');
+    });
+    q('record-edit')?.click();
+    await settle();
+    const editor = fixture.debugElement.query(By.directive(OvdbRecordEditorComponent)).componentInstance as OvdbRecordEditorComponent;
+    const name = editor['fields']().find((field) => field.name === 'Name');
+    if (!name) throw new Error('Missing Artist Name field');
+    editor.setText(name, 'After save');
+    await editor.save();
+    await vi.waitFor(async () => {
+      await settle();
+      expect(q('record-field-Name')?.textContent).toContain('After save');
+    });
+    expect(database.tables['Artist'].at(-1)?.['Name']).toBe('After save');
+  });
+
   it('refreshes the table after a delete and clears the selection', async () => {
     const { q, settle, local } = await setup('Artist');
     await vi.waitFor(async () => {
