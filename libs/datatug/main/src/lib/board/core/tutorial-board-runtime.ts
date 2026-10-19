@@ -90,6 +90,12 @@ export class TutorialBoardRuntime {
       : undefined;
   }
 
+  presentationView(cardId: string | undefined, path: readonly string[]) {
+    return cardId
+      ? this.state()?.session.presentationView(cardId, path)
+      : undefined;
+  }
+
   dispatch(action: BoardSessionAction): void {
     this.state()?.dispatch(action);
   }

@@ -71,12 +71,19 @@ export async function installCountryComparisonFixture(
     const url = new URL(request.url()),
       method = request.method();
     if (/\.(?:sqlite|wasm)(?:$|\?)/.test(url.href)) downloads.push(url.href);
-    if (
-      ['PUT', 'PATCH', 'DELETE'].includes(method) ||
-      (method === 'POST' &&
-        (url.hostname === 'api.github.com' ||
-          url.hostname.endsWith('sneat.co')))
-    )
+    const queryPath = url.pathname.replace(
+      /^\/__(?:datatug_public_ovdb)\/(?:cloud|demodb)/,
+      '',
+    );
+    const queryRead =
+      method === 'POST' &&
+      (['https://cloud.openvaultdb.com', 'https://ovdb.demodb.dev'].includes(
+        url.origin,
+      ) ||
+        (url.origin === new URL(baseURL).origin &&
+          url.pathname.startsWith('/__datatug_public_ovdb/'))) &&
+      /^\/v1\/(?:databases\/[^/]+\/)?dtql$/.test(queryPath);
+    if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !queryRead)
       mutations.push(`${method} ${url.href}`);
   });
   const local = new URL(baseURL).origin;

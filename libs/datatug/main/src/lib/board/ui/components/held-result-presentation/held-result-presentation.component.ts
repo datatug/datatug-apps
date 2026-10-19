@@ -1,3 +1,9 @@
+import { HeldResultControlsComponent } from './held-result-controls.component';
+import {
+  groupedDifferenceAvailable,
+  orderGroupedBars,
+  type GroupedBarOrder,
+} from './grouped-bar-order';
 import type { ChartSeries } from '@datatug/board-models';
 import { prepareGroupedBars, type GroupedBars } from './grouped-bars';
 import {
@@ -11,6 +17,7 @@ import {
   SimpleChanges,
   ViewChild,
   signal,
+  computed,
 } from '@angular/core';
 import {
   LimitationHeaderComponent,
@@ -115,7 +122,11 @@ export function prepareCategoryBars(
 @Component({
   selector: 'sneat-datatug-held-result-presentation',
   standalone: true,
-  imports: [LimitationHeaderComponent, SourceRightsNoticeComponent],
+  imports: [
+    LimitationHeaderComponent,
+    SourceRightsNoticeComponent,
+    HeldResultControlsComponent,
+  ],
   templateUrl: './held-result-presentation.component.html',
   styleUrl: './held-result-presentation.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -136,7 +147,33 @@ export class HeldResultPresentationComponent implements OnChanges {
   @Input() selectionEnabled = false;
   @Input() selectedCategory: string | null = null;
   @Output() readonly categorySelected = new EventEmitter<string>();
-  grouped: GroupedBars | null = null;
+  @Output() readonly selectionCleared = new EventEmitter<void>();
+  private readonly groupedData = signal<GroupedBars | null>(null);
+  get grouped(): GroupedBars | null {
+    return this.groupedData();
+  }
+  set grouped(value: GroupedBars | null) {
+    this.groupedData.set(value);
+  }
+  readonly groupedOrder = signal<GroupedBarOrder>('country');
+  readonly orderedGroups = computed(() => {
+    const grouped = this.groupedData();
+    return grouped ? orderGroupedBars(grouped, this.groupedOrder()) : [];
+  });
+  readonly differenceAvailable = computed(() => {
+    const grouped = this.groupedData();
+    return !!grouped && groupedDifferenceAvailable(grouped);
+  });
+  setGroupedOrder(value: string): void {
+    const grouped = this.grouped;
+    if (!grouped) return;
+    try {
+      orderGroupedBars(grouped, value as GroupedBarOrder);
+      this.groupedOrder.set(value as GroupedBarOrder);
+    } catch {
+      /* Native options are bounded; refuse stale or forged values. */
+    }
+  }
   groupedError: string | null = null;
   readonly seriesColors = [
     '#1764c0',
@@ -270,6 +307,13 @@ export class HeldResultPresentationComponent implements OnChanges {
             error instanceof Error
               ? error.message
               : 'This grouped chart is unavailable.';
+        }
+      }
+      if (this.grouped) {
+        try {
+          orderGroupedBars(this.grouped, this.groupedOrder());
+        } catch {
+          this.groupedOrder.set('country');
         }
       }
       this.prepared = this.fields?.series

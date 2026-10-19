@@ -28,17 +28,36 @@ export function tutorialSteps(board: Board): readonly TutorialStep[] {
     if (card.widget?.name === 'chart') {
       const chart = card.widget.data as ChartWidgetDef;
       if (chart.chart.type === 'bar-race') {
+        if (chart.sources[0]?.transform)
+          steps.push({
+            title: 'Inspect the monthly trend',
+            detail:
+              'See every calendar month and all source orders together, independently of the race Top N or country selection.',
+            action: {
+              type: 'set-presentation-view',
+              cardId: card.id,
+              view: 'trend',
+            },
+          });
         steps.push({
           title: 'Inspect the source rows',
           detail:
             'Switch the race to its held source rows without running another query.',
-          action: { type: 'set-view', cardId: card.id, view: 'grid' },
+          action: {
+            type: 'set-presentation-view',
+            cardId: card.id,
+            view: 'grid',
+          },
         });
         steps.push({
           title: 'Return to the paused race',
           detail:
             'Use the same result snapshot. Playback and scrubbing remain under your control.',
-          action: { type: 'set-view', cardId: card.id, view: 'chart' },
+          action: {
+            type: 'set-presentation-view',
+            cardId: card.id,
+            view: 'chart',
+          },
         });
       }
     }
@@ -126,9 +145,12 @@ export function currentTutorialStep(session: TutorialBoardSession): {
       continue;
     }
     if (
-      action?.type === 'set-view' &&
+      (action?.type === 'set-view' ||
+        action?.type === 'set-presentation-view') &&
       card?.widget?.name === 'chart' &&
-      (card.widget.data as ChartWidgetDef).defaultView === action.view
+      (action.type === 'set-presentation-view'
+        ? session.presentationView(action.cardId, action.widgetPath)
+        : (card.widget.data as ChartWidgetDef).defaultView) === action.view
     ) {
       index++;
       continue;

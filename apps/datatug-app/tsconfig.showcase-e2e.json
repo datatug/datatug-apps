@@ -1,0 +1,22 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "types": ["node"],
+    "noEmit": true,
+    "incremental": false
+  },
+  "files": [],
+  "include": [
+    "playwright.showcase-exploration.config.ts",
+    "playwright.showcase-measurement.config.ts",
+    "e2e/showcase-country-comparison.spec.ts",
+    "e2e/showcase-tutorial-acceptance.spec.ts",
+    "e2e/showcase-inspector-polish.spec.ts",
+    "e2e/showcase-live-measurement.spec.ts",
+    "e2e/helpers/country-comparison-fixture.ts",
+    "e2e/helpers/showcase-measurement-ledger.ts",
+    "src/testing/showcase-measurement-ledger.spec.ts"
+  ]
+}

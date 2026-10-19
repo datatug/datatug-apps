@@ -2,6 +2,7 @@ import { DemoProjectContinuationService } from './demo-project-continuation.serv
 import { demoSqliteCatalog } from '../../queries/demo-sqlite-catalog';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { addIcons } from 'ionicons';
 import { closeOutline, saveOutline } from 'ionicons/icons';
@@ -197,6 +198,57 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it('offers an explicit plan choice without changing the personal default', async () => {
+    const h = await harness(false, { store: 'github' });
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.component.billingIntent()).toBe('personal_pro');
+    const choice = h.fixture.nativeElement.querySelector('ion-select[aria-label="Project plan"]');
+    expect(choice).toBeTruthy();
+    h.fixture.debugElement.query(By.css('ion-select[aria-label="Project plan"]')).triggerEventHandler('ngModelChange', 'space_business');
+    await h.fixture.whenStable();
+    expect(h.component.billingIntent()).toBe('space_business');
+    h.component.billingIntentChanged('not-a-plan');
+    expect(h.component.billingIntent()).toBe('space_business');
+  });
+
+  it('restores explicit Business, Space and edited-database continuation together after auth navigation', async () => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const token = new DemoProjectContinuationService().create({ dataset: 'chinook', canonicalSha256: demoSqliteCatalog.chinook.sha256, table: 'Artist', source });
+    const before = await harness(false, { source: JSON.stringify(source), store: 'github', demoContinuation: token });
+    before.component.ngOnInit();
+    before.component.billingIntentChanged('space_business');
+    const draft = JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? '{}');
+    expect(draft).toMatchObject({ billingIntent: 'space_business', spaceID: 'space', demoContinuation: token, source });
+    const after = await harness(false, { store: 'github', oauthResult: 'denied' }, true, true);
+    after.component.ngOnInit();
+    expect(after.component.billingIntent()).toBe('space_business');
+    expect(after.component.spaceID()).toBe('space');
+    after.select();
+    after.component.create();
+    expect(after.create.mock.calls[0][0]).toMatchObject({ billingIntent: 'space_business', spaceID: 'space', source });
+    expect(after.create.mock.calls[0][0]).not.toHaveProperty('demoContinuation');
+    expect(TestBed.inject(DemoProjectContinuationService).read(token)).toBeDefined();
+  });
+
+  it('does not let another actor inherit the draft plan choice', async () => {
+    const h = await harness();
+    h.component.ngOnInit();
+    h.component.billingIntentChanged('space_business');
+    h.userState.next({ status: 'authenticated', user: { uid: 'another-actor' }, record: { spaces: { space: { title: 'My Space' } } } });
+    expect(h.component.billingIntent()).toBe('personal_pro');
+    expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
+  });
+
+  it('keeps explicit route billing intent ahead of a restored draft choice', async () => {
+    const before = await harness();
+    before.component.ngOnInit();
+    before.component.billingIntentChanged('space_business');
+    const after = await harness(false, { billingIntent: 'personal_pro' }, true, true);
+    after.component.ngOnInit();
+    expect(after.component.billingIntent()).toBe('personal_pro');
+  });
+
   it.each(['current', 'rediscovered'] as const)('continues the edited database after %s setup reaches merged_ready', async (kind) => {
     const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
     const token = new DemoProjectContinuationService().create({ dataset: 'chinook', canonicalSha256: demoSqliteCatalog.chinook.sha256, table: 'Artist', source });

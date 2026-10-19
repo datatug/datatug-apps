@@ -146,3 +146,75 @@ export function transformOrdersMonthlyCountryCount(
     },
   };
 }
+
+export interface OrdersMonthlyTrend {
+  readonly months: readonly {
+    readonly period: string;
+    readonly orders: number;
+  }[];
+  readonly orderCount: number;
+  readonly dateColumn: string;
+  readonly firstDate?: string;
+  readonly lastDate?: string;
+}
+
+export type OrdersMonthlyTrendResult =
+  | { readonly ok: true; readonly data: OrdersMonthlyTrend }
+  | Exclude<OrdersMonthlyCountryCountResult, { readonly ok: true }>;
+
+/** All countries from raw admitted Orders, before any race preparation, Top N or frame selection. */
+export function prepareOrdersMonthlyTrend(
+  input: ChartRecordset,
+  spec: OrdersMonthlyCountryCountSpec,
+): OrdersMonthlyTrendResult {
+  // Reuse the raw ID/date/receipt validation and complete calendar gap filling.
+  // These are every country/month bucket, never the race's prepared entries.
+  const transformed = transformOrdersMonthlyCountryCount(input, spec);
+  if (!transformed.ok) return transformed;
+  const counts = new Map<string, number>();
+  for (const row of transformed.data.recordset.recordset.rows) {
+    if (row[0].type !== 'string' || row[2].type !== 'number')
+      return {
+        ok: false,
+        code: 'SHAPE',
+        message: 'The complete Orders month buckets are unavailable.',
+      };
+    counts.set(row[0].value, (counts.get(row[0].value) ?? 0) + row[2].value);
+  }
+  const months = [...counts].map(([period, orders]) => ({ period, orders }));
+  if (
+    months.reduce((total, month) => total + month.orders, 0) !==
+    input.recordset.rows.length
+  )
+    return {
+      ok: false,
+      code: 'INCOMPLETE',
+      message: 'Monthly counts must include every source order exactly once.',
+    };
+  const dateIndex = input.recordset.columns.findIndex(
+    (column) => column.name === spec.dateColumn,
+  );
+  // The shared raw transform has validated every ISO date; compare without timezone conversion.
+  let firstDate: string | undefined, lastDate: string | undefined;
+  for (const row of input.recordset.rows) {
+    const date = row[dateIndex];
+    if (date.type !== 'string')
+      return {
+        ok: false,
+        code: 'ROW',
+        message: 'The source Orders date is unavailable.',
+      };
+    if (firstDate === undefined || date.value < firstDate)
+      firstDate = date.value;
+    if (lastDate === undefined || date.value > lastDate) lastDate = date.value;
+  }
+  return {
+    ok: true,
+    data: {
+      months,
+      orderCount: transformed.data.orderCount,
+      dateColumn: spec.dateColumn,
+      ...(firstDate ? { firstDate, lastDate } : {}),
+    },
+  };
+}

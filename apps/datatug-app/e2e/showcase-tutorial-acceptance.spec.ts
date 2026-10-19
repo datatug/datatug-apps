@@ -11,7 +11,7 @@ import {
 const renderedBoard = (page: Page) =>
   page.locator('sneat-datatug-board').evaluate((element) => {
     const ng = (
-      window as Window & {
+      window as unknown as Window & {
         ng: { getComponent: (element: Element) => { boardDef: () => unknown } };
       }
     ).ng;
@@ -220,6 +220,84 @@ test('tutorial country selection follows the present chart and clears on restart
     .click();
   await expect(inspector).toContainText('830 rows · 14 columns');
   await expect(inspector).not.toContainText('of 830 orders shipped to Canada');
+  expect(ledger.downloads).toEqual([]);
+  expect(ledger.mutations).toEqual([]);
+});
+
+test('guided trend, source and race views replay one held result with reduced motion and restore on reload', async ({
+  page,
+  context,
+}, testInfo) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  test.skip(!source, 'paired candidate required');
+  if (!source) return;
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  const ledger = await installCountryComparisonFixture(
+    context,
+    source,
+    testInfo.project.use.baseURL ?? 'http://localhost',
+  );
+  await page.goto(`${countryBoardURL}?mode=tutorial`);
+  const tutorial = page.locator('.tutorial-panel');
+  await tutorial.getByRole('button', { name: 'Restart', exact: true }).click();
+  await changeStep(tutorial, 'Next Step');
+  const race = page
+    .locator('ion-card')
+    .filter({ hasText: 'Where Northwind orders shipped' })
+    .first();
+  await expect(race).toContainText('830 source orders');
+  await race
+    .getByRole('combobox', { name: 'Chart value mode' })
+    .selectOption('cumulative');
+  await race.getByRole('spinbutton', { name: 'Top', exact: true }).fill('5');
+  await race.getByRole('spinbutton', { name: 'Top', exact: true }).press('Tab');
+  await race.getByRole('slider', { name: 'Choose month' }).fill('3');
+  const baseline = [...ledger.posts];
+  expect(baseline).toEqual(['orders']);
+  await race.getByRole('button', { name: 'Play chart', exact: true }).click();
+  await expect(
+    race.getByRole('button', { name: 'Pause chart', exact: true }),
+  ).toBeVisible();
+  await race.getByRole('button', { name: 'Pause chart', exact: true }).click();
+  await expect(tutorial).toContainText('Inspect the monthly trend');
+  await changeStep(tutorial, 'Next Step');
+  const monthly = race.getByRole('region', { name: 'Monthly orders trend' });
+  await expect(monthly).toContainText('830 orders · 23 calendar months');
+  expect(ledger.posts).toEqual(baseline);
+  await changeStep(tutorial, 'Previous');
+  await expect(
+    race.getByRole('button', { name: 'Chart', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(race.getByRole('slider', { name: 'Choose month' })).toHaveValue(
+    '3',
+  );
+  await changeStep(tutorial, 'Next Step');
+  await expect(monthly).toBeVisible();
+  await changeStep(tutorial, 'Next Step');
+  await expect(
+    race.getByRole('button', { name: 'Source rows', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  await expect(
+    race.locator('sneat-datatug-held-result-presentation'),
+  ).toContainText('830 rows');
+  await changeStep(tutorial, 'Next Step');
+  await expect(race.getByRole('slider', { name: 'Choose month' })).toHaveValue(
+    '3',
+  );
+  await expect(
+    race.getByRole('combobox', { name: 'Chart value mode' }),
+  ).toHaveValue('cumulative');
+  await expect(
+    race.getByRole('spinbutton', { name: 'Top', exact: true }),
+  ).toHaveValue('5');
+  expect(ledger.posts).toEqual(baseline);
+  await page.reload();
+  await expect(tutorial).toBeVisible();
+  await expect(race).toContainText('830 source orders');
+  await expect(
+    race.getByRole('button', { name: 'Chart', exact: true }),
+  ).toHaveAttribute('aria-pressed', 'true');
+  expect(ledger.posts.filter((query) => query === 'orders')).toHaveLength(2);
   expect(ledger.downloads).toEqual([]);
   expect(ledger.mutations).toEqual([]);
 });
