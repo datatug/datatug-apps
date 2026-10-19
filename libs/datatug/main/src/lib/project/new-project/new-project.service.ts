@@ -14,12 +14,14 @@ export class NewProjectService {
     returnUrl = this.router.url,
     continuation?: BusinessGithubContinuation,
     source?: GithubProjectCopySource,
+    demoContinuation?: string,
   ): void {
     const safeReturnUrl = safeNewProjectReturnUrl(returnUrl);
     void this.router
       .navigate(['/new-project'], {
         queryParams: {
           ...(store ? { store } : {}),
+          ...(demoContinuation ? { demoContinuation } : {}),
           ...(source ? { source: JSON.stringify(source) } : {}),
           // These values are request intent only. The creation endpoint still
           // verifies current Business authority for this actor and Space.

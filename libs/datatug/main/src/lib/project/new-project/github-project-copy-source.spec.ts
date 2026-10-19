@@ -13,6 +13,7 @@ describe('GitHub project copy source', () => {
       .mockResolvedValueOnce({ ok: true, json: async () => ({ tree: [{ path: source.folder, type: 'tree', sha: source.tree }] }) });
     vi.stubGlobal('fetch', fetch);
     expect(await resolveDemoProjectCopySource()).toEqual(source);
+    expect(fetch.mock.calls[1][0]).toBe('https://api.github.com/repos/datatug/datatug-demo-project/commits/main');
     expect(fetch.mock.calls[2][0]).toContain('c'.repeat(40));
   });
   it('rejects a failed source lookup', async () => {

@@ -98,11 +98,11 @@ importers:
         specifier: github:dal-go/dalgo-http-adapters#28bc59754f068335d08fb31c7aae5216b9f8bf56&path:/packages/ovdb
         version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56#path:/packages/ovdb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
       '@dalgo/sqlite-sql':
-        specifier: github:dal-go/dalgo-http-adapters#f4d70361c3d706121f11ce42f8bd5a3e11715bb4&path:/packages/sqlite-sql
-        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+        specifier: github:dal-go/dalgo-http-adapters#ab42235a0e125139ebd4eea904c9ffca6aba7c42&path:/packages/sqlite-sql
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
       '@dalgo/sqlite-wasm':
-        specifier: github:dal-go/dalgo-http-adapters#f4d70361c3d706121f11ce42f8bd5a3e11715bb4&path:/packages/sqlite-wasm
-        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)
+        specifier: github:dal-go/dalgo-http-adapters#ab42235a0e125139ebd4eea904c9ffca6aba7c42&path:/packages/sqlite-wasm
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)
       '@firebase/auth':
         specifier: 1.12.1
         version: 1.12.1(@firebase/app@0.14.9)
@@ -2073,15 +2073,15 @@ packages:
     peerDependencies:
       '@dalgo/core': '>=0.6.0 <0.9.0'
 
-  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql':
-    resolution: {gitHosted: true, integrity: sha512-gtZ9lnuDWA6/oma84nLro+SvNf4lPPl3Au47gFfVhOsYHBpAU8aTAzkmQmpmxGM4fICk9s6t/JAxwgruDpXrXQ==, path: /packages/sqlite-sql, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4}
+  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql':
+    resolution: {gitHosted: true, integrity: sha512-0Ayqv3ly9rENpNoEqlkLApu9ljvPSvNgrNy4Q3svlSClCmPgU1xQvu6BaEGvKfbsdpdupJIDV69z/uuD6PNOUw==, path: /packages/sqlite-sql, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42}
     version: 0.0.0
     engines: {node: '>=20'}
     peerDependencies:
       '@dalgo/core': '>=0.2.0 <1.0.0'
 
-  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-wasm':
-    resolution: {gitHosted: true, integrity: sha512-gtZ9lnuDWA6/oma84nLro+SvNf4lPPl3Au47gFfVhOsYHBpAU8aTAzkmQmpmxGM4fICk9s6t/JAxwgruDpXrXQ==, path: /packages/sqlite-wasm, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4}
+  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-wasm':
+    resolution: {gitHosted: true, integrity: sha512-0Ayqv3ly9rENpNoEqlkLApu9ljvPSvNgrNy4Q3svlSClCmPgU1xQvu6BaEGvKfbsdpdupJIDV69z/uuD6PNOUw==, path: /packages/sqlite-wasm, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42}
     version: 0.0.0
     engines: {node: '>=20'}
     peerDependencies:
@@ -13912,14 +13912,14 @@ snapshots:
       '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
       yaml: 2.8.2
 
-  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
+  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)':
     dependencies:
       '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
 
-  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)':
+  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-wasm(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)(@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42))(@sqlite.org/sqlite-wasm@3.53.4-build2)':
     dependencies:
       '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42
-      '@dalgo/sqlite-sql': https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
+      '@dalgo/sqlite-sql': https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42)
     optionalDependencies:
       '@sqlite.org/sqlite-wasm': 3.53.4-build2
 

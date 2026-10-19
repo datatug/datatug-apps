@@ -71,6 +71,7 @@ function fakeDeps() {
   let options: DemoDbSessionOptions | undefined;
   const session = {
     role: 'leader',
+    export: vi.fn(async () => new Uint8Array([83, 81, 76])),
     ready: vi.fn(async () => ({
       persistent: true,
       replacedPreviousVersion: true,
@@ -161,6 +162,17 @@ describe('createLocalDemoDbRuntime', () => {
       { phase: 'install', step: 'verify' },
       { phase: 'install', step: 'importWorking' },
     ]);
+  });
+
+  it('forwards bounded export to the provider session without replacing its bytes or errors', async () => {
+    const { deps, session } = fakeDeps();
+    const runtime = createLocalDemoDbRuntime(deps, { entry, onProgress: vi.fn() });
+    expect(await runtime.export({ maxBytes: 123 })).toEqual(new Uint8Array([83, 81, 76]));
+    expect(session.export).toHaveBeenCalledWith({ maxBytes: 123 });
+    const failure = { code: 'sqlite_export_busy' };
+    session.export.mockRejectedValueOnce(failure);
+    await expect(runtime.export()).rejects.toBe(failure);
+    runtime.close();
   });
 
   it('closes the fetch and the session', async () => {
