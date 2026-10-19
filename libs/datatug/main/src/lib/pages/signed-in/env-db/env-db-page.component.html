@@ -25,7 +25,8 @@
       </ion-card-content>
     </ion-card>
   }
-  <ion-card [hidden]="!envDb">
+  <!-- Inline display wins over Ionic card display:block; keep the grid mounted. -->
+  <ion-card [hidden]="!envDb" [style.display]="envDb ? null : 'none'">
     <ion-item>
       <ion-input
         label="Filter"

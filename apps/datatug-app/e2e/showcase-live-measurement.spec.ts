@@ -1,10 +1,14 @@
+import { installShowcaseQueryDiagnostics } from './helpers/showcase-query-diagnostics';
 import {
   expect,
   test,
   type APIRequestContext,
   type Locator,
 } from '@playwright/test';
-import { installShowcaseMeasurementLedger } from './helpers/showcase-measurement-ledger';
+import {
+  finalizeShowcaseMeasurement,
+  installShowcaseMeasurementLedger,
+} from './helpers/showcase-measurement-ledger';
 
 const origin = 'https://datatug.app';
 const boardURL =
@@ -159,7 +163,13 @@ test('bounded deployed showcase network and held-result measurement', async ({
   expect(process.env['DATATUG_E2E_GITHUB_FAKE']).toBeFalsy();
   expect(process.env['DATATUG_E2E_PUBLIC_OVDB_PROXY']).toBeFalsy();
   expect(process.env['DATATUG_E2E_SERVER_SHOWCASE']).toBeFalsy();
-  const ledger = await installShowcaseMeasurementLedger(context);
+  const initialDiagnostic = process.env['DATATUG_E2E_DIAGNOSE_INITIAL'] === '1';
+  const ledger = await installShowcaseMeasurementLedger(context, {
+    maxQueries: initialDiagnostic ? 3 : 12,
+  });
+  let diagnostics:
+    | Awaited<ReturnType<typeof installShowcaseQueryDiagnostics>>
+    | undefined;
   const receipt: Record<string, unknown> = {
     observedAt: new Date().toISOString(),
     source: 'actual public production browser requests',
@@ -174,19 +184,23 @@ test('bounded deployed showcase network and held-result measurement', async ({
       'Playwright request.sizes responseBodySize; excludes response headers and transport overhead',
     cache:
       'HTTP cache disabled by Playwright routing guard; fresh context; service workers blocked',
-    queryCap: 12,
-    queryCapAuthority:
-      'root approved 12 after verifying the existing fourth tutorial query identity',
-    phaseBudgets: {
-      initial: 3,
-      interaction: 0,
-      refresh: 1,
-      tutorialMaterialization: 4,
-      tutorialViewRevisit: 0,
-      restartEmpty: 0,
-      restartFirstCard: 1,
-      showFull: 3,
-    },
+    mode: initialDiagnostic ? 'initial-only-diagnostic' : 'full-measurement',
+    queryCap: initialDiagnostic ? 3 : 12,
+    queryCapAuthority: initialDiagnostic
+      ? 'root approved initial-only diagnostic with enforced three-query cap'
+      : 'root approved 12 after verifying the existing fourth tutorial query identity',
+    phaseBudgets: initialDiagnostic
+      ? { initial: 3 }
+      : {
+          initial: 3,
+          interaction: 0,
+          refresh: 1,
+          tutorialMaterialization: 4,
+          tutorialViewRevisit: 0,
+          restartEmpty: 0,
+          restartFirstCard: 1,
+          showFull: 3,
+        },
     dateCoverage:
       '23 calendar-month buckets July 2016 through May 2018; first/last buckets may cover partial months. No first/last raw OrderDate asserted.',
     limitations: [
@@ -242,6 +256,8 @@ test('bounded deployed showcase network and held-result measurement', async ({
     );
   };
   try {
+    if (initialDiagnostic)
+      diagnostics = await installShowcaseQueryDiagnostics(context, page);
     receipt['identityBefore'] = await deploymentIdentity(
       request,
       expectedAppSHA,
@@ -268,6 +284,15 @@ test('bounded deployed showcase network and held-result measurement', async ({
     ).toHaveLength(0);
     receipt['initialSummary'] = ledger.summary();
     receipt['initialQueries'] = initial.map((row) => ({ ...row }));
+    if (initialDiagnostic) {
+      receipt['identityAfter'] = await deploymentIdentity(
+        request,
+        expectedAppSHA,
+      );
+      ledger.healthy();
+      receipt['status'] = 'PASS';
+      return;
+    }
     const original = await groups(paired);
     expect(original.find((group) => group.country === 'Canada')).toMatchObject({
       northwind: 3,
@@ -600,15 +625,30 @@ test('bounded deployed showcase network and held-result measurement', async ({
     ledger.healthy();
     receipt['status'] = 'PASS';
   } finally {
-    await ledger.drain();
-    receipt['status'] ??= 'FAIL';
+    let diagnosticFailure: Error | undefined;
+    if (diagnostics) {
+      try {
+        const evidence = await diagnostics.finish();
+        receipt['diagnostics'] = evidence;
+        if (evidence.fetchUnavailable)
+          diagnosticFailure = new Error('Fetch diagnostics were unavailable.');
+      } catch {
+        receipt['diagnostics'] = { unavailable: true };
+        diagnosticFailure = new Error(
+          'Query diagnostics could not be finalized.',
+        );
+      }
+    }
     receipt['timings'] = timings;
-    receipt['summary'] = ledger.summary();
-    receipt['violations'] = ledger.violations;
-    receipt['requests'] = ledger.rows;
-    await testInfo.attach('actual-production-showcase-measurement', {
-      body: JSON.stringify(receipt, null, 2),
-      contentType: 'application/json',
-    });
+    await finalizeShowcaseMeasurement(
+      ledger,
+      receipt,
+      () =>
+        testInfo.attach('actual-production-showcase-measurement', {
+          body: JSON.stringify(receipt, null, 2),
+          contentType: 'application/json',
+        }),
+      diagnosticFailure,
+    );
   }
 });
