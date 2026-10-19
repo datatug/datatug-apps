@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect } from '../../helpers/demodb-guard';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -124,6 +124,9 @@ function resolveBinary(): Resolved<string> {
 const chinook = path.join(os.homedir(), 'datatug', 'dbs', 'chinook-local.sqlite');
 
 export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
+  // This lane only talks to a local agent: count and detect DemoDB requests but install no route, for the tests of THIS fixture
+  // only (see `demodbPassive` in helpers/demodb-guard.ts).
+  demodbPassive: [true, { option: true }] as never,
   linkDaemon: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use, workerInfo) => {

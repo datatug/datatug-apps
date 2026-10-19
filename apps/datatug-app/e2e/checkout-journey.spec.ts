@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { SIGN_IN_BUTTON, SIGN_IN_BUTTON_TEXT } from './helpers/sign-in-button';
 
 // Local Firebase identity and Sneat record; payment/reconciliation HTTP is a

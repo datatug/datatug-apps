@@ -1,10 +1,6 @@
 import { installShowcaseQueryDiagnostics } from './helpers/showcase-query-diagnostics';
-import {
-  expect,
-  test,
-  type APIRequestContext,
-  type Locator,
-} from '@playwright/test';
+import { type APIRequestContext, type Locator } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import {
   finalizeShowcaseMeasurement,
   installShowcaseMeasurementLedger,

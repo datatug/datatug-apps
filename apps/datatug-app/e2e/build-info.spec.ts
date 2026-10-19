@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 // Smoke test for the build-info footer — the shared
 // @sneat/components AppVersionComponent; on /home it lives in the main-

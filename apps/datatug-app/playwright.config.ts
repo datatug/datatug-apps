@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter, demodbServerEnv } from './e2e/helpers/demodb-config';
 
+// Specs import `test` from ./e2e/helpers/demodb-guard, which serves *.demodb.dev from local fixtures (the app downloads
+// chinook.sqlite itself) and fails a test that sends a live request.
 const e2ePort = process.env.DATATUG_E2E_PORT || '4200';
 
 export default defineConfig({
@@ -39,8 +42,10 @@ export default defineConfig({
   ],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
+  globalSetup: './e2e/helpers/demodb-fixtures-setup.ts',
   reporter: [
     ['list'],
+    demodbReporter,
     [
       'html',
       {
@@ -77,6 +82,7 @@ export default defineConfig({
     command: `pnpm nx run datatug-app:serve:development --host localhost --port ${e2ePort}`,
     url: `http://localhost:${e2ePort}`,
     reuseExistingServer: !process.env.CI,
+    env: demodbServerEnv,
     timeout: 120_000,
   },
   projects: [
@@ -103,7 +109,7 @@ export default defineConfig({
         'query-grid-enterprise.spec.ts',
         'journey/**',
       ],
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch },
     },
     {
       // Journey e2e (Phase 1 plan task 3, AC:journey-harness): real
@@ -113,7 +119,7 @@ export default defineConfig({
       // Session context was added after the pinned v0.78.0 CLI used by J1-J4.
       // It has a separate config and runs against the modern CLI in the same CI job.
       testIgnore: ['session-continuity.spec.ts'],
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch },
     },
   ],
 });

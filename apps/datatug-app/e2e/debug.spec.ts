@@ -1,4 +1,5 @@
-import { expect, Page, test } from '@playwright/test';
+import { Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 // The debug page throws inside an Angular event handler, so the error is caught
 // by Angular's ErrorHandler and surfaced via console.error rather than as an

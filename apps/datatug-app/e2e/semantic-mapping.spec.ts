@@ -1,5 +1,5 @@
 import { readFile } from 'node:fs/promises';
-import { test, expect } from '@playwright/test';
+import { test, expect } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
 import { loadPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';

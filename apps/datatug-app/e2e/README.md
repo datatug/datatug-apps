@@ -1,5 +1,89 @@
 # datatug-app e2e
 
+## Lane matrix: which lanes run when, and which touch live hosts
+
+CI is `.github/workflows/ci.yml`. A lane that needs a live third-party host never runs on pull requests, merge groups
+or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 about 25,500 CI requests for one
+`chinook.demodb.dev` file got the whole demodb.dev zone rate limited with HTTP 429).
+
+| Lane (job) | pull_request / merge_group / push | nightly `schedule` | In `deploy-gate` | Live hosts |
+| --- | --- | --- | --- | --- |
+| `build`, `test` | yes | yes | yes | none |
+| `e2e-checkout` | yes, `nx affected` | yes | yes | none |
+| `e2e-cloud-logs` | yes | yes | yes | none |
+| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
+| `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | yes | none: pinned files from local fixtures |
+| `e2e-demo-handoff` | yes, `nx affected` | yes | yes | none (local build, third parties stubbed) |
+| `journey e2e (real datatug-cli agent)` | yes, always | yes | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
+| `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | same | yes (may be `skipped`) | none |
+| `e2e-demo-postgresql` | no | yes | no | `cloud.openvaultdb.com` |
+| `e2e` (strict roll-up of every lane) | no | yes | no | via the lanes above |
+| `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | no | `*.demodb.dev`, Chromium only |
+
+`deploy-gate` requires exact `success` for its lanes (only `agent-links` may be `skipped`), so a lane that is
+`skipped` because `nx affected` found nothing still reports `success` (the job runs, its step is a no-op). A job that is
+skipped by an `if:` does not gate anything even if it is a required check; that is why the live-host lanes are kept
+out of `needs`.
+
+### Keeping every lane off DemoDB and the public OpenVaultDB API: five layers
+
+All lanes that run on a pull request, merge group or push (above, plus the manual dispatch of `agent-links`) are covered by:
+
+1. **The guard** (`helpers/demodb-guard.ts`). Specs and fixtures import `test` from it; it wraps the worker's `browser`, so
+   every context (`newContext`, `newPage`, the `context` fixture, contexts a spec creates by hand) gets a route for
+   `demodb.dev` and every sub-domain. It answers from fixtures, refuses what has none, and counts every request. A request
+   that still reaches the network (a response from a real server address, or a failed name lookup / connection) is counted
+   as *escaped* and fails the test; one that a spec's own route fulfils from bundled bytes does not leave the machine and is not.
+   `chat-phase4.spec.ts` is a deliberate exception (Chromium aborts its `/favicon.ico` navigation while a route is
+   installed), and the real-agent lanes (`journey`, `session-continuity`, `agent-links`) use the guard *passively*: they count
+   requests and detect escapes on every context but install no route, because interception of every request slowed those
+   long flows into their test timeouts on CI runners; for them layers 2 and 3 do the blocking and layer 4 the proof.
+2. **Chromium resolves every `*.demodb.dev` name to nothing** (`helpers/demodb-config.ts`, `--host-resolver-rules`; not in
+   live mode).
+3. **CI maps the DemoDB names to `0.0.0.0` in `/etc/hosts`** (`.github/actions/block-demodb`, host list from the catalog,
+   `scripts/demodb-hosts.mjs`) and proves it with a failing `curl`. That covers Firefox, WebKit, Node's `request`, and
+   the `datatug` CLI processes. Fixtures are answered by the route before any name lookup, so the block does not break them.
+4. **The dev server's public OVDB proxy** (`tools/public-ovdb-proxy.cjs`) forwards the app's calls to `https://ovdb.demodb.dev` and
+   `https://cloud.openvaultdb.com` from Node, where layers 1-3 cannot see them. Lanes that start the dev server give it
+   `DATATUG_PUBLIC_OVDB_UPSTREAM=refuse` (`demodbServerEnv`): it answers 403 + `x-datatug-ovdb-refused` and the guard counts the
+   refusal as an escape. `demodb-guard-selftest.spec.ts` holds a negative control for it. A dev server that is already running
+   (`reuseExistingServer` outside CI) keeps its own environment: stop it before a local `nx e2e`. The block action and the
+   Chromium rule also cover `openvaultdb.com`, `www.` and `cloud.`; the nightly live PostgreSQL lane uses neither.
+5. **The report.** Every Playwright run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE, refused,
+   ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), writes `coverage/demodb-request-report-<job>-<pid>.md` (one file per Playwright run) and prints all of them in a late CI step, and fails the run when
+   anything escaped or a live budget was exceeded. The `journey`, `session-continuity`, `agent-links`, `checkout`, `hand-off`
+   and `cloud-logs` configs report too.
+
+### DemoDB fixtures
+
+`helpers/demodb-guard.ts` answers every `*.demodb.dev` request locally. The 5 pinned SQLite files and the comparison
+candidate come from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's globalSetup running
+`node scripts/fetch-demodb-fixtures.mjs`: they are taken from the public `demo-db/<dataset>` GitHub repositories at a pinned
+commit and accepted only when size and SHA-256 equal the pin. A valid file is never requested again, so a warm cache makes
+0 requests and a cold one 1 per file, none of them to demodb.dev. The script writes `.complete` only when every file is
+valid, and CI saves its cache only then. `corpus.json` and the six dataset home pages are committed in
+`e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in `provenance.json`; refresh them by building
+the websites repo and copying the outputs). The `journey` lane downloads nothing (`--project=journey` skips the fixtures).
+
+* **Not served, refused:** the OVDB API on `ovdb.demodb.dev`, and the chunked AdventureWorks download (`*.parts.json`
+  manifest and gzip parts). Their tests run only in live mode.
+* **Newly live-only checks** (the 28 skipped demo-sqlite tests in CI are WebKit/OPFS, the opt-in AdventureWorks journeys, and
+  these 21 that probe the live site rather than the app): "every complete-database download DemoDB advertises answers"
+  for each of the 6 datasets and the AdventureWorks manifest check, in 3 browsers. They run in the manual smoke only.
+* `DEMODB_E2E_MODE=live` (only the manual `DemoDB live smoke` workflow): real hosts, each URL at most once per run
+  (repeats come from a file memo shared by all workers), at most `DEMODB_E2E_MAX_LIVE_REQUESTS` (15) per test and
+  `DEMODB_E2E_MAX_RUN_LIVE_REQUESTS` (120) per run. The budgets are enforced before a request is sent (a 503 retry by the
+  app spends budget), Playwright retries 0, `maxFailures` 1.
+* A rate-limit answer (HTTP 429, or a Cloudflare block page: 403/503/52x with `cf-mitigated`, or an error 1015/1020/1027
+  page) trips a breaker kept in a file, so every worker of the run, also one started after a failure, refuses every
+  further request. `e2e-demo-postgresql` has retries 0, `maxFailures` 1 and a per-test budget of 40 requests to
+  `cloud.openvaultdb.com` (`DEMODB_E2E_MAX_OVDB_REQUESTS`), refused once spent. `helpers/demodb-guard-state.unit.ts` and
+  `helpers/demodb-guard-logic.unit.ts` test the state and the request logic (run in the `test` job together with
+  `scripts/mutate-demodb-guard.mjs`, which breaks the budget, count-before-send, breaker and 52x rules one at a time and
+  requires the tests to fail).
+* `scripts/check-demo-sqlite-catalog.mjs --online` and `check-demo-postgresql-catalog.mjs --online` are manual only and are
+  in no CI path.
+
 ## Subscription checkout
 
 `checkout-journey.spec.ts` runs the real Sneat sign-in/sign-up components against

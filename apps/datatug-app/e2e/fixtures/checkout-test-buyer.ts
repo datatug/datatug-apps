@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect } from '../helpers/demodb-guard';
 import { TEST_CHECKOUT_ORIGIN } from '../../src/app/checkout/checkout-config.mjs';
 import { SIGN_IN_BUTTON } from '../helpers/sign-in-button';
 
@@ -167,4 +167,4 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
     { auto: false },
   ],
 });
-export { expect } from '@playwright/test';
+export { expect } from '../helpers/demodb-guard';

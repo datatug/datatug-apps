@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
 
 const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];

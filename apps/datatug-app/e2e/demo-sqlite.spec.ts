@@ -1,4 +1,5 @@
-import { BrowserContext, expect, Locator, Page, test } from '@playwright/test';
+import { BrowserContext, Locator, Page } from '@playwright/test';
+import { DEMODB_HOST, expect, test } from './helpers/demodb-guard';
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -10,20 +11,21 @@ import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
  * /demo/sqlite/<dataset>: "Explore SQLite in DataTug". A pinned SQLite file from demodb.dev opens as an editable
  * copy in the browser: downloaded and verified by a dataset worker, kept in the origin private file system (OPFS)
  * and shared by every tab through one leader. These tests drive the real BUILT app (see
- * playwright.demo-sqlite.config.ts) in a real browser against the real demodb.dev files: the worker, SQLite WASM,
- * OPFS, Web Locks and the in-process OVDB server are all real. The edited-copy Board to Query case serves the
- * exact hash-pinned Chinook bytes at its admitted public URL; the other cases keep their live DemoDB reads.
- * Only the third-party hosts the app also talks to (error reporting, analytics) are cut off.
+ * playwright.demo-sqlite.config.ts) in a real browser against the pinned demodb.dev files, served from local
+ * fixtures (helpers/demodb-guard.ts; DEMODB_E2E_MODE=live for the manual live smoke): the worker, SQLite WASM,
+ * OPFS, Web Locks and the in-process OVDB server are all real. The edited-copy Board to Query case serves the exact
+ * hash-pinned Chinook bytes at its admitted public URL. Only the third-party hosts the app also talks to
+ * (error reporting, analytics) are cut off.
  *
  * WebKit under Playwright has no OPFS in its default (ephemeral) context. There the persistence journey is
  * replaced by the in-memory behaviour the page promises for that case: the warning banner, edits that work, and
  * edits that are gone after a reload. `hasOpfs` decides, in the browser under test, which of the two applies.
  *
- * Needs the network (chinook.demodb.dev). The full AdventureWorks download (126.8 MB unpacked, ~35 MB on the
+ * Needs no network in the default fixture mode (chinook.demodb.dev only in live mode). The full AdventureWorks download (126.8 MB unpacked, ~35 MB on the
  * wire) runs only with DATATUG_E2E_ADVENTUREWORKS=1.
  */
 
-const DEMODB = /(^|\.)demodb\.dev$/;
+const DEMODB = DEMODB_HOST;
 const SQLITE_ORIGINAL_ARTIST_1 = 'AC/DC';
 const ARTIST_WITHOUT_ALBUMS = 'Milton Nascimento & Bebeto'; // ArtistId 25: nothing refers to it
 
@@ -46,8 +48,10 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
       id: 'live-artist-names', title: 'Live artist names', type: 'DTQL', connectionId: 'chinook-sqlite',
       recordsets: [{ columns: [{ name: 'Name', type: 'string' }] }],
     }));
+    // limit 1000: a board card needs a COMPLETE result (query-dispatch.service.ts execute(): hasMore -> "Narrow the query" since
+    // 1c6ec429); Artist has 275 rows, so the old limit of 100 made the card show an error instead of the rows.
     writeFileSync(join(project, 'queries/demodb/live-artist-names.query.dtql'),
-      'from:\n  name: "Artist"\nlimit: 100\n');
+      'from:\n  name: "Artist"\nlimit: 1000\n');
     execFileSync('git', ['-C', checkout, 'add', '-A']);
     execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
       'commit', '--quiet', '-m', 'Create saved working copy query']);
@@ -100,7 +104,9 @@ test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    if (url.origin === own || DEMODB.test(url.hostname) || url.protocol === 'data:' || url.protocol === 'blob:') {
+    // demodb.dev requests fall through to the guard in helpers/demodb-guard.ts (local fixtures by default).
+    if (DEMODB.test(url.hostname)) return route.fallback();
+    if (url.origin === own || url.protocol === 'data:' || url.protocol === 'blob:') {
       return route.continue();
     }
     return route.abort();

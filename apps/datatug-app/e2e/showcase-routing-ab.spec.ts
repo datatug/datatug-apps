@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
-import { test, expect, type BrowserContext } from '@playwright/test';
+import { type BrowserContext } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { installNetworkDiagnostics } from './helpers/showcase-query-diagnostics';
 import {
   CountriesRoutingBudget,

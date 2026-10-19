@@ -47,6 +47,14 @@ function admitted(req, route) {
   );
 }
 
+/**
+ * Offline mode (DATATUG_PUBLIC_OVDB_UPSTREAM=refuse, set by the e2e configs in fixture mode, see
+ * apps/datatug-app/e2e/helpers/demodb-config.ts): nothing is ever forwarded to a public OVDB host. The request is answered
+ * 403 with x-datatug-ovdb-refused, which the e2e guard counts as an escape and fails the test on. Development use is unchanged.
+ */
+const refuseUpstream = () => process.env.DATATUG_PUBLIC_OVDB_UPSTREAM === 'refuse';
+const refusedMessage = 'Public OVDB upstream refused: this server runs in offline e2e mode (DATATUG_PUBLIC_OVDB_UPSTREAM=refuse).';
+
 function publicProxy(route, target) {
   return {
     target,
@@ -57,6 +65,12 @@ function publicProxy(route, target) {
     proxyTimeout: 30_000,
     timeout: 30_000,
     bypass(req, res) {
+      if (refuseUpstream()) {
+        res.statusCode = 403;
+        res.setHeader('x-datatug-ovdb-refused', target);
+        res.end(refusedMessage);
+        return req.url; // answered here: Vite never forwards it
+      }
       if (admitted(req, route)) return undefined;
       res.statusCode = 403;
       res.end('Public OVDB development transport refused this request.');
