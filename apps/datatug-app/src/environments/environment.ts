@@ -29,7 +29,10 @@ const emulator: IFirebaseEmulatorConfig = {
       : nonSecureEmulatorHost,
 };
 
-export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
+export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
+  hostedCloudLogsEnabled: boolean;
+} = {
+  hostedCloudLogsEnabled: true,
   production: false,
   useNgrok,
   agents: {},
