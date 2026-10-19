@@ -252,7 +252,9 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     .filter({ hasText: 'investigator@example.test' })
     .getByRole('button', { name: 'Disconnect Google account' })
     .click();
-  await expect(page.getByText(/revokes this integration grant/)).toBeVisible();
+  await expect(
+    page.getByText(/asks Google to revoke this integration grant/),
+  ).toBeVisible();
   await page.getByRole('button', { name: 'Confirm disconnect' }).click();
   await expect(
     page
