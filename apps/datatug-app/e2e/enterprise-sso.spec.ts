@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
 
 const projectID = 'demo-local-sneat-app';
 const authBase = 'http://127.0.0.1:9099';
@@ -201,7 +202,7 @@ test('unknown domain onboarding activates SSO and reuses the existing Firebase/S
   await page.locator('ion-segment-button[value="in"]').click();
   await page.locator('ion-input[name="email"] input').fill(email);
   await page.locator('ion-input[type="password"] input').fill(password);
-  await page.getByRole('button', { name: /Sign in.*with password/ }).click();
+  await page.getByRole('button', { name: SIGN_IN_BUTTON }).click();
   const setupHeading = page.getByRole('heading', {
     name: 'Choose the organisation that owns SSO',
   });
