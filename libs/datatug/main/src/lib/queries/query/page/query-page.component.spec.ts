@@ -3470,7 +3470,7 @@ select (
       component.resultGridRows().map((row) => row['validation_status']),
     ).toEqual(['unknown', 'fail']);
     component.hostedStatusFilter.set('fail');
-    expect(component.resultGridAnalyticsScope()).toContain('1 loaded rows on page 1');
+    expect(component.resultGridAnalyticsScope()).toBe('Analytics use 1 loaded row on page 1; grouping and charts do not load other pages');
     expect(component.resultGridRows().map((row) => row['result_0'])).toEqual([
       '9',
     ]);

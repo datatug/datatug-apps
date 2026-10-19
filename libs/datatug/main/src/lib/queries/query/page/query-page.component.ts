@@ -2612,7 +2612,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return cell;
   }
   public readonly resultGridAnalyticsScope = computed(() =>
-    `Analytics use ${this.resultGridRows().length} loaded rows on page ${this.resultPageIndex() + 1}` +
+    `Analytics use ${this.resultGridRows().length} loaded ${this.resultGridRows().length === 1 ? 'row' : 'rows'} on page ${this.resultPageIndex() + 1}` +
     (this.resultHasMore() || (this.resultPageIndex() + 1) * this.resultPageSize < this.resultTotalRows() ? ' (more rows available)' : '') + '; grouping and charts do not load other pages',
   );
   public readonly resultGridRows = computed<QueryResultGridRow[]>(() => {

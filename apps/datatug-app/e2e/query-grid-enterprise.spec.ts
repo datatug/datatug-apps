@@ -121,16 +121,17 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
   // The linked vendor chart follows filtering of held rows; it remains the same dialog.
   await grid
     .getByRole('searchbox', { name: 'Filter rows', exact: true })
-    .fill('Austria');
+    .fill('Canada');
   await expect(grid.getByTestId('results-grid-count')).toContainText(
     '1 of 17 rows',
   );
   await expect(dialog.locator('canvas').first()).toBeVisible();
+  // Canada3 is outside the initial Argentina/Austria/Belgium range: a frozen chart cannot satisfy it.
   // A specific public tooltip proves the linked chart's filtered category/value, beyond pixel differences.
   await dialog.locator('.ag-charts-series-area').first().hover();
   const tooltip = page.locator('.ag-charts-tooltip').filter({ visible: true });
-  await expect(tooltip).toContainText('Austria');
-  await expect(tooltip.locator('.ag-charts-tooltip-value')).toHaveText('2');
+  await expect(tooltip).toContainText('Canada');
+  await expect(tooltip.locator('.ag-charts-tooltip-value')).toHaveText('3');
   const after = await stableCanvas(
     dialog.locator('.ag-charts-canvas-container').first(),
   );
