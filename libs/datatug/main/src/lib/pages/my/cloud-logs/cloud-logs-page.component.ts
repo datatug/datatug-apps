@@ -88,7 +88,7 @@ declare global {
           <section aria-labelledby="accounts-heading">
             <h2 id="accounts-heading">Google accounts</h2>
             @if (!grants().length) {
-              <p>No Google account is connected yet.</p>
+              <p role="status">No Google account is connected yet.</p>
             }
             @for (grant of grants(); track grant.id) {
               <article class="card account">
@@ -207,7 +207,7 @@ declare global {
           <section aria-labelledby="views-heading">
             <h2 id="views-heading">Connected views</h2>
             @if (!connections().length) {
-              <p>No log views connected.</p>
+              <p role="status">No log views connected.</p>
             }
             @for (connection of connections(); track connection.id) {
               <article
@@ -250,13 +250,26 @@ declare global {
                 {{ connection.projectId }} / {{ connection.logViewId }}
               </p>
               @if (!connection.active) {
-                <p role="status">
-                  Google access to this view expired or was denied. Reconnect
-                  the Google account, then probe this view again.
-                </p>
-                <ion-button (click)="startAuthorization()"
-                  >Reconnect Google account</ion-button
-                >
+                @if (inactiveReason() === 'permission_denied') {
+                  <p role="status">
+                    Google denied Cloud Logging access to this view. Ask a
+                    project administrator to grant the connected account
+                    permission, then retry the query.
+                  </p>
+                } @else if (inactiveReason() === 'reconnect_required') {
+                  <p role="status">
+                    Google authorization expired. Reconnect the Google account,
+                    then probe this view again.
+                  </p>
+                  <ion-button (click)="startAuthorization()"
+                    >Reconnect Google account</ion-button
+                  >
+                } @else {
+                  <p role="status">
+                    This view is inactive. Check Cloud Logging permissions or
+                    reconnect Google access, then probe it again.
+                  </p>
+                }
               } @else {
                 <form
                   (submit)="runQuery($event)"
@@ -369,12 +382,19 @@ declare global {
                     @for (
                       entry of entries();
                       track entry.sourceRef ||
-                        entry.timestamp + entry.source + entry.message
+                        entry.timestamp + entry.source + entry.message;
+                      let entryIndex = $index
                     ) {
                       <li>
                         <button
                           type="button"
                           class="entry"
+                          [attr.aria-expanded]="selectedEntry() === entry"
+                          [attr.aria-controls]="
+                            selectedEntry() === entry
+                              ? 'entry-details-' + entryIndex
+                              : null
+                          "
                           (click)="toggleEntry(entry)"
                         >
                           <time>{{ entry.timestamp }}</time
@@ -383,7 +403,11 @@ declare global {
                           ><span>{{ entry.message }}</span>
                         </button>
                         @if (selectedEntry() === entry) {
-                          <section class="details" aria-label="Entry details">
+                          <section
+                            class="details"
+                            [id]="'entry-details-' + entryIndex"
+                            aria-label="Entry details"
+                          >
                             <dl>
                               <dt>Source</dt>
                               <dd>{{ entry.source }}</dd>
@@ -589,6 +613,9 @@ export class CloudLogsPageComponent {
   readonly selectedConnection = signal<PersonalLogConnection | null>(null);
   readonly queryState = signal<QueryState>('idle');
   readonly queryError = signal('');
+  readonly inactiveReason = signal<
+    'reconnect_required' | 'permission_denied' | null
+  >(null);
   readonly entries = signal<readonly PersonalLogEntry[]>([]);
   readonly result = signal<PersonalLogQueryResult | null>(null);
   readonly selectedEntry = signal<PersonalLogEntry | null>(null);
@@ -771,6 +798,7 @@ export class CloudLogsPageComponent {
     this.result.set(null);
     this.queryState.set('idle');
     this.selectedEntry.set(null);
+    this.inactiveReason.set(null);
     this.orderId.set('');
     this.correlationId.set('');
     this.service.set('');
@@ -892,10 +920,9 @@ export class CloudLogsPageComponent {
         return;
       this.queryError.set(errorMessage(error));
       this.queryState.set('error');
-      if (
-        errorCode(error) === 'reconnect_required' ||
-        errorCode(error) === 'permission_denied'
-      ) {
+      const code = errorCode(error);
+      if (code === 'reconnect_required' || code === 'permission_denied') {
+        this.inactiveReason.set(code);
         this.connections.update((connections) =>
           connections.map((candidate) =>
             candidate.id === connection.id
@@ -940,6 +967,7 @@ export class CloudLogsPageComponent {
     this.entries.set([]);
     this.result.set(null);
     this.selectedEntry.set(null);
+    this.inactiveReason.set(null);
     this.queryState.set('idle');
   }
 }
