@@ -16,7 +16,9 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     'datatug-checkout-page.ion-page:not(.ion-page-hidden):not(.ion-page-invisible):has([data-checkout-page="authentication"])',
   );
   await expect(checkout).toHaveCount(1);
-  await page.getByRole('tab', { name: 'Sign in' }).click();
+  // Ionic routes pointer events through the segment-button host rather than
+  // the nested button with role=tab (Playwright would be intercepted there).
+  await page.locator('ion-segment-button[value="in"]').click();
   await page.locator('ion-input[name="email"] input').fill(email);
   const passwordInput = page.locator(
     'ion-input[type="password"] input:not(.cloned-input)',
