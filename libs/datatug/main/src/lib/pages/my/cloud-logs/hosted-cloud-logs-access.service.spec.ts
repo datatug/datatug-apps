@@ -8,7 +8,7 @@ import {
 } from '@angular/router';
 import { EnvConfigToken } from '@sneat/core';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, NEVER, Subject, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { CloudLogsApiService } from './cloud-logs-api.service';
 import {
@@ -17,11 +17,18 @@ import {
 } from './hosted-cloud-logs-access.service';
 
 describe('HostedCloudLogsAccessService', () => {
-  let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
+  let authState: BehaviorSubject<{
+    status: string;
+    loadingPhase?: string;
+    user?: { uid: string };
+  }>;
   const api = { list: vi.fn() };
 
   beforeEach(() => {
-    authState = new BehaviorSubject({ status: 'authenticating' });
+    authState = new BehaviorSubject({
+      status: 'authenticating',
+      loadingPhase: 'checking-session',
+    });
     api.list.mockReset();
     TestBed.configureTestingModule({
       providers: [
@@ -67,7 +74,10 @@ describe('HostedCloudLogsAccessService', () => {
         throwError(() => new HttpErrorResponse({ status })),
       );
       const service = TestBed.inject(HostedCloudLogsAccessService);
-      authState.next({ status: 'authenticated', user: { uid: 'not-allowed' } });
+    authState.next({
+      status: 'authenticated',
+      user: { uid: 'not-allowed' },
+    });
       expect(service.state().status).toBe('denied');
     },
   );
@@ -79,7 +89,10 @@ describe('HostedCloudLogsAccessService', () => {
       )
       .mockReturnValueOnce(of({ grants: [], connections: [] }));
     const service = TestBed.inject(HostedCloudLogsAccessService);
-    authState.next({ status: 'authenticated', user: { uid: 'pilot-user' } });
+    authState.next({
+      status: 'authenticated',
+      user: { uid: 'pilot-user' },
+    });
     expect(service.state().status).toBe('error');
 
     service.retry();
@@ -112,7 +125,10 @@ describe('HostedCloudLogsAccessService', () => {
   it('clears the gate on sign-out and does not probe while signed out', () => {
     api.list.mockReturnValue(of({ grants: [], connections: [] }));
     const service = TestBed.inject(HostedCloudLogsAccessService);
-    authState.next({ status: 'authenticated', user: { uid: 'pilot-user' } });
+    authState.next({
+      status: 'authenticated',
+      user: { uid: 'pilot-user' },
+    });
     expect(service.state().status).toBe('allowed');
 
     authState.next({ status: 'notAuthenticated' });
@@ -139,51 +155,196 @@ describe('HostedCloudLogsAccessService', () => {
     expect(api.list).not.toHaveBeenCalled();
   });
 
-  it('sends denied direct visits to My without carrying callback query data', async () => {
+  async function runGuard(url: string) {
+    return TestBed.runInInjectionContext(() =>
+      (hostedCloudLogsAccessGuard as CanActivateFn)(
+        {} as never,
+        { url } as RouterStateSnapshot,
+      ),
+    );
+  }
+
+  it('preserves the requested destination when signed out', async () => {
     TestBed.resetTestingModule();
+    authState = new BehaviorSubject({ status: 'notAuthenticated' });
+    api.list.mockReset();
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
+        { provide: EnvConfigToken, useValue: { hostedCloudLogsEnabled: true } },
         {
-          provide: HostedCloudLogsAccessService,
-          useValue: { state$: of({ status: 'denied' }) },
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
         },
+        { provide: CloudLogsApiService, useValue: api },
       ],
     });
 
-    const result = await TestBed.runInInjectionContext(() =>
-      (hostedCloudLogsAccessGuard as CanActivateFn)(
-        {} as never,
-        { url: '/my/cloud-logs?receipt=opaque' } as RouterStateSnapshot,
-      ),
-    );
+    const result = await runGuard('/my/cloud-logs?view=recent');
 
     expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
-      '/my?cloudLogsAccess=denied',
+      '/login#/my/cloud-logs?view=recent',
     );
+    expect(api.list).not.toHaveBeenCalled();
   });
 
-  it('allows the route only after the access probe is allowed, preserving its return query', async () => {
+  it('keeps an OAuth callback unconsumed while denied, then allows an explicit recheck', async () => {
     TestBed.resetTestingModule();
+    authState = new BehaviorSubject({
+      status: 'authenticated',
+      user: { uid: 'authorized-user' },
+    });
+    api.list
+      .mockReset()
+      .mockReturnValueOnce(
+        throwError(() => new HttpErrorResponse({ status: 403 })),
+      )
+      .mockReturnValueOnce(of({ grants: [], connections: [] }));
+    const takeCallback = vi.fn(() => ({
+      status: 'complete' as const,
+      receipt: 'opaque-receipt',
+    }));
+    window.__datatugTakeGoogleLogsReturn = takeCallback;
     TestBed.configureTestingModule({
       providers: [
         provideRouter([]),
+        { provide: EnvConfigToken, useValue: { hostedCloudLogsEnabled: true } },
         {
-          provide: HostedCloudLogsAccessService,
-          useValue: { state$: of({ status: 'allowed' }) },
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
         },
+        { provide: CloudLogsApiService, useValue: api },
       ],
     });
 
-    const result = await TestBed.runInInjectionContext(() =>
-      (hostedCloudLogsAccessGuard as CanActivateFn)(
-        {} as never,
-        {
-          url: '/my/cloud-logs?googleLogs=complete&receipt=opaque',
-        } as RouterStateSnapshot,
-      ),
+    const url = '/my/cloud-logs?googleLogs=complete&receipt=opaque-receipt';
+    const denied = await runGuard(url);
+    expect(TestBed.inject(Router).serializeUrl(denied as never)).toBe(
+      '/my?cloudLogsAccess=denied',
     );
+    expect(takeCallback).not.toHaveBeenCalled();
+
+    const access = TestBed.inject(HostedCloudLogsAccessService);
+    access.retry();
+    expect(access.state().status).toBe('allowed');
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(await runGuard(url)).toBe(true);
+    expect(takeCallback).not.toHaveBeenCalled();
+    delete window.__datatugTakeGoogleLogsReturn;
+  });
+
+  it('sends failed authentication to the recovery form without probing', async () => {
+    TestBed.resetTestingModule();
+    authState = new BehaviorSubject({
+      status: 'authenticating',
+      loadingPhase: 'failed',
+    });
+    api.list.mockReset();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: EnvConfigToken, useValue: { hostedCloudLogsEnabled: true } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
+        },
+        { provide: CloudLogsApiService, useValue: api },
+      ],
+    });
+
+    const result = await runGuard('/my/cloud-logs?googleLogs=complete');
+
+    expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
+      '/login#/my/cloud-logs?googleLogs=complete',
+    );
+    expect(api.list).not.toHaveBeenCalled();
+  });
+
+  it('redirects authenticated state without a UID to sign-in without probing', async () => {
+    TestBed.resetTestingModule();
+    authState = new BehaviorSubject({ status: 'authenticated' });
+    api.list.mockReset();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: EnvConfigToken, useValue: { hostedCloudLogsEnabled: true } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
+        },
+        { provide: CloudLogsApiService, useValue: api },
+      ],
+    });
+
+    const result = await runGuard('/my/cloud-logs');
+
+    expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
+      '/login#/my/cloud-logs',
+    );
+    expect(api.list).not.toHaveBeenCalled();
+  });
+
+  it('resolves an auth stream that never leaves authenticating without probing', async () => {
+    TestBed.resetTestingModule();
+    api.list.mockReset();
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: EnvConfigToken, useValue: { hostedCloudLogsEnabled: true } },
+        { provide: SneatAuthStateService, useValue: { authState: NEVER } },
+        { provide: CloudLogsApiService, useValue: api },
+      ],
+    });
+    vi.useFakeTimers();
+    try {
+      const pending = runGuard('/my/cloud-logs');
+      await vi.advanceTimersByTimeAsync(15_001);
+      const result = await pending;
+
+      expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
+        '/login#/my/cloud-logs',
+      );
+      expect(
+        TestBed.inject(HostedCloudLogsAccessService).state().status,
+      ).toBe('auth-error');
+      expect(api.list).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('waits for cold auth then probes once and preserves the OAuth completion query', async () => {
+    TestBed.resetTestingModule();
+    authState = new BehaviorSubject({
+      status: 'authenticating',
+      loadingPhase: 'checking-session',
+    });
+    api.list.mockReturnValue(of({ grants: [], connections: [] }));
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([]),
+        { provide: EnvConfigToken, useValue: { hostedCloudLogsEnabled: true } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
+        },
+        { provide: CloudLogsApiService, useValue: api },
+      ],
+    });
+
+    const pending = runGuard(
+      '/my/cloud-logs?googleLogs=complete&receipt=opaque',
+    );
+    await Promise.resolve();
+    expect(api.list).not.toHaveBeenCalled();
+    authState.next({
+      status: 'authenticated',
+      loadingPhase: 'ready',
+      user: { uid: 'authorized-user' },
+    });
+    const result = await pending;
 
     expect(result).toBe(true);
+    expect(api.list).toHaveBeenCalledOnce();
   });
 });

@@ -1,7 +1,15 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject, signal } from '@angular/core';
-import { CanActivateFn, Router } from '@angular/router';
-import { AuthStatuses, SneatAuthStateService } from '@sneat/auth-core';
+import {
+  CanActivateFn,
+  Router,
+  RouterStateSnapshot,
+} from '@angular/router';
+import {
+  AuthStatuses,
+  SneatAuthStateService,
+  loginRedirectPath,
+} from '@sneat/auth-core';
 import {
   BehaviorSubject,
   EMPTY,
@@ -11,6 +19,7 @@ import {
   distinctUntilChanged,
   filter,
   firstValueFrom,
+  of,
   startWith,
   switchMap,
   take,
@@ -26,6 +35,7 @@ export type HostedCloudLogsAccessStatus =
   | 'allowed'
   | 'denied'
   | 'signed-out'
+  | 'auth-error'
   | 'error';
 
 export interface HostedCloudLogsAccessState {
@@ -33,6 +43,8 @@ export interface HostedCloudLogsAccessState {
 }
 
 const initialState: HostedCloudLogsAccessState = { status: 'checking' };
+const AUTH_STATE_TIMEOUT_MS = 15_000;
+const ACCESS_STATE_TIMEOUT_MS = 17_000;
 
 /**
  * Probes the existing authenticated connections endpoint to discover whether
@@ -56,6 +68,7 @@ export class HostedCloudLogsAccessService {
 
   private authGeneration = 0;
   private requestGeneration = 0;
+  private currentUid?: string;
 
   constructor() {
     if (!this.enabled) {
@@ -68,11 +81,17 @@ export class HostedCloudLogsAccessService {
         distinctUntilChanged(
           (previous, current) =>
             previous.status === current.status &&
-            previous.user?.uid === current.user?.uid,
+            previous.user?.uid === current.user?.uid &&
+            previous.loadingPhase === current.loadingPhase,
         ),
         switchMap((authState) => {
           const authGeneration = ++this.authGeneration;
           ++this.requestGeneration;
+          this.currentUid = undefined;
+          if (authState.loadingPhase === 'failed') {
+            this.publish({ status: 'auth-error' });
+            return EMPTY;
+          }
           const uid =
             authState.status === AuthStatuses.authenticated
               ? authState.user?.uid
@@ -83,9 +102,14 @@ export class HostedCloudLogsAccessService {
             return EMPTY;
           }
           if (!uid) {
-            this.publish({ status: 'checking' });
+            this.publish(
+              authState.status === AuthStatuses.authenticated
+                ? { status: 'auth-error' }
+                : { status: 'checking' },
+            );
             return EMPTY;
           }
+          this.currentUid = uid;
 
           return this.retryRequests.pipe(
             startWith(undefined),
@@ -123,7 +147,27 @@ export class HostedCloudLogsAccessService {
 
   /** Retry a failed permission probe for the current authenticated identity. */
   retry(): void {
-    if (this.state().status === 'error') this.retryRequests.next();
+    if (this.state().status === 'error' || this.state().status === 'denied') {
+      this.retryRequests.next();
+    }
+  }
+
+  /** Marks a bounded auth wait as failed without retaining identity data. */
+  markAuthUnavailable(): void {
+    ++this.authGeneration;
+    ++this.requestGeneration;
+    this.currentUid = undefined;
+    this.publish({ status: 'auth-error' });
+  }
+
+  /** Used only to bind the one-use OAuth finish key to the active session. */
+  isCurrentUser(uid: string): boolean {
+    return this.state().status === 'allowed' && this.currentUid === uid;
+  }
+
+  /** Returns the UID only to bind the one-use browser OAuth attempt. */
+  currentUserId(): string | undefined {
+    return this.state().status === 'allowed' ? this.currentUid : undefined;
   }
 
   private publish(state: HostedCloudLogsAccessState): void {
@@ -140,16 +184,48 @@ function isAccessDenied(error: unknown): boolean {
 }
 
 /**
- * Auth guard runs first. This guard then waits for the server's own UID
- * decision; denied users land on the real My page with an accessible reason.
+ * Resolves auth before waiting for the server's own UID decision. Keeping both
+ * waits in one guard avoids Angular running same-route guards concurrently.
  */
-export const hostedCloudLogsAccessGuard: CanActivateFn = async () => {
+export const hostedCloudLogsAccessGuard: CanActivateFn = async (
+  _route,
+  routeState: RouterStateSnapshot,
+) => {
   const access = inject(HostedCloudLogsAccessService);
   const router = inject(Router);
+  const auth = inject(SneatAuthStateService);
+  const authState = await firstValueFrom(
+    auth.authState.pipe(
+      filter(
+        (current) =>
+          current.status !== AuthStatuses.authenticating ||
+          current.loadingPhase === 'failed',
+      ),
+      take(1),
+      timeout({ first: AUTH_STATE_TIMEOUT_MS }),
+      catchError(() => of(undefined)),
+    ),
+  );
+
+  if (!authState) {
+    access.markAuthUnavailable();
+    return router.parseUrl(loginRedirectPath(routeState.url));
+  }
+
+  if (
+    authState.status !== AuthStatuses.authenticated ||
+    authState.loadingPhase === 'failed' ||
+    !authState.user?.uid
+  ) {
+    return router.parseUrl(loginRedirectPath(routeState.url));
+  }
+
   const state = await firstValueFrom(
     access.state$.pipe(
       filter((current) => current.status !== 'checking'),
       take(1),
+      timeout({ first: ACCESS_STATE_TIMEOUT_MS }),
+      catchError(() => of({ status: 'error' as const })),
     ),
   );
   if (state.status === 'allowed') return true;
@@ -162,7 +238,7 @@ export const hostedCloudLogsAccessGuard: CanActivateFn = async () => {
             ? 'unavailable'
             : state.status === 'disabled'
               ? 'disabled'
-              : 'signed-out',
+              : 'unavailable',
     },
   });
 };

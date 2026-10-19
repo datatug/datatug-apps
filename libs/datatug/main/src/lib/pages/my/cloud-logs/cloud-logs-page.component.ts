@@ -44,6 +44,11 @@ type PageState = 'loading' | 'ready' | 'error';
 type QueryState = 'idle' | 'loading' | 'ready' | 'error';
 const finishKeyStorageKey = 'datatug:google-cloud-logs:finish-key';
 
+interface FinishKeyBinding {
+  readonly uid: string;
+  readonly finishKey: string;
+}
+
 declare global {
   interface Window {
     __datatugTakeGoogleLogsReturn?: () => {
@@ -492,6 +497,14 @@ declare global {
             >Retry access check</ion-button
           >
           <ion-button fill="clear" routerLink="/my">Return to My</ion-button>
+        } @else if (hostedCloudLogsAccess.state().status === 'auth-error') {
+          <p role="alert">
+            We could not verify your Sneat sign-in. Sign in again to continue.
+          </p>
+          <ion-button fill="clear" routerLink="/login">Sign in again</ion-button>
+          <ion-button fill="clear" (click)="retryAuthentication()"
+            >Reload sign-in check</ion-button
+          >
         } @else {
           <p role="status">
             This account does not have access to hosted Cloud Logging.
@@ -656,7 +669,8 @@ export class CloudLogsPageComponent {
     !this.busy();
 
   constructor() {
-    const callback = this.scrubOAuthCallback();
+    let callback = this.scrubOAuthCallback();
+    let callbackBinding = callback ? this.readFinishKeyBinding() : undefined;
     this.hostedCloudLogsAccess.state$
       .pipe(takeUntilDestroyed())
       .subscribe((state) => {
@@ -669,22 +683,35 @@ export class CloudLogsPageComponent {
         if (this.hasAccess) return;
         this.hasAccess = true;
         const generation = this.accessGeneration;
-    if (callback?.status === 'complete') {
-          void this.finishAuthorization(callback.receipt, generation);
-    } else {
+        const completedCallback = callback;
+        const finishBinding = callbackBinding;
+        callback = undefined;
+        callbackBinding = undefined;
+        if (completedCallback?.status === 'complete') {
+          void this.finishAuthorization(
+            completedCallback.receipt,
+            generation,
+            finishBinding,
+          );
+        } else if (completedCallback?.status === 'failed') {
+          this.clearFinishKey(finishBinding?.finishKey);
+          this.notice.set(
+            'Google account connection did not complete. You can try again.',
+          );
           void this.loadConnections(generation);
-    if (callback?.status === 'failed') {
-      this.clearFinishKey();
-      this.notice.set(
-        'Google account connection did not complete. You can try again.',
-      );
-    }
-  }
-      });
+        } else {
+          void this.loadConnections(generation);
+        }
+      }
+    );
   }
 
   retryAccessCheck(): void {
     this.hostedCloudLogsAccess.retry();
+  }
+
+  retryAuthentication(): void {
+    window.location.reload();
   }
 
   inputValue(event: Event): string {
@@ -726,13 +753,19 @@ export class CloudLogsPageComponent {
   async startAuthorization(): Promise<void> {
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    const uid = this.hostedCloudLogsAccess.currentUserId();
+    if (!uid) return;
     this.busy.set(true);
     this.pageError.set('');
     try {
       const { authorizationUrl, finishKey } = await firstValueFrom(
         this.api.startGoogleAuthorization(),
       );
-      if (!this.isCurrentAccess(generation)) return;
+      if (
+        !this.isCurrentAccess(generation) ||
+        !this.hostedCloudLogsAccess.isCurrentUser(uid)
+      )
+        return;
       let target: URL;
       try {
         target = new URL(authorizationUrl);
@@ -747,7 +780,10 @@ export class CloudLogsPageComponent {
       )
         throw new Error('The authorization link was invalid.');
       try {
-        sessionStorage.setItem(finishKeyStorageKey, finishKey);
+        sessionStorage.setItem(
+          finishKeyStorageKey,
+          JSON.stringify({ uid, finishKey } satisfies FinishKeyBinding),
+        );
       } catch {
         throw new Error(
           'This browser could not securely keep the connection request for the redirect. Check session storage settings and try again.',
@@ -755,8 +791,9 @@ export class CloudLogsPageComponent {
       }
       window.location.assign(authorizationUrl);
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busy.set(false);
     }
@@ -774,9 +811,30 @@ export class CloudLogsPageComponent {
       : { status: 'failed' };
   }
 
-  private clearFinishKey(): void {
+  private readFinishKeyBinding(): FinishKeyBinding | undefined {
     try {
-      sessionStorage.removeItem(finishKeyStorageKey);
+      const value = sessionStorage.getItem(finishKeyStorageKey);
+      if (!value) return undefined;
+      const binding = JSON.parse(value) as Partial<FinishKeyBinding>;
+      return typeof binding.uid === 'string' &&
+        !!binding.uid &&
+        typeof binding.finishKey === 'string' &&
+        !!binding.finishKey
+        ? { uid: binding.uid, finishKey: binding.finishKey }
+        : undefined;
+    } catch {
+      // Storage can be disabled by the browser; the key was never exposed to the URL.
+      return undefined;
+    }
+  }
+
+  private clearFinishKey(expectedFinishKey?: string): void {
+    if (!expectedFinishKey) return;
+    try {
+      const current = this.readFinishKeyBinding();
+      if (current?.finishKey === expectedFinishKey) {
+        sessionStorage.removeItem(finishKeyStorageKey);
+      }
     } catch {
       // Storage can be disabled by the browser; the key was never exposed to the URL.
     }
@@ -785,25 +843,29 @@ export class CloudLogsPageComponent {
   private async finishAuthorization(
     receipt: string,
     generation: number,
+    binding?: FinishKeyBinding,
   ): Promise<void> {
     if (!this.isCurrentAccess(generation)) return;
-    let finishKey = '';
-    try {
-      finishKey = sessionStorage.getItem(finishKeyStorageKey) ?? '';
-    } catch {
-      // Treat unavailable tab storage as a failed or replayed return.
-    }
-    if (!receipt || !finishKey) {
-      this.clearFinishKey();
+    if (
+      !receipt ||
+      !binding?.finishKey ||
+      !this.hostedCloudLogsAccess.isCurrentUser(binding.uid)
+    ) {
+      this.clearFinishKey(binding?.finishKey);
       this.notice.set(
-        'This Google connection request expired or was already used. Start again to connect the account.',
+        binding?.finishKey
+          ? 'This Google connection returned under a different sign-in. Start again to connect the account.'
+          : 'This Google connection request expired or was already used. Start again to connect the account.',
       );
       await this.loadConnections(generation);
       return;
     }
     try {
       const grant = await firstValueFrom(
-        this.api.finishGoogleAuthorization({ receipt, finishKey }),
+        this.api.finishGoogleAuthorization({
+          receipt,
+          finishKey: binding.finishKey,
+        }),
       );
       if (!this.isCurrentAccess(generation)) return;
       this.grants.update((grants) => [
@@ -813,10 +875,11 @@ export class CloudLogsPageComponent {
       this.selectedGrantId.set(grant.id);
       this.notice.set(`Connected Google account ${grant.email}.`);
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.notice.set(oauthFinishErrorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.notice.set(oauthFinishErrorMessage(error));
+      }
     } finally {
-      this.clearFinishKey();
+      this.clearFinishKey(binding.finishKey);
       if (this.isCurrentAccess(generation))
         await this.loadConnections(generation);
     }

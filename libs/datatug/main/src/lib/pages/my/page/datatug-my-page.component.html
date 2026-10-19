@@ -35,6 +35,23 @@
         >Retry access check</ion-button
       >
     }
+    @if (hostedCloudLogsAccess.state().status === 'denied') {
+      <ion-button fill="clear" (click)="retryHostedCloudLogsAccess()"
+        >Check access again</ion-button
+      >
+    }
+    @if (hostedCloudLogsAccess.state().status === 'auth-error') {
+      <ion-note role="alert"
+        >We could not verify your sign-in. Reload to retry or sign in
+        again.</ion-note
+      >
+      <ion-button fill="clear" (click)="retryAuthenticationCheck()"
+        >Reload sign-in check</ion-button
+      >
+      <ion-item button detail routerLink="/login"
+        ><ion-label>Go to sign-in</ion-label></ion-item
+      >
+    }
     @if (cloudLogsAccessMessage()) {
       <ion-note role="status" aria-live="polite">{{
         cloudLogsAccessMessage()

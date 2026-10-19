@@ -277,9 +277,12 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     page.getByRole('link', { name: 'Google Cloud log connections' }),
   ).toBeVisible();
 
-  await page.evaluate(() =>
-    sessionStorage.setItem('datatug:google-cloud-logs:finish-key', 'tab-key'),
-  );
+  await page.evaluate((uid) => {
+    sessionStorage.setItem(
+      'datatug:google-cloud-logs:finish-key',
+      JSON.stringify({ uid, finishKey: 'tab-key' }),
+    );
+  }, localId);
   await page.goto('/my/cloud-logs?googleLogs=complete&receipt=opaque-receipt');
   await expect(page).toHaveURL(/\/my\/cloud-logs$/);
   await expect(

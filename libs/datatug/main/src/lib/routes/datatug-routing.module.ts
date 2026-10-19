@@ -1,6 +1,6 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
-import { SNEAT_AUTH_GUARDS, sneatAuthGuard } from '@sneat/auth-core';
+import { SNEAT_AUTH_GUARDS } from '@sneat/auth-core';
 import {
   routingParamIncidentId,
   routingParamSpaceId,
@@ -112,7 +112,7 @@ export const datatugRoutes: Routes = [
   },
   {
     path: 'my/cloud-logs',
-    canActivate: [sneatAuthGuard, hostedCloudLogsAccessGuard],
+    canActivate: [hostedCloudLogsAccessGuard],
     loadComponent: () =>
       import('../pages/my/cloud-logs/cloud-logs-page.component').then(
         (m) => m.CloudLogsPageComponent,

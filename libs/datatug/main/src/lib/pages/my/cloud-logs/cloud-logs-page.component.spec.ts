@@ -71,16 +71,26 @@ describe('CloudLogsPageComponent', () => {
     state: ReturnType<typeof signal<{ status: string }>>;
     state$: BehaviorSubject<{ status: string }>;
     retry: ReturnType<typeof vi.fn>;
+    currentUserId: ReturnType<typeof vi.fn>;
+    isCurrentUser: ReturnType<typeof vi.fn>;
   };
+  let currentUid: string;
 
   beforeEach(async () => {
     sessionStorage.clear();
     delete window.__datatugTakeGoogleLogsReturn;
+    currentUid = 'test-user';
     accessState = new BehaviorSubject({ status: 'allowed' });
     access = {
       state: signal({ status: 'allowed' }),
       state$: accessState,
       retry: vi.fn(),
+      currentUserId: vi.fn(() =>
+        access.state().status === 'allowed' ? currentUid : undefined,
+      ),
+      isCurrentUser: vi.fn(
+        (uid: string) => access.state().status === 'allowed' && currentUid === uid,
+      ),
     };
     api = {
       list: vi.fn(() => of({ grants: [], connections })),
@@ -156,6 +166,86 @@ describe('CloudLogsPageComponent', () => {
     expect(api.list).toHaveBeenCalledOnce();
     expect(component.pageState()).toBe('ready');
     expect(component.notice()).toContain('expired or was already used');
+  });
+
+  it('finishes a callback once across same-user access refreshes', async () => {
+    const finishKey = 'attempt-a';
+    sessionStorage.setItem(
+      'datatug:google-cloud-logs:finish-key',
+      JSON.stringify({ uid: 'test-user', finishKey }),
+    );
+    window.__datatugTakeGoogleLogsReturn = () => ({
+      status: 'complete',
+      receipt: 'receipt-a',
+    });
+    api.finishGoogleAuthorization.mockReturnValue(
+      of({ id: 'grant-a', email: 'a@example.test', state: 'active' }),
+    );
+
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(component.notice()).toBe('Connected Google account a@example.test.');
+
+    access.state.set({ status: 'checking' });
+    accessState.next({ status: 'checking' });
+    access.state.set({ status: 'allowed' });
+    accessState.next({ status: 'allowed' });
+    await fixture.whenStable();
+
+    expect(api.finishGoogleAuthorization).toHaveBeenCalledOnce();
+    expect(api.finishGoogleAuthorization).toHaveBeenCalledWith({
+      receipt: 'receipt-a',
+      finishKey,
+    });
+  });
+
+  it('does not let a stale finish delete the next user’s binding', async () => {
+    const pending = new Subject<GoogleLogGrant>();
+    sessionStorage.setItem(
+      'datatug:google-cloud-logs:finish-key',
+      JSON.stringify({ uid: 'test-user', finishKey: 'attempt-a' }),
+    );
+    window.__datatugTakeGoogleLogsReturn = () => ({
+      status: 'complete',
+      receipt: 'receipt-a',
+    });
+    api.finishGoogleAuthorization.mockReturnValue(pending);
+
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await Promise.resolve();
+    expect(api.finishGoogleAuthorization).toHaveBeenCalledWith({
+      receipt: 'receipt-a',
+      finishKey: 'attempt-a',
+    });
+
+    access.state.set({ status: 'checking' });
+    accessState.next({ status: 'checking' });
+    currentUid = 'next-user';
+    access.state.set({ status: 'allowed' });
+    accessState.next({ status: 'allowed' });
+    const nextBinding = JSON.stringify({
+      uid: 'next-user',
+      finishKey: 'attempt-b',
+    });
+    sessionStorage.setItem(
+      'datatug:google-cloud-logs:finish-key',
+      nextBinding,
+    );
+
+    pending.next({ id: 'grant-a', email: 'a@example.test', state: 'active' });
+    pending.complete();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(api.finishGoogleAuthorization).toHaveBeenCalledOnce();
+    expect(
+      sessionStorage.getItem('datatug:google-cloud-logs:finish-key'),
+    ).toBe(nextBinding);
+    expect(component.grants()).toEqual([]);
   });
 
   it('ignores a query response after the user selects another connection', async () => {

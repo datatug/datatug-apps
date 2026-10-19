@@ -1,6 +1,5 @@
 import { PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { DefaultUrlSerializer, Route, UrlSegment } from '@angular/router';
-import { sneatAuthGuard } from '@sneat/auth-core';
 import { datatugRoutes } from './datatug-routing.module';
 import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
 import {
@@ -13,15 +12,12 @@ import {
 } from '../core/datatug-routing-params';
 
 describe('datatugRoutes', () => {
-  it('checks authentication before server-confirmed Cloud Logging access', async () => {
+  it('uses one composed auth-then-access guard for hosted Cloud Logging', async () => {
     const route = datatugRoutes.find(
       (candidate) => candidate.path === 'my/cloud-logs',
     );
     expect(route?.canMatch).toBeUndefined();
-    expect(route?.canActivate).toEqual([
-      sneatAuthGuard,
-      hostedCloudLogsAccessGuard,
-    ]);
+    expect(route?.canActivate).toEqual([hostedCloudLogsAccessGuard]);
     const component = await route?.loadComponent?.();
     expect((component as { name?: string })?.name).toBe(
       'CloudLogsPageComponent',

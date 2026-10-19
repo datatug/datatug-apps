@@ -31,7 +31,7 @@ describe('MyPage', () => {
         set: {
           imports: [RouterLink],
           template:
-            '<a routerLink="/subscriptions" [queryParams]="subscriptionQuery()">Subscriptions</a>@if (enableHostedCloudLogs()) { <a routerLink="/my/cloud-logs">Google Cloud log connections</a> }@if (hostedCloudLogsAccess.state().status === \'checking\') { <p role="status">Checking access</p> }@if (hostedCloudLogsAccess.state().status === \'error\') { <p role="alert">Could not verify access</p><button (click)="retryHostedCloudLogsAccess()">Retry</button> }',
+            '<a routerLink="/subscriptions" [queryParams]="subscriptionQuery()">Subscriptions</a>@if (enableHostedCloudLogs()) { <a routerLink="/my/cloud-logs">Google Cloud log connections</a> }@if (hostedCloudLogsAccess.state().status === \'checking\') { <p role="status">Checking access</p> }@if (hostedCloudLogsAccess.state().status === \'error\') { <p role="alert">Could not verify access</p><button (click)="retryHostedCloudLogsAccess()">Retry</button> }@if (hostedCloudLogsAccess.state().status === \'denied\') { <button (click)="retryHostedCloudLogsAccess()">Check access again</button> }@if (hostedCloudLogsAccess.state().status === \'auth-error\') { <p role="alert">We could not verify your sign-in</p><button (click)="retryAuthenticationCheck()">Reload sign-in check</button> }',
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -74,6 +74,26 @@ describe('MyPage', () => {
       fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
     ).toContain('Could not verify');
     fixture.nativeElement.querySelector('button').click();
+    expect(access.retry).toHaveBeenCalledOnce();
+  });
+
+  it('shows an actionable recovery state when sign-in could not be verified', () => {
+    accessState.set({ status: 'auth-error' });
+    fixture.detectChanges();
+
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
+    ).toContain('could not verify your sign-in');
+    expect(
+      fixture.nativeElement.querySelector('button')?.textContent,
+    ).toContain('Reload sign-in check');
+  });
+
+  it('offers an explicit recheck after a server denial', () => {
+    accessState.set({ status: 'denied' });
+    fixture.detectChanges();
+    fixture.nativeElement.querySelector('button').click();
+
     expect(access.retry).toHaveBeenCalledOnce();
   });
 
