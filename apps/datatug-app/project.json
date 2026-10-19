@@ -203,7 +203,9 @@
           "buildTarget": "datatug-app:build:production"
         },
         "development": {
-          "buildTarget": "datatug-app:build:development"
+          "buildTarget": "datatug-app:build:development",
+          "host": "127.0.0.1",
+          "proxyConfig": "tools/public-ovdb-proxy.cjs"
         },
         "sso-e2e": {
           "buildTarget": "datatug-app:build:sso-e2e"

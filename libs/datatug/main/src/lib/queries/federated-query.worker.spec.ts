@@ -102,6 +102,32 @@ describe('federated query worker', () => {
     ]);
   });
 
+  it('uses app-owned loopback mode without changing the canonical source receipt', async () => {
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:4330' });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(input));
+      expect(init?.credentials).toBe('omit');
+      expect(init?.redirect).toBe('error');
+      expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+      return String(input).endsWith('/v1/databases/db')
+        ? Response.json({ id: 'db', capabilities: { dtql: true } })
+        : Response.json({ complete: true, records: [{ data: { name: 'A' } }], columns: ['name'], execution: { route: 'database', rowsReturned: 1 } });
+    }));
+    await run({
+      definition: { ...definition, federation: { ...definition.federation, ovdbBaseUrl: 'https://cloud.openvaultdb.com' } },
+      devTransport: 'public-ovdb-loopback-v1',
+    });
+    expect(posted.find(message => message.type === 'error')).toBeUndefined();
+    expect(calls).toEqual([
+      'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db',
+      'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db/dtql',
+    ]);
+    expect(posted.find(message => message.type === 'result')?.['result']).toMatchObject({
+      provenance: { source: 'https://cloud.openvaultdb.com/v1/databases/db (direct OVDB)' },
+    });
+  });
+
   it('refuses a static public target fallback when the first stage is a declared JSON driver', async () => {
     const http = vi.fn();
     vi.stubGlobal('fetch', http);

@@ -22,6 +22,7 @@ Feature specifications for this project.
 | [Copy a demo DataTug project](demo-project-copy/README.md) | Draft | Offer GitHub and local Git project copies after a browser SQLite demo is ready. |
 | [Continue an edited demo database in my project](demo-database-handoff/README.md) | Draft | Carry the active edited SQLite database through optional GitHub and local project ownership without silently switching data. |
 | [Native server federation for saved queries](native-server-federation/README.md) | Draft | Execute a qualified multi-database saved DTQL plan in one bounded OVDB server request and validate physical sources before exposing rows. |
+| [Local preview of public server federation](local-federation-preview/README.md) | Draft | Run real public OVDB queries from the loopback development app through a fixed same-origin transport while retaining canonical source admission. |
 
 ## Open Questions
 
