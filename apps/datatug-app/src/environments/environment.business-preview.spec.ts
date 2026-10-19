@@ -64,5 +64,6 @@ describe('Business project preview environment', () => {
   it('has none of the inputs main.ts uses to pick a non-default SneatApiBaseUrl', () => {
     expect(datatugAppEnvironmentConfig.useNgrok).toBeFalsy();
     expect(datatugAppEnvironmentConfig.firebaseConfig.emulator).toBeUndefined();
+    expect(datatugAppEnvironmentConfig.hostedCloudLogsEnabled).toBe(false);
   });
 });

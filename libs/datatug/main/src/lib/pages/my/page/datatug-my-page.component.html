@@ -15,8 +15,13 @@
       routerLink="/subscriptions"
       [queryParams]="subscriptionQuery()"
       ><ion-label>Subscriptions</ion-label></ion-item
-    ></ion-list
-  >
+    >
+    @if (enableHostedCloudLogs) {
+      <ion-item button detail routerLink="/my/cloud-logs"
+        ><ion-label>Google Cloud log connections</ion-label></ion-item
+      >
+    }
+  </ion-list>
   <sneat-subscription-recovery title="Finish DataTug Business setup" />
   <ion-list>
     <ion-list-header>

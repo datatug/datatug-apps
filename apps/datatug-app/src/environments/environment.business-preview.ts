@@ -26,7 +26,10 @@ export { datatugDemoConfig } from './environment.prod';
 // send telemetry to the production projects, as the development build does not.
 // No `useNgrok` and no `firebaseConfig.emulator`, so main.ts keeps
 // SneatApiBaseUrl at its normal value.
-export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
+export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
+  hostedCloudLogsEnabled: boolean;
+} = {
+  hostedCloudLogsEnabled: false,
   production: false,
   agents: {},
   firebaseConfig: productionConfig.firebaseConfig,

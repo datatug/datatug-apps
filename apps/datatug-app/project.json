@@ -336,6 +336,14 @@
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.checkout.config.ts --forbid-only"
       }
+    },
+    "e2e-cloud-logs": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-cloud-logs"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.cloud-logs.config.ts --forbid-only"
+      }
     }
   }
 }

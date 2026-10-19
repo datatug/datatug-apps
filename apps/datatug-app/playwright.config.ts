@@ -92,7 +92,7 @@ export default defineConfig({
         'demo-sqlite*.spec.ts',
         'demo-postgresql*.spec.ts',
         'northwind-logs.spec.ts',
-    'hosted-cloud-logs.spec.ts',
+        'hosted-cloud-logs.spec.ts',
         'showcase-live-measurement.spec.ts',
         'journey/**',
       ],
