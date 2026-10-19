@@ -300,13 +300,9 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
     ),
   ).toBeVisible();
   await page.getByRole('button', { name: 'View logs' }).click();
-  await page.locator('ion-input[aria-label="Order ID"] input').fill('order-4');
-  await page
-    .locator('ion-input[aria-label="Correlation ID"] input')
-    .fill('corr-9');
-  await page
-    .locator('ion-input[aria-label="Service"] input')
-    .fill('billing-api');
+  await page.getByRole('textbox', { name: 'Order ID' }).fill('order-4');
+  await page.getByRole('textbox', { name: 'Correlation ID' }).fill('corr-9');
+  await page.getByRole('textbox', { name: 'Service' }).fill('billing-api');
   await page.getByRole('button', { name: 'Find evidence' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'result cap reached' }),
