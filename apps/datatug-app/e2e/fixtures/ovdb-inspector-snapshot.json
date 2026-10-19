@@ -1,0 +1,858 @@
+{
+  "northwind": {
+    "capabilities": {
+      "aggregation": true,
+      "delete": false,
+      "dtql": true,
+      "dtqlStreaming": true,
+      "dtqlStreamingErrors": true,
+      "joins": true,
+      "persistent": true,
+      "query": true,
+      "read": true,
+      "reset": false,
+      "write": false
+    },
+    "collections": [
+      "Categories",
+      "CustomerCustomerDemo",
+      "CustomerDemographics",
+      "Customers",
+      "EmployeeTerritories",
+      "Employees",
+      "Order Details",
+      "Orders",
+      "Products",
+      "Regions",
+      "Shippers",
+      "Suppliers",
+      "Territories"
+    ],
+    "endpoints": {
+      "dtql": "https://cloud.openvaultdb.com/v1/databases/northwind/dtql"
+    },
+    "engine": "sqlite",
+    "id": "northwind",
+    "queryFormat": "dtql-yaml+json",
+    "schemaMode": "strict",
+    "schemas": {
+      "collections": {
+        "Categories": {
+          "fields": {
+            "CategoryID": {
+              "type": "integer"
+            },
+            "CategoryName": {
+              "type": "string"
+            },
+            "Description": {
+              "type": "string"
+            },
+            "Picture": {
+              "type": "any"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "CustomerCustomerDemo": {
+          "fields": {
+            "CustomerID": {
+              "type": "string"
+            },
+            "CustomerTypeID": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "CustomerDemographics": {
+          "fields": {
+            "CustomerDesc": {
+              "type": "string"
+            },
+            "CustomerTypeID": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Customers": {
+          "fields": {
+            "Address": {
+              "type": "string"
+            },
+            "City": {
+              "type": "string"
+            },
+            "CompanyName": {
+              "type": "string"
+            },
+            "ContactName": {
+              "type": "string"
+            },
+            "ContactTitle": {
+              "type": "string"
+            },
+            "Country": {
+              "type": "string"
+            },
+            "CustomerID": {
+              "type": "string"
+            },
+            "Fax": {
+              "type": "string"
+            },
+            "Phone": {
+              "type": "string"
+            },
+            "PostalCode": {
+              "type": "string"
+            },
+            "Region": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "EmployeeTerritories": {
+          "fields": {
+            "EmployeeID": {
+              "type": "integer"
+            },
+            "TerritoryID": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Employees": {
+          "fields": {
+            "Address": {
+              "type": "string"
+            },
+            "BirthDate": {
+              "type": "string"
+            },
+            "City": {
+              "type": "string"
+            },
+            "Country": {
+              "type": "string"
+            },
+            "EmployeeID": {
+              "type": "integer"
+            },
+            "Extension": {
+              "type": "string"
+            },
+            "FirstName": {
+              "type": "string"
+            },
+            "HireDate": {
+              "type": "string"
+            },
+            "HomePhone": {
+              "type": "string"
+            },
+            "LastName": {
+              "type": "string"
+            },
+            "Notes": {
+              "type": "string"
+            },
+            "Photo": {
+              "type": "any"
+            },
+            "PhotoPath": {
+              "type": "string"
+            },
+            "PostalCode": {
+              "type": "string"
+            },
+            "Region": {
+              "type": "string"
+            },
+            "ReportsTo": {
+              "type": "integer"
+            },
+            "Title": {
+              "type": "string"
+            },
+            "TitleOfCourtesy": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Order Details": {
+          "fields": {
+            "Discount": {
+              "type": "number"
+            },
+            "OrderID": {
+              "type": "integer"
+            },
+            "ProductID": {
+              "type": "integer"
+            },
+            "Quantity": {
+              "type": "integer"
+            },
+            "UnitPrice": {
+              "type": "number"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Orders": {
+          "fields": {
+            "CustomerID": {
+              "type": "string"
+            },
+            "EmployeeID": {
+              "type": "integer"
+            },
+            "Freight": {
+              "type": "number"
+            },
+            "OrderDate": {
+              "type": "string"
+            },
+            "OrderID": {
+              "type": "integer"
+            },
+            "RequiredDate": {
+              "type": "string"
+            },
+            "ShipAddress": {
+              "type": "string"
+            },
+            "ShipCity": {
+              "type": "string"
+            },
+            "ShipCountry": {
+              "type": "string"
+            },
+            "ShipName": {
+              "type": "string"
+            },
+            "ShipPostalCode": {
+              "type": "string"
+            },
+            "ShipRegion": {
+              "type": "string"
+            },
+            "ShipVia": {
+              "type": "integer"
+            },
+            "ShippedDate": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Products": {
+          "fields": {
+            "CategoryID": {
+              "type": "integer"
+            },
+            "Discontinued": {
+              "type": "string"
+            },
+            "ProductID": {
+              "type": "integer"
+            },
+            "ProductName": {
+              "type": "string"
+            },
+            "QuantityPerUnit": {
+              "type": "string"
+            },
+            "ReorderLevel": {
+              "type": "integer"
+            },
+            "SupplierID": {
+              "type": "integer"
+            },
+            "UnitPrice": {
+              "type": "number"
+            },
+            "UnitsInStock": {
+              "type": "integer"
+            },
+            "UnitsOnOrder": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Regions": {
+          "fields": {
+            "RegionDescription": {
+              "type": "string"
+            },
+            "RegionID": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Shippers": {
+          "fields": {
+            "CompanyName": {
+              "type": "string"
+            },
+            "Phone": {
+              "type": "string"
+            },
+            "ShipperID": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Suppliers": {
+          "fields": {
+            "Address": {
+              "type": "string"
+            },
+            "City": {
+              "type": "string"
+            },
+            "CompanyName": {
+              "type": "string"
+            },
+            "ContactName": {
+              "type": "string"
+            },
+            "ContactTitle": {
+              "type": "string"
+            },
+            "Country": {
+              "type": "string"
+            },
+            "Fax": {
+              "type": "string"
+            },
+            "HomePage": {
+              "type": "string"
+            },
+            "Phone": {
+              "type": "string"
+            },
+            "PostalCode": {
+              "type": "string"
+            },
+            "Region": {
+              "type": "string"
+            },
+            "SupplierID": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Territories": {
+          "fields": {
+            "RegionID": {
+              "type": "integer"
+            },
+            "TerritoryDescription": {
+              "type": "string"
+            },
+            "TerritoryID": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "serverId": ""
+  },
+  "chinook": {
+    "capabilities": {
+      "aggregation": true,
+      "delete": false,
+      "dtql": true,
+      "dtqlStreaming": true,
+      "dtqlStreamingErrors": true,
+      "joins": true,
+      "persistent": true,
+      "query": true,
+      "read": true,
+      "reset": false,
+      "write": false
+    },
+    "collections": [
+      "Album",
+      "Artist",
+      "Customer",
+      "Employee",
+      "Genre",
+      "Invoice",
+      "InvoiceLine",
+      "MediaType",
+      "Playlist",
+      "PlaylistTrack",
+      "Track"
+    ],
+    "endpoints": {
+      "dtql": "https://cloud.openvaultdb.com/v1/databases/chinook/dtql"
+    },
+    "engine": "sqlite",
+    "id": "chinook",
+    "queryFormat": "dtql-yaml+json",
+    "schemaMode": "strict",
+    "schemas": {
+      "collections": {
+        "Album": {
+          "fields": {
+            "AlbumId": {
+              "type": "integer"
+            },
+            "ArtistId": {
+              "type": "integer"
+            },
+            "Title": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Artist": {
+          "fields": {
+            "ArtistId": {
+              "type": "integer"
+            },
+            "Name": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Customer": {
+          "fields": {
+            "Address": {
+              "type": "string"
+            },
+            "City": {
+              "type": "string"
+            },
+            "Company": {
+              "type": "string"
+            },
+            "Country": {
+              "type": "string"
+            },
+            "CustomerId": {
+              "type": "integer"
+            },
+            "Email": {
+              "type": "string"
+            },
+            "Fax": {
+              "type": "string"
+            },
+            "FirstName": {
+              "type": "string"
+            },
+            "LastName": {
+              "type": "string"
+            },
+            "Phone": {
+              "type": "string"
+            },
+            "PostalCode": {
+              "type": "string"
+            },
+            "State": {
+              "type": "string"
+            },
+            "SupportRepId": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Employee": {
+          "fields": {
+            "Address": {
+              "type": "string"
+            },
+            "BirthDate": {
+              "type": "string"
+            },
+            "City": {
+              "type": "string"
+            },
+            "Country": {
+              "type": "string"
+            },
+            "Email": {
+              "type": "string"
+            },
+            "EmployeeId": {
+              "type": "integer"
+            },
+            "Fax": {
+              "type": "string"
+            },
+            "FirstName": {
+              "type": "string"
+            },
+            "HireDate": {
+              "type": "string"
+            },
+            "LastName": {
+              "type": "string"
+            },
+            "Phone": {
+              "type": "string"
+            },
+            "PostalCode": {
+              "type": "string"
+            },
+            "ReportsTo": {
+              "type": "integer"
+            },
+            "State": {
+              "type": "string"
+            },
+            "Title": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Genre": {
+          "fields": {
+            "GenreId": {
+              "type": "integer"
+            },
+            "Name": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Invoice": {
+          "fields": {
+            "BillingAddress": {
+              "type": "string"
+            },
+            "BillingCity": {
+              "type": "string"
+            },
+            "BillingCountry": {
+              "type": "string"
+            },
+            "BillingPostalCode": {
+              "type": "string"
+            },
+            "BillingState": {
+              "type": "string"
+            },
+            "CustomerId": {
+              "type": "integer"
+            },
+            "InvoiceDate": {
+              "type": "string"
+            },
+            "InvoiceId": {
+              "type": "integer"
+            },
+            "Total": {
+              "type": "number"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "InvoiceLine": {
+          "fields": {
+            "InvoiceId": {
+              "type": "integer"
+            },
+            "InvoiceLineId": {
+              "type": "integer"
+            },
+            "Quantity": {
+              "type": "integer"
+            },
+            "TrackId": {
+              "type": "integer"
+            },
+            "UnitPrice": {
+              "type": "number"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "MediaType": {
+          "fields": {
+            "MediaTypeId": {
+              "type": "integer"
+            },
+            "Name": {
+              "type": "string"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Playlist": {
+          "fields": {
+            "Name": {
+              "type": "string"
+            },
+            "PlaylistId": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "PlaylistTrack": {
+          "fields": {
+            "PlaylistId": {
+              "type": "integer"
+            },
+            "TrackId": {
+              "type": "integer"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        },
+        "Track": {
+          "fields": {
+            "AlbumId": {
+              "type": "integer"
+            },
+            "Bytes": {
+              "type": "integer"
+            },
+            "Composer": {
+              "type": "string"
+            },
+            "GenreId": {
+              "type": "integer"
+            },
+            "MediaTypeId": {
+              "type": "integer"
+            },
+            "Milliseconds": {
+              "type": "integer"
+            },
+            "Name": {
+              "type": "string"
+            },
+            "TrackId": {
+              "type": "integer"
+            },
+            "UnitPrice": {
+              "type": "number"
+            },
+            "id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "serverId": ""
+  },
+  "comparison": {
+    "records": [
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Argentina",
+          "northwindCustomers": 3
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Austria",
+          "northwindCustomers": 2
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Belgium",
+          "northwindCustomers": 2
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 5,
+          "country": "Brazil",
+          "northwindCustomers": 9
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 8,
+          "country": "Canada",
+          "northwindCustomers": 3
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Denmark",
+          "northwindCustomers": 2
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Finland",
+          "northwindCustomers": 2
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 5,
+          "country": "France",
+          "northwindCustomers": 11
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 4,
+          "country": "Germany",
+          "northwindCustomers": 11
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Ireland",
+          "northwindCustomers": 1
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Italy",
+          "northwindCustomers": 3
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Norway",
+          "northwindCustomers": 1
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Poland",
+          "northwindCustomers": 1
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 2,
+          "country": "Portugal",
+          "northwindCustomers": 2
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Spain",
+          "northwindCustomers": 5
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 1,
+          "country": "Sweden",
+          "northwindCustomers": 2
+        }
+      },
+      {
+        "data": {
+          "chinookCustomers": 13,
+          "country": "USA",
+          "northwindCustomers": 13
+        }
+      }
+    ],
+    "columns": [
+      "country",
+      "northwindCustomers",
+      "chinookCustomers"
+    ],
+    "complete": true,
+    "execution": {
+      "route": "in-memory",
+      "elapsedMs": 44,
+      "rowsReturned": 17,
+      "sources": [
+        {
+          "database": "northwind",
+          "collection": "Customers",
+          "rows": 93,
+          "elapsedMs": 5
+        },
+        {
+          "database": "chinook",
+          "collection": "Customer",
+          "rows": 59,
+          "elapsedMs": 2
+        }
+      ]
+    }
+  },
+  "capturedAt": "2026-10-19",
+  "description": "Anonymous public cloud.openvaultdb.com responses. Captured real query results; no source usage terms or protected receipt were supplied."
+}

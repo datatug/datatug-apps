@@ -8,6 +8,7 @@ import {
   Type,
   WritableSignal,
 } from '@angular/core';
+import { SegmentPanelDirective } from './segment-panel.directive';
 import { NgComponentOutlet } from '@angular/common';
 import { IonLabel, IonSegment, IonSegmentButton } from '@ionic/angular';
 import { TabsWidgetDef } from '@datatug/board-models';
@@ -25,9 +26,12 @@ import {
   selector: 'sneat-datatug-tabs-widget',
   templateUrl: './tabs-widget.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonSegment, IonSegmentButton, IonLabel, NgComponentOutlet],
+  imports: [IonSegment, IonSegmentButton, IonLabel, NgComponentOutlet, SegmentPanelDirective],
 })
 export class TabsWidgetComponent {
+  private static nextID = 0;
+  readonly panelID = `board-tabs-${TabsWidgetComponent.nextID++}-panel`;
+  tabDOMID(key: string): string { return `${this.panelID}-tab-${encodeURIComponent(key)}`; }
   private readonly tutorialRuntime = inject(TutorialBoardRuntime, {
     optional: true,
   });

@@ -1,5 +1,5 @@
 import type { TypedValue } from '@sneat/datatug-semantic';
-import { decodeTypedValue } from '@sneat/datatug-semantic';
+import { decodeTypedValue, decodeLimitation, decodeBinding, decodeSourceRightsEvidence } from '@sneat/datatug-semantic';
 import { decodeResult } from '@sneat/datatug-semantic';
 import type { IProjectRef } from '../core/project-context';
 import type { IQueryDef } from '../models/definition/query-def';
@@ -47,6 +47,22 @@ function validRows(rows: readonly (readonly TypedValue[])[], columns: number): b
   }));
 }
 
+/** Local browser envelopes have no protected server receipt. Validate them without inventing one. */
+function validateLocalEnvelope(value: Pick<FederatedQueryResult, 'recordset' | 'limitations' | 'bindingsApplied' | 'provenance' | 'truncated' | 'sourceRights' | 'usedSourceIds' | 'execution'>): void {
+  if (value.provenance.executionProfile !== undefined) { decodeResult(value); return; }
+  const p = value.provenance;
+  if (!p || typeof p.source !== 'string' || !p.source || typeof p.observedAt !== 'string' || !Number.isFinite(Date.parse(p.observedAt)) ||
+    !['live', 'snapshot'].includes(p.mode) || (p.queryId !== undefined && typeof p.queryId !== 'string') ||
+    Object.keys(p).some(key => !['source', 'queryId', 'mode', 'observedAt'].includes(key)) || value.execution !== undefined ||
+    typeof value.truncated !== 'boolean' || !value.recordset || Object.keys(value.recordset).some(key => !['columns', 'rows'].includes(key)) ||
+    !Array.isArray(value.recordset.columns) || value.recordset.columns.some(column => !column || typeof column.name !== 'string' || typeof column.type !== 'string' || Object.keys(column).some(key => !['name', 'type'].includes(key))) ||
+    !Array.isArray(value.recordset.rows) || !validRows(value.recordset.rows, value.recordset.columns.length) ||
+    !Array.isArray(value.limitations) || !Array.isArray(value.bindingsApplied)) throw unavailable();
+  value.limitations.forEach((limitation) => decodeLimitation(limitation));
+  value.bindingsApplied.forEach((binding) => decodeBinding(binding));
+  decodeSourceRightsEvidence(value);
+}
+
 function validateDescriptor(value: unknown, database: string): LocalResultDescriptor {
   const d = value as LocalResultDescriptor | undefined;
   if (!d || !validRef(d) || d.id !== database || d.database !== database ||
@@ -67,10 +83,10 @@ function validateDescriptor(value: unknown, database: string): LocalResultDescri
   try {
     assertHistoricalNativeGraphPlan(d.executedDefinition.federation.nativeGraph);
     if (graphStableIdentity(d.executedDefinition.federation.nativeGraph) !== d.planIdentity) throw unavailable();
-    decodeResult({ recordset: d.result.recordset, limitations: d.result.limitations, bindingsApplied: d.result.bindingsApplied, provenance: d.result.provenance, truncated: d.result.truncated, ...(d.result.sourceRights !== undefined ? { sourceRights: d.result.sourceRights } : {}), ...(d.result.usedSourceIds !== undefined ? { usedSourceIds: d.result.usedSourceIds } : {}) });
+    validateLocalEnvelope({ recordset: d.result.recordset, limitations: d.result.limitations, bindingsApplied: d.result.bindingsApplied, provenance: d.result.provenance, truncated: d.result.truncated, ...(d.result.execution !== undefined ? { execution: d.result.execution } : {}), ...(d.result.sourceRights !== undefined ? { sourceRights: d.result.sourceRights } : {}), ...(d.result.usedSourceIds !== undefined ? { usedSourceIds: d.result.usedSourceIds } : {}) });
     for (const set of d.result.relatedRecordsets ?? []) {
       if (typeof set.label !== 'string' || typeof set.parentField !== 'string' || set.parentSet !== (set.id === 'locations' ? 'affiliations' : 'locations')) throw unavailable();
-      decodeResult({ recordset: set.recordset, limitations: [], bindingsApplied: [], provenance: d.result.provenance, truncated: d.result.truncated });
+      validateLocalEnvelope({ recordset: set.recordset, limitations: [], bindingsApplied: [], provenance: d.result.provenance, truncated: d.result.truncated });
     }
   } catch { throw unavailable(); }
   return d;

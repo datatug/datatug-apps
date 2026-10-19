@@ -46,9 +46,18 @@ Add the saved query pair with exact source fields, typed projection, limit and u
 
 Run the focused query/browser journey with the paired committed demo tree and a bounded live root request, asserting the request mechanism, source receipt and result values. Obtain independent review, publish cross-referenced PRs with normal hooks and hand exact heads to root for landing.
 
+### Task 4: Keep result claims truthful and inspector readable
+
+**Verifies:** native-server-federation#ac:truthful-provenance, native-server-federation#ac:readable-inspector
+**Status:** planning
+
+Remove locally fabricated protected profiles from ordinary, streaming and browser result builders while preserving API-issued profile metadata and browser receipt labels. Place the existing DemoProject inspector in its own full-width row and enable native Ionic scrolling/focus selection. Check separate desktop/mobile contexts against captured anonymous public read responses, one query across held-result tab changes and no invented source terms. Preserve tab IDs, saved query references and other chart slots. Root independently reviews screenshots and lands both repositories.
+
 ### Local browser resource ownership
 
 The single Playwright acceptance run owns port4328 through the existing tools/serve-checkout-provider.mjs. Playwright terminates its child server at run completion; explicit teardown is SIGTERM to that recorded child if interrupted. No persistent daemon or shared browser is used.
+
+Follow-through polish uses a Playwright-owned localhost44375 server, with separate desktop1440px/mobile375px contexts and no shared-browser resize. The runner tears down its server; retained screenshots and a receipt distinguish captured network reads from live production acceptance.
 
 ## Open Questions
 

@@ -48,6 +48,25 @@ afterEach(async () => {
   for (const { name } of await indexedDB.databases()) if (name?.startsWith('datatug-')) await new Promise<void>((resolve) => { const request = indexedDB.deleteDatabase(name); request.onsuccess = () => resolve(); });
 });
 describe('local graph artifact transaction and lifecycle', () => {
+  it('reopens and pages unprofiled browser graph history without fabricating protected retention', async () => {
+    const db = await database(), primary = rows(105, 'unprofiled');
+    const local = result(primary, 2, 1, 'browser');
+    const { executionProfile: _profile, ...provenance } = local.provenance;
+    void _profile;
+    const value = { ...local, provenance };
+    const descriptor = await replaceGraphOutput(db, definition, value, primary, 1); db.close();
+    const network = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('No history network'));
+    const opened = await openLocalResult(descriptor.id);
+    expect(opened.result.provenance).not.toHaveProperty('executionProfile');
+    expect(opened.result).not.toHaveProperty('execution');
+    expect(await readLocalResultPage(opened.descriptor, 1)).toEqual(primary.slice(100));
+    expect(network).not.toHaveBeenCalled();
+    const writable = await new Promise<IDBDatabase>((resolve) => { const req = indexedDB.open(descriptor.id); req.onsuccess = () => resolve(req.result); });
+    await expect(replaceGraphOutput(writable, definition, { ...value, provenance: { ...provenance, mode: 'invalid' as 'live' } }, primary, 2)).rejects.toThrow();
+    await expect(replaceGraphOutput(writable, definition, { ...value, execution: { storeId: 'test', projectId: 'test', executionId: 'invented' } }, primary, 2)).rejects.toThrow();
+    writable.close();
+  });
+
   it('keeps captured source notices in supported history and refuses unsafe or oversized metadata before replacing rows', async () => {
     const db = await database(), primary = rows(2, 'rights');
     const sourceRights = decodeSourceRights(rightsFixture.structured.sourceRights).map((right) => ({
@@ -68,6 +87,7 @@ describe('local graph artifact transaction and lifecycle', () => {
     expect(captured.sourceRights[0].declaration.text).toBe('Changed live terms');
     const opened = await openLocalResult(descriptor.id);
     expect(opened.result.sourceRights).toEqual(rightsFixture.structured.sourceRights);
+    expect(opened.result.provenance.executionProfile).toBe('protected');
     expect(opened.result.usedSourceIds).toEqual(rightsFixture.structured.usedSourceIds);
     expect(fetcher).not.toHaveBeenCalled();
     const writable = await new Promise<IDBDatabase>((resolve) => { const req = indexedDB.open(descriptor.id); req.onsuccess = () => resolve(req.result); });
