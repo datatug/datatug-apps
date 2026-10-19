@@ -202,9 +202,17 @@
   color: var(--ion-color-primary);
   font: inherit;
   font-size: 0.8125rem;
-  min-height: 44px;
-  padding: 0.25rem 0.75rem;
+  /* The size of the small clear Ionic button it replaced (28px + 4px margins): the first result row must stay above the
+     720px fold at 1280x720 (query-author clarity ratchet). A coarse pointer gets the 44px touch target. */
+  min-height: 28px;
+  margin: 4px 2px;
+  padding: 0 0.75rem;
   cursor: pointer;
+}
+@media (pointer: coarse) {
+  .author-current-row-toggle button {
+    min-height: 44px;
+  }
 }
 .author-current-row-toggle button:focus-visible {
   outline: 2px solid currentColor;

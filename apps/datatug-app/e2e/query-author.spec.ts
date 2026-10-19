@@ -3259,7 +3259,7 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     // chart controls must not push the first query row below the viewport.
     await expect(invoiceAuthorPage.getByRole('region', { name: 'Result chart' })).toHaveCount(0);
     await expect(invoiceAuthorPage.getByText(
-      'Chart unavailable: Source usage rights are unavailable for this result. The rows remain inspectable.',
+      'Full-result chart preview unavailable: Source usage rights are unavailable for this result. The rows remain inspectable. Loaded rows remain available in the grid.',
     )).toHaveCount(1);
     await expect(invoiceAuthorPage.locator(
       '.author-results > .ion-padding-horizontal > sneat-datatug-source-rights-notice',

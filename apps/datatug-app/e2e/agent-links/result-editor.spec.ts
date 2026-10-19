@@ -112,9 +112,9 @@ test.describe('query result in the query editor', () => {
     await expect(
       page.locator('sneat-datatug-menu-env-selector'),
     ).toContainText(DEMO_ENV, { timeout: 30_000 });
-    // A saved snapshot has nothing to chart yet: it says when charts become available, not a rights error.
+    // A saved snapshot has nothing to chart yet: it says when the full-result chart preview becomes available, not a rights error.
     await expect(page.getByTestId('chart-unavailable')).toHaveText(
-      'Charts are available after running the query.',
+      'Full-result chart preview is available after running the query.',
     );
     await expect(page.getByText('usage rights')).toHaveCount(0);
 
