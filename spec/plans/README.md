@@ -14,6 +14,7 @@ Canonical index of all plans in this repository. Each plan is a single Markdown 
 | [browser-chat-phase-4-bookmarks](browser-chat-phase-4-bookmarks/README.md) | Implemented | browser-chat-phase-4-bookmarks | 2026-09-21 | alex |
 | [browser-chat-phase-5](browser-chat-phase-5/README.md) | Implemented | browser-chat-phase-5 | 2026-09-21 | alex |
 | [demo-database-handoff](demo-database-handoff/README.md) | Draft | demo-database-handoff | 2026-10-19 | alex |
+| [local-federation-preview](local-federation-preview/README.md) | Draft | local-federation-preview | 2026-10-19 | showcase-interaction-design |
 | [native-server-federation](native-server-federation/README.md) | Draft | native-server-federation | 2026-10-19 | showcase-interaction-design |
 | [shared-checkout](shared-checkout/README.md) | Executing | checkout-journey | 2026-10-12 | alex |
 

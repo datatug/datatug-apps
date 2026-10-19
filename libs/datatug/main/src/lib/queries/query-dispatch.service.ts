@@ -1,3 +1,5 @@
+import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
+import { createPublicOvdbDevFetch } from './public-ovdb-dev-transport';
 import { executeSavedPublicChartQuery, isSavedPublicChartQueryId } from './public-data/public-chart-query';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
@@ -73,6 +75,7 @@ function abortError(): Error {
 
 @Injectable({ providedIn: 'root' })
 export class QueryDispatchService {
+  private readonly devTransport = inject(PUBLIC_OVDB_DEV_TRANSPORT, { optional: true });
   private readonly projectApi = inject(ProjectQueryApiService);
   private readonly github = inject(GithubProjectReaderService);
   private readonly http = inject(HttpClient);
@@ -216,12 +219,14 @@ export class QueryDispatchService {
     if (request.queryId && isSavedPublicChartQueryId(request.queryId) &&
       !request.target && !request.runtimeBinding && !request.runtimeSelectionId) {
       const captured = captureQueryDispatchRequest(request);
-      return executeSavedPublicChartQuery(request.queryId, captured.definition, { signal: captured.signal });
+      return executeSavedPublicChartQuery(request.queryId, captured.definition, { signal: captured.signal,
+        ...(this.devTransport ? { fetch: createPublicOvdbDevFetch(this.devTransport) } : {}),
+      });
     }
     const { request: captured, plan } = await this.plan(request);
     if (captured.signal?.aborted) throw abortError();
     if (plan.target.kind === 'ovdb-federation') {
-      const service = new FederatedQueryService();
+      const service = new FederatedQueryService(this.devTransport);
       onFederation(service);
       if (captured.signal?.aborted) { await service.dispose(); throw abortError(); }
       const options = captured.federationRun;
