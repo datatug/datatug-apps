@@ -1,7 +1,11 @@
+import { AgGridReadyDirective } from '@datatug/ag-grid';
+import { AgGridAngular } from 'ag-grid-angular';
+import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef } from 'ag-grid-community';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   inject,
   signal,
 } from '@angular/core';
@@ -44,6 +48,7 @@ declare global {
   selector: 'sneat-datatug-cloud-logs-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    AgGridAngular, AgGridReadyDirective,
     IonBackButton,
     IonButton,
     IonButtons,
@@ -362,7 +367,7 @@ declare global {
                 @if (queryState() === 'loading') {
                   <p role="status">Reading current entries…</p>
                 }
-                @if (queryState() === 'error') {
+                @if (queryError()) {
                   <p role="alert" class="error">{{ queryError() }}</p>
                 }
                 @if (queryState() === 'ready' && !entries().length) {
@@ -378,34 +383,15 @@ declare global {
                         : ''
                     }}
                   </p>
-                  <ol>
-                    @for (
-                      entry of entries();
-                      track entry.sourceRef ||
-                        entry.timestamp + entry.source + entry.message;
-                      let entryIndex = $index
-                    ) {
-                      <li>
-                        <button
-                          type="button"
-                          class="entry"
-                          [attr.aria-expanded]="selectedEntry() === entry"
-                          [attr.aria-controls]="
-                            selectedEntry() === entry
-                              ? 'entry-details-' + entryIndex
-                              : null
-                          "
-                          (click)="toggleEntry(entry)"
-                        >
-                          <time>{{ entry.timestamp }}</time
-                          ><strong>{{ entry.severity }}</strong
-                          ><span>{{ entry.source }}</span
-                          ><span>{{ entry.message }}</span>
-                        </button>
-                        @if (selectedEntry() === entry) {
+                  <p>Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
+                  <ag-grid-angular *datatugAgGridReady class="log-grid" aria-label="Cloud Logging entries"
+                    [rowData]="gridEntries()" [columnDefs]="columns" [defaultColDef]="defaultColumn"
+                    [rowSelection]="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }"
+                    (rowClicked)="selectedEntry.set($event.data ?? null)" (cellKeyDown)="activateEntry($event)" />
+                  @if (selectedEntry(); as entry) {
                           <section
                             class="details"
-                            [id]="'entry-details-' + entryIndex"
+                            id="cloud-entry-details"
                             aria-label="Entry details"
                           >
                             <dl>
@@ -437,6 +423,8 @@ declare global {
                                 }}</code>
                               </dd>
                             </dl>
+                            @if (entry.sourceRef) { <button type="button" (click)="copyReference(entry)">Copy evidence reference</button> }
+                            @if (entry.fields) { <h3>Structured fields</h3><pre>{{ fieldsText(entry) }}</pre> }
                             @if (entry.raw || entry.fields) {
                               <h3>Raw entry</h3>
                               <pre>{{ rawText(entry) }}</pre>
@@ -447,10 +435,8 @@ declare global {
                               shown as evidence only.
                             </p>
                           </section>
-                        }
-                      </li>
-                    }
-                  </ol>
+                  }
+
                 }
               }
             </section>
@@ -460,6 +446,7 @@ declare global {
     >
   `,
   styles: `
+    .log-grid { display: block; height: 420px; width: 100%; min-width: 0; }
     .page {
       max-width: 1000px;
       margin: 0 auto;
@@ -531,29 +518,6 @@ declare global {
       overflow-wrap: anywhere;
       color: var(--ion-color-medium);
     }
-    ol {
-      list-style: none;
-      padding: 0;
-    }
-    li {
-      margin: 10px 0;
-      background: var(--ion-background-color, white);
-      border-radius: 8px;
-    }
-    .entry {
-      display: grid;
-      grid-template-columns: minmax(170px, 1fr) 100px minmax(130px, 1fr) minmax(
-          180px,
-          2fr
-        );
-      gap: 12px;
-      width: 100%;
-      padding: 12px;
-      text-align: left;
-      border: 0;
-      background: transparent;
-      color: inherit;
-    }
     .details {
       padding: 12px;
     }
@@ -586,12 +550,7 @@ declare global {
         align-items: flex-start;
         flex-direction: column;
       }
-      .entry {
-        grid-template-columns: 1fr 90px;
-      }
-      .entry span:last-child {
-        grid-column: 1 / -1;
-      }
+
     }
   `,
 })
@@ -935,8 +894,25 @@ export class CloudLogsPageComponent {
     }
   }
 
-  toggleEntry(entry: PersonalLogEntry): void {
-    this.selectedEntry.set(this.selectedEntry() === entry ? null : entry);
+  readonly gridEntries = computed(() => [...this.entries()]);
+  readonly defaultColumn: ColDef = { resizable: true, sortable: false, minWidth: 120 };
+  readonly columns: ColDef<PersonalLogEntry>[] = [
+    { field: 'timestamp', headerName: 'Timestamp', width: 210 },
+    { field: 'severity', headerName: 'Severity', width: 110, minWidth: 100 },
+    { field: 'service', headerName: 'Service', width: 160 },
+    { field: 'source', headerName: 'Source', width: 160 },
+    { field: 'message', headerName: 'Message', minWidth: 280, flex: 1, wrapText: true, autoHeight: true },
+  ];
+  activateEntry(event: CellKeyDownEvent<PersonalLogEntry> | FullWidthCellKeyDownEvent<PersonalLogEntry>): void {
+    if (event.event instanceof KeyboardEvent && ['Enter', ' '].includes(event.event.key)) {
+      event.event.preventDefault();
+      this.selectedEntry.set(event.data ?? null);
+    }
+  }
+  fieldsText(entry: PersonalLogEntry): string { return JSON.stringify(entry.fields, null, 2); }
+  async copyReference(entry: PersonalLogEntry): Promise<void> {
+    try { await navigator.clipboard.writeText(entry.sourceRef ?? ''); }
+    catch { this.queryError.set('Clipboard access is unavailable; select the reference text to copy it.'); }
   }
   field(entry: PersonalLogEntry, key: string): string {
     if (entry.fields?.[key] != null) return String(entry.fields[key]);

@@ -1,6 +1,9 @@
 // A mapped presentation of ordinary OVDB query results. The server and wire
 // protocol do not know this collection contains logs.
-import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
+import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
+import { AgGridReadyDirective } from '@datatug/ag-grid';
+import { AgGridAngular } from 'ag-grid-angular';
+import type { CellKeyDownEvent, FullWidthCellKeyDownEvent, ColDef } from 'ag-grid-community';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
@@ -17,7 +20,7 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
 @Component({
   selector: 'sneat-datatug-demo-logs-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IonBackButton, IonButtons, IonContent, IonHeader, IonMenuButton, IonTitle, IonToolbar],
+  imports: [AgGridAngular, AgGridReadyDirective, RouterLink, IonBackButton, IonButtons, IonContent, IonHeader, IonMenuButton, IonTitle, IonToolbar],
   template: `
     <ion-header><ion-toolbar>
       <ion-buttons slot="start"><ion-menu-button /><ion-back-button defaultHref="/demo" /></ion-buttons>
@@ -69,16 +72,12 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
         @if (state() === 'ready' && rows().length === 0) { <p role="status">No entries matched this bounded query.</p> }
         @if (state() === 'ready' && rows().length > 0) {
           <p role="status">{{ rows().length }} entries{{ rows().length === 100 ? ' · result limit reached' : '' }}</p>
-          <ol class="timeline">
-            @for (row of rows(); track row.key) {
-              <li [class.malformed]="status(row) !== 'parsed'">
-                <button type="button" class="entry" (click)="selectedKey.set(selectedKey() === row.key ? '' : row.key)" [attr.aria-expanded]="selectedKey() === row.key">
-                  <time>{{ text(row, 'timestamp') || 'Time unavailable' }}</time>
-                  <strong [class.error]="text(row, 'severity') === 'ERROR'">{{ text(row, 'severity') || 'UNKNOWN' }}</strong>
-                  <span>{{ text(row, 'service') || text(row, 'source') || 'Source unavailable' }}</span>
-                  <span class="message">{{ text(row, 'message') || 'Unparsed entry' }}</span>
-                </button>
-                @if (selectedKey() === row.key) {
+          <p id="log-grid-help">Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
+          <ag-grid-angular *datatugAgGridReady class="log-grid" aria-label="Log evidence entries"
+            [rowData]="gridRows()" [columnDefs]="columns" [defaultColDef]="defaultColumn"
+            [rowSelection]="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }"
+            (rowClicked)="selectedKey.set($event.data?.key ?? '')" (cellKeyDown)="activateEntry($event)" />
+          @if (selectedRow(); as row) {
                   <section class="entry-details" aria-label="Entry details">
                     <dl>
                       <dt>Parse status</dt><dd>{{ status(row) }}</dd>
@@ -93,10 +92,8 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
                     <h3>{{ text(row, 'parser') === 'google-cloud-logging' ? 'Provider entry (SDK reconstruction)' : 'Original file entry' }}</h3><pre>{{ text(row, 'raw') }}</pre>
                     @if (text(row, 'fields_json')) { <h3>Structured fields</h3><pre>{{ text(row, 'fields_json') }}</pre> }
                   </section>
-                }
-              </li>
-            }
-          </ol>
+          }
+
         }
       </main>
     </ion-content>
@@ -116,16 +113,12 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
     input, select, button { font: inherit; min-height: 38px; border: 1px solid var(--ion-color-medium-tint); border-radius: 6px; padding: 6px 9px; background: var(--ion-background-color, white); color: var(--ion-text-color); }
     button { cursor: pointer; } button:focus-visible, a:focus-visible { outline: 3px solid var(--ion-color-primary); outline-offset: 2px; }
     .filter-note { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--ion-color-medium); }
-    .timeline { list-style: none; padding: 0; border-left: 2px solid var(--ion-color-medium-tint); margin-left: 12px; }
-    .timeline li { margin: 0 0 12px 16px; border-radius: 10px; background: var(--ion-card-background, white); box-shadow: 0 1px 6px rgba(0,0,0,.08); }
-    .timeline li.malformed { border-left: 4px solid var(--ion-color-warning); }
-    .entry { display: grid; grid-template-columns: minmax(150px, 1fr) 80px minmax(120px, 1fr) minmax(200px, 2fr); width: 100%; text-align: left; gap: 12px; border: 0; padding: 14px; }
-    .entry time, .entry strong { font-variant-numeric: tabular-nums; }
+    .log-grid { display: block; height: 420px; width: 100%; min-width: 0; }
     .entry-details { padding: 4px 16px 18px; border-top: 1px solid var(--ion-color-light-shade); }
     dl { display: grid; grid-template-columns: 130px 1fr; gap: 6px 12px; } dt { font-weight: 700; } dd { margin: 0; overflow-wrap: anywhere; }
     pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 300px; overflow: auto; padding: 12px; background: var(--ion-color-light); border-radius: 6px; }
     .error { color: var(--ion-color-danger); }
-    @media (max-width: 700px) { .entry { grid-template-columns: 1fr 80px; } .message { grid-column: 1 / -1; } }
+
   `,
 })
 export class DemoLogsPageComponent {
@@ -146,6 +139,22 @@ export class DemoLogsPageComponent {
   readonly rows = signal<readonly OvdbRow[]>([]);
   readonly applied = signal<AppliedQuery | null>(null);
   readonly selectedKey = signal('');
+  readonly gridRows = computed(() => this.rows().map(row => ({ ...row, ...Object.fromEntries(['timestamp', 'severity', 'service', 'source', 'message'].map(field => [field, this.text(row, field) || ({ timestamp: 'Time unavailable', severity: 'UNKNOWN', source: 'Source unavailable', message: 'Unparsed entry' } as Record<string, string>)[field] || ''])) })));
+  readonly selectedRow = computed(() => this.rows().find(row => row.key === this.selectedKey()));
+  readonly defaultColumn: ColDef = { resizable: true, sortable: false, minWidth: 120 };
+  readonly columns: ColDef[] = [
+    { field: 'timestamp', headerName: 'Timestamp', width: 210 },
+    { field: 'severity', headerName: 'Severity', width: 110, minWidth: 100 },
+    { field: 'service', headerName: 'Service', width: 160 },
+    { field: 'source', headerName: 'Source', width: 160 },
+    { field: 'message', headerName: 'Message', minWidth: 280, flex: 1, wrapText: true, autoHeight: true },
+  ];
+  activateEntry(event: CellKeyDownEvent | FullWidthCellKeyDownEvent): void {
+    if (event.event instanceof KeyboardEvent && ['Enter', ' '].includes(event.event.key)) {
+      event.event.preventDefault();
+      this.selectedKey.set(event.data?.key ?? '');
+    }
+  }
   #request = 0;
 
   constructor() {
@@ -218,6 +227,7 @@ export class DemoLogsPageComponent {
     }
     this.state.set('loading');
     this.rows.set([]);
+    this.selectedKey.set('');
     this.applied.set(null);
     try {
       const sourceFetch = this.sourceFetch(baseUrl);

@@ -1,3 +1,5 @@
+import { Component, input, output } from '@angular/core';
+import { AgGridAngular } from 'ag-grid-angular';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { Subject, of, throwError } from 'rxjs';
@@ -7,6 +9,20 @@ import {
   PersonalLogQueryResult,
 } from './cloud-logs-api.service';
 import { CloudLogsPageComponent } from './cloud-logs-page.component';
+
+@Component({
+  // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
+  selector: 'ag-grid-angular',
+  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="rowClicked.emit({ data: row })">{{ row.message }}</button> }`,
+})
+class GridStubComponent {
+  readonly rowData = input<Array<Record<string, unknown>>>([]);
+  readonly columnDefs = input<unknown>();
+  readonly defaultColDef = input<unknown>();
+  readonly rowSelection = input<unknown>();
+  readonly rowClicked = output<unknown>();
+  readonly cellKeyDown = output<unknown>();
+}
 
 const connections: PersonalLogConnection[] = [
   {
@@ -46,6 +62,9 @@ describe('CloudLogsPageComponent', () => {
       remove: vi.fn(() => of({ removed: true as const })),
       disconnect: vi.fn(),
     };
+  TestBed.overrideComponent(CloudLogsPageComponent, {
+    remove: { imports: [AgGridAngular] }, add: { imports: [GridStubComponent] },
+  });
     await TestBed.configureTestingModule({
       imports: [CloudLogsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -174,20 +193,18 @@ describe('CloudLogsPageComponent', () => {
     await component.runQuery();
     fixture.detectChanges();
 
-    const disclosure = fixture.nativeElement.querySelector(
-      'button.entry',
-    ) as HTMLButtonElement;
-    expect(disclosure.getAttribute('aria-expanded')).toBe('false');
-    expect(disclosure.hasAttribute('aria-controls')).toBe(false);
-
-    disclosure.click();
+    await fixture.whenStable();
+    await vi.waitFor(async () => {
+      await fixture.whenStable();
+      expect(fixture.nativeElement.querySelector('ag-grid-angular')).not.toBeNull();
+    });
+    expect(component.columns.map(column => column.field)).toEqual(['timestamp', 'severity', 'service', 'source', 'message']);
+    const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    component.activateEntry({ data: component.entries()[0], event } as Parameters<typeof component.activateEntry>[0]);
     fixture.detectChanges();
-    expect(disclosure.getAttribute('aria-expanded')).toBe('true');
-    const detailsId = disclosure.getAttribute('aria-controls');
-    expect(detailsId).toBe('entry-details-0');
-    expect(
-      fixture.nativeElement.querySelector(`#${detailsId}`),
-    ).not.toBeNull();
+    expect(event.defaultPrevented).toBe(true);
+    expect(fixture.nativeElement.querySelector('#cloud-entry-details')?.textContent).toContain('svc');
+
   });
 
   it('offers OAuth reconnect for expired authorization', async () => {
