@@ -71,7 +71,8 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
                     id: 'view-1',
                     grantId: 'grant-1',
                     projectId: 'billing-prod',
-                    logViewId: 'projects/billing-prod/logs/hosted',
+                    logViewId:
+                      'projects/billing-prod/locations/global/buckets/_Default/views/hosted',
                     active: true,
                   },
                 ]
@@ -108,7 +109,8 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
           id: 'view-1',
           grantId: 'grant-1',
           projectId: 'billing-prod',
-          logViewId: 'projects/billing-prod/logs/hosted',
+          logViewId:
+            'projects/billing-prod/locations/global/buckets/_Default/views/hosted',
           active: true,
         },
       });
@@ -175,7 +177,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await expect(page).toHaveURL(/\/my\/cloud-logs$/);
   await expect(page.getByText('new-owner@example.test')).toBeVisible();
   await expect(
-    page.getByRole('alert').filter({ hasText: /did not confirm revocation/ }),
+    page.getByText(/Review Google Account access controls/),
   ).toBeVisible();
   expect(
     calls.find((call) =>
@@ -190,7 +192,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
 
   await page.goto('/my/cloud-logs');
   await expect(
-    page.getByRole('alert').filter({ hasText: /did not confirm revocation/ }),
+    page.getByText(/Review Google Account access controls/),
   ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Personal Google Cloud log views' }),
@@ -203,10 +205,14 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await page
     .getByLabel('Full log view resource name')
     .locator('input')
-    .fill('projects/billing-prod/logs/hosted');
+    .fill(
+      'projects/billing-prod/locations/global/buckets/_Default/views/hosted',
+    );
   await page.getByRole('button', { name: 'Probe and connect view' }).click();
   await expect(
-    page.getByText('projects/billing-prod/logs/hosted'),
+    page.getByText(
+      'projects/billing-prod/locations/global/buckets/_Default/views/hosted',
+    ),
   ).toBeVisible();
   await page.getByRole('button', { name: 'View logs' }).click();
   await page.getByLabel('Order ID').locator('input').fill('order-4');
@@ -241,7 +247,11 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
 
   await page.getByRole('button', { name: 'Remove view' }).click();
   await expect(page.getByText('No log views connected.')).toBeVisible();
-  await page.getByRole('button', { name: 'Disconnect Google account' }).click();
+  await page
+    .locator('article.account')
+    .filter({ hasText: 'investigator@example.test' })
+    .getByRole('button', { name: 'Disconnect Google account' })
+    .click();
   await expect(page.getByText(/revokes this integration grant/)).toBeVisible();
   await page.getByRole('button', { name: 'Confirm disconnect' }).click();
   await expect(

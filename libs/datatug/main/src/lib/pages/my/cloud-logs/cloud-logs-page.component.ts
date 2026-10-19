@@ -160,8 +160,10 @@ declare global {
             <h2 id="connect-heading">Add a log view</h2>
             <p>
               Enter the Google Cloud project ID and full log view resource name,
-              such as <code>projects/example/logs/my-view</code>. DataTug probes
-              your access before enabling this view.
+              such as
+              <code
+                >projects/example/locations/global/buckets/_Default/views/my-view</code
+              >. DataTug probes your access before enabling this view.
             </p>
             <label for="cloud-logs-grant"
               >Google account
@@ -194,7 +196,7 @@ declare global {
                 aria-label="Full log view resource name"
                 [value]="logViewId()"
                 (ionInput)="logViewId.set(inputValue($event))"
-                placeholder="projects/example/logs/my-view"
+                placeholder="projects/example/locations/global/buckets/_Default/views/my-view"
                 autocomplete="off"
             /></label>
             <ion-button [disabled]="!canConnect()" (click)="connectView()">{{
@@ -570,6 +572,7 @@ declare global {
   `,
 })
 export class CloudLogsPageComponent {
+  private queryGeneration = 0;
   private readonly api = inject(CloudLogsApiService);
   readonly pageState = signal<PageState>('loading');
   readonly pageError = signal('');
@@ -718,6 +721,7 @@ export class CloudLogsPageComponent {
       this.notice.set(
         'This Google connection request expired or was already used. Start again to connect the account.',
       );
+      await this.loadConnections();
       return;
     }
     try {
@@ -761,6 +765,7 @@ export class CloudLogsPageComponent {
   }
 
   selectConnection(connection: PersonalLogConnection): void {
+    this.queryGeneration++;
     this.selectedConnection.set(connection);
     this.entries.set([]);
     this.result.set(null);
@@ -833,6 +838,7 @@ export class CloudLogsPageComponent {
 
   async runQuery(event?: Event): Promise<void> {
     event?.preventDefault();
+    const generation = ++this.queryGeneration;
     const connection = this.selectedConnection();
     const from = toUtc(this.fromTime());
     const to = toUtc(this.toTime());
@@ -870,10 +876,20 @@ export class CloudLogsPageComponent {
           ...(this.service().trim() ? { service: this.service().trim() } : {}),
         }),
       );
+      if (
+        generation !== this.queryGeneration ||
+        this.selectedConnection()?.id !== connection.id
+      )
+        return;
       this.entries.set(response.entries);
       this.result.set(response);
       this.queryState.set('ready');
     } catch (error) {
+      if (
+        generation !== this.queryGeneration ||
+        this.selectedConnection()?.id !== connection.id
+      )
+        return;
       this.queryError.set(errorMessage(error));
       this.queryState.set('error');
       if (
@@ -919,6 +935,7 @@ export class CloudLogsPageComponent {
   }
 
   private clearSelection(): void {
+    this.queryGeneration++;
     this.selectedConnection.set(null);
     this.entries.set([]);
     this.result.set(null);
