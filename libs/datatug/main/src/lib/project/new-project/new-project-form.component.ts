@@ -1,3 +1,6 @@
+import { DemoProjectContinuationService, validContinuationToken } from './demo-project-continuation.service';
+import { findDemoSqliteDataset } from '../../queries/demo-sqlite-catalog';
+import { projectPageHref } from '../../nav/project-page-href';
 import { readGithubProjectCopySource, type GithubProjectCopySource } from './github-project-copy-source';
 import {
   Component,
@@ -64,6 +67,7 @@ import {
 } from './business-github-continuation';
 
 interface NewProjectDraft {
+  readonly demoContinuation?: string;
   readonly source?: GithubProjectCopySource;
   readonly returnUrl?: string;
   readonly actorID?: string;
@@ -128,6 +132,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly demoContinuations = inject(DemoProjectContinuationService);
+  private demoContinuation?: string;
   private readonly nav = inject(DatatugNavService);
   readonly store = signal<'cloud' | 'github'>('cloud');
   readonly copySource = signal<GithubProjectCopySource | undefined>(undefined);
@@ -291,6 +297,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           !this.spaces().some((space) => space.id === this.spaceID())
         )
           this.spaceID.set('');
+        if (this.demoContinuation && !this.spaceID() && !savedSpaceID && this.spaces().length === 1) this.spaceID.set(this.spaces()[0].id);
         const uid = state.user?.uid;
         if (uid !== this.userID()) {
           const previousUserID = this.userID();
@@ -354,6 +361,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.store.set(storeParam === 'github' ? 'github' : 'cloud');
     }
     this.restoreDraftForCurrentActor(draft);
+    const continuationParam = this.route.snapshot.queryParamMap.get('demoContinuation') ?? this.restoredDraft()?.demoContinuation;
+    this.demoContinuation = validContinuationToken(continuationParam) ? continuationParam : undefined;
+    const continuation = this.demoContinuations.read(this.demoContinuation);
+    if (continuation && !this.spaceID() && !this.restoredDraft()?.spaceID && this.spaces().length === 1) this.spaceID.set(this.spaces()[0].id);
+    if (continuation && !this.restoredDraft() && !this.pendingDraft()) {
+      this.title.set(`${findDemoSqliteDataset(continuation.dataset)?.title ?? continuation.dataset} project`);
+      this.githubFolder.set(`${continuation.dataset}-datatug`);
+    }
     const sourceParam = this.route.snapshot.queryParamMap.get('source');
     if (sourceParam) {
       try {
@@ -1039,7 +1054,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'The setup is ready, but its repository branch could not be restored.' }));
       return;
     }
+    this.demoContinuation = this.userID() ? this.demoContinuations.find(this.userID() as string, setup.operationID, setup.source) : undefined;
+    if (setup.source?.owner === 'datatug' && setup.source.name === 'datatug-demo-project' && !this.demoContinuation) {
+      this.pendingGithubSetupErrors.update(errors => ({ ...errors, [setup.operationID]: 'Project files are ready, but the edited browser continuation is unavailable in this tab. Return to the demo to keep exploring; a lost memory-only database cannot be recovered automatically.' }));
+      return;
+    }
     this.pendingGithubSetups.update((items) => items.filter((item) => item.operationID !== setup.operationID));
+    if (this.demoContinuation) { this.copySource.set(setup.source); this.operationID.set(setup.operationID); }
     this.dismissAndGo({ storeId: 'github.com', projectId, projectApi: 'cloud', branch });
   }
 
@@ -1067,6 +1088,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
 
   protected retryClosedSetup(): void {
     if (this.setupStatus() !== 'closed_unmerged' || this.isCreating()) return;
+    if (this.demoContinuation && this.userID() && this.operationID()) this.demoContinuations.restart(this.demoContinuation, this.userID() as string, this.operationID() as string);
     this.operationID.set(undefined);
     this.operationPayload.set(undefined);
     this.operationBranch.set(undefined);
@@ -1244,6 +1266,21 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.formError.set(failure.message);
   }
   private dismissAndGo(ref: IProjectContext['ref']): void {
+    const source = this.copySource();
+    const actor = this.userID();
+    const operation = this.operationID();
+    const token = this.demoContinuation ?? (actor && operation ? this.demoContinuations.find(actor, operation, source) : undefined);
+    if (token && source && actor) {
+      const continuation = this.demoContinuations.bind(token, actor, source, operation, ref);
+      if (!continuation) {
+        this.formError.set('The project is ready, but its edited database continuation belongs to another setup. Return to the demo to keep exploring.');
+        return;
+      }
+      const destination = this.router.parseUrl(projectPageHref(ref, ['browser-db', 'demo']));
+      destination.queryParams = { projectApi: ref.projectApi, branch: ref.branch, demoContinuation: token };
+      void this.router.navigateByUrl(destination, { replaceUrl: true });
+      return;
+    }
     this.nav.goProject(
       {
         ref,
@@ -1275,7 +1312,14 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
 
   private saveDraft(): boolean {
     try {
+      if (this.demoContinuation && this.userID() && this.copySource()) {
+        if (!this.demoContinuations.bind(this.demoContinuation, this.userID() as string, this.copySource() as GithubProjectCopySource, this.operationID())) {
+          this.formError.set('This edited database continuation belongs to another account or setup. Return to the demo to start a new copy.');
+          return false;
+        }
+      }
       const draft: NewProjectDraft = {
+        demoContinuation: this.demoContinuation,
         source: this.copySource(),
         returnUrl: this.returnUrl,
         actorID: this.userID(),
@@ -1380,6 +1424,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     const storeParam = this.route.snapshot.queryParamMap.get('store');
     if (storeParam === null) this.store.set(draft.store);
     this.copySource.set(draft.source);
+    this.demoContinuation = draft.demoContinuation;
     this.title.set(draft.title);
     this.githubFolder.set(draft.githubFolder);
     this.githubRepositoryURL.set(draft.githubRepositoryURL ?? '');
@@ -1430,6 +1475,7 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
     if (!value || typeof value !== 'object') return undefined;
     const draft = value as Partial<NewProjectDraft>;
     return {
+      demoContinuation: validContinuationToken(draft.demoContinuation) ? draft.demoContinuation : undefined,
       source: readGithubProjectCopySource(draft.source),
       returnUrl: safeNewProjectReturnUrl(draft.returnUrl),
       actorID:

@@ -238,6 +238,7 @@ export function localOvdbFetchFor(entry: Pick<DemoSqliteCatalogEntry, 'dataset' 
 
 /** Stands in for openDemoDb + the worker: resolves or rejects `ready()` when told to. */
 export class FakeLocalDemoDbRuntime implements LocalDemoDbRuntime {
+  async export(): Promise<Uint8Array> { return new Uint8Array([83, 81, 76]); }
   readonly baseUrl = LOCAL_OVDB_BASE_URL;
   readonly fetch: typeof globalThis.fetch;
   closed = false;

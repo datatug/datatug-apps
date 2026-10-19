@@ -1,6 +1,6 @@
 import { BrowserContext, expect, Locator, Page, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
@@ -145,7 +145,8 @@ test('project copy choices are optional and local instructions preserve SQLite e
   await expect(page.getByTestId('project-copy-github')).toBeVisible();
   await expect(page.locator('[data-testid=project-copy-github], [data-testid=project-copy-local]')).toHaveCount(2);
   await page.getByTestId('project-copy-local').click();
-  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('git clone https://github.com/datatug/datatug-demo-project.git my-datatug-project');
+  await page.getByTestId('project-copy-file-path').locator('input').fill('/tmp/chinook-edited.sqlite');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('git clone https://github.com/datatug/datatug-demo-project.git chinook-datatug');
   await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--as local --role admin --allow-writes --open-browser');
   await expect(page.getByTestId('project-copy-local-instructions')).toContainText('OPFS');
   await page.getByTestId('project-copy-dismiss').click();
@@ -165,6 +166,37 @@ test('project copy choices are optional and local instructions preserve SQLite e
   await expect(page.getByTestId('project-copy-reopen')).toBeVisible();
   await page.getByTestId('project-copy-reopen').click();
   await expect(page.getByTestId('project-copy-offer')).toBeVisible();
+});
+
+test('edited SQLite download registers and queries through the real local CLI', async ({ page, context }, testInfo) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  const cli = process.env['DATATUG_E2E_LOCAL_CLI'];
+  test.skip(!source || !cli, 'requires offline source checkout and native CLI with --config');
+  if (!source || !cli) return;
+  await installPinnedChinookSqlite(context, source);
+  await openDataset(page, 'chinook', 'Artist');
+  const edited = 'Export keeps my browser edit';
+  await editName(page, SQLITE_ORIGINAL_ARTIST_1, edited);
+  await page.getByTestId('project-copy-local').click();
+  const pendingDownload = page.waitForEvent('download');
+  await page.getByTestId('project-copy-download').click();
+  const download = await pendingDownload;
+  expect(download.suggestedFilename()).toBe('chinook-edited.sqlite');
+  const file = testInfo.outputPath('chinook-edited.sqlite');
+  await download.saveAs(file);
+  expect(readFileSync(file).subarray(0, 16).toString()).toBe('SQLite format 3\0');
+  const project = testInfo.outputPath('chinook-datatug', 'demo-project-1');
+  mkdirSync(project, { recursive: true });
+  cpSync(join(source, 'demo-project-1'), project, { recursive: true });
+  const settings = testInfo.outputPath('isolated-cli.yaml');
+  const run = (args: string[]) => execFileSync(cli, ['--config', settings, ...args], { encoding: 'utf8', env: { ...process.env, DATATUG_TELEMETRY: '0' } });
+  run(['projects', 'add', '--project', 'chinook-datatug', '--directory', project]);
+  run(['db', 'add', '--project', 'chinook-datatug', '--db', file, '--env', 'local', '--name', 'chinook-browser']);
+  const result = run(['query', 'run', '--db', 'datatug://chinook-datatug/chinook-browser?env=local', '--from', 'Artist', '--limit', '1', '--no-policies', '--format', 'json']);
+  expect(result).toContain(edited);
+  await page.getByTestId('project-copy-file-path').locator('input').fill(file);
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--directory "$PWD"');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--env local --name chinook-browser');
 });
 
 test('demo project GitHub choice carries verified source into the existing setup form', async ({ page, context }) => {
