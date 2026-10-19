@@ -10,6 +10,10 @@ export const datatugBusinessCheckoutApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveEnabled = false;
 
+// No analytics in a development or end-to-end build.
+export const datatugGoogleAnalyticsMeasurementId: string | undefined =
+  undefined;
+
 const useNgrok = window.location.hostname.includes('.ngrok.');
 const useSSL = useNgrok || window.location.hostname == 'local-app.sneat.ws';
 const nonSecureEmulatorHost = '127.0.0.1';

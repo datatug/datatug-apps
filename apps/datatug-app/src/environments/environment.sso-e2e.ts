@@ -6,6 +6,10 @@ export const datatugBusinessCheckoutApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveEnabled = false;
 
+// No analytics in a development or end-to-end build.
+export const datatugGoogleAnalyticsMeasurementId: string | undefined =
+  undefined;
+
 export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
   hostedCloudLogsEnabled: boolean;
 } = {
