@@ -26,7 +26,10 @@ The source is datatug/datatug-demo-project/demo-project-1 at a verified immutabl
 ## Acceptance Criteria
 
 - Given SQLite is ready, when I do nothing, then tables remain usable and the nonblocking offer is available.
-- Given the offer, when I dismiss and reopen it, then exactly GitHub and local Git choices appear.
+- Given the offer, when I dismiss it, then it stays compact for that dataset in the current tab session across table navigation, Back and reload; another dataset may show its own offer. If session storage is denied, dismissal survives component recreation in memory.
+- Given the compact action, when I reopen it, then exactly GitHub and local Git choices appear.
+- Given storage or database replacement warnings, then they appear before the optional project copy offer.
+- Given a pending GitHub source lookup, when I dismiss, change datasets or navigate away, then its late success or error cannot redirect me or display stale feedback.
 - Given the local choice, then verified git clone and datatug serve commands appear with the browser storage explanation.
 - Given GitHub choice, then the source commit and folder tree are resolved before entering the wizard; errors stay visible and retryable.
 - Given a copy draft, then refresh/sign-in/OAuth preserves its source and destination, and pending setup replay uses the same immutable source.
