@@ -1,7 +1,8 @@
 // A mapped presentation of ordinary OVDB query results. The server and wire
 // protocol do not know this collection contains logs.
 import { ChangeDetectionStrategy, Component, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   IonBackButton, IonButtons, IonContent, IonHeader, IonMenuButton,
   IonTitle, IonToolbar,
@@ -27,9 +28,11 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
         <header class="evidence-heading">
           @if (isNorthwindSource()) {
             <p class="eyebrow">Northwind investigation · synthetic log evidence</p>
-            @if (applied()!.orderId) { <h1>Why did order {{ applied()!.orderId }} remain unshipped?</h1> }
+            @if (applied()!.orderId === '11039') { <h1>Why did order 11039 remain unshipped?</h1> }
+            @else if (applied()!.orderId) { <h1>Order {{ applied()!.orderId }} evidence</h1> }
             @else { <h1>Northwind order evidence</h1> }
-            <p>The database record is real. These log entries are a deterministic synthetic scenario for investigating it.</p>
+            @if (applied()!.orderId === '11039') { <p>The database record is real. These log entries are a deterministic synthetic scenario for investigating it.</p> }
+            @else { <p>This source contains deterministic synthetic log entries. Check the selected database record separately.</p> }
             @if (applied()!.orderId) { <a [routerLink]="['/demo', 'sqlite', 'northwind', 'table', 'Orders']" [queryParams]="{ record: applied()!.orderId }">Open the order record</a> }
           } @else {
             <p class="eyebrow">Evidence from an OVDB collection</p>
@@ -58,7 +61,7 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
           </label>
           <label class="untimed"><input type="checkbox" [checked]="includeUntimed()" (change)="includeUntimed.set(checked($event))" /> Include untimed or malformed entries (file source only; ignores time range)</label>
           <button type="submit" [disabled]="state() === 'loading'">{{ state() === 'loading' ? 'Loading…' : 'Find evidence' }}</button>
-          <p class="filter-note">Exact order ID, correlation ID and severity; inclusive time range unless the untimed control is selected. Use WARN for file entries and WARNING for Cloud Logging. Text search and regex are unavailable. Showing at most 100 newest entries. Edits take effect when you select Find evidence. The optional token stays in this page's memory and is sent only to a loopback server.</p>
+          <p class="filter-note">File identifiers and severity use exact equality; Cloud Logging uses provider case-insensitive equality for identifiers. The time range is inclusive unless the untimed control is selected. Use WARN for file entries and WARNING for Cloud Logging. Text search and regex are unavailable. Showing at most 100 newest entries. Edits take effect when you select Find evidence. The optional token stays in this page's memory and is sent only to a loopback server.</p>
         </form>
 
         @if (state() === 'loading') { <p role="status">Reading the configured source…</p> }
@@ -127,6 +130,7 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
 })
 export class DemoLogsPageComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   readonly baseUrl = signal('http://127.0.0.1:6832');
   readonly databaseId = signal('northwind_evidence');
   readonly collection = signal('fulfillment_events');
@@ -144,7 +148,14 @@ export class DemoLogsPageComponent {
   readonly selectedKey = signal('');
   #request = 0;
 
-  constructor() { void this.load(); }
+  constructor() {
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const orderId = params.get('order') ?? '11039';
+      if (this.applied()?.orderId === orderId) return;
+      this.orderId.set(orderId);
+      void this.load();
+    });
+  }
 
   inputValue(event: Event): string { return (event.target as HTMLInputElement).value; }
   checked(event: Event): boolean { return (event.target as HTMLInputElement).checked; }
@@ -171,6 +182,24 @@ export class DemoLogsPageComponent {
 
   async load(event?: Event): Promise<void> {
     event?.preventDefault();
+    if (event) {
+      const submittedOrder = this.orderId().trim();
+      const routeOrder = this.route.snapshot.queryParamMap.get('order') ?? '11039';
+      if (submittedOrder !== routeOrder) {
+        try {
+          const navigated = await this.router.navigate([], {
+            relativeTo: this.route,
+            queryParams: { order: submittedOrder },
+            queryParamsHandling: 'merge',
+          });
+          if (!navigated) throw new Error('The order URL could not be updated.');
+        } catch (error) {
+          this.error.set(error instanceof Error ? error.message : 'The order URL could not be updated.');
+          this.state.set('error');
+        }
+        return;
+      }
+    }
     const request = ++this.#request;
     this.error.set('');
     const from = this.fromTime();

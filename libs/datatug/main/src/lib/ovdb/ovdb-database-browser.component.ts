@@ -247,14 +247,14 @@ export class OvdbDatabaseBrowserComponent {
     effect(() => {
       const connection = this.connection();
       const table = this.table();
-      this.focusRecordId();
+      const focusRecordId = this.focusRecordId();
       untracked(() => {
         this.descriptorOverride.set(undefined);
         this.selectedKey.set(undefined);
         this.creating.set(false);
         this.createdRow.set(undefined);
         this.focusedRow.set(undefined);
-        void this.load(connection, table);
+        void this.load(connection, table, focusRecordId);
       });
     });
   }
@@ -278,7 +278,7 @@ export class OvdbDatabaseBrowserComponent {
     return this.load(this.liveConnection(), this.table());
   }
 
-  private async load(connection: OvdbConnection, table: string | undefined): Promise<void> {
+  private async load(connection: OvdbConnection, table: string | undefined, focusRecordId?: string): Promise<void> {
     const epoch = ++this.#loadEpoch;
     this.loadError.set('');
     if (!table || !ovdbCollections(connection.descriptor).includes(table) || !ovdbUiCapabilities(connection.descriptor).browse) {
@@ -289,9 +289,8 @@ export class OvdbDatabaseBrowserComponent {
       const rows = await listOvdbRows(connection, table);
       if (epoch !== this.#loadEpoch) return;
       this.rows.set(rows);
-      const focus = this.focusRecordId();
-      if (focus && this.liveConnection().descriptor.capabilities.read === true) {
-        const row = await getOvdbRecord(connection, table, focus);
+      if (focusRecordId && this.liveConnection().descriptor.capabilities.read === true) {
+        const row = await getOvdbRecord(connection, table, focusRecordId);
         if (epoch !== this.#loadEpoch) return;
         if (row) {
           this.focusedRow.set(row);

@@ -111,6 +111,21 @@ describe('OvdbDatabaseBrowserComponent', () => {
     expect(q('record-edit')).not.toBeNull();
   });
 
+  it('applies a linked record focus once and preserves a later selection on reload', async () => {
+    const { fixture, q, settle, component } = await setup('Artist');
+    fixture.componentRef.setInput('focusRecordId', '1');
+    await vi.waitFor(async () => {
+      await settle();
+      expect(q('ovdb-record')?.textContent).toContain('ArtistId 1');
+    });
+    q('row-2')?.click();
+    await settle();
+    expect(q('row-2')?.getAttribute('aria-current')).toBe('true');
+    await component.reload();
+    await settle();
+    expect(q('row-2')?.getAttribute('aria-current')).toBe('true');
+  });
+
   it('refreshes the table after a delete and clears the selection', async () => {
     const { q, settle, local } = await setup('Artist');
     await vi.waitFor(async () => {

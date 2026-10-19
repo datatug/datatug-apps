@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap, provideRouter } from '@angular/router';
+import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
+import { BehaviorSubject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DemoLogsPageComponent } from './demo-logs-page.component';
 
@@ -21,6 +22,8 @@ const evidence = {
 
 async function setup() {
   const requests: Array<{ url: string; method: string; body?: string; authorization?: string }> = [];
+  const orderParams = new BehaviorSubject(convertToParamMap({ order: '11039' }));
+  const route = { snapshot: { queryParamMap: orderParams.value }, queryParamMap: orderParams.asObservable() };
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     requests.push({ url, method: init?.method ?? 'GET', body: init?.body?.toString(), authorization: new Headers(init?.headers).get('Authorization') ?? undefined });
@@ -32,7 +35,7 @@ async function setup() {
     imports: [DemoLogsPageComponent],
     providers: [provideRouter([]), {
       provide: ActivatedRoute,
-      useValue: { snapshot: { queryParamMap: convertToParamMap({ order: '11039' }) } },
+      useValue: route,
     }],
   }).compileComponents();
   const fixture = TestBed.createComponent(DemoLogsPageComponent);
@@ -41,7 +44,7 @@ async function setup() {
     await fixture.whenStable();
     expect((fixture.nativeElement as HTMLElement).querySelectorAll('.timeline li').length).toBe(1);
   });
-  return { fixture, requests, el: fixture.nativeElement as HTMLElement };
+  return { fixture, requests, el: fixture.nativeElement as HTMLElement, orderParams, route };
 }
 
 describe('DemoLogsPageComponent', () => {
@@ -100,5 +103,37 @@ describe('DemoLogsPageComponent', () => {
     fixture.detectChanges();
     expect(el.querySelector('h1')?.textContent).toBe('Northwind order evidence');
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
+  });
+
+  it('reloads evidence for same-route order navigation and keeps submitted order in the URL', async () => {
+    const { fixture, requests, orderParams, route, el } = await setup();
+    route.snapshot.queryParamMap = convertToParamMap({ order: '11040' });
+    orderParams.next(route.snapshot.queryParamMap);
+    await vi.waitFor(async () => {
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(el.querySelector('h1')?.textContent).toContain('11040');
+      expect(el.querySelector('h1')?.textContent).not.toContain('unshipped');
+      expect(requests.filter((request) => request.method === 'POST')).toHaveLength(2);
+    });
+    const secondQuery = JSON.parse(requests.at(-1)?.body ?? '{}') as { where: Array<{ field: string; value: string }> };
+    expect(secondQuery.where).toContainEqual({ field: 'order_id', op: '==', value: '11040' });
+
+    const router = TestBed.inject(Router);
+    const navigate = vi.spyOn(router, 'navigate').mockImplementation(async (_commands, extras) => {
+      route.snapshot.queryParamMap = convertToParamMap({ order: String(extras?.queryParams?.['order']) });
+      orderParams.next(route.snapshot.queryParamMap);
+      return true;
+    });
+    fixture.componentInstance.orderId.set('11041');
+    await fixture.componentInstance.load(new Event('submit'));
+    await vi.waitFor(async () => {
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect(el.querySelector('h1')?.textContent).toContain('11041');
+      expect(requests.filter((request) => request.method === 'POST')).toHaveLength(3);
+    });
+    expect(navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: { order: '11041' }, queryParamsHandling: 'merge' }));
+    expect(fixture.componentInstance.applied()?.orderId).toBe('11041');
   });
 });
