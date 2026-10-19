@@ -22,7 +22,7 @@ function request(url: string, method = 'POST', body = queryBody): Request {
     postData: () => body,
   } as Request;
 }
-async function harness() {
+async function harness(maxQueries?: 3 | 12) {
   const events = new EventEmitter();
   let routeHandler: ((route: Route) => Promise<void>) | undefined;
   const context = {
@@ -33,6 +33,7 @@ async function harness() {
   };
   const ledger = await installShowcaseMeasurementLedger(
     context as unknown as BrowserContext,
+    { maxQueries },
   );
   const send = async (req: Request) => {
     const proceed = vi.fn(),
@@ -67,6 +68,19 @@ describe('opt-in production measurement protection without network', () => {
       queryAttempts: 2,
       protectedAbortAttempts: 1,
     });
+    expect(() => ledger.healthy()).toThrow('budget');
+  });
+
+  it('enforces the diagnostic three-query global cap before a fourth request even across phases', async () => {
+    const { ledger, send } = await harness(3);
+    for (let index = 0; index < 3; index++) {
+      ledger.phase('initial-' + index, 1, { orders: 1 });
+      expect((await send(request(queryURL))).proceed).toHaveBeenCalledOnce();
+    }
+    ledger.phase('later', 1, { orders: 1 });
+    const fourth = await send(request(queryURL));
+    expect(fourth.abort).toHaveBeenCalledOnce();
+    expect(fourth.proceed).not.toHaveBeenCalled();
     expect(() => ledger.healthy()).toThrow('budget');
   });
 

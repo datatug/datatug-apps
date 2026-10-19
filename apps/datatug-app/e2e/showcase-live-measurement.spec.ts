@@ -1,3 +1,4 @@
+import { installShowcaseQueryDiagnostics } from './helpers/showcase-query-diagnostics';
 import {
   expect,
   test,
@@ -159,7 +160,13 @@ test('bounded deployed showcase network and held-result measurement', async ({
   expect(process.env['DATATUG_E2E_GITHUB_FAKE']).toBeFalsy();
   expect(process.env['DATATUG_E2E_PUBLIC_OVDB_PROXY']).toBeFalsy();
   expect(process.env['DATATUG_E2E_SERVER_SHOWCASE']).toBeFalsy();
-  const ledger = await installShowcaseMeasurementLedger(context);
+  const initialDiagnostic = process.env['DATATUG_E2E_DIAGNOSE_INITIAL'] === '1';
+  const ledger = await installShowcaseMeasurementLedger(context, {
+    maxQueries: initialDiagnostic ? 3 : 12,
+  });
+  const diagnostics = initialDiagnostic
+    ? await installShowcaseQueryDiagnostics(context, page)
+    : undefined;
   const receipt: Record<string, unknown> = {
     observedAt: new Date().toISOString(),
     source: 'actual public production browser requests',
@@ -174,19 +181,23 @@ test('bounded deployed showcase network and held-result measurement', async ({
       'Playwright request.sizes responseBodySize; excludes response headers and transport overhead',
     cache:
       'HTTP cache disabled by Playwright routing guard; fresh context; service workers blocked',
-    queryCap: 12,
-    queryCapAuthority:
-      'root approved 12 after verifying the existing fourth tutorial query identity',
-    phaseBudgets: {
-      initial: 3,
-      interaction: 0,
-      refresh: 1,
-      tutorialMaterialization: 4,
-      tutorialViewRevisit: 0,
-      restartEmpty: 0,
-      restartFirstCard: 1,
-      showFull: 3,
-    },
+    mode: initialDiagnostic ? 'initial-only-diagnostic' : 'full-measurement',
+    queryCap: initialDiagnostic ? 3 : 12,
+    queryCapAuthority: initialDiagnostic
+      ? 'root approved initial-only diagnostic with enforced three-query cap'
+      : 'root approved 12 after verifying the existing fourth tutorial query identity',
+    phaseBudgets: initialDiagnostic
+      ? { initial: 3 }
+      : {
+          initial: 3,
+          interaction: 0,
+          refresh: 1,
+          tutorialMaterialization: 4,
+          tutorialViewRevisit: 0,
+          restartEmpty: 0,
+          restartFirstCard: 1,
+          showFull: 3,
+        },
     dateCoverage:
       '23 calendar-month buckets July 2016 through May 2018; first/last buckets may cover partial months. No first/last raw OrderDate asserted.',
     limitations: [
@@ -268,6 +279,15 @@ test('bounded deployed showcase network and held-result measurement', async ({
     ).toHaveLength(0);
     receipt['initialSummary'] = ledger.summary();
     receipt['initialQueries'] = initial.map((row) => ({ ...row }));
+    if (initialDiagnostic) {
+      receipt['identityAfter'] = await deploymentIdentity(
+        request,
+        expectedAppSHA,
+      );
+      ledger.healthy();
+      receipt['status'] = 'PASS';
+      return;
+    }
     const original = await groups(paired);
     expect(original.find((group) => group.country === 'Canada')).toMatchObject({
       northwind: 3,
@@ -600,6 +620,13 @@ test('bounded deployed showcase network and held-result measurement', async ({
     ledger.healthy();
     receipt['status'] = 'PASS';
   } finally {
+    if (diagnostics) {
+      try {
+        receipt['diagnostics'] = await diagnostics.finish();
+      } catch {
+        receipt['diagnostics'] = { unavailable: true };
+      }
+    }
     await ledger.drain();
     receipt['status'] ??= 'FAIL';
     receipt['timings'] = timings;

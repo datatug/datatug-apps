@@ -133,7 +133,9 @@ function identify(
 
 export async function installShowcaseMeasurementLedger(
   context: BrowserContext,
+  options: { readonly maxQueries?: 3 | 12 } = {},
 ) {
+  const maxQueries = options.maxQueries ?? 12;
   const start = performance.now();
   const rows: Row[] = [];
   const entries = new Map<Request, Row>();
@@ -168,7 +170,7 @@ export async function installShowcaseMeasurementLedger(
         .slice(phaseStart)
         .filter((item) => item.kind === 'query');
       if (
-        rows.filter((item) => item.kind === 'query').length > 12 ||
+        rows.filter((item) => item.kind === 'query').length > maxQueries ||
         phaseQueries.length > phaseCap
       )
         violate('Query budget exceeded in ' + phase);
