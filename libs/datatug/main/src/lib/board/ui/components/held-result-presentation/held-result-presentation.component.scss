@@ -262,7 +262,8 @@ tbody th button {
   color: #145750;
   font-weight: 650;
 }
-.source-details dl {
+.source-details dl,
+.inspection dl {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 0.6rem 1rem;
@@ -276,9 +277,6 @@ tbody th button {
 }
 .inspection dl {
   margin: 0.5rem 0 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 0.6rem 1rem;
 }
 .inspection dt {
   color: #43536a;
@@ -344,9 +342,11 @@ select:focus-visible {
 }
 .grouped-bars {
   list-style: none;
-  padding: 0;
+  padding: 0.25rem;
   display: grid;
   gap: 0.75rem;
+  max-height: 34rem;
+  overflow: auto;
 }
 .grouped-bars button {
   width: 100%;
@@ -374,13 +374,12 @@ select:focus-visible {
   margin-top: 0.35rem;
 }
 .grouped-measure .bar-track {
-  display: block;
+  position: relative;
   height: 0.8rem;
   background: #edf1f6;
 }
 .grouped-measure .bar-fill {
-  display: block;
-  height: 100%;
+  position: absolute;
   min-width: 0;
 }
 .exact-value {
@@ -390,19 +389,6 @@ select:focus-visible {
 .series-title {
   font-size: 0.8rem;
 }
-.grouped-bars {
-  max-height: 34rem;
-  overflow: auto;
-  padding: 0.25rem;
-}
-
-.grouped-measure .bar-track {
-  position: relative;
-}
-.grouped-measure .bar-fill {
-  position: absolute;
-}
-
 .grouped-measure .zero-line {
   position: absolute;
   height: 100%;
