@@ -23,20 +23,8 @@ const loadDatatugHomePage = () =>
   );
 
 export const datatugRoutes: Routes = [
-  {
-    path: 'native-check-status/:recoveryId',
-    loadComponent: () =>
-      import('../session-context/session-detective-recovery.component').then(
-        (m) => m.SessionDetectiveRecoveryComponent,
-      ),
-  },
-  {
-    path: 'store/:storeId/native-check-status/:recoveryId',
-    loadComponent: () =>
-      import('../session-context/session-detective-recovery.component').then(
-        (m) => m.SessionDetectiveRecoveryComponent,
-      ),
-  },
+  { path: 'native-check-status/:recoveryId', loadComponent: () => import('../session-context/session-detective-recovery.component').then(m => m.SessionDetectiveRecoveryComponent) },
+  { path: 'store/:storeId/native-check-status/:recoveryId', loadComponent: () => import('../session-context/session-detective-recovery.component').then(m => m.SessionDetectiveRecoveryComponent) },
 
   {
     path: 'new-project',
@@ -187,27 +175,10 @@ export const datatugRoutes: Routes = [
           (segments.length === 8 &&
             segments[6].path === 'query' &&
             /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path)) ||
-          (segments[6]?.path === 'sessions' &&
-            (segments.length === 7 ||
-              (/^[A-Za-z0-9_-]{1,128}$/.test(segments[7]?.path ?? '') &&
-                (segments.length === 8 ||
-                  (segments.length === 9 &&
-                    [
-                      'overview',
-                      'queries',
-                      'invoice-overview',
-                      'invoice-explorer',
-                      'composer',
-                      'checks',
-                      'detective',
-                    ].includes(segments[8].path)) ||
-                  (segments.length === 10 &&
-                    ['query', 'checks', 'detective'].includes(
-                      segments[8].path,
-                    ) &&
-                    /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(
-                      segments[9].path,
-                    ))))))),
+          (segments[6]?.path === 'sessions' && (segments.length === 7 ||
+            (/^[A-Za-z0-9_-]{1,128}$/.test(segments[7]?.path ?? '') &&
+              (segments.length === 8 || (segments.length === 9 && ['overview', 'queries', 'invoice-overview', 'invoice-explorer', 'composer', 'checks', 'detective'].includes(segments[8].path)) ||
+                (segments.length === 10 && ['query', 'checks', 'detective'].includes(segments[8].path) && /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[9].path))))))),
     ],
     children: [
       ...['', 'overview'].map((path) => ({
@@ -218,96 +189,21 @@ export const datatugRoutes: Routes = [
           ),
       })),
       {
-        path: 'sessions',
-        providers: [SessionWorkspaceService],
-        loadComponent: () =>
-          import('../session-context/session-workspace-shell.component').then(
-            (m) => m.SessionWorkspaceShellComponent,
-          ),
-        children: [
-          {
-            path: ':sessionId',
-            canActivateChild: [admitSessionWorkspace],
-            children: [
-              { path: '', pathMatch: 'full', redirectTo: 'overview' },
-              {
-                path: 'overview',
-                loadComponent: () =>
-                  import('../pages/signed-in/project/project-page.component').then(
-                    (m) => m.ProjectPageComponent,
-                  ),
-              },
-              {
-                path: 'queries',
-                loadComponent: () =>
-                  import('../queries/queries/queries-page.component').then(
-                    (m) => m.QueriesPageComponent,
-                  ),
-              },
-              {
-                path: 'invoice-overview',
-                loadComponent: () =>
-                  import('../session-context/invoice-dashboard.component').then(
-                    (m) => m.InvoiceDashboardComponent,
-                  ),
-              },
-              {
-                path: 'invoice-explorer',
-                loadComponent: () =>
-                  import('../session-context/invoice-explorer.component').then(
-                    (m) => m.InvoiceExplorerComponent,
-                  ),
-              },
-              {
-                path: 'checks',
-                loadComponent: () =>
-                  import('../detective/checks-page.component').then(
-                    (m) => m.ChecksPageComponent,
-                  ),
-              },
-              {
-                path: 'checks/:checkId',
-                loadComponent: () =>
-                  import('../detective/checks-page.component').then(
-                    (m) => m.ChecksPageComponent,
-                  ),
-              },
-              {
-                path: 'detective',
-                loadComponent: () =>
-                  import('../detective/cases-page.component').then(
-                    (m) => m.CasesPageComponent,
-                  ),
-              },
-              {
-                path: 'detective/:caseId',
-                loadComponent: () =>
-                  import('../detective/cases-page.component').then(
-                    (m) => m.CasesPageComponent,
-                  ),
-              },
-              {
-                path: 'composer',
-                loadComponent: () =>
-                  import('../session-context/session-composer.component').then(
-                    (m) => m.SessionComposerComponent,
-                  ),
-              },
-              {
-                path: 'query',
-                children: [
-                  {
-                    path: ':queryId',
-                    loadComponent: () =>
-                      import('../queries/query/page/query-page.component').then(
-                        (m) => m.QueryPageComponent,
-                      ),
-                  },
-                ],
-              },
-            ],
-          },
-        ],
+        path: 'sessions', providers: [SessionWorkspaceService],
+        loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),
+        children: [{ path: ':sessionId', canActivateChild: [admitSessionWorkspace], children: [
+          { path: '', pathMatch: 'full', redirectTo: 'overview' },
+          { path: 'overview', loadComponent: () => import('../pages/signed-in/project/project-page.component').then((m) => m.ProjectPageComponent) },
+          { path: 'queries', loadComponent: () => import('../queries/queries/queries-page.component').then((m) => m.QueriesPageComponent) },
+          { path: 'invoice-overview', loadComponent: () => import('../session-context/invoice-dashboard.component').then((m) => m.InvoiceDashboardComponent) },
+          { path: 'invoice-explorer', loadComponent: () => import('../session-context/invoice-explorer.component').then((m) => m.InvoiceExplorerComponent) },
+          { path: 'checks', loadComponent: () => import('../detective/checks-page.component').then(m => m.ChecksPageComponent) },
+          { path: 'checks/:checkId', loadComponent: () => import('../detective/checks-page.component').then(m => m.ChecksPageComponent) },
+          { path: 'detective', loadComponent: () => import('../detective/cases-page.component').then(m => m.CasesPageComponent) },
+          { path: 'detective/:caseId', loadComponent: () => import('../detective/cases-page.component').then(m => m.CasesPageComponent) },
+          { path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) },
+          { path: 'query', children: [{ path: ':queryId', loadComponent: () => import('../queries/query/page/query-page.component').then((m) => m.QueryPageComponent) }] },
+        ] }],
       },
       {
         path: 'queries',
