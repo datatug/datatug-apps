@@ -17,7 +17,10 @@ export const DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT = false;
 // (consumer + business). This is permanent per the 2026-06-09 single-identity
 // decision: datatug.app authenticates here, NOT against a separate project.
 // See sneat-apps/docs/superpowers/specs/2026-06-09-single-identity-addendum.md
-export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
+export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
+  hostedCloudLogsEnabled: boolean;
+} = {
+  hostedCloudLogsEnabled: false,
   production: true,
   agents: {},
   firebaseConfig: {

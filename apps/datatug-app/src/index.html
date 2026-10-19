@@ -67,6 +67,31 @@
       })();
     </script>
 
+    <!-- Scrub the short-lived hosted Google log receipt before analytics or app bootstrap. -->
+    <script id="datatug-google-logs-callback-scrub">
+      (function () {
+        var params = new URLSearchParams(location.search);
+        var status = params.get('googleLogs');
+        if (status !== 'complete' && status !== 'failed') return;
+        var receipt = status === 'complete' ? params.get('receipt') || '' : '';
+        params.delete('googleLogs');
+        params.delete('receipt');
+        var query = params.toString();
+        history.replaceState(
+          history.state,
+          '',
+          location.pathname + (query ? '?' + query : '') + location.hash,
+        );
+        window.__datatugTakeGoogleLogsReturn = function () {
+          delete window.__datatugTakeGoogleLogsReturn;
+          var result = { status: status, receipt: receipt };
+          status = undefined;
+          receipt = undefined;
+          return result;
+        };
+      })();
+    </script>
+
     <script id="datatug-handoff-stash">
       (function () {
         // `u`: a path that starts with `//` is, to history.replaceState, an address on another host; it needs its origin.

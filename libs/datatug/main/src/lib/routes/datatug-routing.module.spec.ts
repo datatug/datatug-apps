@@ -1,6 +1,10 @@
 import { PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { DefaultUrlSerializer, Route, UrlSegment } from '@angular/router';
+import { TestBed } from '@angular/core/testing';
+import { EnvConfigToken, IEnvironmentConfig } from '@sneat/core';
+import { sneatAuthGuard } from '@sneat/auth-core';
 import { datatugRoutes } from './datatug-routing.module';
+import { hostedCloudLogsFeatureGuard } from '../core/feature-flags';
 import {
   profileHomeRedirectGuard,
   profileStartPageGuard,
@@ -11,6 +15,48 @@ import {
 } from '../core/datatug-routing-params';
 
 describe('datatugRoutes', () => {
+  it('keeps hosted personal Cloud Logging disabled by default', async () => {
+    const route = datatugRoutes.find(
+      (candidate) => candidate.path === 'my/cloud-logs',
+    );
+    expect(route?.canMatch).toEqual([hostedCloudLogsFeatureGuard]);
+    TestBed.configureTestingModule({
+      providers: [{ provide: EnvConfigToken, useValue: {} }],
+    });
+    expect(
+      TestBed.runInInjectionContext(() =>
+        hostedCloudLogsFeatureGuard(route as Route, [], undefined as never),
+      ),
+    ).toBe(false);
+    TestBed.resetTestingModule();
+  });
+
+  it('allows hosted personal Cloud Logging in a pilot environment', async () => {
+    const route = datatugRoutes.find(
+      (candidate) => candidate.path === 'my/cloud-logs',
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: EnvConfigToken,
+          useValue: {
+            hostedCloudLogsEnabled: true,
+          } as unknown as IEnvironmentConfig,
+        },
+      ],
+    });
+    expect(
+      TestBed.runInInjectionContext(() =>
+        hostedCloudLogsFeatureGuard(route as Route, [], undefined as never),
+      ),
+    ).toBe(true);
+    expect(route?.canActivate).toEqual([sneatAuthGuard]);
+    const component = await route?.loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'CloudLogsPageComponent',
+    );
+  });
+
   it('admits Space overview, queries, Checks, Detective and session routes', () => {
     const route = datatugRoutes.find(
       (candidate) =>
@@ -48,9 +94,15 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'query', 'genre-mix'])).toBe(true);
     expect(matches([...base, 'sessions'])).toBe(true);
     expect(matches([...base, 'sessions', 's1', 'composer'])).toBe(true);
-    expect(matches([...base, 'sessions', 's1', 'checks', 'invoice-check'])).toBe(true);
-    expect(matches([...base, 'sessions', 's1', 'detective', 'invoice-case'])).toBe(true);
-    expect(matches([...base, 'sessions', 's1', 'query', 'genre-mix'])).toBe(true);
+    expect(
+      matches([...base, 'sessions', 's1', 'checks', 'invoice-check']),
+    ).toBe(true);
+    expect(
+      matches([...base, 'sessions', 's1', 'detective', 'invoice-case']),
+    ).toBe(true);
+    expect(matches([...base, 'sessions', 's1', 'query', 'genre-mix'])).toBe(
+      true,
+    );
     const encoded = new DefaultUrlSerializer().parse(
       '/space/S1/store/firestore/project/P1/query/folder%2Fgenre-mix',
     );
@@ -64,8 +116,14 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'env', 'local'])).toBe(false);
   });
   it('places metadata recovery routes before content-guarded project routes', () => {
-    expect(datatugRoutes.slice(0, 2).map(route => route.path)).toEqual(['native-check-status/:recoveryId', 'store/:storeId/native-check-status/:recoveryId']);
-    for (const route of datatugRoutes.slice(0, 2)) { expect(route.canActivate).toBeUndefined(); expect(route.canMatch).toBeUndefined(); }
+    expect(datatugRoutes.slice(0, 2).map((route) => route.path)).toEqual([
+      'native-check-status/:recoveryId',
+      'store/:storeId/native-check-status/:recoveryId',
+    ]);
+    for (const route of datatugRoutes.slice(0, 2)) {
+      expect(route.canActivate).toBeUndefined();
+      expect(route.canMatch).toBeUndefined();
+    }
   });
   it('resolves a cold scenario URL before the Case detail route', async () => {
     const project = datatugRoutes.find(
