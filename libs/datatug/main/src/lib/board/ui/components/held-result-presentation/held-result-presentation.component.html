@@ -26,7 +26,7 @@
       [executionProfile]="result.provenance.executionProfile"
     />
 
-    @if (fields && prepared?.ok && !chartOnly) {
+    @if (fields && (prepared?.ok || grouped) && !chartOnly) {
       <div class="view-switch" role="group" aria-label="Result view">
         <button
           type="button"
@@ -45,6 +45,63 @@
       </div>
     }
 
+    @if (groupedError) {
+      <p role="alert">{{ groupedError }}</p>
+    }
+    @if (view() === 'chart' && grouped && fields?.series; as series) {
+      <p class="grouped-scale">
+        {{ fields.unit }} · common scale from {{ grouped.minimum }} to
+        {{ grouped.maximum }}
+      </p>
+      <ul class="series-legend" aria-label="Chart series">
+        @for (item of series; track item.id; let i = $index) {
+          <li>
+            <span [style.background]="seriesColors[i]" aria-hidden="true"></span
+            >{{ item.title }}
+          </li>
+        }
+      </ul>
+      <ol
+        class="grouped-bars"
+        [attr.aria-label]="fields.title || 'Grouped category values'"
+      >
+        @for (group of grouped.groups; track group.category) {
+          <li>
+            <button
+              type="button"
+              [attr.aria-pressed]="
+                selectionEnabled ? selectedCategory === group.category : null
+              "
+              (click)="
+                selectionEnabled
+                  ? categorySelected.emit(group.category)
+                  : inspectBar(group.sourceRow)
+              "
+            >
+              <strong>{{ group.category }}</strong>
+              @for (item of series; track item.id; let i = $index) {
+                <span class="grouped-measure">
+                  <span class="series-title">{{ item.title }}</span>
+                  <span class="bar-track" aria-hidden="true">
+                    <span
+                      class="zero-line"
+                      [style.left.%]="groupedLeft(0)"
+                    ></span>
+                    <span
+                      class="bar-fill"
+                      [style.background]="seriesColors[i]"
+                      [style.width.%]="groupedWidth(group.values[i])"
+                      [style.left.%]="groupedLeft(group.values[i])"
+                    ></span>
+                  </span>
+                  <span class="exact-value">{{ group.values[i] }}</span>
+                </span>
+              }
+            </button>
+          </li>
+        }
+      </ol>
+    }
     @if (fields && prepared && !prepared.ok) {
       <p class="state error" role="alert">{{ prepared.message }}</p>
     } @else if (view() === 'chart' && fields && prepared?.ok) {

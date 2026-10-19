@@ -108,6 +108,9 @@
         <sneat-datatug-held-result-presentation
           [result]="result() ?? null"
           [fields]="barFields()"
+          [selectionEnabled]="!!chartWidgetDef()?.chart?.selectionId"
+          [selectedCategory]="selectedCountry() ?? null"
+          (categorySelected)="selectCountry($event)"
           [defaultView]="chartWidgetDef()?.defaultView ?? 'chart'"
           [loading]="running()"
           [error]="runError() ?? null"
@@ -142,20 +145,22 @@
               : 'open working copy'
           }}.
         </p>
-        <label
-          >Execution runtime
-          <select
-            [value]="selectedRuntimeId()"
-            (change)="selectRuntime($any($event.target).value)"
-          >
-            <option value="snapshot">{{ projectRuntimeLabel() }}</option>
-            @for (runtime of workingCopies(); track runtime.selectionId) {
-              <option [value]="runtime.selectionId">
-                {{ runtime.title }} · working copy
-              </option>
-            }
-          </select>
-        </label>
+        @if (workingCopies().length) {
+          <label
+            >Execution runtime
+            <select
+              [value]="selectedRuntimeId()"
+              (change)="selectRuntime($any($event.target).value)"
+            >
+              <option value="snapshot">{{ projectRuntimeLabel() }}</option>
+              @for (runtime of workingCopies(); track runtime.selectionId) {
+                <option [value]="runtime.selectionId">
+                  {{ runtime.title }} · working copy
+                </option>
+              }
+            </select>
+          </label>
+        }
         <ion-button [disabled]="running()" (click)="run()">{{
           running() ? 'Running…' : 'Run on board'
         }}</ion-button>
@@ -173,10 +178,26 @@
       @if (choiceError(); as error) {
         <p role="alert">{{ error }}</p>
       }
-      @if (result(); as answer) {
+      @let presentation = filteredPresentation();
+      @if (presentation.country !== undefined) {
+        <div class="country-selection" role="status">
+          @if (presentation.error) {
+            <p>{{ presentation.error }}</p>
+          } @else {
+            <p>
+              {{ presentation.count }} of 830 orders shipped to
+              {{ presentation.country }}
+            </p>
+          }
+          <button type="button" (click)="clearCountry()">Clear country</button>
+        </div>
+      }
+      @if (presentation.result; as answer) {
         @if (
           browserSnapshot() ||
-          ('runtime' in answer && answer.runtime === 'server') ||
+          ('runtime' in answer &&
+            (answer.runtime === 'server' ||
+              answer.runtime === 'browser-public-api')) ||
           definition()?.federation
         ) {
           <sneat-datatug-held-result-presentation [result]="answer" />
