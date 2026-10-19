@@ -19,7 +19,6 @@ import { AgGridAngular } from 'ag-grid-angular';
 import type {
   CellFocusedEvent,
   ChartCreatedEvent,
-  ProcessCellForExportParams,
   ColDef,
   ColumnResizedEvent,
   GridApi,
@@ -91,6 +90,11 @@ const ENTERPRISE_STATUS_BAR = {
 };
 
 import { analyticsColumns } from './results-grid-analytics';
+import {
+  RAW_RESULT_EXCEL_STYLES,
+  rawResultCell,
+  skipResultSummaryRow,
+} from './results-grid-export';
 
 const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
 
@@ -121,6 +125,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
   host: {
     '(document:click)': 'onDocumentClick($event)',
     '(keydown.escape)': 'closeChooser()',
+    '[class.dt-rg-enterprise]': 'enterprise()',
   },
   template: `
     @if (showToolbar()) {
@@ -346,6 +351,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
         [rowGroupPanelShow]="enterprise() ? 'always' : undefined"
         [cellSelection]="enterprise() ? true : undefined"
         [enableCharts]="enterprise()"
+        [excelStyles]="enterprise() ? rawExcelStyles : undefined"
         [processCellForClipboard]="enterprise() ? clipboardCell : undefined"
         (cellSelectionChanged)="updateChartRange()"
         (chartCreated)="onChartCreated($event)"
@@ -478,6 +484,14 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     .dt-rg-icon-button[aria-pressed='true'] {
       border-color: var(--ion-color-step-250, #c8c8c8);
     }
+    sneat-datatug-results-grid.dt-rg-enterprise {
+      height: auto;
+      min-height: 680px;
+    }
+    .dt-rg-enterprise .dt-rg-host {
+      /* Reserve space for native grouping/filter/header/status chrome plus several usable data rows. */
+      min-height: 480px;
+    }
     .dt-rg-host {
       flex: 1 1 auto;
       min-height: 0;
@@ -534,6 +548,7 @@ export class ResultsGridComponent {
   readonly autoSize = { type: 'fitCellContents' } as const;
   readonly rowSelection = ROW_SELECTION;
   readonly selectionColumnDef = SELECTION_COLUMN_DEF;
+  readonly rawExcelStyles = RAW_RESULT_EXCEL_STYLES;
   readonly sideBar = ENTERPRISE_SIDE_BAR;
   readonly statusBar = ENTERPRISE_STATUS_BAR;
   readonly quickFilter = signal('');
@@ -932,15 +947,7 @@ export class ResultsGridComponent {
     });
   }
 
-  /** Leaf exports use original text, not the numeric analytics projection or localized formatter. */
-  readonly clipboardCell = (p: ProcessCellForExportParams<GridRow>): string => {
-    const field = p.column?.getColDef().field;
-    const value =
-      p.node?.data && !p.node.group && !p.node.footer && field
-        ? p.node.data[field]
-        : p.value;
-    return value == null ? '' : String(value);
-  };
+  readonly clipboardCell = rawResultCell;
 
   // ---- export and copy ----
 
@@ -964,6 +971,7 @@ export class ResultsGridComponent {
       ...(onlySelected ? { onlySelected: true } : {}),
       // The cell's own text (not the grouped or localized display text), so a spreadsheet gets the number.
       skipRowGroups: true,
+      shouldRowBeSkipped: skipResultSummaryRow,
       processCellCallback: this.clipboardCell,
     });
   }
@@ -1031,6 +1039,7 @@ export class ResultsGridComponent {
         fileName: `${this.exportName()}.xlsx`,
         columnKeys: this.exportColumnIds(),
         skipRowGroups: true,
+        shouldRowBeSkipped: skipResultSummaryRow,
         processCellCallback: this.clipboardCell,
       });
     }

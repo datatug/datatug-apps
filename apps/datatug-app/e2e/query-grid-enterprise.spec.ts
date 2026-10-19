@@ -1,5 +1,21 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Locator } from '@playwright/test';
 import { installCountryComparisonFixture } from './helpers/country-comparison-fixture';
+
+/** Wait for actual canvas stability, so ongoing initial animation cannot satisfy the filter assertion. */
+async function stableCanvas(canvas: Locator): Promise<Buffer> {
+  let previous: Buffer | undefined,
+    stable = 0;
+  await expect
+    .poll(async () => {
+      const next = await canvas.screenshot();
+      stable = previous?.equals(next) ? stable + 1 : 0;
+      previous = next;
+      return stable;
+    })
+    .toBeGreaterThanOrEqual(2);
+  if (!previous) throw new Error('Stable canvas required');
+  return previous;
+}
 
 // Licensed, captured-read regression: real native grid/group/chart controls, no public provider requests.
 const queryURL =
@@ -25,6 +41,12 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
     .first();
   await expect(grid.getByTestId('results-grid-count')).toContainText('17 rows');
   await expect(grid.getByTestId('results-grid-export-excel')).toBeVisible();
+  await expect
+    .poll(
+      async () =>
+        (await grid.locator('.ag-grid-viewport').boundingBox())?.height ?? 0,
+    )
+    .toBeGreaterThanOrEqual(240);
   await expect(grid.locator('.ag-column-drop-horizontal')).toBeVisible();
   await expect(grid.getByTestId('results-grid-analytics-scope')).toContainText(
     '17 loaded rows on page 1',
@@ -51,11 +73,14 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
     exact: true,
   });
   await aggregation.hover();
-  await page.getByRole('menuitem', { name: 'Sum', exact: true }).click();
+  await page.getByRole('menuitemradio', { name: 'Sum', exact: true }).click();
   const canadaGroup = grid
     .locator('.ag-row-group')
     .filter({ hasText: 'Canada' });
   await expect(canadaGroup.locator('[col-id="result_1"]')).toHaveText('3');
+  await grid.locator('.ag-grid-viewport').evaluate((el) => {
+    el.scrollLeft = 0;
+  });
   const first = grid
     .locator('.ag-row-group')
     .first()
@@ -90,7 +115,9 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
   await page.keyboard.press('Enter');
   const dialog = page.locator('.ag-chart').filter({ visible: true }).first();
   await expect(dialog.locator('canvas').first()).toBeVisible();
-  const before = await dialog.locator('canvas').first().screenshot();
+  const before = await stableCanvas(
+    dialog.locator('.ag-charts-canvas-container').first(),
+  );
   // The linked vendor chart follows filtering of held rows; it remains the same dialog.
   await grid
     .getByRole('searchbox', { name: 'Filter rows', exact: true })
@@ -99,11 +126,15 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
     '1 of 17 rows',
   );
   await expect(dialog.locator('canvas').first()).toBeVisible();
-  await expect
-    .poll(async () =>
-      before.equals(await dialog.locator('canvas').first().screenshot()),
-    )
-    .toBe(false);
+  // A specific public tooltip proves the linked chart's filtered category/value, beyond pixel differences.
+  await dialog.locator('.ag-charts-series-area').first().hover();
+  const tooltip = page.locator('.ag-charts-tooltip').filter({ visible: true });
+  await expect(tooltip).toContainText('Austria');
+  await expect(tooltip.locator('.ag-charts-tooltip-value')).toHaveText('2');
+  const after = await stableCanvas(
+    dialog.locator('.ag-charts-canvas-container').first(),
+  );
+  expect(before.equals(after)).toBe(false);
   await grid
     .getByRole('searchbox', { name: 'Filter rows', exact: true })
     .fill('');

@@ -283,6 +283,9 @@ export function resultColumnDef(
       ? `${column.name} (${column.type})`
       : column.name,
     valueFormatter: (p) => {
+      if (p.node?.group || p.node?.footer) {
+        return p.value == null ? '' : formatCell(String(p.value), kind, groupDigits);
+      }
       const raw = cellOf(p);
       return formatCell(raw == null ? raw : String(raw), kind, groupDigits);
     },

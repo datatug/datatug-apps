@@ -98,6 +98,7 @@ class GridStubComponent {
   readonly cellSelection = input<unknown>();
   readonly enableCharts = input<unknown>();
   readonly processCellForClipboard = input<unknown>();
+  readonly excelStyles = input<unknown>();
   readonly chartCreated = output<unknown>();
   readonly cellSelectionChanged = output<unknown>();
   readonly gridReady = output<unknown>();
@@ -167,6 +168,7 @@ describe('ResultsGridComponent', () => {
       expect(grid).toBeDefined();
       expect(cmp.enterprise()).toBe(false);
       expect(grid?.sideBar()).toBeUndefined();
+      expect(grid?.excelStyles()).toBeUndefined();
       expect(grid?.statusBar()).toBeUndefined();
       expect(grid?.rowGroupPanelShow()).toBeUndefined();
       expect(grid?.cellSelection()).toBeUndefined();
@@ -216,6 +218,7 @@ describe('ResultsGridComponent', () => {
         columnKeys: ['c0'],
         processCellCallback: expect.any(Function),
         skipRowGroups: true,
+        shouldRowBeSkipped: expect.any(Function),
       });
       cmp.exportExcel();
       expect(api.exportDataAsExcel).not.toHaveBeenCalled();
@@ -308,6 +311,7 @@ describe('ResultsGridComponent', () => {
         fileName: 'results.xlsx',
         columnKeys: ['c0'],
         skipRowGroups: true,
+        shouldRowBeSkipped: expect.any(Function),
         processCellCallback: expect.any(Function),
       });
     });
@@ -327,6 +331,8 @@ describe('ResultsGridComponent', () => {
       fixture.detectChanges();
       (grid as GridStubComponent).gridReady.emit({ api });
       expect(grid?.enableCellTextSelection()).toBe(false);
+      expect(grid?.excelStyles()).toEqual([{ id: 'cell', dataType: 'String' }]);
+      expect(el.classList.contains('dt-rg-enterprise')).toBe(true);
       cmp.chartSelectedRange();
       expect(api.createRangeChart).not.toHaveBeenCalled();
       api.getCellRanges.mockReturnValue([

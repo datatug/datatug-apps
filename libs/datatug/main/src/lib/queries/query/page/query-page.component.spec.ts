@@ -3470,6 +3470,7 @@ select (
       component.resultGridRows().map((row) => row['validation_status']),
     ).toEqual(['unknown', 'fail']);
     component.hostedStatusFilter.set('fail');
+    expect(component.resultGridAnalyticsScope()).toContain('1 loaded rows on page 1');
     expect(component.resultGridRows().map((row) => row['result_0'])).toEqual([
       '9',
     ]);

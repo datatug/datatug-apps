@@ -167,6 +167,13 @@ describe('resultColumnDef', () => {
     expect(rule({ value: undefined })).toBe(true);
     expect(rule({ value: '' })).toBe(false);
   });
+  it('blanks absent synthetic group values while retaining real database NULL', () => {
+    const formatter = def('decimal').valueFormatter as (p: unknown) => string;
+    expect(formatter({ node: { group: true }, value: undefined })).toBe('');
+    expect(formatter({ node: { footer: true }, value: null })).toBe('');
+    expect(formatter({ node: { group: true }, value: 12 })).toBe('12');
+    expect(formatter({ value: null })).toBe('null');
+  });
   it('filters numbers and dates by their value, not their text', () => {
     const num = RESULTS_GRID_COLUMN_TYPES['dtNumber'];
     const getNumber = num.filterValueGetter as (p: unknown) => unknown;

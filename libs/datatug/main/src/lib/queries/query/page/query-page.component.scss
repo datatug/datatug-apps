@@ -180,6 +180,9 @@
 .author-result-grid-viewport {
   height: 360px;
 }
+.result-grid-viewport:has(.dt-rg-enterprise) {
+  height: auto;
+}
 .result-author-data-enabled {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(15rem, 20rem);
