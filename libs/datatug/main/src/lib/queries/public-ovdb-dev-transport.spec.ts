@@ -30,6 +30,9 @@ describe('application-owned public OVDB development transport', () => {
     const cookies = { ...post, credentials: 'include' as const };
     await direct(url, cookies);
     expect(fetcher).toHaveBeenLastCalledWith(url, cookies);
+    const protectedHeaders = { ...post, headers: { 'X-API-Key': 'explicit-key' } };
+    await direct(url, protectedHeaders);
+    expect(fetcher).toHaveBeenLastCalledWith(url, protectedHeaders);
   });
 
   it('preserves the effective Request body, init overrides and abort signal', async () => {

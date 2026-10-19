@@ -1,6 +1,9 @@
 import { PUBLIC_OVDB_LOOPBACK_MODE, type PublicOvdbDevTransport } from '@sneat/datatug-semantic';
 export { PUBLIC_OVDB_LOOPBACK_MODE, type PublicOvdbDevTransport } from '@sneat/datatug-semantic';
 
+const publicHeaders = new Set(['accept', 'content-type', 'ovdb-page-snapshot',
+  'ovdb-page-offset', 'ovdb-page-limit', 'ovdb-page-close']);
+
 const routes: Readonly<Record<string, string>> = {
   'https://cloud.openvaultdb.com': '/__datatug_public_ovdb/cloud',
   'https://ovdb.demodb.dev': '/__datatug_public_ovdb/demodb',
@@ -55,6 +58,7 @@ export function createPublicOvdbDevFetch(
       !allowed ||
       headers.has('Authorization') ||
       headers.has('Cookie') ||
+      [...headers.keys()].some(name => !publicHeaders.has(name)) ||
       credentials === 'include'
     )
       return fetcher(input, init);
