@@ -68,6 +68,7 @@ import {
 
 interface NewProjectDraft {
   readonly demoContinuation?: string;
+  readonly billingIntent?: ProjectBillingIntent;
   readonly source?: GithubProjectCopySource;
   readonly returnUrl?: string;
   readonly actorID?: string;
@@ -307,6 +308,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             // A different account must not inherit another user's draft.
             clearNewProjectDraft();
             this.restoredDraft.set(undefined);
+            this.billingIntent.set(this.route.snapshot.queryParamMap.get('billingIntent') === 'space_business' ? 'space_business' : 'personal_pro');
             this.title.set('');
             this.githubFolder.set('datatug');
             this.spaceTitle.set('');
@@ -1310,6 +1312,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.signInMessage.set(message);
   }
 
+  billingIntentChanged(value: unknown): void {
+    if (value !== 'personal_pro' && value !== 'space_business') return;
+    if (this.isSetupLocked() || this.isCreating() || this.isCreateRetryLocked()) return;
+    this.billingIntent.set(value);
+    this.saveDraft();
+  }
+
   private saveDraft(): boolean {
     try {
       if (this.demoContinuation && this.userID() && this.copySource()) {
@@ -1320,6 +1329,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       }
       const draft: NewProjectDraft = {
         demoContinuation: this.demoContinuation,
+        billingIntent: this.billingIntent(),
         source: this.copySource(),
         returnUrl: this.returnUrl,
         actorID: this.userID(),
@@ -1425,6 +1435,8 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     if (storeParam === null) this.store.set(draft.store);
     this.copySource.set(draft.source);
     this.demoContinuation = draft.demoContinuation;
+    if (!this.route.snapshot.queryParamMap.get('billingIntent'))
+      this.billingIntent.set(draft.billingIntent ?? 'personal_pro');
     this.title.set(draft.title);
     this.githubFolder.set(draft.githubFolder);
     this.githubRepositoryURL.set(draft.githubRepositoryURL ?? '');
@@ -1476,6 +1488,7 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
     const draft = value as Partial<NewProjectDraft>;
     return {
       demoContinuation: validContinuationToken(draft.demoContinuation) ? draft.demoContinuation : undefined,
+      billingIntent: draft.billingIntent === 'space_business' ? 'space_business' : 'personal_pro',
       source: readGithubProjectCopySource(draft.source),
       returnUrl: safeNewProjectReturnUrl(draft.returnUrl),
       actorID:

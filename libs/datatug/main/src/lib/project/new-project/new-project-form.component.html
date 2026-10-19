@@ -81,6 +81,19 @@
       <i>Create from the demo template in a GitHub repository where you can write. DataTug keeps GitHub credentials on the server.</i>
     }
   </ion-item-divider>
+  <ion-item>
+    <ion-label>Project plan</ion-label>
+    <ion-select
+      aria-label="Project plan"
+      [ngModel]="billingIntent()"
+      (ngModelChange)="billingIntentChanged($event)"
+      [disabled]="isCreating() || isCreateRetryLocked()"
+      interface="popover"
+    >
+      <ion-select-option value="personal_pro">Personal Pro</ion-select-option>
+      <ion-select-option value="space_business">Space Business</ion-select-option>
+    </ion-select>
+  </ion-item>
   <ion-item
     ><ion-label>Space</ion-label
     ><ion-select

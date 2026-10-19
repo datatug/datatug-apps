@@ -24,6 +24,77 @@ function configure(providers: Provider[] = []): HttpTestingController {
 }
 
 describe('DatatugApiService', () => {
+  const preview = 'https://datatug-cloud-preview-354fvnqbaa-ey.a.run.app/v0/';
+  const identity = 'https://identity.test/v0/';
+
+  it.each([
+    ['GET', 'datatug/github/oauth/repositories'],
+    ['POST', 'datatug/github/oauth/start'],
+    ['POST', 'datatug/github/oauth/complete'],
+    ['POST', 'datatug/github/oauth/resolve-repository'],
+    ['POST', 'datatug/github/authorization/start'],
+    ['POST', 'datatug/github/authorization/complete'],
+  ])('keeps TEST %s %s on the injected authoritative service', (method, endpoint) => {
+    const http = configure([
+      { provide: SneatApiBaseUrl, useValue: identity },
+      { provide: DatatugApiBaseUrl, useValue: preview },
+    ]);
+    const api = TestBed.inject(DatatugApiService);
+    const body = { operationID: 'operation', state: 'state' };
+    (method === 'GET' ? api.get(endpoint) : api.post(endpoint, body)).subscribe();
+    const request = http.expectOne(identity + endpoint);
+    expect(request.request.method).toBe(method);
+    expect(request.request.headers.get('Authorization')).toBe('Bearer token');
+    if (method === 'POST') expect(request.request.body).toEqual(body);
+    request.flush({});
+    http.verify();
+  });
+
+  it.each([
+    ['POST', 'datatug/projects/create_project'],
+    ['GET', 'datatug/projects/create_project/status'],
+    ['GET', 'datatug/github/projects/pending-setups'],
+    ['GET', 'datatug/projects/get_project'],
+    ['GET', 'datatug/github/repositories'],
+    ['POST', 'datatug/github/oauth/repositories'],
+    ['GET', 'datatug/github/oauth/start'],
+    ['GET', 'datatug/github/oauth/repositories/extra'],
+    ['GET', 'datatug/github/oauth/repositories?redirect=https://other.test'],
+  ])('keeps non-identity TEST %s %s on the scoped preview', (method, endpoint) => {
+    const http = configure([
+      { provide: SneatApiBaseUrl, useValue: identity },
+      { provide: DatatugApiBaseUrl, useValue: preview },
+    ]);
+    const api = TestBed.inject(DatatugApiService);
+    (method === 'GET' ? api.get(endpoint) : api.post(endpoint, {})).subscribe();
+    http.expectOne(preview + endpoint).flush({});
+    http.verify();
+  });
+
+  it('does not change identity routes for another overridden DataTug base', () => {
+    const http = configure([
+      { provide: SneatApiBaseUrl, useValue: identity },
+      { provide: DatatugApiBaseUrl, useValue: 'https://datatug.test/v0/' },
+    ]);
+    TestBed.inject(DatatugApiService).get('datatug/github/oauth/repositories').subscribe();
+    http.expectOne('https://datatug.test/v0/datatug/github/oauth/repositories').flush({});
+    http.verify();
+  });
+
+  it('retains the authoritative token-refresh path for TEST identity reads', async () => {
+    const http = configure([
+      { provide: SneatApiBaseUrl, useValue: identity },
+      { provide: DatatugApiBaseUrl, useValue: preview },
+    ]);
+    const response = firstValueFrom(TestBed.inject(DatatugApiService).get('datatug/github/oauth/repositories'));
+    http.expectOne(identity + 'datatug/github/oauth/repositories').flush({}, { status: 401, statusText: 'Unauthorized' });
+    const retry = http.expectOne(identity + 'datatug/github/oauth/repositories');
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer token');
+    retry.flush({ repositories: [] });
+    await expect(response).resolves.toEqual({ repositories: [] });
+    http.verify();
+  });
+
   it('calls the default Sneat API origin when no base URL is configured', () => {
     const http = configure();
     const api = TestBed.inject(DatatugApiService);
