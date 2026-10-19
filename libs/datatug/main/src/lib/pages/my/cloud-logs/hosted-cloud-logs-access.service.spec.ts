@@ -17,15 +17,16 @@ import {
 } from './hosted-cloud-logs-access.service';
 
 describe('HostedCloudLogsAccessService', () => {
-  let authState: BehaviorSubject<{
-    status: string;
-    loadingPhase?: string;
+  type TestAuthState = {
+    status: 'authenticating' | 'authenticated' | 'notAuthenticated';
+    loadingPhase?: 'checking-session' | 'getting-token' | 'ready' | 'failed';
     user?: { uid: string };
-  }>;
+  };
+  let authState: BehaviorSubject<TestAuthState>;
   const api = { list: vi.fn() };
 
   beforeEach(() => {
-    authState = new BehaviorSubject({
+    authState = new BehaviorSubject<TestAuthState>({
       status: 'authenticating',
       loadingPhase: 'checking-session',
     });
@@ -166,7 +167,9 @@ describe('HostedCloudLogsAccessService', () => {
 
   it('preserves the requested destination when signed out', async () => {
     TestBed.resetTestingModule();
-    authState = new BehaviorSubject({ status: 'notAuthenticated' });
+    authState = new BehaviorSubject<TestAuthState>({
+      status: 'notAuthenticated',
+    });
     api.list.mockReset();
     TestBed.configureTestingModule({
       providers: [
@@ -190,7 +193,7 @@ describe('HostedCloudLogsAccessService', () => {
 
   it('keeps an OAuth callback unconsumed while denied, then allows an explicit recheck', async () => {
     TestBed.resetTestingModule();
-    authState = new BehaviorSubject({
+    authState = new BehaviorSubject<TestAuthState>({
       status: 'authenticated',
       user: { uid: 'authorized-user' },
     });
@@ -235,7 +238,7 @@ describe('HostedCloudLogsAccessService', () => {
 
   it('sends failed authentication to the recovery form without probing', async () => {
     TestBed.resetTestingModule();
-    authState = new BehaviorSubject({
+    authState = new BehaviorSubject<TestAuthState>({
       status: 'authenticating',
       loadingPhase: 'failed',
     });
@@ -262,7 +265,9 @@ describe('HostedCloudLogsAccessService', () => {
 
   it('redirects authenticated state without a UID to local recovery without probing', async () => {
     TestBed.resetTestingModule();
-    authState = new BehaviorSubject({ status: 'authenticated' });
+    authState = new BehaviorSubject<TestAuthState>({
+      status: 'authenticated',
+    });
     api.list.mockReset();
     TestBed.configureTestingModule({
       providers: [
@@ -315,7 +320,7 @@ describe('HostedCloudLogsAccessService', () => {
 
   it('waits for cold auth then probes once and preserves the OAuth completion query', async () => {
     TestBed.resetTestingModule();
-    authState = new BehaviorSubject({
+    authState = new BehaviorSubject<TestAuthState>({
       status: 'authenticating',
       loadingPhase: 'checking-session',
     });
