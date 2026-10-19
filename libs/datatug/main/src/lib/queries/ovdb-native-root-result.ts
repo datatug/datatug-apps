@@ -82,10 +82,7 @@ export function validateNativeRootResult(
         );
       types.add(typeof value);
     }
-    if (
-      types.size > 1 &&
-      (declaredType === undefined || declaredType === 'unknown')
-    )
+    if (types.size > 1 && declaredType === undefined)
       throw new Error(
         'OVDB cross-database column has inconsistent value types.',
       );
