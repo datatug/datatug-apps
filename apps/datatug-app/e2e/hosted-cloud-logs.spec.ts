@@ -2,6 +2,8 @@ import { expect, test } from '@playwright/test';
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';
+const authOrigin = process.env['DATATUG_LOGS_AUTH_ORIGIN'] ?? 'http://127.0.0.1:9099';
+const firestoreOrigin = process.env['DATATUG_LOGS_FIRESTORE_ORIGIN'] ?? 'http://127.0.0.1:8180';
 const projectID = 'demo-local-sneat-app';
 
 test('signed-out direct visit redirects to login and preserves the hosted logs destination', async ({
@@ -16,16 +18,16 @@ test('signed-out direct visit redirects to login and preserves the hosted logs d
 
 test('signed-in user connects, queries, removes a view and revokes the Google grant', async ({
   page,
-}) => {
+}, testInfo) => {
   const seededUser = await page.request.post(
-    'http://127.0.0.1:9099/identitytoolkit.googleapis.com/v1/accounts:signUp?key=e2e',
+    `${authOrigin}/identitytoolkit.googleapis.com/v1/accounts:signUp?key=e2e`,
     { data: { email, password, returnSecureToken: true } },
   );
   expect(seededUser.ok()).toBe(true);
   const { localId } = (await seededUser.json()) as { localId: string };
   const personalID = `personal_${localId}`;
   const userDocument = await page.request.patch(
-    `http://127.0.0.1:8180/v1/projects/${projectID}/databases/(default)/documents/users/${localId}`,
+    `${firestoreOrigin}/v1/projects/${projectID}/databases/(default)/documents/users/${localId}`,
     {
       data: {
         fields: {
@@ -60,7 +62,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   );
   expect(userDocument.ok()).toBe(true);
   const personalSpace = await page.request.patch(
-    `http://127.0.0.1:8180/v1/projects/${projectID}/databases/(default)/documents/spaces/${personalID}`,
+    `${firestoreOrigin}/v1/projects/${projectID}/databases/(default)/documents/spaces/${personalID}`,
     {
       data: {
         fields: {
@@ -209,11 +211,12 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
               orderId: 'order-4',
               correlationId: 'corr-9',
               service: 'billing-api',
-              fields: { order_id: 'order-4' },
+              fields: { order_id: 'order-4', nested: { status: 'failed' } },
               raw: {
                 jsonPayload: {
                   order_id: 'order-4',
                   detail: 'Synthetic failure evidence',
+                  untrusted: '<img src=x onerror=alert(1)>',
                 },
               },
               sourceRef: 'versioned:fixture:entry-1',
@@ -307,8 +310,31 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await expect(
     page.getByRole('status').filter({ hasText: 'result cap reached' }),
   ).toBeVisible();
-  await page.getByRole('button', { name: /Invoice request failed/ }).click();
+  await page.getByRole('gridcell', { name: /Invoice request failed/ }).press('Enter');
   await expect(page.getByText('Synthetic failure evidence')).toBeVisible();
+  await expect(page.locator('.details pre').last()).toContainText('<img src=x onerror=alert(1)>');
+  await expect(page.locator('.details img')).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Structured fields' })).toBeVisible();
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write']);
+  await page.getByRole('button', { name: 'Copy evidence reference' }).click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe('versioned:fixture:entry-1');
+  const grid = page.getByRole('grid', { name: 'Cloud Logging entries', exact: true });
+  await expect(grid).toHaveAttribute('aria-describedby', 'cloud-log-grid-help');
+  await expect(grid.locator('.ag-row').first()).toHaveAttribute('aria-selected', 'true');
+  const messageCell = grid.getByRole('gridcell', { name: 'Invoice request failed', exact: true });
+  await messageCell.press('Space');
+  await expect(grid.locator('.ag-row').first()).toHaveAttribute('aria-selected', 'false');
+  await expect(page.locator('.details')).toHaveCount(0);
+  await messageCell.press('Space');
+  await expect(grid.locator('.ag-row').first()).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('.details')).toContainText('Synthetic failure evidence');
+  await expect(grid.getByRole('columnheader')).toHaveText(['Timestamp', 'Severity', 'Service', 'Source', 'Message']);
+  await grid.screenshot({ path: testInfo.outputPath('cloud-log-grid-desktop.png') });
+  await page.setViewportSize({ width: 375, height: 812 });
+  expect(await grid.evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(375);
+  await grid.screenshot({ path: testInfo.outputPath('cloud-log-grid-mobile.png') });
+  await expect(page.locator('a[href*="northwind"]')).toHaveCount(0);
+  await page.setViewportSize({ width: 1280, height: 720 });
   await expect(
     page.getByText(/Record navigation requires a destination/),
   ).toBeVisible();

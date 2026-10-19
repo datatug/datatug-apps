@@ -1,8 +1,26 @@
+import { Component, input, output } from '@angular/core';
+import { AgGridAngular } from 'ag-grid-angular';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { DemoLogsPageComponent } from './demo-logs-page.component';
+
+@Component({
+  // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
+  selector: 'ag-grid-angular',
+  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="selectionChanged.emit({ api: { getSelectedRows: selectedRows(row) } })">{{ row.message }}</button> }`,
+})
+class GridStubComponent {
+  readonly rowData = input<Array<Record<string, unknown>>>([]);
+  readonly columnDefs = input<unknown>();
+  readonly defaultColDef = input<unknown>();
+  readonly rowSelection = input<unknown>();
+  selectedRows(row: Record<string, unknown>) { return () => [row]; }
+  readonly selectionChanged = output<unknown>();
+  readonly gridReady = output<unknown>();
+  readonly cellKeyDown = output<unknown>();
+}
 
 const descriptor = {
   id: 'northwind_evidence',
@@ -31,6 +49,9 @@ async function setup() {
     if (url.endsWith('/v1/databases/northwind_evidence/query')) return new Response(JSON.stringify({ records: [evidence] }), { status: 200 });
     return new Response('missing', { status: 404 });
   }));
+  TestBed.overrideComponent(DemoLogsPageComponent, {
+    remove: { imports: [AgGridAngular] }, add: { imports: [GridStubComponent] },
+  });
   await TestBed.configureTestingModule({
     imports: [DemoLogsPageComponent],
     providers: [provideRouter([]), {
@@ -42,7 +63,7 @@ async function setup() {
   fixture.detectChanges();
   await vi.waitFor(async () => {
     await fixture.whenStable();
-    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.timeline li').length).toBe(1);
+    expect((fixture.nativeElement as HTMLElement).querySelectorAll('.grid-entry').length).toBe(1);
   });
   return { fixture, requests, el: fixture.nativeElement as HTMLElement, orderParams, route };
 }
@@ -59,12 +80,22 @@ describe('DemoLogsPageComponent', () => {
     const query = JSON.parse(requests[1].body ?? '{}') as { where: Array<{ field: string; value: string }> };
     expect(query.where).toContainEqual({ field: 'order_id', op: '==', value: '11039' });
     expect(el.textContent).toContain('Carrier returned HTTP 503');
-    const entry = el.querySelector('.entry') as HTMLButtonElement;
+    const entry = el.querySelector('.grid-entry') as HTMLButtonElement;
     entry.click();
     await fixture.whenStable();
     expect(el.querySelector('.entry-details')?.textContent).toContain('nw-11039-f1');
     expect(el.querySelector('pre')?.textContent).toContain('CarrierClient.createLabel');
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
+  });
+
+  it('keeps evidence visible and announces clipboard failures', async () => {
+    const { fixture, el } = await setup();
+    vi.stubGlobal('navigator', { clipboard: { writeText: vi.fn().mockRejectedValue(new Error('denied')) } });
+    await fixture.componentInstance.copyReference(evidence);
+    await fixture.whenStable();
+    expect(el.querySelector('[role="alert"]')?.textContent).toContain('Clipboard access is unavailable');
+    expect(el.querySelector('ag-grid-angular')).not.toBeNull();
+    expect(fixture.componentInstance.state()).toBe('ready');
   });
 
   it('keeps a local source token in memory and refuses to send it to a remote URL', async () => {
@@ -87,7 +118,7 @@ describe('DemoLogsPageComponent', () => {
     fixture.detectChanges();
     expect(el.querySelector('h1')?.textContent).toContain('11039');
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
-    (el.querySelector('.entry') as HTMLButtonElement).click();
+    (el.querySelector('.grid-entry') as HTMLButtonElement).click();
     fixture.detectChanges();
     expect(el.querySelectorAll('a[href*="record=11039"]').length).toBe(2);
 

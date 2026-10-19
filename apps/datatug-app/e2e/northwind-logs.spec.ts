@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { createServer } from 'node:net';
 
 const appOrigin = `http://127.0.0.1:${process.env['DATATUG_LOGS_E2E_PORT'] ?? '4342'}`;
-const adapterOrigin = 'http://127.0.0.1:6832';
+const adapterPort = Number(process.env['DATATUG_LOGS_ADAPTER_PORT'] ?? '6832');
+const adapterOrigin = `http://127.0.0.1:${adapterPort}`;
 const demoProject = process.env['DATATUG_DEMO_PROJECT_DIR'];
 const adapterRepo = process.env['DALGO2LOGS_REPO'];
 const adapterUrl = `${adapterOrigin}/v1/databases/northwind_evidence`;
@@ -25,7 +26,7 @@ async function assertAdapterPortIsFree(): Promise<void> {
         ),
       );
     });
-    server.listen(6832, '127.0.0.1', () => resolveListen());
+    server.listen(adapterPort, '127.0.0.1', () => resolveListen());
   });
   await new Promise<void>((resolveClose, rejectClose) => {
     server.close((error) => (error ? rejectClose(error) : resolveClose()));
@@ -105,6 +106,7 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     ];
     const tempConfig = {
       ...adapterConfig,
+      listen: `127.0.0.1:${adapterPort}`,
       sources: { ...adapterConfig.sources, corsOrigins },
     };
 
@@ -180,9 +182,18 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     if (scratchDir) rmSync(scratchDir, { recursive: true, force: true });
   });
 
+  test.beforeEach(async ({ page }) => {
+    if (adapterPort !== 6832) {
+      await page.route('http://127.0.0.1:6832/**', async route => {
+        const response = await route.fetch({ url: route.request().url().replace('http://127.0.0.1:6832', adapterOrigin) });
+        await route.fulfill({ response });
+      });
+    }
+  });
+
   test('filters six real fixture events, narrows severity, opens source details, and handles noise/empty orders', async ({
     page,
-  }) => {
+  }, testInfo) => {
     const response = await page.request.get(adapterUrl);
     expect(response.ok()).toBe(true);
     expect(await response.text()).toContain('northwind_evidence');
@@ -197,8 +208,10 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     await expect(
       page.getByRole('status').filter({ hasText: '6 entries' }),
     ).toBeVisible();
-    const timeline = page.locator('.timeline');
-    await expect(timeline.locator('li')).toHaveCount(6);
+    const timeline = page.getByRole('grid', { name: 'Log evidence entries', exact: true });
+    await expect(timeline).toHaveAttribute('aria-describedby', 'log-grid-help');
+    await expect(timeline.getByRole('columnheader')).toHaveText(['Timestamp', 'Severity', 'Service', 'Source', 'Message']);
+    await expect(timeline.locator('.ag-row')).toHaveCount(6);
     await expect(timeline).toContainText(
       'United Package label request failed with HTTP 503',
     );
@@ -208,7 +221,7 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     );
 
     await timeline
-      .getByRole('button', {
+      .getByRole('row', {
         name: /ERROR.*United Package label request failed with HTTP 503/,
       })
       .click();
@@ -223,7 +236,7 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     );
 
     await timeline
-      .getByRole('button', {
+      .getByRole('row', {
         name: /WARN.*Retryable carrier failure treated as terminal/,
       })
       .click();
@@ -231,27 +244,46 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
       'retry_budget=0',
     );
 
+    await timeline.screenshot({ path: testInfo.outputPath('log-grid-desktop.png') });
+    await page.setViewportSize({ width: 375, height: 812 });
+    await expect(timeline).toBeVisible();
+    expect(await timeline.evaluate(element => element.getBoundingClientRect().right)).toBeLessThanOrEqual(375);
+    await timeline.screenshot({ path: testInfo.outputPath('log-grid-mobile.png') });
+    const focusedCell = timeline.locator('.ag-row').first().locator('[role="gridcell"]').first();
+    await focusedCell.focus();
+    await focusedCell.press('Enter');
+    const selectedRow = timeline.locator('.ag-row').first();
+    await expect(selectedRow).toHaveAttribute('aria-selected', 'true');
+    await expect(timeline.locator('.ag-row[aria-selected="true"]')).toHaveCount(1);
+    await expect(page.locator('.entry-details')).toContainText('Shipment update deferred');
+    await focusedCell.press('Space');
+    await expect(selectedRow).toHaveAttribute('aria-selected', 'false');
+    await expect(page.locator('.entry-details')).toHaveCount(0);
+    await focusedCell.press('Space');
+    await expect(selectedRow).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.entry-details')).toContainText('Shipment update deferred');
+    await page.setViewportSize({ width: 1280, height: 720 });
     const severity = page.getByLabel('Severity');
     await severity.selectOption('ERROR');
     await page.getByRole('button', { name: 'Find evidence' }).click();
-    await expect(page.locator('.timeline li')).toHaveCount(1);
-    await expect(page.locator('.timeline')).toContainText('ERROR');
-    await expect(page.locator('.timeline')).not.toContainText('WARN');
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(1);
+    await expect(page.locator('.log-grid')).toContainText('ERROR');
+    await expect(page.locator('.log-grid')).not.toContainText('WARN');
 
     await severity.selectOption('WARN');
     await page.getByRole('button', { name: 'Find evidence' }).click();
-    await expect(page.locator('.timeline li')).toHaveCount(1);
-    await expect(page.locator('.timeline')).toContainText('retry_budget=0');
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(1);
+    await expect(page.locator('.log-grid')).toContainText('retry_budget=0');
 
     await severity.selectOption('');
     const sourceSettings = page.locator('details.source-settings');
     await sourceSettings.locator('summary').click();
     await sourceSettings.getByLabel('Collection').fill('carrier_events');
     await page.getByRole('button', { name: 'Find evidence' }).click();
-    await expect(page.locator('.timeline li')).toHaveCount(2);
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(2);
     await page
-      .locator('.timeline')
-      .getByRole('button', { name: /ERROR.*Carrier returned HTTP 503/ })
+      .locator('.log-grid')
+      .getByRole('row', { name: /ERROR.*Carrier returned HTTP 503/ })
       .click();
     await expect(page.locator('.entry-details').last()).toContainText(
       'at CarrierClient.createLabel(CarrierClient.java:91)',
@@ -264,7 +296,7 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     await expect(
       page.getByRole('heading', { level: 1, name: 'Order 11040 evidence' }),
     ).toBeVisible();
-    await expect(page.locator('.timeline li')).toHaveCount(1);
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(1);
 
     await page.getByLabel('Order ID').fill('99999');
     await page.getByRole('button', { name: 'Find evidence' }).click();
@@ -278,7 +310,7 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     page,
   }) => {
     await page.goto('/demo/logs?order=11039');
-    await expect(page.locator('.timeline li')).toHaveCount(6);
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(6);
 
     const orderLink = page.getByRole('link', { name: 'Open the order record' });
     await expect(orderLink).toHaveAttribute(
@@ -300,6 +332,6 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
         name: 'Why did order 11039 remain unshipped?',
       }),
     ).toBeVisible();
-    await expect(page.locator('.timeline li')).toHaveCount(6);
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(6);
   });
 });
