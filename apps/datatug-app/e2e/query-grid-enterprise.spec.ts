@@ -54,7 +54,7 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
         (await grid.locator('.ag-grid-viewport').boundingBox())?.height ?? 0,
     )
     .toBeGreaterThanOrEqual(240);
-  await expect(grid.locator('.ag-column-drop-horizontal')).toBeVisible();
+  await expect(grid.locator('.ag-column-drop-horizontal-rowgroup')).toBeVisible();
   await expect(grid.getByTestId('results-grid-analytics-scope')).toContainText(
     '17 loaded rows on page 1',
   );
@@ -80,7 +80,7 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
     exact: true,
   });
   await aggregation.hover();
-  await page.getByRole('menuitemradio', { name: 'Sum', exact: true }).click();
+  await page.getByRole('menuitemcheckbox', { name: 'Sum', exact: true }).click();
   const canadaGroup = grid
     .locator('.ag-row-group')
     .filter({ hasText: 'Canada' });
