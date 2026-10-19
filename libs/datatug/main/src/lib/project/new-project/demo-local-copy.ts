@@ -3,11 +3,13 @@ export const shellQuote = (value: string): string => "'" + value.replaceAll("'",
 export function localCopyCommands(dataset: string, file: string, folder: string, projectID: string): string | undefined {
   if (!/^[a-z][a-z0-9-]{0,79}$/.test(folder) || !/^[a-z][a-z0-9-]{0,79}$/.test(projectID) ||
     !file.startsWith('/') || file.length > 4096 || /[\r\n\0]/.test(file)) return undefined;
+  const dbName = `${/^[a-z][a-z0-9-]{0,63}$/.test(dataset) ? dataset : 'demo'}-browser`;
   return [
     `git clone https://github.com/datatug/datatug-demo-project.git ${folder}`,
     `cd ${folder}/demo-project-1`,
     `datatug projects add --project ${projectID} --directory "$PWD"`,
-    `datatug db add --project ${projectID} --db ${shellQuote(file)} --env local --name ${/^[a-z][a-z0-9-]{0,63}$/.test(dataset) ? dataset : 'demo'}-browser`,
+    `datatug db add --project ${projectID} --db ${shellQuote(file)} --env local --name ${dbName}`,
+    `datatug scan --project ${projectID} --env local --db ${dbName} --driver sqlite3 --path ${shellQuote(file)}`,
     'datatug serve --project "$PWD" --as local --role admin --allow-writes --open-browser',
   ].join('\n');
 }
