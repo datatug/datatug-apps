@@ -15,6 +15,7 @@
     "e2e/showcase-country-comparison.spec.ts",
     "e2e/showcase-tutorial-acceptance.spec.ts",
     "e2e/showcase-inspector-polish.spec.ts",
+    "e2e/query-grid-enterprise.spec.ts",
     "e2e/showcase-live-measurement.spec.ts",
     "e2e/showcase-routing-ab.spec.ts",
     "e2e/helpers/country-comparison-fixture.ts",

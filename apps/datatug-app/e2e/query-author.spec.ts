@@ -20,6 +20,49 @@ const gridRows = (page: Page): Locator =>
  */
 const dataCells = (row: Locator): Locator =>
   row.locator('[role="gridcell"][col-id^="result_"]');
+interface Box {
+  readonly top: number;
+  readonly bottom: number;
+  readonly left: number;
+  readonly right: number;
+}
+/** Where the results grid's own chrome and first result row are, in viewport pixels, and whether the grid pans sideways. */
+interface GridFold {
+  readonly toolbar: Box;
+  readonly header: Box;
+  readonly filter: Box;
+  readonly firstRow: Box;
+  readonly grid: Box;
+  /** Pixels from the toolbar's top to the first result row's top: everything the grid puts before row 1. */
+  readonly chromeBeforeFirstRow: number;
+  /** How far the centre columns extend past the grid's width (0 when the result fits without a horizontal scrollbar). */
+  readonly horizontalOverflow: number;
+}
+const gridFold = (page: Page): Promise<GridFold> =>
+  page.getByRole('grid').first().evaluate((gridElement): GridFold => {
+    const host = gridElement.closest('.dt-rg-host');
+    const box = (element: Element | null | undefined): Box => {
+      if (!element) throw new Error('results grid part not rendered');
+      const { top, bottom, left, right } = element.getBoundingClientRect();
+      return { top, bottom, left, right };
+    };
+    const toolbar = box(host?.parentElement?.querySelector('[data-testid="results-grid-toolbar"]'));
+    const firstRow = box(host?.querySelector('.ag-row[row-index="0"]'));
+    const grid = box(host?.querySelector('.ag-root'));
+    const panning = host?.querySelector<HTMLElement>('.ag-body-horizontal-scroll-viewport');
+    return {
+      toolbar,
+      header: box(host?.querySelector('.ag-header-row-column')),
+      filter: box(host?.querySelector('.ag-header-row-filter')),
+      firstRow,
+      grid,
+      chromeBeforeFirstRow: firstRow.top - toolbar.top,
+      horizontalOverflow: Math.max(
+        firstRow.right - grid.right,
+        panning ? panning.scrollWidth - panning.clientWidth : 0,
+      ),
+    };
+  });
 /** Cell text as the data: the grid shows numbers with locale grouping ("3,290"); the fixtures hold 3290. */
 const cellData = (texts: string[]): string[] =>
   texts.map((text) => (/^-?\d{1,3}(,\d{3})+$/u.test(text) ? text.replace(/,/gu, '') : text));
@@ -3222,19 +3265,26 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(invoiceAuthorPage.locator(
       '.author-results > .ion-padding-horizontal > sneat-datatug-source-rights-notice',
     )).toHaveCount(1);
-    // The shared results grid (#359/#366) carries its own chrome above the first row (row filter, density, column chooser
-    // and export buttons, a floating-filter row), so at 1280x720 the first row's bottom is no longer <= 698 without
-    // scrolling (848 measured). What still has to hold: the results toolbar is on screen and the first row is reachable.
-    await expect(page.getByRole('searchbox', { name: 'Filter rows' })).toBeInViewport();
+    // The shared results grid carries its own chrome before row 1 (toolbar 65px, column header 64px, floating-filter row 40px
+    // = 171px, measured on this page at 1280x720 in Chromium), so the first row is no longer above 698px without scrolling
+    // here: its bottom was 828.4 (848.4 with the former 64px filter row). Ratchet that, before any scrolling: the column
+    // header is on screen, the chrome does not grow, the first row stays under the measured ceiling and the three-column
+    // result fits the grid without a horizontal scrollbar (it overflowed by 8.4px with the 61px row-number column).
+    const fold = await gridFold(page);
+    expect(fold.header.top, 'column header starts inside the viewport').toBeLessThan(720);
+    expect(fold.header.bottom - fold.header.top).toBeLessThanOrEqual(64);
+    expect(fold.filter.bottom - fold.filter.top).toBeLessThanOrEqual(40);
+    expect(fold.chromeBeforeFirstRow, 'toolbar + header + filter row before row 1').toBeLessThanOrEqual(175);
+    expect(fold.firstRow.bottom, 'first result row bottom without scrolling').toBeLessThanOrEqual(835);
+    expect(fold.horizontalOverflow, 'three-column result fits the grid width').toBeLessThanOrEqual(0.5);
     await rows.nth(1).evaluate((row) => row.scrollIntoView({ block: 'center' }));
     const firstRowBounds = await rows.nth(1).evaluate((row) => {
       const bounds = row.getBoundingClientRect();
       return { top: bounds.top, bottom: bounds.bottom };
     });
     expect(firstRowBounds.top).toBeGreaterThanOrEqual(0);
-    expect(firstRowBounds.bottom).toBeLessThanOrEqual(698);
-    // Flex column widths can overlap the grid border by a pixel or two (0.985 measured with the grid's pinned columns).
-    await expect(rows.nth(1)).toBeInViewport({ ratio: 0.98 });
+    expect(firstRowBounds.bottom).toBeLessThanOrEqual(720);
+    await expect(rows.nth(1)).toBeInViewport({ ratio: 0.999 });
     if (originalViewport) await page.setViewportSize(originalViewport);
   }
   expect(errors).toEqual([]);
@@ -4269,13 +4319,20 @@ test('query workspace clarity preserves active context, inspected row and explic
   console.log('clarity first row geometry', geometry);
   await page.screenshot({ path: testInfo.outputPath('clarity-desktop.png') });
   testInfo.annotations.push({ type: 'screenshot', description: `clarity-desktop.png: expected the selected Related tab and first result row visible at1280x720; observed first row top${geometry.top}/bottom${geometry.bottom}, with every context tab reachable in the preceding bounds assertions.` });
-  // The grid's own chrome (toolbar, floating-filter row) now sits above the first row (see the 1280x720 check above): the
-  // toolbar is on screen at scrollTop 0 and the first row is reachable.
+  // Measured at 1280x720, scrollTop 0, Chromium: toolbar 65px + column header 64px + floating-filter row 40px = 171px before
+  // row 1, whose bottom is 707.4 (it was 731.4 with a 64px filter row and 8.4px of horizontal overflow). The first inspected
+  // row must be fully on screen without scrolling, so nothing here scrolls before the assertions.
+  const fold = await gridFold(page);
+  expect(fold.header.top, 'column header is inside the viewport').toBeGreaterThanOrEqual(0);
+  expect(fold.header.bottom, 'column header is fully inside the viewport').toBeLessThanOrEqual(720);
+  expect(fold.chromeBeforeFirstRow, 'toolbar + header + filter row before row 1').toBeLessThanOrEqual(175);
+  expect(fold.firstRow.bottom, 'first result row bottom without scrolling').toBeLessThanOrEqual(712);
+  expect(fold.horizontalOverflow, 'two-column result fits the grid width').toBeLessThanOrEqual(0.5);
   await expect(page.getByRole('searchbox', { name: 'Filter rows' })).toBeInViewport();
-  await firstRow.evaluate((row) => row.scrollIntoView({ block: 'center' }));
   await expect(firstRow).toBeInViewport({ ratio: 0.999 });
   await tabs.locator('ion-segment-button[value="tugql"]').click();
-  expect(await author.locator('.cm-scroller').evaluate(element => element.clientHeight)).toBeGreaterThan(160);
+  // The editor appears with the tab transition: poll its height instead of reading it on the click's tick (0 then).
+  await expect.poll(() => author.locator('.cm-scroller').evaluate(element => element.clientHeight)).toBeGreaterThan(160);
   await tabs.locator('ion-segment-button[value="related"]').click();
   await page.setViewportSize({ width: 390, height: 844 });
   await page.locator('#workspace-jump-to-results').click();
