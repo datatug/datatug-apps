@@ -57,12 +57,27 @@ export function tutorialSteps(board: Board): readonly TutorialStep[] {
         });
     }
   }
-  steps.push({
-    title: 'Explore another source',
-    detail: 'Each source needs its own admitted execution and rights.',
-    limitation:
-      'Adding a second source is unavailable until independent execution and composition are supported. Chinook billing is available in its own inspectable tab; it is not combined with the Northwind chart.',
-  });
+  const paired = cards.some(
+    (card) =>
+      card.widget?.name === 'chart' &&
+      !!(card.widget.data as ChartWidgetDef).chart.series,
+  );
+  steps.push(
+    paired
+      ? {
+          title: 'Explore shared country labels',
+          detail:
+            'Compare separate Northwind and Chinook customer records from one server result. Select a country to inspect orders shipped there; Clear restores the held Orders rows.',
+          limitation:
+            'Country labels are exact. Customer records are not shared people, and shipping country is a separate dimension; UK is not United Kingdom.',
+        }
+      : {
+          title: 'Explore another source',
+          detail: 'Each source needs its own admitted execution and rights.',
+          limitation:
+            'Adding a second source is unavailable until independent execution and composition are supported. Chinook billing is available in its own inspectable tab; it is not combined with the Northwind chart.',
+        },
+  );
   return steps;
 }
 

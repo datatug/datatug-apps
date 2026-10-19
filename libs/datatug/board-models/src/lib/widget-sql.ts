@@ -18,6 +18,8 @@ export const BOARD_WIDGET_NAME_SQL = 'SQL' as const;
 export interface SQLWidgetSettings {
   /** References a `QueryDef` (query.go) by id within the same project. */
   queryId: string;
+  /** Presentation only: never a query parameter or an execution input. */
+  presentationFilter?: { selectionId: string; column: string };
   /** Binds the referenced query's parameters. */
   parameters?: WidgetParameterBinding[];
 }

@@ -1,8 +1,12 @@
+import type { ChartSeries } from '@datatug/board-models';
+import { prepareGroupedBars, type GroupedBars } from './grouped-bars';
 import {
   ChangeDetectionStrategy,
   Component,
   ElementRef,
   Input,
+  Output,
+  EventEmitter,
   OnChanges,
   SimpleChanges,
   ViewChild,
@@ -22,7 +26,8 @@ import type { FederatedQueryResult } from '../../../../queries/federated-query-e
 
 export interface CategoryBarFields {
   readonly categoryColumn: string;
-  readonly measureColumn: string;
+  readonly measureColumn?: string;
+  readonly series?: readonly ChartSeries[];
   readonly title: string;
   readonly unit?: string;
 }
@@ -47,7 +52,7 @@ export function prepareCategoryBars(
   if (new Set(names).size !== names.length)
     return { ok: false, message: 'This result has duplicate column names.' };
   const categoryIndex = names.indexOf(fields.categoryColumn);
-  const measureIndex = names.indexOf(fields.measureColumn);
+  const measureIndex = names.indexOf(fields.measureColumn ?? '');
   if (categoryIndex < 0 || measureIndex < 0 || categoryIndex === measureIndex) {
     return {
       ok: false,
@@ -126,12 +131,32 @@ export class HeldResultPresentationComponent implements OnChanges {
   @Input() defaultView: 'chart' | 'grid' = 'chart';
   /** Parent owns the row/grid switch; bar clicks inspect this held snapshot in place. */
   @Input() chartOnly = false;
+  /** The enclosing board card already supplies the visible title and purpose. */
+  @Input() embedded = false;
+  @Input() selectionEnabled = false;
+  @Input() selectedCategory: string | null = null;
+  @Output() readonly categorySelected = new EventEmitter<string>();
+  grouped: GroupedBars | null = null;
+  groupedError: string | null = null;
+  readonly seriesColors = [
+    '#1764c0',
+    '#bf4f00',
+    '#117c70',
+    '#8b45a8',
+    '#8c6800',
+    '#ab3560',
+    '#3d758c',
+    '#625aaf',
+  ];
   @Input() loading = false;
   @Input() error: string | null = null;
 
   get ovdbServerExecution(): boolean {
-    return !!this.result && (('nativeDirect' in this.result && this.result.nativeDirect === true) ||
-      ('nativeStream' in this.result && this.result.nativeStream === true));
+    return (
+      !!this.result &&
+      (('nativeDirect' in this.result && this.result.nativeDirect === true) ||
+        ('nativeStream' in this.result && this.result.nativeStream === true))
+    );
   }
 
   get publicApiReceipt() {
@@ -168,6 +193,16 @@ export class HeldResultPresentationComponent implements OnChanges {
     }
   }
 
+  groupedWidth(value: number): number {
+    const span = (this.grouped?.maximum ?? 0) - (this.grouped?.minimum ?? 0);
+    return span === 0 ? 0 : (Math.abs(value) / span) * 100;
+  }
+  groupedLeft(value: number): number {
+    const span = (this.grouped?.maximum ?? 0) - (this.grouped?.minimum ?? 0);
+    return span === 0
+      ? 0
+      : ((Math.min(0, value) - (this.grouped?.minimum ?? 0)) / span) * 100;
+  }
   get bars(): readonly CategoryBar[] {
     return this.prepared?.ok ? this.prepared.bars.slice(0, this.topN()) : [];
   }
@@ -206,14 +241,48 @@ export class HeldResultPresentationComponent implements OnChanges {
 
   ngOnChanges(changes: SimpleChanges): void {
     if (changes['result'] || changes['fields'] || changes['defaultView']) {
-      const evidenceError = this.result && 'runtime' in this.result && this.result.runtime === 'browser-sqlite'
-        ? chartEvidenceError(this.result) : undefined;
-      this.prepared = evidenceError && this.fields ? { ok: false, message: evidenceError } :
-        this.result && this.fields
-          ? prepareCategoryBars(this.result, this.fields)
-          : null;
+      const evidenceError =
+        this.result &&
+        'runtime' in this.result &&
+        this.result.runtime === 'browser-sqlite'
+          ? chartEvidenceError(this.result)
+          : undefined;
+      this.grouped = null;
+      this.groupedError = null;
+      if (this.result && this.fields?.series) {
+        try {
+          if (
+            evidenceError ||
+            this.result.truncated ||
+            ('hasMore' in this.result && this.result.hasMore) ||
+            ('complete' in this.result && !this.result.complete)
+          )
+            throw new Error(
+              evidenceError ?? 'Grouped bars require a complete held result.',
+            );
+          this.grouped = prepareGroupedBars(
+            this.result,
+            this.fields.categoryColumn,
+            this.fields.series,
+          );
+        } catch (error) {
+          this.groupedError =
+            error instanceof Error
+              ? error.message
+              : 'This grouped chart is unavailable.';
+        }
+      }
+      this.prepared = this.fields?.series
+        ? null
+        : evidenceError && this.fields
+          ? { ok: false, message: evidenceError }
+          : this.result && this.fields
+            ? prepareCategoryBars(this.result, this.fields)
+            : null;
       this.view.set(
-        this.prepared?.ok && this.defaultView !== 'grid' ? 'chart' : 'grid',
+        (this.prepared?.ok || this.grouped) && this.defaultView !== 'grid'
+          ? 'chart'
+          : 'grid',
       );
       this.topN.set(
         Math.min(

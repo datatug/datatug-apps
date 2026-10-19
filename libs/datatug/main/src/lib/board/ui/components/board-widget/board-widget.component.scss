@@ -65,3 +65,18 @@ td {
 th {
   font-weight: 600;
 }
+
+.clear-country {
+  min-height: 2.75rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid #a9bad0;
+  border-radius: 0.5rem;
+  background: #f6f9fc;
+  color: #17213a;
+  font: inherit;
+  cursor: pointer;
+}
+.clear-country:focus-visible {
+  outline: 3px solid #2563eb;
+  outline-offset: 2px;
+}

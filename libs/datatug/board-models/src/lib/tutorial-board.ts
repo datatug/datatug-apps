@@ -1,3 +1,8 @@
+import {
+  validChartSpec,
+  validateChartDefinition,
+  validateBoardPresentation,
+} from './board-presentation';
 import type { Board, BoardCard } from './board';
 import type { BoardWidget } from './board-widget';
 import type { ChartSpec, ChartWidgetDef } from './widget-chart';
@@ -350,48 +355,6 @@ function identifier(value: unknown): value is string {
   return text(value) && !/\s/.test(value);
 }
 
-function validChartSpec(value: unknown): value is ChartSpec {
-  if (
-    !isRecord(value) ||
-    !text(value['categoryColumn']) ||
-    !text(value['valueColumn']) ||
-    value['categoryColumn'] === value['valueColumn']
-  )
-    return false;
-  if (
-    value['unit'] !== undefined &&
-    value['unit'] !== '' &&
-    !text(value['unit'])
-  )
-    return false;
-  const common = ['type', 'categoryColumn', 'valueColumn', 'unit'];
-  if (value['type'] === 'bar')
-    return Object.keys(value).every((key) => common.includes(key));
-  return (
-    value['type'] === 'bar-race' &&
-    text(value['periodColumn']) &&
-    text(value['unit']) &&
-    value['periodColumn'] !== value['categoryColumn'] &&
-    value['periodColumn'] !== value['valueColumn'] &&
-    value['grain'] === 'month' &&
-    (value['onDuplicate'] === 'sum' || value['onDuplicate'] === 'reject') &&
-    (value['mode'] === 'period' || value['mode'] === 'cumulative') &&
-    Number.isInteger(value['topN']) &&
-    Number(value['topN']) >= 1 &&
-    Number(value['topN']) <= 100 &&
-    Object.keys(value).every((key) =>
-      [
-        ...common,
-        'periodColumn',
-        'grain',
-        'onDuplicate',
-        'mode',
-        'topN',
-      ].includes(key),
-    )
-  );
-}
-
 function validEdit(value: unknown): value is BoardEditAction {
   if (
     !isRecord(value) ||
@@ -469,6 +432,12 @@ function tabKey(tab: TabWidget, index: number): string {
 }
 
 function tabsDefinition(widget: BoardWidget | undefined): TabsWidgetDef {
+  if (
+    widget?.name === 'tabs' &&
+    (widget.data == null ||
+      (isRecord(widget.data) && widget.data['tabs'] == null))
+  )
+    return { ...(isRecord(widget.data) ? widget.data : {}), tabs: [] };
   if (
     widget?.name !== 'tabs' ||
     !isRecord(widget.data) ||
@@ -564,40 +533,9 @@ function chartDefinition(widget: BoardWidget | undefined): ChartWidgetDef {
   if (widget?.name !== 'chart' || !isRecord(widget.data))
     throw new Error('This operation requires a chart widget.');
   const data = widget.data as unknown as ChartWidgetDef;
-  if (
-    !validChartSpec(data.chart) ||
-    !Array.isArray(data.sources) ||
-    !data.sources.length ||
-    data.sources.length > MAX_CARDS
-  )
+  validateChartDefinition(data);
+  if (data.sources.length > MAX_CARDS)
     throw new Error('Invalid chart configuration.');
-  const ids = new Set<string>();
-  for (const source of data.sources) {
-    if (
-      !isRecord(source) ||
-      !identifier(source.id) ||
-      !identifier(source.queryId) ||
-      ids.has(source.id)
-    )
-      throw new Error('Chart sources need distinct IDs and saved queries.');
-    ids.add(source.id);
-    if (
-      source.transform &&
-      (source.transform.name !== 'orders-monthly-country-count' ||
-        data.chart.type !== 'bar-race' ||
-        data.chart.periodColumn !== 'period' ||
-        data.chart.categoryColumn !== 'category' ||
-        data.chart.valueColumn !== 'value' ||
-        data.chart.onDuplicate !== 'reject')
-    )
-      throw new Error(
-        'The Orders transform requires its canonical race mapping.',
-      );
-  }
-  if (data.chart.type === 'bar-race' && data.sources.length !== 1)
-    throw new Error(
-      'The board wire contract requires one source for a bar race.',
-    );
   return data;
 }
 
@@ -632,6 +570,7 @@ function applySessionAction(
 ): BoardSessionState {
   if (validAction(action)) {
     const board = applyFrom(canonical, state.board, action, true);
+    validateBoardPresentation(board);
     return { board, selectedTabs: pruneSelections(board, state.selectedTabs) };
   }
   if (!validEdit(action)) throw new Error('Invalid session board edit.');
@@ -751,6 +690,7 @@ function applySessionAction(
         : row,
     ),
   };
+  validateBoardPresentation(board);
   return { board, selectedTabs: pruneSelections(board, selectedTabs) };
 }
 
@@ -781,6 +721,7 @@ export function replayBoardActions(
     cursor > actions.length
   )
     throw new Error('Invalid session action log.');
+  validateBoardPresentation(canonical);
   const snapshot = cloneBoard(canonical);
   const owned = actions.map((action) => {
     if (!validAction(action) && !validEdit(action))
@@ -983,6 +924,7 @@ export class TutorialBoardSession {
   ): Promise<TutorialBoardSession> {
     if (!scope || scope.length > 512)
       throw new Error('Tutorial needs a project scope.');
+    validateBoardPresentation(canonical);
     const snapshot = cloneBoard(canonical);
     const revision = await canonicalBoardRevision(snapshot);
     deepFreeze(snapshot);

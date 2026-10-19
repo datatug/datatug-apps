@@ -7,7 +7,8 @@ import { WidgetParameterBinding } from './widget-sql';
 export const BOARD_WIDGET_NAME_CHART = 'chart' as const;
 
 /** The only persisted chart source transform currently admitted by boards.go. */
-export const CHART_SOURCE_TRANSFORM_ORDERS_MONTHLY_COUNTRY_COUNT = 'orders-monthly-country-count' as const;
+export const CHART_SOURCE_TRANSFORM_ORDERS_MONTHLY_COUNTRY_COUNT =
+  'orders-monthly-country-count' as const;
 
 /** Persisted chart types currently admitted by boards.go. */
 export const CHART_TYPE_BAR = 'bar' as const;
@@ -45,6 +46,8 @@ export interface BarChartSpec {
   type: typeof CHART_TYPE_BAR;
   categoryColumn: string;
   valueColumn: string;
+  series?: never;
+  selectionId?: string;
   unit?: string;
   periodColumn?: never;
   grain?: never;
@@ -53,9 +56,26 @@ export interface BarChartSpec {
   topN?: never;
 }
 
+/** Mirrors Core's grouped bar branch; every measure comes from one held result. */
+export interface ChartSeries {
+  id: string;
+  title: string;
+  valueColumn: string;
+}
+export interface MultiSeriesBarChartSpec extends Omit<
+  BarChartSpec,
+  'valueColumn' | 'series' | 'unit'
+> {
+  valueColumn?: never;
+  series: ChartSeries[];
+  unit: string;
+}
+
 /** Mirrors the `bar-race` branch accepted by `ChartSpec.Validate()` (boards.go). */
 export interface BarRaceChartSpec {
   type: typeof CHART_TYPE_BAR_RACE;
+  series?: never;
+  selectionId?: never;
   categoryColumn: string;
   valueColumn: string;
   periodColumn: string;
@@ -68,4 +88,7 @@ export interface BarRaceChartSpec {
 }
 
 /** Mirrors `ChartSpec` (boards.go), with validated chart variants represented as a discriminated union. */
-export type ChartSpec = BarChartSpec | BarRaceChartSpec;
+export type ChartSpec =
+  | BarChartSpec
+  | MultiSeriesBarChartSpec
+  | BarRaceChartSpec;

@@ -473,6 +473,8 @@ Local evidence uses **real Firebase Auth/Firestore emulators and the existing Sn
 
 ## Open Questions
 
+The remaining product decisions and deployment evidence are listed below.
+
 ### Product decisions remaining before implementation
 
 - **Long-unlinked paid Business:** recommendation is to start the paid term at confirmed payment, disclose it before payment, retain recoverable setup and prompt from the account. Decide whether renewal remains normal indefinitely or requires a special long-unlinked reminder/renewal policy. Do not silently defer billing, refund or cancel. This does not block writing this review.
