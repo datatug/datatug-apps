@@ -2049,7 +2049,8 @@ export function nativeGraphRunResponse(
   output: NativeGraphResult,
   queryId: string,
   source: string,
-): RunQueryResponse & {
+): Omit<RunQueryResponse, 'provenance'> & {
+  readonly provenance: Omit<RunQueryResponse['provenance'], 'executionProfile'>;
   readonly relatedRecordsets: readonly GraphRelatedRecordset[];
   readonly nativeGraph: Pick<
     NativeGraphResult,
@@ -2110,7 +2111,6 @@ export function nativeGraphResponseEnvelope(
       queryId,
       mode: 'live' as const,
       observedAt: new Date().toISOString(),
-      executionProfile: 'protected' as const,
     },
   };
 }

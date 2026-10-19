@@ -129,6 +129,11 @@ export class HeldResultPresentationComponent implements OnChanges {
   @Input() loading = false;
   @Input() error: string | null = null;
 
+  get ovdbServerExecution(): boolean {
+    return !!this.result && (('nativeDirect' in this.result && this.result.nativeDirect === true) ||
+      ('nativeStream' in this.result && this.result.nativeStream === true));
+  }
+
   get publicApiReceipt() {
     return this.result &&
       'runtime' in this.result &&

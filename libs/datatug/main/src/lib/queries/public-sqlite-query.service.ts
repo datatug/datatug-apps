@@ -1096,7 +1096,6 @@ export class PublicSqliteQueryService {
           queryId: definition.id,
           mode: 'snapshot',
           observedAt: new Date().toISOString(),
-          executionProfile: 'protected',
         },
       };
     } finally {
@@ -1251,7 +1250,6 @@ export class PublicSqliteQueryService {
           queryId: definition.id,
           mode: 'snapshot',
           observedAt: new Date().toISOString(),
-          executionProfile: 'protected',
         },
       };
     } finally {

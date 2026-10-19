@@ -135,6 +135,9 @@ describe('native cross-database OVDB execution', () => {
     expect(result.ordinaryComplete).toBe(true);
     expect(result.provenance.source).toBe(`${base}/v1/dtql (direct OVDB)`);
     expect(result.nativeDirect).toBe(true);
+    expect(result.provenance).not.toHaveProperty('executionProfile');
+    expect(result.sourceRights).toBeUndefined();
+    expect(result.usedSourceIds).toBeUndefined();
   });
 
   it.each([

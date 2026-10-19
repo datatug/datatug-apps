@@ -164,18 +164,20 @@ describe('federated query worker', () => {
     );
     expect(posted.find((message) => message.type === 'error')).toBeUndefined();
   });
-  it('stages a streamed whole-query result in paged IndexedDB rows and keeps the footer column order', async () => {
+  it.each([false, true])('stages an unprofiled whole-query result with streaming=%s and preserves paged rows', async (streaming) => {
     const calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       calls.push(String(input));
       if (String(input).endsWith('/v1/databases/db'))
-        return new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: streaming } }), { headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ records: Array.from({ length: 105 }, (_, index) => ({ data: { name: `row-${index}`, id: String(index) } })),
         columns: ['id', 'name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } });
     }));
     await run({});
     const result = posted.find((message) => message.type === 'result')?.['result'] as { nativeStream?: true; totalRows: number; recordset: { rows: { value: unknown }[][] } };
-    expect(result.nativeStream).toBe(true);
+    expect(result.nativeStream).toBe(streaming ? true : undefined);
+    expect(result).not.toHaveProperty('provenance.executionProfile');
+    expect(result).not.toHaveProperty('execution');
     expect(result.totalRows).toBe(105);
     expect(result.recordset.rows[0].map((value) => value.value)).toEqual(['0', 'row-0']);
     scope.onmessage?.({ data: { type: 'page', index: 1, requestId: 7 } });
