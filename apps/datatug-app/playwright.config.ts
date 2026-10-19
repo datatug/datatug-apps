@@ -17,10 +17,9 @@ export default defineConfig({
   // analytics, so it has its own config (playwright.demo-handoff.config.ts).
   // business-project-preview.spec.ts is a live journey against the deployed
   // datatug-cloud-preview: playwright.business-preview.config.ts only.
-  // The showcase and licensed-grid specs read a newer Demo checkout than the
-  // one this lane pins (the country-comparison query landed after it) and
-  // the licensed grid needs an Enterprise key; they have their own opt-in
-  // config, playwright.showcase-exploration.config.ts.
+  // query-grid-enterprise.spec.ts needs an AG Grid Enterprise key, which these
+  // lanes do not set (empty in CI): excluded until a keyed opt-in lane runs it
+  // (https://github.com/datatug/datatug-apps/issues/410).
   // Deployed-provider checks require their explicit opt-in config, dedicated
   // identity and disabled sensitive artifacts; never discover them here.
   testIgnore: [
@@ -36,9 +35,6 @@ export default defineConfig({
     'hosted-cloud-logs.spec.ts',
     'showcase-live-measurement.spec.ts',
     'showcase-routing-ab.spec.ts',
-    'showcase-country-comparison.spec.ts',
-    'showcase-tutorial-acceptance.spec.ts',
-    'showcase-inspector-polish.spec.ts',
     'query-grid-enterprise.spec.ts',
   ],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
@@ -104,9 +100,6 @@ export default defineConfig({
         'hosted-cloud-logs.spec.ts',
         'showcase-live-measurement.spec.ts',
         'showcase-routing-ab.spec.ts',
-        'showcase-country-comparison.spec.ts',
-        'showcase-tutorial-acceptance.spec.ts',
-        'showcase-inspector-polish.spec.ts',
         'query-grid-enterprise.spec.ts',
         'journey/**',
       ],

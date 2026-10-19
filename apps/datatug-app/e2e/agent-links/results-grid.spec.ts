@@ -75,6 +75,8 @@ async function open(
  * Waits until the grid stops re-creating its rows. A stored result draws its rows, then draws them again a few
  * hundred milliseconds later (the column metadata arrives), and a re-created row loses its checkbox state. Marked
  * rows survive an in-place update, so an unmarked row after the pause means the rows were replaced.
+ * This works around a product race (a selection ticked in that window is lost):
+ * https://github.com/datatug/datatug-apps/issues/411
  */
 async function settleRows(grid: Locator): Promise<void> {
   for (let attempt = 0; attempt < 10; attempt++) {
