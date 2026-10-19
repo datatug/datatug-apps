@@ -92,7 +92,7 @@ import { ovdbCollectionSchema } from './ovdb-connection';
         <ion-card-header><ion-card-title>Tables</ion-card-title></ion-card-header>
         <ion-list lines="full">
           @for (name of tables(); track name) {
-            <ion-item button [routerLink]="[...basePath(), 'table', name]" [attr.data-testid]="'table-' + name">
+            <ion-item button [routerLink]="[...basePath(), 'table', name]" [queryParams]="navigationQuery()" [attr.data-testid]="'table-' + name">
               <ion-label>{{ name }}</ion-label>
             </ion-item>
           } @empty {
@@ -104,7 +104,7 @@ import { ovdbCollectionSchema } from './ovdb-connection';
       <ion-card data-testid="ovdb-unknown-table">
         <ion-card-content>
           <p>There is no table “{{ table() }}” in this database.</p>
-          <ion-button fill="outline" [routerLink]="basePath()">All tables</ion-button>
+          <ion-button fill="outline" [routerLink]="basePath()" [queryParams]="navigationQuery()">All tables</ion-button>
         </ion-card-content>
       </ion-card>
     } @else {
@@ -118,7 +118,7 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           @if (canCreate()) {
             <ion-button data-testid="record-create" size="small" [disabled]="creating() || resetting()" (click)="creating.set(true)">Create record</ion-button>
           }
-          <p class="ovdb-subtitle"><a [routerLink]="basePath()">All tables</a></p>
+          <p class="ovdb-subtitle"><a [routerLink]="basePath()" [queryParams]="navigationQuery()">All tables</a></p>
         </ion-card-header>
         <ion-card-content>
           @if (loadError()) {
@@ -191,6 +191,7 @@ export class OvdbDatabaseBrowserComponent {
   readonly connection = input.required<OvdbConnection>();
   /** Router path of the table list; tables open at `[...basePath, 'table', name]`. */
   readonly basePath = input.required<readonly string[]>();
+  readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
   /** Extra status shown in the header (for example "Local copy ready"). */
   readonly statusText = input<string>('');

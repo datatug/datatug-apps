@@ -3,22 +3,25 @@ import { Subject } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectCopyOfferComponent } from './project-copy-offer.component';
+import { LocalDemoDbService } from '../../demo-sqlite/local-demodb.service';
+import { demoSqliteCatalog } from '../../queries/demo-sqlite-catalog';
 import { NewProjectService } from './new-project.service';
 import { resolveDemoProjectCopySource } from './github-project-copy-source';
-vi.mock('./github-project-copy-source', () => ({ resolveDemoProjectCopySource: vi.fn() }));
+vi.mock('./github-project-copy-source', async (importOriginal) => ({ ...await importOriginal<typeof import('./github-project-copy-source')>(), resolveDemoProjectCopySource: vi.fn() }));
 const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'demo', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
 async function setup(dataset = 'demo') {
   const navigate = vi.fn();
   const navigation = new Subject<NavigationStart>();
-  await TestBed.configureTestingModule({ imports: [ProjectCopyOfferComponent], providers: [{ provide: Router, useValue: { events: navigation } }] })
+  const runtimeSession = { entry: demoSqliteCatalog.chinook, state: () => ({ kind: 'ready' }), export: vi.fn(async () => new Uint8Array([83, 81, 76])) };
+  await TestBed.configureTestingModule({ imports: [ProjectCopyOfferComponent], providers: [{ provide: Router, useValue: { events: navigation } }, { provide: LocalDemoDbService, useValue: { peek: () => runtimeSession } }] })
     .overrideComponent(ProjectCopyOfferComponent, { set: { providers: [{ provide: NewProjectService, useValue: { navigateToNewProjectPage: navigate } }] } }).compileComponents();
   const fixture = TestBed.createComponent(ProjectCopyOfferComponent);
   fixture.componentRef.setInput('dataset', dataset);
   fixture.detectChanges();
-  return { fixture, navigation, component: fixture.componentInstance, navigate };
+  return { fixture, navigation, runtimeSession, component: fixture.componentInstance, navigate };
 }
 beforeEach(() => sessionStorage.clear());
-afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); vi.clearAllMocks(); });
 describe('project copy offer', () => {
   it('shows lookup failure and lets the user retry the selected source', async () => {
     const h = await setup();
@@ -28,7 +31,7 @@ describe('project copy offer', () => {
     expect(h.fixture.nativeElement.textContent).toContain('could not be verified');
     expect(h.navigate).not.toHaveBeenCalled();
     await h.component.copyToGithub();
-    expect(h.navigate).toHaveBeenCalledWith('github', undefined, undefined, source);
+    expect(h.navigate).toHaveBeenCalledWith('github', undefined, undefined, source, expect.any(String));
   });
   it('does not navigate away if the user dismisses while the source is resolving', async () => {
     let resolve: ((value: typeof source) => void) | undefined;
@@ -97,14 +100,56 @@ describe('project copy offer', () => {
     expect(h.navigate).not.toHaveBeenCalled();
   });
 
+  it('downloads the active edited bytes with a safe filename and releases the URL', async () => {
+    const h = await setup('chinook');
+    vi.useFakeTimers();
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:edited');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    let filename = '';
+    vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function(this: HTMLAnchorElement) { filename = this.download; });
+    await h.component.download();
+    expect(h.runtimeSession.export).toHaveBeenCalledOnce();
+    expect(create).toHaveBeenCalledWith(expect.any(Blob));
+    expect(filename).toBe('chinook-edited.sqlite');
+    expect(h.component.downloadMessage()).toContain('Your edits remain');
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(revoke).toHaveBeenCalledWith('blob:edited');
+  });
+
+  it('prevents concurrent exports and drops a late export after dismissal', async () => {
+    const h = await setup('chinook');
+    let finish: ((bytes: Uint8Array<ArrayBuffer>) => void) | undefined;
+    h.runtimeSession.export.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const create = vi.spyOn(URL, 'createObjectURL');
+    const pending = h.component.download();
+    expect(h.component.exporting()).toBe(true);
+    await h.component.download();
+    expect(h.runtimeSession.export).toHaveBeenCalledOnce();
+    h.component.dismiss();
+    finish?.(new Uint8Array([83]));
+    await pending;
+    expect(create).not.toHaveBeenCalled();
+    expect(h.component.downloadMessage()).toBeUndefined();
+    expect(h.component.exporting()).toBe(false);
+  });
+
+  it('shows an actionable provider export error and allows retry', async () => {
+    const h = await setup('chinook');
+    h.runtimeSession.export.mockRejectedValueOnce({ code: 'sqlite_export_busy' });
+    await h.component.download();
+    expect(h.component.downloadError()).toContain('Finish the current edit or query');
+    expect(h.component.exporting()).toBe(false);
+  });
+
   it('copies verified commands with accessible success or fallback feedback', async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const h = await setup();
     h.component.local.set(true);
+    h.component.filePath.set('/tmp/edited.sqlite');
     await h.component.copyCommands();
     await h.fixture.whenStable();
-    expect(writeText).toHaveBeenCalledWith(h.component.commands);
+    expect(writeText).toHaveBeenCalledWith(h.component.commands());
     expect(h.fixture.nativeElement.querySelector('[role=status]').textContent).toBe('Commands copied.');
     writeText.mockRejectedValueOnce(new Error('denied'));
     await h.component.copyCommands();

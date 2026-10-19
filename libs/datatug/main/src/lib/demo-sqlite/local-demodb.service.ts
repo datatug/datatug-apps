@@ -203,6 +203,11 @@ export class LocalDemoDbSession {
     private readonly queryRuntimes?: QueryRuntimeRegistry,
   ) {}
 
+  async export(maxBytes = 268435456): Promise<Uint8Array> {
+    if (this.#disposed || this.#state().kind !== 'ready' || !this.#runtime) throw new Error('The browser database is no longer active. Return to the demo and reopen it explicitly.');
+    return this.#runtime.export({ maxBytes });
+  }
+
   get baseUrl(): string | undefined {
     return this.#connection()?.baseUrl;
   }
@@ -377,6 +382,12 @@ export class LocalDemoDbService {
       for (const session of this.sessions.values()) session.dispose();
       this.sessions.clear();
     });
+  }
+
+  /** Read-only lookup. A continuation must never import or replace data implicitly. */
+  peek(datasetId: string): LocalDemoDbSession | undefined {
+    const entry = findDemoSqliteDataset(datasetId);
+    return entry ? this.sessions.get(entry.dataset) : undefined;
   }
 
   /** A session for the dataset (case-insensitive id), or undefined for an unknown dataset. Call `start()`. */

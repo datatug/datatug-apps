@@ -1,3 +1,4 @@
+import { DemoTableDraftService } from '../../demo-table-draft.service';
 import {
   createHostedDemoDbQuery,
   withHostedDemoDbSource,
@@ -333,6 +334,7 @@ describe('SqlEditorPage', () => {
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
+        { provide: DemoTableDraftService, useValue: { read: vi.fn() } },
         { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
@@ -368,6 +370,27 @@ describe('SqlEditorPage', () => {
 
     fixture = TestBed.createComponent(QueryPageComponent);
     component = fixture.componentInstance;
+  });
+
+  it.each([false, true])('restores a validated demo table draft while preserving existing editor text: %s', async (existing) => {
+    const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
+    component.project = { ref } as IProjectContext;
+    component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
+    const params = convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' });
+    Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: params, paramMap: convertToParamMap({}) } });
+    Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
+    const definition = { id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } } as IQueryDef;
+    vi.mocked(TestBed.inject(DemoTableDraftService).read).mockResolvedValue(definition);
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.DTQL, request: { queryType: QueryType.DTQL, text: existing ? 'my existing draft' : '' } as ITextQueryRequest });
+    await component['restoreDemoTableDraft']();
+    if (existing) {
+      expect(editor.updateQueryState).not.toHaveBeenCalled();
+      expect(component.runError()).toContain('already has an unsaved draft');
+    } else {
+      expect(editor.updateQueryState).toHaveBeenCalledWith(expect.objectContaining({ id: 'demo-query', isNew: true, connectionId: 'chinook-sqlite', request: definition.request }));
+      expect(TestBed.inject(DemoTableDraftService).read).toHaveBeenCalledWith('token', ref, 'runtime-live', 'dev', 'actor');
+    }
   });
 
   it('should create', () => {

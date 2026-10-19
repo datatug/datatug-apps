@@ -70,6 +70,8 @@ const emptyShellProjectRoutes: Routes = [
 ];
 
 export const datatugProjectRoutes: Routes = [
+  { path: 'browser-db/:connectionId/table/:table', loadComponent: () => import('../pages/project-browser-db/project-browser-db.component').then(m => m.ProjectBrowserDbComponent) },
+  { path: 'browser-db/:connectionId', loadComponent: () => import('../pages/project-browser-db/project-browser-db.component').then(m => m.ProjectBrowserDbComponent) },
   {
     path: 'checks/:checkId',
     loadComponent: () =>
