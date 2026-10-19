@@ -17,6 +17,7 @@
     "e2e/showcase-live-measurement.spec.ts",
     "e2e/helpers/country-comparison-fixture.ts",
     "e2e/helpers/showcase-measurement-ledger.ts",
-    "src/testing/showcase-measurement-ledger.spec.ts"
+    "src/testing/showcase-measurement-ledger.spec.ts",
+    "src/testing/showcase-query-diagnostics.spec.ts"
   ]
 }

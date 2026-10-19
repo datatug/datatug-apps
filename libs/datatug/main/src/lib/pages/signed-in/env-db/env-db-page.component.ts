@@ -1,5 +1,7 @@
 import {
   ChangeDetectorRef,
+  Injector,
+  afterNextRender,
   Component,
   ElementRef,
   OnDestroy,
@@ -158,6 +160,7 @@ interface IRecordsetInfo {
   ],
 })
 export class EnvDbPageComponent implements OnDestroy, OnInit {
+  private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly projService = inject(ProjectService);
   private readonly environmentService = inject(EnvironmentService);
@@ -308,10 +311,20 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
         .getCatalogTables(projectRef, envId, dbId)
         .subscribe({
           next: (catalogTables) => {
-            this.envDb = { id: dbId, ...catalogTables };
-            this.onDataChanged();
+            const loaded = { id: dbId, ...catalogTables };
+            this.envDb = loaded;
             this.loading.set(false);
             this.changeDetectorRef.markForCheck();
+            // Measure only after Angular unhides the retained grid element.
+            afterNextRender(
+              () => {
+                if (this.disposed || this.envDb !== loaded) return;
+                const existing = this.tabulator;
+                this.onDataChanged();
+                existing?.redraw(true);
+              },
+              { injector: this.injector },
+            );
           },
           error: (error: unknown) => this.catalogFailed(error),
         }),

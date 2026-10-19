@@ -374,6 +374,7 @@ describe('EnvDbPage catalog read lifecycle', () => {
       })
       .compileComponents();
     fixture = TestBed.createComponent(EnvDbPageComponent);
+    document.body.appendChild(fixture.nativeElement);
     fixture.detectChanges();
     params.next(convertToParamMap(routeParams));
     await fixture.whenStable();
@@ -395,19 +396,39 @@ describe('EnvDbPage catalog read lifecycle', () => {
     ).toContain('needs a scan');
     expect(component.loading()).toBe(false);
     expect(component.envDb).toBeUndefined();
-    expect(
-      fixture.nativeElement.querySelector('ion-card[hidden]'),
-    ).not.toBeNull();
+    const hiddenCard = fixture.nativeElement.querySelector('ion-card[hidden]');
+    expect(hiddenCard).not.toBeNull();
+    // Ionic's author display:block rule overrides the user-agent [hidden] rule.
+    // Consume the real component's scoped style against that vendor rule.
+    const ionicDisplay = document.createElement('style');
+    ionicDisplay.textContent = 'ion-card { display: block; }';
+    document.head.appendChild(ionicDisplay);
+    try {
+      expect(hiddenCard.isConnected).toBe(true);
+      expect(getComputedStyle(hiddenCard).display).toBe('none');
+    } finally {
+      ionicDisplay.remove();
+    }
     catalog = new Subject();
     fixture.nativeElement.querySelector('ion-button').click();
     await fixture.whenStable();
     expect(component.loading()).toBe(true);
     full.next({ id: 'demo', title: 'Demo', access: 'private', dbServers: [] });
     expect(getCatalogTables).toHaveBeenCalledTimes(2);
+    // The production grid must measure after Angular has removed hidden, including on Retry.
+    const page = component as unknown as { onDataChanged(): void };
+    const applyData = page.onDataChanged.bind(page);
+    const applied = vi.spyOn(page, 'onDataChanged').mockImplementation(() => {
+      expect(
+        fixture.nativeElement.querySelector('ion-card[hidden]'),
+      ).toBeNull();
+      applyData();
+    });
     // An admitted empty catalog is a successful result, distinct from a failed read.
     catalog.next({ tables: [], views: [] });
     await fixture.whenStable();
     expect(component.envDb?.tables).toEqual([]);
+    expect(applied).toHaveBeenCalledOnce();
     expect(component.loading()).toBe(false);
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
   });

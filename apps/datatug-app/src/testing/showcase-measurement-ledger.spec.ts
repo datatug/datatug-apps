@@ -3,7 +3,10 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import type { BrowserContext, Request, Route } from '@playwright/test';
 import { describe, expect, it, vi } from 'vitest';
-import { installShowcaseMeasurementLedger } from '../../e2e/helpers/showcase-measurement-ledger';
+import {
+  finalizeShowcaseMeasurement,
+  installShowcaseMeasurementLedger,
+} from '../../e2e/helpers/showcase-measurement-ledger';
 
 const ordersQuery = readFileSync(
   resolve(
@@ -22,7 +25,7 @@ function request(url: string, method = 'POST', body = queryBody): Request {
     postData: () => body,
   } as Request;
 }
-async function harness() {
+async function harness(maxQueries?: 3 | 12) {
   const events = new EventEmitter();
   let routeHandler: ((route: Route) => Promise<void>) | undefined;
   const context = {
@@ -33,6 +36,7 @@ async function harness() {
   };
   const ledger = await installShowcaseMeasurementLedger(
     context as unknown as BrowserContext,
+    { maxQueries },
   );
   const send = async (req: Request) => {
     const proceed = vi.fn(),
@@ -69,6 +73,91 @@ describe('opt-in production measurement protection without network', () => {
     });
     expect(() => ledger.healthy()).toThrow('budget');
   });
+
+  it('enforces the diagnostic three-query global cap before a fourth request even across phases', async () => {
+    const { ledger, send } = await harness(3);
+    for (let index = 0; index < 3; index++) {
+      ledger.phase('initial-' + index, 1, { orders: 1 });
+      expect((await send(request(queryURL))).proceed).toHaveBeenCalledOnce();
+    }
+    ledger.phase('later', 1, { orders: 1 });
+    const fourth = await send(request(queryURL));
+    expect(fourth.abort).toHaveBeenCalledOnce();
+    expect(fourth.proceed).not.toHaveBeenCalled();
+    expect(() => ledger.healthy()).toThrow('budget');
+  });
+
+  it.each(['budget', 'request-failure'] as const)(
+    'persists FAIL before rejecting a late %s observed during final drain',
+    async (late) => {
+      const { ledger, send, events } = await harness(3);
+      ledger.phase('initial', 3, { orders: 3 });
+      const req = Object.assign(request(queryURL), {
+        failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+      });
+      await send(req);
+      if (late === 'budget') {
+        await send(request(queryURL));
+        await send(request(queryURL));
+      }
+      const receipt: Record<string, unknown> = { status: 'PASS' };
+      vi.spyOn(ledger, 'drain').mockImplementationOnce(async () => {
+        if (late === 'budget') await send(request(queryURL));
+        else events.emit('requestfailed', req);
+      });
+      const persist = vi.fn(async () => {
+        expect(receipt['status']).toBe('FAIL');
+        expect(receipt['violations']).not.toEqual([]);
+        expect(receipt['summary']).toMatchObject(
+          late === 'budget'
+            ? { queryAttempts: 4, protectedAbortAttempts: 1 }
+            : { queryFailed: 1 },
+        );
+      });
+      await expect(
+        finalizeShowcaseMeasurement(ledger, receipt, persist),
+      ).rejects.toThrow(late === 'budget' ? 'budget' : 'Query failed');
+      expect(persist).toHaveBeenCalledOnce();
+    },
+  );
+
+  it.each(['budget', 'request-failure'] as const)(
+    'corrects a tentative receipt and rejects a late %s during persistence',
+    async (late) => {
+      const { ledger, send, events } = await harness(3);
+      ledger.phase('initial', 3, { orders: 3 });
+      const receipt: Record<string, unknown> = { status: 'PASS' };
+      const persisted: Record<string, unknown>[] = [];
+      const persist = vi.fn(async () => {
+        persisted.push(
+          JSON.parse(JSON.stringify(receipt)) as Record<string, unknown>,
+        );
+        if (persisted.length !== 1) return;
+        if (late === 'budget')
+          for (let index = 0; index < 4; index++) await send(request(queryURL));
+        else {
+          const req = Object.assign(request(queryURL), {
+            failure: () => ({ errorText: 'net::ERR_ABORTED' }),
+          });
+          await send(req);
+          events.emit('requestfailed', req);
+        }
+      });
+      await expect(
+        finalizeShowcaseMeasurement(ledger, receipt, persist),
+      ).rejects.toThrow(late === 'budget' ? 'budget' : 'Query failed');
+      expect(persist).toHaveBeenCalledTimes(2);
+      expect(persisted[0]['status']).toBe('PASS');
+      expect(persisted[1]).toMatchObject({
+        status: 'FAIL',
+        summary:
+          late === 'budget'
+            ? { queryAttempts: 4, protectedAbortAttempts: 1 }
+            : { queryFailed: 1 },
+      });
+      expect(persisted[1]['violations']).not.toEqual([]);
+    },
+  );
 
   it.each([200, 503])(
     'retains response status %s before an aborted body and still rejects the failure',
