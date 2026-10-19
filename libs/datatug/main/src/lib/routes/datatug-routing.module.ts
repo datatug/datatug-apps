@@ -111,6 +111,13 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
+    path: 'my/cloud-logs/recovery',
+    loadComponent: () =>
+      import('../pages/my/cloud-logs/cloud-logs-auth-recovery-page.component').then(
+        (m) => m.CloudLogsAuthRecoveryPageComponent,
+      ),
+  },
+  {
     path: 'my/cloud-logs',
     canActivate: [hostedCloudLogsAccessGuard],
     loadComponent: () =>

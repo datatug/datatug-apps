@@ -24,6 +24,18 @@ describe('datatugRoutes', () => {
     );
   });
 
+  it('keeps auth recovery unguarded and returns to the Cloud Logs gate', async () => {
+    const route = datatugRoutes.find(
+      (candidate) => candidate.path === 'my/cloud-logs/recovery',
+    );
+    expect(route?.canActivate).toBeUndefined();
+    expect(route?.canMatch).toBeUndefined();
+    const component = await route?.loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'CloudLogsAuthRecoveryPageComponent',
+    );
+  });
+
   it('admits Space overview, queries, Checks, Detective and session routes', () => {
     const route = datatugRoutes.find(
       (candidate) =>

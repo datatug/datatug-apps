@@ -39,24 +39,15 @@ import {
   PersonalLogQueryResult,
 } from './cloud-logs-api.service';
 import { HostedCloudLogsAccessService } from './hosted-cloud-logs-access.service';
+import {
+  cloudLogsFinishKeyStorageKey,
+  readCloudLogsFinishKeyBinding,
+  takeCloudLogsOAuthReturn,
+  type CloudLogsFinishKeyBinding,
+} from './cloud-logs-auth-return';
 
 type PageState = 'loading' | 'ready' | 'error';
 type QueryState = 'idle' | 'loading' | 'ready' | 'error';
-const finishKeyStorageKey = 'datatug:google-cloud-logs:finish-key';
-
-interface FinishKeyBinding {
-  readonly uid: string;
-  readonly finishKey: string;
-}
-
-declare global {
-  interface Window {
-    __datatugTakeGoogleLogsReturn?: () => {
-      status: 'complete' | 'failed';
-      receipt: string;
-    };
-  }
-}
 
 @Component({
   selector: 'sneat-datatug-cloud-logs-page',
@@ -669,8 +660,9 @@ export class CloudLogsPageComponent {
     !this.busy();
 
   constructor() {
-    let callback = this.scrubOAuthCallback();
-    let callbackBinding = callback ? this.readFinishKeyBinding() : undefined;
+    const oauthReturn = takeCloudLogsOAuthReturn();
+    let callback = oauthReturn?.callback;
+    let callbackBinding = oauthReturn?.binding;
     this.hostedCloudLogsAccess.state$
       .pipe(takeUntilDestroyed())
       .subscribe((state) => {
@@ -781,8 +773,8 @@ export class CloudLogsPageComponent {
         throw new Error('The authorization link was invalid.');
       try {
         sessionStorage.setItem(
-          finishKeyStorageKey,
-          JSON.stringify({ uid, finishKey } satisfies FinishKeyBinding),
+          cloudLogsFinishKeyStorageKey,
+          JSON.stringify({ uid, finishKey } satisfies CloudLogsFinishKeyBinding),
         );
       } catch {
         throw new Error(
@@ -799,41 +791,12 @@ export class CloudLogsPageComponent {
     }
   }
 
-  /** Scrub the short-lived receipt before this page starts any API or telemetry work. */
-  private scrubOAuthCallback():
-    | { status: 'complete'; receipt: string }
-    | { status: 'failed' }
-    | undefined {
-    const callback = window.__datatugTakeGoogleLogsReturn?.();
-    if (!callback) return undefined;
-    return callback.status === 'complete'
-      ? { status: 'complete', receipt: callback.receipt }
-      : { status: 'failed' };
-  }
-
-  private readFinishKeyBinding(): FinishKeyBinding | undefined {
-    try {
-      const value = sessionStorage.getItem(finishKeyStorageKey);
-      if (!value) return undefined;
-      const binding = JSON.parse(value) as Partial<FinishKeyBinding>;
-      return typeof binding.uid === 'string' &&
-        !!binding.uid &&
-        typeof binding.finishKey === 'string' &&
-        !!binding.finishKey
-        ? { uid: binding.uid, finishKey: binding.finishKey }
-        : undefined;
-    } catch {
-      // Storage can be disabled by the browser; the key was never exposed to the URL.
-      return undefined;
-    }
-  }
-
   private clearFinishKey(expectedFinishKey?: string): void {
     if (!expectedFinishKey) return;
     try {
-      const current = this.readFinishKeyBinding();
+      const current = readCloudLogsFinishKeyBinding();
       if (current?.finishKey === expectedFinishKey) {
-        sessionStorage.removeItem(finishKeyStorageKey);
+        sessionStorage.removeItem(cloudLogsFinishKeyStorageKey);
       }
     } catch {
       // Storage can be disabled by the browser; the key was never exposed to the URL.
@@ -843,7 +806,7 @@ export class CloudLogsPageComponent {
   private async finishAuthorization(
     receipt: string,
     generation: number,
-    binding?: FinishKeyBinding,
+    binding?: CloudLogsFinishKeyBinding,
   ): Promise<void> {
     if (!this.isCurrentAccess(generation)) return;
     if (

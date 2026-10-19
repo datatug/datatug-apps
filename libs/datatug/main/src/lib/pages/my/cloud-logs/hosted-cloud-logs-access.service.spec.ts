@@ -260,7 +260,7 @@ describe('HostedCloudLogsAccessService', () => {
     expect(api.list).not.toHaveBeenCalled();
   });
 
-  it('redirects authenticated state without a UID to sign-in without probing', async () => {
+  it('redirects authenticated state without a UID to local recovery without probing', async () => {
     TestBed.resetTestingModule();
     authState = new BehaviorSubject({ status: 'authenticated' });
     api.list.mockReset();
@@ -279,12 +279,12 @@ describe('HostedCloudLogsAccessService', () => {
     const result = await runGuard('/my/cloud-logs');
 
     expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
-      '/login#/my/cloud-logs',
+      '/my/cloud-logs/recovery#/my/cloud-logs',
     );
     expect(api.list).not.toHaveBeenCalled();
   });
 
-  it('resolves an auth stream that never leaves authenticating without probing', async () => {
+  it('resolves an auth stream that never leaves authenticating to the recovery route', async () => {
     TestBed.resetTestingModule();
     api.list.mockReset();
     TestBed.configureTestingModule({
@@ -302,7 +302,7 @@ describe('HostedCloudLogsAccessService', () => {
       const result = await pending;
 
       expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
-        '/login#/my/cloud-logs',
+        '/my/cloud-logs/recovery#/my/cloud-logs',
       );
       expect(
         TestBed.inject(HostedCloudLogsAccessService).state().status,

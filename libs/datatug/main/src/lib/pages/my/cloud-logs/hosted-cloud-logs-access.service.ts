@@ -209,15 +209,24 @@ export const hostedCloudLogsAccessGuard: CanActivateFn = async (
 
   if (!authState) {
     access.markAuthUnavailable();
-    return router.parseUrl(loginRedirectPath(routeState.url));
+    return router.createUrlTree(['/my/cloud-logs/recovery'], {
+      fragment: '/my/cloud-logs',
+    });
   }
 
+  if (authState.status === AuthStatuses.notAuthenticated) {
+    return router.parseUrl(loginRedirectPath(routeState.url));
+  }
   if (
     authState.status !== AuthStatuses.authenticated ||
-    authState.loadingPhase === 'failed' ||
-    !authState.user?.uid
+    authState.loadingPhase === 'failed'
   ) {
     return router.parseUrl(loginRedirectPath(routeState.url));
+  }
+  if (!authState.user?.uid) {
+    return router.createUrlTree(['/my/cloud-logs/recovery'], {
+      fragment: '/my/cloud-logs',
+    });
   }
 
   const state = await firstValueFrom(
