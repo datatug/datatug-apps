@@ -71,6 +71,27 @@ async function open(
   return grid;
 }
 
+/**
+ * Waits until the grid stops re-creating its rows. A stored result draws its rows, then draws them again a few
+ * hundred milliseconds later (the column metadata arrives), and a re-created row loses its checkbox state. Marked
+ * rows survive an in-place update, so an unmarked row after the pause means the rows were replaced.
+ * This works around a product race (a selection ticked in that window is lost):
+ * https://github.com/datatug/datatug-apps/issues/411
+ */
+async function settleRows(grid: Locator): Promise<void> {
+  for (let attempt = 0; attempt < 10; attempt++) {
+    await grid
+      .locator('.ag-row')
+      .evaluateAll((rows) =>
+        rows.forEach((row) => row.setAttribute('data-settled', '1')),
+      );
+    await grid.page().waitForTimeout(1000);
+    if ((await grid.locator('.ag-row:not([data-settled])').count()) === 0)
+      return;
+  }
+  throw new Error('the grid kept re-creating its rows');
+}
+
 /** A visible element's box; fails the test when the element is not on the page. */
 async function boxOf(locator: Locator) {
   const box = await locator.boundingBox();
@@ -331,6 +352,7 @@ test.describe('results grid toolbar', () => {
     context,
   }) => {
     const grid = await open(page, linkDaemon, 'e2e-select');
+    await settleRows(grid);
     await context.grantPermissions(['clipboard-read', 'clipboard-write'], {
       origin: new URL(page.url()).origin,
     });
