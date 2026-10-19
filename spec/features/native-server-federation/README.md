@@ -39,7 +39,7 @@ Given pending discovery or result reads, when execution is cancelled or fails, t
 Given the saved demo query, when run against the real server, then 17 rows include Canada 3/8 and USA 13/13, with explicit units and exact-label exclusions.
 ### AC: truthful-provenance
 
-Given an ordinary JSON or native stream result without a protected execution receipt, then locally constructed provenance never invents a protected profile. Source details identify OVDB server execution neutrally, preserve genuine API-supplied profiles and retain absent source terms without inventing a licence. Browser runtime receipt labels remain unchanged.
+Given an ordinary JSON or native stream result without a protected execution receipt, then locally constructed provenance never invents a protected profile. Source details identify OVDB server execution neutrally, preserve genuine API-supplied profiles and retain absent source terms without inventing a licence. Browser runtime receipt labels remain unchanged. Ordinary/native paging and local graph history remain usable without protected receipts; unprofiled local envelopes cannot acquire a protected execution reference, while genuinely profiled history retains strict backend validation.
 
 ### AC: readable-inspector
 

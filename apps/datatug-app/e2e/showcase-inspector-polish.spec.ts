@@ -52,7 +52,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       const details = inspector.locator('.source-details');
       await details.locator('summary').click();
       await expect(details).toContainText('live · OVDB server');
-      await expect(details).toContainText('Source usage rights are unavailable');
+      await expect(details).toContainText('Source data terms not declared.');
       await expect(details).not.toContainText('protected');
       await expect(inspector.locator('table thead')).toContainText('northwindCustomers');
       await expect(inspector.locator('table thead')).toContainText('chinookCustomers');
@@ -62,7 +62,8 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await expect(inspector).toContainText('17 rows · 3 columns');
       expect(posts).toBe(1);
       await inspector.scrollIntoViewIfNeeded();
-      await page.screenshot({ path: testInfo.outputPath(`inspector-${name}.png`), fullPage: true });
+      await inspector.screenshot({ path: testInfo.outputPath(`inspector-${name}.png`) });
+      await page.screenshot({ path: testInfo.outputPath(`board-context-${name}.png`), fullPage: true });
       await testInfo.attach('acceptance-boundary', { body: JSON.stringify({ source: 'captured public anonymous OVDB responses', viewport, posts, expected: 'full-width inspector; readable focused tab;17 rows; live · OVDB server; no invented terms; one query across tab changes', observed: 'all assertions passed' }), contentType: 'application/json' });
     });
   });
