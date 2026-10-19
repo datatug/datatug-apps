@@ -7,26 +7,28 @@ export class ProjectCopyOfferSessionService {
   private readonly preferences = new Map<string, boolean>();
 
   dismissed(dataset: string): boolean {
-    const preference = this.preferences.get(dataset);
+    const key = this.key(dataset);
+    const preference = this.preferences.get(key);
     if (preference !== undefined) return preference;
     try {
-      return sessionStorage.getItem(this.key(dataset)) === 'dismissed';
+      return sessionStorage.getItem(key) === 'dismissed';
     } catch {
       return false;
     }
   }
 
   setDismissed(dataset: string, dismissed: boolean): void {
-    this.preferences.set(dataset, dismissed);
+    const key = this.key(dataset);
+    this.preferences.set(key, dismissed);
     try {
-      if (dismissed) sessionStorage.setItem(this.key(dataset), 'dismissed');
-      else sessionStorage.removeItem(this.key(dataset));
+      if (dismissed) sessionStorage.setItem(key, 'dismissed');
+      else sessionStorage.removeItem(key);
     } catch {
       // The in-memory preference still applies while this app is open.
     }
   }
 
   private key(dataset: string): string {
-    return `datatug:demo-project-copy:${dataset}`;
+    return `datatug:demo-project-copy:${dataset.trim().toLowerCase()}`;
   }
 }

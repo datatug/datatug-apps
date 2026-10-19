@@ -12,11 +12,12 @@ describe('project copy offer tab session', () => {
       removeItem: (key: string) => values.delete(key),
     });
     const first = new ProjectCopyOfferSessionService();
-    first.setDismissed('northwind', true);
+    first.setDismissed(' Northwind ', true);
+    expect(first.dismissed('NORTHWIND')).toBe(true);
     const reloaded = new ProjectCopyOfferSessionService();
-    expect(reloaded.dismissed('northwind')).toBe(true);
+    expect(reloaded.dismissed('NORTHWIND')).toBe(true);
     expect(reloaded.dismissed('chinook')).toBe(false);
-    reloaded.setDismissed('northwind', false);
+    reloaded.setDismissed(' NorthWind ', false);
     expect(new ProjectCopyOfferSessionService().dismissed('northwind')).toBe(false);
   });
 
@@ -25,10 +26,10 @@ describe('project copy offer tab session', () => {
     vi.stubGlobal('sessionStorage', { getItem: denied, setItem: denied, removeItem: denied });
     const session = new ProjectCopyOfferSessionService();
     expect(session.dismissed('northwind')).toBe(false);
-    session.setDismissed('northwind', true);
-    expect(session.dismissed('northwind')).toBe(true);
+    session.setDismissed(' Northwind ', true);
+    expect(session.dismissed('NORTHWIND')).toBe(true);
     expect(session.dismissed('chinook')).toBe(false);
-    session.setDismissed('northwind', false);
+    session.setDismissed(' NorthWind ', false);
     expect(session.dismissed('northwind')).toBe(false);
   });
 });
