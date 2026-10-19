@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
 
 const port = process.env.DATATUG_E2E_PORT || '18789';
 
@@ -7,7 +8,8 @@ export default defineConfig({
   testMatch: 'hosted-cloud-logs.spec.ts',
   workers: 1,
   outputDir: '../../coverage/apps/datatug-cloud-logs/results',
-  reporter: 'list',
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
+  reporter: [['list'], demodbReporter],
   use: {
     baseURL: `http://127.0.0.1:${port}`,
     trace: 'off',
@@ -31,5 +33,5 @@ export default defineConfig({
       gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
     },
   ],
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch } }],
 });

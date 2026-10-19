@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';

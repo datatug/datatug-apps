@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
 
 // Explicit live acceptance: the project reader uses the paired committed demo

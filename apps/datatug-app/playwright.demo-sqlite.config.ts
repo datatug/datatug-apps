@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
 
 // /demo/sqlite/<dataset>: a DemoDB SQLite file opened as an editable copy in the browser (OPFS, a dataset
 // worker, Web Locks leader election). The suite runs the real BUILT app (`serve:production`, so the worker and
@@ -27,7 +28,7 @@ export default defineConfig({
   globalSetup: './e2e/helpers/demodb-fixtures-setup.ts',
   reporter: [
     ['list'],
-    ['./e2e/helpers/demodb-request-reporter.ts'],
+    demodbReporter,
     [
       'html',
       {
@@ -47,7 +48,7 @@ export default defineConfig({
     timeout: 180_000,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
     { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],

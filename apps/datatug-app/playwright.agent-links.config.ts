@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
 
 /**
  * Card links (Feature claude-mod-web-links): the pages a DataTug Claude Code mod card links to, opened against a
@@ -17,8 +18,10 @@ export default defineConfig({
   // One daemon per run: the daemon picks the first free port from 8989.
   workers: 1,
   fullyParallel: false,
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
   reporter: [
     ['list'],
+    demodbReporter,
     [
       'html',
       {
@@ -30,7 +33,7 @@ export default defineConfig({
   use: {
     baseURL: origin,
     trace: 'retain-on-failure',
-    ...devices['Desktop Chrome'],
+    ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch,
   },
   webServer: {
     command: `pnpm nx run datatug-app:serve:development --host 127.0.0.1 --port ${port} --allowed-hosts datatug.localhost`,

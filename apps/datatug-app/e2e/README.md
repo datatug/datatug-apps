@@ -10,6 +10,7 @@ or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 a
 | --- | --- | --- | --- | --- |
 | `build`, `test` | yes | yes | yes | none |
 | `e2e-checkout` | yes, `nx affected` | yes | yes | none |
+| `e2e-cloud-logs` | yes | yes | yes | none |
 | `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
 | `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | yes | none: pinned files from local fixtures |
 | `e2e-demo-handoff` | yes, `nx affected` | yes | yes | none (local build, third parties stubbed) |
@@ -24,28 +25,54 @@ or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 a
 skipped by an `if:` does not gate anything even if it is a required check; that is why the live-host lanes are kept
 out of `needs`.
 
-### DemoDB fixtures (`e2e-demo-sqlite`)
+### Keeping every lane off DemoDB: four layers
 
-`helpers/demodb-guard.ts` (every spec imports `test` from it; it is an automatic fixture) answers every `*.demodb.dev`
-request locally. The 5 pinned SQLite files come from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's
-globalSetup running `node scripts/fetch-demodb-fixtures.mjs`: they are taken from the public `demo-db/<dataset>` GitHub
-repositories and accepted only when size and SHA-256 equal the catalog pin. A valid file is never requested again, so a
-warm cache makes 0 requests and a cold one 1 per file, none of them to demodb.dev. `corpus.json` and the six dataset
-home pages are committed in `e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in
-`provenance.json`). CI caches the SQLite directory by the hash of the catalog and the script (restore, then save even
-when tests fail). Every lane therefore sends ZERO requests to demodb.dev, cold or warm.
+All lanes that run on a pull request, merge group or push (above, plus the manual dispatch of `agent-links`) are covered by:
 
-* Fixture mode (default): the live request budget is 0; a test that sends one fails, and a demodb.dev URL with no
-  fixture is aborted.
+1. **The guard** (`helpers/demodb-guard.ts`). Specs and fixtures import `test` from it; it wraps the worker's `browser`, so
+   every context (`newContext`, `newPage`, the `context` fixture, contexts a spec creates by hand) gets a route for
+   `demodb.dev` and every sub-domain. It answers from fixtures, refuses what has none, and counts every request. A request
+   that still reaches the network (a response from a real server address, or a failed name lookup / connection) is counted
+   as *escaped* and fails the test; one that a spec's own route fulfils from bundled bytes does not leave the machine and is not.
+   `chat-phase4.spec.ts` is the one deliberate exception (Chromium aborts its `/favicon.ico` navigation while a route is
+   installed); layers 2 and 3 cover it.
+2. **Chromium resolves every `*.demodb.dev` name to nothing** (`helpers/demodb-config.ts`, `--host-resolver-rules`; not in
+   live mode).
+3. **CI maps the DemoDB names to `0.0.0.0` in `/etc/hosts`** (`.github/actions/block-demodb`, host list from the catalog,
+   `scripts/demodb-hosts.mjs`) and proves it with a failing `curl`. That covers Firefox, WebKit, Node's `request`, and
+   the `datatug` CLI processes. Fixtures are answered by the route before any name lookup, so the block does not break them.
+4. **The report.** Every Playwright run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE, refused,
+   ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), and fails the run when
+   anything escaped or a live budget was exceeded. The `journey`, `session-continuity`, `agent-links`, `checkout`, `hand-off`
+   and `cloud-logs` configs report too.
+
+### DemoDB fixtures
+
+`helpers/demodb-guard.ts` answers every `*.demodb.dev` request locally. The 5 pinned SQLite files and the comparison
+candidate come from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's globalSetup running
+`node scripts/fetch-demodb-fixtures.mjs`: they are taken from the public `demo-db/<dataset>` GitHub repositories at a pinned
+commit and accepted only when size and SHA-256 equal the pin. A valid file is never requested again, so a warm cache makes
+0 requests and a cold one 1 per file, none of them to demodb.dev. The script writes `.complete` only when every file is
+valid, and CI saves its cache only then. `corpus.json` and the six dataset home pages are committed in
+`e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in `provenance.json`; refresh them by building
+the websites repo and copying the outputs). The `journey` lane downloads nothing (`--project=journey` skips the fixtures).
+
+* **Not served, refused:** the OVDB API on `ovdb.demodb.dev`, and the chunked AdventureWorks download (`*.parts.json`
+  manifest and gzip parts). Their tests run only in live mode.
+* **Newly live-only checks** (the 28 skipped demo-sqlite tests in CI are WebKit/OPFS, the opt-in AdventureWorks journeys, and
+  these 21 that probe the live site rather than the app): "every complete-database download DemoDB advertises answers"
+  for each of the 6 datasets and the AdventureWorks manifest check, in 3 browsers. They run in the manual smoke only.
 * `DEMODB_E2E_MODE=live` (only the manual `DemoDB live smoke` workflow): real hosts, each URL at most once per run
-  (repeats are answered from memory), at most `DEMODB_E2E_MAX_LIVE_REQUESTS` (15) per test and
-  `DEMODB_E2E_MAX_RUN_LIVE_REQUESTS` (120) per run, Playwright retries 0, stop at the first failure.
-* HTTP 429 from a DemoDB host (or from `cloud.openvaultdb.com` in the PostgreSQL lane) trips a breaker: no more
-  requests, no retry, a message naming the URL. `e2e-demo-postgresql` has retries 0 and a per-test budget of 40
-  (`DEMODB_E2E_MAX_OVDB_REQUESTS`).
-* Every run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE) at the end of the lane log.
-* `scripts/check-demo-sqlite-catalog.mjs --online` and `check-demo-postgresql-catalog.mjs --online` are manual only
-  and are in no CI path.
+  (repeats come from a file memo shared by all workers), at most `DEMODB_E2E_MAX_LIVE_REQUESTS` (15) per test and
+  `DEMODB_E2E_MAX_RUN_LIVE_REQUESTS` (120) per run. The budgets are enforced before a request is sent (a 503 retry by the
+  app spends budget), Playwright retries 0, `maxFailures` 1.
+* A rate-limit answer (HTTP 429, or a Cloudflare block page: 403/503/52x with `cf-mitigated`, or an error 1015/1020/1027
+  page) trips a breaker kept in a file, so every worker of the run, also one started after a failure, refuses every
+  further request. `e2e-demo-postgresql` has retries 0, `maxFailures` 1 and a per-test budget of 40 requests to
+  `cloud.openvaultdb.com` (`DEMODB_E2E_MAX_OVDB_REQUESTS`), refused once spent. `helpers/demodb-guard-state.unit.ts` tests
+  the state (run in the `test` job).
+* `scripts/check-demo-sqlite-catalog.mjs --online` and `check-demo-postgresql-catalog.mjs --online` are manual only and are
+  in no CI path.
 
 ## Subscription checkout
 

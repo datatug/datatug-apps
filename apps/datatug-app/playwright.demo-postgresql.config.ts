@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
 
 // /demo/ovdb/<dataset>-postgresql: a hosted, read-only PostgreSQL DemoDB edition opened through the public OpenVaultDB
 // server (https://cloud.openvaultdb.com), never Neon directly. The suite runs the real BUILT app (`serve:production`)
@@ -19,10 +20,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  maxFailures: process.env['CI'] ? 4 : 0,
+  maxFailures: 1,
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
   reporter: [
     ['list'],
-    ['./e2e/helpers/demodb-request-reporter.ts'],
+    demodbReporter,
     [
       'html',
       {
@@ -43,7 +45,7 @@ export default defineConfig({
     timeout: 180_000,
   },
   projects: [
-    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch } },
     { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
   ],
 });

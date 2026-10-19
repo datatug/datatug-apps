@@ -1,4 +1,5 @@
 import { BrowserContext, expect, Page, Route, test } from '@playwright/test';
+import { isRateLimited, rateLimitMessage, readBreaker, tripBreaker } from './helpers/demodb-guard-state';
 // The catalog is plain TypeScript with no imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
@@ -38,9 +39,15 @@ const LIVE = 90_000;
  * server. Override with DEMODB_E2E_MAX_OVDB_REQUESTS.
  */
 const OVDB_REQUEST_BUDGET = Number(process.env['DEMODB_E2E_MAX_OVDB_REQUESTS'] || 40);
-/** Set on the first HTTP 429 from the OpenVaultDB server: every later request is refused, nothing is retried. */
-let rateLimited: string | undefined;
+/**
+ * The first rate-limit answer (HTTP 429 or a Cloudflare block page) from the OpenVaultDB server trips the breaker kept in a
+ * FILE (helpers/demodb-guard-state.ts), so a worker that Playwright starts after a failure still refuses every request.
+ * Requests are counted when they are sent and refused once the per-test budget is spent (the app's own 503 back-off
+ * retries count like any other request).
+ */
 let currentSeen: Seen[] = [];
+let ovdbSent = 0;
+let budgetRefusals = 0;
 
 interface Seen {
   readonly method: string;
@@ -55,6 +62,8 @@ async function openContext(
 ): Promise<Seen[]> {
   const seen: Seen[] = [];
   currentSeen = seen;
+  ovdbSent = 0;
+  budgetRefusals = 0;
   context.on('request', (request) =>
     seen.push({ method: request.method(), url: request.url() }),
   );
@@ -72,12 +81,19 @@ async function openContext(
       return route.fulfill({ response });
     }
     if (url.hostname === OVDB_HOST) {
-      if (rateLimited) return route.abort();
+      if (readBreaker()) return route.abort();
       if (onOvdb && (await onOvdb(route))) return;
-      const response = await route.fetch();
-      if (response.status() === 429) {
-        rateLimited = `HTTP 429 from ${route.request().url()}: the server is rate limiting this client. Stopping: no retries, all further requests refused.`;
+      // Refuse BEFORE sending once the budget is spent: a page that loops (or retries a 503) cannot hammer the server.
+      if (ovdbSent >= OVDB_REQUEST_BUDGET) {
+        budgetRefusals += 1;
+        return route.abort();
       }
+      ovdbSent += 1;
+      const response = await route.fetch();
+      const status = response.status();
+      const headers = response.headers();
+      const text = status === 200 ? '' : (await response.text()).slice(0, 4096);
+      if (isRateLimited(status, headers, text)) tripBreaker(rateLimitMessage(route.request().url(), status, headers['retry-after']));
       return route.fulfill({ response });
     }
     if (url.protocol === 'data:' || url.protocol === 'blob:') {
@@ -155,14 +171,18 @@ async function expectNoMutationControls(page: Page): Promise<void> {
 
 // eslint-disable-next-line no-empty-pattern
 test.afterEach(async ({}, testInfo) => {
-  const ovdb = currentSeen.filter(({ url }) => new URL(url).hostname === OVDB_HOST).length;
+  const asked = currentSeen.filter(({ url }) => new URL(url).hostname === OVDB_HOST).length;
   currentSeen = [];
   testInfo.annotations.push({
     type: 'demodb-requests',
-    description: JSON.stringify({ mode: 'live', hosts: { [OVDB_HOST]: { total: ovdb, fixture: 0, memo: 0, live: ovdb } } }),
+    description: JSON.stringify({
+      mode: 'live',
+      hosts: { [OVDB_HOST]: { total: asked, handled: asked, fixture: 0, memo: 0, live: ovdbSent, refused: budgetRefusals, escaped: 0 } },
+    }),
   });
-  if (rateLimited) throw new Error(rateLimited);
-  expect(ovdb, `requests to ${OVDB_HOST} in this test (budget ${OVDB_REQUEST_BUDGET})`).toBeLessThanOrEqual(OVDB_REQUEST_BUDGET);
+  const tripped = readBreaker();
+  if (tripped) throw new Error(tripped);
+  expect(budgetRefusals, `requests to ${OVDB_HOST} refused because this test spent its budget of ${OVDB_REQUEST_BUDGET}`).toBe(0);
 });
 
 const openEdition = async (page: Page, databaseId: string, path = '') => {

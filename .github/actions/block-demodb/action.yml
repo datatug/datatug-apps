@@ -1,0 +1,25 @@
+name: 'Block DemoDB hosts'
+description: >
+  Makes every DemoDB host (demodb.dev, www, ovdb and one sub-domain per catalog dataset) unreachable from this runner by mapping
+  it to 0.0.0.0 in /etc/hosts. Backstop under the Playwright guard (apps/datatug-app/e2e/helpers/demodb-guard.ts): it also covers
+  Firefox, WebKit, Node and the datatug CLI, and a context or request the guard's route cannot see. The guard still serves the
+  fixtures: they are answered by the route before any name lookup. Run it early in every CI job that executes tests or app code.
+  Never use it in the manual live-smoke workflow.
+runs:
+  using: 'composite'
+  steps:
+    - name: Map DemoDB hosts to 0.0.0.0 and prove they are unreachable
+      shell: bash
+      run: |
+        set -euo pipefail
+        node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | sed 's/^/0.0.0.0 /' | sudo tee -a /etc/hosts > /dev/null
+        count="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | wc -l)"
+        echo "Blocked $count DemoDB host names in /etc/hosts"
+        # Positive control: the block must work, or the zero in the request report proves nothing.
+        for host in demodb.dev chinook.demodb.dev ovdb.demodb.dev; do
+          if curl -sS --max-time 5 -o /dev/null "https://$host/"; then
+            echo "::error title=DemoDB block::$host is still reachable after the hosts block"
+            exit 1
+          fi
+        done
+        echo "DemoDB hosts are unreachable from this runner (checked demodb.dev, chinook.demodb.dev, ovdb.demodb.dev)"

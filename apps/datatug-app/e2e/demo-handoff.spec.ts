@@ -1,4 +1,5 @@
-import { BrowserContext, expect, Page, test } from '@playwright/test';
+import { BrowserContext, Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 

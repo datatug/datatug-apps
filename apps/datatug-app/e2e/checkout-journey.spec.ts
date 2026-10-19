@@ -1,4 +1,5 @@
-import { expect, test, type Page } from '@playwright/test';
+import { type Page } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 // Local Firebase identity and Sneat record; payment/reconciliation HTTP is a
 // contract fake. No provider payment or deployed permission mutation is made.
