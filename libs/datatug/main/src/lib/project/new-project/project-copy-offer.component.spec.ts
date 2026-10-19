@@ -1,21 +1,23 @@
 import { NavigationStart, Router } from '@angular/router';
 import { Subject } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ProjectCopyOfferComponent } from './project-copy-offer.component';
 import { NewProjectService } from './new-project.service';
 import { resolveDemoProjectCopySource } from './github-project-copy-source';
 vi.mock('./github-project-copy-source', () => ({ resolveDemoProjectCopySource: vi.fn() }));
 const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'demo', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
-async function setup() {
+async function setup(dataset = 'demo') {
   const navigate = vi.fn();
   const navigation = new Subject<NavigationStart>();
   await TestBed.configureTestingModule({ imports: [ProjectCopyOfferComponent], providers: [{ provide: Router, useValue: { events: navigation } }] })
     .overrideComponent(ProjectCopyOfferComponent, { set: { providers: [{ provide: NewProjectService, useValue: { navigateToNewProjectPage: navigate } }] } }).compileComponents();
   const fixture = TestBed.createComponent(ProjectCopyOfferComponent);
+  fixture.componentRef.setInput('dataset', dataset);
   fixture.detectChanges();
   return { fixture, navigation, component: fixture.componentInstance, navigate };
 }
+beforeEach(() => sessionStorage.clear());
 afterEach(() => { vi.unstubAllGlobals(); vi.clearAllMocks(); });
 describe('project copy offer', () => {
   it('shows lookup failure and lets the user retry the selected source', async () => {
@@ -57,6 +59,41 @@ describe('project copy offer', () => {
     h.navigation.next(new NavigationStart(2, '/demo/sqlite'));
     resolve?.(source);
     await pending;
+    expect(h.navigate).not.toHaveBeenCalled();
+  });
+
+  it('remembers dismissal across component recreation and scopes it to the dataset', async () => {
+    const h = await setup('northwind');
+    h.component.dismiss();
+    h.fixture.destroy();
+    const recreated = TestBed.createComponent(ProjectCopyOfferComponent);
+    recreated.componentRef.setInput('dataset', 'northwind');
+    recreated.detectChanges();
+    expect(recreated.componentInstance.expanded()).toBe(false);
+    recreated.componentRef.setInput('dataset', 'chinook');
+    recreated.detectChanges();
+    expect(recreated.componentInstance.expanded()).toBe(true);
+    recreated.componentRef.setInput('dataset', 'northwind');
+    recreated.detectChanges();
+    expect(recreated.componentInstance.expanded()).toBe(false);
+    recreated.componentInstance.reopen();
+    await recreated.whenStable();
+    expect(recreated.nativeElement.querySelector('[data-testid=project-copy-github]')).not.toBeNull();
+    expect(recreated.nativeElement.querySelector('[data-testid=project-copy-local]')).not.toBeNull();
+  });
+
+  it.each(['dismiss', 'navigation', 'dataset'] as const)('ignores late source errors after %s', async (action) => {
+    let reject: ((error: Error) => void) | undefined;
+    vi.mocked(resolveDemoProjectCopySource).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    const h = await setup('late-error');
+    const pending = h.component.copyToGithub();
+    if (action === 'dismiss') { h.component.dismiss(); h.component.reopen(); }
+    else if (action === 'navigation') h.navigation.next(new NavigationStart(2, '/demo/sqlite'));
+    else { h.fixture.componentRef.setInput('dataset', 'another-dataset'); h.fixture.detectChanges(); }
+    reject?.(new Error('offline'));
+    await pending;
+    expect(h.component.error()).toBeUndefined();
+    expect(h.component.resolving()).toBe(false);
     expect(h.navigate).not.toHaveBeenCalled();
   });
 

@@ -184,7 +184,6 @@ const installLabels: Record<DemoDbInstallStep, string> = {
             </ion-card>
           }
           @case ('ready') {
-            <sneat-datatug-project-copy-offer />
             @if (replacedNotice()) {
               <ion-card color="warning" data-testid="demo-sqlite-replaced">
                 <ion-item lines="none" color="warning">
@@ -198,6 +197,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
                 <ion-card-content role="status">{{ persistenceNotice }}</ion-card-content>
               </ion-card>
             }
+            <sneat-datatug-project-copy-offer [dataset]="datasetParam()" />
             @if (session()?.connection(); as connection) {
               <ion-button data-testid="demo-sqlite-close" fill="clear" (click)="closeCopy()">Close local runtime</ion-button>
               <sneat-datatug-ovdb-database-browser

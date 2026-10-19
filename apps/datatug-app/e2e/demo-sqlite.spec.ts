@@ -151,6 +151,18 @@ test('project copy choices are optional and local instructions preserve SQLite e
   await page.getByTestId('project-copy-dismiss').click();
   await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
   await editName(page, SQLITE_ORIGINAL_ARTIST_1, 'Project copy stays optional');
+  await page.goto('/demo/sqlite/chinook');
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await page.getByText('Artist', { exact: true }).click();
+  await expect(page.getByTestId('ovdb-rows')).toBeVisible();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await expect(page.getByTestId('project-copy-reopen')).toBeVisible();
   await page.getByTestId('project-copy-reopen').click();
   await expect(page.getByTestId('project-copy-offer')).toBeVisible();
 });
