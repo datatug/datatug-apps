@@ -12,17 +12,18 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | sed 's/^/0.0.0.0 /' | sudo tee -a /etc/hosts > /dev/null
+        # Both families: a name that only had an IPv4 entry would still resolve to its real IPv6 address and escape the block.
+        node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | awk '{print "0.0.0.0 " $1; print ":: " $1}' | sudo tee -a /etc/hosts > /dev/null
         count="$(node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/demodb-hosts.mjs | wc -l)"
         echo "Blocked $count DemoDB host names in /etc/hosts"
-        # Proof, without any network: the system resolver must answer 0.0.0.0 for a sample of every family (the DemoDB apex, a dataset
-        # sub-domain, the OVDB API on demodb.dev, and both public OpenVaultDB names). getent reads /etc/hosts and, for names that
-        # are not there, would ask DNS: such a name fails this check.
+        # Proof, without any network: EVERY address the system resolver returns for a sample of each family (the DemoDB apex, a dataset
+        # sub-domain, the OVDB API on demodb.dev, both public OpenVaultDB names) must be 0.0.0.0 or ::. `getent ahosts` lists both
+        # families; a name that is not in /etc/hosts would be sent to DNS and fail this check.
         for host in demodb.dev chinook.demodb.dev ovdb.demodb.dev openvaultdb.com cloud.openvaultdb.com; do
-          answer="$(getent hosts "$host" | awk '{print $1}' | head -1)"
-          if [ "$answer" != "0.0.0.0" ]; then
-            echo "::error title=DemoDB block::$host resolves to '${answer:-nothing}', not 0.0.0.0, after the hosts block"
+          addresses="$(getent ahosts "$host" | awk '{print $1}' | sort -u | tr '\n' ' ')"
+          if [ -z "$addresses" ] || [ -n "$(getent ahosts "$host" | awk '{print $1}' | grep -v -x -e '0.0.0.0' -e '::' || true)" ]; then
+            echo "::error title=DemoDB block::$host resolves to '${addresses:-nothing}', not only 0.0.0.0 / ::, after the hosts block"
             exit 1
           fi
         done
-        echo "DemoDB and OpenVaultDB hosts resolve to 0.0.0.0 (checked demodb.dev, chinook.demodb.dev, ovdb.demodb.dev, openvaultdb.com, cloud.openvaultdb.com)"
+        echo "DemoDB and OpenVaultDB hosts resolve only to 0.0.0.0 / :: (checked demodb.dev, chinook.demodb.dev, ovdb.demodb.dev, openvaultdb.com, cloud.openvaultdb.com)"
