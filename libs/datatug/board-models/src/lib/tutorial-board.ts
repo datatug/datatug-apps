@@ -749,13 +749,17 @@ function applySessionAction(
     ),
   };
   validateBoardPresentation(board);
+  const chartViews = state.chartViews
+    ? { ...pruneChartViews(board, state.chartViews) }
+    : undefined;
+  // An explicit authoring choice supersedes only this widget's guided view.
+  if (chartViews && action.type === 'set-view')
+    delete chartViews[selectionKey(action.cardId, path)];
   return {
     ...state,
     board,
     selectedTabs: pruneSelections(board, selectedTabs),
-    ...(state.chartViews
-      ? { chartViews: pruneChartViews(board, state.chartViews) }
-      : {}),
+    ...(chartViews ? { chartViews } : {}),
   };
 }
 

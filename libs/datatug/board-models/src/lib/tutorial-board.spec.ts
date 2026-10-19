@@ -1035,6 +1035,108 @@ describe('tutorial-only held presentation views', () => {
     expect(restored.presentationView('race')).toBeUndefined();
   });
 
+  it('lets a Result view edit supersede only its guided overlay and replays that choice', async () => {
+    const storage = new MemoryStorage();
+    const session = await TutorialBoardSession.open(
+      editable,
+      'view-edit',
+      storage,
+    );
+    for (const action of reveal) session.dispatch(action);
+    session.dispatch({
+      type: 'set-presentation-view',
+      cardId: 'race',
+      view: 'trend',
+    });
+    session.dispatch({
+      type: 'set-presentation-view',
+      cardId: 'chart',
+      view: 'grid',
+    });
+    expect(
+      session.dispatch({ type: 'set-view', cardId: 'race', view: 'grid' }),
+    ).toBe(true);
+    expect(session.presentationView('race')).toBeUndefined();
+    expect(session.presentationView('chart')).toBe('grid');
+    expect(session.previous()).toBe(true);
+    expect(session.presentationView('race')).toBe('trend');
+    expect(session.next()).toBe(true);
+    expect(session.presentationView('race')).toBeUndefined();
+    const restored = await TutorialBoardSession.open(
+      editable,
+      'view-edit',
+      storage,
+    );
+    expect(restored.presentationView('race')).toBeUndefined();
+    expect(restored.presentationView('chart')).toBe('grid');
+    const race = restored.board.rows
+      ?.flatMap((row) => row.cards ?? [])
+      .find((card) => card.id === 'race');
+    expect((race?.widget?.data as ChartWidgetDef).defaultView).toBe('grid');
+  });
+
+  it('clears an edited nested view without clearing its sibling or another card', async () => {
+    const race = editable.rows
+      ?.flatMap((row) => row.cards ?? [])
+      .find((card) => card.id === 'race');
+    if (!race?.widget) throw new Error('Missing race fixture');
+    const board: Board = {
+      ...editable,
+      rows: [
+        ...(editable.rows ?? []),
+        {
+          cards: [
+            {
+              id: 'nested',
+              widget: {
+                name: 'tabs',
+                data: {
+                  tabs: [
+                    { id: 'left', title: 'Left', widget: race.widget },
+                    { id: 'right', title: 'Right', widget: race.widget },
+                  ],
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    const before = JSON.stringify(board);
+    const session = await TutorialBoardSession.open(board, 'nested-view-edit');
+    for (const action of reveal) session.dispatch(action);
+    session.dispatch({ type: 'add-card', cardId: 'nested' });
+    session.dispatch({
+      type: 'set-presentation-view',
+      cardId: 'race',
+      view: 'trend',
+    });
+    session.dispatch({
+      type: 'set-presentation-view',
+      cardId: 'nested',
+      widgetPath: ['id:left'],
+      view: 'grid',
+    });
+    session.dispatch({
+      type: 'set-presentation-view',
+      cardId: 'nested',
+      widgetPath: ['id:right'],
+      view: 'trend',
+    });
+    expect(
+      session.dispatch({
+        type: 'set-view',
+        cardId: 'nested',
+        widgetPath: ['id:left'],
+        view: 'chart',
+      }),
+    ).toBe(true);
+    expect(session.presentationView('nested', ['id:left'])).toBeUndefined();
+    expect(session.presentationView('nested', ['id:right'])).toBe('trend');
+    expect(session.presentationView('race')).toBe('trend');
+    expect(JSON.stringify(board)).toBe(before);
+  });
+
   it('rejects unsupported or forged presentation views and requires a present raw Orders race for trend', async () => {
     const session = await TutorialBoardSession.open(editable, 'presentation');
     expect(
