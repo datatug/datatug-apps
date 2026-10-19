@@ -13,7 +13,11 @@ import { resultColumnDef } from './results-grid-columns';
 /** A column as the grid's api hands it out. */
 const col = (
   colId: string,
-  extra: { headerName?: string; visible?: boolean; pinned?: 'left' | null } = {},
+  extra: {
+    headerName?: string;
+    visible?: boolean;
+    pinned?: 'left' | null;
+  } = {},
 ) => ({
   getColId: () => colId,
   getColDef: () => ({
@@ -29,6 +33,13 @@ const api = {
   exportDataAsCsv: vi.fn(),
   exportDataAsExcel: vi.fn(),
   getDisplayedRowCount: vi.fn(() => 1),
+  forEachNodeAfterFilter: vi.fn((visit: (node: unknown) => void) =>
+    visit({ data: { c0: '1' } }),
+  ),
+  getCellRanges: vi.fn((): unknown[] => []),
+  createRangeChart: vi.fn(),
+  getChartRef: vi.fn(),
+  clearCellSelection: vi.fn(),
   getAllDisplayedColumns: vi.fn(() => [
     col('ag-Grid-SelectionColumn'),
     col('__row'),
@@ -38,7 +49,14 @@ const api = {
   getSelectedNodes: vi.fn((): unknown[] => []),
   getColumnState: vi.fn(() => [
     { colId: '__row', width: 64 },
-    { colId: 'c0', width: 120, hide: false, pinned: null, sort: 'asc', sortIndex: 0 },
+    {
+      colId: 'c0',
+      width: 120,
+      hide: false,
+      pinned: null,
+      sort: 'asc',
+      sortIndex: 0,
+    },
   ]),
   applyColumnState: vi.fn(),
   resetColumnState: vi.fn(),
@@ -79,6 +97,9 @@ class GridStubComponent {
   readonly rowGroupPanelShow = input<unknown>();
   readonly cellSelection = input<unknown>();
   readonly enableCharts = input<unknown>();
+  readonly processCellForClipboard = input<unknown>();
+  readonly chartCreated = output<unknown>();
+  readonly cellSelectionChanged = output<unknown>();
   readonly gridReady = output<unknown>();
   readonly rowClicked = output<unknown>();
   readonly selectionChanged = output<unknown>();
@@ -194,6 +215,7 @@ describe('ResultsGridComponent', () => {
         fileName: 'results.csv',
         columnKeys: ['c0'],
         processCellCallback: expect.any(Function),
+        skipRowGroups: true,
       });
       cmp.exportExcel();
       expect(api.exportDataAsExcel).not.toHaveBeenCalled();
@@ -214,7 +236,12 @@ describe('ResultsGridComponent', () => {
       fixture.detectChanges();
       expect(grid?.quickFilterText()).toBe('abc');
       (grid as unknown as GridStubComponent).gridReady.emit({ api });
-      api.getDisplayedRowCount.mockReturnValue(1);
+      api.getDisplayedRowCount.mockReturnValue(5); // includes synthetic groups/footers
+      api.forEachNodeAfterFilter.mockImplementation((visit) => {
+        visit({ group: true });
+        visit({ footer: true });
+        visit({ data: { c0: '1' } });
+      });
       (grid as unknown as GridStubComponent).modelUpdated.emit({});
       fixture.detectChanges();
       expect(cmp.rowCountLabel()).toBe('1 of 2 rows');
@@ -264,13 +291,12 @@ describe('ResultsGridComponent', () => {
       expect(cmp.enterprise()).toBe(true);
       expect(grid?.sideBar()).toBeTruthy();
       expect(grid?.statusBar()).toBeTruthy();
-      expect(grid?.rowGroupPanelShow()).toBe('onlyWhenGrouping');
+      expect(grid?.rowGroupPanelShow()).toBe('always');
       expect(grid?.cellSelection()).toBe(true);
       expect(grid?.enableCharts()).toBe(true);
       expect(grid?.defaultColDef()).toMatchObject({
         enableRowGroup: true,
         enablePivot: true,
-        enableValue: true,
       });
       (grid as unknown as GridStubComponent).gridReady.emit({ api });
       (
@@ -280,7 +306,60 @@ describe('ResultsGridComponent', () => {
       ).click();
       expect(api.exportDataAsExcel).toHaveBeenCalledWith({
         fileName: 'results.xlsx',
+        columnKeys: ['c0'],
+        skipRowGroups: true,
+        processCellCallback: expect.any(Function),
       });
+    });
+    it('charts only an explicit eligible range, retains the chart on focus/filter updates and destroys it on snapshot replacement', async () => {
+      configureAgGrid('test-only');
+      await ensureAgGrid({
+        community: async () => ({ registerAgGridCommunity: () => undefined }),
+        enterprise: async () => ({ registerAgGridEnterprise: () => undefined }),
+      });
+      const { fixture, grid, cmp, el } = await mount();
+      const key = {};
+      fixture.componentRef.setInput('snapshotKey', key);
+      fixture.componentRef.setInput(
+        'analyticsScope',
+        'Analytics use 2 loaded rows on page 1',
+      );
+      fixture.detectChanges();
+      (grid as GridStubComponent).gridReady.emit({ api });
+      expect(grid?.enableCellTextSelection()).toBe(false);
+      cmp.chartSelectedRange();
+      expect(api.createRangeChart).not.toHaveBeenCalled();
+      api.getCellRanges.mockReturnValue([
+        {
+          columns: [col('c0')],
+          startRow: { rowIndex: 0 },
+          endRow: { rowIndex: 1 },
+        },
+      ]);
+      (grid as GridStubComponent).cellSelectionChanged.emit({});
+      fixture.detectChanges();
+      const button = el.querySelector(
+        '[data-testid="results-grid-chart"]',
+      ) as HTMLButtonElement;
+      expect(button.disabled).toBe(false);
+      button.click();
+      expect(api.createRangeChart).toHaveBeenCalledWith({
+        chartType: 'groupedColumn',
+        cellRange: { rowStartIndex: 0, rowEndIndex: 1, columns: ['c0'] },
+      });
+      const destroyChart = vi.fn();
+      api.getChartRef.mockReturnValue({ destroyChart });
+      (grid as GridStubComponent).chartCreated.emit({ chartId: 'chart-1' });
+      fixture.componentRef.setInput('rowData', [{ c0: '1' }, { c0: null }]);
+      cmp.onQuickFilter({ target: { value: '1' } } as unknown as Event);
+      fixture.detectChanges();
+      expect(destroyChart).not.toHaveBeenCalled();
+      fixture.componentRef.setInput('snapshotKey', {});
+      fixture.detectChanges();
+      expect(destroyChart).toHaveBeenCalledOnce();
+      expect(el.textContent).toContain(
+        'Numeric aggregations and charts are approximate',
+      );
     });
   });
 });
@@ -331,18 +410,31 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
   it('exports all rows with no selection and only the selected rows with one', async () => {
     const { el, fixture } = await ready();
     click(el, 'results-grid-export-csv');
-    expect(api.exportDataAsCsv.mock.calls[0][0]).not.toHaveProperty('onlySelected');
+    expect(api.exportDataAsCsv.mock.calls[0][0]).not.toHaveProperty(
+      'onlySelected',
+    );
     api.getSelectedNodes.mockReturnValue([{ rowIndex: 0, data: { c0: '1' } }]);
     fixture.componentInstance.onSelectionChanged({} as never);
     fixture.detectChanges();
-    expect(el.querySelector('[data-testid="results-grid-export-csv"]')?.textContent).toContain('CSV selected');
-    expect(el.querySelector('[data-testid="results-grid-count"]')?.textContent).toContain('1 selected');
+    expect(
+      el.querySelector('[data-testid="results-grid-export-csv"]')?.textContent,
+    ).toContain('CSV selected');
+    expect(
+      el.querySelector('[data-testid="results-grid-count"]')?.textContent,
+    ).toContain('1 selected');
     click(el, 'results-grid-export-csv');
     const params = api.exportDataAsCsv.mock.calls[1][0];
     expect(params).toMatchObject({ onlySelected: true, columnKeys: ['c0'] });
     // The cell text is exported as it is: no grouping, a NULL as an empty field.
     expect(params.processCellCallback({ value: '1234567' })).toBe('1234567');
     expect(params.processCellCallback({ value: null })).toBe('');
+    expect(
+      params.processCellCallback({
+        value: 2.5,
+        column: col('c0'),
+        node: { data: { c0: '2.50' } },
+      }),
+    ).toBe('2.50');
   });
 
   it('copies the selected rows as tab-separated text with a header, in screen order', async () => {
@@ -350,9 +442,15 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
     vi.stubGlobal('navigator', { clipboard: { writeText } });
     const { el, fixture, cmp } = await ready();
     expect(
-      (el.querySelector('[data-testid="results-grid-copy"]') as HTMLButtonElement).disabled,
+      (
+        el.querySelector(
+          '[data-testid="results-grid-copy"]',
+        ) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
     api.getSelectedNodes.mockReturnValue([
+      { rowIndex: 2, group: true },
+      { rowIndex: 3, footer: true, data: { c0: 'not a source row' } },
       { rowIndex: 1, data: { c0: 'a\tb' } },
       { rowIndex: 0, data: { c0: null } },
       { rowIndex: null, data: { c0: 'hidden by a filter' } },
@@ -362,18 +460,28 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
     await cmp.copySelected();
     expect(writeText).toHaveBeenCalledWith('C0\n\n"a\tb"');
     fixture.detectChanges();
-    expect(el.querySelector('[data-testid="results-grid-status"]')?.textContent).toContain('Copied 2 rows');
+    expect(
+      el.querySelector('[data-testid="results-grid-status"]')?.textContent,
+    ).toContain('Copied 2 rows');
   });
 
   it('names a copy failure and never puts the text in the message', async () => {
     vi.stubGlobal('navigator', {
-      clipboard: { writeText: vi.fn(async () => { throw new Error('secret-cell-text'); }) },
+      clipboard: {
+        writeText: vi.fn(async () => {
+          throw new Error('secret-cell-text');
+        }),
+      },
     });
     const { el, fixture, cmp } = await ready();
-    api.getSelectedNodes.mockReturnValue([{ rowIndex: 0, data: { c0: 'secret-cell-text' } }]);
+    api.getSelectedNodes.mockReturnValue([
+      { rowIndex: 0, data: { c0: 'secret-cell-text' } },
+    ]);
     await cmp.copySelected();
     fixture.detectChanges();
-    const status = el.querySelector('[data-testid="results-grid-status"]')?.textContent ?? '';
+    const status =
+      el.querySelector('[data-testid="results-grid-status"]')?.textContent ??
+      '';
     expect(status).toContain('Copy failed');
     expect(status).not.toContain('secret');
     vi.stubGlobal('navigator', {});
@@ -439,21 +547,32 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
     vi.clearAllMocks();
     const second = await ready(KEY);
     expect(api.applyColumnState).toHaveBeenCalledWith({
-      state: [expect.objectContaining({ colId: 'c0', width: 120, sort: 'asc' })],
+      state: [
+        expect.objectContaining({ colId: 'c0', width: 120, sort: 'asc' }),
+      ],
       applyOrder: true,
     });
     // The remembered widths replace the fit to content.
     expect(second.grid?.autoSizeStrategy()).toBeUndefined();
   });
 
-  it('does not save a fit to content or the grid\'s own events while a layout is applied', async () => {
+  it("does not save a fit to content or the grid's own events while a layout is applied", async () => {
     const { grid } = await ready(KEY);
     vi.useFakeTimers();
-    (grid as unknown as GridStubComponent).columnResized.emit({ finished: true, source: 'autosizeColumns' });
-    (grid as unknown as GridStubComponent).columnResized.emit({ finished: false, source: 'uiColumnResized' });
+    (grid as unknown as GridStubComponent).columnResized.emit({
+      finished: true,
+      source: 'autosizeColumns',
+    });
+    (grid as unknown as GridStubComponent).columnResized.emit({
+      finished: false,
+      source: 'uiColumnResized',
+    });
     vi.advanceTimersByTime(1000);
     expect(localStorage.getItem(KEY)).toBeNull();
-    (grid as unknown as GridStubComponent).columnResized.emit({ finished: true, source: 'uiColumnResized' });
+    (grid as unknown as GridStubComponent).columnResized.emit({
+      finished: true,
+      source: 'uiColumnResized',
+    });
     vi.advanceTimersByTime(400);
     expect(localStorage.getItem(KEY)).not.toBeNull();
   });
@@ -461,7 +580,12 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
   it('ignores a remembered layout of other columns', async () => {
     localStorage.setItem(
       KEY,
-      JSON.stringify({ v: 1, density: 'comfortable', sig: 'deadbeef', cols: [{ colId: 'c0' }] }),
+      JSON.stringify({
+        v: 1,
+        density: 'comfortable',
+        sig: 'deadbeef',
+        cols: [{ colId: 'c0' }],
+      }),
     );
     const { grid } = await ready(KEY);
     expect(api.applyColumnState).not.toHaveBeenCalled();
@@ -489,7 +613,15 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
   });
 
   it('resets the columns: forgets the layout, keeps the density, fits again', async () => {
-    localStorage.setItem(KEY, JSON.stringify({ v: 1, density: 'compact', sig: 'x', cols: [{ colId: 'c0' }] }));
+    localStorage.setItem(
+      KEY,
+      JSON.stringify({
+        v: 1,
+        density: 'compact',
+        sig: 'x',
+        cols: [{ colId: 'c0' }],
+      }),
+    );
     const { el, fixture } = await ready(KEY);
     vi.useFakeTimers();
     click(el, 'results-grid-columns-button');
@@ -497,11 +629,19 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
     click(el, 'results-grid-reset-columns');
     expect(api.resetColumnState).toHaveBeenCalled();
     expect(api.autoSizeAllColumns).toHaveBeenCalled();
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({ v: 1, density: 'compact' });
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({
+      v: 1,
+      density: 'compact',
+    });
     // The grid's own events after a reset do not bring the old layout back.
-    (fixture.componentInstance as unknown as { onLayoutChanged(): void }).onLayoutChanged();
+    (
+      fixture.componentInstance as unknown as { onLayoutChanged(): void }
+    ).onLayoutChanged();
     vi.advanceTimersByTime(1000);
-    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({ v: 1, density: 'compact' });
+    expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({
+      v: 1,
+      density: 'compact',
+    });
   });
 
   describe('column chooser', () => {
@@ -517,7 +657,9 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
       expect(items.length).toBe(1);
       expect(items[0].textContent).toContain('C0');
       expect(
-        el.querySelector('[data-testid="results-grid-columns-button"]')?.getAttribute('aria-expanded'),
+        el
+          .querySelector('[data-testid="results-grid-columns-button"]')
+          ?.getAttribute('aria-expanded'),
       ).toBe('true');
       document.body.click();
       fixture.detectChanges();

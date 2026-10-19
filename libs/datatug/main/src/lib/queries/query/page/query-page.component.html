@@ -1828,6 +1828,8 @@
           [columnDefs]="resultGridColumnDefs()"
           [headerHeight]="64"
           [rowData]="resultGridRows()"
+          [snapshotKey]="authorResultSnapshotKey()"
+          [analyticsScope]="resultGridAnalyticsScope()"
           exportName="query-result"
           [stateKey]="resultGridStateKey()"
           [rowClassRules]="isTextQueryWorkspace() ? authorResultRowClassRules : undefined"

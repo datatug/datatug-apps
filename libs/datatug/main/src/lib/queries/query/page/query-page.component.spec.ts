@@ -1281,6 +1281,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     // Moving the focus moves the Current row without checking anything.
     component.authorResultCellFocused({ rowIndex: 1, api } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
+    const inspectedLeaf = component.currentAuthorResultRow();
+    const snapshot = component.authorResultSnapshotKey();
+    component.authorResultRowClicked({ api, node: { group: true }, data: rows[0] } as never);
+    component.authorResultRowClicked({ api, node: { footer: true }, data: rows[0] } as never);
+    component.authorResultCellFocused({ rowIndex: 2, api: { getDisplayedRowAtIndex: () => ({ group: true }) } } as never);
+    expect(component.currentAuthorResultRow()).toBe(inspectedLeaf);
+    expect(component.authorResultSnapshotKey()).toBe(snapshot);
+    expect(component.resultGridAnalyticsScope()).toContain('2 loaded rows on page 1');
     expect(setSelected).not.toHaveBeenCalled();
 
     const key = component.resultGridStateKey();
@@ -7346,9 +7354,9 @@ select (
     it('says when charts become available instead of a rights error for the saved rows', async () => {
       const { created, opener } = await openerWith(editorReadyResult());
       opener.openFromResult('rid-23');
-      expect(created.resultChartUnavailableText()).toBe('Charts are available after running the query.');
+      expect(created.resultChartUnavailableText()).toBe('Full-result chart preview is available after running the query.');
       (created as unknown as { closeSavedResult(): void }).closeSavedResult();
-      expect(created.resultChartUnavailableText()).toMatch(/^Chart unavailable: /);
+      expect(created.resultChartUnavailableText()).toMatch(/^Full-result chart preview unavailable: /);
     });
 
     it('starts the Current row pane closed for a wide result, one click to open', async () => {

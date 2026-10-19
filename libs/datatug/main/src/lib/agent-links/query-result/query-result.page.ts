@@ -369,6 +369,7 @@ export class QueryResultPageComponent {
 
   /** Opens the clicked row in the Record view. The position is the row's place in the saved rows, not on screen: the grid may be sorted or filtered. */
   gridRowClicked(event: RowClickedEvent<GridRow>): void {
+    if (event.node?.group || event.node?.footer) return;
     const at = event.data ? this.gridRows().indexOf(event.data) : -1;
     if (at >= 0) this.selectRow(at + 1);
   }

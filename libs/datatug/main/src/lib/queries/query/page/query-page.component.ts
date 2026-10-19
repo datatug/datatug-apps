@@ -1904,8 +1904,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!reason) return '';
     return this.runResult()?.provenance.mode === 'snapshot' &&
       this.savedResultBanner()?.kind === 'shown'
-      ? 'Charts are available after running the query.'
-      : `Chart unavailable: ${reason}`;
+      ? 'Full-result chart preview is available after running the query.'
+      : `Full-result chart preview unavailable: ${reason} Loaded rows remain available in the grid.`;
   });
   public readonly resultChartHeld = computed(() => {
     const result = this.runResult();
@@ -2611,6 +2611,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     cell.append(marker, content);
     return cell;
   }
+  public readonly resultGridAnalyticsScope = computed(() =>
+    `Analytics use ${this.visibleResultRows().length} loaded rows on page ${this.resultPageIndex() + 1}` +
+    (this.resultHasMore() ? ' (more rows available)' : '') + '; grouping and charts do not load other pages',
+  );
   public readonly resultGridRows = computed<QueryResultGridRow[]>(() => {
     const result = this.runResult();
     const recordset = this.displayedRecordset();
@@ -3590,6 +3594,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!this.isTextQueryWorkspace() || event.rowIndex === null) return;
     this.authorResultGridApi = event.api;
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
+    if (node?.group || node?.footer) return;
     this.setAuthorResultRow(node?.data);
   }
 
@@ -3598,6 +3603,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   ): void {
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
+    if (event.node?.group || event.node?.footer) return;
     this.setAuthorResultRow(event.data);
   }
 

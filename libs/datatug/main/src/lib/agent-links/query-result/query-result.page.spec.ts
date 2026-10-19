@@ -32,6 +32,8 @@ import { ROW_MARKER, invoiceCustomerResult } from './query-result.spec-helper';
 class GridStubComponent {
   readonly columnDefs = input<unknown>();
   readonly rowData = input<unknown>();
+  readonly snapshotKey = input<unknown>();
+  readonly analyticsScope = input<unknown>();
   readonly exportName = input<unknown>();
   readonly rowClicked = output<unknown>();
 }

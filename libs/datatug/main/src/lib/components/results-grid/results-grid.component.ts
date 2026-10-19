@@ -18,6 +18,8 @@ import {
 import { AgGridAngular } from 'ag-grid-angular';
 import type {
   CellFocusedEvent,
+  ChartCreatedEvent,
+  ProcessCellForExportParams,
   ColDef,
   ColumnResizedEvent,
   GridApi,
@@ -55,6 +57,10 @@ const SELECTION_COLUMN_DEF = {
   minWidth: 44,
   maxWidth: 44,
   resizable: false,
+  chartDataType: 'excluded',
+  enableValue: false,
+  enableRowGroup: false,
+  enablePivot: false,
 } as const;
 /** Row height of the compact density; the comfortable density is the theme's own. */
 const COMPACT_ROW_HEIGHT = 28;
@@ -83,6 +89,8 @@ const ENTERPRISE_STATUS_BAR = {
     { statusPanel: 'agAggregationComponent', align: 'right' },
   ],
 };
+
+import { analyticsColumns } from './results-grid-analytics';
 
 const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
 
@@ -190,6 +198,16 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
             <button
               type="button"
               class="dt-rg-button"
+              data-testid="results-grid-chart"
+              [disabled]="!chartRangeReady()"
+              (click)="chartSelectedRange()"
+              title="Select cells containing a numeric measure, then chart that range"
+            >
+              Chart selected range
+            </button>
+            <button
+              type="button"
+              class="dt-rg-button"
               data-testid="results-grid-export-excel"
               (click)="exportExcel()"
             >
@@ -204,6 +222,18 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
           data-testid="results-grid-status"
           >{{ status() }}</span
         >
+        @if (enterprise()) {
+          <span class="dt-rg-status" data-testid="results-grid-analytics-scope"
+            >{{ analyticsScope() }} · Numeric aggregations and charts are
+            approximate.</span
+          >
+          @if (analytics().excluded.length) {
+            <span class="dt-rg-status" role="status"
+              >Exact text only (not numeric measures):
+              {{ analytics().excluded.join(', ') }}.</span
+            >
+          }
+        }
         @if (chooserOpen()) {
           <div
             class="dt-rg-chooser"
@@ -307,15 +337,18 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
         [overlayNoRowsTemplate]="overlayNoRowsTemplate()"
         [quickFilterText]="quickFilter()"
         [autoSizeStrategy]="autoSizeStrategy()"
-        [enableCellTextSelection]="true"
+        [enableCellTextSelection]="!enterprise()"
         [columnHoverHighlight]="true"
         [tooltipShowDelay]="600"
         [suppressMenuHide]="true"
         [sideBar]="enterprise() ? sideBar : undefined"
         [statusBar]="enterprise() ? statusBar : undefined"
-        [rowGroupPanelShow]="enterprise() ? 'onlyWhenGrouping' : undefined"
+        [rowGroupPanelShow]="enterprise() ? 'always' : undefined"
         [cellSelection]="enterprise() ? true : undefined"
         [enableCharts]="enterprise()"
+        [processCellForClipboard]="enterprise() ? clipboardCell : undefined"
+        (cellSelectionChanged)="updateChartRange()"
+        (chartCreated)="onChartCreated($event)"
         (gridReady)="onGridReady($event)"
         (rowClicked)="rowClicked.emit($event)"
         (selectionChanged)="onSelectionChanged($event)"
@@ -472,6 +505,13 @@ export class ResultsGridComponent {
   /** Columns, already built (usually from `resultColumnDef`); the row-number column is added here. */
   readonly columnDefs = input.required<readonly ColDef<GridRow>[]>();
   readonly rowData = input<GridRow[]>([]);
+  /** Query/result/page identity, never focus or presentation state. */
+  readonly snapshotKey = input<unknown>(undefined);
+  readonly analyticsScope = input('Analytics use the loaded rows');
+  readonly chartRangeReady = signal(false);
+  readonly analytics = computed(() =>
+    analyticsColumns(this.columnDefs(), this.rowData()),
+  );
   readonly loading = input(false);
   readonly headerHeight = input<number | undefined>(undefined);
   readonly rowClassRules = input<RowClassRules | undefined>(undefined);
@@ -508,6 +548,7 @@ export class ResultsGridComponent {
   readonly status = signal('');
 
   private api?: GridApi<GridRow>;
+  private readonly chartIds = new Set<string>();
   private readonly shown = signal<number | undefined>(undefined);
   private readonly destroyRef = inject(DestroyRef);
   private saveTimer?: ReturnType<typeof setTimeout>;
@@ -519,7 +560,7 @@ export class ResultsGridComponent {
 
   readonly defs = computed<ColDef<GridRow>[]>(() => [
     ...(this.showRowNumbers() ? [ROW_NUMBER_COLUMN] : []),
-    ...this.columnDefs(),
+    ...(this.enterprise() ? this.analytics().columns : this.columnDefs()),
   ]);
 
   /** Ids of the data columns (not the row-number or selection column), in the order given. */
@@ -568,9 +609,7 @@ export class ResultsGridComponent {
     unSortIcon: true,
     filter: true,
     floatingFilter: true,
-    ...(this.enterprise()
-      ? { enableRowGroup: true, enablePivot: true, enableValue: true }
-      : {}),
+    ...(this.enterprise() ? { enableRowGroup: true, enablePivot: true } : {}),
   }));
 
   readonly rowCountLabel = computed(() => {
@@ -598,7 +637,13 @@ export class ResultsGridComponent {
         if (this.api) this.applyStoredLayout();
       });
     });
+    effect(() => {
+      if (this.snapshotKey() === undefined) this.rowData();
+      this.signature();
+      untracked(() => this.destroyCharts());
+    });
     this.destroyRef.onDestroy(() => {
+      this.destroyCharts();
       clearTimeout(this.saveTimer);
       clearTimeout(this.statusTimer);
     });
@@ -622,7 +667,12 @@ export class ResultsGridComponent {
 
   onModelUpdated(): void {
     const api = this.api;
-    this.shown.set(api ? api.getDisplayedRowCount() : undefined);
+    let leaves = 0;
+    api?.forEachNodeAfterFilter?.((node) => {
+      if (!node.group && !node.footer && node.data) leaves++;
+    });
+    this.shown.set(api ? leaves : undefined);
+    this.updateChartRange();
     this.refreshSelectedCount();
   }
 
@@ -632,7 +682,11 @@ export class ResultsGridComponent {
   }
 
   private refreshSelectedCount(): void {
-    this.selectedCount.set(this.api?.getSelectedNodes?.().length ?? 0);
+    this.selectedCount.set(
+      this.api
+        ?.getSelectedNodes?.()
+        .filter((n) => !n.group && !n.footer && !!n.data).length ?? 0,
+    );
   }
 
   // ---- remembered layout ----
@@ -830,6 +884,64 @@ export class ResultsGridComponent {
     this.scheduleSave(600);
   }
 
+  onChartCreated(event: ChartCreatedEvent<GridRow>): void {
+    this.chartIds.add(event.chartId);
+  }
+
+  private destroyCharts(): void {
+    if (this.api?.isDestroyed?.()) {
+      this.chartIds.clear();
+      this.chartRangeReady.set(false);
+      return;
+    }
+    for (const id of this.chartIds) this.api?.getChartRef?.(id)?.destroyChart();
+    this.chartIds.clear();
+    if (this.enterprise()) this.api?.clearCellSelection?.();
+    this.chartRangeReady.set(false);
+  }
+
+  updateChartRange(): void {
+    if (!this.enterprise()) {
+      this.chartRangeReady.set(false);
+      return;
+    }
+    const ranges = this.api?.getCellRanges?.() ?? [];
+    const measures = new Set(
+      this.analytics()
+        .columns.filter((c) => c.chartDataType === 'series')
+        .map((c) => c.colId),
+    );
+    this.chartRangeReady.set(
+      ranges.length === 1 &&
+        ranges[0].columns.some((c) => measures.has(c.getColId())),
+    );
+  }
+
+  chartSelectedRange(): void {
+    this.updateChartRange();
+    if (!this.enterprise() || !this.chartRangeReady()) return;
+    const range = this.api?.getCellRanges?.()?.[0];
+    if (!range) return;
+    this.api?.createRangeChart({
+      chartType: 'groupedColumn',
+      cellRange: {
+        rowStartIndex: range.startRow?.rowIndex ?? null,
+        rowEndIndex: range.endRow?.rowIndex ?? null,
+        columns: range.columns.map((c) => c.getColId()),
+      },
+    });
+  }
+
+  /** Leaf exports use original text, not the numeric analytics projection or localized formatter. */
+  readonly clipboardCell = (p: ProcessCellForExportParams<GridRow>): string => {
+    const field = p.column?.getColDef().field;
+    const value =
+      p.node?.data && !p.node.group && !p.node.footer && field
+        ? p.node.data[field]
+        : p.value;
+    return value == null ? '' : String(value);
+  };
+
   // ---- export and copy ----
 
   /** The data columns on screen, in screen order (not the row-number or checkbox column, not a hidden one). */
@@ -845,14 +957,14 @@ export class ResultsGridComponent {
     const api = this.api;
     if (!api) return;
     const columnKeys = this.exportColumnIds();
-    const onlySelected = (api.getSelectedNodes?.().length ?? 0) > 0;
+    const onlySelected = this.selectedCount() > 0;
     api.exportDataAsCsv({
       fileName: `${this.exportName()}.csv`,
       ...(columnKeys ? { columnKeys } : {}),
       ...(onlySelected ? { onlySelected: true } : {}),
       // The cell's own text (not the grouped or localized display text), so a spreadsheet gets the number.
-      processCellCallback: (p) =>
-        p.value === null || p.value === undefined ? '' : String(p.value),
+      skipRowGroups: true,
+      processCellCallback: this.clipboardCell,
     });
   }
 
@@ -864,7 +976,14 @@ export class ResultsGridComponent {
     const ids = new Set(this.dataColumnIds());
     const dataColumns = columns.filter((c) => ids.has(c.getColId()));
     const shownNodes = nodes
-      .filter((n) => n.rowIndex !== null && n.rowIndex !== undefined)
+      .filter(
+        (n) =>
+          !n.group &&
+          !n.footer &&
+          !!n.data &&
+          n.rowIndex !== null &&
+          n.rowIndex !== undefined,
+      )
       .sort((a, b) => (a.rowIndex ?? 0) - (b.rowIndex ?? 0));
     if (!shownNodes.length || !dataColumns.length) return undefined;
     const text = toTsv(
@@ -908,12 +1027,12 @@ export class ResultsGridComponent {
 
   exportExcel(): void {
     if (this.enterprise()) {
-      // The method exists only while the enterprise modules are registered, so its type is not in the community API.
-      (
-        this.api as unknown as {
-          exportDataAsExcel?: (params: { fileName: string }) => void;
-        }
-      )?.exportDataAsExcel?.({ fileName: `${this.exportName()}.xlsx` });
+      this.api?.exportDataAsExcel({
+        fileName: `${this.exportName()}.xlsx`,
+        columnKeys: this.exportColumnIds(),
+        skipRowGroups: true,
+        processCellCallback: this.clipboardCell,
+      });
     }
   }
 }

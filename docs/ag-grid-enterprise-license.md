@@ -1,6 +1,6 @@
 # AG Grid Enterprise license: runbook
 
-Status: wiring is in place, **no license has been bought and no key is committed**. Until a key is configured the app
+Status: the owner has purchased a license and configured the repository Actions variable. No key is committed. Until a key is configured for a particular build, the app
 is a community-only build: no enterprise code is downloaded, no watermark, no console error.
 
 ## How it works
@@ -24,11 +24,9 @@ is a community-only build: no enterprise code is downloaded, no watermark, no co
   `apps/datatug-app/src/ag-grid-license.generated.ts`, which Angular `fileReplacements` swaps in for the committed
   `ag-grid-license.ts` (always an empty string). Same pattern as `build-info`.
 
-## After the founder buys a license (steps)
+## Licensed build configuration
 
-1. Buy the Enterprise license (AG Grid, or the Enterprise Bundle if integrated charts are wanted: AG Charts Enterprise
-   is a separate product that the bundle includes) at <https://www.ag-grid.com/license-pricing/> and copy the license
-   key from the AG Grid account.
+1. Use the already purchased license from the owner’s AG Grid account; this runbook does not request or create a trial.
 2. Production: GitHub, repo `datatug/datatug-apps` > Settings > Secrets and variables > Actions > **Variables** >
    New repository variable `AG_GRID_LICENSE_KEY` = the key. (A variable, not a secret: GitHub Actions cannot pass a
    secret into the shared `cf-deploy` workflow's `build-command`, and an AG Grid key is shipped inside the public
@@ -49,8 +47,18 @@ To remove: delete the variable; the next build is community-only again.
 One grid component draws query results on the query page (a live run and a stored result opened in the editor) and on
 the query result page (`libs/datatug/main/src/lib/components/results-grid/`). Columns come from `resultColumnDef()`
 (type-aware), cells are text or `null`. Without a key it passes AG Grid nothing that needs an enterprise module: the
-founder decided (2026-10-16) not to buy a license for now, so the **community grid is the target** and every feature
-below the first table works with no key.
+licensed build enables Enterprise by default; the unlicensed build remains a supported Community fallback. Every feature
+in the Community table still works with no key.
+
+### Query Editor analytics contract
+
+The licensed grid shows the group drop zone immediately. Drag a column there, choose an aggregation through its column menu/tool panel, select a range containing an eligible numeric measure, and press **Chart selected range** (or use the native chart context menu). No grouping or chart is created automatically. The linked chart follows local filters and grouping; sort/filter/focus do not close it. Changing the result, schema or page closes charts and clears their old ranges.
+
+Analytics operate on the rows currently supplied to the grid, not every row at the server. Query Editor identifies the loaded page and more-rows state; grouping, range selection, charts and filtering never fetch another page. Synthetic group/footer rows do not become a Current row, raw row export or source-row count.
+
+Raw cell text remains authoritative for display, export, inspection and relationship actions. A numeric column becomes a measure only if every non-null loaded value is finite, has magnitude no greater than `Number.MAX_SAFE_INTEGER`, and round-trips its normalized decimal digits through a JavaScript number. A single lossy value excludes the entire column, uses exact text filtering, and is named in a visible notice. Identifiers remain categories and internal keys/row numbers are excluded from chart measures. Decimal `0.1` is supported; wide integers and excess decimal digits are never silently rounded into a measure.
+
+Native numeric aggregation and visualization are **approximate**, including finite sums larger than the safe-integer range; they are not accounting/exact-decimal totals. The admitted magnitude and bounded held-page size cannot overflow a finite JS sum to Infinity (even the maximum JS array length times the admitted bound is below `4e25`). No custom decimal aggregation engine or automatic server-side aggregation is introduced.
 
 ### Community features in use (verified against the AG Grid 36.2 docs on 2026-10-16)
 
@@ -75,7 +83,7 @@ below the first table works with no key.
 Not on, on purpose: **AG Grid pagination** (`PaginationModule` is community, but the query page pages the result itself
 with Previous/Next and shows the grid one page at a time, so there is no page-size selector in the grid).
 
-### Enterprise-only (what a license key would add; none is needed for the above)
+### Enterprise features in a licensed build
 
 | Feature | Notes |
 | --- | --- |
@@ -90,13 +98,13 @@ With a key the enterprise features are added on top (the chooser stays; the side
 Verified: no enterprise option is passed to the grid while `agGridEnterpriseEnabled()` is false (unit spec with a mocked
 loader), and the enterprise chunk is requested only when `AG_GRID_LICENSE_KEY` is set. The community features above were
 exercised in Chromium against a real `datatug` daemon (`apps/datatug-app/e2e/agent-links/results-grid.spec.ts`). The
-enterprise side was only exercised with a mocked flag; no key has been used.
+earlier Enterprise checks used a mocked flag. Real licensed grouping, aggregation, range clipboard and integrated-chart acceptance must be recorded separately against the exact build.
 
 ### Keyboard (community behaviour, checked in `results-grid.spec.ts`)
 
 Arrow keys move the focused cell; Tab and Shift+Tab move to the next/previous cell; Page Up/Down and Home/End scroll
 by a page / go to the first or last row; **Space toggles the checkbox of the focused row** (verified by the e2e).
-Text selected in a cell with the mouse copies natively (`enableCellTextSelection`); the keyboard copy of a focused cell or range is enterprise. Enter does not start editing (the cells are
+Community cells support native text selection. Licensed builds use range selection and Enterprise clipboard by default (`enableCellTextSelection=false`), with Copy selected retained for raw leaf rows. Enter does not start editing (the cells are
 read-only) and nothing else is bound to it. In the query editor the **Current row** is the focused or clicked row
 (it follows the arrow keys), shown in the Current row pane (its "Current row" toggle opens it); the checkboxes select
 rows for export and copy only and never move the Current row. Arrow keys on a header move focus; Enter on a header
