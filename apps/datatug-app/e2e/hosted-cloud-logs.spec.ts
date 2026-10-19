@@ -242,7 +242,12 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   );
   await page.goto('/my/cloud-logs?googleLogs=complete&receipt=opaque-receipt');
   await expect(page).toHaveURL(/\/my\/cloud-logs$/);
-  await expect(page.getByText('new-owner@example.test')).toBeVisible();
+  await expect(
+    page
+      .locator('article.account')
+      .filter({ hasText: 'new-owner@example.test' })
+      .getByText('new-owner@example.test', { exact: true }),
+  ).toBeVisible();
   await expect(
     page.getByText(/Review Google Account access controls/),
   ).toBeVisible();
