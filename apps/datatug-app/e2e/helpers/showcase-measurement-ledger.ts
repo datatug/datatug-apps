@@ -33,6 +33,8 @@ type Row = {
   canonicalEndpoint?: string;
   attemptedAtMs: number;
   status?: number;
+  responseReceivedAtMs?: number;
+  responseContentType?: string;
   finishedAtMs?: number;
   outcome: 'pending' | 'finished' | 'failed';
   failure?: string;
@@ -235,6 +237,24 @@ export async function installShowcaseMeasurementLedger(
       .split(';')[0]
       .trim()
       .toLowerCase();
+    const row = entries.get(response.request());
+    if (row) {
+      row.status = response.status();
+      row.responseReceivedAtMs = elapsed();
+      // Record bounded metadata, never arbitrary headers, URLs or response bodies.
+      row.responseContentType = [
+        'application/json',
+        'application/yaml',
+        'text/plain',
+        'text/html',
+      ].includes(mime)
+        ? mime
+        : mime
+          ? 'other'
+          : 'missing';
+      if (row.kind === 'query' && (row.status < 200 || row.status >= 300))
+        violate('Query returned non-2xx: ' + row.query + ' ' + row.status);
+    }
     if (
       [
         'application/wasm',

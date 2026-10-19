@@ -160,11 +160,13 @@ export class QueryDispatchService {
     const controller = new AbortController();
     let federation: FederatedQueryService | undefined;
     let terminal = false;
+    let completedSuccessfully = false;
     let terminalPromise: Promise<void> | undefined;
-    const endSession = (): Promise<void> => {
+    const endSession = (cancel = true): Promise<void> => {
       if (terminalPromise) return terminalPromise;
       terminal = true;
-      controller.abort();
+      // Successful delivery is complete: normal disposal must not cancel its fetch.
+      if (cancel || !completedSuccessfully) controller.abort();
       request.signal?.removeEventListener('abort', relayAbort);
       terminalPromise = Promise.resolve().then(async () => {
         try { await federation?.dispose(); } catch { /* Session teardown is best effort. */ }
@@ -188,13 +190,17 @@ export class QueryDispatchService {
     } else {
       result = this.runOwned(ownedRequest, (service) => { federation = service; });
     }
+    result = result.then((value) => {
+      completedSuccessfully = true;
+      return value;
+    });
     void result.catch(() => undefined);
     if (hostedResponse) void hostedResponse.catch(() => undefined);
     const session: QueryExecutionSession = {
       result,
       ...(hostedResponse ? { hostedResponse } : {}),
-      cancel: endSession,
-      dispose: endSession,
+      cancel: () => endSession(),
+      dispose: () => endSession(false),
       getPage: async (index, resultSet, localResult) => {
         const service = await this.federationForResult(result, () => federation);
         return service.getPage(index, resultSet, localResult);
