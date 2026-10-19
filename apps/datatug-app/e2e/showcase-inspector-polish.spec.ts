@@ -52,12 +52,27 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       const panel = inspector.getByRole('tabpanel');
       expect(tabID).toBeTruthy();
       await expect(panel).toHaveAttribute('aria-labelledby', tabID ?? 'missing-tab');
-      await expect(tabs.nth(2)).toHaveAttribute('aria-controls', await panel.getAttribute('id') ?? 'missing-panel');
+      await expect.poll(() => tabs.nth(2).locator('button').evaluate(el => el.ariaControlsElements?.map(panel => panel.id))).toEqual([await panel.getAttribute('id')]);
+      const session = await context.newCDPSession(page);
+      const activeTitle = 'Northwind + Chinook · shared countries';
+      await expect(panel).toHaveAccessibleName(activeTitle);
+      await expect.poll(async () => {
+        const ax = await session.send('Accessibility.getFullAXTree');
+        const selectedTab = ax.nodes.find(node => node.role?.value === 'tab' && node.name?.value === activeTitle && node.properties?.some(property => property.name === 'selected' && property.value.value === true));
+        const activePanel = ax.nodes.find(node => node.role?.value === 'tabpanel' && node.name?.value === activeTitle);
+        const controls = selectedTab?.properties?.find(property => property.name === 'controls')?.value.relatedNodes;
+        return !!activePanel?.backendDOMNodeId && !!controls?.some(node => node.backendDOMNodeId === activePanel.backendDOMNodeId);
+      }).toBe(true);
+      await testInfo.attach('native-tab-accessibility-tree', { body: JSON.stringify(await session.send('Accessibility.getFullAXTree')), contentType: 'application/json' });
+      await session.detach();
       await expect.poll(() => tabs.nth(2).evaluate(el => {
         const label = el.querySelector('ion-label');
-        const box = el.getBoundingClientRect(), rail = el.parentElement?.getBoundingClientRect();
-        return !!rail && !!label && label.scrollWidth <= label.clientWidth && box.left >= rail.left - 1 && box.right <= rail.right + 1;
-      })).toBe(true);
+        const box = label?.getBoundingClientRect(), rail = el.parentElement?.getBoundingClientRect();
+        return !!rail && !!box && !!label && label.scrollWidth <= label.clientWidth && box.left >= rail.left - 1 && box.right <= rail.right + 1;
+      })).toBe(true).catch(async error => {
+        await testInfo.attach('selected-tab-geometry', { body: JSON.stringify(await tabs.nth(2).evaluate(el => ({ tab: el.getBoundingClientRect().toJSON(), rail: el.parentElement?.getBoundingClientRect().toJSON(), labelWidth: el.querySelector('ion-label')?.clientWidth, labelScrollWidth: el.querySelector('ion-label')?.scrollWidth }))), contentType: 'application/json' });
+        throw error;
+      });
       // Selecting this showcase tab auto-runs it; do not accidentally request an explicit second run.
       await expect(inspector).toContainText('17 rows · 3 columns');
       await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();

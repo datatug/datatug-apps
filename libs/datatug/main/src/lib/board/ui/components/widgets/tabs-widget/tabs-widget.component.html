@@ -9,14 +9,14 @@
     aria-label="Board tabs"
   >
     @for (entry of tabs(); track entry.key) {
-      <ion-segment-button [value]="entry.key" [id]="tabDOMID(entry.key)" [attr.aria-controls]="panelID">
+      <ion-segment-button [value]="entry.key" [id]="tabDOMID(entry.key)" [attr.aria-controls]="panelID" [sneatSegmentPanel]="panel" [panelSelected]="active()!.key === entry.key">
         <ion-label style="text-transform: none">{{
           entry.tab.title
         }}</ion-label>
       </ion-segment-button>
     }
   </ion-segment>
-  <div role="tabpanel" [id]="panelID" [attr.aria-labelledby]="tabDOMID(active()!.key)" tabindex="0">
+  <div #panel role="tabpanel" [id]="panelID" [attr.aria-labelledby]="tabDOMID(active()!.key)" tabindex="0">
   @if (active()!.tab.widget) {
     <ng-container
       *ngComponentOutlet="boardWidgetComponent(); inputs: childInputs()"
