@@ -223,6 +223,7 @@ export async function preflightSourceRights(
     if (!reader) throw new Error('Source terms preflight missing response.');
     const chunks: Uint8Array[] = [];
     let bytes = 0;
+    let reachedEnd = false;
     try {
       for (;;) {
         const chunk = await new Promise<ReadableStreamReadResult<Uint8Array>>(
@@ -241,7 +242,7 @@ export async function preflightSourceRights(
               );
           },
         );
-        if (chunk.done) break;
+        if (chunk.done) { reachedEnd = true; break; }
         bytes += chunk.value.length;
         onBytes?.(chunk.value.length);
         if (bytes > 1048576)
@@ -249,7 +250,8 @@ export async function preflightSourceRights(
         chunks.push(chunk.value);
       }
     } finally {
-      void reader.cancel().catch(() => undefined);
+      if (reachedEnd) reader.releaseLock();
+      else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
     }
     const body = new Uint8Array(bytes);
     let offset = 0;
