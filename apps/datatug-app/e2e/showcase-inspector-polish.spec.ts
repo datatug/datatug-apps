@@ -83,7 +83,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       if (name === 'mobile') {
         const table = inspector.locator('.table-scroll');
         await table.evaluate(el => { el.scrollLeft = el.scrollWidth; });
-        await expect.poll(() => inspector.locator('table th').last().evaluate(el => {
+        await expect.poll(() => inspector.locator('table thead th').last().evaluate(el => {
           const edge = el.getBoundingClientRect(), rail = el.closest('.table-scroll')?.getBoundingClientRect();
           return !!rail && edge.left >= rail.left && edge.right <= rail.right + 1;
         })).toBe(true);
