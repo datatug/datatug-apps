@@ -8,3 +8,7 @@ ion-segment {
   margin: 0 8px 8px;
   width: auto;
 }
+
+.result-grid:has(.dt-rg-enterprise) {
+  height: auto;
+}

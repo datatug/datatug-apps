@@ -99,6 +99,13 @@ Resolve owning Nx targets and test context before execution. Extend existing des
 
 PR397 source/fixture delivery landed at ea9419b844590d8b5b747cd93098a2e318886554. Tasks2–6 are complete to independently reviewed source and captured-fixture scope; this does not close the live/auth gates. The first live attempt failed comparison readiness without a retained inline ledger; the second rendered all three results but retained an Orders net::ERR_ABORTED. Query completion teardown and diagnostic persistence are being repaired in showcase-query-completion; a successful strict live measurement and actual GitHub buyer authentication/copy remain pending. Run focused units/type/lint and actual production build with existing CSS budgets and official frozen artifact preparation. Fix own findings through normal hooks; no approvals/budget bypass. Freeze exact source head/tree, retain logs/screenshots/limits, obtain independent review, then publish one Apps PR through WB and attach it. Root alone lands and switches its same-origin buyer preview to the frozen candidate. Task1 source review passed at bd442ca2 with108 focused tests and owning lint/typecheck; this does not close actual buyer authentication or copy acceptance. Record deployment, actual instrumented live-read mechanism and authenticated copy independently; missing real-network/auth evidence remains open.
 
+### Task 8: Enable the licensed Query Editor result exploration
+
+**Verifies:** held-result-exploration#ac:query-grid-enterprise
+**Status:** in_progress
+
+Reuse the shared ResultsGrid and existing lazy Enterprise/Charts module loader. Enable group drop zone, range clipboard and explicit selected-range charting without automatic grouping/chart creation. Decorate numeric columns with safe whole-column projections while retaining raw text for display/export/inspection and exact text filters for excluded columns. Name approximate analytics and current loaded-page scope. Preserve native grouping/filtering/chart updates, raw leaf-row counts/copy and Current-row identity; clean charts only on actual snapshot/page/schema replacement. Add focused adapter/component/query-page regressions and a captured-read licensed browser journey; root owns the actual browser, vendor/license validation, publication and landing. No key/config is committed and no live provider query is required for fixtures.
+
 ## Open Questions
 
 None at this time.

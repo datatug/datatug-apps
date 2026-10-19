@@ -76,6 +76,8 @@
     <sneat-datatug-results-grid
       [columnDefs]="gridColumns()"
       [rowData]="gridRows()"
+      [snapshotKey]="recordset()"
+      [analyticsScope]="totalKnown() ? 'Analytics use the held result rows' : 'Analytics use the loaded rows; this result is incomplete'"
       exportName="query-result"
       [stateKey]="gridStateKey()"
       (rowClicked)="gridRowClicked($event)"
