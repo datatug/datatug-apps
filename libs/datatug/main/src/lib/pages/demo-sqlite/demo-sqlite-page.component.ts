@@ -1,3 +1,4 @@
+import { ProjectCopyOfferComponent } from '../../project/new-project/project-copy-offer.component';
 // /demo/sqlite/:dataset — "Explore SQLite in DataTug" from a DemoDB.dev database page.
 //
 // Entry: the DemoDB site's link (https://datatug.app/demo/sqlite/<id>), the demo
@@ -61,6 +62,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
   selector: 'sneat-datatug-demo-sqlite-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    ProjectCopyOfferComponent,
     NgTemplateOutlet,
     RouterLink,
     IonBackButton,
@@ -195,12 +197,15 @@ const installLabels: Record<DemoDbInstallStep, string> = {
                 <ion-card-content role="status">{{ persistenceNotice }}</ion-card-content>
               </ion-card>
             }
+            <sneat-datatug-project-copy-offer [dataset]="datasetParam()" [table]="tableParam() || undefined" />
             @if (session()?.connection(); as connection) {
               <ion-button data-testid="demo-sqlite-close" fill="clear" (click)="closeCopy()">Close local runtime</ion-button>
               <sneat-datatug-ovdb-database-browser
                 [connection]="connection"
                 [basePath]="basePath()"
                 [table]="tableParam()"
+                [focusRecordId]="focusRecordId()"
+                [relatedEvidence]="entry()?.dataset === 'northwind' ? northwindLogMapping : undefined"
                 [statusText]="persistent() ? 'Local copy ready' : 'Local copy (memory only)'"
                 [resetNote]="resetNote()"
               />
@@ -238,6 +243,17 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
     this.route.paramMap.pipe(map((params) => params.get('table') ?? undefined)),
     { initialValue: this.route.snapshot.paramMap.get('table') ?? undefined },
   );
+  protected readonly focusRecordId = toSignal(
+    this.route.queryParamMap.pipe(map((params) => {
+      const value = params.get('record');
+      return value && /^\d{1,10}$/.test(value) ? value : undefined;
+    })),
+    { initialValue: (() => {
+      const value = this.route.snapshot.queryParamMap.get('record');
+      return value && /^\d{1,10}$/.test(value) ? value : undefined;
+    })() },
+  );
+  protected readonly northwindLogMapping = { collection: 'Orders', field: 'OrderID', path: '/demo/logs' } as const;
   protected readonly entry = computed<DemoSqliteCatalogEntry | undefined>(() => findDemoSqliteDataset(this.datasetParam()));
   protected readonly session = signal<LocalDemoDbSession | undefined>(undefined);
   protected readonly state = computed<LocalDemoDbState>(() => this.session()?.state() ?? { kind: 'checking' });
@@ -283,9 +299,11 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
       case 'opening':
         return { label: 'Opening the local copy…' };
       case 'download':
-        // Decoded (unpacked) bytes, so this differs from the compressed transfer size shown in the confirmation.
+        // A file dataset counts decoded (unpacked) bytes, so it differs from the compressed transfer size
+        // shown in the confirmation; a chunked dataset counts the compressed parts.
         return {
-          label: `Downloading ${(state.loaded / 1_000_000).toFixed(1)} of ${this.mb(state.total)} (unpacked size)`,
+          label: `Downloading ${(state.loaded / 1_000_000).toFixed(1)} of ${this.mb(state.total)}${
+            this.entry()?.source === 'chunked' ? '' : ' (unpacked size)'}`,
           value: state.total ? Math.min(1, state.loaded / state.total) : undefined,
         };
       case 'install':

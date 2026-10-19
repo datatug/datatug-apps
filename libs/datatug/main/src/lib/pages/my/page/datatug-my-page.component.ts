@@ -19,6 +19,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { hostedCloudLogsEnabled } from '../../../core/feature-flags';
 
 @Component({
   selector: 'sneat-datatug-my',
@@ -44,6 +45,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
   ],
 })
 export class DatatugMyPageComponent {
+  readonly enableHostedCloudLogs = hostedCloudLogsEnabled();
   private readonly router = inject(Router);
   private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
   protected readonly subscriptionQuery = computed(() =>

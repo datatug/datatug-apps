@@ -28,17 +28,36 @@ export function tutorialSteps(board: Board): readonly TutorialStep[] {
     if (card.widget?.name === 'chart') {
       const chart = card.widget.data as ChartWidgetDef;
       if (chart.chart.type === 'bar-race') {
+        if (chart.sources[0]?.transform)
+          steps.push({
+            title: 'Inspect the monthly trend',
+            detail:
+              'See every calendar month and all source orders together, independently of the race Top N or country selection.',
+            action: {
+              type: 'set-presentation-view',
+              cardId: card.id,
+              view: 'trend',
+            },
+          });
         steps.push({
           title: 'Inspect the source rows',
           detail:
             'Switch the race to its held source rows without running another query.',
-          action: { type: 'set-view', cardId: card.id, view: 'grid' },
+          action: {
+            type: 'set-presentation-view',
+            cardId: card.id,
+            view: 'grid',
+          },
         });
         steps.push({
           title: 'Return to the paused race',
           detail:
             'Use the same result snapshot. Playback and scrubbing remain under your control.',
-          action: { type: 'set-view', cardId: card.id, view: 'chart' },
+          action: {
+            type: 'set-presentation-view',
+            cardId: card.id,
+            view: 'chart',
+          },
         });
       }
     }
@@ -57,12 +76,27 @@ export function tutorialSteps(board: Board): readonly TutorialStep[] {
         });
     }
   }
-  steps.push({
-    title: 'Explore another source',
-    detail: 'Each source needs its own admitted execution and rights.',
-    limitation:
-      'Adding a second source is unavailable until independent execution and composition are supported. Chinook billing is available in its own inspectable tab; it is not combined with the Northwind chart.',
-  });
+  const paired = cards.some(
+    (card) =>
+      card.widget?.name === 'chart' &&
+      !!(card.widget.data as ChartWidgetDef).chart.series,
+  );
+  steps.push(
+    paired
+      ? {
+          title: 'Explore shared country labels',
+          detail:
+            'Compare separate Northwind and Chinook customer records from one server result. Select a country to inspect orders shipped there; Clear restores the held Orders rows.',
+          limitation:
+            'Country labels are exact. Customer records are not shared people, and shipping country is a separate dimension; UK is not United Kingdom.',
+        }
+      : {
+          title: 'Explore another source',
+          detail: 'Each source needs its own admitted execution and rights.',
+          limitation:
+            'Adding a second source is unavailable until independent execution and composition are supported. Chinook billing is available in its own inspectable tab; it is not combined with the Northwind chart.',
+        },
+  );
   return steps;
 }
 
@@ -111,9 +145,12 @@ export function currentTutorialStep(session: TutorialBoardSession): {
       continue;
     }
     if (
-      action?.type === 'set-view' &&
+      (action?.type === 'set-view' ||
+        action?.type === 'set-presentation-view') &&
       card?.widget?.name === 'chart' &&
-      (card.widget.data as ChartWidgetDef).defaultView === action.view
+      (action.type === 'set-presentation-view'
+        ? session.presentationView(action.cardId, action.widgetPath)
+        : (card.widget.data as ChartWidgetDef).defaultView) === action.view
     ) {
       index++;
       continue;

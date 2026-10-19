@@ -1,6 +1,6 @@
 import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import { formatGithubProjectApiKey, isValidGithubRef, readGithubProjectId } from '@datatug/project-address';
 import { firstValueFrom } from 'rxjs';
 import { IProjectRef, isSharedProjectRef, isValidProjectRef } from '../core/project-context';
@@ -19,7 +19,7 @@ import { DetectiveOperationScope, SessionDetectiveRequest, SessionDetectiveRespo
 @Injectable({ providedIn: 'root' })
 export class SessionContextApiService {
   private readonly http = inject(HttpClient);
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
 
   private readonly projectQueries = inject(ProjectQueryApiService);
   // A workspace keeps its project reference for reads and commands. Resolve a

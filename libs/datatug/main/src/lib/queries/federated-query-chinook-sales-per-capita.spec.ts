@@ -31,6 +31,14 @@ const definition = (): IQueryDef => ({
   recordsets: queryMeta.recordsets,
 } as unknown as IQueryDef);
 
+// This fixture proves the browser DALgo engine's arithmetic and snapshot paging
+// against Go CLI output. Explicitly select that existing adapter seam; the
+// separate native-root suite proves the default whole-server execution path.
+const runBrowserFixture = (): Promise<FederatedQueryResult> => runFederatedQuery(
+  definition(), undefined, '', undefined, undefined, 'full', undefined, undefined,
+  { disableNativeStream: true },
+);
+
 /** An OVDB that serves snapshot pages of at most 100 rows, so every source is read over several requests. */
 function serve(sources: Sources): string[] {
   const requested: string[] = [];
@@ -101,7 +109,7 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
 
   it('returns the same 24 rows, in the same order, as the Go CLI', async () => {
     const requested = serve(hero());
-    const result = await runFederatedQuery(definition());
+    const result = await runBrowserFixture();
     const rows = table(result);
     expect(result.recordset.columns.map((column) => column.name))
       .toEqual(['country', 'totalSales', 'population', 'populationYear', 'salesPerMillion']);
@@ -121,7 +129,15 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
     expect(byCountry['USA']).toBeCloseTo(1.53, 2);
     // Only the three OVDB sources were read, over paged snapshots, and each snapshot was released.
     expect(requested.every((url) => url.startsWith(`${base}/v1/databases/`))).toBe(true);
+    expect(requested.every((url) => url.endsWith('/dtql'))).toBe(true);
     expect(requested.filter((url) => url.includes('/chinook/')).length).toBeGreaterThan(4);
+    const releases = vi.mocked(fetch).mock.calls.filter(([, init]) =>
+      new Headers(init?.headers).get('OVDB-Page-Close') === 'true');
+    expect(releases.map(([url]) => String(url)).sort()).toEqual([
+      `${base}/v1/databases/chinook/dtql`,
+      `${base}/v1/databases/geo/dtql`,
+      `${base}/v1/databases/geo/dtql`,
+    ]);
   });
 
   it.each(HOSTED_DEMO_DB_SOURCES)(
@@ -186,7 +202,7 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
 
     it('drops countries without an alias or a population record, as an inner join does', async () => {
       serve(withEdgeCases());
-      const rows = table(await runFederatedQuery(definition()));
+      const rows = table(await runBrowserFixture());
       const countries = rows.map((row) => row['country']);
       expect(countries).not.toContain('Nowhere');
       expect(countries).not.toContain('Unmapped');
@@ -195,7 +211,7 @@ describe('saved query sales/chinook-sales-per-capita in the browser executor', (
 
     it('gives a zero population a null sales-per-million instead of failing, and sorts it last when descending', async () => {
       serve(withEdgeCases());
-      const rows = table(await runFederatedQuery(definition()));
+      const rows = table(await runBrowserFixture());
       expect(rows).toHaveLength(expected.length + 1);
       expect(rows.at(-1)).toMatchObject({ country: 'Atlantis', population: 0, salesPerMillion: null });
       expect(rows.at(-1)?.['totalSales']).toBeCloseTo(10, 2);

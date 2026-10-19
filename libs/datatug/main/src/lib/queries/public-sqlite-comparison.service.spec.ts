@@ -113,7 +113,7 @@ describe('public SQLite comparison side service', () => {
         dataset: 'chinook',
         storage: 'sqlite',
         readiness: 'public-api',
-        source: 'https://demodb.dev/ovdb/v1/databases/chinook',
+        source: 'https://ovdb.demodb.dev/v1/databases/chinook',
         fixtureSha256: BASELINE_SHA,
         browserFixture: {
           url: '/assets/showcase/chinook.sqlite',

@@ -1,6 +1,6 @@
 import { BrowserContext, expect, Locator, Page, test } from '@playwright/test';
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
@@ -135,6 +135,97 @@ async function openDataset(page: Page, dataset: string, table?: string): Promise
   await expect(page.getByTestId(table ? 'ovdb-rows' : 'ovdb-table-list')).toBeVisible({ timeout: 90_000 });
 }
 
+test('project copy choices are optional and local instructions preserve SQLite editing', async ({ page, context }) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  test.skip(!source, 'requires the offline demo project checkout');
+  if (!source) return;
+  await installPinnedChinookSqlite(context, source);
+  await openDataset(page, 'chinook', 'Artist');
+  await expect(page.getByTestId('project-copy-offer')).toBeVisible();
+  await expect(page.getByTestId('project-copy-github')).toBeVisible();
+  await expect(page.locator('[data-testid=project-copy-github], [data-testid=project-copy-local]')).toHaveCount(2);
+  await page.getByTestId('project-copy-local').click();
+  await page.getByTestId('project-copy-file-path').locator('input').fill('/tmp/chinook-edited.sqlite');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('git clone https://github.com/datatug/datatug-demo-project.git chinook-datatug');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--as local --role admin --allow-writes --open-browser');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('OPFS');
+  await page.getByTestId('project-copy-dismiss').click();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await editName(page, SQLITE_ORIGINAL_ARTIST_1, 'Project copy stays optional');
+  await page.goto('/demo/sqlite/chinook');
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await page.getByText('Artist', { exact: true }).click();
+  await expect(page.getByTestId('ovdb-rows')).toBeVisible();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await page.goBack();
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+  await page.reload();
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+  await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
+  await expect(page.getByTestId('project-copy-reopen')).toBeVisible();
+  await page.getByTestId('project-copy-reopen').click();
+  await expect(page.getByTestId('project-copy-offer')).toBeVisible();
+});
+
+test('edited SQLite download registers and queries through the real local CLI', async ({ page, context }, testInfo) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  const cli = process.env['DATATUG_E2E_LOCAL_CLI'];
+  test.skip(!source || !cli, 'requires offline source checkout and native CLI with --config');
+  if (!source || !cli) return;
+  await installPinnedChinookSqlite(context, source);
+  await openDataset(page, 'chinook', 'Artist');
+  const edited = 'Export keeps my browser edit';
+  await editName(page, SQLITE_ORIGINAL_ARTIST_1, edited);
+  await page.getByTestId('project-copy-local').click();
+  const pendingDownload = page.waitForEvent('download');
+  await page.getByTestId('project-copy-download').click();
+  const download = await pendingDownload;
+  expect(download.suggestedFilename()).toBe('chinook-edited.sqlite');
+  const file = testInfo.outputPath('chinook-edited.sqlite');
+  await download.saveAs(file);
+  expect(readFileSync(file).subarray(0, 16).toString()).toBe('SQLite format 3\0');
+  const project = testInfo.outputPath('chinook-datatug', 'demo-project-1');
+  mkdirSync(project, { recursive: true });
+  cpSync(join(source, 'demo-project-1'), project, { recursive: true });
+  const settings = testInfo.outputPath('isolated-cli.yaml');
+  const run = (args: string[]) => execFileSync(cli, ['--config', settings, ...args], { encoding: 'utf8', env: { ...process.env, DATATUG_TELEMETRY: '0' } });
+  run(['projects', 'add', '--project', 'chinook-datatug', '--directory', project]);
+  run(['db', 'add', '--project', 'chinook-datatug', '--db', file, '--env', 'local', '--name', 'chinook-browser']);
+  const result = run(['query', 'run', '--db', 'datatug://chinook-datatug/chinook-browser?env=local', '--from', 'Artist', '--limit', '1', '--no-policies', '--format', 'json']);
+  expect(result).toContain(edited);
+  await page.getByTestId('project-copy-file-path').locator('input').fill(file);
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--directory "$PWD"');
+  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--env local --name chinook-browser');
+});
+
+test('demo project GitHub choice carries verified source into the existing setup form', async ({ page, context }) => {
+  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  test.skip(!source, 'requires the offline demo project checkout');
+  if (!source) return;
+  await installPinnedChinookSqlite(context, source);
+  const commit = 'a'.repeat(40);
+  const tree = 'b'.repeat(40);
+  await context.route('https://api.github.com/repos/datatug/datatug-demo-project**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const json = path.endsWith('/commits/main') ? { sha: commit, commit: { tree: { sha: 'c'.repeat(40) } } }
+      : path.includes('/git/trees/') ? { tree: [{ path: 'demo-project-1', type: 'tree', sha: tree }] }
+      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main' };
+    await route.fulfill({ json });
+  });
+  await openDataset(page, 'chinook');
+  await page.getByTestId('project-copy-github').click();
+  await expect(page).toHaveURL(/\/new-project\?/);
+  await expect(page.getByTestId('project-copy-summary')).toContainText(`demo-project-1 at ${commit.slice(0, 10)}`);
+  await expect(page.getByTestId('project-copy-summary')).not.toContainText(commit);
+  await expect(page.locator('ion-title').filter({ hasText: 'Copy DataTug Project' })).toBeVisible();
+  await expect(page.locator('ion-footer').getByText('Copy project', { exact: true })).toBeVisible();
+  await expect(page.getByTestId('project-copy-summary')).toContainText('Choose a repository below');
+  await page.getByTitle('Cancel', { exact: true }).click();
+  await expect(page).toHaveURL(/\/demo\/sqlite\/chinook$/);
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
+});
+
 const rows = (page: Page): Locator => page.getByTestId('ovdb-rows').locator('tbody tr');
 const rowWith = (page: Page, text: string): Locator => rows(page).filter({ hasText: text });
 const nameCell = (page: Page, name: string): Locator => page.getByRole('cell', { name, exact: true });
@@ -180,6 +271,38 @@ async function expectMemoryOnlyBehaviour(page: Page): Promise<void> {
 }
 
 test.describe('Chinook as a local SQLite copy', () => {
+  test('creates a record, rejects a duplicate, and persists until reset', async ({ page }) => {
+    test.setTimeout(180_000);
+    const persistent = await hasOpfs(page);
+    await openDataset(page, 'chinook', 'Genre');
+    await page.getByTestId('record-create').click();
+    await page.getByTestId('record-input-GenreId').locator('input').fill('901');
+    const name = page.getByTestId('record-input-Name').locator('input');
+    await expect(name).toBeDisabled();
+    // Ionic renders aria-checked asynchronously; await it after the user click.
+    const nullToggle = page.getByTestId('record-null-Name');
+    await nullToggle.click();
+    await expect(nullToggle).not.toBeChecked();
+    await expect(name).toBeEnabled();
+    await name.fill('Created in browser');
+    await page.getByTestId('record-save').click();
+    await expect(page.getByTestId('ovdb-record')).toContainText('GenreId 901');
+    await expect(nameCell(page, 'Created in browser')).toBeVisible();
+    await page.getByTestId('record-create').click();
+    await page.getByTestId('record-input-GenreId').locator('input').fill('901');
+    await page.getByTestId('record-save').click();
+    await expect(page.getByTestId('record-error')).toContainText('already');
+    await page.getByTestId('record-cancel').click();
+    await page.reload();
+    await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
+    if (persistent) await expect(nameCell(page, 'Created in browser')).toBeVisible();
+    else await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
+    await page.getByTestId('reset-database').click();
+    await confirmAlert(page, 'Reset Database');
+    await expect(page.getByTestId('reset-message')).toContainText('reset');
+    await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
+  });
+
   test('browse, edit, delete and reset all persist across reloads', async ({ page, context }) => {
     test.setTimeout(240_000);
     const demodb = trackDemodbRequests(context);

@@ -69,6 +69,7 @@ limit: 10`;
     const result = await runFederatedQuery(saved, undefined, '', undefined, undefined, 'full', undefined, undefined,
       { fetch: fetcher });
     expect(calls).toHaveLength(2);
+    expect(result.provenance).not.toHaveProperty('executionProfile');
     expect(calls[1].init?.body).toBe(yaml);
     expect(result.recordset.rows[0]).toEqual([
       { type: 'string', value: 'Iron Maiden' }, { type: 'integer', value: '213' },

@@ -147,7 +147,7 @@ export class DatatugAppComponent {
       this.authStatus() !== 'authenticated',
   );
 
-  // Auth pages keep their own `auth-brand` strip, and the checkout shell
+  // Auth pages provide navigation in their own page headers. The checkout shell
   // (`checkout()` disables the menu by design) must not show a menu-button
   // that can never open — the compact header only earns its place when the
   // menu is genuinely reachable-but-hidden. Elsewhere on narrow layouts it

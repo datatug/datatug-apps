@@ -1,3 +1,4 @@
+import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { CUSTOM_ELEMENTS_SCHEMA, PLATFORM_ID, signal } from '@angular/core';
@@ -9,6 +10,7 @@ import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import {
   Board,
   BoardWidget,
+  ChartWidgetDef,
   TutorialBoardSession,
 } from '@datatug/board-models';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -57,6 +59,7 @@ describe('BoardWidgetComponent', () => {
       imports: [BoardWidgetComponent],
       providers: [
         TutorialBoardRuntime,
+        BoardPresentationSelection,
         { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
         {
@@ -257,7 +260,7 @@ describe('BoardWidgetComponent', () => {
         definition: expect.objectContaining({
           connectionId: 'customer-ledger-v2',
         }),
-      }),
+      }), { maxRows: 1000 },
     );
   });
 
@@ -327,7 +330,7 @@ describe('BoardWidgetComponent', () => {
           definition: expect.objectContaining({
             connectionId: 'logical-ledger-v7',
           }),
-        }),
+        }), { maxRows: 1000 },
       ),
     );
     fixture.componentInstance.selectRuntime('snapshot');
@@ -394,7 +397,7 @@ describe('BoardWidgetComponent', () => {
     const pending = fixture.componentInstance.run();
     await vi.waitFor(() =>
       expect(run).toHaveBeenCalledWith(
-        expect.objectContaining({ runtimeSelectionId: 'runtime-17' }),
+        expect.objectContaining({ runtimeSelectionId: 'runtime-17' }), { maxRows: 1000 },
       ),
     );
     const dispatchedSignal = run.mock.calls.at(-1)?.[0]?.signal as AbortSignal;
@@ -776,7 +779,7 @@ describe('BoardWidgetComponent', () => {
           branch: 'feature/demo',
         }),
         queryId,
-      }),
+      }), { maxRows: 1000 },
     );
   });
 
@@ -1075,6 +1078,33 @@ describe('BoardWidgetComponent', () => {
     };
   }
 
+  it('clears a chart producer without interpreting chart data as a SQL definition', () => {
+    const data = countryWidget.data as ChartWidgetDef;
+    configureShowcase({ ...countryWidget, data: { ...data, chart: { ...data.chart, selectionId: 'country' } } });
+    const component = fixture.componentInstance;
+    expect(component.sqlWidgetDef()).toBeUndefined();
+    component.selectCountry('Canada');
+    expect(component.selectedCountry()).toBe('Canada');
+    expect(() => component.clearCountry()).not.toThrow();
+    expect(component.selectedCountry()).toBeUndefined();
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('runs a saved server DTQL definition by default without choosing a working copy', async () => {
+    configureShowcase();
+    getQuery.mockReturnValue(of({ id: publicQueryId, title: 'Server countries',
+      request: { queryType: QueryType.DTQL, text: 'from: {database: northwind, name: Orders, alias: orders}' },
+      federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [{ database: 'northwind', name: 'Orders', fields: ['ShipCountry'] }] } }));
+    run.mockResolvedValue(countryResult());
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
+    expect(fixture.componentInstance.unsupportedReason()).toBeUndefined();
+    expect(fixture.componentInstance.runError()).toBeUndefined();
+    expect(run.mock.calls[0][0]).not.toHaveProperty('runtimeSelectionId');
+    fixture.componentInstance.setChartView('grid'); fixture.componentInstance.setChartView('chart');
+    expect(run).toHaveBeenCalledOnce();
+  });
+
   it('automatically executes a visible saved showcase chart once and switches held chart/grid without fetching', async () => {
     const { readBoard } = configureShowcase();
     run.mockResolvedValue(countryResult());
@@ -1206,7 +1236,7 @@ describe('BoardWidgetComponent', () => {
     run.mockRejectedValue(new QueryDispatchError('Hosted execution requires a shared cloud project.'));
     fixture.detectChanges();
     await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('Hosted execution requires'));
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'hosted-cloud' } }));
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'hosted-cloud' } }), { maxRows: 1000 });
   });
 
   it('runs a separate saved inspector query through the dispatcher with no bar controls', async () => {
@@ -1389,7 +1419,7 @@ describe('BoardWidgetComponent', () => {
           limit: { type: 'integer', value: '5' },
         },
         target: { kind: 'local-agent', agentStoreId: 'localhost:8989' },
-      }),
+      }), { maxRows: 1000 },
     );
   });
 
@@ -1445,7 +1475,7 @@ describe('BoardWidgetComponent', () => {
     fixture.detectChanges();
     await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({
       parameters: { limit: { type: 'integer', value: '5' } },
-    })));
+    }), { maxRows: 1000 }));
   });
   it('rejects unsupported chart parameter types rather than relabeling them as strings', async () => {
     configureBoundChart(

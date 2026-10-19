@@ -1,4 +1,5 @@
-import { Injectable } from '@angular/core';
+import { Injectable, inject } from '@angular/core';
+import { PUBLIC_OVDB_DEV_TRANSPORT, type PublicOvdbDevTransport } from '@sneat/datatug-semantic';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef } from '../models/definition/query-def';
 import type { StaticOvdbSource } from './sources/static-ovdb-fetch';
@@ -36,8 +37,18 @@ export interface FederatedRunExtras {
 }
 
 /** Keeps download, merge, and calculation off the browser UI thread. */
-@Injectable({ providedIn: 'root' })
+@Injectable({
+  providedIn: 'root',
+  useFactory: () => new FederatedQueryService(inject(PUBLIC_OVDB_DEV_TRANSPORT, { optional: true })),
+})
 export class FederatedQueryService {
+  private readonly devTransport: PublicOvdbDevTransport | null;
+  // Plain construction accepts explicit app configuration; Angular uses the
+  // inject-based factory above. No constructor dependency injection is needed.
+  constructor(devTransport: PublicOvdbDevTransport | null = null) {
+    this.devTransport = devTransport;
+  }
+
   private worker?: Worker;
   private stopBounded?: (error: Error) => Promise<void>;
   private runtimeExpired = false;
@@ -311,7 +322,8 @@ export class FederatedQueryService {
         mode,
         ...(runDeadline !== undefined ? { deadline: runDeadline } : {}),
         ...(storageId !== undefined ? { storageId } : {}),
-        ...(extras.staticSource ? { staticSource: extras.staticSource } : {}),
+        ...(extras.staticSource ? { staticSource: extras.staticSource } :
+          this.devTransport ? { devTransport: this.devTransport } : {}),
       });
     })]);
   }

@@ -1,3 +1,8 @@
+import { Provider } from '@angular/core';
+import {
+  PUBLIC_OVDB_DEV_TRANSPORT,
+  PUBLIC_OVDB_LOOPBACK_MODE,
+} from '@sneat/datatug-semantic';
 import { IEnvironmentConfig, IFirebaseEmulatorConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
@@ -24,7 +29,10 @@ const emulator: IFirebaseEmulatorConfig = {
       : nonSecureEmulatorHost,
 };
 
-export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
+export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
+  hostedCloudLogsEnabled: boolean;
+} = {
+  hostedCloudLogsEnabled: true,
   production: false,
   useNgrok,
   agents: {},
@@ -47,3 +55,9 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
 export const datatugDemoConfig: DatatugDemoConfig = {
   enabled: true,
 };
+
+// No DataTug API override: DataTug calls use SneatApiBaseUrl, as before.
+// The Business project preview build replaces this file (environment.business-preview.ts).
+export const datatugEnvironmentProviders: Provider[] = [
+  { provide: PUBLIC_OVDB_DEV_TRANSPORT, useValue: PUBLIC_OVDB_LOOPBACK_MODE },
+];

@@ -1,6 +1,8 @@
+import { Provider } from '@angular/core';
 import { IEnvironmentConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 import { TEST_CHECKOUT_ORIGIN } from '../app/checkout/checkout-config.mjs';
+import { authDomainOfLocation } from './auth-domain';
 
 // TEST uses its isolated host. LIVE uses the verified production API origin.
 export const datatugBusinessCheckoutApiOrigin: string | null =
@@ -9,22 +11,32 @@ export const datatugBusinessCheckoutLiveApiOrigin: string | null =
   'https://api.sneat.cloud';
 export const datatugBusinessCheckoutLiveEnabled = true;
 
+export const DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT = false;
+
 // Shared Sneat identity pool — `sneat-eur3-1` — used by every Sneat product
 // (consumer + business). This is permanent per the 2026-06-09 single-identity
 // decision: datatug.app authenticates here, NOT against a separate project.
 // See sneat-apps/docs/superpowers/specs/2026-06-09-single-identity-addendum.md
-export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
+export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
+  hostedCloudLogsEnabled: boolean;
+} = {
+  hostedCloudLogsEnabled: false,
   production: true,
   agents: {},
   firebaseConfig: {
     projectId: 'sneat-eur3-1',
     appId: '1:588648831063:web:303af7e0c5f8a7b10d6b12',
     apiKey: 'AIzaSyCeQu1WC182yD0VHrRm4nHUxVf27fY-MLQ',
-    // The shared, Firebase-hosted auth domain every Sneat product uses: it
-    // serves Google/GitHub OAuth's /__/auth/handler, which a Cloudflare-served
-    // app does NOT serve itself. Matches @sneat/app's SHARED_SNEAT_AUTH_DOMAIN
-    // (and the GitHub OAuth app's registered callback).
-    authDomain: 'auth.sneat.co',
+    // Where OAuth sign-in (Google/GitHub/Microsoft) runs: `auth.sneat.co`, the shared Firebase-hosted domain, or
+    // `datatug.app` itself (Cloudflare proxies /__/auth/* to Firebase, sneat-sites infra/firebase-auth-proxy), which
+    // is first-party and so reliable in browsers that partition cross-site storage. See auth-domain.ts.
+    // DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT is the one-line switch: flip it to `true` only after the founder steps in
+    // docs/auth-domain.md are done (datatug.app released from its old Firebase Hosting project, authorized domain,
+    // OAuth redirect URIs). Until then `https://datatug.app/login?authDomain=same-origin` tries it in one browser.
+    authDomain: authDomainOfLocation(
+      location,
+      DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT,
+    ),
     messagingSenderId: '588648831063',
     measurementId: 'G-TYBDTV738R',
   },
@@ -49,3 +61,7 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
 export const datatugDemoConfig: DatatugDemoConfig = {
   enabled: false,
 };
+
+// No DataTug API override: DataTug calls use SneatApiBaseUrl, as before.
+// The Business project preview build replaces this file (environment.business-preview.ts).
+export const datatugEnvironmentProviders: Provider[] = [];

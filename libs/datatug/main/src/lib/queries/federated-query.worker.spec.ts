@@ -102,6 +102,32 @@ describe('federated query worker', () => {
     ]);
   });
 
+  it('uses app-owned loopback mode without changing the canonical source receipt', async () => {
+    vi.stubGlobal('location', { origin: 'http://127.0.0.1:4330' });
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      calls.push(String(input));
+      expect(init?.credentials).toBe('omit');
+      expect(init?.redirect).toBe('error');
+      expect(new Headers(init?.headers).has('Authorization')).toBe(false);
+      return String(input).endsWith('/v1/databases/db')
+        ? Response.json({ id: 'db', capabilities: { dtql: true } })
+        : Response.json({ complete: true, records: [{ data: { name: 'A' } }], columns: ['name'], execution: { route: 'database', rowsReturned: 1 } });
+    }));
+    await run({
+      definition: { ...definition, federation: { ...definition.federation, ovdbBaseUrl: 'https://cloud.openvaultdb.com' } },
+      devTransport: 'public-ovdb-loopback-v1',
+    });
+    expect(posted.find(message => message.type === 'error')).toBeUndefined();
+    expect(calls).toEqual([
+      'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db',
+      'http://127.0.0.1:4330/__datatug_public_ovdb/cloud/v1/databases/db/dtql',
+    ]);
+    expect(posted.find(message => message.type === 'result')?.['result']).toMatchObject({
+      provenance: { source: 'https://cloud.openvaultdb.com/v1/databases/db (direct OVDB)' },
+    });
+  });
+
   it('refuses a static public target fallback when the first stage is a declared JSON driver', async () => {
     const http = vi.fn();
     vi.stubGlobal('fetch', http);
@@ -138,18 +164,20 @@ describe('federated query worker', () => {
     );
     expect(posted.find((message) => message.type === 'error')).toBeUndefined();
   });
-  it('stages a streamed whole-query result in paged IndexedDB rows and keeps the footer column order', async () => {
+  it.each([false, true])('stages an unprofiled whole-query result with streaming=%s and preserves paged rows', async (streaming) => {
     const calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
       calls.push(String(input));
       if (String(input).endsWith('/v1/databases/db'))
-        return new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: true } }), { headers: { 'Content-Type': 'application/json' } });
+        return new Response(JSON.stringify({ id: 'db', capabilities: { dtql: true, dtqlStreaming: streaming } }), { headers: { 'Content-Type': 'application/json' } });
       return new Response(JSON.stringify({ records: Array.from({ length: 105 }, (_, index) => ({ data: { name: `row-${index}`, id: String(index) } })),
         columns: ['id', 'name'], execution: {}, complete: true }), { headers: { 'Content-Type': 'application/json' } });
     }));
     await run({});
     const result = posted.find((message) => message.type === 'result')?.['result'] as { nativeStream?: true; totalRows: number; recordset: { rows: { value: unknown }[][] } };
-    expect(result.nativeStream).toBe(true);
+    expect(result.nativeStream).toBe(streaming ? true : undefined);
+    expect(result).not.toHaveProperty('provenance.executionProfile');
+    expect(result).not.toHaveProperty('execution');
     expect(result.totalRows).toBe(105);
     expect(result.recordset.rows[0].map((value) => value.value)).toEqual(['0', 'row-0']);
     scope.onmessage?.({ data: { type: 'page', index: 1, requestId: 7 } });

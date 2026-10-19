@@ -1,4 +1,11 @@
-import { Component, OnDestroy, OnInit, inject, signal } from '@angular/core';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  OnDestroy,
+  OnInit,
+  inject,
+  signal,
+} from '@angular/core';
 import { ActivatedRoute, RouterLink } from '@angular/router';
 import {
   IonBackButton,
@@ -113,7 +120,7 @@ function withGithubDemoProjects(
 }
 
 /**
- * Derives the storeId to seed `this.storeId`/`this.projects` with from a
+ * Derives the storeId to seed `this.storeId()`/`this.projects()` with from a
  * store passed via router state (`window.history.state.store`), for a
  * non-agent store. `IDatatugStoreContext` has no top-level `.id` (only
  * `.ref: IStoreRef` and `.brief`), and `.ref.id` is frequently missing too —
@@ -138,6 +145,7 @@ function resolveStateStoreId(ref: IStoreRef): string {
 
 @Component({
   selector: 'sneat-datatug-store-page',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   templateUrl: './datatug-store-page.component.html',
   imports: [
     // `DatatugStoreService`/`AgentStateService` (both injected below) are
@@ -198,9 +206,11 @@ export class DatatugStorePageComponent
   private readonly newProjectService = inject(NewProjectService);
   private readonly datatugUserService = inject(DatatugUserService);
 
-  public storeId?: string | null;
-  public projects?: IProjectBase[];
-  public error: unknown;
+  public readonly storeId = signal<string | null | undefined>(undefined);
+  public readonly projects = signal<IProjectBase[] | undefined>(undefined);
+  public readonly error = signal<{ readonly message: string } | undefined>(
+    undefined,
+  );
 
   /**
    * The page title shows this instead of the raw `storeId` so an agent
@@ -212,22 +222,20 @@ export class DatatugStorePageComponent
    * in `nav-models.ts`.
    */
   public get storeDisplayId(): string {
-    return storeIdToDisplayLabel(this.storeId);
+    return storeIdToDisplayLabel(this.storeId());
   }
 
-  public agentState?: IAgentState;
-  public isLoading?: boolean;
+  public readonly agentState = signal<IAgentState | undefined>(undefined);
+  public readonly isLoading = signal(false);
 
   /** True while `storeId` is the GitHub store, in either id form it can
    * arrive in — see `isGithubStoreId()`'s doc comment above. Drives the
    * GitHub project creation guidance in the template. */
   public get isGithubStore(): boolean {
-    return isGithubStoreId(this.storeId);
+    return isGithubStoreId(this.storeId());
   }
 
-  /** "Open a GitHub project" form state — new state, so signals per this
-   * repo's zoneless-ready convention (see `AGENTS.md`), even though the
-   * surrounding pre-existing fields on this component are plain properties. */
+  /** "Open a GitHub project" form state follows the same zoneless signal contract. */
   public readonly githubOwner = signal('datatug');
   public readonly githubRepository = signal('datatug-demo-project');
   public readonly githubFolder = signal('demo-project-1');
@@ -242,15 +250,18 @@ export class DatatugStorePageComponent
 
   private readonly storeTracker: StoreTracker;
 
-  protected authStatus?: AuthStatus;
+  protected readonly authStatus = signal<AuthStatus | undefined>(undefined);
 
   /** A loopback CLI authorizes its own project reads using the access-link token.
    * Cloud sign-in still governs other non-public stores. */
   protected get projectsAuthStatus(): AuthStatus | undefined {
-    const address = this.storeId?.match(/^https?-(127\.0\.0\.1|localhost|\[::1\])(?::([0-9]{1,5}))?$/);
+    const address = this.storeId()?.match(
+      /^https?-(127\.0\.0\.1|localhost|\[::1\])(?::([0-9]{1,5}))?$/,
+    );
     const port = address?.[2];
-    const loopback = !!address && (!port || (Number(port) > 0 && Number(port) <= 65535));
-    return this.isGithubStore || loopback ? 'authenticated' : this.authStatus;
+    const loopback =
+      !!address && (!port || (Number(port) > 0 && Number(port) <= 65535));
+    return this.isGithubStore || loopback ? 'authenticated' : this.authStatus();
   }
 
   constructor() {
@@ -271,21 +282,25 @@ export class DatatugStorePageComponent
     // state had been passed) is correct, not a gap.
     if (store && store.ref?.type !== 'agent') {
       const storeId = resolveStateStoreId(store.ref);
-      this.storeId = storeId;
-      this.projects = withGithubDemoProjects(
-        storeId,
-        // `projectsBriefFromDictToFlatList()` returns `IDatatugProjectBriefWithId[]`
-        // (`access` optional); `DatatugStoreService.getProjects()` casts the
-        // same way for the same reason — see its own "dirty hack" comment.
-        projectsBriefFromDictToFlatList(
-          store.brief?.projects,
-        ) as IProjectBase[],
+      this.storeId.set(storeId);
+      this.projects.set(
+        withGithubDemoProjects(
+          storeId,
+          // `projectsBriefFromDictToFlatList()` returns `IDatatugProjectBriefWithId[]`
+          // (`access` optional); `DatatugStoreService.getProjects()` casts the
+          // same way for the same reason — see its own "dirty hack" comment.
+          projectsBriefFromDictToFlatList(
+            store.brief?.projects,
+          ) as IProjectBase[],
+        ),
       );
     }
     this.storeTracker = new StoreTracker(this.destroyed, route);
-    datatugUserService.datatugUserState.subscribe((state) => {
-      this.authStatus = state.status;
-    });
+    datatugUserService.datatugUserState
+      .pipe(takeUntil(this.destroyed))
+      .subscribe((state) => {
+        this.authStatus.set(state.status);
+      });
   }
 
   ionViewDidLeave(): void {
@@ -293,9 +308,8 @@ export class DatatugStorePageComponent
   }
 
   ionViewDidEnter(): void {
-    if (this.storeId) {
-      this.processStoreId(this.storeId);
-    }
+    const storeId = this.storeId();
+    if (storeId) this.processStoreId(storeId);
   }
 
   ngOnInit() {
@@ -315,10 +329,10 @@ export class DatatugStorePageComponent
   }
 
   processStoreId = (storeId: string | null): void => {
-    if (storeId === this.storeId) {
+    if (storeId === this.storeId()) {
       return;
     }
-    this.storeId = storeId;
+    this.storeId.set(storeId);
     if (storeId === 'firestore' || isGithubStoreId(storeId)) {
       // Always load with the canonical `'github.com'` id, even when the
       // active route segment is the bare `'github'` (see `isGithubStoreId()`'s
@@ -350,8 +364,8 @@ export class DatatugStorePageComponent
         )
         .subscribe({
           next: (agentState) => {
-            this.agentState = agentState;
-            if (!agentState?.isNotAvailable && !this.projects) {
+            this.agentState.set(agentState);
+            if (!agentState?.isNotAvailable && !this.projects()) {
               this.loadProjects(storeId);
             }
           },
@@ -363,33 +377,35 @@ export class DatatugStorePageComponent
   };
 
   private loadProjects(storeId: string): void {
-    this.isLoading = true;
+    this.isLoading.set(true);
     this.storeService
       .getProjects(storeId)
       .pipe(takeUntil(this.storeChanged), takeUntil(this.destroyed))
       .subscribe({
         next: (projects) => this.processStoreProjects(projects),
         error: (err) => {
-          this.isLoading = false;
+          this.isLoading.set(false);
           if (
-            err.name === 'HttpErrorResponse' &&
+            err?.name === 'HttpErrorResponse' &&
             err.ok === false &&
             err.status === 0
           ) {
-            if (!this.agentState?.isNotAvailable) {
-              this.agentState = {
+            if (!this.agentState()?.isNotAvailable) {
+              this.agentState.set({
                 isNotAvailable: true,
                 lastCheckedAt: new Date(),
                 error: err,
-              };
+              });
             }
-            // this.error = 'Agent is not available at URL: ' + err.url;
           } else {
-            this.error = this.errorLogger.logError(
+            this.errorLogger.logError(
               err,
               `Failed to get list of projects hosted by agent [${storeId}]`,
               { show: false },
             );
+            this.error.set({
+              message: 'Could not load projects from this store.',
+            });
           }
         },
       });
@@ -397,8 +413,8 @@ export class DatatugStorePageComponent
 
   private processStoreProjects(projects: IProjectBase[]): void {
     console.table(projects);
-    this.isLoading = false;
-    this.projects = withGithubDemoProjects(this.storeId, projects);
+    this.isLoading.set(false);
+    this.projects.set(withGithubDemoProjects(this.storeId(), projects));
   }
 
   ngOnDestroy(): void {
@@ -409,12 +425,11 @@ export class DatatugStorePageComponent
   public goProject(project: IProjectBase, event: Event): void {
     event.preventDefault();
     event.stopPropagation();
-    if (!this.storeId) {
-      return;
-    }
+    const storeId = this.storeId();
+    if (!storeId) return;
     const projectContext: IProjectContext = {
-      ref: { projectId: project.id, storeId: this.storeId },
-      store: { ref: parseDatatugStoreRef(this.storeId) },
+      ref: { projectId: project.id, storeId },
+      store: { ref: parseDatatugStoreRef(storeId) },
       brief: {
         access: project.access,
         title: project.title,
@@ -431,19 +446,16 @@ export class DatatugStorePageComponent
 
   /** The address of a project of this store, for its row's link: a GitHub project at its short address. */
   protected projectLink(project: IProjectBase): string {
+    const storeId = this.storeId();
     return projectPageHref(
-      this.storeId
-        ? { storeId: this.storeId, projectId: project.id }
-        : undefined,
+      storeId ? { storeId, projectId: project.id } : undefined,
     );
   }
 
   /** Bound to the "Open a GitHub project" form's owner/repository/folder
    * inputs via `(ionInput)` — not `(ionChange)`, which only fires on blur:
    * with a one-way `[value]="githubOwner()"` binding, any Angular change
-   * detection cycle that runs while the user is still typing (zone.js is
-   * still active app-wide, so practically any event anywhere can trigger
-   * one) re-asserts the last-committed signal value into the input,
+   * detection cycle that runs while the user is still typing (for example, another signal update) re-asserts the last-committed signal value into the input,
    * discarding whatever was typed since. `(ionInput)` fires on every
    * keystroke, so the signal — and the `[value]` it drives — never falls
    * behind what's on screen. Also clears any previous validation error so
@@ -498,7 +510,7 @@ export class DatatugStorePageComponent
       org: owner,
       folder,
     });
-    const storeId = this.storeId || STORE_ID_GITHUB_COM;
+    const storeId = this.storeId() || STORE_ID_GITHUB_COM;
     const projectContext: IProjectContext = {
       ref: { projectId, storeId },
       store: { ref: parseDatatugStoreRef(storeId) },

@@ -1,4 +1,4 @@
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import { of, throwError } from 'rxjs';
 import { HttpErrorResponse, HttpParams } from '@angular/common/http';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
@@ -133,7 +133,7 @@ it('recovers GitHub metadata without content/default-branch reads and omits bran
       provideHttpClient(),
       provideHttpClientTesting(),
       SessionContextApiService,
-      { provide: SneatApiService, useValue: { get, post } },
+      { provide: DatatugApiService, useValue: { get, post } },
       { provide: ProjectQueryApiService, useValue: { branches } },
     ],
   });

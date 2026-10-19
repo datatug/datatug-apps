@@ -74,8 +74,8 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
         { fetch: fetcher },
       );
       expect(calls.map(({ url }) => url)).toEqual([
-        `https://demodb.dev/ovdb/v1/databases/${database}`,
-        `https://demodb.dev/ovdb/v1/databases/${database}/dtql`,
+        `https://ovdb.demodb.dev/v1/databases/${database}`,
+        `https://ovdb.demodb.dev/v1/databases/${database}/dtql`,
       ]);
       expect(calls[1].init?.method).toBe('POST');
       expect(calls[1].init?.body).toBe(
@@ -88,6 +88,70 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
       expect(result.totalRows).toBe(1);
     },
   );
+
+  it('sends a query saved on the legacy demodb.dev/ovdb base to the current OVDB host', async () => {
+    const starter = createHostedDemoDbQuery('new-query');
+    if (!starter.federation) throw new Error('Expected a federation.');
+    const definition = { ...starter, federation: { ...starter.federation, ovdbBaseUrl: 'https://demodb.dev/ovdb' } };
+    const urls: string[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input) => {
+      const url = String(input);
+      urls.push(url);
+      return url.endsWith('/chinook')
+        ? Response.json({ id: 'chinook', capabilities: { dtql: true, query: true, read: true } })
+        : Response.json({
+            complete: true,
+            records: [{ data: { CustomerId: 1 } }],
+            columns: ['CustomerId'],
+            execution: { route: 'database', rowsReturned: 1 },
+          });
+    });
+    await runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined, { fetch: fetcher });
+    expect(urls).toEqual([
+      'https://ovdb.demodb.dev/v1/databases/chinook',
+      'https://ovdb.demodb.dev/v1/databases/chinook/dtql',
+    ]);
+  });
+
+  it('uses the selected HTTPS origin and database for a legacy server without published server identity or rights', async () => {
+    const urls: string[] = [];
+    const fetcher = vi.fn<typeof fetch>(async (input, init) => {
+      const url = String(input); urls.push(url);
+      expect(init?.redirect).toBe('error');
+      return url.endsWith('/chinook')
+        ? Response.json({ id: 'chinook', serverId: '', capabilities: { dtql: true, read: true } })
+        : Response.json({ complete: true, records: [{ data: { CustomerId: 1 } }],
+            columns: ['CustomerId'], execution: { route: 'database', rowsReturned: 1 } });
+    });
+    const result = await runFederatedQuery(createHostedDemoDbQuery('new-query'), undefined, '',
+      undefined, undefined, 'full', undefined, undefined, { fetch: fetcher });
+    expect(urls).toEqual(['https://ovdb.demodb.dev/v1/databases/chinook', 'https://ovdb.demodb.dev/v1/databases/chinook/dtql']);
+    expect(result.sourceRights).toBeUndefined();
+    expect(result.usedSourceIds).toBeUndefined();
+  });
+
+  it('refuses unexpected rights evidence from the legacy mode instead of adopting an identity', async () => {
+    const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/chinook')
+      ? Response.json({ id: 'chinook', serverId: '', capabilities: { dtql: true, read: true } })
+      : Response.json({ complete: true, records: [], columns: [], execution: { rowsReturned: 0 },
+          usedSourceIds: ['ovdb:https%3A%2F%2Funexpected.test/chinook/Customer'] }));
+    await expect(runFederatedQuery(createHostedDemoDbQuery('new-query'), undefined, '',
+      undefined, undefined, 'full', undefined, undefined, { fetch: fetcher },
+    )).rejects.toThrow('requires the admitted server identity');
+  });
+
+  it('keeps an explicitly configured server identity binding strict for a legacy blank identity', async () => {
+    const definition = createHostedDemoDbQuery('new-query');
+    if (!definition.federation) throw new Error('Missing federation');
+    const fetcher = vi.fn<typeof fetch>(async () => Response.json({
+      id: 'chinook', serverId: '', capabilities: { dtql: true, read: true },
+    }));
+    await expect(runFederatedQuery({ ...definition, federation: { ...definition.federation,
+      expectedServerIdentity: { baseUrl: 'https://ovdb.demodb.dev', serverId: 'https://ovdb.demodb.dev' } } },
+      undefined, '', undefined, undefined, 'full', undefined, undefined, { fetch: fetcher },
+    )).rejects.toThrow('identity differs');
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
 
   it('rejects a mismatched ordinary database identity before the query POST', async () => {
     const fetcher = vi.fn<typeof fetch>(async () =>

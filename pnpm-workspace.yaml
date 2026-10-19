@@ -10,22 +10,22 @@ overrides:
   '@angular/compiler': 22.1.3
   '@angular/common': 22.1.3
   '@angular/animations': 22.1.3
-  '@sneat/api-public': 0.27.6
-  '@sneat/api': 0.27.6
-  '@sneat/auth-core': 0.27.30
-  '@sneat/auth-models': 0.27.6
-  '@sneat/auth-ui': 0.27.33
-  '@sneat/components': 0.27.32
-  '@sneat/core-public': 0.27.23
-  '@sneat/core': 0.27.23
-  '@sneat/data': 0.27.6
-  '@sneat/datagrid': 0.27.6
-  '@sneat/dto': 0.27.6
-  '@sneat/grid': 0.27.6
-  '@sneat/logging': 0.27.25
-  '@sneat/space-models': 0.27.6
-  '@sneat/space-services': 0.27.6
-  '@sneat/ui': 0.27.27
+  '@sneat/api-public': 0.27.37
+  '@sneat/api': 0.27.37
+  '@sneat/auth-core': 0.27.37
+  '@sneat/auth-models': 0.27.37
+  '@sneat/auth-ui': 0.27.37
+  '@sneat/components': 0.27.37
+  '@sneat/core-public': 0.27.37
+  '@sneat/core': 0.27.37
+  '@sneat/data': 0.27.37
+  '@sneat/datagrid': 0.27.37
+  '@sneat/dto': 0.27.37
+  '@sneat/grid': 0.27.37
+  '@sneat/logging': 0.27.37
+  '@sneat/space-models': 0.27.37
+  '@sneat/space-services': 0.27.37
+  '@sneat/ui': 0.27.37
 packages:
   - '.'
   - 'landings/incidentius'
@@ -35,8 +35,8 @@ packages:
 allowBuilds:
   '@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/24eb5b7ef8f044c274cb33beda353b2413e17c42': true
   '@dalgo/ovdb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/28bc59754f068335d08fb31c7aae5216b9f8bf56#path:/packages/ovdb': true
-  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql': true
-  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-wasm': true
+  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-sql': true
+  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/ab42235a0e125139ebd4eea904c9ffca6aba7c42#path:/packages/sqlite-wasm': true
   '@openvaultdb/inprocess@https://codeload.github.com/openvaultdb/openvaultdb-ts/tar.gz/20e656b9996f3ad8303293e77f968438df72c786#path:/packages/inprocess': true
   '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb': true
   '@firebase/util': true
@@ -55,24 +55,25 @@ allowBuilds:
   unrs-resolver: true
   workerd: true
 minimumReleaseAgeExclude:
-  - '@sneat/api@0.5.0 || 0.26.4'
-  - '@sneat/auth-core@0.5.0 || 0.26.4 || 0.27.30'
-  - '@sneat/auth-models@0.5.0 || 0.26.4'
-  - '@sneat/auth-ui@0.5.0 || 0.26.4 || 0.27.20 || 0.27.30 || 0.27.31 || 0.27.33'
-  - '@sneat/components@0.5.0 || 0.26.4 || 0.27.23 || 0.27.31 || 0.27.32'
-  - '@sneat/core@0.5.0 || 0.26.4 || 0.27.23'
-  - '@sneat/data@0.5.0 || 0.26.4'
-  - '@sneat/datagrid@0.5.0 || 0.26.4'
-  - '@sneat/dto@0.5.0 || 0.26.4'
-  - '@sneat/grid@0.5.0 || 0.26.4'
-  - '@sneat/logging@0.5.0 || 0.26.4 || 0.27.25'
-  - '@sneat/space-models@0.5.0 || 0.26.4'
-  - '@sneat/space-services@0.5.0 || 0.26.4'
-  - '@sneat/ui@0.5.0 || 0.26.4 || 0.27.27'
+  - '@sneat/api@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/app-auth@0.27.37'
+  - '@sneat/auth-core@0.5.0 || 0.26.4 || 0.27.30 || 0.27.37'
+  - '@sneat/auth-models@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/auth-ui@0.5.0 || 0.26.4 || 0.27.20 || 0.27.30 || 0.27.31 || 0.27.33 || 0.27.34 || 0.27.35 || 0.27.36 || 0.27.37'
+  - '@sneat/components@0.5.0 || 0.26.4 || 0.27.23 || 0.27.31 || 0.27.32 || 0.27.37'
+  - '@sneat/core@0.5.0 || 0.26.4 || 0.27.23 || 0.27.37'
+  - '@sneat/data@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/datagrid@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/dto@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/grid@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/logging@0.5.0 || 0.26.4 || 0.27.25 || 0.27.37'
+  - '@sneat/space-models@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/space-services@0.5.0 || 0.26.4 || 0.27.37'
+  - '@sneat/ui@0.5.0 || 0.26.4 || 0.27.27 || 0.27.37'
   - '@ingitdb/client-github@0.1.2'
-  - '@sneat/api-public@0.26.4'
-  - '@sneat/core-public@0.26.4 || 0.27.23'
+  - '@sneat/api-public@0.26.4 || 0.27.37'
+  - '@sneat/core-public@0.26.4 || 0.27.23 || 0.27.37'
   - '@sneat/extension-contactus-contract@0.12.5'
-  - '@sneat/build-info@0.27.23'
+  - '@sneat/build-info@0.27.23 || 0.27.37'
   - '@dalgo/core@0.1.0 || 0.7.1 || 0.7.2 || 0.7.3 || 0.7.4'
   - '@dalgo/indexeddb@0.1.0'

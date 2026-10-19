@@ -9,6 +9,10 @@ import type { FederatedSourceRights } from './federated-source-rights';
 import { localResultBytes } from './local-result-bytes';
 import { readOvdbOrdinaryResult } from './ovdb-ordinary-result';
 import { ovdbResultColumns, ovdbStreamRow } from './ovdb-stream-values';
+import {
+  validateNativeRootResult,
+  type NativeRootSource,
+} from './ovdb-native-root-result';
 
 /** Consumes the released ordinary /dtql envelope. The worker may stage rows
  * using its existing direct-result sink, but no rows are exposed until the
@@ -23,11 +27,45 @@ export async function consumeOvdbOrdinaryQuery(
   onProgress?: (progress: FederatedQueryProgress) => void,
   onOutputPage?: FederatedOutputPage,
   observer?: FederatedQueryObserver,
+  rootSources?: readonly NativeRootSource[],
 ): Promise<FederatedQueryResult & { readonly nativeDirect: true }> {
   const result = await readOvdbOrdinaryResult(response, signal);
   signal?.throwIfAborted();
+  const root = rootSources
+    ? validateNativeRootResult(result, definition, rootSources)
+    : undefined;
   rights.acceptWholeQuery(result.evidence as Record<string, unknown>);
-  const columns = ovdbResultColumns(result.columns, definition);
+  const execution = result.evidence['execution'] as Record<string, unknown>;
+  const sources = execution['sources'];
+  const ordinarySources =
+    Array.isArray(sources) &&
+    sources.every(
+      (source) =>
+        source &&
+        typeof source === 'object' &&
+        typeof source.database === 'string' &&
+        typeof source.collection === 'string',
+    )
+      ? sources.map((source) => ({
+          database: source.database as string,
+          collection: source.collection as string,
+        }))
+      : undefined;
+  const columns =
+    root?.columns ?? ovdbResultColumns(result.columns, definition);
+  if (
+    root &&
+    !observer?.onNativeRecord &&
+    (result.records.length > 100 ||
+      result.records.reduce(
+        (bytes, record) => bytes + localResultBytes(record.data),
+        0,
+      ) >
+        1024 * 1024)
+  )
+    throw new Error(
+      'The ordinary query needs a paged result sink beyond the direct preview limit.',
+    );
   const preview: Readonly<Record<string, unknown>>[] = [];
   let previewBytes = 0;
   let firstRecord = true;
@@ -51,7 +89,10 @@ export async function consumeOvdbOrdinaryQuery(
     await observer?.onNativeRecord?.(record.data, signal);
   }
   signal?.throwIfAborted();
-  const rows = preview.map((record) => ovdbStreamRow(record, columns));
+  const rows =
+    root && !observer?.onNativeRecord
+      ? root.rows
+      : preview.map((record) => ovdbStreamRow(record, columns));
   if (onOutputPage && !observer?.onNativeRecord) await onOutputPage(rows);
   onProgress?.({
     stage: 'complete',
@@ -70,15 +111,18 @@ export async function consumeOvdbOrdinaryQuery(
     totalRows: result.records.length,
     hasMore: false,
     nativeDirect: true,
+    ...(ordinarySources ? { ordinarySources } : {}),
+    ...(result.evidence['complete'] === true
+      ? { ordinaryComplete: true as const }
+      : {}),
     limitations: [],
     bindingsApplied: [],
     truncated: false,
     provenance: {
-      source: `${base}/v1/databases/${database} (direct OVDB)`,
+      source: `${base}${rootSources ? '/v1/dtql' : `/v1/databases/${database}`} (direct OVDB)`,
       queryId: definition.id,
       mode: 'live',
       observedAt: new Date().toISOString(),
-      executionProfile: 'protected',
     },
   };
 }

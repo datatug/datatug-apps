@@ -1,21 +1,25 @@
-@if (!!boardDef()?.rows?.length) {
-  @for (boardRowDef of boardDef()?.rows || []; track $index) {
-    <sneat-datatug-board-row
-      [boardRowDef]="boardRowDef"
-      [boardContext]="boardContext()"
-      [projectRef]="projectRef()"
-      [boardId]="boardDef()?.id"
-      [readBoardForRun]="readBoardForRun()"
-    />
-  }
+@if (validation().error; as error) {
+  <p role="alert">{{ error }}</p>
 } @else {
-  <ion-grid>
-    <ion-row>
-      <ion-col>
-        <ion-text color="medium">
-          <p>No cards/widgets have been added to this board yet.</p>
-        </ion-text>
-      </ion-col>
-    </ion-row>
-  </ion-grid>
+  @if (!!boardDef()?.rows?.length) {
+    @for (boardRowDef of boardDef()?.rows || []; track $index) {
+      <sneat-datatug-board-row
+        [boardRowDef]="boardRowDef"
+        [boardContext]="boardContext()"
+        [projectRef]="projectRef()"
+        [boardId]="boardDef()?.id"
+        [readBoardForRun]="readBoardForRun()"
+      />
+    }
+  } @else {
+    <ion-grid>
+      <ion-row>
+        <ion-col>
+          <ion-text color="medium">
+            <p>No cards/widgets have been added to this board yet.</p>
+          </ion-text>
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+  }
 }

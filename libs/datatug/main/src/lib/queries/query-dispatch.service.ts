@@ -1,3 +1,6 @@
+import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
+import { createPublicOvdbDevFetch } from './public-ovdb-dev-transport';
+import { executeSavedPublicChartQuery, isSavedPublicChartQueryId } from './public-data/public-chart-query';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { type RunQueryRequest, type RunQueryResponse, decodeSourceRightsEvidence } from '@sneat/datatug-semantic';
@@ -41,17 +44,19 @@ async function boundedOvdbResponse(response: Response, signal: AbortSignal): Pro
   if (!reader) return response;
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let reachedEnd = false;
   try {
     while (true) {
       if (signal.aborted) throw abortError();
       const { done, value } = await awaitWithAbort(reader.read(), signal);
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       size += value.byteLength;
       if (size > OVDB_RESPONSE_BYTES) throw new QueryDispatchError('The OVDB response exceeds the 2 MiB browser limit. Narrow the query.');
       chunks.push(value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   const body = new Uint8Array(new ArrayBuffer(size));
   let offset = 0;
@@ -72,6 +77,7 @@ function abortError(): Error {
 
 @Injectable({ providedIn: 'root' })
 export class QueryDispatchService {
+  private readonly devTransport = inject(PUBLIC_OVDB_DEV_TRANSPORT, { optional: true });
   private readonly projectApi = inject(ProjectQueryApiService);
   private readonly github = inject(GithubProjectReaderService);
   private readonly http = inject(HttpClient);
@@ -126,21 +132,43 @@ export class QueryDispatchService {
     return { request: boundRequest, plan: resolveQueryDispatchPlan(boundRequest, connection ? { connections: [connection] } : undefined) };
   }
 
-  async execute(request: QueryDispatchRequest): Promise<FederatedQueryResult> {
+  async execute(request: QueryDispatchRequest, options?: { readonly maxRows: number }): Promise<FederatedQueryResult> {
     const session = this.start(request);
-    try { return await session.result; }
-    finally { await session.dispose(); }
+    try {
+      const result = await session.result;
+      if (!options) return result;
+      const total = result.totalRows ?? result.recordset.rows.length;
+      if (!Number.isSafeInteger(options.maxRows) || options.maxRows < 1 || options.maxRows > 1000 ||
+        !Number.isSafeInteger(total) || total < result.recordset.rows.length || total > options.maxRows)
+        throw new QueryDispatchError(`This board accepts at most ${options.maxRows} result rows. Narrow the saved query.`);
+      if (result.hasMore || result.truncated)
+        throw new QueryDispatchError('This board requires a complete saved query result. Narrow the query.');
+      if (total === result.recordset.rows.length) return result;
+      if (!session.getPage) throw new QueryDispatchError('This runtime cannot read the complete result.');
+      const rows: (typeof result.recordset.rows)[number][] = [];
+      for (let index = 0; rows.length < total; index++) {
+        request.signal?.throwIfAborted();
+        const page = await session.getPage(index);
+        if (!page.length || rows.length + page.length > total)
+          throw new QueryDispatchError('The saved query result pages are incomplete.');
+        rows.push(...page);
+      }
+      request.signal?.throwIfAborted();
+      return { ...result, recordset: { ...result.recordset, rows } };
+    } finally { await session.dispose(); }
   }
 
   start(request: QueryDispatchRequest): QueryExecutionSession {
     const controller = new AbortController();
     let federation: FederatedQueryService | undefined;
     let terminal = false;
+    let completedSuccessfully = false;
     let terminalPromise: Promise<void> | undefined;
-    const endSession = (): Promise<void> => {
+    const endSession = (cancel = true): Promise<void> => {
       if (terminalPromise) return terminalPromise;
       terminal = true;
-      controller.abort();
+      // Successful delivery is complete: normal disposal must not cancel its fetch.
+      if (cancel || !completedSuccessfully) controller.abort();
       request.signal?.removeEventListener('abort', relayAbort);
       terminalPromise = Promise.resolve().then(async () => {
         try { await federation?.dispose(); } catch { /* Session teardown is best effort. */ }
@@ -164,13 +192,17 @@ export class QueryDispatchService {
     } else {
       result = this.runOwned(ownedRequest, (service) => { federation = service; });
     }
+    result = result.then((value) => {
+      completedSuccessfully = true;
+      return value;
+    });
     void result.catch(() => undefined);
     if (hostedResponse) void hostedResponse.catch(() => undefined);
     const session: QueryExecutionSession = {
       result,
       ...(hostedResponse ? { hostedResponse } : {}),
-      cancel: endSession,
-      dispose: endSession,
+      cancel: () => endSession(),
+      dispose: () => endSession(false),
       getPage: async (index, resultSet, localResult) => {
         const service = await this.federationForResult(result, () => federation);
         return service.getPage(index, resultSet, localResult);
@@ -191,10 +223,18 @@ export class QueryDispatchService {
     request: QueryDispatchRequest,
     onFederation: (service: FederatedQueryService) => void,
   ): Promise<FederatedQueryResult> {
+    // Existing publisher admission validates exact saved text, source and full rows.
+    if (request.queryId && isSavedPublicChartQueryId(request.queryId) &&
+      !request.target && !request.runtimeBinding && !request.runtimeSelectionId) {
+      const captured = captureQueryDispatchRequest(request);
+      return executeSavedPublicChartQuery(request.queryId, captured.definition, { signal: captured.signal,
+        ...(this.devTransport ? { fetch: createPublicOvdbDevFetch(this.devTransport) } : {}),
+      });
+    }
     const { request: captured, plan } = await this.plan(request);
     if (captured.signal?.aborted) throw abortError();
     if (plan.target.kind === 'ovdb-federation') {
-      const service = new FederatedQueryService();
+      const service = new FederatedQueryService(this.devTransport);
       onFederation(service);
       if (captured.signal?.aborted) { await service.dispose(); throw abortError(); }
       const options = captured.federationRun;

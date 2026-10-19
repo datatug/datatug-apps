@@ -31,7 +31,7 @@ import {
 } from './ovdb-connection';
 import { OvdbConfirmService } from './ovdb-confirm.service';
 import { displayOvdbValue, ovdbFormFields, type OvdbDisplayValue } from './ovdb-record-form';
-import { OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
+import { getOvdbRecord, ovdbCreateKeyField, OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
 import { ovdbCollectionSchema } from './ovdb-connection';
 
 @Component({
@@ -92,7 +92,7 @@ import { ovdbCollectionSchema } from './ovdb-connection';
         <ion-card-header><ion-card-title>Tables</ion-card-title></ion-card-header>
         <ion-list lines="full">
           @for (name of tables(); track name) {
-            <ion-item button [routerLink]="[...basePath(), 'table', name]" [attr.data-testid]="'table-' + name">
+            <ion-item button [routerLink]="[...basePath(), 'table', name]" [queryParams]="navigationQuery()" [attr.data-testid]="'table-' + name">
               <ion-label>{{ name }}</ion-label>
             </ion-item>
           } @empty {
@@ -104,7 +104,7 @@ import { ovdbCollectionSchema } from './ovdb-connection';
       <ion-card data-testid="ovdb-unknown-table">
         <ion-card-content>
           <p>There is no table “{{ table() }}” in this database.</p>
-          <ion-button fill="outline" [routerLink]="basePath()">All tables</ion-button>
+          <ion-button fill="outline" [routerLink]="basePath()" [queryParams]="navigationQuery()">All tables</ion-button>
         </ion-card-content>
       </ion-card>
     } @else {
@@ -115,7 +115,10 @@ import { ovdbCollectionSchema } from './ovdb-connection';
               <ion-badge color="medium">{{ list.length }}{{ list.length === pageSize ? '+' : '' }}</ion-badge>
             }
           </ion-card-title>
-          <p class="ovdb-subtitle"><a [routerLink]="basePath()">All tables</a></p>
+          @if (canCreate()) {
+            <ion-button data-testid="record-create" size="small" [disabled]="creating() || resetting()" (click)="creating.set(true)">Create record</ion-button>
+          }
+          <p class="ovdb-subtitle"><a [routerLink]="basePath()" [queryParams]="navigationQuery()">All tables</a></p>
         </ion-card-header>
         <ion-card-content>
           @if (loadError()) {
@@ -155,7 +158,17 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           }
         </ion-card-content>
       </ion-card>
-      @if (selected(); as row) {
+      @if (creating()) {
+        <sneat-datatug-ovdb-record-editor
+          [connection]="liveConnection()" [collection]="table()!" [creating]="true"
+          (created)="recordCreated($event)" (cancelled)="creating.set(false)"
+        />
+      } @else if (selected(); as row) {
+        @if (relatedEvidence(); as link) {
+          @if (table() === link.collection && row.data[link.field] !== null && row.data[link.field] !== undefined) {
+            <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="{ order: row.data[link.field] }">Related log evidence</ion-button>
+          }
+        }
         <sneat-datatug-ovdb-record-editor
           [connection]="liveConnection()"
           [collection]="table()!"
@@ -183,7 +196,12 @@ export class OvdbDatabaseBrowserComponent {
   readonly connection = input.required<OvdbConnection>();
   /** Router path of the table list; tables open at `[...basePath, 'table', name]`. */
   readonly basePath = input.required<readonly string[]>();
+  readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
+  /** Optional explicit mapping supplied by a demo/project, never inferred from the OVDB engine. */
+  readonly relatedEvidence = input<{ readonly collection: string; readonly field: string; readonly path: string } | undefined>();
+  /** Deep-linked record id. Local keyed sources may load it beyond the first grid page. */
+  readonly focusRecordId = input<string | undefined>();
   /** Extra status shown in the header (for example "Local copy ready"). */
   readonly statusText = input<string>('');
   /** Added to the Reset Database confirmation (for example that a reset needs the network). */
@@ -201,10 +219,17 @@ export class OvdbDatabaseBrowserComponent {
   });
   protected readonly caps = computed(() => ovdbUiCapabilities(this.liveConnection().descriptor));
   protected readonly tables = computed(() => ovdbCollections(this.liveConnection().descriptor));
+  protected readonly creating = signal(false);
+  protected readonly createdRow = signal<OvdbRow | undefined>(undefined);
+  protected readonly focusedRow = signal<OvdbRow | undefined>(undefined);
+  protected readonly canCreate = computed(() => {
+    const table = this.table();
+    return !!table && !!ovdbCreateKeyField(this.liveConnection().descriptor, table);
+  });
   protected readonly rows = signal<readonly OvdbRow[] | undefined>(undefined);
   protected readonly loadError = signal('');
   protected readonly selectedKey = signal<string | undefined>(undefined);
-  protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()));
+  protected readonly selected = computed(() => this.rows()?.find((row) => row.key === this.selectedKey()) ?? (this.focusedRow()?.key === this.selectedKey() ? this.focusedRow() : undefined) ?? (this.createdRow()?.key === this.selectedKey() ? this.createdRow() : undefined));
   protected readonly columns = computed(() => {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
@@ -222,10 +247,14 @@ export class OvdbDatabaseBrowserComponent {
     effect(() => {
       const connection = this.connection();
       const table = this.table();
+      const focusRecordId = this.focusRecordId();
       untracked(() => {
         this.descriptorOverride.set(undefined);
         this.selectedKey.set(undefined);
-        void this.load(connection, table);
+        this.creating.set(false);
+        this.createdRow.set(undefined);
+        this.focusedRow.set(undefined);
+        void this.load(connection, table, focusRecordId);
       });
     });
   }
@@ -240,6 +269,8 @@ export class OvdbDatabaseBrowserComponent {
   /** Selects a row; for a key press, stops the page from scrolling on Space. */
   protected select(row: OvdbRow, event?: Event): void {
     event?.preventDefault();
+    this.creating.set(false);
+    this.focusedRow.set(undefined);
     this.selectedKey.set(row.key);
   }
 
@@ -247,7 +278,7 @@ export class OvdbDatabaseBrowserComponent {
     return this.load(this.liveConnection(), this.table());
   }
 
-  private async load(connection: OvdbConnection, table: string | undefined): Promise<void> {
+  private async load(connection: OvdbConnection, table: string | undefined, focusRecordId?: string): Promise<void> {
     const epoch = ++this.#loadEpoch;
     this.loadError.set('');
     if (!table || !ovdbCollections(connection.descriptor).includes(table) || !ovdbUiCapabilities(connection.descriptor).browse) {
@@ -258,6 +289,20 @@ export class OvdbDatabaseBrowserComponent {
       const rows = await listOvdbRows(connection, table);
       if (epoch !== this.#loadEpoch) return;
       this.rows.set(rows);
+      const selectedFocusedKey = this.focusedRow()?.key === this.selectedKey() ? this.selectedKey() : undefined;
+      const keyedId = focusRecordId ?? (selectedFocusedKey ? this.focusRecordId() : undefined);
+      if (keyedId && this.liveConnection().descriptor.capabilities.read === true) {
+        const row = await getOvdbRecord(connection, table, keyedId);
+        if (epoch !== this.#loadEpoch) return;
+        if (!focusRecordId && this.selectedKey() !== selectedFocusedKey) return;
+        if (row) {
+          this.focusedRow.set(row);
+          if (focusRecordId) this.selectedKey.set(row.key);
+        } else if (selectedFocusedKey) {
+          this.focusedRow.set(undefined);
+          this.selectedKey.set(undefined);
+        }
+      }
     } catch (error) {
       if (epoch !== this.#loadEpoch) return;
       this.rows.set(undefined);
@@ -265,9 +310,30 @@ export class OvdbDatabaseBrowserComponent {
     }
   }
 
-  protected async recordChanged(change: OvdbRecordChange): Promise<void> {
-    if (change === 'deleted') this.selectedKey.set(undefined);
+  protected async recordCreated(row: OvdbRow): Promise<void> {
+    this.creating.set(false);
+    this.createdRow.set(row);
+    this.selectedKey.set(row.key);
     await this.reload();
+  }
+
+  protected async recordChanged(change: OvdbRecordChange): Promise<void> {
+    if (change === 'deleted') { this.selectedKey.set(undefined); this.createdRow.set(undefined); }
+    const created = this.createdRow();
+    const table = this.table();
+    const connection = this.liveConnection();
+    await this.reload();
+    if (change === 'saved' && created && table && !this.rows()?.some((row) => row.key === created.key)) {
+      const keyField = ovdbCreateKeyField(connection.descriptor, table);
+      if (keyField) {
+        try {
+          const row = await getOvdbRecord(connection, table, created.data[keyField] as string | number);
+          if (this.table() === table && this.liveConnection() === connection) this.createdRow.set(row);
+        } catch (error) {
+          this.loadError.set(describeOvdbError(error, 'load'));
+        }
+      }
+    }
   }
 
   async resetDatabase(): Promise<void> {
@@ -311,6 +377,8 @@ export class OvdbDatabaseBrowserComponent {
         );
       }
       this.selectedKey.set(undefined);
+      this.createdRow.set(undefined);
+      this.creating.set(false);
       await this.reload();
     } catch (error) {
       this.resetError.set(describeOvdbError(error, 'reset'));

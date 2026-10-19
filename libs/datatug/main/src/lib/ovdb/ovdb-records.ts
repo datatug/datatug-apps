@@ -4,7 +4,7 @@
 // one with `delete` (`POST /batch`, op "delete"). Keys are `<Table>/<pk>`.
 import { Key, NotFoundError, AlreadyExistsError, UnsupportedError } from '@dalgo/core';
 import { OpenVaultDbDatabase, OpenVaultDbHttpError } from '@dalgo/ovdb/client';
-import { ovdbCollectionTarget, ovdbDatabaseUrl, ovdbHttpError, type OvdbConnection, type OvdbDescriptor } from './ovdb-connection';
+import { ovdbCollectionSchema, ovdbCollectionTarget, ovdbDatabaseUrl, ovdbHttpError, type OvdbConnection, type OvdbDescriptor } from './ovdb-connection';
 
 export interface OvdbRow {
   /** The record key path as the server returned it (`Album/1`). */
@@ -73,6 +73,47 @@ export async function listOvdbRows(
     key: record.key.path,
     data: (record.data ?? {}) as Record<string, unknown>,
   }));
+}
+
+/** Reads one keyed record, including records outside the first query page. */
+export async function getOvdbRecord(connection: OvdbConnection, collection: string, id: string | number): Promise<OvdbRow | undefined> {
+  const record = await ovdbDatabase(connection).get<Record<string, unknown>>(new Key(collection, id));
+  return record.exists ? { key: record.key.path, data: record.data ?? {} } : undefined;
+}
+
+/** Creation requires a typed, addressable key and fields this form can supply. */
+export function ovdbCreateKeyField(descriptor: OvdbDescriptor, collection: string): string | undefined {
+  if (descriptor.capabilities.write !== true) return undefined;
+  const schema = ovdbCollectionSchema(descriptor, collection);
+  const keys = schema?.primaryKey ?? [];
+  if (keys.length !== 1) return undefined;
+  const key = schema?.fields?.[keys[0]];
+  if (!key || !['integer', 'string'].includes(key.type ?? '')) return undefined;
+  // Required binary values cannot be supplied by the record form.
+  if (Object.values(schema?.fields ?? {}).some((field) =>
+    ['blob', 'bytes'].includes(field.type ?? '') && (field.notNull || field.required))) return undefined;
+  return keys[0];
+}
+
+/** Inserts through the generic DALgo OVDB adapter; never overwrites an existing key. */
+export async function createOvdbRecord(
+  connection: OvdbConnection,
+  collection: string,
+  data: Readonly<Record<string, unknown>>,
+): Promise<OvdbRow> {
+  const keyField = ovdbCreateKeyField(connection.descriptor, collection);
+  if (!keyField) throw new UnsupportedError('This table does not support creating records.');
+  const id = data[keyField];
+  if ((typeof id !== 'string' && typeof id !== 'number') ||
+      (typeof id === 'string' && (!id.trim() || id.includes('/'))) ||
+      (typeof id === 'number' && !Number.isSafeInteger(id))) {
+    throw new TypeError('Enter a non-empty record key without slashes, or a safe whole number.');
+  }
+  const key = new Key(collection, id);
+  await ovdbDatabase(connection).runReadwriteTransaction(async (tx) => {
+    await tx.insert(key, { ...data });
+  });
+  return { key: key.path, data: { ...data } };
 }
 
 /** Updates fields of one record (`update` op): only the changed fields are sent. */

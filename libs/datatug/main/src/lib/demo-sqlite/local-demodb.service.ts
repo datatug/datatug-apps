@@ -14,6 +14,7 @@
 // A catalog `single-copy` policy keeps one OPFS copy (Reset downloads again).
 import { DestroyRef, Injectable, InjectionToken, Signal, computed, inject, signal } from '@angular/core';
 import {
+  demoSqliteDownloadBytes,
   demoSqliteStorageBytes,
   findDemoSqliteDataset,
   formatMegabytes,
@@ -161,6 +162,12 @@ export function classifyOpenError(error: unknown, entry: DemoSqliteCatalogEntry)
         return { kind: 'failed', storage: true, message: `The local copy could not be stored in this browser: ${message}` };
       case 'download':
         return { kind: 'failed', storage: false, message: 'The dataset could not be downloaded. Check your connection and try again.' };
+      case 'rate-limited':
+        return {
+          kind: 'failed',
+          storage: false,
+          message: 'DemoDB is limiting downloads right now (HTTP 429), so the download was stopped. Wait a few minutes, then try again.',
+        };
       case 'integrity':
         return {
           kind: 'failed',
@@ -195,6 +202,11 @@ export class LocalDemoDbSession {
     private readonly loadRuntime: () => Promise<OpenLocalDemoDbRuntime>,
     private readonly queryRuntimes?: QueryRuntimeRegistry,
   ) {}
+
+  async export(maxBytes = 268435456): Promise<Uint8Array> {
+    if (this.#disposed || this.#state().kind !== 'ready' || !this.#runtime) throw new Error('The browser database is no longer active. Return to the demo and reopen it explicitly.');
+    return this.#runtime.export({ maxBytes });
+  }
 
   get baseUrl(): string | undefined {
     return this.#connection()?.baseUrl;
@@ -298,7 +310,7 @@ export class LocalDemoDbSession {
     if (epoch !== this.#epoch || state.kind !== 'loading') return;
     this.#state.set(
       message.phase === 'download'
-        ? { ...state, phase: 'download', loaded: message.loaded, total: message.total ?? this.entry.bytes }
+        ? { ...state, phase: 'download', loaded: message.loaded, total: message.total ?? demoSqliteDownloadBytes(this.entry) }
         : { ...state, phase: 'install', step: message.step, loaded: state.total },
     );
   };
@@ -370,6 +382,12 @@ export class LocalDemoDbService {
       for (const session of this.sessions.values()) session.dispose();
       this.sessions.clear();
     });
+  }
+
+  /** Read-only lookup. A continuation must never import or replace data implicitly. */
+  peek(datasetId: string): LocalDemoDbSession | undefined {
+    const entry = findDemoSqliteDataset(datasetId);
+    return entry ? this.sessions.get(entry.dataset) : undefined;
   }
 
   /** A session for the dataset (case-insensitive id), or undefined for an unknown dataset. Call `start()`. */

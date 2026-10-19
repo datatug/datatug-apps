@@ -22,7 +22,7 @@ const sourceProvider = {
   repository: source.schema.repository,
   commit: source.schema.revision,
   localId: 'source',
-  apiUrl: 'https://demodb.dev/ovdb/v1/databases/source',
+  apiUrl: 'https://ovdb.demodb.dev/v1/databases/source',
   recordsets: [driver],
 };
 const suggestion: PublicDataSuggestion = {
@@ -37,7 +37,7 @@ const suggestion: PublicDataSuggestion = {
     repository: 'https://github.com/example/public',
     commit: 'a'.repeat(40),
     localId: 'public',
-    apiUrl: 'https://demodb.dev/ovdb/v1/databases/public',
+    apiUrl: 'https://ovdb.demodb.dev/v1/databases/public',
     recordsets: [
       {
         name: 'CustomerCountries',

@@ -1,3 +1,8 @@
+import {
+  validChartSpec,
+  validateChartDefinition,
+  validateBoardPresentation,
+} from './board-presentation';
 import type { Board, BoardCard } from './board';
 import type { BoardWidget } from './board-widget';
 import type { ChartSpec, ChartWidgetDef } from './widget-chart';
@@ -53,6 +58,10 @@ export type BoardEditAction = WidgetActionTarget &
     | { readonly type: 'set-chart-spec'; readonly spec: ChartSpec }
     | { readonly type: 'set-view'; readonly view: 'chart' | 'grid' }
     | {
+        readonly type: 'set-presentation-view';
+        readonly view: BoardPresentationView;
+      }
+    | {
         readonly type: 'add-chart-source';
         readonly sourceId: string;
         readonly queryId: string;
@@ -60,12 +69,15 @@ export type BoardEditAction = WidgetActionTarget &
     | { readonly type: 'remove-chart-source'; readonly sourceId: string }
   );
 
+export type BoardPresentationView = 'chart' | 'grid' | 'trend';
+
 export type BoardSessionAction = BoardAction | BoardEditAction;
 
 /** Selection is session presentation state, never an extra Board wire field. Keys encode [cardId, ...widgetPath]. */
 export interface BoardSessionState {
   readonly board: Board;
   readonly selectedTabs: Readonly<Record<string, string>>;
+  readonly chartViews?: Readonly<Record<string, BoardPresentationView>>;
 }
 
 export type TutorialControl = 'guided' | 'free';
@@ -334,6 +346,8 @@ const editKinds = [
   'set-view',
   'add-chart-source',
   'remove-chart-source',
+  // Append only: persisted compact action indices must remain compatible.
+  'set-presentation-view',
 ] as const;
 const MAX_TAB_DEPTH = 8;
 
@@ -348,48 +362,6 @@ function text(value: unknown): value is string {
 
 function identifier(value: unknown): value is string {
   return text(value) && !/\s/.test(value);
-}
-
-function validChartSpec(value: unknown): value is ChartSpec {
-  if (
-    !isRecord(value) ||
-    !text(value['categoryColumn']) ||
-    !text(value['valueColumn']) ||
-    value['categoryColumn'] === value['valueColumn']
-  )
-    return false;
-  if (
-    value['unit'] !== undefined &&
-    value['unit'] !== '' &&
-    !text(value['unit'])
-  )
-    return false;
-  const common = ['type', 'categoryColumn', 'valueColumn', 'unit'];
-  if (value['type'] === 'bar')
-    return Object.keys(value).every((key) => common.includes(key));
-  return (
-    value['type'] === 'bar-race' &&
-    text(value['periodColumn']) &&
-    text(value['unit']) &&
-    value['periodColumn'] !== value['categoryColumn'] &&
-    value['periodColumn'] !== value['valueColumn'] &&
-    value['grain'] === 'month' &&
-    (value['onDuplicate'] === 'sum' || value['onDuplicate'] === 'reject') &&
-    (value['mode'] === 'period' || value['mode'] === 'cumulative') &&
-    Number.isInteger(value['topN']) &&
-    Number(value['topN']) >= 1 &&
-    Number(value['topN']) <= 100 &&
-    Object.keys(value).every((key) =>
-      [
-        ...common,
-        'periodColumn',
-        'grain',
-        'onDuplicate',
-        'mode',
-        'topN',
-      ].includes(key),
-    )
-  );
 }
 
 function validEdit(value: unknown): value is BoardEditAction {
@@ -412,6 +384,7 @@ function validEdit(value: unknown): value is BoardEditAction {
     'set-tab-query': ['tabKey', 'queryId'],
     'set-chart-spec': ['spec'],
     'set-view': ['view'],
+    'set-presentation-view': ['view'],
     'add-chart-source': ['sourceId', 'queryId'],
     'remove-chart-source': ['sourceId'],
   };
@@ -457,6 +430,8 @@ function validEdit(value: unknown): value is BoardEditAction {
       return validChartSpec(value['spec']);
     case 'set-view':
       return value['view'] === 'chart' || value['view'] === 'grid';
+    case 'set-presentation-view':
+      return ['chart', 'grid', 'trend'].includes(value['view'] as string);
     case 'add-chart-source':
       return identifier(value['sourceId']) && identifier(value['queryId']);
     default:
@@ -469,6 +444,12 @@ function tabKey(tab: TabWidget, index: number): string {
 }
 
 function tabsDefinition(widget: BoardWidget | undefined): TabsWidgetDef {
+  if (
+    widget?.name === 'tabs' &&
+    (widget.data == null ||
+      (isRecord(widget.data) && widget.data['tabs'] == null))
+  )
+    return { ...(isRecord(widget.data) ? widget.data : {}), tabs: [] };
   if (
     widget?.name !== 'tabs' ||
     !isRecord(widget.data) ||
@@ -564,40 +545,9 @@ function chartDefinition(widget: BoardWidget | undefined): ChartWidgetDef {
   if (widget?.name !== 'chart' || !isRecord(widget.data))
     throw new Error('This operation requires a chart widget.');
   const data = widget.data as unknown as ChartWidgetDef;
-  if (
-    !validChartSpec(data.chart) ||
-    !Array.isArray(data.sources) ||
-    !data.sources.length ||
-    data.sources.length > MAX_CARDS
-  )
+  validateChartDefinition(data);
+  if (data.sources.length > MAX_CARDS)
     throw new Error('Invalid chart configuration.');
-  const ids = new Set<string>();
-  for (const source of data.sources) {
-    if (
-      !isRecord(source) ||
-      !identifier(source.id) ||
-      !identifier(source.queryId) ||
-      ids.has(source.id)
-    )
-      throw new Error('Chart sources need distinct IDs and saved queries.');
-    ids.add(source.id);
-    if (
-      source.transform &&
-      (source.transform.name !== 'orders-monthly-country-count' ||
-        data.chart.type !== 'bar-race' ||
-        data.chart.periodColumn !== 'period' ||
-        data.chart.categoryColumn !== 'category' ||
-        data.chart.valueColumn !== 'value' ||
-        data.chart.onDuplicate !== 'reject')
-    )
-      throw new Error(
-        'The Orders transform requires its canonical race mapping.',
-      );
-  }
-  if (data.chart.type === 'bar-race' && data.sources.length !== 1)
-    throw new Error(
-      'The board wire contract requires one source for a bar race.',
-    );
   return data;
 }
 
@@ -625,6 +575,30 @@ function pruneSelections(
   );
 }
 
+function pruneChartViews(
+  board: Board,
+  views: BoardSessionState['chartViews'],
+): BoardSessionState['chartViews'] {
+  if (!views) return undefined;
+  return Object.fromEntries(
+    Object.entries(views).filter(([key, view]) => {
+      try {
+        const [cardId, ...path] = JSON.parse(key) as string[];
+        const position = location(board, cardId);
+        const widget =
+          position && board.rows?.[position.row].cards?.[position.index].widget;
+        const chart = chartDefinition(widgetAtPath(widget, path));
+        return (
+          view !== 'trend' ||
+          (chart.chart.type === 'bar-race' && !!chart.sources[0]?.transform)
+        );
+      } catch {
+        return false;
+      }
+    }),
+  );
+}
+
 function applySessionAction(
   canonical: Board,
   state: BoardSessionState,
@@ -632,7 +606,15 @@ function applySessionAction(
 ): BoardSessionState {
   if (validAction(action)) {
     const board = applyFrom(canonical, state.board, action, true);
-    return { board, selectedTabs: pruneSelections(board, state.selectedTabs) };
+    validateBoardPresentation(board);
+    return {
+      ...state,
+      board,
+      selectedTabs: pruneSelections(board, state.selectedTabs),
+      ...(state.chartViews
+        ? { chartViews: pruneChartViews(board, state.chartViews) }
+        : {}),
+    };
   }
   if (!validEdit(action)) throw new Error('Invalid session board edit.');
   if (
@@ -645,6 +627,21 @@ function applySessionAction(
   const path = action.widgetPath ?? [];
   const card = state.board.rows?.[position.row]?.cards?.[position.index];
   if (!card) throw new Error('The working card no longer exists.');
+  if (action.type === 'set-presentation-view') {
+    const chart = chartDefinition(widgetAtPath(card.widget, path));
+    if (
+      action.view === 'trend' &&
+      (chart.chart.type !== 'bar-race' || !chart.sources[0]?.transform)
+    )
+      throw new Error('Monthly trend requires a declared raw Orders race.');
+    return {
+      ...state,
+      chartViews: {
+        ...state.chartViews,
+        [selectionKey(action.cardId, path)]: action.view,
+      },
+    };
+  }
   const selectedTabs = { ...state.selectedTabs };
   const widget = changeWidget(card.widget, path, (current) => {
     if (
@@ -751,7 +748,19 @@ function applySessionAction(
         : row,
     ),
   };
-  return { board, selectedTabs: pruneSelections(board, selectedTabs) };
+  validateBoardPresentation(board);
+  const chartViews = state.chartViews
+    ? { ...pruneChartViews(board, state.chartViews) }
+    : undefined;
+  // An explicit authoring choice supersedes only this widget's guided view.
+  if (chartViews && action.type === 'set-view')
+    delete chartViews[selectionKey(action.cardId, path)];
+  return {
+    ...state,
+    board,
+    selectedTabs: pruneSelections(board, selectedTabs),
+    ...(chartViews ? { chartViews } : {}),
+  };
 }
 
 function replay(
@@ -781,6 +790,7 @@ export function replayBoardActions(
     cursor > actions.length
   )
     throw new Error('Invalid session action log.');
+  validateBoardPresentation(canonical);
   const snapshot = cloneBoard(canonical);
   const owned = actions.map((action) => {
     if (!validAction(action) && !validEdit(action))
@@ -793,6 +803,7 @@ export function replayBoardActions(
   return {
     board: cloneBoard(state.board),
     selectedTabs: { ...state.selectedTabs },
+    ...(state.chartViews ? { chartViews: { ...state.chartViews } } : {}),
   };
 }
 
@@ -959,6 +970,7 @@ export class TutorialBoardSession {
   private controlValue: TutorialControl;
   private workingBoard: Board;
   private selectedTabs: Readonly<Record<string, string>>;
+  private chartViews: BoardSessionState['chartViews'];
 
   private constructor(
     readonly canonical: Board,
@@ -973,6 +985,7 @@ export class TutorialBoardSession {
     const state = replay(canonical, this.actions, this.cursor);
     this.workingBoard = state.board;
     this.selectedTabs = state.selectedTabs;
+    this.chartViews = state.chartViews;
   }
 
   /** Pass sessionStorage or a test double. Never pass localStorage or another persistent store. */
@@ -983,6 +996,7 @@ export class TutorialBoardSession {
   ): Promise<TutorialBoardSession> {
     if (!scope || scope.length > 512)
       throw new Error('Tutorial needs a project scope.');
+    validateBoardPresentation(canonical);
     const snapshot = cloneBoard(canonical);
     const revision = await canonicalBoardRevision(snapshot);
     deepFreeze(snapshot);
@@ -1043,6 +1057,15 @@ export class TutorialBoardSession {
     widgetPath: readonly string[] = [],
   ): string | undefined {
     return this.selectedTabs[selectionKey(cardId, widgetPath)];
+  }
+  presentationView(
+    cardId: string,
+    widgetPath: readonly string[] = [],
+  ): BoardPresentationView | undefined {
+    const key = selectionKey(cardId, widgetPath);
+    return this.chartViews && Object.hasOwn(this.chartViews, key)
+      ? this.chartViews[key]
+      : undefined;
   }
   get control(): TutorialControl {
     return this.controlValue;
@@ -1107,6 +1130,7 @@ export class TutorialBoardSession {
     const before = {
       board: this.workingBoard,
       selectedTabs: this.selectedTabs,
+      ...(this.chartViews ? { chartViews: this.chartViews } : {}),
     };
     let after: BoardSessionState;
     let ownedAction: BoardSessionAction;
@@ -1131,6 +1155,7 @@ export class TutorialBoardSession {
     this.cursor = actions.length;
     this.workingBoard = after.board;
     this.selectedTabs = after.selectedTabs;
+    this.chartViews = after.chartViews;
     this.save();
     return true;
   }
@@ -1141,6 +1166,7 @@ export class TutorialBoardSession {
     const state = replay(this.canonical, this.actions, this.cursor);
     this.workingBoard = state.board;
     this.selectedTabs = state.selectedTabs;
+    this.chartViews = state.chartViews;
     this.save();
     return true;
   }
@@ -1150,11 +1176,16 @@ export class TutorialBoardSession {
     if (this.cursor < this.actions.length) {
       const state = applySessionAction(
         this.canonical,
-        { board: this.workingBoard, selectedTabs: this.selectedTabs },
+        {
+          board: this.workingBoard,
+          selectedTabs: this.selectedTabs,
+          ...(this.chartViews ? { chartViews: this.chartViews } : {}),
+        },
         this.actions[this.cursor],
       );
       this.workingBoard = state.board;
       this.selectedTabs = state.selectedTabs;
+      this.chartViews = state.chartViews;
       this.cursor++;
       this.save();
       return true;
@@ -1169,6 +1200,7 @@ export class TutorialBoardSession {
     this.controlValue = 'guided';
     this.workingBoard = emptyFrom(this.canonical);
     this.selectedTabs = {};
+    this.chartViews = undefined;
     this.save();
   }
 

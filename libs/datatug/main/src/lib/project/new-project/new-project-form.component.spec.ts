@@ -1,9 +1,12 @@
+import { DemoProjectContinuationService } from './demo-project-continuation.service';
+import { demoSqliteCatalog } from '../../queries/demo-sqlite-catalog';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { addIcons } from 'ionicons';
 import { closeOutline, saveOutline } from 'ionicons/icons';
-import { ErrorLogger } from '@sneat/core';
+import { ErrorLogger, type SpaceType } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -71,7 +74,7 @@ async function harness(
   authenticated = true,
   preserveDraft = false,
   initialStatus?: 'authenticating' | 'authenticated' | 'notAuthenticated',
-  spaceRecords: Record<string, { title: string }> = freshUser
+  spaceRecords: Record<string, { title?: string; type?: SpaceType }> = freshUser
     ? {}
     : { space: { title: 'My Space' } },
   actorID = 'actor',
@@ -108,7 +111,7 @@ async function harness(
   const router = {
     navigate: vi.fn(() => Promise.resolve(true)),
     navigateByUrl: vi.fn(() => Promise.resolve(true)),
-    parseUrl: vi.fn(),
+    parseUrl: vi.fn((path: string) => ({ path, queryParams: {} as Record<string, unknown> })),
     serializeUrl: vi.fn(),
   };
   const connection = {
@@ -195,6 +198,172 @@ async function harness(
 }
 
 describe('New project through authenticated common API', () => {
+  it('offers an explicit plan choice without changing the personal default', async () => {
+    const h = await harness(false, { store: 'github' });
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.component.billingIntent()).toBe('personal_pro');
+    const choice = h.fixture.nativeElement.querySelector('ion-select[aria-label="Project plan"]');
+    expect(choice).toBeTruthy();
+    h.fixture.debugElement.query(By.css('ion-select[aria-label="Project plan"]')).triggerEventHandler('ngModelChange', 'space_business');
+    await h.fixture.whenStable();
+    expect(h.component.billingIntent()).toBe('space_business');
+    h.component.billingIntentChanged('not-a-plan');
+    expect(h.component.billingIntent()).toBe('space_business');
+  });
+
+  it('restores explicit Business, Space and edited-database continuation together after auth navigation', async () => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const token = new DemoProjectContinuationService().create({ dataset: 'chinook', canonicalSha256: demoSqliteCatalog.chinook.sha256, table: 'Artist', source });
+    const before = await harness(false, { source: JSON.stringify(source), store: 'github', demoContinuation: token });
+    before.component.ngOnInit();
+    before.component.billingIntentChanged('space_business');
+    const draft = JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? '{}');
+    expect(draft).toMatchObject({ billingIntent: 'space_business', spaceID: 'space', demoContinuation: token, source });
+    const after = await harness(false, { store: 'github', oauthResult: 'denied' }, true, true);
+    after.component.ngOnInit();
+    expect(after.component.billingIntent()).toBe('space_business');
+    expect(after.component.spaceID()).toBe('space');
+    after.select();
+    after.component.create();
+    expect(after.create.mock.calls[0][0]).toMatchObject({ billingIntent: 'space_business', spaceID: 'space', source });
+    expect(after.create.mock.calls[0][0]).not.toHaveProperty('demoContinuation');
+    expect(TestBed.inject(DemoProjectContinuationService).read(token)).toBeDefined();
+  });
+
+  it('does not let another actor inherit the draft plan choice', async () => {
+    const h = await harness();
+    h.component.ngOnInit();
+    h.component.billingIntentChanged('space_business');
+    h.userState.next({ status: 'authenticated', user: { uid: 'another-actor' }, record: { spaces: { space: { title: 'My Space' } } } });
+    expect(h.component.billingIntent()).toBe('personal_pro');
+    expect(sessionStorage.getItem('datatug:new-project:draft')).toBeNull();
+  });
+
+  it('keeps explicit route billing intent ahead of a restored draft choice', async () => {
+    const before = await harness();
+    before.component.ngOnInit();
+    before.component.billingIntentChanged('space_business');
+    const after = await harness(false, { billingIntent: 'personal_pro' }, true, true);
+    after.component.ngOnInit();
+    expect(after.component.billingIntent()).toBe('personal_pro');
+  });
+
+  it.each(['current', 'rediscovered'] as const)('continues the edited database after %s setup reaches merged_ready', async (kind) => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const token = new DemoProjectContinuationService().create({ dataset: 'chinook', canonicalSha256: demoSqliteCatalog.chinook.sha256, table: 'Artist', source });
+    const h = await harness(false, { source: JSON.stringify(source), store: 'github', demoContinuation: token });
+    h.component.ngOnInit();
+    expect(h.component.title()).toBe('Chinook project');
+    expect(h.component.githubFolder()).toBe('chinook-datatug');
+    expect(h.component.spaceID()).toBe('space');
+    h.select();
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('demoContinuation');
+    expect(JSON.stringify(h.create.mock.calls[0][0])).not.toContain('runtime-');
+    if (kind === 'current') {
+      h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready' }) as never);
+      h.component['refreshSetupStatus']();
+    } else {
+      const operation = h.component['operationID']();
+      const pending = { ...pendingSetup, operationID: operation as string, source, status: 'pending_merge' as const, setupPR: created.setupPR };
+      h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready' }) as never);
+      h.component['pendingGithubSetups'].set([pending]);
+      h.component['resumePendingSetup'](pending);
+    }
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.router.navigateByUrl).toHaveBeenCalledWith(expect.objectContaining({ queryParams: expect.objectContaining({ demoContinuation: token, branch: 'work', projectApi: 'cloud' }) }), { replaceUrl: true });
+    const continued = TestBed.inject(DemoProjectContinuationService).read(token);
+    expect(continued).toMatchObject({ actorID: 'actor', destination: { projectApi: 'cloud', branch: 'work' }, table: 'Artist' });
+  });
+
+  it('keeps missing browser continuation visible when a copied demo setup is rediscovered', async () => {
+    const h = await harness();
+    h.component.ngOnInit();
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const pending = { ...pendingSetup, source, status: 'pending_merge' as const, setupPR: created.setupPR };
+    h.createStatus.mockReturnValue(of({ ...created, status: 'merged_ready' }) as never);
+    h.component['pendingGithubSetups'].set([pending]);
+    h.component['resumePendingSetup'](pending);
+    expect(h.component['pendingGithubSetupErrors']()[pending.operationID]).toContain('continuation is unavailable');
+    expect(h.component['pendingGithubSetups']()).toContain(pending);
+    expect(h.nav.goProject).not.toHaveBeenCalled();
+    expect(h.router.navigateByUrl).not.toHaveBeenCalled();
+  });
+
+  it('copies the selected immutable source and restores it after refresh', async () => {
+    const source = { kind: 'github-project', repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const h = await harness(false, { source: JSON.stringify(source), store: 'github' });
+    h.component.ngOnInit();
+    h.select();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.querySelector('ion-title').textContent).toBe('Copy DataTug Project');
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({ source });
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
+    expect(JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null').source).toEqual(source);
+    const restored = await harness(false, { store: 'github' }, true, true);
+    restored.component.ngOnInit();
+    expect(restored.component.copySource()).toEqual(source);
+  });
+
+  it('retains creation labels when no copy source is selected', async () => {
+    const h = await harness();
+    h.component.ngOnInit();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.querySelector('ion-title').textContent).toBe('New DataTug Project');
+  });
+
+  it('preserves the demo cancel path through denied OAuth and a refresh', async () => {
+    const h = await harness(false, { store: 'github', returnUrl: '/demo/sqlite/chinook' });
+    h.component.ngOnInit();
+    h.select();
+    h.component['saveDraft']();
+    const callback = await harness(false, { store: 'github', oauthResult: 'denied' }, true, true);
+    callback.component.ngOnInit();
+    expect(JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null').returnUrl).toBe('/demo/sqlite/chinook');
+    const refreshed = await harness(false, { store: 'github' }, true, true);
+    refreshed.component.ngOnInit();
+    refreshed.component.cancel();
+    expect(refreshed.router.navigateByUrl).toHaveBeenCalledWith('/demo/sqlite/chinook', { replaceUrl: true });
+  });
+
+  it('keeps explicit copy intent after deferred actor draft restoration', async () => {
+    const prior = await harness();
+    prior.select();
+    prior.component['saveDraft']();
+    const source = { kind: 'github-project', repositoryID: 42, owner: 'datatug', name: 'demo', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const h = await harness(false, { source: JSON.stringify(source), store: 'github' }, false, true, 'authenticating');
+    h.component.ngOnInit();
+    expect(h.component.copySource()).toEqual(source);
+    h.userState.next({ status: 'authenticated', user: { uid: 'actor' }, record: { spaces: { space: { title: 'My Space' } } } });
+    h.select();
+    h.component.create();
+    expect(h.create.mock.calls[0][0]).toMatchObject({ source });
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
+  });
+
+  it('replays pending copies with the exact source and no template fallback', async () => {
+    const source = { kind: 'github-project' as const, repositoryID: 42, owner: 'source', name: 'project', folder: 'demo', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
+    const h = await harness();
+    const setup = { ...pendingSetup, source, templateID: '', templateCommit: '' };
+    h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [setup], truncated: false }));
+    h.component['reloadPendingGithubSetups']();
+    h.component['resumePendingSetup'](setup);
+    expect(h.create.mock.calls[0][0]).toMatchObject({ source });
+    expect(h.create.mock.calls[0][0]).not.toHaveProperty('template');
+  });
+
+  it('rejects invalid copy intent instead of falling back to the template', async () => {
+    const h = await harness(false, { source: '{}', store: 'github' });
+    h.component.ngOnInit();
+    h.select();
+    h.component.create();
+    expect(h.create).not.toHaveBeenCalled();
+  });
+
   it('rediscovers and replays the same initializing setup after session storage is gone', async () => {
     const h = await harness();
     h.pendingGithubProjectSetups.mockReturnValue(of({ setups: [pendingSetup], truncated: false }));
@@ -354,6 +523,33 @@ describe('New project through authenticated common API', () => {
     expect(h.component['pendingGithubSetupErrors']()).toEqual({});
     expect(h.reportGithubReauthorizationRequired).not.toHaveBeenCalled();
     expect(h.nav.goProject).not.toHaveBeenCalled();
+  });
+
+  it('renders nonblank Space labels using named title, type and exact ID fallbacks without changing selection', async () => {
+    const h = await harness(false, { store: 'github', spaceID: 'personal-space' }, true, false, undefined, {
+      named: { title: '  Team Data  ', type: 'group' },
+      'personal-space': { title: '  ', type: 'personal' },
+      'untitled-space': {},
+    });
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    const picker = h.fixture.debugElement.queryAll(By.css('ion-select'))
+      .find(select => select.componentInstance.value === 'personal-space');
+    expect(picker).toBeTruthy();
+    const options = Array.from(picker?.nativeElement.querySelectorAll('ion-select-option') ?? []) as HTMLElement[];
+    expect(options.map(option => option.textContent?.trim())).toEqual(['Team Data', 'Personal', 'untitled-space']);
+    expect(options.map(option => (option as unknown as { value: string }).value)).toEqual(['named', 'personal-space', 'untitled-space']);
+    expect(h.component.spaceID()).toBe('personal-space');
+  });
+
+  it('keeps the untitled Space ID and existing Personal Pro intent in the create payload', async () => {
+    const h = await harness(false, { store: 'github' }, true, false, undefined, {
+      'personal-space': { title: '', type: 'personal' },
+    });
+    h.select('personal-space');
+    h.component.create();
+    await vi.waitFor(() => expect(h.create).toHaveBeenCalledOnce());
+    expect(h.create.mock.calls[0][0]).toMatchObject({ spaceID: 'personal-space', billingIntent: 'personal_pro' });
   });
 
   it('preselects a requested checkout Space only when it belongs to the signed-in user', async () => {
@@ -1253,6 +1449,15 @@ describe('New project through authenticated common API', () => {
     expect(retryRequest.github.expectedBranchHead).toBe('main-head');
     expect(retryRequest.operationID).not.toBe(firstRequest.operationID);
   });
+  it('explains a bounded private-source refusal and offers the CLI path', async () => {
+    const h = await harness();
+    h.select();
+    h.create.mockImplementationOnce(() => throwError(() => ({ status: 413, error: { error: { code: 'source_too_large' } } })));
+    h.component.create();
+    expect(h.component['formError']()).toContain('DataTug CLI');
+    expect(h.component['createNeedsSameOperationRetry']()).toBe(false);
+  });
+
   it('unlocks a typed workflow conflict without reusing its stale branch request', async () => {
     const h = await harness();
     h.select();

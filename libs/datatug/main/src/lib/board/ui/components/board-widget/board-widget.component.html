@@ -32,6 +32,15 @@
             >
               Chart
             </button>
+            @if (chartWidgetDef()?.sources?.[0]?.transform) {
+              <button
+                type="button"
+                (click)="setChartView('trend')"
+                [attr.aria-pressed]="chartView() === 'trend'"
+              >
+                Monthly trend
+              </button>
+            }
             <button
               type="button"
               (click)="setChartView('grid')"
@@ -59,8 +68,19 @@
             [error]="preparedRace().error ?? runError() ?? null"
           />
         </div>
+        <div [hidden]="chartView() !== 'trend'">
+          @defer (when chartView() === 'trend') {
+            <datatug-orders-monthly-trend
+              [data]="monthlyTrend().data ?? null"
+              [active]="chartView() === 'trend'"
+              [loading]="running()"
+              [error]="monthlyTrend().error ?? runError() ?? null"
+            />
+          }
+        </div>
         <div [hidden]="chartView() !== 'grid'">
           <sneat-datatug-held-result-presentation
+            [embedded]="true"
             [result]="result() ?? null"
             [loading]="running()"
             [error]="runError() ?? null"
@@ -79,6 +99,9 @@
           </details>
         }
         <ion-button
+          size="small"
+          fill="outline"
+          color="medium"
           [disabled]="
             running() ||
             definitionLoading() ||
@@ -86,13 +109,28 @@
             !!unsupportedReason()
           "
           (click)="run()"
-          >{{ running() ? 'Running…' : 'Refresh chart' }}</ion-button
+          >{{
+            running()
+              ? 'Refreshing…'
+              : runError()
+                ? 'Retry chart'
+                : 'Refresh chart'
+          }}</ion-button
         >
         @if (queryUrlTree(); as tree) {
-          <ion-button [routerLink]="tree">Open saved query</ion-button>
+          <ion-button
+            size="small"
+            fill="clear"
+            color="medium"
+            [routerLink]="tree"
+            >Open saved query</ion-button
+          >
         }
       } @else {
         <ion-button
+          size="small"
+          fill="outline"
+          color="medium"
           [disabled]="
             running() ||
             definitionLoading() ||
@@ -100,14 +138,31 @@
             !!unsupportedReason()
           "
           (click)="run()"
-          >{{ running() ? 'Running…' : 'Refresh chart' }}</ion-button
+          >{{
+            running()
+              ? 'Refreshing…'
+              : runError()
+                ? 'Retry chart'
+                : 'Refresh chart'
+          }}</ion-button
         >
         @if (queryUrlTree(); as tree) {
-          <ion-button [routerLink]="tree">Open saved query</ion-button>
+          <ion-button
+            size="small"
+            fill="clear"
+            color="medium"
+            [routerLink]="tree"
+            >Open saved query</ion-button
+          >
         }
         <sneat-datatug-held-result-presentation
+          [embedded]="true"
           [result]="result() ?? null"
           [fields]="barFields()"
+          [selectionEnabled]="!!chartWidgetDef()?.chart?.selectionId"
+          [selectedCategory]="selectedCountry() ?? null"
+          (categorySelected)="selectCountry($event)"
+          (selectionCleared)="clearCountry()"
           [defaultView]="chartWidgetDef()?.defaultView ?? 'chart'"
           [loading]="running()"
           [error]="runError() ?? null"
@@ -142,20 +197,22 @@
               : 'open working copy'
           }}.
         </p>
-        <label
-          >Execution runtime
-          <select
-            [value]="selectedRuntimeId()"
-            (change)="selectRuntime($any($event.target).value)"
-          >
-            <option value="snapshot">{{ projectRuntimeLabel() }}</option>
-            @for (runtime of workingCopies(); track runtime.selectionId) {
-              <option [value]="runtime.selectionId">
-                {{ runtime.title }} · working copy
-              </option>
-            }
-          </select>
-        </label>
+        @if (workingCopies().length) {
+          <label
+            >Execution runtime
+            <select
+              [value]="selectedRuntimeId()"
+              (change)="selectRuntime($any($event.target).value)"
+            >
+              <option value="snapshot">{{ projectRuntimeLabel() }}</option>
+              @for (runtime of workingCopies(); track runtime.selectionId) {
+                <option [value]="runtime.selectionId">
+                  {{ runtime.title }} · working copy
+                </option>
+              }
+            </select>
+          </label>
+        }
         <ion-button [disabled]="running()" (click)="run()">{{
           running() ? 'Running…' : 'Run on board'
         }}</ion-button>
@@ -173,8 +230,30 @@
       @if (choiceError(); as error) {
         <p role="alert">{{ error }}</p>
       }
-      @if (result(); as answer) {
-        @if (browserSnapshot()) {
+      @let presentation = filteredPresentation();
+      @if (presentation.country !== undefined) {
+        <div class="country-selection" role="status">
+          @if (presentation.error) {
+            <p>{{ presentation.error }}</p>
+          } @else {
+            <p>
+              {{ presentation.count }} of 830 orders shipped to
+              {{ presentation.country }}
+            </p>
+          }
+          <button class="clear-country" type="button" (click)="clearCountry()">
+            Clear country
+          </button>
+        </div>
+      }
+      @if (presentation.result; as answer) {
+        @if (
+          browserSnapshot() ||
+          ('runtime' in answer &&
+            (answer.runtime === 'server' ||
+              answer.runtime === 'browser-public-api')) ||
+          definition()?.federation
+        ) {
           <sneat-datatug-held-result-presentation [result]="answer" />
         } @else {
           @if (!answer.recordset.rows.length) {

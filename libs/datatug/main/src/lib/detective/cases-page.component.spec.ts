@@ -7,7 +7,7 @@ import {
 } from '@angular/common/http/testing';
 import { ActivatedRoute, convertToParamMap, Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../services/base/datatug-api.service';
 import {
   AgentContextService,
   InvestigationContextService,
@@ -322,7 +322,7 @@ describe('CasesPageComponent Case creation HTTP payload', () => {
       providers: [
         provideHttpClient(),
         provideHttpClientTesting(),
-        { provide: SneatApiService, useValue: { get: vi.fn(), post: vi.fn() } },
+        { provide: DatatugApiService, useValue: { get: vi.fn(), post: vi.fn() } },
         {
           provide: DatatugNavContextService,
           useValue: {

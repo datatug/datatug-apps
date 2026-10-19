@@ -15,9 +15,24 @@ export default defineConfig({
   // playwright.error-dialog.config.ts instead. demo-handoff.spec.ts (G-0) is
   // the same: it asserts what the PRODUCTION build reports to Sentry and
   // analytics, so it has its own config (playwright.demo-handoff.config.ts).
+  // business-project-preview.spec.ts is a live journey against the deployed
+  // datatug-cloud-preview: playwright.business-preview.config.ts only.
   // Deployed-provider checks require their explicit opt-in config, dedicated
   // identity and disabled sensitive artifacts; never discover them here.
-  testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'demo-sqlite*.spec.ts', 'demo-postgresql*.spec.ts'],
+  testIgnore: [
+    'checkout-journey.spec.ts',
+    'checkout-provider.spec.ts',
+    'business-project-preview.spec.ts',
+    'enterprise-sso.spec.ts',
+    'error-dialog.spec.ts',
+    'demo-handoff.spec.ts',
+    'demo-sqlite*.spec.ts',
+    'demo-postgresql*.spec.ts',
+    'northwind-logs.spec.ts',
+    'hosted-cloud-logs.spec.ts',
+    'showcase-live-measurement.spec.ts',
+    'showcase-routing-ab.spec.ts',
+  ],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
   reporter: [
@@ -55,8 +70,7 @@ export default defineConfig({
   // env var of its own — it reuses this one and navigates to a URL that
   // names its own agent's host:port.
   webServer: {
-    command:
-      `pnpm nx run datatug-app:serve:development --host localhost --port ${e2ePort}`,
+    command: `pnpm nx run datatug-app:serve:development --host localhost --port ${e2ePort}`,
     url: `http://localhost:${e2ePort}`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
@@ -69,7 +83,21 @@ export default defineConfig({
       // 'error-dialog.spec.ts' and adds 'journey/**' — journey/ has its own
       // project below (real agent, no interception) and must not also run
       // under this default project.
-      testIgnore: ['checkout-journey.spec.ts', 'checkout-provider.spec.ts', 'enterprise-sso.spec.ts', 'error-dialog.spec.ts', 'demo-handoff.spec.ts', 'demo-sqlite*.spec.ts', 'demo-postgresql*.spec.ts', 'journey/**'],
+      testIgnore: [
+        'checkout-journey.spec.ts',
+        'checkout-provider.spec.ts',
+        'business-project-preview.spec.ts',
+        'enterprise-sso.spec.ts',
+        'error-dialog.spec.ts',
+        'demo-handoff.spec.ts',
+        'demo-sqlite*.spec.ts',
+        'demo-postgresql*.spec.ts',
+        'northwind-logs.spec.ts',
+        'hosted-cloud-logs.spec.ts',
+        'showcase-live-measurement.spec.ts',
+        'showcase-routing-ab.spec.ts',
+        'journey/**',
+      ],
       use: { ...devices['Desktop Chrome'] },
     },
     {

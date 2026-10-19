@@ -1,3 +1,4 @@
+import { isDemoDbOvdbDatabaseUrl } from './demodb-ovdb';
 import { Injectable, inject } from '@angular/core';
 import { parseTugQL, resolveTugQL } from '@dalgo/core';
 import {
@@ -112,7 +113,7 @@ export function admitPublicSqliteSource(
     entry.dataset !== 'chinook' ||
     entry.storage !== 'sqlite' ||
     entry.readiness !== 'public-api' ||
-    entry.source !== 'https://demodb.dev/ovdb/v1/databases/chinook' ||
+    !isDemoDbOvdbDatabaseUrl(entry.source, 'chinook') ||
     entry.fixtureSha256 !== FIXTURE_SHA256 ||
     ![PUBLIC_CHINOOK_BUNDLED_FIXTURE.url, PUBLIC_CHINOOK_LEGACY_FIXTURE_URL].includes(entry.browserFixture?.url ?? '') ||
     entry.browserFixture?.bytes !== FIXTURE_BYTES
@@ -1095,7 +1096,6 @@ export class PublicSqliteQueryService {
           queryId: definition.id,
           mode: 'snapshot',
           observedAt: new Date().toISOString(),
-          executionProfile: 'protected',
         },
       };
     } finally {
@@ -1250,7 +1250,6 @@ export class PublicSqliteQueryService {
           queryId: definition.id,
           mode: 'snapshot',
           observedAt: new Date().toISOString(),
-          executionProfile: 'protected',
         },
       };
     } finally {

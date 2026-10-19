@@ -1,3 +1,4 @@
+import * as publicQueries from './public-data/public-chart-query';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
@@ -45,6 +46,84 @@ describe('QueryDispatchService transport boundary', () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+
+  it('runs exact publisher-admitted saved DTQL through the existing API admission without SQLite', async () => {
+    const admitted = { ...result, totalRows: 830 } as unknown as Awaited<
+      ReturnType<typeof publicQueries.executeSavedPublicChartQuery>
+    >;
+    const admission = vi
+      .spyOn(publicQueries, 'executeSavedPublicChartQuery')
+      .mockResolvedValueOnce(admitted);
+    try {
+      const definition = {
+        ...sqlDefinition(),
+        id: 'northwind-orders-full-sqlite',
+        request: { queryType: QueryType.DTQL, text: 'pinned query' },
+      };
+      const parent = new AbortController();
+      const response = await service.execute({
+        signal: parent.signal,
+        projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition,
+        queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID,
+      });
+      expect(response).toBe(admitted);
+      expect(admission.mock.calls[0][2]?.signal?.aborted).toBe(false);
+      parent.abort();
+      expect(admission.mock.calls[0][2]?.signal?.aborted).toBe(false);
+      expect(admission).toHaveBeenCalledWith(
+        publicQueries.PUBLIC_ORDERS_QUERY_ID,
+        definition,
+        { signal: expect.any(AbortSignal) },
+      );
+      expect(browser).not.toHaveBeenCalled();
+      expect(github).not.toHaveBeenCalled();
+      expect(catalog).not.toHaveBeenCalled();
+    } finally {
+      admission.mockRestore();
+    }
+  });
+
+  it.each(['cancel', 'dispose', 'parent-abort'] as const)('still aborts pending public work on %s', async (termination) => {
+    const parent = new AbortController();
+    let signal: AbortSignal | undefined;
+    const admission = vi.spyOn(publicQueries, 'executeSavedPublicChartQuery').mockImplementationOnce((_id, _definition, options) => {
+      signal = options?.signal;
+      return new Promise((_resolve, reject) => signal?.addEventListener('abort', () => reject(new DOMException('Cancelled', 'AbortError')), { once: true }));
+    });
+    try {
+      const session = service.start({ projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition: sqlDefinition(), queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID, signal: parent.signal });
+      if (termination === 'parent-abort') parent.abort();
+      else await session[termination]();
+      expect(signal?.aborted).toBe(true);
+      await expect(session.result).rejects.toMatchObject({ name: 'AbortError' });
+      await session.dispose();
+    } finally { admission.mockRestore(); }
+  });
+
+  it('keeps explicit cancellation after successful delivery distinct from normal disposal', async () => {
+    const admission = vi.spyOn(publicQueries, 'executeSavedPublicChartQuery').mockResolvedValueOnce(result as unknown as Awaited<ReturnType<typeof publicQueries.executeSavedPublicChartQuery>>);
+    try {
+      const session = service.start({ projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition: sqlDefinition(), queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID });
+      await session.result;
+      const signal = admission.mock.calls[0][2]?.signal;
+      expect(signal?.aborted).toBe(false);
+      await session.cancel();
+      expect(signal?.aborted).toBe(true);
+    } finally { admission.mockRestore(); }
+  });
+
+  it('cleans up a rejected execution by aborting its owned signal', async () => {
+    const failure = new Error('Rejected result');
+    const admission = vi.spyOn(publicQueries, 'executeSavedPublicChartQuery').mockRejectedValueOnce(failure);
+    try {
+      await expect(service.execute({ projectRef: { storeId: 'github.com', projectId: 'demo' },
+        definition: sqlDefinition(), queryId: publicQueries.PUBLIC_ORDERS_QUERY_ID })).rejects.toBe(failure);
+      expect(admission.mock.calls[0][2]?.signal?.aborted).toBe(true);
+    } finally { admission.mockRestore(); }
+  });
 
   it('keeps a folder-qualified local query identity and full semantic request', async () => {
     const request: QueryDispatchRequest = {
@@ -207,9 +286,16 @@ describe('QueryDispatchService transport boundary', () => {
     ['hosted', { dtql: true }, '/dtql'],
   ] as const)('sends %s OVDB reads through the explicitly bound connection fetch', async (_label, capabilities, path) => {
     const pin = 'a'.repeat(64);
-    const fetch = vi.fn(async () => new Response(JSON.stringify({
+    const response = new Response(JSON.stringify({
       records: [{ key: 'items/1', data: { Name: 'changed working copy' } }], nextCursor: 'next',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const body = response.body;
+    if (!body) throw new Error('Expected a readable response');
+    const reader = body.getReader();
+    const cancel = vi.spyOn(reader, 'cancel');
+    const release = vi.spyOn(reader, 'releaseLock');
+    vi.spyOn(body, 'getReader').mockReturnValue(reader);
+    const fetch = vi.fn(async () => response);
     const binding: OvdbConnection = {
       id: 'native-runtime-17', title: 'Working copy', baseUrl: 'https://ovdb.example', databaseId: 'db-17', fetch,
       descriptor: { id: 'db-17', capabilities,
@@ -234,6 +320,47 @@ describe('QueryDispatchService transport boundary', () => {
     expect(output.truncated).toBe(true);
     expect(output.hasMore).toBe(false);
     expect(globalThis.fetch).not.toBe(fetch);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it.each(['limit', 'abort', 'error'] as const)('cancels incomplete OVDB bodies on %s and releases their reader', async (failure) => {
+    const pin = 'a'.repeat(64);
+    const controller = new AbortController();
+    const response = new Response(new ReadableStream<Uint8Array>({
+      pull(stream) {
+        if (failure === 'error') { stream.error(new Error('reader failed')); return; }
+        stream.enqueue(new Uint8Array(failure === 'limit' ? 2 * 1024 * 1024 + 1 : 1));
+      },
+    }));
+    const body = response.body;
+    if (!body) throw new Error('Expected a readable response');
+    const reader = body.getReader();
+    if (failure === 'abort') {
+      const read = reader.read.bind(reader);
+      vi.spyOn(reader, 'read').mockImplementation(async () => {
+        const chunk = await read();
+        controller.abort();
+        return chunk;
+      });
+    }
+    const cancel = vi.spyOn(reader, 'cancel');
+    const release = vi.spyOn(reader, 'releaseLock');
+    vi.spyOn(body, 'getReader').mockReturnValue(reader);
+    const binding: OvdbConnection = {
+      id: 'copy', title: 'Copy', baseUrl: 'https://ovdb.example', databaseId: 'db', fetch: async () => response,
+      descriptor: { id: 'db', capabilities: { dtql: true }, canonical: { url: 'https://fixture.example/db.sqlite', sha256: pin, bytes: 64 },
+        schemas: { collections: { items: { fields: { Name: { type: 'string' } } } } } },
+    };
+    github.mockReturnValue(of({ connections: [{ id: 'logical', storage: 'sqlite', fixtureSha256: pin }] }));
+    await expect(service.execute({
+      projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+      definition: { ...sqlDefinition(), connectionId: 'logical', request: { queryType: QueryType.DTQL, text: 'from: {name: items}\nlimit: 1' } as ITextQueryRequest },
+      queryId: 'folder/report', target: { kind: 'ovdb-connection', connectionId: binding.id, databaseId: binding.databaseId },
+      runtimeBinding: binding, signal: controller.signal,
+    })).rejects.toThrow(failure === 'limit' ? '2 MiB' : failure === 'error' ? 'reader failed' : 'cancelled');
+    await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it('uses an explicitly bound OVDB copy from shared Firestore storage without routing to hosted execution', async () => {
@@ -332,6 +459,25 @@ describe('QueryDispatchService transport boundary', () => {
     }
   });
 
+  it('keeps successful federation pages alive through complete execution and then disposes once', async () => {
+    const paged = { ...result, totalRows: 3 } as Awaited<ReturnType<FederatedQueryService['run']>>;
+    const run = vi.spyOn(FederatedQueryService.prototype, 'run').mockResolvedValue(paged);
+    const dispose = vi.spyOn(FederatedQueryService.prototype, 'dispose').mockResolvedValue();
+    const getPage = vi.spyOn(FederatedQueryService.prototype, 'getPage').mockImplementation(async (index) => {
+      expect(dispose).not.toHaveBeenCalled();
+      const rows = paged.recordset.rows.map(row => [...row]);
+      return index === 0 ? [...rows, ...rows] : rows;
+    });
+    try {
+      const output = await service.execute({ projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+        definition: { ...sqlDefinition(), federation: { ovdbBaseUrl: 'https://db.example', tables: [] } },
+        target: { kind: 'ovdb-federation' } }, { maxRows: 3 });
+      expect(output.recordset.rows).toHaveLength(3);
+      expect(getPage.mock.calls.map(([index]) => index)).toEqual([0, 1]);
+      expect(dispose).toHaveBeenCalledOnce();
+    } finally { run.mockRestore(); getPage.mockRestore(); dispose.mockRestore(); }
+  });
+
   it('owns federation pages and cancellation independently for concurrent sessions', async () => {
     const owners: FederatedQueryService[] = [];
     const disposed = new Set<FederatedQueryService>();
@@ -366,5 +512,81 @@ describe('QueryDispatchService transport boundary', () => {
     } finally {
       run.mockRestore(); getPage.mockRestore(); dispose.mockRestore();
     }
+  });
+});
+
+describe('bounded board result assembly', () => {
+  const request = {
+    projectRef: { storeId: 'github', projectId: 'demo' },
+    definition: sqlDefinition(),
+  } as QueryDispatchRequest;
+  const row = [{ type: 'integer' as const, value: '1' }];
+  it('assembles all 830 retained rows before disposing the one execution session', async () => {
+    const service = Object.create(
+      QueryDispatchService.prototype,
+    ) as QueryDispatchService;
+    const getPage = vi.fn(async (index: number) =>
+      Array.from({ length: Math.min(100, 830 - index * 100) }, () => row),
+    );
+    const dispose = vi.fn(async () => undefined);
+    service.start = vi
+      .fn()
+      .mockReturnValue({
+        result: Promise.resolve({
+          ...result,
+          totalRows: 830,
+          recordset: {
+            ...result.recordset,
+            rows: Array.from({ length: 100 }, () => row),
+          },
+        }),
+        getPage,
+        dispose,
+      });
+    expect(
+      (await service.execute(request, { maxRows: 1000 })).recordset.rows,
+    ).toHaveLength(830);
+    expect(service.start).toHaveBeenCalledOnce();
+    expect(getPage).toHaveBeenCalledTimes(9);
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+  it.each([1001, -1, 1.5])(
+    'rejects invalid or excessive total %s before reading pages',
+    async (totalRows) => {
+      const service = Object.create(
+        QueryDispatchService.prototype,
+      ) as QueryDispatchService;
+      const dispose = vi.fn(async () => undefined);
+      const getPage = vi.fn();
+      service.start = vi
+        .fn()
+        .mockReturnValue({
+          result: Promise.resolve({ ...result, totalRows }),
+          getPage,
+          dispose,
+        });
+      await expect(
+        service.execute(request, { maxRows: 1000 }),
+      ).rejects.toThrow();
+      expect(getPage).not.toHaveBeenCalled();
+      expect(dispose).toHaveBeenCalledOnce();
+    },
+  );
+  it('rejects missing retained pages without publishing a partial result', async () => {
+    const service = Object.create(
+      QueryDispatchService.prototype,
+    ) as QueryDispatchService;
+    const dispose = vi.fn(async () => undefined);
+    service.start = vi
+      .fn()
+      .mockReturnValue({
+        result: Promise.resolve({ ...result, totalRows: 830 }),
+        getPage: async () => [],
+        dispose,
+      });
+    await expect(service.execute(request, { maxRows: 1000 })).rejects.toThrow(
+      'incomplete',
+    );
+    expect(dispose).toHaveBeenCalledOnce();
   });
 });

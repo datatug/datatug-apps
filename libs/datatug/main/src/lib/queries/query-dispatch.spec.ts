@@ -60,7 +60,7 @@ describe('query dispatch planning', () => {
     const hosted = request({
       projectRef: { storeId: 'firestore', projectId: 'paid-project', spaceID: 'space-1' },
       definition: definition({ connectionId: 'paid-source-unknown-to-demo-catalog',
-        federation: { ovdbBaseUrl: 'https://demodb.dev/ovdb', tables: [{ database: 'paid-db', name: 'Customers', fields: ['Id'] }] } }),
+        federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [{ database: 'paid-db', name: 'Customers', fields: ['Id'] }] } }),
       queryId: 'reports/by-region', target: { kind: 'hosted-cloud' },
     });
     const plan = resolveQueryDispatchPlan(hosted, undefined);

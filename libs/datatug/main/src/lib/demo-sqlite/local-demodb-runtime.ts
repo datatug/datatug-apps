@@ -23,6 +23,7 @@ import {
   type LocalSqliteDatabase,
   type ModifiedFlag,
 } from './local-demodb-host';
+import { RATE_LIMITED_STATUS } from './demodb-chunked-fetch';
 import { LocalDemoDbOpenError } from './local-demodb-errors';
 import { mapDemoDbProgress, type DemoDbProgressEventLike } from './local-demodb-progress';
 import { isLargeDemoSqliteDataset } from '../queries/demo-sqlite-catalog';
@@ -58,12 +59,20 @@ export interface DemoDbSessionLike {
   }>;
   connect(protocol: typeof fetchPortProtocol): BridgePort;
   subscribe(listener: (event: { readonly type: string; readonly role?: string }) => void): () => void;
+  export(options?: { maxBytes?: number }): Promise<Uint8Array>;
   close(): void;
 }
 
 /** What `openDemoDb` is given, as far as this runtime sets it. */
 export interface DemoDbSessionOptions {
-  readonly pin: { readonly dataset: string; readonly url: string; readonly sha256: string; readonly bytes: number };
+  readonly pin: {
+    readonly dataset: string;
+    readonly url: string;
+    readonly sha256: string;
+    readonly bytes: number;
+    /** `gzip` for a chunked dataset: the worker's fetch answers its manifest URL with the verified gzip stream. */
+    readonly compression?: 'gzip';
+  };
   readonly createWorker: () => Worker;
   readonly onProgress: (event: DemoDbProgressEventLike) => void;
   /** `forbid` for large datasets: where OPFS cannot be used the session fails before any download. */
@@ -98,7 +107,10 @@ export function classifyOpenFailure(error: unknown): unknown {
     const quota = error.operation === 'import' && (error.cause as { name?: unknown } | undefined)?.name === 'QuotaExceededError';
     return new LocalDemoDbOpenError(quota ? 'quota' : 'storage', error.message, { cause: error });
   }
-  if (error instanceof CanonicalFetchError) return new LocalDemoDbOpenError('download', error.message, { cause: error });
+  if (error instanceof CanonicalFetchError) {
+    const kind = error.status === RATE_LIMITED_STATUS ? 'rate-limited' : 'download';
+    return new LocalDemoDbOpenError(kind, error.message, { cause: error });
+  }
   if (error instanceof CanonicalIntegrityError) return new LocalDemoDbOpenError('integrity', error.message, { cause: error });
   return error;
 }
@@ -118,7 +130,7 @@ export function createLocalDemoDbRuntime(
 ): LocalDemoDbRuntime {
   const canonical = { url: entry.url, sha256: entry.sha256, bytes: entry.bytes };
   const session = deps.openDemoDb({
-    pin: { dataset: entry.dataset, ...canonical },
+    pin: { dataset: entry.dataset, ...canonical, ...(entry.source === 'chunked' ? { compression: 'gzip' as const } : {}) },
     createWorker: deps.createWorker,
     onProgress: (event) => {
       const progress = mapDemoDbProgress(event);
@@ -162,6 +174,7 @@ export function createLocalDemoDbRuntime(
       session.subscribe((event) => {
         if (event.type === 'role' && event.role) listener(event.role);
       }),
+    export: (options) => session.export(options),
     close: () => {
       fetch.dispose();
       port.close();
