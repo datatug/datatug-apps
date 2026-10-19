@@ -101,8 +101,10 @@ export class ProjectCopyOfferComponent {
     try {
       const bytes = await session.export();
       if (generation !== this.sourceGeneration() || this.localDb.peek(this.dataset()) !== session || !this.expanded()) return;
+      if (!(bytes.buffer instanceof ArrayBuffer)) throw new Error('The database export did not return a supported download buffer. Keep this page open and retry.');
       const filename = `${session.entry.dataset}-edited.sqlite`;
-      const url = URL.createObjectURL(new Blob([bytes.slice().buffer], { type: 'application/vnd.sqlite3' }));
+      const exported = new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+      const url = URL.createObjectURL(new Blob([exported], { type: 'application/vnd.sqlite3' }));
       try {
         const anchor = document.createElement('a'); anchor.href = url; anchor.download = filename;
         document.body.appendChild(anchor); anchor.click(); anchor.remove();

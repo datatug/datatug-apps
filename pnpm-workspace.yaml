@@ -54,8 +54,6 @@ allowBuilds:
   re2: true
   unrs-resolver: true
   workerd: true
-  '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-sql': set this to true or false
-  '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/f4d70361c3d706121f11ce42f8bd5a3e11715bb4#path:/packages/sqlite-wasm': set this to true or false
 minimumReleaseAgeExclude:
   - '@sneat/api@0.5.0 || 0.26.4 || 0.27.37'
   - '@sneat/app-auth@0.27.37'

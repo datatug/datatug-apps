@@ -102,6 +102,7 @@ describe('project copy offer', () => {
 
   it('downloads the active edited bytes with a safe filename and releases the URL', async () => {
     const h = await setup('chinook');
+    h.runtimeSession.export.mockResolvedValueOnce(new Uint8Array([99, 83, 81, 76, 88]).subarray(1, 4));
     vi.useFakeTimers();
     const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:edited');
     const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
@@ -110,6 +111,9 @@ describe('project copy offer', () => {
     await h.component.download();
     expect(h.runtimeSession.export).toHaveBeenCalledOnce();
     expect(create).toHaveBeenCalledWith(expect.any(Blob));
+    const blob = create.mock.calls[0][0] as Blob;
+    expect(blob.size).toBe(3);
+    expect(new Uint8Array(await blob.arrayBuffer())).toEqual(new Uint8Array([83, 81, 76]));
     expect(filename).toBe('chinook-edited.sqlite');
     expect(h.component.downloadMessage()).toContain('Your edits remain');
     await vi.advanceTimersByTimeAsync(1000);

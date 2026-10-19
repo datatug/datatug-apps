@@ -334,7 +334,7 @@ describe('SqlEditorPage', () => {
           provide: QueryContextSqlService,
           useValue: { setSql: vi.fn(), setTarget: vi.fn() },
         },
-        { provide: DemoTableDraftService, useValue: { read: vi.fn() } },
+        { provide: DemoTableDraftService, useValue: { read: vi.fn(), consume: vi.fn() } },
         { provide: QueriesService, useValue: { devicePersonal: { list: vi.fn(async () => []) } } },
         { provide: Coordinator, useValue: { execute: vi.fn() } },
         {
@@ -391,6 +391,57 @@ describe('SqlEditorPage', () => {
       expect(editor.updateQueryState).toHaveBeenCalledWith(expect.objectContaining({ id: 'demo-query', isNew: true, connectionId: 'chinook-sqlite', request: definition.request }));
       expect(TestBed.inject(DemoTableDraftService).read).toHaveBeenCalledWith('token', ref, 'runtime-live', 'dev', 'actor');
     }
+  });
+
+  it.each(['auth before', 'catalog', 'auth after'] as const)('retries the same validated demo table draft after transient %s failure', async (stage) => {
+    const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
+    component.project = { ref } as IProjectContext;
+    component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
+    Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' }), paramMap: convertToParamMap({}) } });
+    const authenticated = of({ status: 'authenticated', user: { uid: 'actor' } });
+    const auth = vi.fn(() => authenticated);
+    if (stage === 'auth before') auth.mockReturnValueOnce(throwError(() => new Error('temporary auth failure')));
+    if (stage === 'auth after') auth.mockReturnValueOnce(authenticated).mockReturnValueOnce(throwError(() => new Error('temporary auth failure')));
+    Object.assign(TestBed.inject(QueriesService), { authentication: auth });
+    const drafts = TestBed.inject(DemoTableDraftService);
+    const definition = { id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.DTQL, text: 'from: Artist\nlimit: 100' } } as IQueryDef;
+    vi.mocked(drafts.read).mockResolvedValue(definition);
+    if (stage === 'catalog') vi.mocked(drafts.read).mockRejectedValueOnce(new Error('temporary catalog failure'));
+    const editor = TestBed.inject(QueryEditorStateService);
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.DTQL });
+    await component['restoreDemoTableDraft']();
+    expect(component.runError()).toContain('temporary');
+    expect(drafts.consume).not.toHaveBeenCalled();
+    await component['restoreDemoTableDraft']();
+    expect(component.runError()).toBeUndefined();
+    expect(editor.updateQueryState).toHaveBeenCalledOnce();
+    expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('token');
+    const reads = vi.mocked(drafts.read).mock.calls.length;
+    await component['restoreDemoTableDraft']();
+    expect(drafts.read).toHaveBeenCalledTimes(reads);
+  });
+
+  it('does not clear a newer draft attempt or show a stale draft failure', async () => {
+    const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
+    component.project = { ref } as IProjectContext;
+    component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
+    const snapshot = { queryParamMap: convertToParamMap({ demoDraft: 'old-token' }), paramMap: convertToParamMap({}) };
+    Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: snapshot });
+    Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
+    const drafts = TestBed.inject(DemoTableDraftService);
+    let reject: ((error: Error) => void) | undefined;
+    vi.mocked(drafts.read).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; })).mockResolvedValueOnce({ id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.DTQL, text: 'from: Artist' } } as IQueryDef);
+    vi.mocked(TestBed.inject(QueryEditorStateService).getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.DTQL });
+    const old = component['restoreDemoTableDraft']();
+    await Promise.resolve();
+    snapshot.queryParamMap = convertToParamMap({ demoDraft: 'new-token' });
+    await component['restoreDemoTableDraft']();
+    reject?.(new Error('stale failure'));
+    await old;
+    expect(component.runError()).toBeUndefined();
+    expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('new-token');
+    await component['restoreDemoTableDraft']();
+    expect(drafts.read).toHaveBeenCalledTimes(2);
   });
 
   it('should create', () => {

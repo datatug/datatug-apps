@@ -62,6 +62,10 @@ describe('copied project browser database', () => {
     const draft = await TestBed.inject(DemoTableDraftService).read(tree.queryParams['demoDraft'], ref, h.registration.selectionId, 'dev', 'actor');
     expect(draft).toMatchObject({ connectionId: 'chinook-sqlite', request: { queryType: 'DTQL', text: 'from:\n  name: "Artist"\nlimit: 100\n' } });
     expect(JSON.stringify(draft)).not.toContain('runtime-');
+    const drafts = TestBed.inject(DemoTableDraftService);
+    await expect(drafts.read(tree.queryParams['demoDraft'], ref, h.registration.selectionId, 'dev', 'actor')).resolves.toEqual(draft);
+    drafts.consume(tree.queryParams['demoDraft']);
+    await expect(drafts.read(tree.queryParams['demoDraft'], ref, h.registration.selectionId, 'dev', 'actor')).rejects.toThrow('unavailable');
     h.state.set({ kind: 'closed' }); await h.fixture.whenStable();
     expect(h.component.connection()).toBeUndefined();
   });

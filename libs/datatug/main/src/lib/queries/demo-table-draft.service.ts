@@ -25,6 +25,8 @@ export class DemoTableDraftService {
     this.drafts.set(token, structuredClone(draft));
     return token;
   }
+  /** Consume only after the current authenticated page applies the draft; failed reads remain retriable. */
+  consume(token: string): void { this.drafts.delete(token); }
   async read(token: string, ref: IProjectRef, runtime: string | null, environment: string | null, actorID: string): Promise<IQueryDef> {
     const draft = this.drafts.get(token);
     if (!draft || !actorID || draft.actorID !== actorID || !equalProjectRef(draft.projectRef, ref) || draft.runtimeSelectionId !== runtime || draft.environment !== environment) throw new Error('The table draft is unavailable in this tab or project. Return to your browser database and choose Query this table again.');
@@ -34,7 +36,6 @@ export class DemoTableDraftService {
     const connection = declaration && this.runtimes.resolve(draft.runtimeSelectionId, declaration);
     const environments = declaration?.environment ? [declaration.environment] : declaration?.environments ?? [];
     if (!connection || !environments.includes(draft.environment) || !ovdbCollections(connection.descriptor).includes(draft.table) || !connection.descriptor.capabilities.dtql) throw new Error('The copied project or edited database changed. Return to your browser database and check its connection before querying.');
-    this.drafts.delete(token);
     return { id: '', title: `${draft.table} (browser copy)`, connectionId: declaration?.id,
       request: { queryType: QueryType.DTQL, text: `from:\n  name: ${JSON.stringify(draft.table)}\nlimit: 100\n` } as ITextQueryRequest };
   }
