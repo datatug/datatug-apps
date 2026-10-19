@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { demoCopySlug, demoExportError, localCopyCommands } from './demo-local-copy';
+import { demoCopySlug, demoExportError, localCopyCommands, shellQuote } from './demo-local-copy';
 
 describe('local edited demo handoff', () => {
   it('uses safe defaults and quotes a concrete downloaded file path without changing shell directory assumptions', () => {
@@ -13,6 +13,16 @@ describe('local edited demo handoff', () => {
     expect(localCopyCommands('chinook', '', slug, slug)).toBeUndefined();
     expect(localCopyCommands('chinook', '/tmp/file', '../escape', slug)).toBeUndefined();
     expect(localCopyCommands('chinook', '/tmp/file\nother', slug, slug)).toBeUndefined();
+  });
+  it.each(['chinook', 'invalid; dataset'])('scans the same registered %s SQLite file before serving', (dataset) => {
+    const file = "/Users/a/Downloaded O'Brien $(echo nope).sqlite";
+    const generated = localCopyCommands(dataset, file, 'safe-folder', 'registered-project');
+    if (!generated) throw new Error('Expected valid copy commands');
+    const commands = generated.split('\n');
+    const name = dataset === 'chinook' ? 'chinook-browser' : 'demo-browser';
+    expect(commands[3]).toBe(`datatug db add --project registered-project --db ${shellQuote(file)} --env local --name ${name}`);
+    expect(commands[4]).toBe(`datatug scan --project registered-project --env local --db ${name} --driver sqlite3 --path ${shellQuote(file)}`);
+    expect(commands[5]).toContain('datatug serve');
   });
   it('explains provider export failures without suggesting a pristine replacement', () => {
     expect(demoExportError({ code: 'sqlite_export_too_large' })).toContain('256 MiB');

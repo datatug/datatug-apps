@@ -36,17 +36,20 @@ async function boundedJson(response: Response, signal: AbortSignal): Promise<unk
   const reader = response.body.getReader();
   const parts: Uint8Array[] = [];
   let length = 0;
+  let reachedEnd = false;
   try {
     while (true) {
       if (signal.aborted) return reject('The public DTQL request was cancelled.');
       const { done, value } = await reader.read();
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       length += value.byteLength;
       if (length > MAX_BYTES) return reject('The public DTQL response exceeds the browser limit.');
       parts.push(value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    // EOF releases ownership; cancellation is only for unread or failed bodies.
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   const bytes = new Uint8Array(length);
   let offset = 0;

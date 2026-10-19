@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { executePublicDtql, type PublicDtqlSource } from './public-dtql-transport';
 
 const source: PublicDtqlSource = {
@@ -25,6 +25,65 @@ const result = {
 };
 
 describe('public DTQL transport', () => {
+  function observedResponse(body: BodyInit) {
+    const response = new Response(body, { status: 200 });
+    if (!response.body) throw new Error('Missing response body');
+    const reader = response.body.getReader();
+    const cancel = vi.spyOn(reader, 'cancel');
+    const release = vi.spyOn(reader, 'releaseLock');
+    vi.spyOn(response.body, 'getReader').mockReturnValue(reader);
+    const fetch: typeof globalThis.fetch = async () => response;
+    return { reader, cancel, release, fetch };
+  }
+
+  it('releases a fully consumed response without cancelling its completed reader', async () => {
+    const observed = observedResponse(JSON.stringify(result));
+    const executed = await executePublicDtql('query', source, { fetch: observed.fetch });
+    expect(executed.rowsReturned).toBe(1);
+    expect(observed.cancel).not.toHaveBeenCalled();
+    expect(observed.release).toHaveBeenCalledOnce();
+  });
+
+  it('releases EOF even when the complete bytes fail JSON validation, without accepting them', async () => {
+    const observed = observedResponse('not JSON');
+    await expect(executePublicDtql('query', source, { fetch: observed.fetch })).rejects.toThrow('malformed JSON');
+    expect(observed.cancel).not.toHaveBeenCalled();
+    expect(observed.release).toHaveBeenCalledOnce();
+  });
+
+  it('cancels an incomplete oversized response instead of admitting any rows', async () => {
+    const observed = observedResponse(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(1_000_001)); } }));
+    await expect(executePublicDtql('query', source, { fetch: observed.fetch })).rejects.toThrow('browser limit');
+    expect(observed.cancel).toHaveBeenCalledOnce();
+    await observed.cancel.mock.results[0].value.catch(() => undefined);
+    await Promise.resolve();
+    expect(observed.release).toHaveBeenCalledOnce();
+  });
+
+  it('cancels unread bytes after a user abort, preserving the cancellation error', async () => {
+    const controller = new AbortController();
+    const observed = observedResponse(new ReadableStream({ start(stream) { stream.enqueue(new TextEncoder().encode('{')); } }));
+    const read = observed.reader.read.bind(observed.reader);
+    vi.spyOn(observed.reader, 'read').mockImplementationOnce(async () => {
+      const chunk = await read(); controller.abort(); return chunk;
+    });
+    await expect(executePublicDtql('query', source, { fetch: observed.fetch, signal: controller.signal })).rejects.toThrow('cancelled');
+    expect(observed.cancel).toHaveBeenCalledOnce();
+    await observed.cancel.mock.results[0].value.catch(() => undefined);
+    await Promise.resolve();
+    expect(observed.release).toHaveBeenCalledOnce();
+  });
+
+  it('cancels a failed body reader and preserves its error', async () => {
+    const failure = new Error('body read failed');
+    const observed = observedResponse(new ReadableStream({ start(stream) { stream.error(failure); } }));
+    await expect(executePublicDtql('query', source, { fetch: observed.fetch })).rejects.toBe(failure);
+    expect(observed.cancel).toHaveBeenCalledOnce();
+    await observed.cancel.mock.results[0].value.catch(() => undefined);
+    await Promise.resolve();
+    expect(observed.release).toHaveBeenCalledOnce();
+  });
+
   it('retains the independently observed physical source and complete rows', async () => {
     const executed = await executePublicDtql('from: {name: Orders}\n', source, { fetch: transport(result) });
     expect(executed.records[0].data['orders']).toBe(56);

@@ -6,6 +6,7 @@ import {
   OnInit,
   ViewChild,
   inject,
+  signal,
 } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -14,6 +15,7 @@ import {
   IonBackButton,
   IonBadge,
   IonButtons,
+  IonButton,
   IonCard,
   IonCardContent,
   IonContent,
@@ -70,7 +72,14 @@ const isGithubStoreId = (storeId: string): boolean =>
 // Count explanations use Tabulator's optional tooltip module, including on cold links.
 Tabulator.registerModule([InteractionModule, TooltipModule]);
 import { getTabulatorCols, IGridColumn } from '@sneat/grid';
-import { Subject } from 'rxjs';
+import {
+  Subject,
+  Subscription,
+  combineLatest,
+  distinctUntilChanged,
+  map,
+  takeUntil,
+} from 'rxjs';
 import {
   routingParamDbCatalogId,
   routingParamEnvironmentId,
@@ -134,6 +143,7 @@ interface IRecordsetInfo {
     IonHeader,
     IonToolbar,
     IonButtons,
+    IonButton,
     IonMenuButton,
     IonBackButton,
     IonContent,
@@ -160,6 +170,11 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   @ViewChild('grid', { static: false }) gridElRef?: ElementRef;
+
+  readonly loading = signal(true);
+  readonly loadError = signal<string | undefined>(undefined);
+  private reads = new Subscription();
+  private disposed = false;
 
   filter = '';
   tab: 'tables' | 'views' = 'tables';
@@ -190,47 +205,93 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   private readonly destroyed = new Subject<void>();
 
   ngOnDestroy(): void {
+    this.disposed = true;
+    this.reads.unsubscribe();
+    this.tabulator?.destroy();
     this.destroyed.next();
     this.destroyed.complete();
   }
 
   ngOnInit(): void {
     const projectTracker = new ProjectTracker(this.destroyed, this.route);
-    projectTracker.projectRef.subscribe({
-      next: (projectRef) => {
-        // `this.project` was never assigned here, so the rowClick handler below
-        // (built in createTabulator()) always bailed out of `goTable()` on its
-        // `if (!project || ...)` guard — a row click silently did nothing. Found by
-        // S10's journey e2e (see e2e/journey/README.md "Known gap").
+    combineLatest([projectTracker.projectRef, this.route.paramMap])
+      .pipe(
+        map(([projectRef, params]) => ({
+          projectRef,
+          envId:
+            params.get(routingParamEnvironmentId) ??
+            this.route.snapshot.params[routingParamEnvironmentId],
+          dbId:
+            params.get(routingParamDbCatalogId) ??
+            this.route.snapshot.params[routingParamDbCatalogId],
+        })),
+        distinctUntilChanged((a, b) => JSON.stringify(a) === JSON.stringify(b)),
+        takeUntil(this.destroyed),
+      )
+      .subscribe(({ projectRef, envId, dbId }) => {
         this.project = newProjectContextFromRef(projectRef);
-        const envId = this.route.snapshot.params[routingParamEnvironmentId];
-        this.dbId = this.route.snapshot.params[routingParamDbCatalogId];
-        this.changeDetectorRef.markForCheck();
-        if (isGithubStoreId(projectRef.storeId)) {
-          // GitHub-store: `ProjectService.getFull()` (below) always calls
-          // `buildAgentUrl(storeId, ...)`, invalid for `storeId="github.com"`
-          // (same root cause as `EnvironmentsPageComponent`'s own fix, founder
-          // ruling 2026-09-11). `this.env` only needs `{id}` here — the
-          // tabulator row-click handler (`createTabulator()` below) reads
-          // `env.id` — so the GitHub-aware `EnvironmentService.getEnvSummary()`
-          // supplies it without needing the whole project tree.
-          this.environmentService
-            .getEnvSummary(projectRef, envId)
-            .subscribe((envSummary) => {
-              this.env = envSummary;
-              this.changeDetectorRef.markForCheck();
-            });
-          this.loadCatalogTables(projectRef, envId, this.dbId);
-          return;
-        }
-        this.projService.getFull(projectRef).subscribe((p) => {
-          this.projectFull = p;
-          this.env = p.environments?.find((e) => e.id === envId);
-          this.changeDetectorRef.markForCheck();
-          this.loadCatalogTables(projectRef, envId, this.dbId);
-        });
-      },
-    });
+        this.dbId = dbId;
+        this.loadProjectCatalog(projectRef, envId, dbId);
+      });
+  }
+
+  public retry(): void {
+    if (this.project && !this.disposed && !this.loading())
+      this.loadProjectCatalog(
+        this.project.ref,
+        this.route.snapshot.params[routingParamEnvironmentId],
+        this.dbId,
+      );
+  }
+
+  private loadProjectCatalog(
+    projectRef: IProjectRef,
+    envId?: string,
+    dbId?: string,
+  ): void {
+    this.reads.unsubscribe();
+    this.reads = new Subscription();
+    this.envDb = undefined;
+    this.env = undefined;
+    this.projectFull = undefined;
+    this.allRows = {};
+    this.filteredRows = {};
+    this.loading.set(true);
+    this.loadError.set(undefined);
+    if (!envId || !dbId) {
+      this.catalogFailed(new Error('Missing environment or catalog id'));
+      return;
+    }
+    if (isGithubStoreId(projectRef.storeId)) {
+      this.reads.add(
+        this.environmentService.getEnvSummary(projectRef, envId).subscribe({
+          next: (env) => {
+            this.env = env;
+            this.loadCatalogTables(projectRef, envId, dbId);
+          },
+          error: (error: unknown) => this.catalogFailed(error),
+        }),
+      );
+    } else {
+      this.reads.add(
+        this.projService.getFull(projectRef).subscribe({
+          next: (project) => {
+            this.projectFull = project;
+            this.env = project.environments?.find((env) => env.id === envId);
+            this.loadCatalogTables(projectRef, envId, dbId);
+          },
+          error: (error: unknown) => this.catalogFailed(error),
+        }),
+      );
+    }
+  }
+
+  private catalogFailed(error: unknown): void {
+    this.loading.set(false);
+    this.loadError.set(
+      'Database catalog unavailable. A registered database needs a scan before its tables can be browsed. If it was already scanned, check your connection and try again.',
+    );
+    this.errorLogger.logError(error, 'Failed to load catalog tables');
   }
 
   private loadCatalogTables(
@@ -239,23 +300,22 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
     dbId?: string,
   ): void {
     if (!envId || !dbId) {
-      this.errorLogger.logError(
-        new Error(
-          `Missing environment or catalog id (env=${envId}, db=${dbId})`,
-        ),
-        'Failed to load catalog tables',
-      );
+      this.catalogFailed(new Error('Missing environment or catalog id'));
       return;
     }
-    this.environmentService.getCatalogTables(projectRef, envId, dbId).subscribe({
-      next: (catalogTables) => {
-        this.envDb = { id: dbId, ...catalogTables };
-        this.onDataChanged();
-        this.changeDetectorRef.markForCheck();
-      },
-      error: (err) =>
-        this.errorLogger.logError(err, 'Failed to load catalog tables'),
-    });
+    this.reads.add(
+      this.environmentService
+        .getCatalogTables(projectRef, envId, dbId)
+        .subscribe({
+          next: (catalogTables) => {
+            this.envDb = { id: dbId, ...catalogTables };
+            this.onDataChanged();
+            this.loading.set(false);
+            this.changeDetectorRef.markForCheck();
+          },
+          error: (error: unknown) => this.catalogFailed(error),
+        }),
+    );
   }
 
   public tabChanged(): void {
@@ -286,7 +346,7 @@ export class EnvDbPageComponent implements OnDestroy, OnInit {
   }
 
   public filterRows(): void {
-    let rows = this.allRows[this.tab];
+    let rows = this.allRows[this.tab] ?? [];
     if (this.filter) {
       const v = this.filter.toLowerCase();
       rows = rows.filter((r) => r.name.toLowerCase().includes(v));

@@ -8,14 +8,24 @@
       [pageTitle]="
         envDb
           ? envDb.id + ' (' + (env?.id || '') + ')'
-          : 'Database: loading...'
+          : loading()
+            ? 'Database: loading...'
+            : 'Database: ' + (dbId || 'unavailable')
       "
     />
   </ion-toolbar>
 </ion-header>
 
 <ion-content>
-  <ion-card>
+  @if (loadError(); as error) {
+    <ion-card>
+      <ion-card-content>
+        <p role="alert">{{ error }}</p>
+        <ion-button (click)="retry()" [disabled]="loading()">Retry</ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
+  <ion-card [hidden]="!envDb">
     <ion-item>
       <ion-input
         label="Filter"
