@@ -1,9 +1,5 @@
 import type { TypedValue } from '@sneat/datatug-semantic';
-import type {
-  ColDef,
-  ValueFormatterParams,
-  ValueGetterParams,
-} from 'ag-grid-community';
+import type { ColDef } from 'ag-grid-community';
 
 /**
  * Pure column rules of the one results grid (`sneat-datatug-results-grid`), shared by the query page and the query
@@ -64,7 +60,7 @@ export const NULL_TEXT = 'null';
 
 /** A number for sorting and filtering; undefined when the text is not a finite number. */
 export function cellNumber(cell: GridCell | undefined): number | undefined {
-  if (cell === null || cell === undefined || cell.trim() === '')
+  if (cell === null || cell === undefined || String(cell).trim() === '')
     return undefined;
   const n = Number(cell);
   return Number.isFinite(n) ? n : undefined;
@@ -84,7 +80,7 @@ export function compareNumberCells(
     return x === y ? 0 : x === undefined ? -1 : 1;
   }
   if (Number.isSafeInteger(x) && Number.isSafeInteger(y)) return x - y;
-  if (/^-?\d+$/.test(a ?? '') && /^-?\d+$/.test(b ?? '')) {
+  if (/^-?\d+$/.test(String(a ?? '')) && /^-?\d+$/.test(String(b ?? ''))) {
     const p = BigInt(a as string);
     const q = BigInt(b as string);
     return p < q ? -1 : p > q ? 1 : 0;
@@ -197,12 +193,14 @@ export function isLikelyTruncated(
   return text.length * 7.5 > columnWidth - 24;
 }
 
-const cellOf = (
-  p: ValueGetterParams | ValueFormatterParams,
-): GridCell | undefined => {
+const cellOf = (p: {
+  colDef?: ColDef;
+  data?: unknown;
+  value?: unknown;
+}): GridCell | undefined => {
   const field = p.colDef?.field;
   const data = p.data as GridRow | undefined;
-  return field && data ? data[field] : (p as ValueFormatterParams).value;
+  return field && data ? data[field] : (p.value as GridCell | undefined);
 };
 
 const isNullCell = (p: { value?: unknown }): boolean =>
@@ -284,11 +282,21 @@ export function resultColumnDef(
     headerTooltip: column.type
       ? `${column.name} (${column.type})`
       : column.name,
-    valueFormatter: (p) => formatCell(p.value as GridCell, kind, groupDigits),
+    valueFormatter: (p) => {
+      if (p.node?.group || p.node?.footer) {
+        return p.value == null ? '' : formatCell(String(p.value), kind, groupDigits);
+      }
+      const raw = cellOf(p);
+      return formatCell(raw == null ? raw : String(raw), kind, groupDigits);
+    },
+    ...(column.primaryKey || isIdentifierColumnName(column.name)
+      ? { enableValue: false, chartDataType: 'category' as const }
+      : {}),
     // The full text, only where the column is probably too narrow for it (text only: the grid never renders it as HTML).
     tooltipValueGetter: (p) => {
       if (isNullCell(p)) return undefined;
-      const text = String(p.value);
+      const definition = p.column && 'getColDef' in p.column ? p.column.getColDef() : undefined;
+      const text = String(cellOf({ colDef: definition, data: p.data, value: p.value }));
       const column = p.column as { getActualWidth?: () => number } | undefined;
       return isLikelyTruncated(text, column?.getActualWidth?.())
         ? text
@@ -300,6 +308,10 @@ export function resultColumnDef(
           hide: true,
           lockVisible: true,
           suppressColumnsToolPanel: true,
+          enableRowGroup: false,
+          enablePivot: false,
+          enableValue: false,
+          chartDataType: 'excluded',
           suppressFiltersToolPanel: true,
         }
       : {}),
@@ -324,6 +336,10 @@ export const ROW_NUMBER_COLUMN: ColDef<GridRow> = {
   resizable: false,
   suppressMovable: true,
   suppressNavigable: true,
+  enableValue: false,
+  enableRowGroup: false,
+  enablePivot: false,
+  chartDataType: 'excluded',
   suppressHeaderMenuButton: true,
   headerClass: 'ag-right-aligned-header',
   cellClass: ['ag-right-aligned-cell', 'dt-rg-row-number'],

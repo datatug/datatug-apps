@@ -1281,6 +1281,14 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
     // Moving the focus moves the Current row without checking anything.
     component.authorResultCellFocused({ rowIndex: 1, api } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(rawRows[1]);
+    const inspectedLeaf = component.currentAuthorResultRow();
+    const snapshot = component.authorResultSnapshotKey();
+    component.authorResultRowClicked({ api, node: { group: true }, data: rows[0] } as never);
+    component.authorResultRowClicked({ api, node: { footer: true }, data: rows[0] } as never);
+    component.authorResultCellFocused({ rowIndex: 2, api: { getDisplayedRowAtIndex: () => ({ group: true }) } } as never);
+    expect(component.currentAuthorResultRow()).toBe(inspectedLeaf);
+    expect(component.authorResultSnapshotKey()).toBe(snapshot);
+    expect(component.resultGridAnalyticsScope()).toContain('2 loaded rows on page 1');
     expect(setSelected).not.toHaveBeenCalled();
 
     const key = component.resultGridStateKey();
@@ -3462,6 +3470,7 @@ select (
       component.resultGridRows().map((row) => row['validation_status']),
     ).toEqual(['unknown', 'fail']);
     component.hostedStatusFilter.set('fail');
+    expect(component.resultGridAnalyticsScope()).toBe('Analytics use 1 loaded row on page 1; grouping and charts do not load other pages');
     expect(component.resultGridRows().map((row) => row['result_0'])).toEqual([
       '9',
     ]);
@@ -6929,6 +6938,35 @@ select (
     },
   );
 
+  it('updates the native Current row disclosure expanded state on every toggle', async () => {
+    const template = readFileSync(
+      resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'),
+      'utf8',
+    );
+    const control = template.match(
+      /<(?:ion-button|button)\b[^>]*data-testid="author-current-row-toggle"[\s\S]*?<\/(?:ion-button|button)\s*>/u,
+    )?.[0];
+    expect(control).toBeDefined();
+    component = await createComponent({}, queryDef, control);
+    runFixture.detectChanges();
+    const button = runFixture.nativeElement.querySelector(
+      'button[data-testid="author-current-row-toggle"]',
+    ) as HTMLButtonElement | null;
+    expect(button).not.toBeNull();
+    expect(button?.type).toBe('button');
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    button?.click();
+    await runFixture.whenStable();
+    expect(component.currentRowPaneOpen()).toBe(false);
+    expect(button?.getAttribute('aria-expanded')).toBe('false');
+    expect(button?.textContent).toContain('▸ Current row');
+    button?.click();
+    await runFixture.whenStable();
+    expect(component.currentRowPaneOpen()).toBe(true);
+    expect(button?.getAttribute('aria-expanded')).toBe('true');
+    expect(button?.textContent).toContain('▾ Current row');
+  });
+
   it('maps the current result page to safe AG Grid columns and preserves exact typed values', async () => {
     component = await createComponent();
     component.runResult.set({
@@ -7346,9 +7384,9 @@ select (
     it('says when charts become available instead of a rights error for the saved rows', async () => {
       const { created, opener } = await openerWith(editorReadyResult());
       opener.openFromResult('rid-23');
-      expect(created.resultChartUnavailableText()).toBe('Charts are available after running the query.');
+      expect(created.resultChartUnavailableText()).toBe('Full-result chart preview is available after running the query.');
       (created as unknown as { closeSavedResult(): void }).closeSavedResult();
-      expect(created.resultChartUnavailableText()).toMatch(/^Chart unavailable: /);
+      expect(created.resultChartUnavailableText()).toMatch(/^Full-result chart preview unavailable: /);
     });
 
     it('starts the Current row pane closed for a wide result, one click to open', async () => {
