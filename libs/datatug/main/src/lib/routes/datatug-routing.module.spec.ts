@@ -1,10 +1,8 @@
 import { PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { DefaultUrlSerializer, Route, UrlSegment } from '@angular/router';
-import { TestBed } from '@angular/core/testing';
-import { EnvConfigToken, IEnvironmentConfig } from '@sneat/core';
 import { sneatAuthGuard } from '@sneat/auth-core';
 import { datatugRoutes } from './datatug-routing.module';
-import { hostedCloudLogsFeatureGuard } from '../core/feature-flags';
+import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
 import {
   profileHomeRedirectGuard,
   profileStartPageGuard,
@@ -15,42 +13,15 @@ import {
 } from '../core/datatug-routing-params';
 
 describe('datatugRoutes', () => {
-  it('keeps hosted personal Cloud Logging disabled by default', async () => {
+  it('checks authentication before server-confirmed Cloud Logging access', async () => {
     const route = datatugRoutes.find(
       (candidate) => candidate.path === 'my/cloud-logs',
     );
-    expect(route?.canMatch).toEqual([hostedCloudLogsFeatureGuard]);
-    TestBed.configureTestingModule({
-      providers: [{ provide: EnvConfigToken, useValue: {} }],
-    });
-    expect(
-      TestBed.runInInjectionContext(() =>
-        hostedCloudLogsFeatureGuard(route as Route, [], undefined as never),
-      ),
-    ).toBe(false);
-    TestBed.resetTestingModule();
-  });
-
-  it('allows hosted personal Cloud Logging in a pilot environment', async () => {
-    const route = datatugRoutes.find(
-      (candidate) => candidate.path === 'my/cloud-logs',
-    );
-    TestBed.configureTestingModule({
-      providers: [
-        {
-          provide: EnvConfigToken,
-          useValue: {
-            hostedCloudLogsEnabled: true,
-          } as unknown as IEnvironmentConfig,
-        },
-      ],
-    });
-    expect(
-      TestBed.runInInjectionContext(() =>
-        hostedCloudLogsFeatureGuard(route as Route, [], undefined as never),
-      ),
-    ).toBe(true);
-    expect(route?.canActivate).toEqual([sneatAuthGuard]);
+    expect(route?.canMatch).toBeUndefined();
+    expect(route?.canActivate).toEqual([
+      sneatAuthGuard,
+      hostedCloudLogsAccessGuard,
+    ]);
     const component = await route?.loadComponent?.();
     expect((component as { name?: string })?.name).toBe(
       'CloudLogsPageComponent',

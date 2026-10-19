@@ -1,31 +1,37 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router, RouterLink } from '@angular/router';
-import { EnvConfigToken } from '@sneat/core';
+import { signal } from '@angular/core';
+import { HostedCloudLogsAccessService } from '../cloud-logs/hosted-cloud-logs-access.service';
 
 import { DatatugMyPageComponent } from './datatug-my-page.component';
 
 describe('MyPage', () => {
   let component: DatatugMyPageComponent;
   let fixture: ComponentFixture<DatatugMyPageComponent>;
+  let accessState: ReturnType<typeof signal<{ status: string }>>;
+  const access = {
+    state: undefined as unknown as () => { status: string },
+    retry: vi.fn(),
+  };
 
   beforeEach(async () => {
+    accessState = signal({ status: 'disabled' });
+    access.state = accessState;
+    access.retry.mockReset();
     await TestBed.configureTestingModule({
       imports: [DatatugMyPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         provideRouter([]),
-        {
-          provide: EnvConfigToken,
-          useValue: { hostedCloudLogsEnabled: false },
-        },
+        { provide: HostedCloudLogsAccessService, useValue: access },
       ],
     })
       .overrideComponent(DatatugMyPageComponent, {
         set: {
           imports: [RouterLink],
           template:
-            '<a routerLink="/subscriptions" [queryParams]="subscriptionQuery()">Subscriptions</a>@if (enableHostedCloudLogs) { <a routerLink="/my/cloud-logs">Google Cloud log connections</a> }',
+            '<a routerLink="/subscriptions" [queryParams]="subscriptionQuery()">Subscriptions</a>@if (enableHostedCloudLogs()) { <a routerLink="/my/cloud-logs">Google Cloud log connections</a> }@if (hostedCloudLogsAccess.state().status === \'checking\') { <p role="status">Checking access</p> }@if (hostedCloudLogsAccess.state().status === \'error\') { <p role="alert">Could not verify access</p><button (click)="retryHostedCloudLogsAccess()">Retry</button> }',
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
           providers: [],
         },
@@ -40,19 +46,35 @@ describe('MyPage', () => {
     expect(component).toBeTruthy();
   });
 
-  it('hides the hosted log route link while the feature flag is off', () => {
+  it('hides the hosted log route link until the server confirms access', () => {
     fixture.detectChanges();
     expect(
       fixture.nativeElement.querySelector('a[href="/my/cloud-logs"]'),
     ).toBeNull();
   });
 
-  it('shows the hosted log route link when the feature flag is enabled', () => {
-    Object.defineProperty(component, 'enableHostedCloudLogs', { value: true });
+  it('shows the hosted log route link after the server confirms access', () => {
+    accessState.set({ status: 'allowed' });
     fixture.detectChanges();
     expect(
       fixture.nativeElement.querySelector('a[href="/my/cloud-logs"]'),
     ).not.toBeNull();
+  });
+
+  it('shows an accessible loading state and a retry action on transient errors', () => {
+    accessState.set({ status: 'checking' });
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[role="status"]')?.textContent,
+    ).toContain('Checking');
+
+    accessState.set({ status: 'error' });
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
+    ).toContain('Could not verify');
+    fixture.nativeElement.querySelector('button').click();
+    expect(access.retry).toHaveBeenCalledOnce();
   });
 
   it('keeps the subscriptions link on the current rail after account query changes', async () => {

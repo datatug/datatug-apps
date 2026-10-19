@@ -1,8 +1,8 @@
-import { Component, input, output } from '@angular/core';
+import { Component, input, output, signal } from '@angular/core';
 import { AgGridAngular } from 'ag-grid-angular';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import {
   CloudLogsApiService,
   GoogleLogGrant,
@@ -10,18 +10,30 @@ import {
   PersonalLogQueryResult,
 } from './cloud-logs-api.service';
 import { CloudLogsPageComponent } from './cloud-logs-page.component';
+import { HostedCloudLogsAccessService } from './hosted-cloud-logs-access.service';
 
 @Component({
   // eslint-disable-next-line @angular-eslint/component-selector -- models AG Grid inputs and row activation
   selector: 'ag-grid-angular',
-  template: `@for (row of rowData(); track $index) { <button class="grid-entry" (click)="selectionChanged.emit({ api: { getSelectedRows: selectedRows(row) } })">{{ row.message }}</button> }`,
+  template: `@for (row of rowData(); track $index) {
+    <button
+      class="grid-entry"
+      (click)="
+        selectionChanged.emit({ api: { getSelectedRows: selectedRows(row) } })
+      "
+    >
+      {{ row.message }}
+    </button>
+  }`,
 })
 class GridStubComponent {
   readonly rowData = input<Array<Record<string, unknown>>>([]);
   readonly columnDefs = input<unknown>();
   readonly defaultColDef = input<unknown>();
   readonly rowSelection = input<unknown>();
-  selectedRows(row: Record<string, unknown>) { return () => [row]; }
+  selectedRows(row: Record<string, unknown>) {
+    return () => [row];
+  }
   readonly selectionChanged = output<unknown>();
   readonly gridReady = output<unknown>();
   readonly cellKeyDown = output<unknown>();
@@ -54,10 +66,22 @@ describe('CloudLogsPageComponent', () => {
     remove: ReturnType<typeof vi.fn>;
     disconnect: ReturnType<typeof vi.fn>;
   };
+  let accessState: BehaviorSubject<{ status: string }>;
+  let access: {
+    state: ReturnType<typeof signal<{ status: string }>>;
+    state$: BehaviorSubject<{ status: string }>;
+    retry: ReturnType<typeof vi.fn>;
+  };
 
   beforeEach(async () => {
     sessionStorage.clear();
     delete window.__datatugTakeGoogleLogsReturn;
+    accessState = new BehaviorSubject({ status: 'allowed' });
+    access = {
+      state: signal({ status: 'allowed' }),
+      state$: accessState,
+      retry: vi.fn(),
+    };
     api = {
       list: vi.fn(() => of({ grants: [], connections })),
       finishGoogleAuthorization: vi.fn(),
@@ -65,20 +89,57 @@ describe('CloudLogsPageComponent', () => {
       remove: vi.fn(() => of({ removed: true as const })),
       disconnect: vi.fn(),
     };
-  TestBed.overrideComponent(CloudLogsPageComponent, {
-    remove: { imports: [AgGridAngular] }, add: { imports: [GridStubComponent] },
-  });
+    TestBed.overrideComponent(CloudLogsPageComponent, {
+      remove: { imports: [AgGridAngular] },
+      add: { imports: [GridStubComponent] },
+    });
     await TestBed.configureTestingModule({
       imports: [CloudLogsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
-      providers: [{ provide: CloudLogsApiService, useValue: api }],
-    })
-      .compileComponents();
+      providers: [
+        { provide: CloudLogsApiService, useValue: api },
+        { provide: HostedCloudLogsAccessService, useValue: access },
+      ],
+    }).compileComponents();
   });
 
   afterEach(() => {
     sessionStorage.clear();
     delete window.__datatugTakeGoogleLogsReturn;
+  });
+
+  it('clears connection and log data and ignores a stale list response after access changes', async () => {
+    const pending = new Subject<{
+      grants: GoogleLogGrant[];
+      connections: PersonalLogConnection[];
+    }>();
+    api.list.mockReturnValue(pending);
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+
+    access.state.set({ status: 'checking' });
+    accessState.next({ status: 'checking' });
+    pending.next({
+      grants: [
+        {
+          id: 'old-user-grant',
+          email: 'old-user@example.test',
+          state: 'active',
+        },
+      ],
+      connections: [connections[0]],
+    });
+    pending.complete();
+    await fixture.whenStable();
+
+    expect(component.grants()).toEqual([]);
+    expect(component.connections()).toEqual([]);
+    expect(component.selectedConnection()).toBeNull();
+    expect(component.entries()).toEqual([]);
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'old-user@example.test',
+    );
   });
 
   it('finishes a replayed or new-tab callback without staying in loading state', async () => {
@@ -235,24 +296,46 @@ describe('CloudLogsPageComponent', () => {
     await fixture.whenStable();
     await vi.waitFor(async () => {
       await fixture.whenStable();
-      expect(fixture.nativeElement.querySelector('ag-grid-angular')).not.toBeNull();
+      expect(
+        fixture.nativeElement.querySelector('ag-grid-angular'),
+      ).not.toBeNull();
     });
-    expect(component.columns.map(column => column.field)).toEqual(['timestamp', 'severity', 'service', 'source', 'message']);
-    const event = new KeyboardEvent('keydown', { key: 'Enter', cancelable: true });
+    expect(component.columns.map((column) => column.field)).toEqual([
+      'timestamp',
+      'severity',
+      'service',
+      'source',
+      'message',
+    ]);
+    const event = new KeyboardEvent('keydown', {
+      key: 'Enter',
+      cancelable: true,
+    });
     const setGridAriaProperty = vi.fn();
-    component.nameGrid({ api: { setGridAriaProperty } } as unknown as Parameters<typeof component.nameGrid>[0]);
-    expect(setGridAriaProperty.mock.calls).toEqual([['label', 'Cloud Logging entries'], ['describedby', 'cloud-log-grid-help']]);
+    component.nameGrid({
+      api: { setGridAriaProperty },
+    } as unknown as Parameters<typeof component.nameGrid>[0]);
+    expect(setGridAriaProperty.mock.calls).toEqual([
+      ['label', 'Cloud Logging entries'],
+      ['describedby', 'cloud-log-grid-help'],
+    ]);
     const setSelected = vi.fn();
-    component.activateEntry({ node: { setSelected }, event } as unknown as Parameters<typeof component.activateEntry>[0]);
+    component.activateEntry({
+      node: { setSelected },
+      event,
+    } as unknown as Parameters<typeof component.activateEntry>[0]);
     expect(setSelected).toHaveBeenCalledWith(true);
-    component.selectionChanged({ api: { getSelectedRows: () => component.entries() } } as unknown as Parameters<typeof component.selectionChanged>[0]);
+    component.selectionChanged({
+      api: { getSelectedRows: () => component.entries() },
+    } as unknown as Parameters<typeof component.selectionChanged>[0]);
     fixture.detectChanges();
     expect(event.defaultPrevented).toBe(true);
-    expect(fixture.nativeElement.querySelector('#cloud-entry-details')?.textContent).toContain('svc');
+    expect(
+      fixture.nativeElement.querySelector('#cloud-entry-details')?.textContent,
+    ).toContain('svc');
     component.queryError.set('Previous view error');
     component.selectConnection(connections[1]);
     expect(component.queryError()).toBe('');
-
   });
 
   it('offers OAuth reconnect for expired authorization', async () => {

@@ -19,4 +19,8 @@ describe('the production environment', () => {
       'sneat-eur3-1',
     );
   });
+
+  it('enables the hosted Cloud Logs pilot behind the server permission gate', () => {
+    expect(datatugAppEnvironmentConfig.hostedCloudLogsEnabled).toBe(true);
+  });
 });
