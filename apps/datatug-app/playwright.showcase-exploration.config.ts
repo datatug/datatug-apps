@@ -13,6 +13,7 @@ export default defineConfig({
     'showcase-country-comparison.spec.ts',
     'showcase-tutorial-acceptance.spec.ts',
     'showcase-inspector-polish.spec.ts',
+    'query-grid-enterprise.spec.ts',
   ],
   outputDir: '../../coverage/apps/datatug-showcase-exploration/results',
   workers: 1,

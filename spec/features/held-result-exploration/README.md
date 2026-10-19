@@ -63,6 +63,12 @@ Given settled held results, when card-level presentation view, sort/select/Clear
 
 Given the final candidate, then focused model/helper/component tests cover invalid/partial/missing-month data, ties, keyboard, reduced motion, errors and retry. Desktop/mobile fixture journeys assert normalized per-query request bodies/counts and a mutation/download ledger, plus bounded preparation/interaction performance. Production build passes unchanged CSS budgets. Independent exact-head review and root-owned deploy/authenticated acceptance are recorded separately from fixture and live-read observations.
 
+### AC: query-grid-enterprise
+
+Given a licensed Query Editor or saved-result grid, then Enterprise grouping, aggregation, cell-range clipboard and integrated charts are enabled by default, with a visible group drop zone and keyboard-operable Chart selected range action. No group/chart is created automatically. Charts update from local filters and survive sort/group/focus; result/page/schema replacement clears stale charts/ranges. Analytics identify their loaded-row/page scope and never fetch more rows or mutate the query. Leaf counts, raw copy/export, Current row and lineage actions ignore synthetic group/footer nodes.
+
+Given typed numeric results, then raw display/export/inspection remain exact while a column becomes a numeric measure only if every non-null loaded value is finite, bounded by the safe-integer magnitude and normalized-decimal round-tripping. Any unsafe value excludes the entire column as a measure and selects exact text filtering with a visible notice. IDs remain categories, internal keys/row numbers excluded. Native numeric totals/charts are labelled approximate, including finite sums beyond safe-integer precision; ordinary decimals such as0.1 are supported without an exact-decimal engine. Licensed fixture browser acceptance must prove group→aggregate→range/chart→filter updates and zero interaction-triggered query/page requests, with Community fallback preserved.
+
 ## Open Questions
 
 None at this time.
