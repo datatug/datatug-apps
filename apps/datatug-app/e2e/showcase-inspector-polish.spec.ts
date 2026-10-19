@@ -15,8 +15,13 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       if (!source) return;
       await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: source }]);
       let posts = 0;
-      await context.route('https://cloud.openvaultdb.com/v1/**', async route => {
-        const path = new URL(route.request().url()).pathname;
+      const cloudPrefix = '/__datatug_public_ovdb/cloud';
+      const localOrigin = new URL(testInfo.project.use.baseURL ?? 'http://localhost').origin;
+      const isCloudRead = (url: URL) => (url.origin === 'https://cloud.openvaultdb.com' && url.pathname.startsWith('/v1/')) || (url.origin === localOrigin && url.pathname.startsWith(`${cloudPrefix}/v1/`));
+      const requests: string[] = [];
+      await context.route(isCloudRead, async route => {
+        requests.push(route.request().url());
+        const path = new URL(route.request().url()).pathname.replace(cloudPrefix, '');
         if (path === '/v1/dtql' && route.request().method() === 'POST') {
           posts++;
           expect(route.request().postData()).toBe(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.dtql'), 'utf8'));
@@ -27,6 +32,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       });
       // Unrelated auto charts may show their normal network error; this is a held-result layout check.
       await context.route('https://*.demodb.dev/**', route => route.abort());
+      await context.route(url => url.origin === localOrigin && url.pathname.startsWith('/__datatug_public_ovdb/demodb/'), route => route.abort());
       await page.goto('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase');
       const inspector = page.locator('ion-card').filter({ hasText: 'Inspect saved query results' }).first();
       await expect(inspector).toBeVisible();
@@ -68,7 +74,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await expect(inspector).toContainText('17 rows · 3 columns');
       await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
       expect(posts).toBe(1);
-      await Promise.all([page.waitForResponse(response => response.url() === 'https://cloud.openvaultdb.com/v1/dtql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: 'Run on board', exact: true }).click()]);
+      await Promise.all([page.waitForResponse(response => isCloudRead(new URL(response.url())) && new URL(response.url()).pathname.replace(cloudPrefix, '') === '/v1/dtql' && response.request().method() === 'POST'), inspector.getByRole('button', { name: 'Run on board', exact: true }).click()]);
       await expect(inspector.getByRole('button', { name: 'Run on board', exact: true })).toBeEnabled();
       expect(posts).toBe(2);
       await inspector.scrollIntoViewIfNeeded();
@@ -88,7 +94,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       await expect(details).toContainText('live · OVDB server');
       await details.screenshot({ path: testInfo.outputPath(`provenance-${name}.png`) });
       expect(posts).toBe(2);
-      await testInfo.attach('acceptance-boundary', { body: JSON.stringify({ source: 'captured public anonymous OVDB responses', viewport, posts, expected: 'full-width inspector; readable focused tab;17 rows; live · OVDB server; no invented terms; one query across tab changes; explicit Run sends one additional request', observed: 'all assertions passed' }), contentType: 'application/json' });
+      await testInfo.attach('acceptance-boundary', { body: JSON.stringify({ source: 'captured public anonymous OVDB responses', viewport, posts, requests, expected: 'full-width inspector; readable focused tab;17 rows; live · OVDB server; no invented terms; one query across tab changes; explicit Run sends one additional request', observed: 'all assertions passed' }), contentType: 'application/json' });
     });
   });
 }
