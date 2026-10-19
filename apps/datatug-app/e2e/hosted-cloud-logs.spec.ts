@@ -4,6 +4,16 @@ const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';
 const projectID = 'demo-local-sneat-app';
 
+test('signed-out direct visit redirects to login and preserves the hosted logs destination', async ({
+  page,
+}) => {
+  await page.goto('/my/cloud-logs');
+  await expect(page).toHaveURL(/\/login#\/my\/cloud-logs$/);
+  await expect(
+    page.getByRole('heading', { name: 'Personal Google Cloud log views' }),
+  ).toHaveCount(0);
+});
+
 test('signed-in user connects, queries, removes a view and revokes the Google grant', async ({
   page,
 }) => {
@@ -276,10 +286,10 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
       .getByText('investigator@example.test', { exact: true }),
   ).toBeVisible();
   await page
-    .locator('ion-input[aria-label="Google Cloud project ID"] input')
+    .getByRole('textbox', { name: 'Google Cloud project ID' })
     .fill('billing-prod');
   await page
-    .locator('ion-input[aria-label="Full log view resource name"] input')
+    .getByRole('textbox', { name: 'Full log view resource name' })
     .fill(
       'projects/billing-prod/locations/global/buckets/_Default/views/hosted',
     );

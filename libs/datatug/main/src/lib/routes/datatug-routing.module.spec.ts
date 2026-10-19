@@ -2,6 +2,7 @@ import { PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { DefaultUrlSerializer, Route, UrlSegment } from '@angular/router';
 import { TestBed } from '@angular/core/testing';
 import { EnvConfigToken, IEnvironmentConfig } from '@sneat/core';
+import { sneatAuthGuard } from '@sneat/auth-core';
 import { datatugRoutes } from './datatug-routing.module';
 import { hostedCloudLogsFeatureGuard } from '../core/feature-flags';
 import {
@@ -49,9 +50,7 @@ describe('datatugRoutes', () => {
         hostedCloudLogsFeatureGuard(route as Route, [], undefined as never),
       ),
     ).toBe(true);
-    expect(route?.canActivate).toEqual(
-      datatugRoutes.find((candidate) => candidate.path === 'my')?.canActivate,
-    );
+    expect(route?.canActivate).toEqual([sneatAuthGuard]);
     const component = await route?.loadComponent?.();
     expect((component as { name?: string })?.name).toBe(
       'CloudLogsPageComponent',
