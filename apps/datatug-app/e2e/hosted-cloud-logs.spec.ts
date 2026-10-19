@@ -59,6 +59,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
                     id: 'grant-finished',
                     email: 'new-owner@example.test',
                     state: 'active',
+                    previousRevocationUnconfirmed: true,
                   },
                 ]
               : []),
@@ -90,6 +91,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
           id: 'grant-finished',
           email: 'new-owner@example.test',
           state: 'active',
+          previousRevocationUnconfirmed: true,
         },
       });
       return;
@@ -172,6 +174,9 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await page.goto('/my/cloud-logs?googleLogs=complete&receipt=opaque-receipt');
   await expect(page).toHaveURL(/\/my\/cloud-logs$/);
   await expect(page.getByText('new-owner@example.test')).toBeVisible();
+  await expect(
+    page.getByRole('alert').filter({ hasText: /did not confirm revocation/ }),
+  ).toBeVisible();
   expect(
     calls.find((call) =>
       call.path.endsWith('/me/google-log-grants/oauth/finish'),
@@ -184,6 +189,9 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   ).toBeNull();
 
   await page.goto('/my/cloud-logs');
+  await expect(
+    page.getByRole('alert').filter({ hasText: /did not confirm revocation/ }),
+  ).toBeVisible();
   await expect(
     page.getByRole('heading', { name: 'Personal Google Cloud log views' }),
   ).toBeVisible();

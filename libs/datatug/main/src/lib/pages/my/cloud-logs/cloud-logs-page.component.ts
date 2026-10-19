@@ -95,6 +95,17 @@ declare global {
                 <div>
                   <strong>{{ grant.email }}</strong>
                   <p>{{ grantLabel(grant) }}</p>
+                  @if (
+                    grant.previousRevocationUnconfirmed ||
+                    (grant.state === 'retired' &&
+                      grant.revocationConfirmed === false)
+                  ) {
+                    <p role="alert" class="error">
+                      Google did not confirm revocation of an earlier grant for
+                      this account. Review Google Account access controls before
+                      relying on the disconnect; reconnecting is not guaranteed.
+                    </p>
+                  }
                 </div>
                 @if (confirmGrantId() === grant.id) {
                   <div
@@ -787,7 +798,13 @@ export class CloudLogsPageComponent {
       this.grants.update((grants) =>
         grants.map((candidate) =>
           candidate.id === grant.id
-            ? { ...candidate, state: result.state }
+            ? {
+                ...candidate,
+                state: result.state,
+                ...(result.state === 'retired'
+                  ? { revocationConfirmed: result.revocationConfirmed }
+                  : {}),
+              }
             : candidate,
         ),
       );

@@ -5,6 +5,8 @@ export interface GoogleLogGrant {
   readonly id: string;
   readonly email: string;
   readonly state: 'active' | 'revocation_pending' | 'retired';
+  readonly revocationConfirmed?: boolean;
+  readonly previousRevocationUnconfirmed?: boolean;
 }
 
 export interface PersonalLogConnection {

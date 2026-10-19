@@ -20,7 +20,18 @@ describe('CloudLogsApiService', () => {
   });
 
   it('uses the authenticated API for OAuth start and connection listing', async () => {
-    get.mockReturnValue(of({ grants: [], connections: [] }));
+    const listing = {
+      grants: [
+        {
+          id: 'grant-previously-revoked',
+          email: 'owner@example.test',
+          state: 'active',
+          previousRevocationUnconfirmed: true,
+        },
+      ],
+      connections: [],
+    };
+    get.mockReturnValue(of(listing));
     post.mockReturnValue(
       of({
         authorizationUrl: 'https://accounts.google.com/consent',
@@ -34,10 +45,7 @@ describe('CloudLogsApiService', () => {
       authorizationUrl: 'https://accounts.google.com/consent',
       finishKey: 'tab-scoped-key',
     });
-    await expect(firstValueFrom(service.list())).resolves.toEqual({
-      grants: [],
-      connections: [],
-    });
+    await expect(firstValueFrom(service.list())).resolves.toEqual(listing);
     expect(post).toHaveBeenCalledWith(
       'datatug/me/google-log-grants/oauth/start',
       {},
@@ -50,6 +58,7 @@ describe('CloudLogsApiService', () => {
       id: 'grant-1',
       email: 'owner@example.test',
       state: 'active',
+      previousRevocationUnconfirmed: true,
     } as const;
     post.mockReturnValue(of(grant));
     await expect(
