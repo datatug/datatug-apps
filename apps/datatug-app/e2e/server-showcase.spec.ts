@@ -75,32 +75,44 @@ test('cross-database comparison runs one native server query and displays source
     'explicit live server acceptance only',
   );
   const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
-  if (!source)
-    throw new Error(
-      'Set DATATUG_E2E_GITHUB_FAKE to the paired committed demo checkout.',
-    );
-  test.setTimeout(90_000);
-  await installFakeGithub(context, [
-    { fullName: 'datatug/datatug-demo-project', dir: source },
-  ]);
-  await context.route(
-    'https://raw.githubusercontent.com/demo-db/northwind/**',
-    (route) => route.continue(),
-  );
+  const localProxy = process.env['DATATUG_E2E_PUBLIC_OVDB_PROXY'] === '1';
+  test.setTimeout(120_000);
+  if (source) {
+    await installFakeGithub(context, [
+      { fullName: 'datatug/datatug-demo-project', dir: source },
+    ]);
+    await context.route('https://raw.githubusercontent.com/demo-db/northwind/**', route => route.continue());
+  }
+  // With no fixture path the public GitHub project reader is entirely real.
+  const endpoint = localProxy
+    ? '/__datatug_public_ovdb/cloud/v1/dtql'
+    : 'https://cloud.openvaultdb.com/v1/dtql';
   const posts: string[] = [];
+  const preflights: string[] = [];
   const downloads: string[] = [];
   context.on('request', (request) => {
+    if (localProxy && new URL(request.url()).pathname.startsWith('/__datatug_public_ovdb/cloud/')) {
+      expect(request.headers()['authorization']).toBeUndefined();
+      expect(request.headers()['cookie']).toBeUndefined();
+      if (request.method() === 'GET') preflights.push(new URL(request.url()).pathname);
+    }
     if (
       request.method() === 'POST' &&
-      request.url().includes('cloud.openvaultdb.com/v1/')
+      (localProxy ? new URL(request.url()).pathname.startsWith('/__datatug_public_ovdb/cloud/v1/') : request.url().includes('cloud.openvaultdb.com/v1/'))
     )
       posts.push(request.url());
     if (/\.(sqlite|wasm)(?:$|\?)/.test(request.url()))
       downloads.push(request.url());
   });
+  const revision = process.env['DATATUG_E2E_SERVER_SHOWCASE_REF'] || 'HEAD';
   await page.goto(
-    '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase',
+    `/project/github.com/datatug/datatug-demo-project/tree/${revision}/demo-project-1/-/board/showcase`,
   );
+  if (localProxy) {
+    const race = page.locator('ion-card').filter({ hasText: 'Where Northwind orders shipped' }).first();
+    await expect(race).toContainText('830 source orders', { timeout: 60_000 });
+    await expect(race).toContainText('23 monthly frames');
+  }
   const inspector = page
     .locator('ion-card')
     .filter({ hasText: 'Inspect saved query results' })
@@ -113,24 +125,27 @@ test('cross-database comparison runs one native server query and displays source
   const response = page.waitForResponse(
     (response) =>
       response.request().method() === 'POST' &&
-      response.url() === 'https://cloud.openvaultdb.com/v1/dtql',
+      (localProxy ? new URL(response.url()).pathname === endpoint : response.url() === endpoint),
   );
   await inspector
     .getByRole('button', { name: 'Run on board', exact: true })
     .click();
   const answered = await response;
   expect(answered.status()).toBe(200);
-  const envelope = await answered.json();
-  expect(envelope.complete).toBe(true);
-  expect(envelope.execution.route).toBe('in-memory');
-  expect(
-    envelope.execution.sources
-      .map(
-        (source: { database: string; collection: string }) =>
-          `${source.database}.${source.collection}`,
-      )
-      .sort(),
-  ).toEqual(['chinook.Customer', 'northwind.Customers']);
+  // Chromium can discard a completed worker's response body before CDP reads
+  // it. Local acceptance uses the real visible typed result and canonical
+  // lineage; the native decoder's strict envelope/source checks have unit gates.
+  const envelope = localProxy ? undefined : await answered.json();
+  if (envelope) {
+    expect(envelope.complete).toBe(true);
+    expect(envelope.execution.route).toBe('in-memory');
+    expect(envelope.execution.sources.map((source: { database: string; collection: string }) =>
+      `${source.database}.${source.collection}`).sort()).toEqual(['chinook.Customer', 'northwind.Customers']);
+  }
+  if (localProxy) expect(preflights).toEqual([
+    '/__datatug_public_ovdb/cloud/v1/databases/northwind',
+    '/__datatug_public_ovdb/cloud/v1/databases/chinook',
+  ]);
   await expect(inspector).toContainText('17 rows · 3 columns');
   await expect(
     inspector.locator('table tbody tr').filter({ hasText: 'Canada' }),
@@ -138,21 +153,31 @@ test('cross-database comparison runs one native server query and displays source
   await expect(
     inspector.locator('table tbody tr').filter({ hasText: 'Canada' }),
   ).toContainText('8');
-  expect(posts).toEqual(['https://cloud.openvaultdb.com/v1/dtql']);
+  expect(posts).toHaveLength(1);
+  expect(localProxy ? new URL(posts[0]).pathname : posts[0]).toBe(endpoint);
   expect(downloads).toEqual([]);
+  const sourceDetails = inspector.locator('details.source-details');
+  await sourceDetails.locator('summary').click();
+  await expect(sourceDetails).toContainText('https://cloud.openvaultdb.com/v1/dtql (direct OVDB)');
+  await page.screenshot({ path: testInfo.outputPath('local-federation.png'), fullPage: true });
   await testInfo.attach('native-federation-public-receipt', {
     body: JSON.stringify(
       {
         observedAt: new Date().toISOString(),
-        endpoint: answered.url(),
+        endpoint: 'https://cloud.openvaultdb.com/v1/dtql',
+        transport: localProxy ? 'development-loopback-proxy' : 'direct',
+        projectReader: source ? 'committed-checkout fixture' : 'public GitHub',
+        projectRevision: revision,
+        browserEndpoint: answered.url(),
         status: answered.status(),
-        execution: envelope.execution,
-        columns: envelope.columns,
-        complete: envelope.complete,
-        canada: envelope.records.find(
-          (record: { data: { country: string } }) =>
-            record.data.country === 'Canada',
-        )?.data,
+        ...(envelope ? { execution: envelope.execution, columns: envelope.columns, complete: envelope.complete,
+          canada: envelope.records.find((record: { data: { country: string } }) => record.data.country === 'Canada')?.data } : {
+          responseEnvelopeCapture: 'Worker response body unavailable to CDP; visible result admitted by strict native decoder.',
+          capabilityPreflights: preflights,
+          visibleRows: await inspector.locator('table tbody tr').count(),
+          visibleCanada: await inspector.locator('table tbody tr').filter({ hasText: 'Canada' }).innerText(),
+          canonicalSourceDetails: await sourceDetails.innerText(),
+        }),
       },
       null,
       2,
