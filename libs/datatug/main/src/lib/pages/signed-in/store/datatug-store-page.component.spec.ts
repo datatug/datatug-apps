@@ -1,4 +1,7 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import {
+  CUSTOM_ELEMENTS_SCHEMA,
+  provideZonelessChangeDetection,
+} from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute, RouterLink, provideRouter } from '@angular/router';
 import { provideIonicAngular } from '@ionic/angular/provide';
@@ -26,7 +29,7 @@ import {
 } from '@ionic/angular';
 import { SneatErrorCardComponent } from '@sneat/components';
 import { ErrorLogger } from '@sneat/core';
-import { BehaviorSubject, of, type Observable } from 'rxjs';
+import { BehaviorSubject, Subject, map, of, type Observable } from 'rxjs';
 
 import {
   DatatugStorePageComponent,
@@ -167,22 +170,22 @@ describe('StorePageComponent', () => {
 
   describe('storeDisplayId', () => {
     it('shows an http- prefixed host:port storeId as a real URL', () => {
-      component.storeId = 'http-localhost:8989';
+      component.storeId.set('http-localhost:8989');
       expect(component.storeDisplayId).toBe('http://localhost:8989');
     });
 
     it('shows a bare host:port storeId unchanged, with no scheme to display', () => {
-      component.storeId = 'localhost:8989';
+      component.storeId.set('localhost:8989');
       expect(component.storeDisplayId).toBe('localhost:8989');
     });
 
     it('shows firestore unchanged, which has no url', () => {
-      component.storeId = 'firestore';
+      component.storeId.set('firestore');
       expect(component.storeDisplayId).toBe('firestore');
     });
 
     it('is empty when storeId is not yet set', () => {
-      component.storeId = undefined;
+      component.storeId.set(undefined);
       expect(component.storeDisplayId).toBe('');
     });
   });
@@ -200,7 +203,7 @@ describe('StorePageComponent', () => {
 
       component.processStoreId('http-localhost:8989');
 
-      expect(component.agentState).toEqual(emittedState);
+      expect(component.agentState()).toEqual(emittedState);
     });
   });
 
@@ -223,11 +226,11 @@ describe('StorePageComponent', () => {
     });
 
     it('does not throw and sets storeId to github.com', () => {
-      expect(component.storeId).toBe('github.com');
+      expect(component.storeId()).toBe('github.com');
     });
 
     it('lists the known GitHub demo project', () => {
-      expect(component.projects?.some((p) => p.id === DEMO_PROJECT_ID)).toBe(
+      expect(component.projects()?.some((p) => p.id === DEMO_PROJECT_ID)).toBe(
         true,
       );
     });
@@ -250,7 +253,7 @@ describe('StorePageComponent', () => {
       });
       const f = TestBed.createComponent(DatatugStorePageComponent);
       const c = f.componentInstance;
-      const ids = c.projects?.map((p) => p.id);
+      const ids = c.projects()?.map((p) => p.id);
       expect(ids).toContain('my-repo@my-org@my-folder');
       expect(ids).toContain(DEMO_PROJECT_ID);
     });
@@ -274,8 +277,8 @@ describe('StorePageComponent', () => {
         fixture = TestBed.createComponent(DatatugStorePageComponent);
         component = fixture.componentInstance;
       }).not.toThrow();
-      expect(component.storeId).toBe('firestore');
-      const ids = component.projects?.map((p) => p.id);
+      expect(component.storeId()).toBe('firestore');
+      const ids = component.projects()?.map((p) => p.id);
       expect(ids).toContain('my-project');
       expect(ids).not.toContain(DEMO_PROJECT_ID);
     });
@@ -300,38 +303,40 @@ describe('StorePageComponent', () => {
         fixture = TestBed.createComponent(DatatugStorePageComponent);
         component = fixture.componentInstance;
       }).not.toThrow();
-      expect(component.storeId).toBeUndefined();
-      expect(component.projects).toBeUndefined();
+      expect(component.storeId()).toBeUndefined();
+      expect(component.projects()).toBeUndefined();
     });
   });
 
   describe('isGithubStore', () => {
     it('is true for the canonical github.com id', () => {
-      component.storeId = 'github.com';
+      component.storeId.set('github.com');
       expect(component.isGithubStore).toBe(true);
     });
 
     it('is true for the bare github id (the route sometimes carries this instead — see MyStoresComponent.goStore())', () => {
-      component.storeId = 'github';
+      component.storeId.set('github');
       expect(component.isGithubStore).toBe(true);
     });
 
     it('is false for firestore and agent ids', () => {
-      component.storeId = 'firestore';
+      component.storeId.set('firestore');
       expect(component.isGithubStore).toBe(false);
-      component.storeId = 'http-localhost:8989';
+      component.storeId.set('http-localhost:8989');
       expect(component.isGithubStore).toBe(false);
     });
   });
 
   // G-A1c: the link of a project row is the address `projectUrl()` writes for it.
   describe('projectLink', () => {
-    const linkOf = (storeId: string | null, id: string): string =>
-      (
+    const linkOf = (storeId: string | null, id: string): string => {
+      component.storeId.set(storeId);
+      return (
         component as unknown as {
           projectLink(project: { id: string }): string;
         }
-      ).projectLink.call(Object.assign(component, { storeId }), { id });
+      ).projectLink({ id });
+    };
 
     it.each([
       [
@@ -370,7 +375,7 @@ describe('StorePageComponent', () => {
 
   describe('openGithubProject', () => {
     beforeEach(() => {
-      component.storeId = 'github.com';
+      component.storeId.set('github.com');
     });
 
     it('builds the project id of <repository>, <owner> and <folder> from the form fields (defaults) and navigates to the project page', () => {
@@ -461,6 +466,7 @@ describe('StorePageComponent', () => {
   // template instead.
   describe('project list gating in the real template', () => {
     let authState: BehaviorSubject<IDatatugUserState>;
+    let routeStore: BehaviorSubject<string | null>;
 
     beforeEach(async () => {
       // The outer `describe`'s own `beforeEach` (runs before this one, per
@@ -471,6 +477,7 @@ describe('StorePageComponent', () => {
       // configure its own module from a clean slate.
       TestBed.resetTestingModule();
 
+      routeStore = new BehaviorSubject<string | null>(null);
       authState = new BehaviorSubject<IDatatugUserState>({
         status: 'notAuthenticated',
         record: undefined,
@@ -480,6 +487,7 @@ describe('StorePageComponent', () => {
         imports: [DatatugStorePageComponent],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
         providers: [
+          provideZonelessChangeDetection(),
           provideRouter([]),
           provideIonicAngular(),
           {
@@ -493,7 +501,7 @@ describe('StorePageComponent', () => {
             provide: ActivatedRoute,
             useValue: {
               queryParamMap: of({ get: () => null }),
-              paramMap: of({ get: () => null }),
+              paramMap: routeStore.pipe(map((id) => ({ get: () => id }))),
               snapshot: { paramMap: { get: () => null }, params: {} },
             },
           },
@@ -531,8 +539,8 @@ describe('StorePageComponent', () => {
       projects: typeof GITHUB_DEMO_PROJECTS | undefined,
     ): ComponentFixture<DatatugStorePageComponent> {
       const f = TestBed.createComponent(DatatugStorePageComponent);
-      f.componentInstance.storeId = storeId;
-      f.componentInstance.projects = projects;
+      f.componentInstance.storeId.set(storeId);
+      f.componentInstance.projects.set(projects);
       f.detectChanges();
       return f;
     }
@@ -549,6 +557,87 @@ describe('StorePageComponent', () => {
     // not the same runtime aggregation), so assert against it instead.
     const html = (f: ComponentFixture<DatatugStorePageComponent>): string =>
       (f.nativeElement as HTMLElement).innerHTML;
+
+    it('renders deferred CLI projects and later polling state without a forced change-detection event', async () => {
+      const agent = new Subject<IAgentState>();
+      const projects = new Subject<typeof GITHUB_DEMO_PROJECTS>();
+      vi.mocked(
+        TestBed.inject(AgentStateService).watchAgentInfo,
+      ).mockReturnValue(agent);
+      vi.mocked(
+        TestBed.inject(DatatugStoreService).getProjects,
+      ).mockReturnValue(projects);
+      routeStore.next('http-127.0.0.1:44082');
+      const f = TestBed.createComponent(DatatugStorePageComponent);
+      f.detectChanges();
+      await f.whenStable();
+      expect(f.nativeElement.querySelector('h3')).toBeNull();
+      agent.next({ lastCheckedAt: new Date(), isNotAvailable: false });
+      await f.whenStable();
+      expect(html(f)).toContain('Loading...');
+      projects.next([
+        {
+          id: 'datatug-demo-project',
+          title: 'DataTug Demo',
+          access: 'private',
+        },
+      ]);
+      await f.whenStable();
+      expect(f.nativeElement.querySelector('h3')?.textContent).toBe(
+        'DataTug Demo',
+      );
+      expect(html(f)).not.toContain('Loading...');
+      agent.next({ lastCheckedAt: new Date(), isNotAvailable: true });
+      await f.whenStable();
+      expect(html(f)).toContain('Agent is offline or not available');
+      f.destroy();
+      expect(agent.observed).toBe(false);
+      expect(projects.observed).toBe(false);
+      expect(authState.observed).toBe(false);
+    });
+
+    it.each([0, 503])(
+      'renders a deferred project failure (%s) without a manual event',
+      async (status) => {
+        const agent = new Subject<IAgentState>();
+        const projects = new Subject<typeof GITHUB_DEMO_PROJECTS>();
+        vi.mocked(
+          TestBed.inject(AgentStateService).watchAgentInfo,
+        ).mockReturnValue(agent);
+        vi.mocked(
+          TestBed.inject(DatatugStoreService).getProjects,
+        ).mockReturnValue(projects);
+        routeStore.next('http-127.0.0.1:44082');
+        const f = TestBed.createComponent(DatatugStorePageComponent);
+        f.detectChanges();
+        await f.whenStable();
+        agent.next({ lastCheckedAt: new Date(), isNotAvailable: false });
+        await f.whenStable();
+        expect(html(f)).toContain('Loading...');
+        projects.error({ name: 'HttpErrorResponse', ok: false, status });
+        await f.whenStable();
+        expect(html(f)).not.toContain('Loading...');
+        if (status === 0)
+          expect(html(f)).toContain('Agent is offline or not available');
+        else
+          expect(
+            f.nativeElement.querySelector('sneat-datatug-error-card'),
+          ).not.toBeNull();
+        f.destroy();
+      },
+    );
+
+    it('repaints a delayed cloud auth transition without a manual event', async () => {
+      const f = render('firestore', []);
+      await f.whenStable();
+      expect(html(f)).toContain('Please sign in to see projects');
+      authState.next({ status: 'authenticated', record: undefined });
+      await f.whenStable();
+      expect(html(f)).not.toContain('Please sign in to see projects');
+      expect(html(f)).toContain('No projects yet');
+      f.destroy();
+      expect(authState.observed).toBe(false);
+    });
 
     it('anonymous + GitHub store: lists the demo project and shows the "Open a GitHub project" form, no sign-in prompt', () => {
       authState.next({ status: 'notAuthenticated', record: undefined });
@@ -594,13 +683,23 @@ describe('StorePageComponent', () => {
 
     it('anonymous + explicit loopback CLI: displays its authorized project list', () => {
       authState.next({ status: 'notAuthenticated', record: undefined });
-      const f = render('http-localhost:8989', [{ id: 'local-project', title: 'Local project', access: 'private' }]);
+      const f = render('http-localhost:8989', [
+        { id: 'local-project', title: 'Local project', access: 'private' },
+      ]);
       expect(html(f)).not.toContain('Please sign in to see projects');
       expect(html(f)).not.toContain('Open a GitHub project');
-      expect(f.nativeElement.querySelector('h3')?.textContent).toBe('Local project');
+      expect(f.nativeElement.querySelector('h3')?.textContent).toBe(
+        'Local project',
+      );
     });
 
-    it.each(['http-agent.example:8989', 'http-localhost.evil.example:8989', 'http-localhost:8989@evil.example', 'http-localhost:99999', 'unknown-store'])('anonymous + %s retains the cloud sign-in gate', (storeId) => {
+    it.each([
+      'http-agent.example:8989',
+      'http-localhost.evil.example:8989',
+      'http-localhost:8989@evil.example',
+      'http-localhost:99999',
+      'unknown-store',
+    ])('anonymous + %s retains the cloud sign-in gate', (storeId) => {
       authState.next({ status: 'notAuthenticated', record: undefined });
       const f = render(storeId, undefined);
       expect(html(f)).toContain('Please sign in to see projects');
