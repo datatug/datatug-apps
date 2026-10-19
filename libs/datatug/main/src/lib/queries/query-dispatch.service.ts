@@ -44,17 +44,19 @@ async function boundedOvdbResponse(response: Response, signal: AbortSignal): Pro
   if (!reader) return response;
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let reachedEnd = false;
   try {
     while (true) {
       if (signal.aborted) throw abortError();
       const { done, value } = await awaitWithAbort(reader.read(), signal);
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       size += value.byteLength;
       if (size > OVDB_RESPONSE_BYTES) throw new QueryDispatchError('The OVDB response exceeds the 2 MiB browser limit. Narrow the query.');
       chunks.push(value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   const body = new Uint8Array(new ArrayBuffer(size));
   let offset = 0;

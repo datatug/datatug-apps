@@ -286,9 +286,16 @@ describe('QueryDispatchService transport boundary', () => {
     ['hosted', { dtql: true }, '/dtql'],
   ] as const)('sends %s OVDB reads through the explicitly bound connection fetch', async (_label, capabilities, path) => {
     const pin = 'a'.repeat(64);
-    const fetch = vi.fn(async () => new Response(JSON.stringify({
+    const response = new Response(JSON.stringify({
       records: [{ key: 'items/1', data: { Name: 'changed working copy' } }], nextCursor: 'next',
-    }), { status: 200, headers: { 'Content-Type': 'application/json' } }));
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    const body = response.body;
+    if (!body) throw new Error('Expected a readable response');
+    const reader = body.getReader();
+    const cancel = vi.spyOn(reader, 'cancel');
+    const release = vi.spyOn(reader, 'releaseLock');
+    vi.spyOn(body, 'getReader').mockReturnValue(reader);
+    const fetch = vi.fn(async () => response);
     const binding: OvdbConnection = {
       id: 'native-runtime-17', title: 'Working copy', baseUrl: 'https://ovdb.example', databaseId: 'db-17', fetch,
       descriptor: { id: 'db-17', capabilities,
@@ -313,6 +320,47 @@ describe('QueryDispatchService transport boundary', () => {
     expect(output.truncated).toBe(true);
     expect(output.hasMore).toBe(false);
     expect(globalThis.fetch).not.toBe(fetch);
+    expect(cancel).not.toHaveBeenCalled();
+    expect(release).toHaveBeenCalledOnce();
+  });
+
+  it.each(['limit', 'abort', 'error'] as const)('cancels incomplete OVDB bodies on %s and releases their reader', async (failure) => {
+    const pin = 'a'.repeat(64);
+    const controller = new AbortController();
+    const response = new Response(new ReadableStream<Uint8Array>({
+      pull(stream) {
+        if (failure === 'error') { stream.error(new Error('reader failed')); return; }
+        stream.enqueue(new Uint8Array(failure === 'limit' ? 2 * 1024 * 1024 + 1 : 1));
+      },
+    }));
+    const body = response.body;
+    if (!body) throw new Error('Expected a readable response');
+    const reader = body.getReader();
+    if (failure === 'abort') {
+      const read = reader.read.bind(reader);
+      vi.spyOn(reader, 'read').mockImplementation(async () => {
+        const chunk = await read();
+        controller.abort();
+        return chunk;
+      });
+    }
+    const cancel = vi.spyOn(reader, 'cancel');
+    const release = vi.spyOn(reader, 'releaseLock');
+    vi.spyOn(body, 'getReader').mockReturnValue(reader);
+    const binding: OvdbConnection = {
+      id: 'copy', title: 'Copy', baseUrl: 'https://ovdb.example', databaseId: 'db', fetch: async () => response,
+      descriptor: { id: 'db', capabilities: { dtql: true }, canonical: { url: 'https://fixture.example/db.sqlite', sha256: pin, bytes: 64 },
+        schemas: { collections: { items: { fields: { Name: { type: 'string' } } } } } },
+    };
+    github.mockReturnValue(of({ connections: [{ id: 'logical', storage: 'sqlite', fixtureSha256: pin }] }));
+    await expect(service.execute({
+      projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+      definition: { ...sqlDefinition(), connectionId: 'logical', request: { queryType: QueryType.DTQL, text: 'from: {name: items}\nlimit: 1' } as ITextQueryRequest },
+      queryId: 'folder/report', target: { kind: 'ovdb-connection', connectionId: binding.id, databaseId: binding.databaseId },
+      runtimeBinding: binding, signal: controller.signal,
+    })).rejects.toThrow(failure === 'limit' ? '2 MiB' : failure === 'error' ? 'reader failed' : 'cancelled');
+    await vi.waitFor(() => expect(release).toHaveBeenCalledOnce());
+    expect(cancel).toHaveBeenCalledOnce();
   });
 
   it('uses an explicitly bound OVDB copy from shared Firestore storage without routing to hosted execution', async () => {
