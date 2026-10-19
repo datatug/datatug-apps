@@ -164,6 +164,7 @@ describe('DataTug app routes', () => {
       'pricing/return',
       undefined, // /demo/sqlite: DemoDB local SQLite explorer (matcher)
       undefined, // /demo/ovdb: DemoDB hosted PostgreSQL editions through OpenVaultDB (matcher)
+      'demo/logs', // mapped log evidence over an ordinary OVDB collection
       undefined, // exact historical Chinook demo alias
       undefined, // exact shared-project short folder alias
       undefined, // the hand-off route, which has a matcher instead of a path

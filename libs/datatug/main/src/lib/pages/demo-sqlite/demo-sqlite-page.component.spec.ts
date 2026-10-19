@@ -18,12 +18,13 @@ async function setup(params: Params, environment: LocalDemoDbEnvironment = fakeE
     return runtime;
   });
   const paramMap = new BehaviorSubject(convertToParamMap(params));
+  const queryParamMap = new BehaviorSubject(convertToParamMap({}));
   await TestBed.configureTestingModule({
     imports: [DemoSqlitePageComponent],
     providers: [
       provideRouter([]),
       { provide: ErrorLogger, useValue: { logErrorHandler: () => () => undefined } },
-      { provide: ActivatedRoute, useValue: { paramMap, snapshot: { paramMap: paramMap.value } } },
+      { provide: ActivatedRoute, useValue: { paramMap, queryParamMap, snapshot: { paramMap: paramMap.value, queryParamMap: queryParamMap.value } } },
       { provide: LOCAL_DEMODB_RUNTIME_LOADER, useValue: loader },
       { provide: LOCAL_DEMODB_ENVIRONMENT, useValue: environment },
       { provide: OvdbConfirmService, useValue: { confirm: vi.fn(async () => true) } },

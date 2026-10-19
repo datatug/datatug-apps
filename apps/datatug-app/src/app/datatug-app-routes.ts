@@ -368,6 +368,12 @@ export const routes: Routes = [
       import('@sneat/datatug-main').then((m) => m.loadDemoOvdbPage()),
   },
   {
+    path: 'demo/logs',
+    canMatch: [checkoutOrRoot],
+    loadComponent: () =>
+      import('@sneat/datatug-main').then((m) => m.loadDemoLogsPage()),
+  },
+  {
     matcher: legacyChinookDemoMatcher,
     canMatch: [redirectLegacyChinookDemo],
     loadComponent: demoHoldingPage,
