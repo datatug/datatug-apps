@@ -269,7 +269,12 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await expect(
     page.getByRole('heading', { name: 'Personal Google Cloud log views' }),
   ).toBeVisible();
-  await expect(page.getByText('investigator@example.test')).toBeVisible();
+  await expect(
+    page
+      .locator('article.account')
+      .filter({ hasText: 'investigator@example.test' })
+      .getByText('investigator@example.test', { exact: true }),
+  ).toBeVisible();
   await page
     .getByLabel('Google Cloud project ID')
     .locator('input')
