@@ -114,7 +114,7 @@ async function boxOf(locator: Locator) {
           box.width === previous.width &&
           box.height === previous.height;
         previous = box;
-        if (same) stable = box!;
+        if (same && box) stable = box;
         return same;
       },
       { timeout: 15_000, intervals: [50] },
