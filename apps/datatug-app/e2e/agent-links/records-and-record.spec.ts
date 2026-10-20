@@ -1,4 +1,5 @@
 import { expect, test } from './fixtures/daemon';
+import { recordKeyRequestUrl } from './fixtures/request-privacy';
 
 /** Agent requests a page sent, with method, path and body, for the read-only and no-key-in-address checks. */
 function watchAgent(page: import('@playwright/test').Page, port: number) {
@@ -48,10 +49,12 @@ test.describe('record link of the Record card (AC:record-link-uses-primary-key-i
     );
     expect(link).not.toContain('$key');
     const seen = watchAgent(page, linkDaemon.port);
-    const appRequests: string[] = [];
+    const appRequests: { method: string; url: string }[] = [];
     const appOrigin = String(test.info().project.use.baseURL);
     page.on('request', (r) => {
-      if (r.url().startsWith(appOrigin)) appRequests.push(r.url().split('#')[0]);
+      if (r.url().startsWith(appOrigin)) {
+        appRequests.push({ method: r.method(), url: r.url().split('#')[0] });
+      }
     });
     await page.goto(link);
     const fields = page.getByTestId('record-fields');
@@ -61,8 +64,10 @@ test.describe('record link of the Record card (AC:record-link-uses-primary-key-i
     await expect.poll(() => page.url()).toContain('#pk=');
     await expect.poll(() => page.url()).not.toContain('code=');
     // The key never went to the web host, nor in an agent address; it went once, in the lookup's body.
-    for (const url of [...appRequests, ...seen.map((r) => r.url)]) {
-      expect(url).not.toContain('3402');
+    for (const request of [...appRequests, ...seen]) {
+      expect(
+        recordKeyRequestUrl(request.url, appOrigin, request.method),
+      ).not.toContain('3402');
     }
     const lookups = seen.filter((r) => r.url.endsWith('/datatug/records/lookup'));
     expect(lookups).toHaveLength(1);
