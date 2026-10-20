@@ -13,7 +13,7 @@ import {
   provideRouter,
 } from '@angular/router';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
-import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   QueryResultPageComponent,
@@ -320,6 +320,85 @@ describe('QueryResultPageComponent', () => {
       await unknown.render();
       expect(unknown.navigate).not.toHaveBeenCalled();
       expect(unknown.el().querySelector('[data-testid="result-table"]')).not.toBeNull();
+    });
+
+    // https://github.com/datatug/datatug-apps/issues/411: the read-only grid used to be drawn, then destroyed ~0.4 s
+    // later when the project lookup answered and the page was replaced by the editor, which lost a selection, a
+    // resized column or a sort made in that window.
+    describe('the read-only grid is not drawn only to be replaced', () => {
+      const grid = (m: Mounted) => m.el().querySelector('[data-testid="result-table"]');
+      const opening = (m: Mounted) => m.el().querySelector('[data-testid="result-opening-editor"]');
+
+      it('waits for the project lookup instead of drawing the grid, and never draws it when the editor opens', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.render();
+        expect(grid(m)).toBeNull();
+        expect(opening(m)).not.toBeNull();
+        expect(m.navigate).not.toHaveBeenCalled();
+        lookup.next({ id: 'demo', environments: [{ id: 'local' }] });
+        await m.render();
+        expect(m.navigate).toHaveBeenCalledOnce();
+        expect(grid(m)).toBeNull();
+      });
+
+      it('draws the grid at once when the agent does not know the project', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.render();
+        expect(grid(m)).toBeNull();
+        lookup.next(undefined);
+        await m.render();
+        expect(grid(m)).not.toBeNull();
+        expect(opening(m)).toBeNull();
+        expect(m.navigate).not.toHaveBeenCalled();
+      });
+
+      it('draws the grid when the lookup fails', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.render();
+        lookup.error(new Error('down'));
+        await m.render();
+        expect(grid(m)).not.toBeNull();
+      });
+
+      it('draws the grid when the editor cannot be opened', async () => {
+        const m = mount('t4', { view: 'table' });
+        m.navigate.mockResolvedValue(false);
+        answer(m);
+        await m.render();
+        await new Promise((resolve) => setTimeout(resolve));
+        await m.render();
+        expect(m.navigate).toHaveBeenCalledOnce();
+        expect(grid(m)).not.toBeNull();
+      });
+
+      it('draws the grid when the lookup takes too long', async () => {
+        vi.useFakeTimers();
+        try {
+          const m = mount('t4', { view: 'table' }, new Subject<unknown>());
+          answer(m);
+          m.fixture.detectChanges();
+          expect(grid(m)).toBeNull();
+          vi.advanceTimersByTime(3001);
+          m.fixture.detectChanges();
+          expect(grid(m)).not.toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('draws the grid at once for an address that does not ask for the table, with no wait for the lookup', async () => {
+        const m = mount('t4', {}, new Subject<unknown>());
+        answer(m);
+        await m.render();
+        expect(grid(m)).not.toBeNull();
+        expect(opening(m)).toBeNull();
+      });
     });
 
     it('also leaves for the editor when the Table view is picked later', async () => {

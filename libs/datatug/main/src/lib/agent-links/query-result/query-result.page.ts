@@ -113,6 +113,9 @@ type RerunState =
 
 export { isLoopbackStore };
 
+/** How long a link to the Table view waits for the agent to name the result's project before it draws the table. */
+const EDITOR_LOOKUP_WAIT_MS = 3000;
+
 const VIEW_LABELS: Record<ResultView, string> = {
   table: 'Table',
   record: 'Record',
@@ -208,6 +211,14 @@ export class QueryResultPageComponent {
   private editorCommands?: string[];
   /** The address asks for the Table view by name (`?view=table`), the card's "Open in DataTug" target. */
   private tableRequested = false;
+  private holdTimer?: ReturnType<typeof setTimeout>;
+  /**
+   * True while a link that asks for the Table view (`?view=table`) waits for the agent to say whether it knows the
+   * result's project: the page is then replaced by the query editor, so drawing the read-only grid first would draw
+   * it, destroy it a moment later and lose whatever the person did to it (a selection, a resized column, a sort).
+   * The grid is drawn at once when the lookup fails, says no, or takes longer than `EDITOR_LOOKUP_WAIT_MS`.
+   */
+  readonly openingEditor = signal(false);
 
   readonly views = RESULT_VIEWS;
   readonly viewLabels = VIEW_LABELS;
@@ -320,7 +331,10 @@ export class QueryResultPageComponent {
           state.kind === 'loaded' ? state.result.meta : undefined,
         );
       });
-    this.destroyRef.onDestroy(() => this.projectSubscription?.unsubscribe());
+    this.destroyRef.onDestroy(() => {
+      this.projectSubscription?.unsubscribe();
+      clearTimeout(this.holdTimer);
+    });
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((q) => {
       this.view.set(resultView(q.get(VIEW_QUERY_PARAM)));
       this.row.set(resultRow(q.get(ROW_QUERY_PARAM)));
@@ -339,11 +353,25 @@ export class QueryResultPageComponent {
   private openEditorForTable(): void {
     const commands = this.editorCommands;
     const id = routeParam(this.route.snapshot, routingParamResultId);
-    if (!this.tableRequested || !commands || !validResultId(id)) return;
-    void this.router.navigate(commands, {
-      queryParams: { [RESULT_QUERY_PARAM]: id },
-      replaceUrl: true,
-    });
+    if (!this.tableRequested || !commands || !validResultId(id)) {
+      // Nothing to open: if the lookup was the only thing the table waited for, draw it now.
+      if (commands) this.releaseTable();
+      return;
+    }
+    void this.router
+      .navigate(commands, {
+        queryParams: { [RESULT_QUERY_PARAM]: id },
+        replaceUrl: true,
+      })
+      .then((done) => {
+        if (!done) this.releaseTable();
+      }, () => this.releaseTable());
+  }
+
+  /** Draws the read-only table: the editor is not going to replace this page. */
+  private releaseTable(): void {
+    clearTimeout(this.holdTimer);
+    this.openingEditor.set(false);
   }
 
   /** Reads the result again (Check again). */
@@ -423,6 +451,7 @@ export class QueryResultPageComponent {
   private selectProject(meta: ResultMeta | undefined): void {
     this.projectSubscription?.unsubscribe();
     this.editorCommands = undefined;
+    this.releaseTable();
     const url = this.router.url;
     const ids = meta ? resultDbIds(meta) : undefined;
     const storeId = this.storeId();
@@ -432,12 +461,20 @@ export class QueryResultPageComponent {
       return;
     }
     const ref = { projectId: ids.project, storeId };
+    if (this.tableRequested) {
+      this.openingEditor.set(true);
+      this.holdTimer = setTimeout(
+        () => this.openingEditor.set(false),
+        EDITOR_LOOKUP_WAIT_MS,
+      );
+    }
     this.projectSubscription = this.projectService
       .getSummary(ref)
       .pipe(take(1))
       .subscribe({
         next: (summary) => {
           if (!summary) {
+            this.releaseTable();
             this.navContext.selectResultProject(url);
             return;
           }
@@ -453,7 +490,10 @@ export class QueryResultPageComponent {
           this.editorCommands = projectPageCommands(ref, ['query']);
           this.openEditorForTable();
         },
-        error: () => this.navContext.selectResultProject(url),
+        error: () => {
+          this.releaseTable();
+          this.navContext.selectResultProject(url);
+        },
       });
   }
 
