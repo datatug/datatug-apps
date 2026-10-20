@@ -14,6 +14,7 @@ import {
 } from '@sneat/datatug-semantic';
 import { RandomIdService } from '@sneat/random';
 import { BehaviorSubject, defer, of, Subject } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import type { Mock } from 'vitest';
 import { IncidentCreatePageComponent } from './incident-create-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
@@ -135,6 +136,7 @@ describe('IncidentCreatePageComponent', () => {
           useValue: { newRandomId: randomIdSpy },
         },
         { provide: IncidentClientService, useValue: { create: createSpy } },
+        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();

@@ -157,4 +157,17 @@ describe('HomePage composition', () => {
     expect(image?.getAttribute('alt')).toContain('tugboat');
     expect(hero.querySelector('ion-list')).toBeNull();
   });
+  it('offers a private Incident-first entry without claiming the public demo is writable', () => {
+    const fixture = configure('notAuthenticated');
+    const headings = Array.from(
+      fixture.nativeElement.querySelectorAll('h2') as NodeListOf<Element>,
+    ).map((heading) => heading.textContent?.trim());
+    expect(headings).toContain('Record an Incident in a private project');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Try Detective with real checks',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Explore the public demo',
+    );
+  });
 });

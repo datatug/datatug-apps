@@ -401,7 +401,7 @@ describe('DetectiveClientService', () => {
         title: 'Invoice mismatch',
         environment: 'demo',
         ifMatch: 3,
-      })
+      }, 'operation-reloaded-create')
       .subscribe();
     expect(api.post.mock.calls[0][0]).toBe('datatug/detective/incident_action');
     expect(api.post.mock.calls[0][1]).toEqual({
@@ -413,7 +413,7 @@ describe('DetectiveClientService', () => {
       title: 'Invoice mismatch',
       environment: 'demo',
       ifMatch: 3,
-      operationId: expect.any(String),
+      operationId: 'operation-reloaded-create',
     });
     client.knowledgeProposals(cloud).subscribe();
     expect(api.get.mock.calls[1][0]).toBe(
@@ -442,6 +442,23 @@ describe('DetectiveClientService', () => {
     });
     expect(api.post.mock.calls[1][1]).not.toHaveProperty('actor');
     expect(api.post.mock.calls[1][1]).not.toHaveProperty('securityContextId');
+  });
+
+  it('reads project Incidents and a full server-issued IncidentRef through the authenticated API', () => {
+    const cloud = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: 'personal',
+      project: 'demo-project',
+    };
+    api.get.mockReturnValue(of({ incidents: [] }));
+    client.projectIncidents(cloud, 'demo').subscribe();
+    expect(api.get.mock.calls[0][0]).toBe('datatug/detective/project_incidents');
+    expect(api.get.mock.calls[0][1].toString()).toContain('environment=demo');
+    client.projectIncident(cloud, 'demo', 'detective-incidents-9c561d36/INC-1').subscribe();
+    expect(api.get.mock.calls[1][0]).toBe('datatug/detective/incident');
+    expect(api.get.mock.calls[1][1].get('incidentRef')).toBe('detective-incidents-9c561d36/INC-1');
+    expect(api.get.mock.calls[1][1].get('spaceID')).toBe('personal');
   });
 
   it('uses scoped agent Incident and knowledge routes with typed server mutations', () => {

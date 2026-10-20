@@ -1,4 +1,5 @@
 import type { DetectiveCase } from './models';
+import type { DetectiveInputValue } from './models';
 
 export interface HostedIncidentView {
   ref: { storeId: string; incidentId: string };
@@ -16,14 +17,23 @@ export interface HostedIncidentLinks {
   incidents: HostedIncidentView[];
 }
 
+export interface HostedProjectIncidents {
+  incidents: HostedIncidentView[];
+}
+
+export interface HostedProjectIncident {
+  incident: HostedIncidentView;
+}
+
 export type HostedIncidentAction =
   | {
       type: 'create';
-      caseId: string;
+      caseId?: string;
       title: string;
       description?: string;
+      context?: Record<string, DetectiveInputValue>;
       environment: string;
-      ifMatch: number;
+      ifMatch?: number;
     }
   | {
       type: 'link';

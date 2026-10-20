@@ -73,7 +73,7 @@ test('the home sections keep the landing, other ways, and project cards in order
   const hero = content.getByTestId('home-hero');
   const platform = content.getByTestId('platform-block');
   const detective = content.getByRole('heading', {
-    name: 'Detective demo',
+    name: 'Record an Incident in a private project',
   });
   const projects = content.locator('.home-cards-grid');
   for (const section of [hero, projects, platform, detective]) {
@@ -98,13 +98,13 @@ test('the home sections keep the landing, other ways, and project cards in order
     return {
       heroBeforeProjects: precedes(hero, projects),
       projectsBeforePlatform: precedes(projects, platform),
-      detectiveInsideProjects: !!detective && !!projects?.contains(detective),
+      platformBeforeDetective: precedes(platform, detective),
     };
   });
   expect(order).toEqual({
     heroBeforeProjects: true,
     projectsBeforePlatform: true,
-    detectiveInsideProjects: true,
+    platformBeforeDetective: true,
   });
 });
 

@@ -26,10 +26,13 @@
   @if (!requestContext()) {
     <ion-card>
       <ion-card-content>
-        <p>
-          Open a project and environment connected to a DataTug server to load
-          or create incidents.
-        </p>
+        <p>Open a project and environment connected to a DataTug server to load local Incidents.</p>
+        <p>Create a private project to record your first hosted Incident, or open your existing private project.</p>
+        @if (hostedIncidentsHref(); as href) {
+          <ion-button [routerLink]="href">Open private Incidents</ion-button>
+        } @else {
+          <sneat-datatug-detective-demo-starter destination="incidents" />
+        }
       </ion-card-content>
     </ion-card>
   } @else if (unavailableMessage()) {

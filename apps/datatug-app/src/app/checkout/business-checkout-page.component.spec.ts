@@ -28,7 +28,7 @@ import template from './business-checkout-page.component.html?raw';
 
 it('embeds the shared auth panel for signed-out Business checkout', () => {
   expect(template).toContain(
-    '<sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />',
+    '<sneat-auth-panel\n          [returnTo]="authReturnTo()"\n          initialMode="sign-up"\n          [showIntro]="false"\n        />',
   );
   expect(template).not.toContain('Sign in to continue</button>');
 });
