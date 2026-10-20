@@ -3,16 +3,9 @@
   min-width: 0;
 }
 
-// The header item is a direct child of the card now, so the row list below it
-// must not add Ionic's md-mode 8px list padding — otherwise the white strip
-// the header used to sit above just moves under the gray band.
-.rows-list {
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
 .demo-list {
-  // 8px list padding removed above: keep the previous 12px separation.
+  // The card row list is flush (global `ion-card > ion-list` rule), so this
+  // margin is the whole separation before the Demo projects divider.
   margin-top: 12px;
 }
 

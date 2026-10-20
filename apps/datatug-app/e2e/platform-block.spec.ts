@@ -29,6 +29,14 @@ test('home composition introduces DataTug, the public demo, and two other entry 
   });
   expect(headerGap).toBe(0);
 
+  // The My projects rows keep their ion-list (only the header moved out), so
+  // the card-scoped rule must still strip Ionic's md 8px list padding.
+  const rowsList = page.locator('sneat-datatug-my-projects ion-list').first();
+  const rowsPaddingTop = await rowsList.evaluate(
+    (list) => getComputedStyle(list).paddingTop,
+  );
+  expect(rowsPaddingTop).toBe('0px');
+
   const demo = page.locator('[data-demo-slot="GitHub"]');
   await expect(demo.locator('.demo-visual')).toHaveAttribute(
     'aria-hidden',
