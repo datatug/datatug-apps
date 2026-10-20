@@ -688,6 +688,7 @@ export class ResultsGridComponent {
           this.layoutScope = { key, signature, ids };
           this.appliedLayout = undefined;
           clearTimeout(this.autosizeTimer);
+          this.autosizeOperation = undefined;
         }
         const stored = readGridState(key, signature, ids);
         this.density.set(stored?.density ?? 'comfortable');
@@ -877,9 +878,7 @@ export class ResultsGridComponent {
     // Forget the stored layout first: the grid's own reset events must not find it and apply it again.
     this.saveLayout();
     api.resetColumnState();
-    if (this.layoutScope)
-      this.autosizeOperation = { scope: this.layoutScope, remember: false };
-    api.autoSizeAllColumns();
+    this.fitColumns(false);
     this.rememberAppliedLayout();
     this.refreshChooser();
     this.say('Columns reset.');
@@ -982,16 +981,24 @@ export class ResultsGridComponent {
   }
 
   autosizeAll(): void {
+    this.fitColumns(true);
+  }
+
+  private fitColumns(remember: boolean): void {
     const api = this.api;
     const scope = this.layoutScope;
     if (!api || !scope) return;
     clearTimeout(this.autosizeTimer);
-    this.autosizeOperation = { scope, remember: true };
+    const operation = { scope, remember };
+    this.autosizeOperation = operation;
     api.autoSizeAllColumns();
     // Retain the button's delayed fit save, but never sample a different result
-    // when it runs. Completed user layout changes do not wait for this timer.
+    // when it runs. AG may emit no completion when nothing can be measured, so
+    // both Reset and Autosize intent also expire here without needing an event.
     this.autosizeTimer = setTimeout(() => {
-      if (this.layoutScope !== scope || this.api !== api) return;
+      if (this.autosizeOperation === operation)
+        this.autosizeOperation = undefined;
+      if (!remember || this.layoutScope !== scope || this.api !== api) return;
       this.layoutTouched = true;
       this.saveLayout();
     }, 600);
