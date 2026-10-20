@@ -30,7 +30,7 @@ test.describe('records link of the Table records card (AC:records-link-opens-top
     const rows = page.getByTestId('records-grid').locator('tbody tr');
     await expect(rows).toHaveCount(7, { timeout: 30_000 });
     await expect(page.getByTestId('records-grid')).toContainText('For Those About To Rock We Salute You');
-    expect(page.url()).not.toContain('code=');
+    await expect.poll(() => page.url()).not.toContain('code=');
     expectReadOnly(seen);
     const select = seen.find((r) => r.url.includes('/datatug/exec/select'));
     expect(new URL(select?.url ?? 'http://x').searchParams.get('limit')).toBe('7');
@@ -58,8 +58,8 @@ test.describe('record link of the Record card (AC:record-link-uses-primary-key-i
     await expect(fields).toContainText('PlaylistId', { timeout: 30_000 });
     await expect(fields).toContainText('3402');
     // The key stays in the fragment (refreshable); the code does not.
-    expect(page.url()).toContain('#pk=');
-    expect(page.url()).not.toContain('code=');
+    await expect.poll(() => page.url()).toContain('#pk=');
+    await expect.poll(() => page.url()).not.toContain('code=');
     // The key never went to the web host, nor in an agent address; it went once, in the lookup's body.
     for (const url of [...appRequests, ...seen.map((r) => r.url)]) {
       expect(url).not.toContain('3402');
