@@ -133,7 +133,7 @@ describe('the shared login page of a signed-in user on DataTug (NG04002 on "Cont
     });
 
     const text = (fixture.nativeElement as HTMLElement).textContent ?? '';
-    expect(text).toContain('You are already signed in as');
+    expect(text).toContain('You’re signed in as');
     const buttons = fixture.debugElement.queryAll(By.css('ion-button'));
     const cont = buttons.find((b) =>
       b.nativeElement.textContent.includes('Continue'),

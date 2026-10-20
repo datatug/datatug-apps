@@ -37,7 +37,7 @@
     "@datatug/project-address": "*",
     "@sneat/auth-core": "0.27.37",
     "@sneat/auth-models": "0.27.37",
-    "@sneat/auth-ui": "0.27.39",
+    "@sneat/auth-ui": "0.27.40",
     "@sneat/app-auth": "0.27.37",
     "@sneat/components": "0.27.37",
     "@sneat/core": "0.27.37",

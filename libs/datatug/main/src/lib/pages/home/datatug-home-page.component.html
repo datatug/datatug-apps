@@ -1,19 +1,21 @@
 <!--
-  Content header (UX brief §1/§2): the brand lives in the side-panel header,
-  so the home content header carries the motto instead; Sign in moved here
-  from the "My projects" card area so it stays reachable on narrow layouts.
-  Hidden below the split-pane breakpoint — the shell's compact header owns
-  that width.
+  The compact shell header owns narrow layouts. On wide DataTug Home layouts,
+  this header provides the brand and overlay menu button. Sign in stays here so
+  it remains reachable on narrow layouts.
 -->
 <ion-header class="home-header">
   <ion-toolbar color="light">
+    @if (showHomeMenu()) {
+      <ion-buttons slot="start">
+        <ion-menu-button
+          menuIcon="menu-outline"
+          class="app-level-menu-button"
+          aria-label="Open navigation menu"
+          data-testid="home-menu-button"
+        ></ion-menu-button>
+      </ion-buttons>
+    }
     <ion-title>
-      <!--
-        The side panel is hidden while signed out on home (founder
-        2026-10-14: no empty panel), so the brand header it carried lives
-        here instead; signed in, the panel shows the brand and this header
-        keeps just the motto (UX brief §1: never both).
-      -->
       @if (showBrand()) {
         <a
           class="brand-home-link home-header-brand"
@@ -43,30 +45,25 @@
 </ion-header>
 
 <ion-content>
-  <!-- Card-header standard (brief §1; founder 2026-10-14): grayish full-width
-       header divider in the side-panel chrome family, boundary before content. -->
   <ion-card class="home-hero" data-testid="home-hero">
-    <ion-item color="light" lines="full">
-      <ion-label>
-        <p class="hero-eyebrow">DataTug.app</p>
-        <h1>Ask better questions of your data.</h1>
-      </ion-label>
-    </ion-item>
     <ion-card-content>
       <div class="hero-layout">
-        <p class="hero-copy">
-          Keep project structure, connected data, and saved queries together.
-          Explore the context, ask a question, and follow the result back to its
-          source.
-        </p>
-        <div class="hero-visual" aria-hidden="true">
-          <div class="visual-source">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="visual-link"></div>
-          <div class="visual-query"><i></i><i></i><i></i></div>
-          <div class="visual-result"><b></b><b></b><b></b></div>
+        <div class="hero-message">
+          <h1>Ask better questions of your data.</h1>
+          <p class="hero-copy">
+            Keep project structure, connected data, and saved queries together.
+            Explore the context, ask a question, and follow the result back to
+            its source.
+          </p>
         </div>
+        <img
+          class="hero-visual"
+          src="assets/home/hero-data-panorama.webp"
+          alt="A tugboat guiding a ship named DATA carrying shipping containers with server racks through blue harbour waters"
+          width="2098"
+          height="749"
+          fetchpriority="high"
+        />
       </div>
     </ion-card-content>
   </ion-card>
@@ -99,25 +96,22 @@
       <sneat-datatug-detective-demo-starter destination="incidents" />
     </ion-card-content>
   </ion-card>
-
   <!--
-  Consolidated footer (UX brief §2/§14): one copyright/version block in main
-  content (the sidebar drops its copy on home), plus "Powered by DALgo" as a
-  standalone attribution line, not part of a card.
+  Consolidated footer: one copyright/version row in main content (the sidebar
+  drops its copy on home), with the DALgo credit presented as a trailing badge.
 -->
   <footer class="home-footer">
     <sneat-app-version />
     @if (profile.showPoweredByDalgo) {
-      <p class="powered-by">
-        <a
-          href="https://dalgo.io"
-          target="_blank"
-          rel="noopener"
-          aria-label="Powered by DALgo, the database abstraction layer for Go"
-          data-testid="powered-by-dalgo"
-          >Powered by DALgo ↗</a
-        >
-      </p>
+      <a
+        class="powered-by-badge"
+        href="https://dalgo.io"
+        target="_blank"
+        rel="noopener"
+        aria-label="Powered by DALgo, the database abstraction layer for Go"
+        data-testid="powered-by-dalgo"
+        >Powered by DALgo ↗</a
+      >
     }
   </footer>
 </ion-content>

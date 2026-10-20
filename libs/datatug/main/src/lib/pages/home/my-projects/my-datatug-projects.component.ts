@@ -10,7 +10,6 @@ import {
   IonButton,
   IonButtons,
   IonCard,
-  IonCardContent,
   IonIcon,
   IonItem,
   IonItemDivider,
@@ -29,6 +28,7 @@ import {
 } from '../../../services/base/datatug-user-service';
 import { takeUntil } from 'rxjs/operators';
 import { Subject } from 'rxjs';
+import { Router } from '@angular/router';
 import { ISneatAuthState, SneatAuthStateService } from '@sneat/auth-core';
 import { STORE_TYPE_GITHUB } from '@sneat/core';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
@@ -36,12 +36,12 @@ import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DEMO_PROJECT_REF } from '../../../nav/github-project-address';
 import { IProjectContext } from '../../../nav/nav-models';
 import { LoadingItemsComponent } from '../loading-items-component';
+import { DetectiveDemoStarterComponent } from '../../../detective/detective-demo-starter.component';
 
 interface DemoProjectOption {
   readonly project: IDatatugProjectBriefWithIdAndStoreRef;
   readonly provider: string;
   readonly summary: string;
-  readonly highlights: readonly string[];
 }
 
 @Component({
@@ -52,7 +52,6 @@ interface DemoProjectOption {
   imports: [
     LoadingItemsComponent,
     IonCard,
-    IonCardContent,
     IonItem,
     IonLabel,
     IonButtons,
@@ -60,6 +59,7 @@ interface DemoProjectOption {
     IonIcon,
     IonItemDivider,
     IonList,
+    DetectiveDemoStarterComponent,
   ],
 })
 export class MyDatatugProjectsComponent implements OnDestroy {
@@ -68,6 +68,7 @@ export class MyDatatugProjectsComponent implements OnDestroy {
   private readonly sneatAuthStateService = inject(SneatAuthStateService);
   private readonly datatugUserService = inject(DatatugUserService);
   private readonly newProjectService = inject(NewProjectService);
+  private readonly router = inject(Router);
   private readonly changeDetectorRef = inject(ChangeDetectorRef);
 
   readonly title = input<string>();
@@ -96,12 +97,7 @@ export class MyDatatugProjectsComponent implements OnDestroy {
     {
       project: this.demoProjects[0],
       provider: 'GitHub',
-      summary:
-        'Explore the project structure and inspect three saved Chinook SQL examples.',
-      highlights: [
-        'Browse project files and data context',
-        'See how the saved Chinook queries are organized',
-      ],
+      summary: 'Browse the project and three saved Chinook SQL examples.',
     },
   ];
 
@@ -155,6 +151,20 @@ export class MyDatatugProjectsComponent implements OnDestroy {
   }
 
   addProject(): void {
-    this.newProjectService.navigateToNewProjectPage();
+    if (this.authState?.status === 'authenticated') {
+      this.newProjectService.navigateToNewProjectPage();
+      return;
+    }
+
+    const newProjectUrl = this.router.serializeUrl(
+      this.router.createUrlTree(['/new-project'], {
+        queryParams: { returnUrl: this.router.url },
+      }),
+    );
+    void this.router.navigateByUrl(
+      this.router.createUrlTree(['/login'], {
+        queryParams: { returnTo: newProjectUrl },
+      }),
+    );
   }
 }

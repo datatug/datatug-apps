@@ -1,6 +1,7 @@
 :host {
   display: block;
   min-width: 0;
+  container-type: inline-size;
 }
 
 .demo-list {
@@ -9,88 +10,86 @@
   margin-top: 12px;
 }
 
-.demo-experiences {
-  padding-top: 8px;
+.project-list ion-item:last-child {
+  --border-width: 0;
 }
+
+.empty-project-visual {
+  display: block;
+  width: calc(100% - 40px);
+  height: clamp(90px, 12vw, 132px);
+  margin: 0 auto;
+  object-fit: cover;
+  object-position: center 56%;
+  opacity: 0.58;
+  mix-blend-mode: multiply;
+  filter: grayscale(1);
+}
+
+.demo-options { padding: 8px 20px 16px; }
 
 .demo-details {
   min-width: 0;
-  padding: 8px 0 12px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 20px;
   align-items: center;
-  gap: 8px;
+  padding: 20px 0;
 
-  & + & {
-    border-top: 1px solid var(--ion-color-step-150, #d7d8da);
-  }
+  & + & { border-top: 1px solid var(--ion-color-step-150, #e3e8ef); }
+}
 
+.demo-overview, .demo-copy { min-width: 0; }
+
+.demo-copy {
   h3 {
-    margin: 0 0 4px;
-    font-size: 0.9rem;
-    font-weight: 650;
+    margin: 0 0 8px;
+    color: var(--ion-text-color, #152d43);
+    font-size: 1.08rem;
+    line-height: 1.25;
+    font-weight: 700;
+    letter-spacing: -0.015em;
   }
 
   p {
-    margin: 0 0 8px;
+    margin: 0 0 14px;
+    color: var(--ion-color-step-600, #586779);
     font-size: 0.875rem;
-    line-height: 1.45;
-  }
-
-  ul {
-    margin: 0 0 12px;
-    padding-inline-start: 18px;
-    color: var(--ion-color-step-600, #666);
-    font-size: 0.8rem;
     line-height: 1.55;
   }
+
+  .demo-provider {
+    margin-bottom: 7px;
+    color: var(--ion-color-primary);
+    font-size: 0.67rem;
+    font-weight: 650;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+  }
+}
+
+.demo-details ::ng-deep ion-button {
+  margin: 0;
+  min-height: 38px;
+  height: auto;
+  --padding-top: 9px;
+  --padding-bottom: 9px;
+  --border-radius: 7px;
+  --box-shadow: none;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
 }
 
 .demo-visual {
   display: block;
-  width: 118px;
-  max-width: 136px;
-  height: auto;
-  justify-self: end;
-
-  .visual-board {
-    fill: color-mix(
-      in srgb,
-      var(--ion-color-primary) 7%,
-      var(--ion-background-color)
-    );
-    stroke: var(--ion-color-step-150, #d7d8da);
-  }
-
-  .visual-folder,
-  .visual-query,
-  .visual-result {
-    fill: var(--ion-card-background, #fff);
-    stroke: var(--ion-color-step-200, #c7c9cc);
-  }
-
-  .visual-folder-line,
-  .visual-query-line {
-    fill: none;
-    stroke: var(--ion-color-primary);
-    stroke-linecap: round;
-    stroke-width: 2;
-  }
-
-  .visual-flow {
-    fill: none;
-    stroke: var(--ion-color-primary);
-    stroke-linecap: round;
-    stroke-linejoin: round;
-    stroke-width: 2;
-  }
-
-  .visual-result-line {
-    fill: none;
-    stroke: var(--ion-color-success);
-    stroke-linecap: round;
-    stroke-width: 2;
-  }
+  width: 100%;
+  height: 110px;
+  object-fit: contain;
+  mix-blend-mode: multiply;
+  filter: grayscale(1);
 }
 
 ion-item-divider h3 {
@@ -98,13 +97,34 @@ ion-item-divider h3 {
   font-size: 0.85rem;
 }
 
-@media (min-width: 1200px) {
+
+@container (min-width: 480px) {
+  .demo-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 24px;
+    padding: 20px 24px 24px;
+  }
+
   .demo-details {
-    grid-template-columns: minmax(0, 1fr) 136px;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    padding: 0;
     gap: 16px;
   }
 
-  .demo-visual {
-    width: 100%;
-  }
+  .demo-details + .demo-details { border-top: 0; }
+  .demo-visual { height: 130px; }
+  .demo-overview, .demo-copy { display: flex; flex: 1; flex-direction: column; }
+  .demo-summary { flex: 1; }
+  .demo-details ::ng-deep ion-button { align-self: flex-start; }
+}
+
+@container (max-width: 479.98px) {
+  .demo-details { grid-template-columns: 88px minmax(0, 1fr); gap: 16px; }
+  .demo-options { padding-inline: 16px; }
+  .demo-copy h3 { font-size: 1rem; }
+
+  .empty-project-visual { height: 90px; }
 }

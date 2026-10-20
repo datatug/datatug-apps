@@ -153,7 +153,8 @@ bootstrapApplication(DatatugAppComponent, {
       useValue: datatugAppEnvironmentConfig.useNgrok
         ? `//${location.host}/v0/`
         : datatugAppEnvironmentConfig.firebaseConfig.emulator
-          ? location.hostname === '127.0.0.1' ||
+          ? location.hostname === 'datatug.localhost' ||
+            location.hostname === '127.0.0.1' ||
             location.hostname === 'localhost'
             ? 'http://127.0.0.1:8090/v0/'
             : 'https://local-api.sneat.ws/v0/'
