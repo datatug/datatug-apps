@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
-import { DatatugApiBaseUrl } from './datatug-api-base-url.token';
+import {
+  DATATUG_TEST_PREVIEW_API_BASE_URL,
+  DatatugApiBaseUrl,
+} from './datatug-api-base-url.token';
 
 describe('DatatugApiBaseUrl', () => {
   it('falls back to DefaultSneatAppApiBaseUrl when no SneatApiBaseUrl is provided', () => {
@@ -26,5 +29,11 @@ describe('DatatugApiBaseUrl', () => {
     });
     expect(TestBed.inject(DatatugApiBaseUrl)).toBe('https://datatug.test/v0/');
     expect(TestBed.inject(SneatApiBaseUrl)).toBe('https://sneat.test/v0/');
+  });
+
+  it('names the Belgium datatug-cloud-preview as the TEST project preview base URL', () => {
+    expect(DATATUG_TEST_PREVIEW_API_BASE_URL).toBe(
+      'https://datatug-cloud-preview-354fvnqbaa-ew.a.run.app/v0/',
+    );
   });
 });

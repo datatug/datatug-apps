@@ -24,7 +24,7 @@ function configure(providers: Provider[] = []): HttpTestingController {
 }
 
 describe('DatatugApiService', () => {
-  const preview = 'https://datatug-cloud-preview-354fvnqbaa-ey.a.run.app/v0/';
+  const preview = 'https://datatug-cloud-preview-354fvnqbaa-ew.a.run.app/v0/';
   const identity = 'https://identity.test/v0/';
 
   it.each([
