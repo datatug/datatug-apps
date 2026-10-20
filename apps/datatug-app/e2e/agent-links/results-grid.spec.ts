@@ -72,11 +72,11 @@ async function open(
 }
 
 /**
- * Waits until the grid stops re-creating its rows. A stored result draws its rows, then draws them again a few
- * hundred milliseconds later (the column metadata arrives), and a re-created row loses its checkbox state. Marked
- * rows survive an in-place update, so an unmarked row after the pause means the rows were replaced.
- * This works around a product race (a selection ticked in that window is lost):
- * https://github.com/datatug/datatug-apps/issues/411
+ * Waits until the grid stops re-creating its rows. Marked rows survive an in-place update, so an unmarked row after
+ * the pause means the rows were replaced. This used to be needed because the result page drew its read-only grid and
+ * then, about 0.4 s later, was replaced by the query editor with a second grid (issue #411: a selection, a resized
+ * column or a sort made in that window was lost). The page holds the grid during the editor handoff and keeps a
+ * displayed fallback in place. This guard additionally checks that a mounted grid does not re-create its rows.
  */
 async function settleRows(grid: Locator): Promise<void> {
   for (let attempt = 0; attempt < 10; attempt++) {
@@ -327,13 +327,18 @@ test.describe('results grid toolbar', () => {
     await page.mouse.up();
     await expect.poll(width).toBeGreaterThan(before + 80);
     const widened = await width();
+    // Verify that the stored width of this exact column matches the completed resize before reloading. Any saved
+    // layout could still contain the earlier width from the sort click; its presence alone does not prove that
+    // the completed width will survive the reload.
     await expect
-      .poll(
-        async () =>
-          JSON.parse((await gridStorage(page))[0]?.value ?? '{}').cols
-            ?.length ?? 0,
+      .poll(async () =>
+        Math.abs(
+          (JSON.parse((await gridStorage(page))[0]?.value ?? '{}').cols?.find(
+            (c: { colId?: string }) => c.colId === colId,
+          )?.width ?? 0) - widened,
+        ),
       )
-      .toBeGreaterThan(0);
+      .toBeLessThanOrEqual(2);
     await page.reload();
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
     await expect

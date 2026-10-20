@@ -13,7 +13,7 @@ import {
   provideRouter,
 } from '@angular/router';
 import { DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
-import { BehaviorSubject, Observable, of, throwError } from 'rxjs';
+import { BehaviorSubject, Observable, Subject, of, throwError } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   QueryResultPageComponent,
@@ -35,6 +35,7 @@ class GridStubComponent {
   readonly snapshotKey = input<unknown>();
   readonly analyticsScope = input<unknown>();
   readonly exportName = input<unknown>();
+  readonly stateKey = input<unknown>();
   readonly rowClicked = output<unknown>();
 }
 
@@ -158,6 +159,7 @@ const problem = (m: Mounted) =>
 
 describe('QueryResultPageComponent', () => {
   afterEach(() => {
+    vi.useRealTimers();
     TestBed.inject(HttpTestingController).verify();
     TestBed.resetTestingModule();
   });
@@ -180,9 +182,7 @@ describe('QueryResultPageComponent', () => {
     expect(m.text()).toContain('2 saved rows');
     expect(m.text()).toContain('more rows exist');
     // The grid remembers its layout under a key of ids only: the project and the stored result.
-    expect(m.page.gridStateKey()).toMatch(
-      /^datatug\.grid\.v1:demo:t4:result$/,
-    );
+    expect(m.page.gridStateKey()).toMatch(/^datatug\.grid\.v1:demo:t4:result$/);
   });
 
   it('selects the project of the result as the current one, with its environment', async () => {
@@ -298,16 +298,27 @@ describe('QueryResultPageComponent', () => {
       answer(m);
       await m.render();
       expect(m.navigate).toHaveBeenCalledOnce();
-      const [commands, extras] = m.navigate.mock.calls[0] as [string[], Record<string, unknown>];
+      const [commands, extras] = m.navigate.mock.calls[0] as [
+        string[],
+        Record<string, unknown>,
+      ];
       expect(commands.join('/')).toContain('project');
       expect(commands.join('/')).toMatch(/\/query$/);
       expect(commands.join('/')).toContain(encodeURIComponent('demo'));
       // no history entry, so Back goes where it went before; the id travels as the one `result` parameter
-      expect(extras).toEqual({ queryParams: { result: 't4' }, replaceUrl: true });
+      expect(extras).toEqual({
+        queryParams: { result: 't4' },
+        replaceUrl: true,
+      });
     });
 
     it('stays on the page for the other views, for an address without a view, and for a project the agent does not know', async () => {
-      for (const query of [{ view: 'record' }, { view: 'columns' }, { view: 'sources' }, {}] as Record<string, string>[]) {
+      for (const query of [
+        { view: 'record' },
+        { view: 'columns' },
+        { view: 'sources' },
+        {},
+      ] as Record<string, string>[]) {
         const m = mount('t4', query);
         answer(m);
         await m.render();
@@ -319,7 +330,280 @@ describe('QueryResultPageComponent', () => {
       answer(unknown);
       await unknown.render();
       expect(unknown.navigate).not.toHaveBeenCalled();
-      expect(unknown.el().querySelector('[data-testid="result-table"]')).not.toBeNull();
+      expect(
+        unknown.el().querySelector('[data-testid="result-table"]'),
+      ).not.toBeNull();
+    });
+
+    // https://github.com/datatug/datatug-apps/issues/411: the read-only grid used to be drawn, then destroyed ~0.4 s
+    // later when the project lookup answered and the page was replaced by the editor, which lost a selection, a
+    // resized column or a sort made in that window.
+    describe('the read-only grid is not drawn only to be replaced', () => {
+      const grid = (m: Mounted) =>
+        m.el().querySelector('[data-testid="result-table"]');
+      const opening = (m: Mounted) =>
+        m.el().querySelector('[data-testid="result-opening-editor"]');
+
+      it('waits for the project lookup instead of drawing the grid, and never draws it when the editor opens', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.render();
+        expect(grid(m)).toBeNull();
+        expect(opening(m)).not.toBeNull();
+        expect(m.navigate).not.toHaveBeenCalled();
+        lookup.next({ id: 'demo', environments: [{ id: 'local' }] });
+        await m.render();
+        expect(m.navigate).toHaveBeenCalledOnce();
+        expect(grid(m)).toBeNull();
+      });
+
+      it('draws the grid at once when the agent does not know the project', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.render();
+        expect(grid(m)).toBeNull();
+        lookup.next(undefined);
+        await m.render();
+        expect(grid(m)).not.toBeNull();
+        expect(opening(m)).toBeNull();
+        expect(m.navigate).not.toHaveBeenCalled();
+      });
+
+      it('draws the grid when the lookup fails', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.render();
+        lookup.error(new Error('down'));
+        await m.render();
+        expect(grid(m)).not.toBeNull();
+      });
+
+      it('draws the grid when the editor cannot be opened', async () => {
+        const m = mount('t4', { view: 'table' });
+        m.navigate.mockResolvedValue(false);
+        answer(m);
+        await m.render();
+        await new Promise((resolve) => setTimeout(resolve));
+        await m.render();
+        expect(m.navigate).toHaveBeenCalledOnce();
+        expect(grid(m)).not.toBeNull();
+      });
+
+      it('draws the grid when the lookup takes too long', async () => {
+        vi.useFakeTimers();
+        try {
+          const m = mount('t4', { view: 'table' }, new Subject<unknown>());
+          answer(m);
+          m.fixture.detectChanges();
+          expect(grid(m)).toBeNull();
+          vi.advanceTimersByTime(3001);
+          m.fixture.detectChanges();
+          expect(grid(m)).not.toBeNull();
+        } finally {
+          vi.useRealTimers();
+        }
+      });
+
+      it('keeps the same fallback grid when a timed-out project lookup later succeeds', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.fixture.whenStable();
+        vi.advanceTimersByTime(3001);
+        vi.useRealTimers();
+        await m.fixture.whenStable();
+        const fallback = m.el().querySelector('sneat-datatug-results-grid');
+        expect(fallback).not.toBeNull();
+        lookup.next({ id: 'demo' });
+        await m.fixture.whenStable();
+        expect(m.el().querySelector('sneat-datatug-results-grid')).toBe(
+          fallback,
+        );
+        expect(m.navigate).not.toHaveBeenCalled();
+        expect(m.page.backHref()).toContain('demo');
+      });
+
+      it('keeps the grid hidden while a started editor navigation is pending beyond the lookup deadline', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        let finish!: (done: boolean) => void;
+        m.navigate.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          }),
+        );
+        answer(m);
+        await m.fixture.whenStable();
+        lookup.next({ id: 'demo' });
+        await m.fixture.whenStable();
+        vi.advanceTimersByTime(3001);
+        vi.useRealTimers();
+        await m.fixture.whenStable();
+        expect(grid(m)).toBeNull();
+        expect(opening(m)).not.toBeNull();
+        finish(false);
+        await Promise.resolve();
+        await m.fixture.whenStable();
+        expect(grid(m)).not.toBeNull();
+      });
+
+      it('drops the old project lookup as soon as another result starts loading', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.fixture.whenStable();
+        m.route.snapshot.paramMap = convertToParamMap({ resultId: 't5' });
+        m.route.paramMap.next(m.route.snapshot.paramMap);
+        const next = m.ctrl.expectOne(`${AGENT}/results/t5`);
+        lookup.next({ id: 'demo' });
+        await m.fixture.whenStable();
+        expect(m.navigate).not.toHaveBeenCalled();
+        next.flush(invoiceCustomerResult());
+      });
+
+      it('ignores navigation rejection after a different view starts a new editor handoff', async () => {
+        const m = mount('t4', { view: 'table' });
+        let reject!: (reason: Error) => void;
+        m.navigate.mockReturnValueOnce(
+          new Promise<boolean>((_resolve, fail) => {
+            reject = fail;
+          }),
+        );
+        answer(m);
+        await m.fixture.whenStable();
+        setQuery(m, { view: 'record' });
+        setQuery(m, { view: 'table' });
+        await m.fixture.whenStable();
+        reject(new Error('old navigation cancelled'));
+        await Promise.resolve();
+        await m.fixture.whenStable();
+        expect(grid(m)).toBeNull();
+        expect(opening(m)).not.toBeNull();
+      });
+
+      it('keeps fallback on row URL updates and permits an explicit later Table selection', async () => {
+        vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.fixture.whenStable();
+        vi.advanceTimersByTime(3001);
+        vi.useRealTimers();
+        await m.fixture.whenStable();
+        const fallback = grid(m);
+        setQuery(m, { view: 'table', row: '2' });
+        lookup.next({ id: 'demo' });
+        await m.fixture.whenStable();
+        expect(grid(m)).toBe(fallback);
+        expect(m.navigate).not.toHaveBeenCalled();
+        setQuery(m, { view: 'record' });
+        setQuery(m, { view: 'table' });
+        await m.fixture.whenStable();
+        expect(m.navigate).toHaveBeenCalledOnce();
+        expect(grid(m)).toBeNull();
+      });
+
+      it('cancels the old lookup on reload and accepts only the new result lookup', async () => {
+        const oldLookup = new Subject<unknown>();
+        const newLookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, oldLookup);
+        answer(m);
+        await m.fixture.whenStable();
+        m.getSummary.mockReturnValue(newLookup);
+        m.page.reload();
+        oldLookup.next({ id: 'demo' });
+        await m.fixture.whenStable();
+        expect(m.navigate).not.toHaveBeenCalled();
+        answer(m);
+        newLookup.next({ id: 'demo' });
+        await m.fixture.whenStable();
+        expect(m.navigate).toHaveBeenCalledOnce();
+        expect(grid(m)).toBeNull();
+      });
+
+      it('ignores old navigation failure while the reloaded result waits for its project', async () => {
+        const m = mount('t4', { view: 'table' });
+        let finish!: (done: boolean) => void;
+        m.navigate.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          }),
+        );
+        answer(m);
+        await m.fixture.whenStable();
+        m.getSummary.mockReturnValue(new Subject<unknown>());
+        m.page.reload();
+        answer(m);
+        await m.fixture.whenStable();
+        finish(false);
+        await Promise.resolve();
+        await m.fixture.whenStable();
+        expect(grid(m)).toBeNull();
+        expect(opening(m)).not.toBeNull();
+      });
+
+      it('does not navigate or update project context from a lookup after destruction', async () => {
+        const lookup = new Subject<unknown>();
+        const m = mount('t4', { view: 'table' }, lookup);
+        answer(m);
+        await m.fixture.whenStable();
+        m.fixture.destroy();
+        lookup.next({ id: 'demo' });
+        expect(m.navigate).not.toHaveBeenCalled();
+        expect(m.selectResultProject).not.toHaveBeenCalled();
+      });
+
+      it('holds the grid from an explicit Table press through the router view update', async () => {
+        const m = mount('t4', { view: 'record' });
+        answer(m);
+        await m.fixture.whenStable();
+        m.page.selectView('table');
+        await m.fixture.whenStable();
+        expect(grid(m)).toBeNull();
+        expect(opening(m)).not.toBeNull();
+        setQuery(m, { view: 'table' });
+        await m.fixture.whenStable();
+        expect(m.navigate).toHaveBeenCalledTimes(2);
+        expect(grid(m)).toBeNull();
+      });
+
+      it('falls back when the current editor navigation rejects', async () => {
+        const m = mount('t4', { view: 'table' });
+        m.navigate.mockRejectedValue(new Error('navigation refused'));
+        answer(m);
+        await m.fixture.whenStable();
+        expect(grid(m)).not.toBeNull();
+        expect(opening(m)).toBeNull();
+      });
+
+      it('does not let a pending navigation mutate the destroyed page', async () => {
+        const m = mount('t4', { view: 'table' });
+        let finish!: (done: boolean) => void;
+        m.navigate.mockReturnValue(
+          new Promise<boolean>((resolve) => {
+            finish = resolve;
+          }),
+        );
+        answer(m);
+        await m.fixture.whenStable();
+        m.fixture.destroy();
+        finish(false);
+        await Promise.resolve();
+        expect(m.page.openingEditor()).toBe(true);
+      });
+
+      it('draws the grid at once for an address that does not ask for the table, with no wait for the lookup', async () => {
+        const m = mount('t4', {}, new Subject<unknown>());
+        answer(m);
+        await m.render();
+        expect(grid(m)).not.toBeNull();
+        expect(opening(m)).toBeNull();
+      });
     });
 
     it('also leaves for the editor when the Table view is picked later', async () => {
@@ -329,7 +613,10 @@ describe('QueryResultPageComponent', () => {
       expect(m.navigate).not.toHaveBeenCalled();
       setQuery(m, { view: 'table' });
       expect(m.navigate).toHaveBeenCalledOnce();
-      expect(m.navigate.mock.calls[0][1]).toEqual({ queryParams: { result: 't4' }, replaceUrl: true });
+      expect(m.navigate.mock.calls[0][1]).toEqual({
+        queryParams: { result: 't4' },
+        replaceUrl: true,
+      });
     });
   });
 
