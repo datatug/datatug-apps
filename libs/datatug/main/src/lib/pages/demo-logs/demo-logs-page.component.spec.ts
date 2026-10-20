@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { OvdbRow } from '../../ovdb/ovdb-records';
 import { DemoLogsPageComponent } from './demo-logs-page.component';
 
 @Component({
@@ -48,7 +49,7 @@ const malformedEvidence = {
   },
 };
 
-async function setup(queryRecords = [evidence]) {
+async function setup(queryRecords: readonly OvdbRow[] = [evidence]) {
   const requests: Array<{ url: string; method: string; body?: string; authorization?: string }> = [];
   const orderParams = new BehaviorSubject(convertToParamMap({ order: '11039' }));
   const route = { snapshot: { queryParamMap: orderParams.value }, queryParamMap: orderParams.asObservable() };

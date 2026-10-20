@@ -426,13 +426,15 @@ describe('CloudLogsPageComponent', () => {
     expect(deniedConnection?.active).toBe(false);
     fixture.detectChanges();
     const selectToRetry = Array.from(
-      fixture.nativeElement.querySelectorAll('.connection ion-button'),
+      fixture.nativeElement.querySelectorAll(
+        '.connection ion-button',
+      ) as NodeListOf<HTMLElement>,
     ).find((button) => button.textContent?.includes('Select to retry')) as HTMLElement;
     expect(selectToRetry).toBeDefined();
     selectToRetry.click();
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain(
-      'This view was marked inactive after a previous query.',
+      'Google denied Cloud Logging access to this view.',
     );
     const retry = fixture.nativeElement.querySelector(
       '.timeline ion-button',
@@ -456,6 +458,159 @@ describe('CloudLogsPageComponent', () => {
     expect(component.selectedConnection()?.active).toBe(true);
     expect(component.entries()[0]?.message).toBe('recovered');
     expect(component.inactiveReason()).toBeNull();
+  });
+
+  it.each([
+    ['throttled', 'Too many requests. Wait a moment and try again.'],
+    ['unavailable', 'The Cloud Logging request failed. Try again shortly.'],
+  ])('announces loading and %s errors when retrying an inactive view', async (code, message) => {
+    const pending = new Subject<PersonalLogQueryResult>();
+    api.query
+      .mockReturnValueOnce(throwError(() => ({ code: 'permission_denied' })))
+      .mockReturnValueOnce(pending);
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    await component.runQuery();
+    fixture.detectChanges();
+
+    const retry = fixture.nativeElement.querySelector(
+      '.timeline ion-button',
+    ) as HTMLElement;
+    retry.click();
+    fixture.detectChanges();
+
+    expect(
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          '.timeline [role="status"]',
+        ) as NodeListOf<HTMLElement>,
+      ).some((status) => status.textContent?.includes('Reading current entries…')),
+    ).toBe(true);
+    expect(fixture.nativeElement.querySelector('.timeline [role="alert"]'))
+      .toBeNull();
+    expect(fixture.nativeElement.querySelector('ag-grid-angular')).toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Ask a project administrator to grant the connected account permission',
+    );
+
+    pending.error({ code });
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(fixture.nativeElement.querySelector('.timeline [role="alert"]')?.textContent)
+      .toContain(message);
+    expect(component.selectedConnection()?.active).toBe(false);
+    expect(fixture.nativeElement.querySelector('ag-grid-angular')).toBeNull();
+  });
+
+  it('refreshes revocation status before reconnecting an expired grant and preserves its reason per view', async () => {
+    const grant: GoogleLogGrant = {
+      id: 'grant-a',
+      email: 'investigator@example.test',
+      state: 'active',
+    };
+    api.list
+      .mockReturnValueOnce(of({ grants: [grant], connections }))
+      .mockReturnValueOnce(of({
+        grants: [{ ...grant, state: 'retired' as const, revocationConfirmed: true }],
+        connections: [],
+      }));
+    api.disconnect.mockReturnValue(of({ state: 'revocation_pending' as const }));
+    api.query.mockReturnValue(
+      throwError(() => ({ code: 'reconnect_required' })),
+    );
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    await component.runQuery();
+    fixture.detectChanges();
+
+    component.selectConnection(connections[1]);
+    const expiredConnection = component
+      .connections()
+      .find((connection) => connection.id === 'view-a');
+    expect(expiredConnection).toBeDefined();
+    if (expiredConnection) component.selectConnection(expiredConnection);
+    fixture.detectChanges();
+    expect(component.inactiveReason()).toBe('reconnect_required');
+    expect(fixture.nativeElement.textContent).toContain(
+      'wait for cleanup to finish, then refresh connections and confirm it shows Disconnected',
+    );
+
+    const buttons = () =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll('ion-button'),
+      ) as HTMLElement[];
+    buttons()
+      .find((button) => button.textContent?.trim() === 'Revoke Google access')
+      ?.click();
+    fixture.detectChanges();
+    buttons()
+      .find((button) => button.textContent?.trim() === 'Confirm revocation')
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+    expect(component.grantLabel(component.grants()[0])).toContain(
+      'Cleanup is in progress',
+    );
+
+    buttons()
+      .find((button) => button.textContent?.trim() === 'Refresh connections')
+      ?.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(api.list).toHaveBeenCalledTimes(2);
+    expect(component.grantLabel(component.grants()[0])).toBe('Disconnected');
+    expect(component.connections()).toEqual([]);
+    expect(component.selectedConnection()).toBeNull();
+  });
+
+  it('does not restore an inactive view when refresh removes it during a retry', async () => {
+    const pending = new Subject<PersonalLogQueryResult>();
+    api.query
+      .mockReturnValueOnce(throwError(() => ({ code: 'permission_denied' })))
+      .mockReturnValueOnce(pending);
+    api.list
+      .mockReturnValueOnce(of({ grants: [], connections }))
+      .mockReturnValueOnce(of({ grants: [], connections: [] }));
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    await component.runQuery();
+    fixture.detectChanges();
+
+    const retry = fixture.nativeElement.querySelector(
+      '.timeline ion-button',
+    ) as HTMLElement;
+    retry.click();
+    fixture.detectChanges();
+    const refresh = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'ion-button',
+      ) as NodeListOf<HTMLElement>,
+    ).find((button) => button.textContent?.trim() === 'Refresh connections') as HTMLElement;
+    refresh.click();
+    await fixture.whenStable();
+    pending.next({
+      entries: [{ severity: 'ERROR', source: 'service', message: 'stale retry' }],
+      capped: false,
+      morePossible: false,
+    });
+    pending.complete();
+    await fixture.whenStable();
+
+    expect(component.selectedConnection()).toBeNull();
+    expect(component.connections()).toEqual([]);
+    expect(component.entries()).toEqual([]);
+    expect(component.queryState()).toBe('idle');
   });
 
   it('rejects a query longer than 24 hours without calling the API', async () => {
@@ -572,7 +727,7 @@ describe('CloudLogsPageComponent', () => {
       'Google authorization expired. DataTug cannot renew this grant in place.',
     );
     expect(fixture.nativeElement.textContent).toContain(
-      'explicitly revoke the old grant, then connect the account again and probe this view',
+      'wait for cleanup to finish, then refresh connections and confirm it shows Disconnected',
     );
     expect(fixture.nativeElement.querySelector('.timeline a[href="#accounts-heading"]')).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.timeline ion-button')).toBeNull();

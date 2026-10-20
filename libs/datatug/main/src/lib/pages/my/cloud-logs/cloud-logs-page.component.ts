@@ -172,6 +172,12 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                 ? 'Connect another Google account'
                 : 'Connect Google account'
             }}</ion-button>
+            <ion-button
+              fill="outline"
+              [disabled]="pageState() === 'loading'"
+              (click)="loadConnections()"
+              >Refresh connections</ion-button
+            >
           </section>
 
           <section class="card" aria-labelledby="connect-heading">
@@ -283,11 +289,12 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                 } @else if (inactiveReason() === 'reconnect_required') {
                   <p role="status">
                     Google authorization expired. DataTug cannot renew this
-                    grant in place. In Google accounts above, explicitly
-                    revoke the old grant, then connect the account again and
-                    probe this view. Revocation can affect other Sneat clients
-                    using the shared Google app, and the view must be added
-                    again.
+                    grant in place. Explicitly revoke the old grant in Google
+                    accounts above, wait for cleanup to finish, then refresh
+                    connections and confirm it shows Disconnected before
+                    connecting again. Probe and add this view again after the
+                    new authorization. Revocation can affect other Sneat
+                    clients using the shared Google app.
                   </p>
                   <a href="#accounts-heading">Review Google accounts</a>
                 } @else {
@@ -396,12 +403,6 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                     }}</ion-button
                   >
                 </form>
-                @if (queryState() === 'loading') {
-                  <p role="status">Reading current entries…</p>
-                }
-                @if (queryError()) {
-                  <p role="alert" class="error">{{ queryError() }}</p>
-                }
                 @if (queryState() === 'ready' && !entries().length) {
                   <p role="status">No entries matched this bounded query.</p>
                 }
@@ -488,6 +489,12 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                           </section>
                   }
                 }
+              }
+              @if (queryState() === 'loading') {
+                <p role="status">Reading current entries…</p>
+              }
+              @if (queryError()) {
+                <p role="alert" class="error">{{ queryError() }}</p>
               }
             </section>
           }
@@ -659,6 +666,9 @@ export class CloudLogsPageComponent {
   readonly inactiveReason = signal<
     'reconnect_required' | 'permission_denied' | null
   >(null);
+  private readonly inactiveReasonsByConnection = signal<
+    Readonly<Record<string, 'reconnect_required' | 'permission_denied'>>
+  >({});
   readonly entries = signal<readonly PersonalLogEntry[]>([]);
   readonly result = signal<PersonalLogQueryResult | null>(null);
   readonly selectedEntry = signal<PersonalLogEntry | null>(null);
@@ -741,7 +751,26 @@ export class CloudLogsPageComponent {
       const current = await firstValueFrom(this.api.list());
       if (!this.isCurrentAccess(generation)) return;
       this.grants.set(current.grants);
-      this.connections.set(current.connections);
+      const inactiveReasons = this.inactiveReasonsByConnection();
+      const refreshedConnections = current.connections.map((connection) =>
+        inactiveReasons[connection.id]
+          ? { ...connection, active: false }
+          : connection,
+      );
+      this.connections.set(refreshedConnections);
+      const selected = this.selectedConnection();
+      if (selected) {
+        const refreshed = refreshedConnections.find(
+          (connection) => connection.id === selected.id,
+        );
+        if (refreshed) {
+          this.selectedConnection.set(refreshed);
+          this.inactiveReason.set(inactiveReasons[refreshed.id] ?? null);
+        } else {
+          this.forgetInactiveReason(selected.id);
+          this.clearSelection();
+        }
+      }
       if (
         !current.grants.some(
           (grant) =>
@@ -913,7 +942,9 @@ export class CloudLogsPageComponent {
     this.queryState.set('idle');
     this.queryError.set('');
     this.selectedEntry.set(null);
-    this.inactiveReason.set(null);
+    this.inactiveReason.set(
+      this.inactiveReasonsByConnection()[connection.id] ?? null,
+    );
     this.orderId.set('');
     this.correlationId.set('');
     this.service.set('');
@@ -931,6 +962,7 @@ export class CloudLogsPageComponent {
       this.connections.update((connections) =>
         connections.filter((candidate) => candidate.id !== connection.id),
       );
+      this.forgetInactiveReason(connection.id);
       if (this.selectedConnection()?.id === connection.id)
         this.clearSelection();
     } catch (error) {
@@ -969,6 +1001,7 @@ export class CloudLogsPageComponent {
       this.connections.update((connections) =>
         connections.filter((connection) => connection.grantId !== grant.id),
       );
+      for (const id of removedIds) this.forgetInactiveReason(id);
       const selectedConnection = this.selectedConnection();
       if (selectedConnection && removedIds.includes(selectedConnection.id))
         this.clearSelection();
@@ -1057,6 +1090,7 @@ export class CloudLogsPageComponent {
             { ...connection, active: true },
           ]);
         this.selectedConnection.set({ ...connection, active: true });
+        this.forgetInactiveReason(connection.id);
         this.inactiveReason.set(null);
       }
       this.queryState.set('ready');
@@ -1072,6 +1106,10 @@ export class CloudLogsPageComponent {
       const code = errorCode(error);
       if (code === 'reconnect_required' || code === 'permission_denied') {
         this.inactiveReason.set(code);
+        this.inactiveReasonsByConnection.update((reasons) => ({
+          ...reasons,
+          [connection.id]: code,
+        }));
         this.connections.update((connections) =>
           connections.map((candidate) =>
             candidate.id === connection.id
@@ -1167,6 +1205,14 @@ export class CloudLogsPageComponent {
     this.queryError.set('');
   }
 
+  private forgetInactiveReason(connectionId: string): void {
+    this.inactiveReasonsByConnection.update((reasons) => {
+      const next = { ...reasons };
+      delete next[connectionId];
+      return next;
+    });
+  }
+
   private isCurrentAccess(generation: number): boolean {
     return (
       this.hasAccess() &&
@@ -1193,6 +1239,7 @@ export class CloudLogsPageComponent {
     this.queryState.set('idle');
     this.queryError.set('');
     this.inactiveReason.set(null);
+    this.inactiveReasonsByConnection.set({});
     this.entries.set([]);
     this.result.set(null);
     this.selectedEntry.set(null);
