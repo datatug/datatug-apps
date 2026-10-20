@@ -346,16 +346,23 @@ it.each(['pro', 'business'] as const)(
 
     expect(panel).not.toBeNull();
     expect(panel.componentInstance.returnTo()).toBe(continuation(kind));
+    expect(panel.componentInstance.initialMode()).toBe('sign-up');
     expect(emailForm).not.toBeNull();
     expect(emailForm.componentInstance.returnTo()).toBe(continuation(kind));
+    expect(emailForm.componentInstance.initialMode()).toBe('sign-up');
     expect(root.querySelector('ion-input[name="email"]')).not.toBeNull();
     expect(root.querySelector('ion-input[name="first_name"]')).not.toBeNull();
     expect(root.querySelector('ion-segment-button[value="in"]')).not.toBeNull();
-    expect(root.textContent).toContain('Sign up');
+    expect(
+      Array.from(root.querySelectorAll('ion-button')).some((button) =>
+        button.textContent?.replace(/\s+/g, ' ').includes('Sign up'),
+      ),
+    ).toBe(true);
     expect(checkoutRequests()).toHaveLength(0);
 
     root.querySelector<HTMLElement>('ion-segment-button[value="in"]')?.click();
     await flush();
+    expect(root.querySelector('ion-input[name="first_name"]')).toBeNull();
     expect(root.querySelector('ion-input[type="password"]')).not.toBeNull();
     expect(root.textContent?.replace(/\s+/g, ' ')).toContain(
       'Sign in with password',
