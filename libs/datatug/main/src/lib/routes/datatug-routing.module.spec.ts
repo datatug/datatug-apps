@@ -45,6 +45,7 @@ describe('datatugRoutes', () => {
       '',
       'overview',
       'sessions',
+      'incidents',
       'queries',
       'checks',
       'detective',
@@ -62,6 +63,9 @@ describe('datatugRoutes', () => {
     const base = ['space', 'S1', 'store', 'firestore', 'project', 'P1'];
     expect(matches(base)).toBe(true);
     expect(matches([...base, 'queries'])).toBe(true);
+    expect(matches([...base, 'incidents'])).toBe(true);
+    expect(matches([...base, 'incidents', 'new'])).toBe(true);
+    expect(matches([...base, 'incidents', 'detective-incidents-9c561d36', 'INC-1'])).toBe(true);
     expect(matches([...base, 'checks'])).toBe(true);
     expect(matches([...base, 'checks', 'invoice-check'])).toBe(true);
     expect(matches([...base, 'detective'])).toBe(true);

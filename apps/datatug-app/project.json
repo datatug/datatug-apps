@@ -353,6 +353,14 @@
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.cloud-logs.config.ts --forbid-only"
       }
+    },
+    "e2e-hosted-incidents": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-hosted-incidents"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.hosted-incidents.config.ts --forbid-only"
+      }
     }
   }
 }

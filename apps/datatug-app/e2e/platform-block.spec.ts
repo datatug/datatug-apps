@@ -85,7 +85,7 @@ test('the home sections keep the landing, other ways, and project cards in order
   const hero = content.getByTestId('home-hero');
   const platform = content.getByTestId('platform-block');
   const detective = content.getByRole('heading', {
-    name: 'Start a private Detective demo',
+    name: 'Record an Incident in a private project',
   });
   const projects = content.locator('.home-cards-grid');
   for (const section of [hero, projects, platform, detective]) {

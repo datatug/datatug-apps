@@ -64,6 +64,9 @@ function sharedQueryPage(rest: string): boolean {
     rest === '/queries' ||
     rest === '/checks' ||
     rest === '/detective' ||
+    rest === '/incidents' ||
+    rest === '/incidents/new' ||
+    /^\/incidents\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/(?:checks|detective)\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/detective\/scenario\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*$/.test(rest) ||
