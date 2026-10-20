@@ -354,7 +354,7 @@ describe('native cross-database OVDB execution', () => {
           )
         : implementation(input, init),
     );
-    await expect(run(fetcher)).rejects.toThrow('Cannot execute this query');
+    await expect(run(fetcher)).rejects.toMatchObject({ diagnostic: { stage: 'query_execution', reason: 'http_status', status: 422, code: 'unsupported' }, cause: { message: expect.stringContaining('Cannot execute this query') } });
     expect(
       fetcher.mock.calls.filter(([, init]) => init?.method === 'POST'),
     ).toHaveLength(1);
