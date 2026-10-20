@@ -1588,6 +1588,71 @@ describe('New project through authenticated common API', () => {
     expect(h.create).toHaveBeenCalledTimes(3);
     expect(h.component['isCreateRetryLocked']()).toBe(false);
   });
+  it('explains a restored uncertain copy without changing its retry identity', async () => {
+    const source = {
+      kind: 'github-project' as const,
+      repositoryID: 42,
+      owner: 'datatug',
+      name: 'datatug-demo-project',
+      folder: 'demo-project-1',
+      branch: 'main',
+      commit: 'a'.repeat(40),
+      tree: 'b'.repeat(40),
+    };
+    const first = await harness(false, {
+      store: 'github',
+      source: JSON.stringify(source),
+    });
+    first.component.ngOnInit();
+    first.select();
+    first.create.mockImplementation(() => throwError(() => ({ status: 0 })));
+    first.component.create();
+    const request = first.create.mock.calls[0][0];
+    const saved = sessionStorage.getItem('datatug:new-project:draft');
+
+    const restored = await harness(false, { store: 'github' }, true, true);
+    restored.fixture.detectChanges();
+    await restored.fixture.whenStable();
+    expect(restored.create).not.toHaveBeenCalled();
+    expect(restored.component['formError']()).toBeUndefined();
+    expect(
+      restored.fixture.nativeElement.querySelector('[role="status"]')
+        ?.textContent,
+    ).toContain(
+      'Your saved project request has not been confirmed. Retry the same operation before changing the destination.',
+    );
+    expect(restored.component.copySource()).toEqual(source);
+    expect(restored.component['isCreateRetryLocked']()).toBe(true);
+    expect(
+      JSON.parse(sessionStorage.getItem('datatug:new-project:draft') ?? 'null')
+        .resolvedCreateRequest,
+    ).toEqual(JSON.parse(saved ?? 'null').resolvedCreateRequest);
+
+    restored.create.mockReturnValue(new Subject<typeof created>());
+    restored.component.create();
+    await restored.fixture.whenStable();
+    expect(restored.create.mock.calls[0][0]).toEqual(request);
+    expect(
+      restored.fixture.nativeElement.querySelector('[role="status"]'),
+    ).toBeNull();
+    expect(restored.component['isCreating']()).toBe(true);
+  });
+  it('does not show uncertainty guidance for a restored confirmed setup', async () => {
+    const first = await harness();
+    first.select();
+    first.component.create();
+    const restored = await harness(false, { store: 'github' }, true, true);
+    restored.fixture.detectChanges();
+    await restored.fixture.whenStable();
+    expect(restored.component['setupStatus']()).toBe('pending_merge');
+    expect(restored.fixture.nativeElement.querySelector('[role="status"]')).toBeNull();
+  });
+  it('does not show saved-outcome guidance on an ordinary form', async () => {
+    const h = await harness();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.querySelector('[role="status"]')).toBeNull();
+  });
   it('locks branch and repository refresh until an uncertain operation is retried unchanged', async () => {
     const h = await harness();
     h.select();
