@@ -52,18 +52,16 @@
       }
 
       @if (draft(); as item) {
-        <ion-card
-          ><ion-list lines="full">
-            <ion-item color="light" lines="full">
-              <ion-label class="ion-text-wrap">
-                <h1>{{ item.version ? 'Edit Case' : 'New Case' }}</h1>
-                <p>A Case preserves context and evidence across sessions.</p>
-              </ion-label>
-              <ion-button slot="end" fill="clear" (click)="cancelEdit()"
-                >Cancel</ion-button
-              >
-            </ion-item>
-          </ion-list>
+        <ion-card>
+          <ion-item color="light" lines="full">
+            <ion-label class="ion-text-wrap">
+              <h1>{{ item.version ? 'Edit Case' : 'New Case' }}</h1>
+              <p>A Case preserves context and evidence across sessions.</p>
+            </ion-label>
+            <ion-button slot="end" fill="clear" (click)="cancelEdit()"
+              >Cancel</ion-button
+            >
+          </ion-item>
           <ion-card-content>
             <div class="form-grid">
               <ion-item
@@ -261,26 +259,24 @@
         >
       } @else if (caseId()) {
         @if (current(); as item) {
-          <ion-card
-            ><ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label class="ion-text-wrap">
-                  <ion-button fill="clear" [routerLink]="casesUrl()"
-                    >← All Cases</ion-button
-                  >
-                  <h1>{{ item.title }}</h1>
-                  <p class="muted">
-                    {{ item.id }} · v{{ item.version }} · updated
-                    {{ item.updatedAt | date: 'medium' }}
-                  </p>
-                </ion-label>
-                <ion-badge
-                  slot="end"
-                  [color]="item.status === 'active' ? 'primary' : 'medium'"
-                  >{{ item.status }}</ion-badge
+          <ion-card>
+            <ion-item color="light" lines="full">
+              <ion-label class="ion-text-wrap">
+                <ion-button fill="clear" [routerLink]="casesUrl()"
+                  >← All Cases</ion-button
                 >
-              </ion-item>
-            </ion-list>
+                <h1>{{ item.title }}</h1>
+                <p class="muted">
+                  {{ item.id }} · v{{ item.version }} · updated
+                  {{ item.updatedAt | date: 'medium' }}
+                </p>
+              </ion-label>
+              <ion-badge
+                slot="end"
+                [color]="item.status === 'active' ? 'primary' : 'medium'"
+                >{{ item.status }}</ion-badge
+              >
+            </ion-item>
             <ion-card-content>
               <div class="actions">
                 <ion-button
@@ -327,12 +323,10 @@
             </ion-card-content></ion-card
           >
 
-          <ion-card
-            ><ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label><h2>Investigation Context</h2></ion-label>
-              </ion-item>
-            </ion-list>
+          <ion-card>
+            <ion-item color="light" lines="full">
+              <ion-label><h2>Investigation Context</h2></ion-label>
+            </ion-item>
             <ion-card-content>
               <ion-list>
                 @for (entry of contextEntries(); track entry[0]) {
@@ -500,12 +494,10 @@
             </ion-card-content></ion-card
           >
 
-          <ion-card
-            ><ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label><h2>Findings</h2></ion-label>
-              </ion-item>
-            </ion-list>
+          <ion-card>
+            <ion-item color="light" lines="full">
+              <ion-label><h2>Findings</h2></ion-label>
+            </ion-item>
             <ion-card-content>
               <ion-list>
                 @for (finding of item.findings; track finding.id) {
@@ -574,12 +566,10 @@
             </ion-card-content></ion-card
           >
 
-          <ion-card
-            ><ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label><h2>Evidence & Check runs</h2></ion-label>
-              </ion-item>
-            </ion-list>
+          <ion-card>
+            <ion-item color="light" lines="full">
+              <ion-label><h2>Evidence & Check runs</h2></ion-label>
+            </ion-item>
             <ion-card-content>
               <ion-list>
                 @for (evidence of item.evidence; track evidence.id) {
@@ -691,12 +681,10 @@
             </ion-card-content></ion-card
           >
 
-          <ion-card
-            ><ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label><h2>Incidentius links</h2></ion-label>
-              </ion-item>
-            </ion-list>
+          <ion-card>
+            <ion-item color="light" lines="full">
+              <ion-label><h2>Incidentius links</h2></ion-label>
+            </ion-item>
             <ion-card-content>
               <p>
                 Cases and Incidents have independent lifecycles. One Incident
@@ -836,12 +824,10 @@
           >
 
           @if (scope.context()) {
-            <ion-card
-              ><ion-list lines="full">
-                <ion-item color="light" lines="full">
-                  <ion-label><h2>Private knowledge proposals</h2></ion-label>
-                </ion-item>
-              </ion-list>
+            <ion-card>
+              <ion-item color="light" lines="full">
+                <ion-label><h2>Private knowledge proposals</h2></ion-label>
+              </ion-item>
               <ion-card-content>
                 <p>
                   Draft possible field meanings, relationships, invariants,
@@ -1192,12 +1178,10 @@
             ></ion-card>
           }
 
-          <ion-card
-            ><ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label><h2>Activity timeline</h2></ion-label>
-              </ion-item>
-            </ion-list>
+          <ion-card>
+            <ion-item color="light" lines="full">
+              <ion-label><h2>Activity timeline</h2></ion-label>
+            </ion-item>
             <ion-card-content>
               <ion-list>
                 @for (event of timelineEvents(); track event.id) {
@@ -1254,31 +1238,29 @@
           >
         }
       } @else {
-        <ion-card
-          ><ion-list lines="full">
-            <ion-item color="light" lines="full">
-              <ion-label class="ion-text-wrap">
-                <h1>Detective Cases</h1>
-                <p>Follow the evidence. Keep the investigation resumable.</p>
-                @if (queryParams().get('incident'); as incident) {
-                  <p>
-                    Start a Case for Incident {{ incident }}. Review its
-                    context; the link is saved with the Case.
-                  </p>
-                }
-              </ion-label>
-              <ion-button
-                slot="end"
-                [disabled]="!state()?.capabilities?.canWrite"
-                (click)="startNew()"
-                >{{
-                  queryParams().get('incident')
-                    ? 'Create Case for Incident'
-                    : 'New Case'
-                }}</ion-button
-              >
-            </ion-item>
-          </ion-list>
+        <ion-card>
+          <ion-item color="light" lines="full">
+            <ion-label class="ion-text-wrap">
+              <h1>Detective Cases</h1>
+              <p>Follow the evidence. Keep the investigation resumable.</p>
+              @if (queryParams().get('incident'); as incident) {
+                <p>
+                  Start a Case for Incident {{ incident }}. Review its
+                  context; the link is saved with the Case.
+                </p>
+              }
+            </ion-label>
+            <ion-button
+              slot="end"
+              [disabled]="!state()?.capabilities?.canWrite"
+              (click)="startNew()"
+              >{{
+                queryParams().get('incident')
+                  ? 'Create Case for Incident'
+                  : 'New Case'
+              }}</ion-button
+            >
+          </ion-item>
           <ion-card-content>
             <ion-item
               ><ion-label position="stacked">Search Cases</ion-label
@@ -1306,22 +1288,20 @@
           </ion-card-content></ion-card
         >
       }
-      <ion-card
-        ><ion-list lines="full">
-          <ion-item color="light" lines="full">
-            <ion-label class="ion-text-wrap">
-              <h2>Investigation Scenarios</h2>
-              <p>Reusable manual paths through saved queries and Checks.</p>
-            </ion-label>
-            <ion-button
-              slot="end"
-              fill="outline"
-              [disabled]="!state()?.capabilities?.canWrite"
-              (click)="startScenario()"
-              >New Scenario</ion-button
-            >
-          </ion-item>
-        </ion-list>
+      <ion-card>
+        <ion-item color="light" lines="full">
+          <ion-label class="ion-text-wrap">
+            <h2>Investigation Scenarios</h2>
+            <p>Reusable manual paths through saved queries and Checks.</p>
+          </ion-label>
+          <ion-button
+            slot="end"
+            fill="outline"
+            [disabled]="!state()?.capabilities?.canWrite"
+            (click)="startScenario()"
+            >New Scenario</ion-button
+          >
+        </ion-item>
         <ion-card-content>
           <ion-list>
             @for (scenario of scenarios(); track scenario.id) {
