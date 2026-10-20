@@ -16,6 +16,7 @@ or pushes (the live PostgreSQL test has its own workflow, `e2e-postgres-ovdb.yml
 | `e2e-demo-handoff` | yes, `nx affected` | yes | none (local build, third parties stubbed) |
 | `journey e2e (real datatug-cli agent)` | yes, always | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
 | `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | yes (may be `skipped`) | none |
+| `demo-sqlite-adventureworks.yml` (own workflow, Chromium: only when demo SQLite code, catalog, guard or fixtures changed, on `pull_request` and push to `main`; or manual; never scheduled) | path-filtered | no | none: gzip parts from the `demo-db/adventureworks` GitHub repo |
 | `e2e-postgres-ovdb.yml` (own workflow: manual or path-filtered push to main, never a PR) | no | no | `cloud.openvaultdb.com` |
 | `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | `*.demodb.dev`, Chromium only |
 
@@ -64,8 +65,22 @@ valid, and CI saves its cache only then. `corpus.json` and the six dataset home 
 `e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in `provenance.json`; refresh them by building
 the websites repo and copying the outputs). The `journey` lane downloads nothing (`--project=journey` skips the fixtures).
 
-* **Not served, refused:** the OVDB API on `ovdb.demodb.dev`, and the chunked AdventureWorks download (`*.parts.json`
-  manifest and gzip parts). Their tests run only in live mode.
+* **Not served, refused:** the OVDB API on `ovdb.demodb.dev`; and, unless the run asked for them, the chunked AdventureWorks
+  download (`*.parts.json` manifest and gzip parts). Only the AdventureWorks lane asks: `DEMODB_FIXTURE_ADVENTUREWORKS=only` (set by
+  `playwright.demo-sqlite-adventureworks.config.ts`; `=1` adds it to the default set) makes `fetch-demodb-fixtures.mjs` download the two
+  provider gzip parts (`artifacts/adventureworks.sqlite.gz.part-000N` of `demo-db/adventureworks` at a pinned commit, 35.4 MB, 2 requests
+  to raw.githubusercontent.com), check every part and the joined gzip against `corpus.json`, gunzip the result and check the unpacked file
+  against the catalog pin (126,820,352 bytes, SHA-256), and write a `demodb-chunked-export/v1` manifest named like the live one
+  (`adventureworks.sqlite.gz.<sha256[:16]>.part-<n>`, as `demo-db/websites` `scripts/build-hosts.mjs` does). The guard serves both.
+* **AdventureWorks journey** (`demo-sqlite-adventureworks.spec.ts`, Chromium only, workflow `demo-sqlite-adventureworks.yml`):
+  fixture integrity -> confirmation before the large download -> download (manifest + each part once) -> stored OPFS file hashed in the
+  page -> table list = registry -> read a table -> edit (capability gated) -> reload keeps it -> Reset Database (confirmation, downloads
+  again: single-copy) -> original value back, also after a reload. It is heavy (126.8 MB unpacked, downloaded twice), so it runs on its
+  own and only for changes that can affect it (see the path filter in the workflow) and by hand; never on a schedule. The evidence of a
+  run (timings, bytes, row counts, requests, screenshots, trace) is attached to the test and uploaded as the artifact
+  `demo-sqlite-adventureworks-e2e-report`. Run it locally with `GH_TOKEN=... pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks`
+  (the build needs a token for the private Core artifact check). The older opt-in journeys behind `DATATUG_E2E_ADVENTUREWORKS=1`
+  (`demo-sqlite.spec.ts`, `demo-sqlite-datasets.spec.ts`) remain for a manual run in live mode.
 * **Newly live-only checks** (the 28 skipped demo-sqlite tests in CI are WebKit/OPFS, the opt-in AdventureWorks journeys, and
   these 21 that probe the live site rather than the app): "every complete-database download DemoDB advertises answers"
   for each of the 6 datasets and the AdventureWorks manifest check, in 3 browsers. They run in the manual smoke only.
