@@ -75,7 +75,7 @@ describe('MyStoresComponent', () => {
     expect(fixture.nativeElement.querySelector('.store-options')).toBeNull();
     expect(fixture.nativeElement.querySelector('.storage-visual')).toBeTruthy();
     expect(
-      Array.from(
+      Array.from<Element>(
         fixture.nativeElement.querySelectorAll(
           '.connected-stores ion-icon[slot="start"]',
         ),
@@ -108,7 +108,7 @@ describe('MyStoresComponent', () => {
     );
     expect(fixture.nativeElement.textContent).not.toContain('Connected stores');
     expect(
-      Array.from(
+      Array.from<Element>(
         fixture.nativeElement.querySelectorAll(
           '.store-options ion-icon[slot="start"]',
         ),
