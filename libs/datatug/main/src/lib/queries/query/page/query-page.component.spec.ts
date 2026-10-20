@@ -281,7 +281,13 @@ describe('copied browser table query entry', () => {
     Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, writable: true, configurable: true });
   });
 
-  it.each([false, true])('initializes one new editor before delayed restoration and retains runtime/environment/address (prior draft: %s)', async (priorDraft) => {
+  it.each([
+    { priorDraft: false, pendingChange: undefined },
+    { priorDraft: true, pendingChange: undefined },
+    { priorDraft: false, pendingChange: 'runtime' },
+    { priorDraft: false, pendingChange: 'env' },
+    { priorDraft: false, pendingChange: 'id' },
+  ] as const)('retains the table editor through delayed restoration and scope changes: %o', async ({ priorDraft, pendingChange }) => {
     const ref: IProjectRef = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud', branch: 'main' };
     const project = new BehaviorSubject<IProjectContext | undefined>({ ref } as IProjectContext);
     const original = { demoDraft: 'token', runtime: 'runtime-edited', env: 'demo', branch: 'main', projectApi: 'cloud' };
@@ -293,7 +299,11 @@ describe('copied browser table query entry', () => {
       lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } };
     const auth = { status: 'authenticated', user: { uid: 'actor' } };
     const read = new Subject<IQueryDef>();
-    const drafts = { read: vi.fn(() => firstValueFrom(read)), consume: vi.fn() };
+    const drafts = { read: vi.fn((_token: string, _ref: IProjectRef, runtime: string | null, environment: string | null, _actor: string) =>
+      runtime === original.runtime && environment === original.env && _actor === auth.user.uid
+        ? firstValueFrom(read) : Promise.reject(new Error('The table draft scope changed.'))), consume: vi.fn() };
+    let generatedIds = 0;
+    const newRandomId = vi.fn(() => ++generatedIds === 1 ? 'table-draft-query' : `another-query-${generatedIds}`);
     const activityError = new HttpErrorResponse({ status: 0 });
     const activity = { ...githubProjectActivityStub(), resolve: vi.fn(() => throwError(() => activityError)) };
     const logger = { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) };
@@ -301,7 +311,7 @@ describe('copied browser table query entry', () => {
     dispatchStart.mockClear();
     await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
       { provide: ErrorLogger, useValue: logger },
-      { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'table-draft-query') } },
+      { provide: RandomIdService, useValue: { newRandomId } },
       { provide: ActivatedRoute, useValue: route }, { provide: Router, useValue: router },
       { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() } },
       { provide: QueriesService, useValue: { authentication: () => of(auth), devicePersonal: { list: vi.fn(async () => []) } } },
@@ -343,9 +353,28 @@ describe('copied browser table query entry', () => {
     expect(component.queryId).toBe('table-draft-query');
     const definition: IQueryDef = { id: '', title: 'Artist (browser copy)', connectionId: 'chinook-sqlite',
       request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } as ITextQueryRequest };
-    read.next(definition);
+    if (pendingChange) {
+      if (pendingChange === 'runtime') component.selectWorkingCopy('another-runtime');
+      route.snapshot.queryParamMap = convertToParamMap({ ...original, [pendingChange]: pendingChange === 'runtime' ? 'another-runtime' : pendingChange === 'env' ? 'another-env' : 'table-draft-query' });
+      params.next(route.snapshot.queryParamMap);
+      await fixture.whenStable();
+      expect(component.queryId).toBe('table-draft-query');
+      expect(component.runError()).toContain(pendingChange === 'id' ? 'cannot replace an existing saved query' : 'table draft scope changed');
+      expect(drafts.consume).not.toHaveBeenCalled();
+      // Neither an old success nor an old failure can replace the current scope outcome.
+      if (pendingChange === 'env') read.error(new Error('obsolete table read failed'));
+      else read.next(definition);
+      await fixture.whenStable();
+      expect(component.queryDef()).toBeUndefined();
+      expect(component.runError()).toContain(pendingChange === 'id' ? 'cannot replace an existing saved query' : 'table draft scope changed');
+      expect(drafts.consume).not.toHaveBeenCalled();
+      drafts.read.mockResolvedValueOnce(definition);
+      route.snapshot.queryParamMap = convertToParamMap(original);
+      params.next(route.snapshot.queryParamMap);
+    } else read.next(definition);
     await fixture.whenStable();
-    expect(drafts.read).toHaveBeenCalledExactlyOnceWith('token', ref, 'runtime-edited', 'demo', 'actor');
+    expect(drafts.read).toHaveBeenCalledWith('token', ref, 'runtime-edited', 'demo', 'actor');
+    expect(drafts.read).toHaveBeenCalledTimes(pendingChange === 'id' ? 2 : pendingChange ? 3 : 1);
     expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('token');
     if (priorDraft) expect(editor.getQueryState('my-other-draft')).toEqual(old);
     expect(component.queryDef()).toMatchObject({ id: 'table-draft-query', request: definition.request, connectionId: definition.connectionId });
@@ -354,17 +383,43 @@ describe('copied browser table query entry', () => {
     expect(fixture.nativeElement.querySelector('output').textContent).toBe('table-draft-query|demo|DTQL');
     component.ionViewDidEnter();
     expect(router.navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined, env: 'demo' } });
+    const edited = { ...component.queryState.request, text: 'from: Artist\nlimit: 25' } as ITextQueryRequest;
+    editor.updateQueryState({ ...component.queryState, request: edited });
+    component.selectWorkingCopy('project');
+    expect(router.navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { runtime: 'project' } });
+    route.snapshot.queryParamMap = convertToParamMap({ ...original, runtime: 'project' });
+    params.next(route.snapshot.queryParamMap);
+    route.snapshot.queryParamMap = convertToParamMap({ ...original, runtime: 'project', env: 'another-env' });
+    params.next(route.snapshot.queryParamMap);
+    await fixture.whenStable();
+    expect(component.queryId).toBe('table-draft-query');
+    expect(component.queryState.request).toEqual(edited);
+    expect(component.queryState.activeEnv?.id).toBe('another-env');
+    expect(component.selectedWorkingCopy()).toBe('project');
+    expect(drafts.read).toHaveBeenCalledTimes(pendingChange === 'id' ? 2 : pendingChange ? 3 : 1);
+    expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('token');
+    expect(newRandomId).toHaveBeenCalledOnce();
     expect(activity.resolve).toHaveBeenCalledExactlyOnceWith(ref);
     expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to resolve GitHub Business query activity context', { show: false, feedback: false });
     activity.reportForCurrentProject.mockReturnValue(throwError(() => activityError));
     component['reportGitHubQueryDispatch'](ref);
     component['reportGitHubQueryEdit'](ref);
-    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, 'table-draft-query', 'query_execution_dispatched');
-    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, 'table-draft-query', 'query_edit');
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, expect.any(String), 'query_execution_dispatched');
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, expect.any(String), 'query_edit');
     expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to record GitHub Business query activity', { show: false, feedback: false });
     expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to record GitHub Business query edit activity', { show: false, feedback: false });
     expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
     expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
+    expect(dispatchStart).not.toHaveBeenCalled();
+    const previousEditor = editor.getQueryState('table-draft-query');
+    drafts.read.mockResolvedValueOnce(definition);
+    route.snapshot.queryParamMap = convertToParamMap({ ...original, demoDraft: 'next-token' });
+    params.next(route.snapshot.queryParamMap);
+    await fixture.whenStable();
+    expect(component.queryId).not.toBe('table-draft-query');
+    expect(editor.getQueryState('table-draft-query')).toEqual(previousEditor);
+    expect(drafts.read).toHaveBeenLastCalledWith('next-token', ref, 'runtime-edited', 'demo', 'actor');
+    expect(drafts.consume).toHaveBeenLastCalledWith('next-token');
     expect(dispatchStart).not.toHaveBeenCalled();
     fixture.destroy();
   });
@@ -471,7 +526,7 @@ describe('SqlEditorPage', () => {
     const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
     component.project = { ref } as IProjectContext;
     component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
-    component['demoDraftEntry'] = { token: 'token', routeKey: 'unit-restore', queryId: 'demo-query' };
+    component['demoDraftEntry'] = { token: 'token', identityKey: 'unit-restore', queryId: 'demo-query' };
     const params = convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' });
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: params, paramMap: convertToParamMap({}) } });
     Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
@@ -493,7 +548,7 @@ describe('SqlEditorPage', () => {
     const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
     component.project = { ref } as IProjectContext;
     component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
-    component['demoDraftEntry'] = { token: 'token', routeKey: 'unit-restore', queryId: 'demo-query' };
+    component['demoDraftEntry'] = { token: 'token', identityKey: 'unit-restore', queryId: 'demo-query' };
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' }), paramMap: convertToParamMap({}) } });
     const authenticated = of({ status: 'authenticated', user: { uid: 'actor' } });
     const auth = vi.fn(() => authenticated);
@@ -522,8 +577,8 @@ describe('SqlEditorPage', () => {
     const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
     component.project = { ref } as IProjectContext;
     component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
-    component['demoDraftEntry'] = { token: 'token', routeKey: 'unit-restore', queryId: 'demo-query' };
-    component['demoDraftEntry'] = { token: 'old-token', routeKey: 'unit-restore', queryId: 'demo-query' };
+    component['demoDraftEntry'] = { token: 'token', identityKey: 'unit-restore', queryId: 'demo-query' };
+    component['demoDraftEntry'] = { token: 'old-token', identityKey: 'unit-restore', queryId: 'demo-query' };
     const snapshot = { queryParamMap: convertToParamMap({ demoDraft: 'old-token' }), paramMap: convertToParamMap({}) };
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: snapshot });
     Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
@@ -534,7 +589,7 @@ describe('SqlEditorPage', () => {
     const old = component['restoreDemoTableDraft']();
     await Promise.resolve();
     snapshot.queryParamMap = convertToParamMap({ demoDraft: 'new-token' });
-    component['demoDraftEntry'] = { token: 'new-token', routeKey: 'unit-restore', queryId: 'demo-query' };
+    component['demoDraftEntry'] = { token: 'new-token', identityKey: 'unit-restore', queryId: 'demo-query' };
     await component['restoreDemoTableDraft']();
     reject?.(new Error('stale failure'));
     await old;
@@ -542,6 +597,19 @@ describe('SqlEditorPage', () => {
     expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('new-token');
     await component['restoreDemoTableDraft']();
     expect(drafts.read).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['query', 'route'])('never replaces an explicitly addressed saved query through a table token: %s', async (address) => {
+    component.project = { ref: { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud', branch: 'main' } } as IProjectContext;
+    component.queryState = { ...component.queryState, id: 'saved-query' };
+    Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: {
+      queryParamMap: convertToParamMap({ demoDraft: 'token', ...(address === 'query' ? { id: 'saved-query' } : {}) }),
+      paramMap: convertToParamMap(address === 'route' ? { queryId: 'saved-query' } : {}),
+    } });
+    await component['restoreDemoTableDraft']();
+    expect(component.runError()).toContain('cannot replace an existing saved query');
+    expect(TestBed.inject(DemoTableDraftService).read).not.toHaveBeenCalled();
+    expect(TestBed.inject(QueryEditorStateService).updateQueryState).not.toHaveBeenCalled();
   });
 
   it('should create', () => {

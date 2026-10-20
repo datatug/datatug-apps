@@ -841,36 +841,54 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly agentSelectedEnvironment = signal('');
   private readonly federatedQuery = inject(FederatedQueryService);
   private demoDraftAttempt?: string;
-  private demoDraftEntry?: { token: string; routeKey: string; queryId: string };
+  private demoDraftEntry?: { token: string; identityKey: string; queryId: string };
+  private demoDraftPendingScope?: string;
   private demoDraftGeneration = 0;
   private async restoreDemoTableDraft(): Promise<void> {
     const params = this.route.snapshot.queryParamMap;
     const token = params?.get('demoDraft');
     const ref = this.project?.ref;
     const id = this.queryId;
-    if (!token || !ref || !id || this.demoDraftAttempt === token) return;
+    const runtime = params?.get('runtime');
+    const environment = params?.get('env');
+    if (!token || !ref || !id) return;
     // Project context can arrive before route initialization. Never start an
     // unsaved table handoff against the editor selected by the previous page.
-    if (!params.get('id') && !this.route.snapshot.paramMap.get('queryId') &&
+    const address = params.get('id') || this.route.snapshot.paramMap.get('queryId');
+    if (!address &&
       (this.demoDraftEntry?.token !== token || this.demoDraftEntry.queryId !== id)) return;
+    const scope = JSON.stringify([id, ref.storeId, ref.projectId, ref.projectApi,
+      ref.branch, ref.spaceID, runtime, environment, address]);
+    // A consumed token no longer needs reading. A pending read, however, must
+    // be retried through the same scoped draft validator when its URL changes.
+    if (this.demoDraftAttempt === token &&
+      (this.demoDraftPendingScope === undefined || this.demoDraftPendingScope === scope)) return;
     this.demoDraftAttempt = token;
     const generation = ++this.demoDraftGeneration;
-    const isCurrent = () => generation === this.demoDraftGeneration && this.demoDraftAttempt === token && equalProjectRef(ref, this.project?.ref) && this.queryId === id && this.route.snapshot.queryParamMap.get('demoDraft') === token;
-    if (params.get('id') || this.route.snapshot.paramMap.get('queryId')) { this.runError.set('A table draft cannot replace an existing saved query. Return to your browser database.'); return; }
+    const isCurrent = () => generation === this.demoDraftGeneration && this.demoDraftAttempt === token && equalProjectRef(ref, this.project?.ref) && this.queryId === id && this.route.snapshot.queryParamMap.get('demoDraft') === token && this.route.snapshot.queryParamMap.get('runtime') === runtime && this.route.snapshot.queryParamMap.get('env') === environment && !this.route.snapshot.queryParamMap.get('id') && !this.route.snapshot.paramMap.get('queryId');
+    if (address) {
+      this.demoDraftAttempt = undefined;
+      this.demoDraftPendingScope = undefined;
+      this.runError.set('A table draft cannot replace an existing saved query. Return to your browser database.');
+      return;
+    }
+    this.demoDraftPendingScope = scope;
     try {
       this.runError.set(undefined);
       const actor = (await firstValueFrom(this.queriesService.authentication())).user?.uid;
       if (!actor) throw new Error('Sign in to the account that opened this edited browser database.');
-      const definition = await this.injector.get(DemoTableDraftService).read(token, ref, params.get('runtime'), params.get('env'), actor);
+      const definition = await this.injector.get(DemoTableDraftService).read(token, ref, runtime, environment, actor);
       if ((await firstValueFrom(this.queriesService.authentication())).user?.uid !== actor) throw new Error('Sign in to the account that opened this edited browser database.');
       if (!isCurrent()) return;
       const current = this.queryEditorStateService.getQueryState(id);
       if (current?.request && 'text' in current.request && (current.request as ITextQueryRequest).text.trim()) throw new Error('This query already has an unsaved draft. Open Query this table in a new query to keep your edits.');
       this.queryEditorStateService.updateQueryState({ ...current, id, isNew: true, isLoading: false, queryType: QueryType.DTQL, def: { ...definition, id }, request: definition.request, connectionId: definition.connectionId });
       this.injector.get(DemoTableDraftService).consume(token);
+      this.demoDraftPendingScope = undefined;
     } catch (error) {
       if (isCurrent()) {
         this.demoDraftAttempt = undefined;
+        this.demoDraftPendingScope = undefined;
         this.runError.set(error instanceof Error ? error.message : 'The browser table draft is unavailable. Return to your browser database.');
       }
     }
@@ -6342,16 +6360,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         const runtime = queryParams.get('runtime');
         const requestedEnv = queryParams.get('env') ?? undefined;
         const demoDraft = queryParams.get('demoDraft');
-        const routeKey = JSON.stringify({ queryId: addressQueryId, resultId, demoDraft, runtime, requestedEnv,
+        const projectRoute = {
           storeId: this.route.snapshot.paramMap.get('storeId'),
           projectId: this.route.snapshot.paramMap.get('projectId'),
-          branch: queryParams.get('branch'), projectApi: queryParams.get('projectApi') });
+          branch: queryParams.get('branch'), projectApi: queryParams.get('projectApi'),
+        };
+        const routeKey = JSON.stringify({ queryId: addressQueryId, resultId, demoDraft, runtime, requestedEnv, ...projectRoute });
         // A table entry is an unsaved editor, not a saved-query address. Keep
         // one identity across editor/env URL normalization while its scoped
         // draft is authenticated and resolved asynchronously.
         if (demoDraft && !addressQueryId && !resultId) {
-          if (this.demoDraftEntry?.routeKey !== routeKey) {
-            this.demoDraftEntry = { token: demoDraft, routeKey,
+          const identityKey = JSON.stringify({ demoDraft, ...projectRoute });
+          if (this.demoDraftEntry?.identityKey !== identityKey) {
+            this.demoDraftEntry = { token: demoDraft, identityKey,
               queryId: this.randomIdService.newRandomId() };
           }
           queryId = this.demoDraftEntry.queryId;
