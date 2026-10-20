@@ -10,6 +10,25 @@
       <ul class="parts" aria-label="Other ways to use DataTug">
         @for (part of parts; track part.id) {
           <li class="part" [attr.data-part]="part.id">
+            @if (part.id === 'agent') {
+              <figure class="preview agent-preview" aria-label="DataTug integrations for AI agent workflows">
+                <img
+                  class="agent-art"
+                  src="/assets/home/way-agent.webp"
+                  alt=""
+                  width="800"
+                  height="533"
+                  loading="lazy"
+                />
+                <div class="agent-illustration-copy" aria-hidden="true">
+                  <span class="agent-kicker">AI AGENT WORKFLOW</span>
+                  <strong>Shared project context</strong>
+                  <span class="agent-step"><i class="agent-step-icon">✦</i> DataTug CLI skills <b>Available</b></span>
+                  <span class="agent-step"><i class="agent-step-icon agent-step-icon--planned">↗</i> MCP connections <b class="planned">Planned</b></span>
+                </div>
+                <figcaption>Illustration · The DataTug agent pathway</figcaption>
+              </figure>
+            }
             <h3 class="name">
               <ion-icon [name]="part.icon" aria-hidden="true" />
               {{ part.name }}
