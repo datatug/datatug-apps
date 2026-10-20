@@ -1,4 +1,5 @@
 import { BrowserContext, expect, Page, Route, test } from '@playwright/test';
+import { playwrightDecodableHeaders } from './helpers/live-fetch-headers';
 import { isRateLimited, rateLimitMessage, readBreaker, tripBreaker } from './helpers/demodb-guard-state';
 // The catalog is plain TypeScript with no imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
@@ -89,7 +90,8 @@ async function openContext(
         return route.abort();
       }
       ovdbSent += 1;
-      const response = await route.fetch();
+      // Never advertise zstd: Playwright cannot decode it, and Firefox would parse the raw bytes as JSON (helpers/live-fetch-headers.ts).
+      const response = await route.fetch({ headers: playwrightDecodableHeaders(route.request().headers()) });
       const status = response.status();
       const headers = response.headers();
       const text = status === 200 ? '' : (await response.text()).slice(0, 4096);
