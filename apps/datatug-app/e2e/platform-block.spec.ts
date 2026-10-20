@@ -14,7 +14,20 @@ test('home composition introduces DataTug, the public demo, and two other entry 
     'aria-hidden',
     'true',
   );
-  await expect(hero.locator('ion-list ion-item[color="light"]')).toHaveCount(1);
+  // The gray header item is a direct child of the card: Ionic's md-mode
+  // ion-list adds 8px of padding, which showed as a white strip above it.
+  await expect(hero.locator('ion-item[color="light"]')).toHaveCount(1);
+  await expect(hero.locator('ion-list')).toHaveCount(0);
+  const headerGap = await hero.evaluate((card) => {
+    const header = card.querySelector(':scope > ion-item[color="light"]');
+    if (!header) {
+      return -1;
+    }
+    return (
+      header.getBoundingClientRect().top - card.getBoundingClientRect().top
+    );
+  });
+  expect(headerGap).toBe(0);
 
   const demo = page.locator('[data-demo-slot="GitHub"]');
   await expect(demo.locator('.demo-visual')).toHaveAttribute(

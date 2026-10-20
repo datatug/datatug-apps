@@ -141,9 +141,13 @@ describe('HomePage composition', () => {
     expect(hero.querySelector('.hero-copy')?.textContent).toContain(
       'connected data, and saved queries together',
     );
-    expect(
-      hero.querySelector('ion-list[lines="full"] ion-item[color="light"]'),
-    ).toBeTruthy();
+    // The gray header item is a direct child of the card, not wrapped in an
+    // ion-list: an md-mode list adds 8px of padding that showed as a white
+    // strip above the header.
+    const header = hero.querySelector('ion-item[color="light"][lines="full"]');
+    expect(header).toBeTruthy();
+    expect(header.parentElement).toBe(hero);
+    expect(hero.querySelector('ion-list')).toBeNull();
   });
 
   it('keeps the Detective promotion honest about its private demo flow', () => {
