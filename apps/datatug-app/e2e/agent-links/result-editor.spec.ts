@@ -73,9 +73,9 @@ test.describe('query result in the query editor', () => {
       new RegExp(`/project/${DEMO_PROJECT}/query\\?result=e2e-editor`),
       { timeout: 30_000 },
     );
-    expect(page.url()).not.toContain('code=');
-    expect(page.url()).not.toContain('#');
-    expect(decodeURIComponent(page.url())).not.toContain('please');
+    await expect.poll(() => page.url()).not.toContain('code=');
+    await expect.poll(() => page.url()).not.toContain('#');
+    await expect.poll(() => decodeURIComponent(page.url())).not.toContain('please');
 
     const banner = page.getByTestId('saved-result-banner');
     await expect(banner).toBeVisible({ timeout: 30_000 });

@@ -1,4 +1,5 @@
 import { DemoTableDraftService } from '../../demo-table-draft.service';
+import { isSavedPublicChartQueryId } from '../../public-data/public-chart-query';
 import { queryContextScope } from '../../../session-context/session-query-scope';
 import { savedMeaningChoices, type SavedMeaningChoice } from '../../semantic-meaning-reuse';
 import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
@@ -364,7 +365,7 @@ const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
   diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil, filter, take } from 'rxjs/operators';
-import { firstValueFrom, map, Subject, Subscription } from 'rxjs';
+import { defer, firstValueFrom, map, merge, Subject, Subscription, timeout } from 'rxjs';
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -844,6 +845,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private demoDraftEntry?: { token: string; identityKey: string; queryId: string };
   private demoDraftPendingScope?: string;
   private demoDraftGeneration = 0;
+  private readonly demoDraftCancelled = new Subject<void>();
+  readonly demoDraftLoading = signal(false);
+  readonly demoDraftRecovery = signal<string | undefined>(undefined);
+
+  openDemoDatabases(): void {
+    void this.router.navigate(['/demo/sqlite']).catch(
+      this.errorLogger.logErrorHandler('Failed to open demo databases'),
+    );
+  }
+
+  private invalidateDemoTableDraft(): void {
+    if (!this.demoDraftAttempt || this.demoDraftAttempt !== this.route.snapshot.queryParamMap.get('demoDraft')) return;
+    ++this.demoDraftGeneration;
+    this.demoDraftCancelled.next();
+    this.demoDraftPendingScope = undefined;
+    this.demoDraftLoading.set(false);
+    this.demoDraftRecovery.set('This browser query is no longer available in this account or project. Return to your browser database and choose Query this table again.');
+  }
+
   private async restoreDemoTableDraft(): Promise<void> {
     const params = this.route.snapshot.queryParamMap;
     const token = params?.get('demoDraft');
@@ -851,7 +871,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const id = this.queryId;
     const runtime = params?.get('runtime');
     const environment = params?.get('env');
-    if (!token || !ref || !id) return;
+    if (!token) {
+      ++this.demoDraftGeneration;
+      this.demoDraftCancelled.next();
+      this.demoDraftAttempt = undefined;
+      this.demoDraftPendingScope = undefined;
+      this.demoDraftRecovery.set(undefined);
+      this.demoDraftLoading.set(false);
+      return;
+    }
+    if (!ref || !id) return;
     // Project context can arrive before route initialization. Never start an
     // unsaved table handoff against the editor selected by the previous page.
     const address = params.get('id') || this.route.snapshot.paramMap.get('queryId');
@@ -864,21 +893,31 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (this.demoDraftAttempt === token &&
       (this.demoDraftPendingScope === undefined || this.demoDraftPendingScope === scope)) return;
     this.demoDraftAttempt = token;
+    this.demoDraftCancelled.next();
     const generation = ++this.demoDraftGeneration;
     const isCurrent = () => generation === this.demoDraftGeneration && this.demoDraftAttempt === token && equalProjectRef(ref, this.project?.ref) && this.queryId === id && this.route.snapshot.queryParamMap.get('demoDraft') === token && this.route.snapshot.queryParamMap.get('runtime') === runtime && this.route.snapshot.queryParamMap.get('env') === environment && !this.route.snapshot.queryParamMap.get('id') && !this.route.snapshot.paramMap.get('queryId');
     if (address) {
       this.demoDraftAttempt = undefined;
       this.demoDraftPendingScope = undefined;
+      this.demoDraftLoading.set(false);
+      this.demoDraftRecovery.set('A table draft cannot replace an existing saved query. Return to your browser database and choose Query this table again.');
       this.runError.set('A table draft cannot replace an existing saved query. Return to your browser database.');
       return;
     }
     this.demoDraftPendingScope = scope;
+    this.demoDraftLoading.set(true);
+    this.demoDraftRecovery.set(undefined);
     try {
       this.runError.set(undefined);
-      const actor = (await firstValueFrom(this.queriesService.authentication())).user?.uid;
-      if (!actor) throw new Error('Sign in to the account that opened this edited browser database.');
-      const definition = await this.injector.get(DemoTableDraftService).read(token, ref, runtime, environment, actor);
-      if ((await firstValueFrom(this.queriesService.authentication())).user?.uid !== actor) throw new Error('Sign in to the account that opened this edited browser database.');
+      const definition = await firstValueFrom(defer(async () => {
+        const actor = (await firstValueFrom(this.queriesService.authentication().pipe(take(1), takeUntil(merge(this.destroyed, this.demoDraftCancelled))))).user?.uid;
+        if (!actor) throw new Error('Sign in to the account that opened this edited browser database.');
+        if (!isCurrent()) throw new Error('The browser query context changed.');
+        const draft = await this.injector.get(DemoTableDraftService).read(token, ref, runtime, environment, actor);
+        if (!isCurrent()) throw new Error('The browser query context changed.');
+        if ((await firstValueFrom(this.queriesService.authentication().pipe(take(1), takeUntil(merge(this.destroyed, this.demoDraftCancelled))))).user?.uid !== actor) throw new Error('Sign in to the account that opened this edited browser database.');
+        return draft;
+      }).pipe(timeout({ first: 30_000 }), takeUntil(merge(this.destroyed, this.demoDraftCancelled))));
       if (!isCurrent()) return;
       const current = this.queryEditorStateService.getQueryState(id);
       if (current?.request && 'text' in current.request && (current.request as ITextQueryRequest).text.trim()) throw new Error('This query already has an unsaved draft. Open Query this table in a new query to keep your edits.');
@@ -887,10 +926,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.demoDraftPendingScope = undefined;
     } catch (error) {
       if (isCurrent()) {
+        this.demoDraftCancelled.next();
         this.demoDraftAttempt = undefined;
         this.demoDraftPendingScope = undefined;
         this.runError.set(error instanceof Error ? error.message : 'The browser table draft is unavailable. Return to your browser database.');
+        this.demoDraftRecovery.set('This browser query could not be restored. Return to your browser database and choose Query this table again.');
       }
+    } finally {
+      if (generation === this.demoDraftGeneration) this.demoDraftLoading.set(false);
     }
   }
   private readonly queryDispatch = inject(QueryDispatchService);
@@ -2886,6 +2929,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public querySaveState(): string {
+    if (this.demoDraftRecovery()) return 'Unavailable';
+    if (this.demoDraftLoading()) return 'Loading';
     if (!this.queryDef()) return 'Loading';
     if (this.queryState.isSaving) return 'Saving';
     if (isDevicePersonalQuery(this.queryState.id ?? '')) return this.isChanged ? 'Unsaved · On this device' : 'Saved on this device';
@@ -5712,6 +5757,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
+        this.invalidateDemoTableDraft();
         this.loadedTextRepresentation.set(undefined);
         this.queryPageTitle.set('Query');
         this.customerInvoiceExample.set(false);
@@ -5949,6 +5995,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    ++this.demoDraftGeneration;
+    this.demoDraftCancelled.next();
+    this.demoDraftCancelled.complete();
     this.resultSubscription?.unsubscribe();
     this.restoreTitle();
     this.workspaceTabResizeObserver?.disconnect();
@@ -5985,7 +6034,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private trackQueryState(): void {
     this.queryEditorStateService.queryEditorState
-      .pipe(distinctUntilChanged())
+      .pipe(distinctUntilChanged(), takeUntil(this.destroyed))
       .subscribe({
         next: this.onQueryEditorStateChanged,
         error: this.errorLogger.logErrorHandler(
@@ -6316,7 +6365,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private trackQueryParams(): void {
-    this.route.queryParamMap.subscribe({
+    this.route.queryParamMap.pipe(takeUntil(this.destroyed)).subscribe({
       next: (queryParams) => {
         // Names only: a value may be a stored result's id.
         console.log(
@@ -7997,6 +8046,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private runQueryWithPinnedInput(): void {
+    if (this.demoDraftRecovery() || this.demoDraftLoading()) return;
     const sessionId = this.contextSessionId();
     if (this.sessionWorkspace && sessionId && !this.sessionWorkspace.canExecuteFor(sessionId)) {
       this.runError.set('Resume this session before running a query.');
@@ -8145,18 +8195,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         });
       return;
     }
-    if (this.selectedWorkingCopy() !== 'project' && definition && !this.isTugqlAuthorJourney()) {
+    const publicSavedQuery = this.selectedWorkingCopy() === 'project' &&
+      isGithubStoreId(projectRef?.storeId) && isSavedPublicChartQueryId(queryId);
+    if ((this.selectedWorkingCopy() !== 'project' || publicSavedQuery) && definition && !this.isTugqlAuthorJourney()) {
       const selectionId = this.selectedWorkingCopy();
-      if (this.workingCopyScope !== this.currentWorkingCopyScope() ||
-        !this.workingCopyOptions().some((option) => option.selectionId === selectionId)) {
+      if (!publicSavedQuery && (this.workingCopyScope !== this.currentWorkingCopyScope() ||
+        !this.workingCopyOptions().some((option) => option.selectionId === selectionId))) {
         this.runError.set('Refresh the open working copies and choose the runtime for this saved query.');
         return;
       }
-      if (![QueryType.DTQL, QueryType.TugQL].includes(definition.request.queryType)) {
+      if (!publicSavedQuery && ![QueryType.DTQL, QueryType.TugQL].includes(definition.request.queryType)) {
         this.runError.set('This working copy accepts structured queries. Choose the project runtime for raw SQL.');
         return;
       }
-      if (this.effectiveBindings().length || definition.parameters?.length) {
+      if (!publicSavedQuery && (this.effectiveBindings().length || definition.parameters?.length)) {
         this.runError.set('This working-copy runtime cannot bind query parameters yet. Choose another runtime.');
         return;
       }
@@ -8176,7 +8228,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.runError.set(undefined);
       const session = this.queryDispatch.start({
         projectRef, definition: executedDefinition, queryId,
-        environment: this.envId, runtimeSelectionId: selectionId,
+        environment: this.envId,
+        // Project runtime must reach the existing exact publisher admission.
+        ...(!publicSavedQuery ? { runtimeSelectionId: selectionId } : {}),
       });
       void this.activeDispatchSession?.cancel().catch(() => undefined);
       this.activeDispatchSession = session;

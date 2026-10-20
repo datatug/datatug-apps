@@ -1,3 +1,4 @@
+import { NativeQueryFailure } from './native-query-failure';
 import { TestBed } from '@angular/core/testing';
 import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
 import 'fake-indexeddb/auto';
@@ -145,6 +146,29 @@ describe('federated query worker boundary', () => {
       active.worker.send(message);
       await expect(active.run).rejects.toThrow('unexpected or invalid protocol message');
       expect(active.worker.posted).toContainEqual({ type: 'close' });
+    });
+
+    it('reconstructs only the finite worker diagnostic, never its arbitrary message or raw cause', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const active = await started(new FederatedQueryService());
+      const diagnostic = { stage: 'capability_discovery', reason: 'http_status', status: 403 };
+      active.worker.send({ type: 'error', diagnostic, message: 'secret URL SQL token', cause: new Error('private') });
+      const failure = await active.run.catch(error => error);
+      expect(failure).toBeInstanceOf(NativeQueryFailure);
+      expect(failure.diagnostic).toEqual(diagnostic);
+      expect(failure.cause).toEqual(diagnostic);
+      expect(failure.message).toContain('HTTP 403');
+      expect(failure.message).not.toMatch(/secret|SQL|token|private/);
+      expect(active.worker.posted).toContainEqual({ type: 'close' });
+    });
+
+    it('rejects malformed worker diagnostics without falling back to their arbitrary message', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      for (const diagnostic of [undefined, null, { stage: 'secret URL', reason: 'network' }, { stage: 'query_execution', reason: 'http_status', status: 999 }]) {
+        const active = await started(new FederatedQueryService());
+        active.worker.send({ type: 'error', diagnostic, message: 'secret SQL auth' });
+        await expect(active.run).rejects.toThrow('invalid diagnostic');
+      }
     });
 
     it('sends the static source to the worker only when one is given', async () => {
