@@ -245,9 +245,9 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                 <div class="actions">
                   <ion-button
                     fill="outline"
-                    [disabled]="!connection.active"
+                    [disabled]="busyConnectionId() === connection.id"
                     (click)="selectConnection(connection)"
-                    >View logs</ion-button
+                    >{{ connection.active ? 'View logs' : 'Select to retry' }}</ion-button
                   >
                   <ion-button
                     fill="clear"
@@ -272,21 +272,36 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                   <p role="status">
                     Google denied Cloud Logging access to this view. Ask a
                     project administrator to grant the connected account
-                    permission, then retry the query.
+                    permission, then retry the same query. A successful query
+                    confirms that access has recovered.
                   </p>
+                  <ion-button
+                    [disabled]="queryState() === 'loading'"
+                    (click)="runQuery()"
+                    >Retry query</ion-button
+                  >
                 } @else if (inactiveReason() === 'reconnect_required') {
                   <p role="status">
-                      Google authorization expired. Reconnect the Google
-                      account, then probe this view again.
+                    Google authorization expired. DataTug cannot renew this
+                    grant in place. In Google accounts above, explicitly
+                    revoke the old grant, then connect the account again and
+                    probe this view. Revocation can affect other Sneat clients
+                    using the shared Google app, and the view must be added
+                    again.
                   </p>
-                  <ion-button (click)="startAuthorization()"
-                    >Reconnect Google account</ion-button
-                  >
+                  <a href="#accounts-heading">Review Google accounts</a>
                 } @else {
                   <p role="status">
-                    This view is inactive. Check Cloud Logging permissions or
-                    reconnect Google access, then probe it again.
+                    This view was marked inactive after a previous query. Check
+                    Cloud Logging permissions or Google authorization, then
+                    retry the query. A successful query confirms access has
+                    recovered.
                   </p>
+                  <ion-button
+                    [disabled]="queryState() === 'loading'"
+                    (click)="runQuery()"
+                    >Retry query</ion-button
+                  >
                 }
               } @else {
                 <form
@@ -365,10 +380,11 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                       (ionInput)="service.set(inputValue($event))"
                   /></label>
                   <p class="filter-note">
-                    Bounds are inclusive. Identifier and service equality is
-                    case-insensitive for ASCII values. Non-ASCII filters are
-                    unsupported. Free-text search is unavailable. Results are
-                    current source evidence, capped at 200 entries.
+                    Bounds are inclusive, with a maximum span of 24 hours.
+                    Identifier and service equality is case-insensitive for
+                    ASCII values. Non-ASCII filters are unsupported. Free-text
+                    search is unavailable. Results are current source
+                    evidence, capped at 200 entries.
                   </p>
                   <ion-button
                     type="submit"
@@ -984,6 +1000,11 @@ export class CloudLogsPageComponent {
       this.queryState.set('error');
       return;
     }
+    if (Date.parse(to) - Date.parse(from) > MAX_QUERY_WINDOW_MS) {
+      this.queryError.set('Choose a time range no longer than 24 hours.');
+      this.queryState.set('error');
+      return;
+    }
     if (
       [this.correlationId(), this.orderId(), this.service()].some((value) =>
         /[^\x20-\x7e]/.test(value.trim()),
@@ -1021,6 +1042,23 @@ export class CloudLogsPageComponent {
         return;
       this.entries.set(response.entries);
       this.result.set(response);
+      if (!connection.active) {
+        let found = false;
+        this.connections.update((items) =>
+          items.map((candidate) => {
+            if (candidate.id !== connection.id) return candidate;
+            found = true;
+            return { ...candidate, active: true };
+          }),
+        );
+        if (!found)
+          this.connections.update((items) => [
+            ...items,
+            { ...connection, active: true },
+          ]);
+        this.selectedConnection.set({ ...connection, active: true });
+        this.inactiveReason.set(null);
+      }
       this.queryState.set('ready');
     } catch (error) {
       if (
@@ -1166,6 +1204,7 @@ function defaultTime(hoursAgo: number): string {
   date.setUTCSeconds(0, 0);
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
+const MAX_QUERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 function toUtc(value: string): string | undefined {
   if (
     !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)

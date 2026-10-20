@@ -323,6 +323,31 @@ describe('CloudLogsPageComponent', () => {
     expect(component.queryError()).toBe('');
   });
 
+  it('does not reactivate a denied view when its recovery query completes after selection changes', async () => {
+    const pending = new Subject<PersonalLogQueryResult>();
+    api.query
+      .mockReturnValueOnce(throwError(() => ({ code: 'permission_denied' })))
+      .mockReturnValueOnce(pending);
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    await component.runQuery();
+    expect(component.selectedConnection()?.active).toBe(false);
+
+    const retry = component.runQuery();
+    component.selectConnection(connections[1]);
+    pending.next({ entries: [], capped: false, morePossible: false });
+    pending.complete();
+    await retry;
+
+    expect(component.selectedConnection()?.id).toBe('view-b');
+    expect(component.selectedConnection()?.active).toBe(true);
+    expect(component.connections().find((item) => item.id === 'view-a')?.active).toBe(false);
+    expect(component.entries()).toEqual([]);
+  });
+
   it('announces empty account and view lists as status updates', async () => {
     api.list.mockReturnValue(of({ grants: [], connections: [] }));
     fixture = TestBed.createComponent(CloudLogsPageComponent);
@@ -376,8 +401,8 @@ describe('CloudLogsPageComponent', () => {
     expect(api.remove).not.toHaveBeenCalled();
   });
 
-  it('explains IAM permission failure without offering OAuth reconnect', async () => {
-    api.list.mockReturnValue(of({ grants: [], connections: [] }));
+  it('retries the same query after IAM is repaired and restores the view only on success', async () => {
+    api.list.mockReturnValue(of({ grants: [], connections }));
     api.query.mockReturnValue(
       throwError(() => ({ code: 'permission_denied' })),
     );
@@ -394,9 +419,76 @@ describe('CloudLogsPageComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Ask a project administrator to grant the connected account permission',
     );
-    expect(
-      fixture.nativeElement.querySelector('.timeline ion-button'),
-    ).toBeNull();
+    component.selectConnection(connections[1]);
+    const deniedConnection = component
+      .connections()
+      .find((item) => item.id === 'view-a');
+    expect(deniedConnection?.active).toBe(false);
+    fixture.detectChanges();
+    const selectToRetry = Array.from(
+      fixture.nativeElement.querySelectorAll('.connection ion-button'),
+    ).find((button) => button.textContent?.includes('Select to retry')) as HTMLElement;
+    expect(selectToRetry).toBeDefined();
+    selectToRetry.click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain(
+      'This view was marked inactive after a previous query.',
+    );
+    const retry = fixture.nativeElement.querySelector(
+      '.timeline ion-button',
+    ) as HTMLElement;
+    expect(retry?.textContent).toContain('Retry query');
+    expect(component.selectedConnection()?.active).toBe(false);
+
+    api.query.mockReturnValue(
+      of({
+        entries: [{ severity: 'ERROR', source: 'svc', message: 'recovered' }],
+        capped: false,
+        morePossible: false,
+      }),
+    );
+    retry.click();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    expect(api.query).toHaveBeenCalledTimes(2);
+    expect(component.connections().find((item) => item.id === 'view-a')?.active).toBe(true);
+    expect(component.selectedConnection()?.active).toBe(true);
+    expect(component.entries()[0]?.message).toBe('recovered');
+    expect(component.inactiveReason()).toBeNull();
+  });
+
+  it('rejects a query longer than 24 hours without calling the API', async () => {
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    component.fromTime.set('2026-01-01T00:00:00Z');
+    component.toTime.set('2026-01-02T01:00:00Z');
+
+    await component.runQuery();
+
+    expect(api.query).not.toHaveBeenCalled();
+    expect(component.queryError()).toBe('Choose a time range no longer than 24 hours.');
+  });
+
+  it('accepts the inclusive 24-hour query boundary', async () => {
+    api.query.mockReturnValue(
+      of({ entries: [], capped: false, morePossible: false }),
+    );
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    component.fromTime.set('2026-01-01T00:00:00Z');
+    component.toTime.set('2026-01-02T00:00:00Z');
+
+    await component.runQuery();
+
+    expect(api.query).toHaveBeenCalledOnce();
+    expect(component.queryState()).toBe('ready');
   });
 
   it('exposes entry disclosure state to assistive technology', async () => {
@@ -461,7 +553,7 @@ describe('CloudLogsPageComponent', () => {
     expect(component.queryError()).toBe('');
   });
 
-  it('offers OAuth reconnect for expired authorization', async () => {
+  it('explains the explicit revoke and new connection path for expired authorization', async () => {
     api.list.mockReturnValue(of({ grants: [], connections: [] }));
     api.query.mockReturnValue(
       throwError(() => ({ code: 'reconnect_required' })),
@@ -477,10 +569,12 @@ describe('CloudLogsPageComponent', () => {
 
     expect(component.inactiveReason()).toBe('reconnect_required');
     expect(fixture.nativeElement.textContent).toContain(
-      'Google authorization expired. Reconnect the Google account',
+      'Google authorization expired. DataTug cannot renew this grant in place.',
     );
-    expect(
-      fixture.nativeElement.querySelector('.timeline ion-button'),
-    ).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain(
+      'explicitly revoke the old grant, then connect the account again and probe this view',
+    );
+    expect(fixture.nativeElement.querySelector('.timeline a[href="#accounts-heading"]')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('.timeline ion-button')).toBeNull();
   });
 });
