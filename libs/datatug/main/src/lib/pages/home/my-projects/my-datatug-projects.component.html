@@ -1,74 +1,74 @@
 <ion-card>
-  <ion-list lines="full">
-    <ion-item color="light">
-      <ion-label
-        ><h2>{{ title() }}</h2></ion-label
-      >
-      <ion-buttons slot="end">
-        @switch (authState?.status) {
-          @case ('authenticated') {
-            <ion-button
-              color="medium"
-              (click)="addProject()"
-              title="Add new project"
-            >
-              <ion-icon name="add" slot="start" color="primary" />
-              <ion-label>Add</ion-label>
-            </ion-button>
-          }
-        }
-      </ion-buttons>
-    </ion-item>
-
-    @switch (authState?.status) {
-      @case ('authenticating') {
-        <ion-item>
-          <ion-label color="medium">Authenticating...</ion-label>
-        </ion-item>
-      }
-      @case ('notAuthenticated') {
-        <ion-item>
-          <ion-label color="medium"
-            >Please sign in to access your projects</ion-label
+  <!-- Card header (standard, brief §1): ion-item placed directly in the card.
+       No ion-list wrapper — its md `padding-top: 8px` used to show a white
+       band above the gray header. `lines="full"` is set on the item because
+       outside a list the full-width divider is not inherited. -->
+  <ion-item color="light" lines="full">
+    <ion-label
+      ><h2>{{ title() }}</h2></ion-label
+    >
+    <ion-buttons slot="end">
+      @switch (authState?.status) {
+        @case ('authenticated') {
+          <ion-button
+            color="medium"
+            (click)="addProject()"
+            title="Add new project"
           >
-        </ion-item>
-      }
-      @case ('authenticated') {
-        @if (userRecordLoaded) {
-          @for (
-            item of projects || [];
-            track item.ref.projectId + item.ref.storeId
-          ) {
-            <ion-item button (click)="goProject(item)" detail="true">
-              <ion-icon name="file-tray-full-outline" slot="start" />
-              {{ item.project.title }}
-            </ion-item>
-          }
-        } @else {
-          <sneat-datatug-loading-items
-            [authStatus]="authState.status"
-            title="Loading user projects..."
-          />
+            <ion-icon name="add" slot="start" color="primary" />
+            <ion-label>Add</ion-label>
+          </ion-button>
         }
+      }
+    </ion-buttons>
+  </ion-item>
+
+  @switch (authState?.status) {
+    @case ('authenticating') {
+      <ion-item lines="full">
+        <ion-label color="medium">Authenticating...</ion-label>
+      </ion-item>
+    }
+    @case ('notAuthenticated') {
+      <ion-item lines="full">
+        <ion-label color="medium"
+          >Please sign in to access your projects</ion-label
+        >
+      </ion-item>
+    }
+    @case ('authenticated') {
+      @if (userRecordLoaded) {
+        @for (
+          item of projects || [];
+          track item.ref.projectId + item.ref.storeId
+        ) {
+          <ion-item button lines="full" (click)="goProject(item)" detail="true">
+            <ion-icon name="file-tray-full-outline" slot="start" />
+            {{ item.project.title }}
+          </ion-item>
+        }
+      } @else {
+        <sneat-datatug-loading-items
+          [authStatus]="authState.status"
+          title="Loading user projects..."
+        />
       }
     }
-  </ion-list>
+  }
 
   @if (showDemoProjects) {
-    <ion-list lines="full" class="demo-list">
-      <ion-item-divider>
-        <ion-label><h3>Demo projects</h3></ion-label>
-      </ion-item-divider>
-      @for (demo of demoOptions; track demo.project.id) {
-        <ion-item button detail="true" (click)="goDemoProject(demo.project)">
-          <ion-icon name="file-tray-full-outline" slot="start" />
-          <ion-label>
-            <h3>{{ demo.project.title }}</h3>
-            <p>{{ demo.provider }}</p>
-          </ion-label>
-        </ion-item>
-      }
-    </ion-list>
+    <ion-item-divider class="demo-list">
+      <ion-label><h3>Demo projects</h3></ion-label>
+    </ion-item-divider>
+    @for (demo of demoOptions; track demo.project.id) {
+      <ion-item button lines="full" detail="true" (click)="goDemoProject(demo.project)">
+        <ion-icon name="file-tray-full-outline" slot="start" />
+        <ion-label>
+          <h3>{{ demo.project.title }}</h3>
+          <p>{{ demo.provider }}</p>
+        </ion-label>
+      </ion-item>
+    }
     <ion-card-content class="demo-experiences">
       @for (demo of demoOptions; track demo.project.id) {
         <section class="demo-details" [attr.data-demo-slot]="demo.provider">
