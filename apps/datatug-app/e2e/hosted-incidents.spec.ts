@@ -109,7 +109,7 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
     storage: 'firestore', spaceID, project: projectId, environment: 'demo',
   });
   await page.reload();
-  await expect(page.getByRole('heading', { name: 'Order 11039 is missing' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'INC-1 — Order 11039 is missing' })).toBeVisible();
   await expect(page.getByText('No Detective Case has been started')).toBeVisible();
   await page.getByRole('button', { name: 'Investigate in a Detective Case' }).click();
   await expect(page).toHaveURL(new RegExp(`/detective/incident-[a-f0-9-]+$`));
@@ -117,5 +117,5 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   await page.goto(detail);
   await expect(page.getByText(`Detective Case ${linkedCase?.['id']}`)).toBeVisible();
   await page.getByRole('link', { name: 'Back to Incidents' }).click();
-  await expect(page.getByRole('list', { name: 'Project Incidents' })).toContainText('Order 11039 is missing');
+  await expect(page.getByRole('list', { name: 'Project Incidents' })).toContainText('INC-1 — Order 11039 is missing');
 });
