@@ -438,10 +438,15 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { 'Content-Type': 'image/svg+xml' } })));
   });
 
-  async function setup(savedId?: string, queryType = QueryType.DTQL) {
+  async function setup(savedId?: string, queryType = QueryType.DTQL, options: {
+    projectEnvironments?: boolean; environment?: string; contextEnvironment?: string;
+  } = {}) {
     Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, configurable: true, writable: true });
     const ref = savedId ? { storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' } : cloudRef;
-    const project = new BehaviorSubject<IProjectContext | undefined>({ ref } as IProjectContext);
+    const project = new BehaviorSubject<IProjectContext | undefined>({ ref,
+      ...(options.projectEnvironments ? { summary: { environments: [{ id: 'local' }, { id: 'dev' }, { id: 'prod' }] } } : {}),
+    } as IProjectContext);
+    const currentEnv = new BehaviorSubject(options.contextEnvironment ? { id: options.contextEnvironment } : undefined);
     const auth = new BehaviorSubject({ status: 'authenticated', user: { uid: 'actor' } });
     const denied = new Subject<IProjectRef>();
     const params = new BehaviorSubject(convertToParamMap({}));
@@ -455,7 +460,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
       { provide: RandomIdService, useValue: { newRandomId: () => `handoff-${++ids}` } },
       { provide: ActivatedRoute, useValue: route },
       { provide: Router, useValue: { navigate: vi.fn(async () => true), events: of(), currentNavigation: vi.fn(() => null), lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } } },
-      { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() } },
+      { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv, setCurrentEnvironment: vi.fn() } },
       { provide: QueriesService, useValue: { authentication: () => auth, authorityDenied: () => denied, getQuery: vi.fn(() => of(definition)), devicePersonal: { list: vi.fn(async () => []) } } },
       { provide: ProjectService, useValue: { getFull: vi.fn() } },
       { provide: QueryEditorStateService, useClass: QueryEditorStateService },
@@ -481,7 +486,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     const token = drafts.create({ actorID: 'actor', projectRef: ref, connection: declaration, table: 'Artist', runtimeSelectionId: runtime.selectionId, environment: 'dev' });
     const definition: IQueryDef | undefined = savedId ? { id: savedId.split('/').at(-1) ?? savedId, title: 'Saved public query', connectionId: 'northwind-sqlite', request: { queryType, text: 'changed text' } as ITextQueryRequest } : undefined;
     if (definition && savedId) editor.newQuery({ id: savedId, isNew: false, def: definition, request: definition.request, queryType });
-    const queryParams = savedId ? { id: savedId, runtime: 'project' } : { demoDraft: token, runtime: runtime.selectionId, env: 'dev', projectApi: 'cloud', branch: 'main' };
+    const queryParams = savedId ? { id: savedId, runtime: 'project', ...(options.environment ? { env: options.environment } : {}) } : { demoDraft: token, runtime: runtime.selectionId, env: 'dev', projectApi: 'cloud', branch: 'main' };
     route.snapshot.queryParamMap = convertToParamMap(queryParams);
     params.next(route.snapshot.queryParamMap);
     const create = async () => {
@@ -575,6 +580,62 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     h.fixture.componentInstance.runQuery();
     await vi.waitFor(() => expect(h.fixture.nativeElement.textContent).toMatch(/differs from the admitted definition|changed identity or execution scope/));
     expect(h.browser).not.toHaveBeenCalled();
+  });
+
+  it.each([publicChartQueries.PUBLIC_ORDERS_QUERY_ID, publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID])('keeps omitted project environment out of fixed public query %s through Run and URL normalization', async (id) => {
+    const result = { recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [], truncated: false, hasMore: false, provenance: { source: 'northwind', mode: 'live' } };
+    const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery').mockResolvedValue(result as never);
+    const h = await setup(id, QueryType.DTQL, { projectEnvironments: true });
+    const page = h.fixture.componentInstance;
+    expect(page.activeEnv).toBeUndefined();
+    expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).not.toHaveBeenCalledWith('local');
+    expect(h.fixture.nativeElement.textContent).toContain('fixed public Northwind OVDB API');
+    expect(h.fixture.nativeElement.textContent).toContain('Project environment is not used for execution');
+    expect(h.fixture.nativeElement.textContent).not.toContain('The selected runtime is checked against this connection');
+    page.runQuery();
+    await h.fixture.whenStable();
+    page.updateUrl();
+    expect(admission).toHaveBeenCalledOnce();
+    const navigations = vi.mocked(TestBed.inject(Router).navigate).mock.calls;
+    expect(navigations.some(([, extras]) => extras?.queryParams?.['id'] === id)).toBe(true);
+    expect(navigations.every(([, extras]) => extras?.queryParams?.['env'] === undefined)).toBe(true);
+    expect(page.activeEnv).toBeUndefined();
+    expect(h.browser).not.toHaveBeenCalled();
+  });
+
+  it('retains working-copy admission and source copy when leaving the fixed public runtime', async () => {
+    const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery');
+    const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, QueryType.DTQL, { projectEnvironments: true });
+    h.fixture.componentInstance.selectWorkingCopy(h.runtime.selectionId);
+    await h.fixture.whenStable();
+    expect(h.fixture.nativeElement.textContent).toContain('The selected runtime is checked against this connection');
+    expect(h.fixture.nativeElement.textContent).not.toContain('fixed public Northwind OVDB API');
+    h.fixture.componentInstance.runQuery();
+    await h.fixture.whenStable();
+    expect(admission).not.toHaveBeenCalled();
+    expect(h.fixture.componentInstance.runError()).toMatch(/unavailable|Refresh the open working copies/);
+    expect(h.browser).not.toHaveBeenCalled();
+  });
+
+  it('retains first-environment defaults and ordinary source copy for other saved DTQL', async () => {
+    const h = await setup('other/dtql', QueryType.DTQL, { projectEnvironments: true });
+    expect(h.fixture.componentInstance.activeEnv?.id).toBe('local');
+    h.fixture.componentInstance.updateUrl();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: 'local' }) }));
+    expect(h.fixture.nativeElement.textContent).toContain('The selected runtime is checked against this connection');
+    expect(h.fixture.nativeElement.textContent).not.toContain('fixed public Northwind OVDB API');
+  });
+
+  it.each(['url', 'context'] as const)('preserves explicit %s environment for a fixed public query', async (entry) => {
+    const h = await setup(publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID, QueryType.DTQL, {
+      projectEnvironments: true,
+      ...(entry === 'url' ? { environment: 'prod', contextEnvironment: 'dev' } : { contextEnvironment: 'dev' }),
+    });
+    const expected = entry === 'url' ? 'prod' : 'dev';
+    expect(h.fixture.componentInstance.activeEnv?.id).toBe(expected);
+    h.fixture.componentInstance.updateUrl();
+    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: expected }) }));
+    expect(h.fixture.nativeElement.textContent).toContain('Project environment is not used for execution');
   });
 
   it('retains the agent notice for arbitrary GitHub DTQL', async () => {
