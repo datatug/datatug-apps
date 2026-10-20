@@ -153,7 +153,7 @@ describe('HomePage composition', () => {
     );
     expect(hero.querySelector('ion-item[color="light"]')).toBeNull();
     const image = hero.querySelector('img.hero-visual');
-    expect(image?.getAttribute('src')).toBe('assets/home/hero-data-named.webp');
+    expect(image?.getAttribute('src')).toBe('assets/home/hero-data-panorama.webp');
     expect(image?.getAttribute('alt')).toContain('tugboat');
     expect(hero.querySelector('ion-list')).toBeNull();
   });

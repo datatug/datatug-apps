@@ -83,7 +83,7 @@ test('the home sections keep the landing, other ways, and project cards in order
     const hero = element.querySelector('[data-testid="home-hero"]');
     const platform = element.querySelector('sneat-datatug-platform-block');
     const detective = element
-      .querySelector('sneat-datatug-detective-demo-starter')
+      .querySelector(':scope > ion-card sneat-datatug-detective-demo-starter')
       ?.closest('ion-card');
     const projects = element.querySelector('.home-cards-grid');
     const precedes = (
