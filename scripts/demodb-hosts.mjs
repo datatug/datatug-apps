@@ -1,6 +1,6 @@
 // Prints the host names that CI must never reach, one per line (used by .github/actions/block-demodb): the DemoDB apex, www,
 // ovdb and one sub-domain per dataset of the catalog (so a dataset added to the catalog is blocked too), and the public
-// OpenVaultDB API (openvaultdb.com, www, cloud). The nightly live PostgreSQL lane does not use the block.
+// OpenVaultDB API (openvaultdb.com, www, cloud). The live PostgreSQL workflow (e2e-postgres-ovdb.yml) does not use the block.
 // /etc/hosts has no wildcards; the Chromium wildcard (helpers/demodb-config.ts) and the guard's route are the other layers.
 const catalogUrl = new URL('../libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', import.meta.url);
 const { demoSqliteDatasetIds } = await import(catalogUrl.href);

@@ -17,8 +17,10 @@ name: E2E PostgreSQL via OpenVaultDB
 #     are refused before they are sent;
 #   - the first rate-limit answer (HTTP 429, or a Cloudflare block page such as error 1015/1020/1027) trips a breaker
 #     kept in a file: every further request is refused and the run fails. It is never retried;
-#   - one run at a time (concurrency group below). On main a queued run waits instead of cancelling the one in flight,
-#     so a run is never cut short half-way through a live request budget.
+#   - one run at a time (concurrency group below, cancel-in-progress false): a new run waits for the one in flight and
+#     never cancels it, so a run is never cut short half-way through a live request budget. GitHub keeps only the newest
+#     pending run per group, so of several pushes queued behind a running one only the latest runs (older pending runs
+#     are cancelled; that is fine, the latest main contains them).
 on:
   workflow_dispatch:
   push:
@@ -26,6 +28,7 @@ on:
       - main
     paths:
       - 'libs/datatug/main/src/lib/ovdb/**'
+      - 'libs/datatug/main/src/lib/demo-postgresql/**'
       - 'libs/datatug/main/src/lib/queries/demodb-ovdb.ts'
       - 'libs/datatug/main/src/lib/queries/hosted-demo-db-query.ts'
       - 'apps/datatug-app/e2e/demo-postgresql.spec.ts'
@@ -35,7 +38,7 @@ on:
       - '.github/workflows/e2e-postgres-ovdb.yml'
 
 permissions:
-  actions: read
+  contents: read
 
 concurrency:
   group: e2e-postgres-ovdb
@@ -47,9 +50,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
-      actions: read
       contents: read
-      attestations: read
     env:
       DEMODB_E2E_MAX_OVDB_REQUESTS: '40'
     steps:
@@ -70,7 +71,7 @@ jobs:
       - name: nx e2e-demo-postgresql
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx run datatug-app:e2e-demo-postgresql --skip-nx-cache
+        run: pnpm nx run datatug-app:e2e-demo-postgresql
 
       - name: Print DemoDB request report
         if: always()
