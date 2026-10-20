@@ -17,16 +17,16 @@
     <sneat-datatug-error-card [error]="error()" />
   } @else {
     <ion-card>
+      <ion-item-divider>
+        <ion-label>Projects</ion-label>
+        <ion-buttons slot="end">
+          <ion-button title="New project" (click)="create()">
+            <ion-icon name="add" slot="start" color="primary" />
+            <ion-label>Add</ion-label>
+          </ion-button>
+        </ion-buttons>
+      </ion-item-divider>
       <ion-list>
-        <ion-item-divider>
-          <ion-label>Projects</ion-label>
-          <ion-buttons slot="end">
-            <ion-button title="New project" (click)="create()">
-              <ion-icon name="add" slot="start" color="primary" />
-              <ion-label>Add</ion-label>
-            </ion-button>
-          </ion-buttons>
-        </ion-item-divider>
         @if (isGithubStore) {
           <ion-item>
             <ion-label color="medium">

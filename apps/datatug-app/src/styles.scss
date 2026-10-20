@@ -472,6 +472,17 @@ ion-select {
   max-width: 100% !important; // https://forum.ionicframework.com/t/ion-option-in-ion-select-doesnt-use-full-width/148256
 }
 
+// Ionic's md-mode `ion-list` carries 8px of top/bottom padding (`.list-md`),
+// and its `ion-card .list-md` rule zeroes only the margins — not that padding.
+// A list that is a card's first child therefore painted a strip of card
+// background above its first row (the white band above gray card headers).
+// Header rows now sit directly under `ion-card`; this keeps any remaining card
+// row lists flush too, including ones whose header row is a divider.
+ion-card > ion-list:is(.list-md, .list-ios) {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
 // REQ:semantic-markers-in-grid — env-db-table.page.ts embeds this exact markup (icon
 // + class) directly into a Tabulator column's `title` HTML string (see
 // columnTitleWithMarker() there), because that content is injected via
