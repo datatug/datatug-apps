@@ -11,6 +11,7 @@ import {
   type ContextScope,
 } from '@sneat/datatug-semantic';
 import { BehaviorSubject, defer, of, Subject } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import type { Mock } from 'vitest';
 import { IncidentListPageComponent } from './incident-list-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
@@ -119,6 +120,7 @@ describe('IncidentListPageComponent', () => {
           },
         },
         { provide: IncidentClientService, useValue: { list: listSpy } },
+        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
@@ -151,7 +153,7 @@ describe('IncidentListPageComponent', () => {
   it('shows an "open a project" guidance state without a complete scope', () => {
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain('Open a project');
+    expect(fixture.nativeElement.innerHTML).toContain('Create a private project');
     expect(listSpy).not.toHaveBeenCalled();
   });
 

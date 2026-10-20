@@ -38,6 +38,9 @@ import {
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
+import { DetectiveDemoStarterComponent } from '../../../detective/detective-demo-starter.component';
+import { isSharedProjectRef } from '../../../core/project-context';
+import { projectPageHref } from '../../../nav/project-page-href';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 import {
   datatugServeProjectStoreId,
@@ -95,6 +98,7 @@ interface CommittedIncident {
     IonIcon,
     IonNote,
     IonSpinner,
+    DetectiveDemoStarterComponent,
   ],
 })
 export class IncidentCreatePageComponent {
@@ -112,6 +116,10 @@ export class IncidentCreatePageComponent {
   });
   private readonly navProject = toSignal(this.navContext.currentProject, {
     initialValue: undefined,
+  });
+  protected readonly hostedIncidentNewHref = computed(() => {
+    const ref = this.navProject()?.ref;
+    return ref && isSharedProjectRef(ref) ? projectPageHref(ref, 'incidents/new') : undefined;
   });
   private readonly navEnvironment = toSignal(this.navContext.currentEnv, {
     initialValue: undefined,

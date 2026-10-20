@@ -49,9 +49,14 @@
           aria-live="polite"
           data-testid="incident-scope-guidance"
         >
-          Open a project and environment connected to a DataTug server before
-          creating an incident.
+          Open a project and environment connected to a DataTug server before creating a local Incident.
+          To create a hosted Incident, open a private project first.
         </ion-note>
+        @if (hostedIncidentNewHref(); as href) {
+          <ion-button [routerLink]="href">Create Incident in private project</ion-button>
+        } @else {
+          <sneat-datatug-detective-demo-starter destination="incidents" />
+        }
       }
 
       @if (contextFactCount()) {

@@ -444,6 +444,23 @@ describe('DetectiveClientService', () => {
     expect(api.post.mock.calls[1][1]).not.toHaveProperty('securityContextId');
   });
 
+  it('reads project Incidents and a full server-issued IncidentRef through the authenticated API', () => {
+    const cloud = {
+      kind: 'cloud' as const,
+      storage: 'firestore' as const,
+      spaceID: 'personal',
+      project: 'demo-project',
+    };
+    api.get.mockReturnValue(of({ incidents: [] }));
+    client.projectIncidents(cloud, 'demo').subscribe();
+    expect(api.get.mock.calls[0][0]).toBe('datatug/detective/project_incidents');
+    expect(api.get.mock.calls[0][1].toString()).toContain('environment=demo');
+    client.projectIncident(cloud, 'demo', 'detective-incidents-9c561d36/INC-1').subscribe();
+    expect(api.get.mock.calls[1][0]).toBe('datatug/detective/incident');
+    expect(api.get.mock.calls[1][1].get('incidentRef')).toBe('detective-incidents-9c561d36/INC-1');
+    expect(api.get.mock.calls[1][1].get('spaceID')).toBe('personal');
+  });
+
   it('uses scoped agent Incident and knowledge routes with typed server mutations', () => {
     client.linkedIncidents(context, 'case-1').subscribe();
     const incidents = http.expectOne(

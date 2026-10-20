@@ -12,6 +12,9 @@ describe('Space-qualified metadata addresses', () => {
     'detective',
     'detective/invoice-case',
     'detective/scenario/invoice-review',
+    'incidents',
+    'incidents/new',
+    'incidents/detective-incidents-9c561d36/INC-1',
   ])('round trips %s without losing Space ownership', (page) => {
     const url = tryProjectUrl(ref, page);
     expect(url).toBe(

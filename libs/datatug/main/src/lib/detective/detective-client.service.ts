@@ -18,6 +18,8 @@ import {
 import {
   HostedIncidentAction,
   HostedIncidentLinks,
+  HostedProjectIncidents,
+  HostedProjectIncident,
   HostedIncidentResponse,
   HostedKnowledgeAction,
   HostedKnowledgePage,
@@ -340,6 +342,29 @@ export class DetectiveClientService {
     return this.api.get<HostedIncidentLinks>(
       'datatug/detective/incidents',
       this.cloudParams(context).set('caseId', caseId),
+    );
+  }
+
+  projectIncidents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+  ): Observable<HostedProjectIncidents> {
+    return this.api.get<HostedProjectIncidents>(
+      'datatug/detective/project_incidents',
+      this.cloudParams(context).set('environment', environment),
+    );
+  }
+
+  projectIncident(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+    incidentRef: string,
+  ): Observable<HostedProjectIncident> {
+    return this.api.get<HostedProjectIncident>(
+      'datatug/detective/incident',
+      this.cloudParams(context)
+        .set('environment', environment)
+        .set('incidentRef', incidentRef),
     );
   }
 
