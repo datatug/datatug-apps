@@ -175,10 +175,54 @@ type PendingMessage = {
             >Review latest conversation</ion-button
           >
         }
+        @if (pending() && !conflict()) {
+          <ion-button
+            fill="clear"
+            (click)="reviewPending()"
+            [disabled]="loading() || sending()"
+          >
+            Review pending message
+          </ion-button>
+          @if (pendingReview()) {
+            <div role="group" aria-label="Pending message recovery">
+              <p role="alert">
+                This attempt may already have been saved. A lost reply or
+                changed access cannot prove whether it was delivered. Posting
+                the text again may create a duplicate. Abandoning this local
+                retry does not remove a saved message.
+              </p>
+              @if (hasMore()) {
+                <p>
+                  Load and review the remaining history before starting a new
+                  draft.
+                </p>
+              }
+              <ion-button
+                fill="clear"
+                (click)="keepPendingRetry()"
+                [disabled]="loading() || sending()"
+                >Keep original retry</ion-button
+              >
+              <ion-button
+                (click)="abandonPending()"
+                [disabled]="!ready() || hasMore() || loading() || sending()"
+                >Abandon retry and edit draft</ion-button
+              >
+            </div>
+          }
+        }
+        @if (recoveryNotice()) {
+          <p role="status">{{ recoveryNotice() }}</p>
+        }
         <ion-button
           (click)="send()"
           [disabled]="
-            !ready() || loading() || sending() || conflict() || !body().trim()
+            !ready() ||
+            loading() ||
+            sending() ||
+            conflict() ||
+            pendingReview() ||
+            !body().trim()
           "
         >
           {{
@@ -218,6 +262,8 @@ export class HostedIncidentConversationComponent {
   protected readonly checkID = signal('');
   protected readonly pending = signal<PendingMessage | undefined>(undefined);
   protected readonly conflict = signal(false);
+  protected readonly pendingReview = signal(false);
+  protected readonly recoveryNotice = signal('');
   private readonly conflictHistoryLoaded = signal(false);
   protected readonly posted = signal(false);
   protected readonly hasMore = signal(false);
@@ -233,6 +279,8 @@ export class HostedIncidentConversationComponent {
     this.ready.set(false);
     this.body.set('');
     this.pending.set(undefined);
+    this.pendingReview.set(false);
+    this.recoveryNotice.set('');
     this.sendError.set('');
     this.conflict.set(false);
     this.conflictHistoryLoaded.set(false);
@@ -380,6 +428,42 @@ export class HostedIncidentConversationComponent {
       if (this.current(identity, generation)) this.loading.set(false);
     }
   }
+  protected async reviewPending(): Promise<void> {
+    if (!this.pending() || this.conflict() || this.loading() || this.sending())
+      return;
+    this.pendingReview.set(true);
+    await this.read(true);
+  }
+  protected keepPendingRetry(): void {
+    if (!this.sending()) this.pendingReview.set(false);
+  }
+  protected abandonPending(): void {
+    if (
+      !this.pendingReview() ||
+      !this.pending() ||
+      this.conflict() ||
+      !this.canWrite() ||
+      !this.ready() ||
+      this.hasMore() ||
+      this.loading() ||
+      this.sending()
+    )
+      return;
+    // Only this explicit reviewed action retires the uncertain intent. It
+    // cannot retract a message the server may already have committed.
+    this.pending.set(undefined);
+    this.pendingReview.set(false);
+    this.checkID.set('');
+    this.sendError.set('');
+    this.recoveryNotice.set(
+      'Original retry abandoned locally. Saved Check references were removed. Review the text before posting a new message; the original may already exist.',
+    );
+    try {
+      sessionStorage.removeItem(this.storageKey());
+    } catch {
+      /* The edited draft remains usable in this component. */
+    }
+  }
   protected async reviewConflict(): Promise<void> {
     if (!this.conflictHistoryLoaded()) {
       if (!(await this.read(true))) return;
@@ -409,6 +493,7 @@ export class HostedIncidentConversationComponent {
       this.loading() ||
       this.sending() ||
       this.conflict() ||
+      this.pendingReview() ||
       !this.body().trim()
     )
       return;
@@ -464,6 +549,7 @@ export class HostedIncidentConversationComponent {
     this.sending.set(true);
     this.sendError.set('');
     this.posted.set(false);
+    this.recoveryNotice.set('');
     try {
       const result = await firstValueFrom(
         this.client.incidentAction(
@@ -517,6 +603,7 @@ export class HostedIncidentConversationComponent {
       if (this.destroyRef.destroyed || identity !== this.identity()) return;
       if (error instanceof HttpErrorResponse && error.status === 409) {
         this.conflict.set(true);
+        this.pendingReview.set(false);
         this.conflictHistoryLoaded.set(false);
         this.sendError.set(
           'The conversation changed. Review the latest messages before posting this draft.',

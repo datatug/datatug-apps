@@ -32,6 +32,9 @@ type Page = {
   refresh(): void;
   loadMore(): void;
   reviewConflict(): Promise<void>;
+  reviewPending(): Promise<void>;
+  keepPendingRetry(): void;
+  abandonPending(): void;
   checkID: { set(v: string): void };
 };
 
@@ -148,6 +151,80 @@ describe('HostedIncidentConversationComponent', () => {
     await second.whenStable();
     expect(second.nativeElement.textContent).toContain('Message saved.');
   });
+  it('recovers a denied attachment through reviewed abandonment without clearing browser storage externally', async () => {
+    const f = await mount();
+    page(f).body.set('Received, but no assignment.');
+    page(f).checkID.set('assignment');
+    client.incidentAction.mockReturnValueOnce(
+      throwError(() => new HttpErrorResponse({ status: 403 })),
+    );
+    await page(f).send();
+    const original = client.incidentAction.mock.calls[0];
+    f.componentRef.setInput('checks', []);
+    await page(f).reviewPending();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain(
+      'This attempt may already have been saved',
+    );
+    expect(f.nativeElement.textContent).toContain('may create a duplicate');
+    page(f).abandonPending();
+    f.destroy();
+    TestBed.resetTestingModule();
+    const edited = await mount();
+    edited.componentRef.setInput('checks', []);
+    page(edited).body.set('Question without the deleted reference');
+    await page(edited).send();
+    expect(client.incidentAction.mock.calls[1][2]).not.toBe(original[2]);
+    expect(client.incidentAction.mock.calls[1][1].message).not.toHaveProperty(
+      'refs',
+    );
+    edited.destroy();
+    TestBed.resetTestingModule();
+    const reopened = await mount();
+    await reopened.whenStable();
+    expect(reopened.nativeElement.textContent).not.toContain('Retry message');
+  });
+
+  it('preserves uncertain delivery and its exact retry until the user explicitly abandons after review', async () => {
+    const first = await mount();
+    page(first).body.set('Received, but no assignment.');
+    page(first).checkID.set('assignment');
+    client.incidentAction.mockReturnValueOnce(
+      throwError(() => new HttpErrorResponse({ status: 0 })),
+    );
+    await page(first).send();
+    const original = client.incidentAction.mock.calls[0];
+    first.destroy();
+    TestBed.resetTestingModule();
+    // The first attempt may have committed; later rights hide its reference.
+    sequence = 2;
+    history = { events: [], nextAfterSeq: 2, hasMore: false };
+    const next = await mount();
+    client.incidentAction.mockReturnValueOnce(
+      throwError(() => new HttpErrorResponse({ status: 403 })),
+    );
+    await page(next).send();
+    expect(client.incidentAction.mock.calls[1]).toEqual(original);
+    await page(next).reviewPending();
+    await next.whenStable();
+    expect(next.nativeElement.textContent).toContain(
+      'changed access cannot prove whether it was delivered',
+    );
+    expect(next.nativeElement.textContent).not.toContain('never sent');
+    page(next).keepPendingRetry();
+    client.incidentAction.mockReturnValueOnce(
+      throwError(() => new HttpErrorResponse({ status: 403 })),
+    );
+    await page(next).send();
+    expect(client.incidentAction.mock.calls[2]).toEqual(original);
+    await page(next).reviewPending();
+    page(next).abandonPending();
+    page(next).body.set('A consciously new follow-up');
+    await page(next).send();
+    expect(client.incidentAction.mock.calls[3][2]).not.toBe(original[2]);
+    expect(client.incidentAction.mock.calls[3][1].expectedSeq).toBe(2);
+  });
+
   it('does not regress a newer held projection when an older successful message receipt is replayed', async () => {
     client.incidentAction.mockReturnValueOnce(
       throwError(() => new Error('lost success')),
