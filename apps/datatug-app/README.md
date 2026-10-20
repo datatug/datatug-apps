@@ -90,6 +90,74 @@ collapsed-by-default row, Sneat.Work copyright link, and the same
 (`apps/datatug-app/e2e/build-info.spec.ts`) asserts against, scoped under
 the `sneat-app-version` element.
 
+## DataTug API failover
+
+`DatatugApiService` (`libs/datatug/main/src/lib/services/base/`) can send one DataTug API
+request to an ordered list of base URLs for the same Cloud Run service: the primary
+(`api.datatug.app`, behind Cloudflare) and a fallback (`api2.datatug.app`, DNS-only Cloud Run
+domain mapping). It fails over by itself; nobody has to do anything while the primary is down.
+`SneatApiService`, checkout and auth are untouched. Client code never contains a `run.app` URL.
+
+**It is off in production today.** With the default, `DatatugApiBaseUrls` is just
+`[DatatugApiBaseUrl]` (which mirrors `SneatApiBaseUrl`, `https://api.sneat.cloud/v0/`), and the client
+behaves exactly as before.
+
+### The one-line switch
+
+Once both hosts exist, add this provider to `datatugEnvironmentProviders` in
+`apps/datatug-app/src/environments/environment.prod.ts` (today `[]`), and change the
+expectation in `environment.providers.spec.ts` that production adds no override:
+
+```ts
+{ provide: DatatugApiBaseUrls, useValue: ['https://api.datatug.app/v0/', 'https://api2.datatug.app/v0/'] },
+```
+
+Both URLs end with `/`, the primary first. `DatatugApiBaseUrls` and `DatatugApiFailoverConfig` are
+exported by `@sneat/datatug-semantic`.
+
+### What fails over
+
+| Request | Retried on the next base URL after |
+| --- | --- |
+| GET, HEAD | network error (status 0), 8 s without an answer, 502, 503, 504, Cloudflare 520-523, 525, 526 |
+| POST, PUT, PATCH, DELETE | only what proves the request never reached the server: network error (status 0), Cloudflare 521, 522, 523 |
+| any | never on 4xx, on an application 5xx, or on Cloudflare 524 (the origin may have acted) |
+
+The retry is the same request: same method, params, body and `Authorization` header.
+
+### Circuit breaker (in memory, per page session)
+
+After a request succeeded on the fallback following a failure on the primary, the fallback is
+preferred for `breakerMinutes` (default 5). After that the next GET/HEAD tries the primary first and
+switches back when it answers; if it fails again the fallback is held for another interval.
+POST/PUT/PATCH/DELETE never probe the primary, they use whichever host is preferred.
+
+### Timeout
+
+Only GET/HEAD get a timeout, and only while another base URL is left to try (the last one waits as long
+as the browser allows). `primaryTimeoutMs` defaults to 8000: a cold Cloud Run start and normal reads finish
+in a few seconds, and a hard-down primary (DNS, TLS, connect, Cloudflare 52x) fails faster than that. A
+timeout does not prove a write never happened, so writes get no timeout and are never retried on one:
+`datatug/queries/run_query`, `datatug/detective/*` (AI calls) and other long writes run as long as they need.
+GETs under `slowEndpointPrefixes` (detective, exec, run_query, `session-context/detective`,
+`projects/query_activity_context`) use `slowEndpointTimeoutMs` (60000) instead. Override all of it with:
+
+```ts
+{ provide: DatatugApiFailoverConfig, useValue: { ...DEFAULT_DATATUG_API_FAILOVER_CONFIG, breakerMinutes: 10 } },
+```
+
+### Known limit
+
+A browser reports a Cloudflare error page without CORS headers as status 0, so a POST that Cloudflare
+answered with 524 may look like a network error and be sent again. DataTug write endpoints that cannot
+tolerate that must be idempotent server-side.
+
+### Logging
+
+Each failover logs a warning (`DataTug API failover`) through `LOGGER_FACTORY` and an
+`datatug_api_failover` analytics event with `method`, `fromHost`, `toHost` and `reason` only: no endpoint,
+query string or body.
+
 ## Business project preview (port 18782)
 
 The local Business project preview serves the app on `http://localhost:18782`,

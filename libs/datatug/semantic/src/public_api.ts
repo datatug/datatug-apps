@@ -10,6 +10,7 @@ export * from './charting/orders-monthly-country-count';
 export * from './lib/models/models';
 export * from './lib/tokens/datatug-agent-base-url.token';
 export * from './lib/tokens/datatug-api-base-url.token';
+export * from './lib/tokens/datatug-api-failover.tokens';
 // App-owned fixed development transport, shared without loading the query UI.
 export { PUBLIC_OVDB_DEV_TRANSPORT, PUBLIC_OVDB_LOOPBACK_MODE, type PublicOvdbDevTransport } from './lib/tokens/public-ovdb-dev-transport.token';
 export { SemanticApiService } from './lib/services/semantic-api.service';
