@@ -42,6 +42,9 @@ We build with our own tooling:
 
 This workspace uses **pnpm**. Prefix Nx commands with the package manager so the workspace-local CLI is used.
 
+For the complete local UI and backend stack (Firebase emulators, Sneat API,
+DataTug agent, and this app), see [Running DataTug locally](docs/RUN-LOCAL.md).
+
 ```bash
 # Install dependencies
 pnpm install
