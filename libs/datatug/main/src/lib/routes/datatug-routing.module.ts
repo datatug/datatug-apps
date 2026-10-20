@@ -1,6 +1,6 @@
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
-import { SNEAT_AUTH_GUARDS, sneatAuthGuard } from '@sneat/auth-core';
+import { SNEAT_AUTH_GUARDS } from '@sneat/auth-core';
 import {
   routingParamIncidentId,
   routingParamSpaceId,
@@ -10,7 +10,7 @@ import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { admitSessionWorkspace } from '../session-context/session-route.guard';
-import { hostedCloudLogsFeatureGuard } from '../core/feature-flags';
+import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
 import {
   profileHomeRedirectGuard,
   profileStartPageGuard,
@@ -111,9 +111,15 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
+    path: 'my/cloud-logs/recovery',
+    loadComponent: () =>
+      import('../pages/my/cloud-logs/cloud-logs-auth-recovery-page.component').then(
+        (m) => m.CloudLogsAuthRecoveryPageComponent,
+      ),
+  },
+  {
     path: 'my/cloud-logs',
-    canActivate: [sneatAuthGuard],
-    canMatch: [hostedCloudLogsFeatureGuard],
+    canActivate: [hostedCloudLogsAccessGuard],
     loadComponent: () =>
       import('../pages/my/cloud-logs/cloud-logs-page.component').then(
         (m) => m.CloudLogsPageComponent,

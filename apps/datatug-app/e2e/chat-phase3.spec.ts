@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 test('Chat workspace restores explicit context, selection, dock and a selected follow-up', async ({ page }) => {
   test.setTimeout(120_000);

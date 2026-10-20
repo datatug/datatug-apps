@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import {
   installCountryComparisonFixture,
   countryBoardURL as boardURL,

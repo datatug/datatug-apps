@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import type { Page } from '@playwright/test';
 
 // The start page has an address of its own, `/home`. A full page load of `/`

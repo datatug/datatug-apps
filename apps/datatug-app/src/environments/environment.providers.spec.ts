@@ -43,9 +43,7 @@ describe('DataTug API base URL in the regular builds', () => {
         : _name === 'sso-e2e'
           ? ssoConfig
           : productionConfig;
-    expect(environmentConfig.hostedCloudLogsEnabled).toBe(
-      _name !== 'production',
-    );
+    expect(environmentConfig.hostedCloudLogsEnabled).toBe(true);
     expect(TestBed.inject(DatatugApiBaseUrl)).toBe(DefaultSneatAppApiBaseUrl);
     expect(TestBed.inject(DATATUG_CHECKOUT_FORCE_TEST)).toBe(false);
   });

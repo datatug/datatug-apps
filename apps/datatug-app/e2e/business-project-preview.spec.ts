@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import type { Request, Response } from '@playwright/test';
 import { TEST_PREVIEW_PROJECT_ORIGIN } from '../src/app/checkout/checkout-config.mjs';
 import {

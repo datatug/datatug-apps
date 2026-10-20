@@ -1,7 +1,7 @@
 // Checks libs/datatug/main/src/lib/demo-postgresql/demo-postgresql-catalog.ts.
 //
 //   node scripts/check-demo-postgresql-catalog.mjs           offline: shape of every entry
-//   node scripts/check-demo-postgresql-catalog.mjs --online  also compares the catalog with
+//   node scripts/check-demo-postgresql-catalog.mjs --online  (MANUAL ONLY, never in CI) also compares the catalog with
 //     - DemoDB's live registry and PostgreSQL activation switch (demo-db/websites, config/databases.json and
 //       config/postgresql-api.json on main), so a dataset added or a switch turned off there fails here;
 //     - the live descriptor of every edition on cloud.openvaultdb.com: PostgreSQL engine, the table count and
@@ -9,6 +9,7 @@
 //
 // The catalog is TypeScript with no imports; Node 24 strips its types on import.
 import assert from 'node:assert/strict';
+import { exitOnRateLimit, fetchOnce } from './demodb-http.mjs';
 
 const catalogUrl = new URL('../libs/datatug/main/src/lib/demo-postgresql/demo-postgresql-catalog.ts', import.meta.url);
 const { demoPostgresqlCatalog, demoPostgresqlDatasetIds, DEMO_POSTGRESQL_BASE_URL } = await import(catalogUrl.href);
@@ -20,6 +21,7 @@ const check = async (name, fn) => {
     await fn();
     console.log(`ok   ${name}`);
   } catch (error) {
+    exitOnRateLimit(error); // HTTP 429 stops the whole script at once; nothing is retried
     failures += 1;
     console.error(`FAIL ${name}: ${error.message}`);
   }
@@ -40,7 +42,7 @@ for (const id of demoPostgresqlDatasetIds) {
 
 if (process.argv.includes('--online')) {
   const getJson = async (url) => {
-    const response = await fetch(url);
+    const response = await fetchOnce(url);
     assert.equal(response.status, 200, `${url}: HTTP status`);
     return response.json();
   };
@@ -59,8 +61,8 @@ if (process.argv.includes('--online')) {
     await check(`${id} live descriptor ${entry.descriptorUrl}`, async () => {
       // A cold start takes up to ~6 s and a mount may answer 503 database_unavailable for a moment.
       let descriptor;
-      for (let attempt = 0; attempt < 5 && !descriptor; attempt++) {
-        const response = await fetch(entry.descriptorUrl);
+      for (let attempt = 0; attempt < 3 && !descriptor; attempt++) {
+        const response = await fetchOnce(entry.descriptorUrl);
         if (response.status === 503) await new Promise((resolve) => setTimeout(resolve, 1500 * (attempt + 1)));
         else {
           assert.equal(response.status, 200, 'HTTP status');

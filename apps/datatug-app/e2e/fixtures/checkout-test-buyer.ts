@@ -1,5 +1,6 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect } from '../helpers/demodb-guard';
 import { TEST_CHECKOUT_ORIGIN } from '../../src/app/checkout/checkout-config.mjs';
+import { SIGN_IN_BUTTON } from '../helpers/sign-in-button';
 
 const origin = 'http://datatug.localhost:4328';
 const project = 'sneat-eur3-1';
@@ -62,9 +63,7 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
           await page
             .locator('ion-input[type="password"] input')
             .fill(password ?? '');
-          await page
-            .getByRole('button', { name: /Sign in.*with password/ })
-            .click();
+          await page.getByRole('button', { name: SIGN_IN_BUTTON }).click();
         }
         await expect
           .poll(
@@ -168,4 +167,4 @@ export const test = base.extend<{ signedInTestBuyer: void }>({
     { auto: false },
   ],
 });
-export { expect } from '@playwright/test';
+export { expect } from '../helpers/demodb-guard';

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
 
 // G-0: the hand-off from the sites (`/demo?…`, `/project/github.com/<owner>/<repo>/start-chat#msg=…`, and the old
 // `…/chat?msg=…`) must show the holding page and keep the visitor's question out of every analytics and error report. That only means
@@ -13,8 +14,10 @@ export default defineConfig({
   outputDir: '../../coverage/apps/datatug-app-demo-handoff-e2e/results',
   fullyParallel: false,
   workers: 1,
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
   reporter: [
     ['list'],
+    demodbReporter,
     [
       'html',
       {
@@ -36,7 +39,7 @@ export default defineConfig({
   projects: [
     {
       name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
+      use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch },
     },
   ],
 });

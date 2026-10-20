@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 test('the cold login header returns to the home screen', async ({ page }) => {
   await page.goto('/login');

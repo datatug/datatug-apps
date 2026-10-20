@@ -17,3 +17,13 @@ export const DatatugApiBaseUrl = new InjectionToken<string>(
       inject(SneatApiBaseUrl, { optional: true }) ?? DefaultSneatAppApiBaseUrl,
   },
 );
+
+/**
+ * The DataTug API base URL of the dedicated TEST project preview
+ * (datatug-cloud-preview, europe-west1). `DatatugApiService` compares the
+ * injected `DatatugApiBaseUrl` with it to keep identity calls on the normal API.
+ * The app's `TEST_PREVIEW_PROJECT_ORIGIN + '/v0/'` must equal it; a spec in the
+ * app pins that, so the two cannot drift apart when the service moves.
+ */
+export const DATATUG_TEST_PREVIEW_API_BASE_URL =
+  'https://datatug-cloud-preview-354fvnqbaa-ew.a.run.app/v0/';

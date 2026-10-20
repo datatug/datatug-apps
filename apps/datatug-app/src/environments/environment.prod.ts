@@ -3,6 +3,7 @@ import { IEnvironmentConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 import { TEST_CHECKOUT_ORIGIN } from '../app/checkout/checkout-config.mjs';
 import { authDomainOfLocation } from './auth-domain';
+import { signInMethodOfLocation } from './sign-in-method';
 
 // TEST uses its isolated host. LIVE uses the verified production API origin.
 export const datatugBusinessCheckoutApiOrigin: string | null =
@@ -25,7 +26,10 @@ export const DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT = false;
 export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
   hostedCloudLogsEnabled: boolean;
 } = {
-  hostedCloudLogsEnabled: false,
+  // The backend's nonempty ALLOWED_UIDS list remains the access authority;
+  // the app uses its authenticated list endpoint to expose the pilot UI.
+  hostedCloudLogsEnabled: true,
+  signInMethod: signInMethodOfLocation(),
   production: true,
   agents: {},
   firebaseConfig: {
@@ -68,5 +72,8 @@ export const datatugDemoConfig: DatatugDemoConfig = {
 };
 
 // No DataTug API override: DataTug calls use SneatApiBaseUrl, as before.
+// To turn on DataTug API failover, add (and update environment.providers.spec.ts):
+//   { provide: DatatugApiBaseUrls, useValue: ['https://api.datatug.app/v0/', 'https://api2.datatug.app/v0/'] }
+// Not before the "Before switching production" checklist in apps/datatug-app/README.md "DataTug API failover" is done.
 // The Business project preview build replaces this file (environment.business-preview.ts).
 export const datatugEnvironmentProviders: Provider[] = [];

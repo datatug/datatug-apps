@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbReporter } from './e2e/helpers/demodb-config';
 import base from './playwright.config';
 
 // Deliberately scoped mobile WebKit regression lane. This uses real SQLite
@@ -10,6 +11,7 @@ export default defineConfig({
   outputDir: '../../coverage/apps/datatug-query-mobile/results',
   reporter: [
     ['list'],
+    demodbReporter,
     [
       'html',
       {

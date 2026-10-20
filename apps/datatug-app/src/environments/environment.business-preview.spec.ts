@@ -1,6 +1,9 @@
 import { TestBed } from '@angular/core/testing';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
-import { DatatugApiBaseUrl } from '@sneat/datatug-semantic';
+import {
+  DATATUG_TEST_PREVIEW_API_BASE_URL,
+  DatatugApiBaseUrl,
+} from '@sneat/datatug-semantic';
 import { DATATUG_CHECKOUT_FORCE_TEST } from '../app/checkout/checkout-force-test';
 import {
   TEST_CHECKOUT_ORIGIN,
@@ -32,6 +35,15 @@ describe('Business project preview environment', () => {
       `${TEST_PREVIEW_PROJECT_ORIGIN}/v0/`,
     );
     expect(TestBed.inject(SneatApiBaseUrl)).toBe(DefaultSneatAppApiBaseUrl);
+  });
+
+  it('uses the same preview origin as the one DatatugApiService treats as the TEST preview', () => {
+    // DatatugApiService keeps identity calls on the normal API only when the
+    // injected DatatugApiBaseUrl equals this constant. If the two origins
+    // disagree, the preview build silently sends identity calls to the preview.
+    expect(`${TEST_PREVIEW_PROJECT_ORIGIN}/v0/`).toBe(
+      DATATUG_TEST_PREVIEW_API_BASE_URL,
+    );
   });
 
   it('forces every checkout rail to TEST', () => {

@@ -1,4 +1,5 @@
 import { defineConfig, devices } from '@playwright/test';
+import { demodbChromiumLaunch, demodbReporter, demodbServerEnv } from './e2e/helpers/demodb-config';
 
 // Captured-read acceptance only. Refuse an unconfigured run instead of querying providers.
 if (!process.env['DATATUG_E2E_GITHUB_FAKE'])
@@ -20,7 +21,8 @@ export default defineConfig({
   retries: 0,
   timeout: 60_000,
   expect: { timeout: 15_000 },
-  reporter: 'list',
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
+  reporter: [['list'], demodbReporter],
   use: {
     baseURL: `http://localhost:${port}`,
     trace: 'retain-on-failure',
@@ -31,8 +33,9 @@ export default defineConfig({
     command: `pnpm nx run datatug-app:serve:development --host localhost --port ${port} --excludeTaskDependencies`,
     url: `http://localhost:${port}`,
     reuseExistingServer: false,
+    env: demodbServerEnv,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 5000 },
     timeout: 180_000,
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch } }],
 });
