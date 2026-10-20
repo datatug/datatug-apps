@@ -1,6 +1,6 @@
 // Development-only Angular/Vite transport. No arbitrary target or credentials.
 const loopbacks = new Set(['127.0.0.1', '::1', '::ffff:127.0.0.1']);
-const hosts = new Set(['127.0.0.1', 'localhost', '[::1]']);
+const hosts = new Set(['127.0.0.1', 'localhost', 'datatug.localhost', '[::1]']);
 const prefix = '/__datatug_public_ovdb/';
 
 function admitted(req, route) {

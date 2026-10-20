@@ -10,24 +10,12 @@ test('home composition introduces DataTug, the public demo, and two other entry 
   await expect(
     hero.getByRole('heading', { name: 'Ask better questions of your data.' }),
   ).toBeVisible();
-  await expect(hero.locator('.hero-visual')).toHaveAttribute(
-    'aria-hidden',
-    'true',
+  await expect(hero.locator('img.hero-visual')).toBeVisible();
+  await expect(hero.locator('img.hero-visual')).toHaveAttribute(
+    'alt', /ship named DATA/,
   );
-  // The gray header item is a direct child of the card: Ionic's md-mode
-  // ion-list adds 8px of padding, which showed as a white strip above it.
-  await expect(hero.locator('ion-item[color="light"]')).toHaveCount(1);
+  await expect(hero.locator('ion-item[color="light"]')).toHaveCount(0);
   await expect(hero.locator('ion-list')).toHaveCount(0);
-  const headerGap = await hero.evaluate((card) => {
-    const header = card.querySelector(':scope > ion-item[color="light"]');
-    if (!header) {
-      return -1;
-    }
-    return (
-      header.getBoundingClientRect().top - card.getBoundingClientRect().top
-    );
-  });
-  expect(headerGap).toBe(0);
 
   // The My projects rows keep their ion-list (only the header moved out), so
   // the card-scoped rule must still strip Ionic's md 8px list padding.
@@ -39,10 +27,10 @@ test('home composition introduces DataTug, the public demo, and two other entry 
 
   const demo = page.locator('[data-demo-slot="GitHub"]');
   await expect(demo.locator('.demo-visual')).toHaveAttribute(
-    'aria-hidden',
-    'true',
+    'alt',
+    '',
   );
-  await expect(demo).toContainText('project structure');
+  await expect(demo).toContainText('Browse the project');
   await expect(demo).toContainText('three saved Chinook SQL examples');
   await expect(
     demo.getByRole('button', { name: 'Open public demo' }),
@@ -95,7 +83,7 @@ test('the home sections keep the landing, other ways, and project cards in order
     const hero = element.querySelector('[data-testid="home-hero"]');
     const platform = element.querySelector('sneat-datatug-platform-block');
     const detective = element
-      .querySelector('sneat-datatug-detective-demo-starter')
+      .querySelector(':scope > ion-card sneat-datatug-detective-demo-starter')
       ?.closest('ion-card');
     const projects = element.querySelector('.home-cards-grid');
     const precedes = (

@@ -26,6 +26,11 @@
 
 # Change detection & state (zoneless)
 
+For shared Ionic UI patterns and per-component rules, follow the
+[web UI bible for the Sneat platform](https://github.com/sneat-co/sneat-specs/blob/main/standards/frontend-ux/README.md)
+and its
+[component reference](https://github.com/sneat-co/sneat-specs/tree/main/standards/frontend-ux/components).
+
 The app **is zoneless**: `apps/datatug-app/src/main.ts` calls `provideZonelessChangeDetection()`, and `apps/datatug-app/project.json`'s `polyfills` is `[]` — there is no Zone.js in this app (it is not even a direct dependency; it only appears in `pnpm-lock.yaml` as a peer-dep range some Angular packages declare but never actually need here).
 
 **All new code and changes must follow the zoneless approach:**

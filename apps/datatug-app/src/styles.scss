@@ -68,6 +68,13 @@ ion-split-pane {
 
 //@import '../../../styles/sneat';
 
+// Section labels in lists use the same light background throughout DataTug.
+ion-item-divider,
+ion-list-header {
+  --background: var(--ion-color-light);
+  background: var(--ion-color-light);
+}
+
 ion-item ion-buttons[slot='end'] {
   margin-right: -1em; // TODO: Replace this dirty workaround with proper fix
 }
