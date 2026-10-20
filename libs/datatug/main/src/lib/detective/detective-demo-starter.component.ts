@@ -32,10 +32,14 @@ import {
         signedIn()
           ? destination() === 'sessions'
             ? 'Open private Sessions demo'
-            : 'Open private Detective demo'
+            : destination() === 'incidents'
+              ? 'Set up private project for Incidents'
+              : 'Open private Detective demo'
           : destination() === 'sessions'
             ? 'Sign in to start private Sessions demo'
-            : 'Sign in to start Detective demo'
+            : destination() === 'incidents'
+              ? 'Sign in to set up a private Incidents project'
+              : 'Sign in to start Detective demo'
       }}
     </ion-button>
     @if (error()) {
@@ -44,7 +48,7 @@ import {
   `,
 })
 export class DetectiveDemoStarterComponent {
-  readonly destination = input<'checks' | 'detective' | 'sessions'>(
+  readonly destination = input<'checks' | 'detective' | 'sessions' | 'incidents'>(
     'detective',
   );
   private readonly auth = inject(SneatAuthStateService);

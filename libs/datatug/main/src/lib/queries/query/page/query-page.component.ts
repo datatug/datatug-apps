@@ -940,6 +940,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private activeDispatchSession?: QueryExecutionSession;
   public readonly workingCopyOptions = signal<readonly QueryRuntimeOption[]>([]);
   public readonly selectedWorkingCopy = signal('project');
+  public usesFixedPublicQuerySource(): boolean {
+    // Editor state may arrive before the navigation project's first emission.
+    const storeId = this.project?.ref.storeId ?? this.route.snapshot.paramMap.get('storeId') ?? undefined;
+    return this.selectedWorkingCopy() === 'project' &&
+      isGithubStoreId(storeId) &&
+      isSavedPublicChartQueryId(this.queryId ?? '');
+  }
   public readonly workingCopyLoading = signal(false);
   public readonly workingCopyError = signal<string | undefined>(undefined);
   public readonly unavailableWorkingCopy = signal(false);
@@ -5955,7 +5962,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         !this.queryState.isLoading &&
         !hasBoundSqlConnection
       ) {
-        this.setActiveEnv(this.queryState.environments[0].id);
+        if (this.usesFixedPublicQuerySource()) {
+          // Keep caller/navigation context, but never invent a project
+          // environment for the fixed publisher endpoint.
+          const environment = this.route.snapshot.queryParamMap.get('env') ?? this.envId;
+          if (environment) this.setActiveEnv(environment);
+        } else {
+          this.setActiveEnv(this.queryState.environments[0].id);
+        }
       }
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
         this.envId = queryState?.activeEnv.id;
@@ -8195,8 +8209,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         });
       return;
     }
-    const publicSavedQuery = this.selectedWorkingCopy() === 'project' &&
-      isGithubStoreId(projectRef?.storeId) && isSavedPublicChartQueryId(queryId);
+    const publicSavedQuery = this.usesFixedPublicQuerySource();
     if ((this.selectedWorkingCopy() !== 'project' || publicSavedQuery) && definition && !this.isTugqlAuthorJourney()) {
       const selectionId = this.selectedWorkingCopy();
       if (!publicSavedQuery && (this.workingCopyScope !== this.currentWorkingCopyScope() ||

@@ -1309,7 +1309,12 @@
   <ng-template #executionRuntime>
       @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
         <p class="ion-padding-horizontal">
-          Selected source: {{ connectionId }}. The selected runtime is checked against this connection before Run.
+          @if (usesFixedPublicQuerySource()) {
+            Selected source: {{ connectionId }}. This query uses the fixed public Northwind OVDB API.
+            Project environment is not used for execution. Run validates the saved definition and publisher evidence.
+          } @else {
+            Selected source: {{ connectionId }}. The selected runtime is checked against this connection before Run.
+          }
         </p>
         @if (!isTugqlAuthorJourney()) {
           <ion-item lines="none">

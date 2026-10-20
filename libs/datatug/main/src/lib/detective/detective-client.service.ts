@@ -18,6 +18,8 @@ import {
 import {
   HostedIncidentAction,
   HostedIncidentLinks,
+  HostedProjectIncidents,
+  HostedProjectIncident,
   HostedIncidentResponse,
   HostedKnowledgeAction,
   HostedKnowledgePage,
@@ -343,9 +345,33 @@ export class DetectiveClientService {
     );
   }
 
+  projectIncidents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+  ): Observable<HostedProjectIncidents> {
+    return this.api.get<HostedProjectIncidents>(
+      'datatug/detective/project_incidents',
+      this.cloudParams(context).set('environment', environment),
+    );
+  }
+
+  projectIncident(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+    incidentRef: string,
+  ): Observable<HostedProjectIncident> {
+    return this.api.get<HostedProjectIncident>(
+      'datatug/detective/incident',
+      this.cloudParams(context)
+        .set('environment', environment)
+        .set('incidentRef', incidentRef),
+    );
+  }
+
   incidentAction(
     context: DetectiveRequestContext,
     action: HostedIncidentAction,
+    operationIdOverride?: string,
   ): Observable<HostedIncidentResponse> {
     const payload =
       context.kind === 'cloud'
@@ -362,7 +388,7 @@ export class DetectiveClientService {
           };
     const key = JSON.stringify(['incident_action', payload]);
     const operationId =
-      this.pendingOperations.get(key) ?? detectiveOperationId();
+      operationIdOverride ?? this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     const request =
       context.kind === 'cloud'

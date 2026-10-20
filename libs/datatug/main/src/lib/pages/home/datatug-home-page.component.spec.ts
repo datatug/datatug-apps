@@ -150,12 +150,12 @@ describe('HomePage composition', () => {
     expect(hero.querySelector('ion-list')).toBeNull();
   });
 
-  it('keeps the Detective promotion honest about its private demo flow', () => {
+  it('offers a private Incident-first entry without claiming the public demo is writable', () => {
     const fixture = configure('notAuthenticated');
     const headings = Array.from(
       fixture.nativeElement.querySelectorAll('h2') as NodeListOf<Element>,
     ).map((heading) => heading.textContent?.trim());
-    expect(headings).toContain('Start a private Detective demo');
+    expect(headings).toContain('Record an Incident in a private project');
     expect(fixture.nativeElement.textContent).not.toContain(
       'Try Detective with real checks',
     );

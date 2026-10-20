@@ -3,7 +3,7 @@ import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-confi
 const port = process.env.DATATUG_E2E_PORT || '18786';
 export default defineConfig({
   testDir: './e2e',
-  testMatch: 'checkout-journey.spec.ts',
+  testMatch: ['checkout-journey.spec.ts', 'hosted-incidents.spec.ts'],
   workers: 1,
   outputDir: '../../coverage/apps/datatug-checkout/results',
   globalSetup: './e2e/helpers/demodb-state-setup.ts',
@@ -30,6 +30,7 @@ export default defineConfig({
     { name: 'chromium', use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch } },
     {
       name: 'mobile-webkit',
+      testMatch: 'checkout-journey.spec.ts',
       // The test budget includes first-page initialization, which can take
       // over 15 seconds on CI before the multi-navigation journey begins.
       timeout: 60_000,

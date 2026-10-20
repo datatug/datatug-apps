@@ -155,7 +155,7 @@ export const datatugRoutes: Routes = [
     pathMatch: 'full',
     redirectTo: '/',
   },
-  // Space-owned projects expose only their saved-query journey.
+  // Space-owned projects include private hosted Incidents.
   {
     path: 'space/:spaceId/store/:storeId/project/:projectId',
     canMatch: [
@@ -168,12 +168,16 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'queries', 'checks', 'detective'].includes(
+            ['overview', 'queries', 'checks', 'detective', 'incidents'].includes(
               segments[6].path,
             )) ||
           (segments.length === 8 &&
-            ['checks', 'detective'].includes(segments[6].path) &&
+            ['checks', 'detective', 'incidents'].includes(segments[6].path) &&
             /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
+          (segments.length === 9 &&
+            segments[6].path === 'incidents' &&
+            /^[A-Za-z0-9_-]+$/.test(segments[7].path) &&
+            /^[A-Za-z0-9_-]+$/.test(segments[8].path)) ||
           (segments.length === 9 &&
             segments[6].path === 'detective' &&
             segments[7].path === 'scenario' &&
@@ -210,6 +214,15 @@ export const datatugRoutes: Routes = [
           { path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) },
           { path: 'query', children: [{ path: ':queryId', loadComponent: () => import('../queries/query/page/query-page.component').then((m) => m.QueryPageComponent) }] },
         ] }],
+      },
+      {
+        path: 'incidents',
+        ...SNEAT_AUTH_GUARDS,
+        children: [
+          { path: '', pathMatch: 'full', data: { incidentMode: 'list' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+          { path: 'new', data: { incidentMode: 'new' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+          { path: ':incidentStoreId/:incidentId', data: { incidentMode: 'detail' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+        ],
       },
       {
         path: 'queries',
