@@ -94,6 +94,9 @@ async function settleRows(grid: Locator): Promise<void> {
 
 /** A visible element's box; fails the test when the element is not on the page. */
 async function boxOf(locator: Locator) {
+  // A bounding box exists only once the element is rendered and laid out: wait for that (never sleep) so a
+  // viewport resize that re-renders the toolbar cannot race the measurement.
+  await expect(locator).toBeVisible();
   const box = await locator.boundingBox();
   if (!box) throw new Error('element has no box');
   return box;
