@@ -22,6 +22,8 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
+  // The evidence file of a passing run (adventureworks-evidence.json, printed to the job summary) lives in the test's output folder.
+  preserveOutput: 'always',
   globalSetup: './e2e/helpers/demodb-fixtures-setup.ts',
   reporter: [
     ['list'],
