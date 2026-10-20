@@ -23,6 +23,8 @@ interface Fixture {
   };
   /** Fires the `storage` event of another tab. */
   otherTab(key: string | null, value?: string): void;
+  /** Fires a browser `pageshow` event, as when a frozen page returns from the back-forward cache. */
+  restore(persisted?: boolean): void;
 }
 
 function fixture(
@@ -33,7 +35,7 @@ function fixture(
   },
 ): Fixture {
   const store = new Map<string, string>();
-  const handlers = new Set<(event: { key: string | null }) => void>();
+  const handlers = new Map<string, Set<(event: never) => void>>();
   const appended: { async: boolean; src: string }[] = [];
   const cookieWrites: string[] = [];
   const state: Fixture['state'] = {
@@ -42,9 +44,13 @@ function fixture(
     storageBroken: false,
   };
   const win = {
-    addEventListener: (_type: string, handler: never) => handlers.add(handler),
-    removeEventListener: (_type: string, handler: never) =>
-      handlers.delete(handler),
+    addEventListener: (type: string, handler: never) => {
+      let listeners = handlers.get(type);
+      if (!listeners) handlers.set(type, (listeners = new Set()));
+      listeners.add(handler);
+    },
+    removeEventListener: (type: string, handler: never) =>
+      handlers.get(type)?.delete(handler),
   } as unknown as Fixture['win'];
   const env: AnalyticsEnv = {
     storage: () => {
@@ -89,7 +95,14 @@ function fixture(
     otherTab(key, value) {
       if (key !== null && value !== undefined) store.set(key, value);
       else if (key !== null) store.delete(key);
-      for (const handler of [...handlers]) handler({ key });
+      for (const handler of [...(handlers.get('storage') ?? [])]) {
+        handler({ key } as never);
+      }
+    },
+    restore(persisted = true) {
+      for (const handler of [...(handlers.get('pageshow') ?? [])]) {
+        handler({ persisted } as never);
+      }
     },
   };
 }
@@ -488,6 +501,92 @@ describe('analytics consent', () => {
       consent.subscribe(listener)();
       consent.start();
       expect(listener).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('back-forward cache restoration', () => {
+    it('loads a grant made while frozen and reports the restored page once', () => {
+      const f = fixture();
+      const consent = createAnalyticsConsent(f.env, ID);
+      const bannerState = vi.fn();
+      consent.subscribe(() => bannerState(consent.bannerVisible()));
+      consent.start();
+      consent.pageView();
+
+      f.store.set(ANALYTICS_CONSENT_KEY, 'granted');
+      f.restore();
+
+      expect(consent.choice()).toBe('granted');
+      expect(f.appended).toHaveLength(1);
+      expect(bannerState).toHaveBeenLastCalledWith(false);
+      expect(calls(f).filter((entry) => entry[0] === 'event')).toHaveLength(1);
+    });
+
+    it('updates the banner for a frozen denial and shows it again after a frozen clear', () => {
+      const f = fixture();
+      const consent = createAnalyticsConsent(f.env, ID);
+      consent.start();
+      consent.pageView();
+      const bannerState = vi.fn();
+      consent.subscribe(() => bannerState(consent.bannerVisible()));
+
+      f.store.set(ANALYTICS_CONSENT_KEY, 'granted');
+      f.restore();
+      expect(consent.bannerVisible()).toBe(false);
+      expect(bannerState).toHaveBeenLastCalledWith(false);
+
+      f.store.set(ANALYTICS_CONSENT_KEY, 'denied');
+      f.restore();
+      expect(consent.choice()).toBe('denied');
+      expect(f.win['ga-disable-' + ID]).toBe(true);
+      expect(consent.bannerVisible()).toBe(false);
+      expect(bannerState).toHaveBeenLastCalledWith(false);
+
+      f.store.delete(ANALYTICS_CONSENT_KEY);
+      f.restore();
+      expect(consent.choice()).toBeUndefined();
+      expect(consent.bannerVisible()).toBe(true);
+      expect(bannerState).toHaveBeenLastCalledWith(true);
+    });
+
+    it('does not report another page view when the restored choice is unchanged', () => {
+      const f = fixture();
+      f.store.set(ANALYTICS_CONSENT_KEY, 'granted');
+      const consent = createAnalyticsConsent(f.env, ID);
+      consent.start();
+      consent.pageView();
+      const before = calls(f).filter((entry) => entry[0] === 'event').length;
+
+      f.restore();
+
+      expect(calls(f).filter((entry) => entry[0] === 'event')).toHaveLength(
+        before,
+      );
+      expect(f.appended).toHaveLength(1);
+    });
+
+    it('keeps a memory-only choice while storage remains unavailable', () => {
+      const f = fixture();
+      f.state.storageBroken = 'both';
+      const consent = createAnalyticsConsent(f.env, ID);
+      consent.start();
+      consent.choose('granted');
+      f.restore();
+
+      expect(consent.choice()).toBe('granted');
+      expect(consent.bannerVisible()).toBe(false);
+      expect(f.appended).toHaveLength(1);
+    });
+
+    it('removes the pageshow listener on stop', () => {
+      const f = fixture();
+      const consent = createAnalyticsConsent(f.env, ID);
+      consent.start();
+      consent.stop();
+      f.store.set(ANALYTICS_CONSENT_KEY, 'granted');
+      f.restore();
+
+      expect(f.appended).toEqual([]);
     });
   });
 
