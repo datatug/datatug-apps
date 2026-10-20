@@ -6,8 +6,13 @@ From this repository, start the full local stack in one foreground terminal:
 scripts/local-stack.sh
 ```
 
-Open <http://127.0.0.1:4200>. Press **Ctrl-C** in that terminal to stop every
-service started by the script. It checks ports before starting and never kills
+Open <http://datatug.localhost:4200>. The dev server binds to loopback and
+accepts this explicit local hostname. The browser calls the Sneat API directly
+at `http://127.0.0.1:8090/v0/`; the backend's local development CORS allowlist
+is set by the launcher through `KNOWN_HOSTS=datatug.localhost:4200`. This is a
+per-process development setting; it does not change production host policy.
+Press **Ctrl-C** in that terminal
+to stop every service started by the script. It checks ports before starting and never kills
 an existing listener. If a service exits, the supervisor stops the rest and
 prints the relevant log tails.
 
@@ -30,7 +35,7 @@ The stack uses these local services:
 
 | Service | Address | Notes |
 | --- | --- | --- |
-| DataTug.app | `http://127.0.0.1:4200` | Angular dev server |
+| DataTug.app | `http://datatug.localhost:4200` | Angular dev server bound to loopback |
 | Sneat API | `http://127.0.0.1:8090/v0/` | Runs the `sneat-go` checkout, or `SNEAT_GO_BIN` if set |
 | DataTug agent | `http://127.0.0.1:8989` | Runs the installed `datatug serve` CLI against the demo project |
 | Firebase Auth emulator | `127.0.0.1:9099` | Firebase project `demo-local-sneat-app` |
@@ -78,7 +83,7 @@ target. The copy persists across runs so local edits remain available.
 `datatug serve` prints a one-time link for its hosted UI in
 `$DATATUG_LOCAL_STACK_DIR/logs/agent.log` (or the default runtime directory's
 `logs/agent.log`). Open that file locally, copy the link, and replace only its
-origin with `http://127.0.0.1:4200`; preserve the full path and fragment so the
+origin with `http://datatug.localhost:4200`; preserve the full path and fragment so the
 `/store` route and one-time code remain intact. Open the adjusted link in the
 local app to exchange the code. The log contains a credential: do not paste the
 link into chat, issues, or other shared output. The launcher sets a restrictive

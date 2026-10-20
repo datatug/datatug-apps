@@ -154,6 +154,7 @@ NODE
   start_service backend env GOOGLE_CLOUD_PROJECT="$PROJECT_ID" \
     FIREBASE_AUTH_EMULATOR_HOST="127.0.0.1:$AUTH_PORT" \
     FIRESTORE_EMULATOR_HOST="127.0.0.1:$FIRESTORE_PORT" \
+    KNOWN_HOSTS="${KNOWN_HOSTS:+$KNOWN_HOSTS,}datatug.localhost:4200" \
     PORT="$API_PORT" \
     bash -c 'if [ -n "${SNEAT_GO_BIN:-}" ]; then exec "$SNEAT_GO_BIN"; else cd "$SNEAT_GO_DIR" && exec go run .; fi'
   wait_for_port "$API_PORT"
@@ -162,7 +163,7 @@ NODE
   start_service frontend bash -c 'cd "$DATATUG_APP_ROOT" && exec pnpm nx serve datatug-app --configuration=development --host=127.0.0.1 --port=4200' _
   wait_for_port "$WEB_PORT"
   printf '%s\n' $pids >"$RUNTIME_DIR/pids"
-  echo "DataTug: http://127.0.0.1:$WEB_PORT"
+  echo "DataTug: http://datatug.localhost:$WEB_PORT"
   echo "Sneat API: http://127.0.0.1:$API_PORT/v0/"
   echo "DataTug agent: http://127.0.0.1:$AGENT_PORT"
   echo "Firebase UI: http://127.0.0.1:$EMULATOR_UI_PORT"
