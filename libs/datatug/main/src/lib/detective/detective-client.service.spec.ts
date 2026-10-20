@@ -401,7 +401,7 @@ describe('DetectiveClientService', () => {
         title: 'Invoice mismatch',
         environment: 'demo',
         ifMatch: 3,
-      })
+      }, 'operation-reloaded-create')
       .subscribe();
     expect(api.post.mock.calls[0][0]).toBe('datatug/detective/incident_action');
     expect(api.post.mock.calls[0][1]).toEqual({
@@ -413,7 +413,7 @@ describe('DetectiveClientService', () => {
       title: 'Invoice mismatch',
       environment: 'demo',
       ifMatch: 3,
-      operationId: expect.any(String),
+      operationId: 'operation-reloaded-create',
     });
     client.knowledgeProposals(cloud).subscribe();
     expect(api.get.mock.calls[1][0]).toBe(

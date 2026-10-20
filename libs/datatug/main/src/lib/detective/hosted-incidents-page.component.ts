@@ -242,7 +242,8 @@ export class HostedIncidentsPageComponent {
   protected readonly savedCase = signal<{ id: string; href: string } | undefined>(undefined);
   private readonly reloadKey = signal(0);
   private readonly scopeKey = signal(0);
-  private pendingCaseId?: string;
+  private pendingCreate?: { key: string; operationId: string };
+  private pendingCaseDraft?: { key: string; draft: { id: string; title: string; operationId: string } };
   private activeRecordIdentity?: string;
 
   private readonly loadScope = effect((onCleanup) => {
@@ -288,7 +289,8 @@ export class HostedIncidentsPageComponent {
       this.incidents.set(undefined);
       this.savedCase.set(undefined);
       this.savedIncident.set(undefined);
-      this.pendingCaseId = undefined;
+      this.pendingCreate = undefined;
+      this.pendingCaseDraft = undefined;
     }
     if (!context || context.kind !== 'cloud' || !environment || mode === 'new') return;
     let cancelled = false;
@@ -351,12 +353,14 @@ export class HostedIncidentsPageComponent {
       // Keep an ambiguous create's server operation ID across a page reload. The key is a
       // digest of the exact request and authenticated scope; no Incident text is stored.
       const retryKey = await this.retryKey('incident-create', identity, action);
-      let operationId = detectiveOperationId();
+      let operationId = this.pendingCreate?.key === retryKey
+        ? this.pendingCreate.operationId : detectiveOperationId();
       try {
         const pending = sessionStorage.getItem(retryKey);
         if (pending?.startsWith('operation-')) operationId = pending;
         else sessionStorage.setItem(retryKey, operationId);
       } catch { /* Session storage can be disabled; in-memory retries still work. */ }
+      this.pendingCreate = { key: retryKey, operationId };
       if (this.destroyRef.destroyed || this.scope.identity() !== identity || this.environment() !== environment) return;
       const result = await firstValueFrom(this.client.incidentAction(context, action, operationId));
       const item = result.incident;
@@ -365,6 +369,7 @@ export class HostedIncidentsPageComponent {
       try {
         if (sessionStorage.getItem(retryKey) === operationId) sessionStorage.removeItem(retryKey);
       } catch { /* Storage availability does not change a confirmed server response. */ }
+      if (this.pendingCreate?.key === retryKey) this.pendingCreate = undefined;
       if (this.destroyRef.destroyed) return;
       const href = projectPageHref(projectRef, ['incidents', item.ref.storeId, item.ref.incidentId]);
       this.savedIncident.set({ href, environment });
@@ -411,12 +416,13 @@ export class HostedIncidentsPageComponent {
           if (this.isCaseRetryDraft(parsed)) draft = parsed;
         }
       } catch { /* Session storage can be disabled or contain an invalid prior value. */ }
+      draft ??= this.pendingCaseDraft?.key === retryKey ? this.pendingCaseDraft.draft : undefined;
       draft ??= {
-        id: this.pendingCaseId ?? `incident-${crypto.randomUUID()}`,
+        id: `incident-${crypto.randomUUID()}`,
         title: `Investigate ${item.title}`,
         operationId: detectiveOperationId(),
       };
-      this.pendingCaseId = draft.id;
+      this.pendingCaseDraft = { key: retryKey, draft };
       try { sessionStorage.setItem(retryKey, JSON.stringify(draft)); } catch { /* In-memory retries remain available. */ }
       if (this.destroyRef.destroyed || this.scope.identity() !== identity || this.environment() !== environment) return;
       const newCase: DetectiveCase = {
@@ -432,7 +438,7 @@ export class HostedIncidentsPageComponent {
       try {
         if (sessionStorage.getItem(retryKey) === JSON.stringify(draft)) sessionStorage.removeItem(retryKey);
       } catch { /* Storage availability does not change a confirmed server response. */ }
-      this.pendingCaseId = undefined;
+      if (this.pendingCaseDraft?.key === retryKey) this.pendingCaseDraft = undefined;
       if (this.destroyRef.destroyed) return;
       this.savedCase.set({ id: response.case.id, href: projectPageHref(projectRef, ['detective', response.case.id]) });
       if (this.scope.identity() !== identity || this.environment() !== environment) {

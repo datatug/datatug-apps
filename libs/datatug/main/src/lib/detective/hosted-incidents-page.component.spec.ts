@@ -67,7 +67,10 @@ describe('HostedIncidentsPageComponent', () => {
     router.navigate.mockResolvedValue(true);
     router.navigateByUrl.mockResolvedValue(true);
   });
-  afterEach(() => TestBed.resetTestingModule());
+  afterEach(() => {
+    TestBed.resetTestingModule();
+    vi.restoreAllMocks();
+  });
 
   it('lists private Incidents after the scoped backend responds, with a route to create', async () => {
     const pending = new Subject<{ incidents: typeof incident[] }>();
@@ -282,5 +285,28 @@ describe('HostedIncidentsPageComponent', () => {
     await (third.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
     expect(client.incidentAction.mock.calls[2][1].case.id).not.toBe(firstAction.case.id);
     expect(client.incidentAction.mock.calls[2][2]).not.toBe(firstOperation);
+  });
+
+  it('keeps exact create and start-case retry IDs in memory when session storage is disabled', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage disabled'); });
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled'); });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage disabled'); });
+    client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
+    const newPage = await mount('new', []);
+    const create = newPage.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    create.title.set('Order 11039 is missing');
+    await create.create();
+    await create.create();
+    expect(client.incidentAction.mock.calls[1][2]).toBe(client.incidentAction.mock.calls[0][2]);
+    newPage.destroy();
+    TestBed.resetTestingModule();
+
+    const detail = await mount('detail', []);
+    await vi.waitFor(() => expect(detail.nativeElement.textContent).toContain(incident.title));
+    const start = detail.componentInstance as unknown as { startCase(): Promise<void> };
+    await start.startCase();
+    await start.startCase();
+    expect(client.incidentAction.mock.calls[3][2]).toBe(client.incidentAction.mock.calls[2][2]);
+    expect(client.incidentAction.mock.calls[3][1].case.id).toBe(client.incidentAction.mock.calls[2][1].case.id);
   });
 });
