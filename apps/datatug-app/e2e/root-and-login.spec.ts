@@ -84,6 +84,52 @@ test('renders the login page', async ({ page }) => {
   expect(clientErrors).toEqual([]);
 });
 
+for (const [fragment, returnPath] of [
+  ['', '/login'],
+  ['#/home', '/home'],
+  ['#//untrusted.example/reset', '/login'],
+] as const) {
+  test(`requests a password reset while signed out with return path ${fragment || '(default)'}`, async ({
+    page,
+  }) => {
+    const requests: { email: string; returnUrl: string }[] = [];
+    await page.route('**/v0/auth/request-password-reset', async (route) => {
+      expect(route.request().method()).toBe('POST');
+      expect(route.request().headers()['authorization']).toBeUndefined();
+      requests.push(route.request().postDataJSON());
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: '{}',
+      });
+    });
+    await page.route('**/accounts:sendOobCode*', () => {
+      throw new Error(
+        'Password resets must use the app-specific backend email sender',
+      );
+    });
+
+    await page.goto(`/login${fragment}`);
+    await page
+      .locator('sneat-email-login-form ion-segment-button')
+      .filter({ hasText: 'Sign in' })
+      .click();
+    const emailInput = page.locator(
+      'sneat-email-login-form input[type="email"]',
+    );
+    await emailInput.fill('reset-journey@example.invalid');
+    await page.getByRole('button', { name: 'Forgot? Reset!' }).click();
+
+    await expect.poll(() => requests.length).toBe(1);
+    expect(requests[0]).toEqual({
+      email: 'reset-journey@example.invalid',
+      returnUrl: new URL(returnPath, page.url()).href,
+    });
+    await expect(page.locator('ion-toast')).toBeVisible();
+    await expect(emailInput).toBeEnabled();
+  });
+}
+
 test('keeps login controls inline on an iPhone viewport', async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto('/login');

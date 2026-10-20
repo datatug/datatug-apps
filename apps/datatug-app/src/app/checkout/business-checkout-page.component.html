@@ -231,7 +231,11 @@
         <h2 id="business-checkout-auth-heading">
           Continue with your DataTug account
         </h2>
-        <sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />
+        <sneat-auth-panel
+          [returnTo]="authReturnTo()"
+          initialMode="sign-up"
+          [showIntro]="false"
+        />
       </section>
     }
 
