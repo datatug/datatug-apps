@@ -2,6 +2,7 @@ import {
   HttpClient,
   HttpErrorResponse,
   HttpHandler,
+  HttpHeaders,
 } from '@angular/common/http';
 import { IAnalyticsService } from '@sneat/core';
 import type { DatatugApiFailoverConfig } from '@sneat/datatug-semantic';
@@ -30,9 +31,29 @@ const idempotentMethods = new Set(['GET', 'HEAD']);
 const retryableIdempotentStatuses = new Set([
   502, 503, 504, 520, 521, 522, 523, 525, 526,
 ]);
-// Only the statuses that prove the request never reached the application. A browser also
-// reports status 0 for Cloudflare error pages that carry no CORS headers; see README.
+// Only the Cloudflare statuses that prove the request never reached the application.
+// Status 0 is NOT in this set: a browser reports every response without CORS headers as
+// status 0, and that includes Cloudflare 520/524 and Google 500/504 sent after the origin
+// acted, and a connection dropped after the body was sent. A write retries on status 0 only
+// when it carries an Idempotency-Key header (the server must then deduplicate it).
 const retryableNonIdempotentStatuses = new Set([521, 522, 523]);
+
+/** Header a caller sets to opt a write into a retry on status 0. */
+export const DATATUG_IDEMPOTENCY_KEY_HEADER = 'Idempotency-Key';
+
+/** True when the request options carry a non-empty Idempotency-Key header. */
+export function hasIdempotencyKey(options: {
+  headers?: HttpHeaders | Record<string, string | string[]>;
+}): boolean {
+  const headers = options.headers;
+  if (headers instanceof HttpHeaders) {
+    return !!headers.get(DATATUG_IDEMPOTENCY_KEY_HEADER);
+  }
+  const name = DATATUG_IDEMPOTENCY_KEY_HEADER.toLowerCase();
+  return Object.entries(headers ?? {}).some(
+    ([key, value]) => key.toLowerCase() === name && value.length > 0,
+  );
+}
 
 /**
  * Decides whether a failed attempt may be repeated on the next base URL, and says why.
@@ -41,6 +62,7 @@ const retryableNonIdempotentStatuses = new Set([521, 522, 523]);
 export function datatugApiFailoverReason(
   method: string,
   error: unknown,
+  idempotencyKey = false,
 ): DatatugApiFailoverReason | null {
   const idempotent = idempotentMethods.has(method.toUpperCase());
   if (error instanceof TimeoutError) {
@@ -51,7 +73,7 @@ export function datatugApiFailoverReason(
     return null;
   }
   if (error.status === 0) {
-    return 'network';
+    return idempotent || idempotencyKey ? 'network' : null;
   }
   const retryable = idempotent
     ? retryableIdempotentStatuses
@@ -75,7 +97,9 @@ function hostOf(baseUrl: string): string {
  *
  * Circuit breaker, in memory for the page session: after a request succeeded on a fallback
  * after a failure on an earlier base URL, the fallback is preferred for `breakerMinutes`.
- * Then the next GET/HEAD probes the primary first and switches back when it answers.
+ * Then the next GET/HEAD probes the primary first and switches back when the probe answers.
+ * Only a deliberate probe (or a request that already failed on the fallback) switches back:
+ * a late answer from a request that left for the primary before the failover does not.
  * Non-idempotent requests never probe; they keep using the preferred base URL.
  */
 export class DatatugApiFailoverHttpClient extends HttpClient {
@@ -108,17 +132,25 @@ export class DatatugApiFailoverHttpClient extends HttpClient {
     }
     const method = first.toUpperCase();
     const endpoint = url.slice(this.baseUrls[0].length);
-    return defer(() =>
-      this.attempt(method, endpoint, options, this.attemptOrder(method), 0),
-    );
+    const key = hasIdempotencyKey(options);
+    return defer(() => {
+      const probe =
+        this.preferred !== 0 &&
+        idempotentMethods.has(method) &&
+        this.now() >= this.holdUntil;
+      return this.attempt(
+        method,
+        endpoint,
+        options,
+        key,
+        this.attemptOrder(probe ? 0 : this.preferred),
+        probe,
+        0,
+      );
+    });
   }
 
-  private attemptOrder(method: string): number[] {
-    const probePrimary =
-      this.preferred !== 0 &&
-      idempotentMethods.has(method) &&
-      this.now() >= this.holdUntil;
-    const start = probePrimary ? 0 : this.preferred;
+  private attemptOrder(start: number): number[] {
     return [
       start,
       ...this.baseUrls.map((_, i) => i).filter((i) => i !== start),
@@ -139,7 +171,9 @@ export class DatatugApiFailoverHttpClient extends HttpClient {
     endpoint: string,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     options: any,
+    idempotencyKey: boolean,
     order: readonly number[],
+    probe: boolean,
     failedCount: number,
   ): Observable<unknown> {
     const [index, ...rest] = order;
@@ -152,12 +186,13 @@ export class DatatugApiFailoverHttpClient extends HttpClient {
     if (rest.length > 0 && timeoutMs > 0) {
       call = call.pipe(timeout({ first: timeoutMs }));
     }
-    const markAnswered = () => this.hostAnswered(index, failedCount > 0);
+    const markAnswered = () =>
+      this.hostAnswered(index, failedCount > 0, probe);
     return call.pipe(
       // One value per request (body or full response), so the host answered exactly once.
       tap({ next: markAnswered }),
       catchError((error: unknown) => {
-        const reason = datatugApiFailoverReason(method, error);
+        const reason = datatugApiFailoverReason(method, error, idempotencyKey);
         if (reason === null) {
           // The host answered; the answer is just not a success. Keep it.
           markAnswered();
@@ -167,14 +202,29 @@ export class DatatugApiFailoverHttpClient extends HttpClient {
           return throwError(() => error);
         }
         this.logFailover(method, index, rest[0], reason);
-        return this.attempt(method, endpoint, options, rest, failedCount + 1);
+        return this.attempt(
+          method,
+          endpoint,
+          options,
+          idempotencyKey,
+          rest,
+          probe,
+          failedCount + 1,
+        );
       }),
     );
   }
 
-  private hostAnswered(index: number, afterFailure: boolean): void {
+  private hostAnswered(
+    index: number,
+    afterFailure: boolean,
+    probe: boolean,
+  ): void {
     if (index === 0) {
-      this.preferred = 0;
+      // A late answer from a request that left before the failover must not undo it.
+      if (probe || afterFailure) {
+        this.preferred = 0;
+      }
     } else if (afterFailure) {
       this.preferred = index;
       this.holdUntil = this.now() + this.config.breakerMinutes * 60_000;

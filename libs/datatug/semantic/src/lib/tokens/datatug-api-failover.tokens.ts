@@ -44,8 +44,12 @@ export const DEFAULT_DATATUG_API_FAILOVER_CONFIG: DatatugApiFailoverConfig = {
     'datatug/detective/',
     'datatug/exec/',
     'datatug/queries/run_query',
-    'datatug/session-context/detective',
-    'datatug/projects/query_activity_context',
+    // GitHub-backed reads: a cold Cloud Run start plus a GitHub API call can pass 8 s.
+    'datatug/session-context/',
+    'datatug/projects/',
+    'datatug/queries/all_queries',
+    'datatug/queries/query_revision',
+    'datatug/github/',
   ],
 };
 

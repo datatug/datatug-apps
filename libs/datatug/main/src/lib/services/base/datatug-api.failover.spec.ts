@@ -1,6 +1,7 @@
 import {
   HttpErrorResponse,
   HttpHandler,
+  HttpHeaders,
   HttpRequest,
   provideHttpClient,
 } from '@angular/common/http';
@@ -24,6 +25,7 @@ import { DatatugApiService } from './datatug-api.service';
 import {
   DatatugApiFailoverHttpClient,
   datatugApiFailoverReason,
+  hasIdempotencyKey,
   type DatatugApiFailoverLog,
 } from './datatug-api-failover.http-client';
 
@@ -167,8 +169,8 @@ describe('DatatugApiService failover', () => {
       ['DELETE', (api) => api.delete('datatug/detective/action')],
     ];
 
-    it.each(methods.flatMap(([m, call]) => [0, 521, 522, 523].map((s) => [m, call, s] as const)))(
-      'retries %s on the fallback after status %i (never reached the server)',
+    it.each(methods.flatMap(([m, call]) => [521, 522, 523].map((s) => [m, call, s] as const)))(
+      'retries %s on the fallback after Cloudflare %i (never reached the server)',
       async (method, call, status) => {
         const http = configure();
         const result = firstValueFrom(
@@ -188,7 +190,7 @@ describe('DatatugApiService failover', () => {
 
     it.each(
       methods.flatMap(([m, call]) =>
-        [524, 500, 502, 503, 504, 520, 525, 526, 400, 401, 403, 404, 409, 422].map(
+        [0, 524, 500, 502, 503, 504, 520, 525, 526, 400, 401, 403, 404, 409, 422].map(
           (s) => [m, call, s] as const,
         ),
       ),
@@ -200,6 +202,55 @@ describe('DatatugApiService failover', () => {
       fail(http.expectOne(primary + 'datatug/detective/action'), status);
       const outcome = await result;
       expect((outcome as { error: HttpErrorResponse }).error.status).toBe(status);
+      http.verify();
+    });
+
+    it('retries a POST on status 0 only when it carries an Idempotency-Key', async () => {
+      const http = configure();
+      const result = firstValueFrom(
+        TestBed.inject(DatatugApiService).post(
+          'datatug/projects/create_project',
+          { name: 'n' },
+          { headers: new HttpHeaders({ 'Idempotency-Key': 'k-1' }) },
+        ),
+      );
+      fail(http.expectOne(primary + 'datatug/projects/create_project'), 0);
+      const second = http.expectOne(fallback + 'datatug/projects/create_project');
+      expect(second.request.headers.get('Idempotency-Key')).toBe('k-1');
+      expect(second.request.headers.get('Authorization')).toBe('Bearer token');
+      second.flush({ created: true });
+      await expect(result).resolves.toEqual({ created: true });
+      http.verify();
+    });
+
+    it.each([524, 500, 504, 400])(
+      'still does not retry a keyed POST after status %i',
+      async (status) => {
+        const http = configure();
+        const result = settle(
+          firstValueFrom(
+            TestBed.inject(DatatugApiService).post('datatug/x', {}, {
+              headers: { 'Idempotency-Key': 'k-1' },
+            }),
+          ),
+        );
+        fail(http.expectOne(primary + 'datatug/x'), status);
+        expect(((await result) as { error: HttpErrorResponse }).error.status).toBe(status);
+        http.verify();
+      },
+    );
+
+    it('does not treat an empty Idempotency-Key as opt-in', async () => {
+      const http = configure();
+      const result = settle(
+        firstValueFrom(
+          TestBed.inject(DatatugApiService).post('datatug/x', {}, {
+            headers: { 'Idempotency-Key': '' },
+          }),
+        ),
+      );
+      fail(http.expectOne(primary + 'datatug/x'), 0);
+      expect(((await result) as { error: HttpErrorResponse }).error.status).toBe(0);
       http.verify();
     });
 
@@ -323,6 +374,73 @@ describe('DatatugApiService failover', () => {
       http.verify();
     });
 
+    it.each([
+      ['a 200', 200],
+      ['a 404', 404],
+    ])('a late primary answer (%s) from before the failover does not undo it', async (_n, status) => {
+      vi.useFakeTimers();
+      const http = configure();
+      const api = TestBed.inject(DatatugApiService);
+      // Both requests leave for the primary before anything fails.
+      const a = firstValueFrom(api.get('datatug/a'));
+      const b = settle(firstValueFrom(api.get('datatug/b')));
+      const aPrimary = http.expectOne(primary + 'datatug/a');
+      const bPrimary = http.expectOne(primary + 'datatug/b');
+      fail(aPrimary, 503);
+      http.expectOne(fallback + 'datatug/a').flush({});
+      await a;
+      // B was still in flight on the primary and now gets an answer.
+      if (status === 200) bPrimary.flush({ late: true });
+      else fail(bPrimary, status);
+      await b;
+      // The fallback is still preferred.
+      const next = firstValueFrom(api.get('datatug/c'));
+      http.expectOne(fallback + 'datatug/c').flush({});
+      await next;
+      http.verify();
+    });
+
+    it('a late primary answer does not shorten the hold either', async () => {
+      vi.useFakeTimers();
+      const http = configure();
+      const api = TestBed.inject(DatatugApiService);
+      const a = firstValueFrom(api.get('datatug/a'));
+      // A write has no timeout, so it is still in flight on the primary minutes later.
+      const b = firstValueFrom(api.post('datatug/b', {}));
+      const bPrimary = http.expectOne(primary + 'datatug/b');
+      fail(http.expectOne(primary + 'datatug/a'), 503);
+      http.expectOne(fallback + 'datatug/a').flush({});
+      await a;
+      await vi.advanceTimersByTimeAsync(5 * minute - 1);
+      bPrimary.flush({});
+      await b;
+      const held = firstValueFrom(api.get('datatug/c'));
+      http.expectOne(fallback + 'datatug/c').flush({});
+      await held;
+      await vi.advanceTimersByTimeAsync(1);
+      const probe = firstValueFrom(api.get('datatug/d'));
+      http.expectOne(primary + 'datatug/d').flush({});
+      await probe;
+      http.verify();
+    });
+
+    it('two concurrent probes after the hold both go to the primary and the first success switches back', async () => {
+      vi.useFakeTimers();
+      const http = configure();
+      const api = TestBed.inject(DatatugApiService);
+      await failOver(http, api);
+      await vi.advanceTimersByTimeAsync(5 * minute);
+      const p1 = firstValueFrom(api.get('datatug/p1'));
+      const p2 = firstValueFrom(api.get('datatug/p2'));
+      http.expectOne(primary + 'datatug/p1').flush({});
+      http.expectOne(primary + 'datatug/p2').flush({});
+      await Promise.all([p1, p2]);
+      const post = firstValueFrom(api.post('datatug/x', {}));
+      http.expectOne(primary + 'datatug/x').flush({});
+      await post;
+      http.verify();
+    });
+
     it('honours a configured breaker length', async () => {
       vi.useFakeTimers();
       const http = configure([
@@ -380,6 +498,25 @@ describe('DatatugApiService failover', () => {
       expect(slow.cancelled).toBe(false);
       slow.flush({ done: true });
       await expect(result).resolves.toEqual({ done: true });
+    });
+
+    it.each([
+      'datatug/projects/project_summary',
+      'datatug/projects/connection_catalog',
+      'datatug/projects/branches',
+      'datatug/queries/all_queries',
+      'datatug/queries/query_revision',
+      'datatug/github/oauth/repositories',
+      'datatug/session-context/sessions',
+    ])('treats the GitHub-backed GET %s as slow', async (endpoint) => {
+      vi.useFakeTimers();
+      const http = configure();
+      const result = firstValueFrom(TestBed.inject(DatatugApiService).get(endpoint));
+      const slow = http.expectOne(primary + endpoint);
+      await vi.advanceTimersByTimeAsync(59_999);
+      expect(slow.cancelled).toBe(false);
+      slow.flush({});
+      await result;
     });
 
     it('can be disabled with primaryTimeoutMs 0', async () => {
@@ -533,7 +670,9 @@ describe('datatugApiFailoverReason', () => {
     ['GET', 524, null],
     ['GET', 500, null],
     ['GET', 404, null],
-    ['POST', 0, 'network'],
+    ['POST', 0, null],
+    ['PUT', 0, null],
+    ['DELETE', 0, null],
     ['PATCH', 521, 'status 521'],
     ['PUT', 523, 'status 523'],
     ['DELETE', 522, 'status 522'],
@@ -544,6 +683,13 @@ describe('datatugApiFailoverReason', () => {
     expect(datatugApiFailoverReason(method, http(status))).toBe(expected);
   });
 
+  it('retries a write on status 0 only with an Idempotency-Key', () => {
+    expect(datatugApiFailoverReason('POST', http(0), true)).toBe('network');
+    expect(datatugApiFailoverReason('POST', http(524), true)).toBeNull();
+    expect(datatugApiFailoverReason('POST', http(500), true)).toBeNull();
+    expect(datatugApiFailoverReason('POST', http(522), true)).toBe('status 522');
+  });
+
   it('retries a timeout only for idempotent methods', () => {
     expect(datatugApiFailoverReason('GET', new TimeoutError())).toBe('timeout');
     expect(datatugApiFailoverReason('POST', new TimeoutError())).toBeNull();
@@ -552,6 +698,23 @@ describe('datatugApiFailoverReason', () => {
   it('never retries an error that is not an HTTP response', () => {
     expect(datatugApiFailoverReason('GET', new Error('boom'))).toBeNull();
     expect(datatugApiFailoverReason('GET', 'text')).toBeNull();
+  });
+});
+
+describe('hasIdempotencyKey', () => {
+  it.each([
+    [{ headers: new HttpHeaders({ 'Idempotency-Key': 'k' }) }, true],
+    [{ headers: new HttpHeaders({ 'idempotency-key': 'k' }) }, true],
+    [{ headers: new HttpHeaders({ 'Idempotency-Key': '' }) }, false],
+    [{ headers: new HttpHeaders({ Other: 'k' }) }, false],
+    [{ headers: { 'IDEMPOTENCY-KEY': 'k' } }, true],
+    [{ headers: { 'Idempotency-Key': ['k'] } }, true],
+    [{ headers: { 'Idempotency-Key': '' } }, false],
+    [{ headers: { 'Idempotency-Key': [] } }, false],
+    [{ headers: { Authorization: 'x' } }, false],
+    [{}, false],
+  ])('%j -> %s', (options, expected) => {
+    expect(hasIdempotencyKey(options)).toBe(expected);
   });
 });
 
