@@ -4,6 +4,7 @@ import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, Router, convertToParamMap, provideRouter } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { OvdbRow } from '../../ovdb/ovdb-records';
 import { DemoLogsPageComponent } from './demo-logs-page.component';
 
 @Component({
@@ -38,7 +39,17 @@ const evidence = {
   },
 };
 
-async function setup() {
+const malformedEvidence = {
+  key: 'fulfillment_events/malformed-entry',
+  data: {
+    severity: 'WARN', service: 'carrier-gateway',
+    message: 'Malformed line without structured identifiers',
+    source_ref: 'file:abc:11:201', raw: 'unparsed carrier warning',
+    parse_status: 'malformed',
+  },
+};
+
+async function setup(queryRecords: readonly OvdbRow[] = [evidence]) {
   const requests: Array<{ url: string; method: string; body?: string; authorization?: string }> = [];
   const orderParams = new BehaviorSubject(convertToParamMap({ order: '11039' }));
   const route = { snapshot: { queryParamMap: orderParams.value }, queryParamMap: orderParams.asObservable() };
@@ -46,7 +57,7 @@ async function setup() {
     const url = String(input);
     requests.push({ url, method: init?.method ?? 'GET', body: init?.body?.toString(), authorization: new Headers(init?.headers).get('Authorization') ?? undefined });
     if (url.endsWith('/v1/databases/northwind_evidence')) return new Response(JSON.stringify(descriptor), { status: 200 });
-    if (url.endsWith('/v1/databases/northwind_evidence/query')) return new Response(JSON.stringify({ records: [evidence] }), { status: 200 });
+    if (url.endsWith('/v1/databases/northwind_evidence/query')) return new Response(JSON.stringify({ records: queryRecords }), { status: 200 });
     return new Response('missing', { status: 404 });
   }));
   TestBed.overrideComponent(DemoLogsPageComponent, {
@@ -86,6 +97,35 @@ describe('DemoLogsPageComponent', () => {
     expect(el.querySelector('.entry-details')?.textContent).toContain('nw-11039-f1');
     expect(el.querySelector('pre')?.textContent).toContain('CarrierClient.createLabel');
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
+  });
+
+  it('explains that identity filters still exclude malformed entries and can be cleared', async () => {
+    const { fixture, requests, el } = await setup([malformedEvidence]);
+    const component = fixture.componentInstance;
+    expect(component.includeUntimed()).toBe(false);
+    expect(component.orderId()).toBe('11039');
+
+    component.includeUntimed.set(true);
+    fixture.detectChanges();
+    expect(el.textContent).toContain('Order, correlation, and severity filters still apply.');
+    expect(el.textContent).toContain('Malformed entries may not contain those fields.');
+    expect(el.textContent).toContain('select All severity');
+    const initialQuery = JSON.parse(requests.at(-1)?.body ?? '{}') as { where: Array<{ field: string; value: string }> };
+    expect(initialQuery.where).toContainEqual({ field: 'order_id', op: '==', value: '11039' });
+
+    (el.querySelector('button[type="button"]') as HTMLButtonElement).click();
+    expect(component.orderId()).toBe('');
+    expect(component.correlationId()).toBe('');
+    await component.load();
+    await fixture.whenStable();
+    const clearedQuery = JSON.parse(requests.at(-1)?.body ?? '{}') as { where?: Array<{ field: string; value: string }> };
+    expect((clearedQuery.where ?? []).some(({ field }) => ['order_id', 'correlation_id'].includes(field))).toBe(false);
+
+    fixture.detectChanges();
+    (el.querySelector('.grid-entry') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.entry-details')?.textContent).toContain('malformed');
+    expect(el.querySelector('.entry-details')?.textContent).toContain('Not supplied');
   });
 
   it('keeps evidence visible and announces clipboard failures', async () => {
