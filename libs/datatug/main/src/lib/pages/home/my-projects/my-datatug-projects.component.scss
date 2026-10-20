@@ -4,7 +4,9 @@
 }
 
 .demo-list {
-  margin-top: 4px;
+  // The card row list is flush (global `ion-card > ion-list` rule), so this
+  // margin is the whole separation before the Demo projects divider.
+  margin-top: 12px;
 }
 
 .demo-experiences {

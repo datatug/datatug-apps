@@ -1,25 +1,25 @@
 <ion-card>
-  <ion-list lines="full">
-    <ion-item color="light">
-      <ion-label
-        ><h2>{{ title() }}</h2></ion-label
-      >
-      <ion-buttons slot="end">
-        @switch (authState?.status) {
-          @case ('authenticated') {
-            <ion-button
-              color="medium"
-              (click)="addProject()"
-              title="Add new project"
-            >
-              <ion-icon name="add" slot="start" color="primary" />
-              <ion-label>Add</ion-label>
-            </ion-button>
-          }
+  <ion-item color="light" lines="full">
+    <ion-label
+      ><h2>{{ title() }}</h2></ion-label
+    >
+    <ion-buttons slot="end">
+      @switch (authState?.status) {
+        @case ('authenticated') {
+          <ion-button
+            color="medium"
+            (click)="addProject()"
+            title="Add new project"
+          >
+            <ion-icon name="add" slot="start" color="primary" />
+            <ion-label>Add</ion-label>
+          </ion-button>
         }
-      </ion-buttons>
-    </ion-item>
+      }
+    </ion-buttons>
+  </ion-item>
 
+  <ion-list lines="full">
     @switch (authState?.status) {
       @case ('authenticating') {
         <ion-item>

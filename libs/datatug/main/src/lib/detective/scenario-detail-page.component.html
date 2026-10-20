@@ -33,14 +33,12 @@
       }
       @if (scenario(); as item) {
         <ion-card>
-          <ion-list lines="full">
-            <ion-item color="light" lines="full">
-              <ion-label class="ion-text-wrap">
-                <h1>{{ item.title }}</h1>
-                <p>{{ item.id }} · v{{ item.version }}</p>
-              </ion-label>
-            </ion-item>
-          </ion-list>
+          <ion-item color="light" lines="full">
+            <ion-label class="ion-text-wrap">
+              <h1>{{ item.title }}</h1>
+              <p>{{ item.id }} · v{{ item.version }}</p>
+            </ion-label>
+          </ion-item>
           <ion-card-content>
             @if (item.description) {
               <p>{{ item.description }}</p>
