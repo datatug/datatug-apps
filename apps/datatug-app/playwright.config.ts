@@ -25,8 +25,11 @@ export default defineConfig({
   // (https://github.com/datatug/datatug-apps/issues/410).
   // Deployed-provider checks require their explicit opt-in config, dedicated
   // identity and disabled sensitive artifacts; never discover them here.
+  // Hosted Incidents seeds Firebase Auth and Firestore; the checkout lane starts
+  // those emulators and serves the SSO E2E app.
   testIgnore: [
     'checkout-journey.spec.ts',
+    'hosted-incidents.spec.ts',
     'checkout-provider.spec.ts',
     'business-project-preview.spec.ts',
     'enterprise-sso.spec.ts',
@@ -95,6 +98,7 @@ export default defineConfig({
       // under this default project.
       testIgnore: [
         'checkout-journey.spec.ts',
+        'hosted-incidents.spec.ts',
         'checkout-provider.spec.ts',
         'business-project-preview.spec.ts',
         'enterprise-sso.spec.ts',
