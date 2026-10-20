@@ -19,6 +19,96 @@ test('signed-out direct visit redirects to login and preserves the hosted logs d
   ).toHaveCount(0);
 });
 
+test('malformed demo log entries explain and clear retained identifier filters', async ({
+  page,
+}) => {
+  const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  await page.route(
+    'http://127.0.0.1:6832/v1/databases/northwind_evidence',
+    async (route) => {
+      await route.fulfill({
+        status: 200,
+        json: {
+          id: 'northwind_evidence',
+          collections: ['fulfillment_events'],
+          capabilities: { query: true, write: false, read: false },
+        },
+      });
+    },
+  );
+  await page.route(
+    'http://127.0.0.1:6832/v1/databases/northwind_evidence/query',
+    async (route) => {
+      const body = route.request().postDataJSON() as Record<string, unknown>;
+      requests.push({
+        url: route.request().url(),
+        body,
+      });
+      const where = (body['where'] ?? []) as Array<{ field: string }>;
+      const hasIdentifierFilter = where.some(({ field }) =>
+        ['order_id', 'correlation_id'].includes(field),
+      );
+      await route.fulfill({
+        status: 200,
+        json: {
+          records: hasIdentifierFilter
+            ? []
+            : [
+                {
+                  key: 'fulfillment_events/malformed-entry',
+                  data: {
+                    severity: 'WARN',
+                    service: 'carrier-gateway',
+                    message: 'Malformed line without structured identifiers',
+                    source_ref: 'file:abc:11:201',
+                    raw: 'unparsed carrier warning',
+                    parse_status: 'malformed',
+                  },
+                },
+              ],
+        },
+      });
+    },
+  );
+  await page.goto('/demo/logs?order=11039');
+  await expect(
+    page.getByRole('status').filter({ hasText: 'No entries matched' }),
+  ).toBeVisible();
+  await page
+    .getByRole('checkbox', { name: /Include untimed or malformed entries/ })
+    .check();
+  await expect(
+    page.getByText(/Order, correlation, and severity filters still apply/),
+  ).toBeVisible();
+  await expect(
+    page.getByText(/Malformed entries may not contain those fields/),
+  ).toBeVisible();
+  expect(requests.at(-1)?.body).toMatchObject({
+    where: expect.arrayContaining([
+      { field: 'order_id', op: '==', value: '11039' },
+    ]),
+  });
+  await page
+    .getByRole('button', { name: 'Clear order and correlation filters' })
+    .click();
+  await page.getByRole('button', { name: 'Find evidence' }).click();
+  await expect(page).toHaveURL(/\/demo\/logs\?order=$/);
+  await expect.poll(() => requests.length).toBeGreaterThan(1);
+  const where = (requests.at(-1)?.body?.['where'] ?? []) as Array<{
+    field: string;
+  }>;
+  expect(
+    where.some(({ field }) => ['order_id', 'correlation_id'].includes(field)),
+  ).toBe(false);
+  await page
+    .getByRole('gridcell', {
+      name: /Malformed line without structured identifiers/,
+    })
+    .click();
+  await expect(page.locator('.entry-details')).toContainText('Not supplied');
+  await expect(page.locator('.entry-details')).toContainText('malformed');
+});
+
 test('signed-in user connects, queries, removes a view and revokes the Google grant', async ({
   page,
 }, testInfo) => {
@@ -111,6 +201,7 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   let disconnected = false;
   let finished = false;
   let accessAllowed = false;
+  let queryAccessAllowed = true;
   await page.route('**/v0/datatug/me/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -210,6 +301,13 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
       request.method() === 'POST' &&
       url.pathname.endsWith('/me/log-connections/query')
     ) {
+      if (!queryAccessAllowed) {
+        await route.fulfill({
+          status: 403,
+          json: { error: 'permission_denied' },
+        });
+        return;
+      }
       await route.fulfill({
         status: 200,
         json: {
@@ -339,7 +437,38 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   await page.getByRole('textbox', { name: 'Order ID' }).fill('order-4');
   await page.getByRole('textbox', { name: 'Correlation ID' }).fill('corr-9');
   await page.getByRole('textbox', { name: 'Service' }).fill('billing-api');
+  await page
+    .getByRole('textbox', { name: 'From (RFC3339 UTC)' })
+    .fill('2026-10-17T23:00:00Z');
+  await page
+    .getByRole('textbox', { name: 'To (RFC3339 UTC)' })
+    .fill('2026-10-19T00:00:00Z');
+  const queryCount = () =>
+    calls.filter((call) => call.path.endsWith('/me/log-connections/query'))
+      .length;
+  const beforeInvalidWindow = queryCount();
   await page.getByRole('button', { name: 'Find evidence' }).click();
+  await expect(page.locator('.timeline [role="alert"]')).toHaveText(
+    'Choose a time range no longer than 24 hours.',
+  );
+  await expect(page.locator('.account [role="alert"]')).toContainText(
+    'Google did not confirm revocation of an earlier grant',
+  );
+  expect(queryCount()).toBe(beforeInvalidWindow);
+  await page
+    .getByRole('textbox', { name: 'From (RFC3339 UTC)' })
+    .fill('2026-10-18T00:00:00Z');
+  await page
+    .getByRole('textbox', { name: 'To (RFC3339 UTC)' })
+    .fill('2026-10-19T00:00:00Z');
+  queryAccessAllowed = false;
+  await page.getByRole('button', { name: 'Find evidence' }).click();
+  await expect(
+    page.getByText(/Google denied Cloud Logging access to this view/),
+  ).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry query' })).toBeVisible();
+  queryAccessAllowed = true;
+  await page.getByRole('button', { name: 'Retry query' }).click();
   await expect(
     page.getByRole('status').filter({ hasText: 'result cap reached' }),
   ).toBeVisible();
