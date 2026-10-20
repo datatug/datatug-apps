@@ -1,3 +1,4 @@
+import { nativeQueryDiagnostic, nativeQueryDiagnosticMessage } from './native-query-failure';
 import { createPublicOvdbDevFetch, type PublicOvdbDevTransport } from './public-ovdb-dev-transport';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IQueryDef } from '../models/definition/query-def';
@@ -514,7 +515,13 @@ self.onmessage = (
       } catch (cleanupError) {
         messageText += `; cleanup failed: ${cleanupError instanceof Error ? cleanupError.message : String(cleanupError)}`;
       }
-      if (!closing) self.postMessage({ type: 'error', message: messageText });
+      if (!closing) {
+        const diagnostic = nativeQueryDiagnostic(error);
+        self.postMessage({ type: 'error',
+          message: diagnostic ? nativeQueryDiagnosticMessage(diagnostic) : messageText,
+          ...(diagnostic ? { diagnostic } : {}),
+        });
+      }
     } finally {
       activeRun = undefined;
       controller = undefined;

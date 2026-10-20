@@ -1,3 +1,4 @@
+import { decodeNativeQueryDiagnostic, NativeQueryFailure } from './native-query-failure';
 import { Injectable, inject } from '@angular/core';
 import { PUBLIC_OVDB_DEV_TRANSPORT, type PublicOvdbDevTransport } from '@sneat/datatug-semantic';
 import type { TypedValue } from '@sneat/datatug-semantic';
@@ -212,7 +213,7 @@ export class FederatedQueryService {
           | { type: 'source'; event: FederatedSourceLoaded }
           | { type: 'first-record'; at: number }
           | { type: 'result'; result: FederatedQueryResult }
-          | { type: 'error'; message: string }
+          | { type: 'error'; message: string; diagnostic?: unknown }
           | { type: 'page'; requestId: number; rows: TypedValue[][] }
           | { type: 'page-error'; requestId: number; message: string }
           | { type: 'cleanup-error'; message: string }
@@ -306,7 +307,13 @@ export class FederatedQueryService {
         } else {
           clearDeadline();
           void this.closeWorker().catch(() => undefined);
-          reject(new Error(message.type === 'error' && typeof message.message === 'string' && message.message.trim() ? message.message : 'The query worker returned an unexpected or invalid protocol message.'));
+          if (message.type === 'error' && Object.hasOwn(message, 'diagnostic')) {
+            const diagnostic = decodeNativeQueryDiagnostic(message.diagnostic);
+            // Worker causes are deliberately finite metadata, not the original
+            // executor Error/stack, which cannot safely cross this boundary.
+            reject(diagnostic ? new NativeQueryFailure(diagnostic, { cause: diagnostic })
+              : new Error('The query worker returned an invalid diagnostic.'));
+          } else reject(new Error(message.type === 'error' && typeof message.message === 'string' && message.message.trim() ? message.message : 'The query worker returned an unexpected or invalid protocol message.'));
         }
       };
       worker.onerror = (event) => {

@@ -1,3 +1,4 @@
+import { nativeQueryDiagnostic, nativeQueryDiagnosticMessage } from '../../../../queries/native-query-failure';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import {
   admitComparisonChart,
@@ -309,6 +310,8 @@ export class BoardWidgetComponent {
     return result && !('runtime' in result) ? result : undefined;
   });
   readonly runError = signal<string | undefined>(undefined);
+  /** Retained locally for inspection/tests; never rendered or sent to logging. */
+  readonly runFailure = signal<unknown>(undefined);
   readonly choiceError = signal<string | undefined>(undefined);
   readonly unsupportedReason = signal<string | undefined>(undefined);
   readonly definitionLoading = signal(false);
@@ -430,6 +433,7 @@ export class BoardWidgetComponent {
       this.workingCopies.set([]);
       if (!this.resultSnapshot()) this.ownSnapshot.set(undefined);
       this.runError.set(undefined);
+      this.runFailure.set(undefined);
       this.choiceError.set(undefined);
       this.running.set(false);
       this.unsupportedReason.set(undefined);
@@ -587,6 +591,7 @@ export class BoardWidgetComponent {
     if (selectionId === this.selectedRuntimeId()) return;
     this.activeRun?.abort();
     this.runError.set(undefined);
+    this.runFailure.set(undefined);
     this.selectedRuntimeId.set(selectionId);
   }
 
@@ -642,6 +647,7 @@ export class BoardWidgetComponent {
     const widgetName = this.widgetDef()?.name;
     const chartDefinition = JSON.stringify(this.chartWidgetDef());
     this.runError.set(undefined);
+    this.runFailure.set(undefined);
     try {
       const board = await firstValueFrom(
         readBoard(ref, boardId).pipe(timeout(15000)),
@@ -834,9 +840,11 @@ export class BoardWidgetComponent {
           readBoard,
           path,
         )
-      )
+      ) {
+        this.runFailure.set(error);
         this.runError.set(
-          qualifiedLocalReadVersionGuidance(error) ??
+          nativeQueryDiagnosticMessage(nativeQueryDiagnostic(error)) ??
+            qualifiedLocalReadVersionGuidance(error) ??
             (error instanceof QueryDispatchError ||
             (error instanceof Error &&
               (error.message.startsWith('This board card changed.') ||
@@ -848,6 +856,7 @@ export class BoardWidgetComponent {
               ? error.message
               : 'The saved query could not run. Try again or open the saved query to inspect it.'),
         );
+      }
     } finally {
       if (this.activeRun === controller) this.activeRun = undefined;
       if (

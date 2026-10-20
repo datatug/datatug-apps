@@ -3,6 +3,8 @@ import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import {
   DATATUG_TEST_PREVIEW_API_BASE_URL,
   DatatugApiBaseUrl,
+  PUBLIC_OVDB_DEV_TRANSPORT,
+  PUBLIC_OVDB_LOOPBACK_MODE,
 } from '@sneat/datatug-semantic';
 import { DATATUG_CHECKOUT_FORCE_TEST } from '../app/checkout/checkout-force-test';
 import {
@@ -35,6 +37,15 @@ describe('Business project preview environment', () => {
       `${TEST_PREVIEW_PROJECT_ORIGIN}/v0/`,
     );
     expect(TestBed.inject(SneatApiBaseUrl)).toBe(DefaultSneatAppApiBaseUrl);
+  });
+
+  it('uses the closed public OVDB loopback transport in the preview', () => {
+    TestBed.configureTestingModule({
+      providers: [...datatugEnvironmentProviders],
+    });
+    expect(TestBed.inject(PUBLIC_OVDB_DEV_TRANSPORT, null)).toBe(
+      PUBLIC_OVDB_LOOPBACK_MODE,
+    );
   });
 
   it('uses the same preview origin as the one DatatugApiService treats as the TEST preview', () => {

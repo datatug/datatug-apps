@@ -254,7 +254,10 @@
               answer.runtime === 'browser-public-api')) ||
           definition()?.federation
         ) {
-          <sneat-datatug-held-result-presentation [result]="answer" />
+          <sneat-datatug-held-result-presentation
+            [embedded]="true"
+            [result]="answer"
+          />
         } @else {
           @if (!answer.recordset.rows.length) {
             <p role="status">Query completed with no rows.</p>

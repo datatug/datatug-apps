@@ -25,8 +25,8 @@ test.describe('metadata link of the Table card', () => {
     await expect(page.getByTestId('table-metadata-referenced-by')).toContainText('Track');
 
     // The code left the address bar; the path and the schema query stay.
-    expect(page.url()).not.toContain('code=');
-    expect(page.url()).toContain('/table/Album?schema=');
+    await expect.poll(() => page.url()).not.toContain('code=');
+    await expect.poll(() => page.url()).toContain('/table/Album?schema=');
     // The agent was asked for the session once, and no request carried the code in its address.
     expect(agentRequests.filter((u) => u.endsWith('/datatug/session/exchange'))).toHaveLength(1);
     expect(agentRequests.some((u) => u.includes('code='))).toBe(false);

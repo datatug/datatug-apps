@@ -81,10 +81,16 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
   expect(upgraded).toEqual({ version: 2, bookmarkStore: true, legacy: { path: 'legacy-session', data: { scope: 'legacy' } } });
 
   const recordBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'Show 10 customers' });
+  const tagButton = recordBookmark.getByRole('button', { name: 'Tag', exact: true });
+  await expect(tagButton).toBeEnabled();
   page.once('dialog', (dialog) => dialog.accept(' ROCK '));
-  await recordBookmark.getByRole('button', { name: 'Tag' }).click();
+  await tagButton.click();
+  await expect(recordBookmark.getByRole('button', { name: 'rock ×', exact: true })).toBeVisible();
+  await expect(tagButton).toBeEnabled();
   page.once('dialog', (dialog) => dialog.accept(' LIVE '));
-  await recordBookmark.getByRole('button', { name: 'Tag' }).click();
+  await tagButton.click();
+  await expect(recordBookmark.getByRole('button', { name: 'live ×', exact: true })).toBeVisible();
+  await expect(tagButton).toBeEnabled();
   await workspace.getByLabel('Filter bookmark tags').fill('rock');
   await expect(workspace.locator('.bookmark-item')).toHaveCount(1);
   await workspace.getByLabel('Filter bookmark tags').fill('ROCK,live');
