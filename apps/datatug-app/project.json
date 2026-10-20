@@ -290,6 +290,14 @@
         "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --forbid-only"
       }
     },
+    "e2e-demo-sqlite-adventureworks": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite-adventureworks.config.ts --forbid-only"
+      }
+    },
     "e2e-demo-postgresql": {
       "executor": "nx:run-commands",
       "cache": false,
