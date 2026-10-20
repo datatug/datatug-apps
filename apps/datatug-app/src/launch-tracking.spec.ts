@@ -5,8 +5,17 @@ import {
   SNEAT_FIREBASE_ANALYTICS,
 } from '@sneat/core';
 import { provideSneatAnalytics } from '@sneat/logging';
-import { datatugAppEnvironmentConfig as production } from './environments/environment.prod';
-import { withoutDataTugTracking } from './launch-tracking';
+import {
+  datatugAppEnvironmentConfig as production,
+  datatugGoogleAnalyticsMeasurementId,
+} from './environments/environment.prod';
+import { datatugGoogleAnalyticsMeasurementId as developmentMeasurementId } from './environments/environment';
+import { datatugGoogleAnalyticsMeasurementId as previewMeasurementId } from './environments/environment.business-preview';
+import { datatugGoogleAnalyticsMeasurementId as ssoMeasurementId } from './environments/environment.sso-e2e';
+import {
+  dataTugGoogleAnalyticsId,
+  withoutDataTugTracking,
+} from './launch-tracking';
 import { registerPosthog } from './register-posthog';
 import indexHtml from './index.html?raw';
 import mainSource from './main.ts?raw';
@@ -18,23 +27,28 @@ const sdk = vi.hoisted(() => ({
 }));
 vi.mock('posthog-js', () => ({ default: sdk }));
 
-const paths = [
-  '/',
-  '/project/github.com/datatug/demo',
-  '/subscribe?checkout=test',
-  '/pricing/return?session_id=cs_test_paid',
-  '/login',
-  '/checkout/sign-in?plan=pro&period=monthly&checkout=test',
-  '/subscriptions?checkout=test',
-  '/subscriptions/billing_one?checkout=test',
-  '/subscriptions/billing_one/transfer?checkout=test&requestId=transfer_one',
-  '/sso?returnTo=%2Fsubscriptions%3Fcheckout%3Dtest',
-  '/login#/pricing/return?session_id=cs_test_paid',
+// [path, is a checkout address]. DataTug's own GA property is only held back from a checkout address here: anywhere
+// else it waits for the visitor's consent (app/analytics-consent), which the module's own spec covers.
+const paths: [string, boolean][] = [
+  ['/', false],
+  ['/project/github.com/datatug/demo', false],
+  ['/subscribe?checkout=test', true],
+  ['/pricing/return?session_id=cs_test_paid', true],
+  ['/login', false],
+  ['/checkout/sign-in?plan=pro&period=monthly&checkout=test', true],
+  ['/subscriptions?checkout=test', true],
+  ['/subscriptions/billing_one?checkout=test', true],
+  [
+    '/subscriptions/billing_one/transfer?checkout=test&requestId=transfer_one',
+    true,
+  ],
+  ['/sso?returnTo=%2Fsubscriptions%3Fcheckout%3Dtest', true],
+  ['/login#/pricing/return?session_id=cs_test_paid', true],
 ];
 
 it.each(paths)(
-  'does not load GA or start PostHog at %s, including after navigation',
-  (path) => {
+  'loads no Google tag on its own and starts no PostHog at %s, including after navigation',
+  (path, checkout) => {
     const previous = location.pathname + location.search + location.hash;
     const target = window as unknown as Record<string, unknown>;
     const saved = { ...target };
@@ -60,7 +74,16 @@ it.each(paths)(
         { hostname: 'datatug.app' },
         { head: { appendChild: append } },
       );
-      expect(target['ga-disable-G-DESWRP39RY']).toBe(true);
+      const checkoutSnippet = indexHtml
+        .slice(indexHtml.indexOf('<!-- Checkout privacy'))
+        .match(/<script>([\s\S]*?)<\/script>/)?.[1];
+      if (!checkoutSnippet) throw new Error('Missing checkout privacy script');
+      new Function('window', 'location', checkoutSnippet)(window, location);
+      expect(target['ga-disable-G-DESWRP39RY']).toBe(
+        checkout ? true : undefined,
+      );
+      expect(target['ga-disable-G-SNF2R7PDY7']).toBe(true);
+      expect(target['__datatugOptionalTrackingDisabled']).toBe(true);
       expect(append).not.toHaveBeenCalled();
       registerPosthog({ token: 'fixture' });
       history.replaceState(null, '', '/project/github.com/datatug/demo');
@@ -69,6 +92,7 @@ it.each(paths)(
     } finally {
       for (const key of [
         '__datatugOptionalTrackingDisabled',
+        '__datatugCheckoutPrivacy',
         'ga-disable-G-DESWRP39RY',
         'ga-disable-G-SNF2R7PDY7',
         'ga-disable-G-TYBDTV738R',
@@ -112,7 +136,7 @@ it('keeps identity, storage and diagnostics config while the actual analytics fa
   expect(firebase).not.toHaveBeenCalled();
   expect(sdk.init).not.toHaveBeenCalled();
   // The same sanitized object reaches auth/Firebase, analytics and EnvConfig consumers.
-  expect(mainSource).toContain('withoutDataTugTracking(environmentConfig');
+  expect(mainSource).toMatch(/withoutDataTugTracking\(\s*environmentConfig,/);
   expect(mainSource).toContain(
     'provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig)',
   );
@@ -120,6 +144,39 @@ it('keeps identity, storage and diagnostics config while the actual analytics fa
     'provideSneatAnalytics(datatugAppEnvironmentConfig)',
   );
   expect(mainSource).toContain('useValue: datatugAppEnvironmentConfig');
+});
+
+describe('the DataTug measurement id for the consent banner', () => {
+  it('is the DataTug property in the production build and absent from development builds', () => {
+    expect(datatugGoogleAnalyticsMeasurementId).toBe('G-DESWRP39RY');
+    expect(developmentMeasurementId).toBeUndefined();
+    expect(previewMeasurementId).toBeUndefined();
+    expect(ssoMeasurementId).toBeUndefined();
+    // Never the Sneat property, which stays in the Firebase config only to be stripped.
+    expect(datatugGoogleAnalyticsMeasurementId).not.toBe('G-TYBDTV738R');
+  });
+
+  it('is handed over for the DataTug profile only', () => {
+    expect(
+      dataTugGoogleAnalyticsId('G-DESWRP39RY', { hostname: 'datatug.app' }),
+    ).toBe('G-DESWRP39RY');
+    expect(
+      dataTugGoogleAnalyticsId('G-DESWRP39RY', {
+        hostname: 'app.incidentius.com',
+      }),
+    ).toBeUndefined();
+    expect(
+      dataTugGoogleAnalyticsId('G-DESWRP39RY', {
+        hostname: 'localhost',
+        queryProfile: 'incidentius',
+      }),
+    ).toBeUndefined();
+  });
+
+  it('is started from main.ts through the consent provider', () => {
+    expect(mainSource).toContain('provideAnalyticsConsent(');
+    expect(mainSource).toContain('datatugGoogleAnalyticsMeasurementId');
+  });
 });
 
 it.each([

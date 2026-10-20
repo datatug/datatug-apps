@@ -156,7 +156,10 @@
       })();
     </script>
 
-    <!-- DataTug launch: optional tracking disabled before any SDK starts. -->
+    <!-- DataTug launch: optional tracking disabled before any SDK starts. PostHog and Firebase Analytics stay off.
+         DataTug's own Google Analytics property (G-DESWRP39RY) is not switched off here: it loads only after the
+         visitor accepts the analytics banner (src/app/analytics-consent), and never on a checkout page, where the
+         script below disables it. -->
     <script>
       (function () {
         // Match product-profile resolution before Angular is available. Only the
@@ -167,7 +170,7 @@
         var incidentius = profile === 'incidentius' || (profile !== 'datatug' && host === 'app.incidentius.com');
         if (!incidentius) {
           window.__datatugOptionalTrackingDisabled = true;
-          ['G-DESWRP39RY', 'G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
+          ['G-SNF2R7PDY7', 'G-TYBDTV738R', 'G-PROVIDE_IF_NEEDED'].forEach(function (id) { window['ga-disable-' + id] = true; });
         }
       })();
     </script>

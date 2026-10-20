@@ -12,6 +12,11 @@ export const datatugBusinessCheckoutLiveApiOrigin: string | null =
   'https://api.sneat.cloud';
 export const datatugBusinessCheckoutLiveEnabled = true;
 
+// The DataTug GA4 property's web stream for datatug.app (property 544342519). It loads only after the visitor
+// accepts the analytics banner (app/analytics-consent); main.ts hands it over for the DataTug profile only.
+export const datatugGoogleAnalyticsMeasurementId: string | undefined =
+  'G-DESWRP39RY';
+
 export const DATATUG_SAME_ORIGIN_AUTH_BY_DEFAULT = false;
 
 // Shared Sneat identity pool — `sneat-eur3-1` — used by every Sneat product
