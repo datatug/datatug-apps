@@ -153,6 +153,99 @@ describe('CloudLogsPageComponent', () => {
     );
   });
 
+  it('does not restore a removed view from a list response already in flight', async () => {
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    component.selectConnection(connections[0]);
+    const pending = new Subject<{
+      grants: GoogleLogGrant[];
+      connections: PersonalLogConnection[];
+    }>();
+    api.list.mockReturnValueOnce(pending);
+    const refresh = component.loadConnections();
+
+    await component.removeView(connections[0]);
+    pending.next({ grants: [], connections });
+    pending.complete();
+    await refresh;
+
+    expect(component.connections().map(({ id }) => id)).toEqual(['view-b']);
+    expect(component.selectedConnection()).toBeNull();
+    expect(component.pageState()).toBe('ready');
+  });
+
+  it('does not restore a revoked grant or its views from a stale list response', async () => {
+    const grant: GoogleLogGrant = {
+      id: 'grant-a',
+      email: 'investigator@example.test',
+      state: 'active',
+    };
+    api.list.mockReturnValueOnce(of({ grants: [grant], connections: [connections[0]] }));
+    api.disconnect.mockReturnValue(of({ state: 'revocation_pending' as const }));
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const pending = new Subject<{
+      grants: GoogleLogGrant[];
+      connections: PersonalLogConnection[];
+    }>();
+    api.list.mockReturnValueOnce(pending);
+    const refresh = component.loadConnections();
+
+    await component.disconnect(grant);
+    pending.next({ grants: [grant], connections: [connections[0]] });
+    pending.complete();
+    await refresh;
+
+    expect(component.grants()).toEqual([
+      { ...grant, state: 'revocation_pending' },
+    ]);
+    expect(component.connections()).toEqual([]);
+    expect(component.pageState()).toBe('ready');
+  });
+
+  it('applies only the newest overlapping connection refresh', async () => {
+    fixture = TestBed.createComponent(CloudLogsPageComponent);
+    component = fixture.componentInstance;
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const older = new Subject<{
+      grants: GoogleLogGrant[];
+      connections: PersonalLogConnection[];
+    }>();
+    const newer = new Subject<{
+      grants: GoogleLogGrant[];
+      connections: PersonalLogConnection[];
+    }>();
+    api.list.mockReturnValueOnce(older).mockReturnValueOnce(newer);
+    const olderRefresh = component.loadConnections();
+    const newerRefresh = component.loadConnections();
+    const newerGrant: GoogleLogGrant = {
+      id: 'grant-new',
+      email: 'new@example.test',
+      state: 'active',
+    };
+    newer.next({ grants: [newerGrant], connections: [connections[1]] });
+    newer.complete();
+    await newerRefresh;
+    older.next({
+      grants: [
+        { id: 'grant-old', email: 'old@example.test', state: 'active' },
+      ],
+      connections: [connections[0]],
+    });
+    older.complete();
+    await olderRefresh;
+
+    expect(component.grants()).toEqual([newerGrant]);
+    expect(component.connections()).toEqual([connections[1]]);
+    expect(component.selectedGrantId()).toBe('grant-new');
+    expect(component.pageState()).toBe('ready');
+  });
+
   it('finishes a replayed or new-tab callback without staying in loading state', async () => {
     window.__datatugTakeGoogleLogsReturn = () => ({
       status: 'complete',

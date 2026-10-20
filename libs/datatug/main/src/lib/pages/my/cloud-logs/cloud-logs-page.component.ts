@@ -645,6 +645,7 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
 export class CloudLogsPageComponent {
   private queryGeneration = 0;
   private accessGeneration = 0;
+  private connectionListGeneration = 0;
   private readonly hasAccess = signal(false);
   readonly hostedCloudLogsAccess = inject(HostedCloudLogsAccessService);
   private readonly api = inject(CloudLogsApiService);
@@ -745,11 +746,16 @@ export class CloudLogsPageComponent {
 
   async loadConnections(generation = this.accessGeneration): Promise<void> {
     if (!this.isCurrentAccess(generation)) return;
+    const listGeneration = ++this.connectionListGeneration;
     this.pageState.set('loading');
     this.pageError.set('');
     try {
       const current = await firstValueFrom(this.api.list());
-      if (!this.isCurrentAccess(generation)) return;
+      if (
+        !this.isCurrentAccess(generation) ||
+        listGeneration !== this.connectionListGeneration
+      )
+        return;
       this.grants.set(current.grants);
       const inactiveReasons = this.inactiveReasonsByConnection();
       const refreshedConnections = current.connections.map((connection) =>
@@ -782,7 +788,11 @@ export class CloudLogsPageComponent {
         );
       this.pageState.set('ready');
     } catch (error) {
-      if (!this.isCurrentAccess(generation)) return;
+      if (
+        !this.isCurrentAccess(generation) ||
+        listGeneration !== this.connectionListGeneration
+      )
+        return;
       this.pageError.set(errorMessage(error));
       this.pageState.set('error');
     }
@@ -883,6 +893,7 @@ export class CloudLogsPageComponent {
       await this.loadConnections(generation);
       return;
     }
+    this.invalidateConnectionList();
     try {
       const grant = await firstValueFrom(
         this.api.finishGoogleAuthorization({
@@ -891,6 +902,7 @@ export class CloudLogsPageComponent {
         }),
       );
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.grants.update((grants) => [
         ...grants.filter((candidate) => candidate.id !== grant.id),
         grant,
@@ -912,6 +924,7 @@ export class CloudLogsPageComponent {
     if (!this.canConnect()) return;
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    this.invalidateConnectionList();
     this.busy.set(true);
     this.pageError.set('');
     try {
@@ -923,12 +936,15 @@ export class CloudLogsPageComponent {
         }),
       );
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.projectId.set('');
       this.logViewId.set('');
       await this.loadConnections(generation);
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.completeConnectionMutation();
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busy.set(false);
     }
@@ -954,11 +970,13 @@ export class CloudLogsPageComponent {
   async removeView(connection: PersonalLogConnection): Promise<void> {
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    this.invalidateConnectionList();
     this.busyConnectionId.set(connection.id);
     this.pageError.set('');
     try {
       await firstValueFrom(this.api.remove(connection.id));
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.connections.update((connections) =>
         connections.filter((candidate) => candidate.id !== connection.id),
       );
@@ -966,8 +984,10 @@ export class CloudLogsPageComponent {
       if (this.selectedConnection()?.id === connection.id)
         this.clearSelection();
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.completeConnectionMutation();
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busyConnectionId.set('');
     }
@@ -976,11 +996,13 @@ export class CloudLogsPageComponent {
   async disconnect(grant: GoogleLogGrant): Promise<void> {
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    this.invalidateConnectionList();
     this.busyGrantId.set(grant.id);
     this.pageError.set('');
     try {
       const result = await firstValueFrom(this.api.disconnect(grant.id));
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.confirmGrantId.set('');
       this.grants.update((grants) =>
         grants.map((candidate) =>
@@ -1013,8 +1035,10 @@ export class CloudLogsPageComponent {
           : 'All views for this account are disabled. Google access revocation is being completed.',
       );
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.completeConnectionMutation();
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busyGrantId.set('');
     }
@@ -1213,6 +1237,15 @@ export class CloudLogsPageComponent {
     });
   }
 
+  private invalidateConnectionList(): void {
+    this.connectionListGeneration++;
+  }
+
+  private completeConnectionMutation(): void {
+    this.invalidateConnectionList();
+    if (this.pageState() === 'loading') this.pageState.set('ready');
+  }
+
   private isCurrentAccess(generation: number): boolean {
     return (
       this.hasAccess() &&
@@ -1223,6 +1256,7 @@ export class CloudLogsPageComponent {
 
   private clearAccessBoundData(): void {
     this.queryGeneration++;
+    this.invalidateConnectionList();
     this.pageState.set('loading');
     this.pageError.set('');
     this.grants.set([]);
