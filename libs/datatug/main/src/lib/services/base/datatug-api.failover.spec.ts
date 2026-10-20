@@ -584,7 +584,7 @@ describe('DatatugApiService failover', () => {
     });
 
     it('keeps identity calls of the TEST preview on the authoritative service', () => {
-      const preview = 'https://datatug-cloud-preview-354fvnqbaa-ey.a.run.app/v0/';
+      const preview = 'https://datatug-cloud-preview-354fvnqbaa-ew.a.run.app/v0/';
       const http = configure([
         { provide: DatatugApiBaseUrl, useValue: preview },
         { provide: DatatugApiBaseUrls, useValue: [preview] },

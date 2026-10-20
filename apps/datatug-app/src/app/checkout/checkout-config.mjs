@@ -119,8 +119,11 @@ export const TEST_CHECKOUT_ORIGIN =
 // preview serve configuration sends DataTug API calls to. It is not checkout:
 // business-checkout-config.ts never trusts it, so checkout stays on
 // TEST_CHECKOUT_ORIGIN. Verify after the service is created.
+// europe-west1 (Belgium), where datatug-cloud deploys it. TEST_CHECKOUT_ORIGIN
+// above stays on europe-west3: datatug-checkout-test is hand-deployed and is not
+// recreated in Belgium.
 export const TEST_PREVIEW_PROJECT_ORIGIN =
-  'https://datatug-cloud-preview-354fvnqbaa-ey.a.run.app';
+  'https://datatug-cloud-preview-354fvnqbaa-ew.a.run.app';
 // `forceTest` is true only in the Business project preview build
 // (DATATUG_CHECKOUT_FORCE_TEST). Every rail then selects TEST, whatever the
 // query string says, and a LIVE return is refused rather than rebound to TEST.

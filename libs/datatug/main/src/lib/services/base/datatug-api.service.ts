@@ -7,6 +7,7 @@ import {
   DatatugApiBaseUrl,
   DatatugApiBaseUrls,
   DatatugApiFailoverConfig,
+  DATATUG_TEST_PREVIEW_API_BASE_URL,
 } from '@sneat/datatug-semantic';
 import { DatatugApiFailoverHttpClient } from './datatug-api-failover.http-client';
 
@@ -53,8 +54,8 @@ export class DatatugApiService extends SneatApiService {
   private readonly authoritativeApi = inject(SneatApiService);
   // Only the dedicated TEST project build delegates these identity operations.
   // An arbitrary custom API origin must not change where credentials are sent.
-  private readonly projectPreview = inject(DatatugApiBaseUrl) ===
-    'https://datatug-cloud-preview-354fvnqbaa-ey.a.run.app/v0/';
+  private readonly projectPreview =
+    inject(DatatugApiBaseUrl) === DATATUG_TEST_PREVIEW_API_BASE_URL;
 
   override get<T>(endpoint: string, params?: HttpParams, options?: Parameters<SneatApiService['get']>[2]) {
     return this.projectPreview && endpoint === 'datatug/github/oauth/repositories'
