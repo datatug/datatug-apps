@@ -602,9 +602,11 @@ export class ResultsGridComponent {
   private autosizeTimer?: ReturnType<typeof setTimeout>;
   private layoutScope?: LayoutScope;
   private appliedLayout?: { scope: LayoutScope; columns: string };
-  private autosizeOperation?: { scope: LayoutScope; remember: boolean };
+  private readonly autosizeOperation = signal<
+    { scope: LayoutScope; remember: boolean } | undefined
+  >(undefined);
   /** True once the person (or a restored layout) set the layout: only then are widths/order/sort stored. */
-  private layoutTouched = false;
+  private readonly layoutTouched = signal(false);
 
   readonly defs = computed<ColDef<GridRow>[]>(() => [
     ...(this.showRowNumbers() ? [ROW_NUMBER_COLUMN] : []),
@@ -688,11 +690,11 @@ export class ResultsGridComponent {
           this.layoutScope = { key, signature, ids };
           this.appliedLayout = undefined;
           clearTimeout(this.autosizeTimer);
-          this.autosizeOperation = undefined;
+          this.autosizeOperation.set(undefined);
         }
         const stored = readGridState(key, signature, ids);
         this.density.set(stored?.density ?? 'comfortable');
-        this.layoutTouched = !!stored?.cols;
+        this.layoutTouched.set(!!stored?.cols);
         if (this.api) this.applyStoredLayout();
       });
     });
@@ -768,7 +770,7 @@ export class ResultsGridComponent {
         })),
         applyOrder: true,
       });
-      this.layoutTouched = true;
+      this.layoutTouched.set(true);
     }
     this.rememberAppliedLayout();
   }
@@ -796,15 +798,15 @@ export class ResultsGridComponent {
       applied.columns === JSON.stringify(columns)
     )
       return;
-    this.layoutTouched = true;
+    this.layoutTouched.set(true);
     this.saveLayout(columns);
   }
 
   onColumnResized(event: ColumnResizedEvent): void {
     if (!event.finished) return;
+    const operation = this.autosizeOperation();
     if (event.source === 'autosizeColumns') {
-      const operation = this.autosizeOperation;
-      this.autosizeOperation = undefined;
+      this.autosizeOperation.set(undefined);
       if (operation && operation.scope === this.layoutScope) {
         if (!operation.remember) this.rememberAppliedLayout();
       }
@@ -814,9 +816,8 @@ export class ResultsGridComponent {
     // completion notification. The captured operation owns those, not a timer.
     if (
       event.source === 'api' &&
-      this.autosizeOperation &&
-      (!this.autosizeOperation.remember ||
-        this.autosizeOperation.scope !== this.layoutScope)
+      operation &&
+      (!operation.remember || operation.scope !== this.layoutScope)
     )
       return;
     this.onLayoutChanged(event);
@@ -863,7 +864,7 @@ export class ResultsGridComponent {
     writeGridState(scope.key, {
       v: GRID_STATE_VERSION,
       density: this.density(),
-      ...(this.layoutTouched && columns.length
+      ...(this.layoutTouched() && columns.length
         ? { sig: scope.signature, cols: columns }
         : {}),
     });
@@ -874,7 +875,7 @@ export class ResultsGridComponent {
     const api = this.api;
     if (!api) return;
     clearTimeout(this.autosizeTimer);
-    this.layoutTouched = false;
+    this.layoutTouched.set(false);
     // Forget the stored layout first: the grid's own reset events must not find it and apply it again.
     this.saveLayout();
     api.resetColumnState();
@@ -990,16 +991,16 @@ export class ResultsGridComponent {
     if (!api || !scope) return;
     clearTimeout(this.autosizeTimer);
     const operation = { scope, remember };
-    this.autosizeOperation = operation;
+    this.autosizeOperation.set(operation);
     api.autoSizeAllColumns();
     // Retain the button's delayed fit save, but never sample a different result
     // when it runs. AG may emit no completion when nothing can be measured, so
     // both Reset and Autosize intent also expire here without needing an event.
     this.autosizeTimer = setTimeout(() => {
-      if (this.autosizeOperation === operation)
-        this.autosizeOperation = undefined;
+      if (this.autosizeOperation() === operation)
+        this.autosizeOperation.set(undefined);
       if (!remember || this.layoutScope !== scope || this.api !== api) return;
-      this.layoutTouched = true;
+      this.layoutTouched.set(true);
       this.saveLayout();
     }, 600);
   }
