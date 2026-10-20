@@ -24,6 +24,7 @@ Feature specifications for this project.
 | [Native server federation for saved queries](native-server-federation/README.md) | Draft | Execute a qualified multi-database saved DTQL plan in one bounded OVDB server request and validate physical sources before exposing rows. |
 | [Local preview of public server federation](local-federation-preview/README.md) | Draft | Run real public OVDB queries from the loopback development app through a fixed same-origin transport while retaining canonical source admission. |
 | [Reusable held result exploration](held-result-exploration/README.md) | Implementing | Explore admitted held results with clear actions, stable sorting and complete monthly Orders trends without extra execution. |
+| [Hosted Incident conversation](hosted-incident-conversation/README.md) | Draft | Authenticated human Incident messages, scoped history and replay-safe posting in the private project web UI. |
 
 ## Open Questions
 

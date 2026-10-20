@@ -17,6 +17,7 @@ import {
 } from './models';
 import {
   HostedIncidentAction,
+  HostedIncidentEvents,
   HostedIncidentLinks,
   HostedProjectIncidents,
   HostedProjectIncident,
@@ -366,6 +367,18 @@ export class DetectiveClientService {
         .set('environment', environment)
         .set('incidentRef', incidentRef),
     );
+  }
+
+  incidentEvents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+    incidentRef: string,
+    afterSeq = 0,
+    limit = 50,
+  ): Observable<HostedIncidentEvents> {
+    return this.api.get<HostedIncidentEvents>('datatug/detective/incident_events',
+      this.cloudParams(context).set('environment', environment)
+        .set('incidentRef', incidentRef).set('afterSeq', afterSeq).set('limit', limit));
   }
 
   incidentAction(

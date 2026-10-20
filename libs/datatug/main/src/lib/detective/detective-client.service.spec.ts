@@ -444,6 +444,19 @@ describe('DetectiveClientService', () => {
     expect(api.post.mock.calls[1][1]).not.toHaveProperty('securityContextId');
   });
 
+  it('reads cursor-based hosted history and sends frozen message intents without Case revision or actor fields', () => {
+    const cloud = { kind: 'cloud' as const, storage: 'firestore' as const, spaceID: 'space', project: 'training' };
+    api.get.mockReturnValue(of({ events: [], nextAfterSeq: 50, hasMore: true }));
+    client.incidentEvents(cloud, 'demo', 'incident-store/INC-1', 25).subscribe();
+    expect(api.get.mock.calls[0][0]).toBe('datatug/detective/incident_events');
+    const params = api.get.mock.calls[0][1];
+    expect(params.get('afterSeq')).toBe('25'); expect(params.get('limit')).toBe('50');
+    expect(params.get('incidentRef')).toBe('incident-store/INC-1'); expect(params.get('environment')).toBe('demo');
+    api.post.mockReturnValue(of({ receipt: 'accepted' }));
+    client.incidentAction(cloud, { type: 'append-message', incidentRef: 'incident-store/INC-1', environment: 'demo', expectedSeq: 7, message: { body: 'Question?', assertion: 'question' } }, 'operation-fixed').subscribe();
+    expect(api.post.mock.calls[0][1]).toEqual({storage:'firestore',spaceID:'space',project:'training',type:'append-message',incidentRef:'incident-store/INC-1',environment:'demo',expectedSeq:7,message:{body:'Question?',assertion:'question'},operationId:'operation-fixed'});
+  });
+
   it('reads project Incidents and a full server-issued IncidentRef through the authenticated API', () => {
     const cloud = {
       kind: 'cloud' as const,

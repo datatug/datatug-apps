@@ -41,6 +41,7 @@ import {
   HostedProjectIncident,
   HostedProjectIncidents,
 } from './hosted-linkage.models';
+import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
 import { DetectiveCase, DetectiveState } from './models';
 
 /** A private, hosted Incident workflow. Agent incident pages keep their own route family. */
@@ -49,6 +50,7 @@ import { DetectiveCase, DetectiveState } from './models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    HostedIncidentConversationComponent,
     IonBackButton,
     IonButton,
     IonButtons,
@@ -172,6 +174,13 @@ import { DetectiveCase, DetectiveState } from './models';
                 <h1>{{ item.title }}</h1>
                 <p>Incident {{ item.ref.storeId }}/{{ item.ref.incidentId }} · {{ item.status }}</p>
                 @if (item.description) { <p>{{ item.description }}</p> }
+                @if (scope.context(); as context) {
+                  @if (context.kind === 'cloud') {
+                    <sneat-datatug-hosted-incident-conversation [context]="context" [environment]="environment()"
+                      [incidentRef]="item.ref" [canWrite]="canWrite()" [checks]="state()?.checks || []"
+                      (incidentUpdated)="updateConversationIncident($event)" />
+                  }
+                }
                 <h2>Investigation</h2>
                 @if (linkedCases().length) {
                   <ion-list aria-label="Linked Detective Cases">
@@ -308,6 +317,11 @@ export class HostedIncidentsPageComponent {
     }).finally(() => { if (!cancelled) this.loading.set(false); });
     onCleanup(() => { cancelled = true; });
   });
+
+  protected updateConversationIncident(item: HostedIncidentView): void {
+    const current = this.incident();
+    if (current && item.ref.storeId === current.ref.storeId && item.ref.incidentId === current.ref.incidentId && item.lastSeq >= current.lastSeq) this.incident.set(item);
+  }
 
   protected listHref(): string { return projectPageHref(this.scope.ref(), 'incidents'); }
   protected newHref(): string { return projectPageHref(this.scope.ref(), 'incidents/new'); }

@@ -295,13 +295,16 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
     expect(tree?.toString()).not.toContain('%3F');
   });
 
-  it('uses the project-qualified preview only for the canonical public demo', () => {
+  it('keeps canonical demo and private hosted Incident links project-qualified', () => {
     const fixture = render(PRODUCT_PROFILES.datatug);
     project$.next({ ref: DEMO_PROJECT_REF });
     expect(fixture.componentInstance.isDemoProject()).toBe(true);
     expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
       projectPageHref(DEMO_PROJECT_REF, 'incidents'),
     );
+    const privateRef = { storeId: 'firestore', spaceID: 'private-space', projectId: 'private-project' };
+    project$.next({ ref: privateRef });
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(projectPageHref(privateRef, 'incidents'));
     project$.next({
       ref: { storeId: 'localhost:8989', projectId: 'shop' },
     });
