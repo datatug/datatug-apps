@@ -73,6 +73,7 @@ describe('MyStoresComponent', () => {
       'offline use where supported',
     );
     expect(fixture.nativeElement.querySelector('.store-options')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.storage-visual')).toBeTruthy();
     expect(
       Array.from(
         fixture.nativeElement.querySelectorAll(
@@ -87,6 +88,9 @@ describe('MyStoresComponent', () => {
     await fixture.whenStable();
 
     expect(fixture.nativeElement.querySelector('.store-options')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelector('.storage-visual')?.getAttribute('src'),
+    ).toBe('assets/home/storage-harbour-pencil.webp');
     expect(
       fixture.nativeElement.querySelectorAll('.store-options ion-item'),
     ).toHaveLength(3);

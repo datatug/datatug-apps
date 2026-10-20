@@ -54,6 +54,21 @@
     }
   </ion-list>
 
+  @if (
+    authState?.status === 'notAuthenticated' ||
+    (authState?.status === 'authenticated' && userRecordLoaded && !projects?.length)
+  ) {
+    <img
+      class="empty-project-visual"
+      src="assets/home/empty-harbour-pencil.webp"
+      alt=""
+      width="2161"
+      height="728"
+      loading="lazy"
+      aria-hidden="true"
+    />
+  }
+
   @if (showDemoProjects) {
     <ion-list lines="full" class="demo-list">
       <ion-item-divider color="light">

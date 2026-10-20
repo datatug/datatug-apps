@@ -11,7 +11,10 @@
         @for (part of parts; track part.id) {
           <li class="part" [attr.data-part]="part.id">
             @if (part.id === 'terminal') {
-              <figure class="preview terminal-preview" aria-label="Illustrative DataTug terminal preview">
+              <figure
+                class="preview terminal-preview"
+                aria-label="Illustrative DataTug terminal preview"
+              >
                 <div class="terminal-window" aria-hidden="true">
                   <div class="terminal-toolbar">
                     <span class="terminal-lights"><i></i><i></i><i></i></span>
@@ -23,30 +26,60 @@
                       <span class="terminal-eyebrow">PROJECT</span>
                       <strong>Chinook</strong>
                       <span class="terminal-tree">⌄ Tables</span>
-                      <span class="terminal-tree terminal-tree--active">▤ Invoice</span>
+                      <span class="terminal-tree terminal-tree--active"
+                        >▤ Invoice</span
+                      >
                       <span class="terminal-tree">▤ Customer</span>
                     </div>
                     <div class="terminal-main">
                       <p class="terminal-command"><b>$</b> datatug</p>
-                      <p class="terminal-query"><span>QUERY</span> Total spend by country</p>
+                      <p class="terminal-query">
+                        <span>QUERY</span> Total spend by country
+                      </p>
                       <div class="terminal-table-wrap">
                         <table class="terminal-table">
-                          <thead><tr><th>Country</th><th>Invoices</th><th>Total</th></tr></thead>
+                          <thead>
+                            <tr>
+                              <th>Country</th>
+                              <th>Invoices</th>
+                              <th>Total</th>
+                            </tr>
+                          </thead>
                           <tbody>
-                            <tr><td>USA</td><td>91</td><td>$523.06</td></tr>
-                            <tr><td>Canada</td><td>56</td><td>$303.96</td></tr>
-                            <tr><td>France</td><td>35</td><td>$195.10</td></tr>
+                            <tr>
+                              <td>USA</td>
+                              <td>91</td>
+                              <td>$523.06</td>
+                            </tr>
+                            <tr>
+                              <td>Canada</td>
+                              <td>56</td>
+                              <td>$303.96</td>
+                            </tr>
+                            <tr>
+                              <td>France</td>
+                              <td>35</td>
+                              <td>$195.10</td>
+                            </tr>
                           </tbody>
                         </table>
                       </div>
-                      <p class="terminal-foot"><span><i></i> Chinook · SQLite</span><span>↑↓ navigate</span></p>
+                      <p class="terminal-foot">
+                        <span><i></i> Chinook · SQLite</span
+                        ><span>↑↓ navigate</span>
+                      </p>
                     </div>
                   </div>
                 </div>
-                <figcaption>Illustrative terminal preview · Chinook sample data</figcaption>
+                <figcaption>
+                  Illustrative terminal preview · Chinook sample data
+                </figcaption>
               </figure>
             } @else {
-              <figure class="preview agent-preview" aria-label="DataTug integrations for AI agent workflows">
+              <figure
+                class="preview agent-preview"
+                aria-label="DataTug integrations for AI agent workflows"
+              >
                 <img
                   class="agent-art"
                   src="/assets/home/agent-pencil.webp"
@@ -59,7 +92,6 @@
                   <span class="agent-kicker">AI AGENT WORKFLOW</span>
                   <strong>Shared project context</strong>
                 </div>
-                <figcaption>Illustration · The DataTug agent pathway</figcaption>
               </figure>
             }
             <h3 class="name">

@@ -3,6 +3,12 @@
   min-width: 0;
 }
 
+ion-card {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
 .store-intro {
   margin: 0 0 12px;
   color: var(--ion-color-step-600, #666);
@@ -42,6 +48,23 @@
 .store-meta {
   font-size: 0.72rem !important;
   opacity: 0.8;
+}
+
+.storage-visual {
+  display: block;
+  width: 100%;
+  height: clamp(150px, 16vw, 180px);
+  flex: none;
+  margin: auto 0 0;
+  object-fit: cover;
+  object-position: center 58%;
+  opacity: 0.62;
+  mix-blend-mode: multiply;
+  filter: grayscale(1);
+}
+
+@media (max-width: 600px) {
+  .storage-visual { height: 96px; margin-top: 12px; }
 }
 
 ion-item-divider h3 {

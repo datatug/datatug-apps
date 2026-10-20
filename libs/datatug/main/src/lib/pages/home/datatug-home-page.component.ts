@@ -10,9 +10,7 @@ import {
   IonContent,
   IonGrid,
   IonHeader,
-  IonItem,
-  IonLabel,
-  IonList,
+  IonMenuButton,
   IonRow,
   IonTitle,
   IonToolbar,
@@ -26,7 +24,6 @@ import { DatatugServicesStoreModule } from '../../services/repo/datatug-services
 import { MyDatatugProjectsComponent } from './my-projects/my-datatug-projects.component';
 import { MyStoresComponent } from './my-stores/my-stores.component';
 import { PlatformBlockComponent } from './platform-block/platform-block.component';
-import { DetectiveDemoStarterComponent } from '../../detective/detective-demo-starter.component';
 
 @Component({
   selector: 'sneat-datatug-home',
@@ -42,7 +39,6 @@ import { DetectiveDemoStarterComponent } from '../../detective/detective-demo-st
     MyDatatugProjectsComponent,
     MyStoresComponent,
     PlatformBlockComponent,
-    DetectiveDemoStarterComponent,
     IonHeader,
     IonToolbar,
     IonTitle,
@@ -51,9 +47,7 @@ import { DetectiveDemoStarterComponent } from '../../detective/detective-demo-st
     IonContent,
     IonCard,
     IonCardContent,
-    IonItem,
-    IonLabel,
-    IonList,
+    IonMenuButton,
     IonGrid,
     IonRow,
     IonCol,
@@ -74,12 +68,16 @@ export class DatatugHomePageComponent {
     inject(SneatAuthStateService).authStatus,
   );
 
-  // Signed out on home the side panel (brand header included) is hidden
-  // entirely (founder 2026-10-14), so the brand must show here; signed in,
-  // the panel carries the brand and this header keeps only the motto —
-  // §1: never both. Until auth resolves the brand shows (the panel is
-  // hidden for the same duration by the shell's matching rule).
+  // DataTug Home keeps its panel closed for either auth state, so this header
+  // always carries the brand and owns the menu affordance. Other profiles keep
+  // their existing side-panel header composition.
   protected readonly showBrand = computed(
-    () => this.authStatus() !== 'authenticated',
+    () =>
+      this.profile.minimalSignedOutHome === true ||
+      this.authStatus() !== 'authenticated',
+  );
+
+  protected readonly showHomeMenu = computed(
+    () => this.profile.minimalSignedOutHome === true,
   );
 }

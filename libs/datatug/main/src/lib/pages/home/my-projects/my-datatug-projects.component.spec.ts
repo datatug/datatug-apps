@@ -100,6 +100,44 @@ describe('MyProjectsComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'You have no personal or shared projects yet.',
     );
+    expect(
+      fixture.nativeElement.querySelector('.empty-project-visual')?.getAttribute('src'),
+    ).toBe('assets/home/empty-harbour-pencil.webp');
+  });
+
+  it('shows the empty-project illustration only for signed-out or loaded-empty states', async () => {
+    userState$.next({ status: 'authenticating', record: null });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.empty-project-visual')).toBeNull();
+
+    userState$.next({ status: 'notAuthenticated', record: null });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.empty-project-visual')).toBeTruthy();
+
+    userState$.next({ status: 'authenticated', record: undefined } as never);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.empty-project-visual')).toBeNull();
+
+    userState$.next({ status: 'authenticated', record: null });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.empty-project-visual')).toBeTruthy();
+
+    userState$.next({
+      status: 'authenticated',
+      record: {
+        datatug: {
+          stores: {
+            github: {
+              title: 'GitHub',
+              type: 'github',
+              projects: { demo: { title: 'Demo project' } },
+            },
+          },
+        },
+      },
+    } as never);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.empty-project-visual')).toBeNull();
   });
 
   it('uses the existing new-project navigation for authenticated users', () => {

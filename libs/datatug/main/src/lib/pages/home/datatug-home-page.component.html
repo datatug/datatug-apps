@@ -1,19 +1,21 @@
 <!--
-  Content header (UX brief §1/§2): the brand lives in the side-panel header,
-  so the home content header carries the motto instead; Sign in moved here
-  from the "My projects" card area so it stays reachable on narrow layouts.
-  Hidden below the split-pane breakpoint — the shell's compact header owns
-  that width.
+  The compact shell header owns narrow layouts. On wide DataTug Home layouts,
+  this header provides the brand and overlay menu button. Sign in stays here so
+  it remains reachable on narrow layouts.
 -->
 <ion-header class="home-header">
   <ion-toolbar color="light">
+    @if (showHomeMenu()) {
+      <ion-buttons slot="start">
+        <ion-menu-button
+          menuIcon="menu-outline"
+          class="app-level-menu-button"
+          aria-label="Open navigation menu"
+          data-testid="home-menu-button"
+        ></ion-menu-button>
+      </ion-buttons>
+    }
     <ion-title>
-      <!--
-        The side panel is hidden while signed out on home (founder
-        2026-10-14: no empty panel), so the brand header it carried lives
-        here instead; signed in, the panel shows the brand and this header
-        keeps just the motto (UX brief §1: never both).
-      -->
       @if (showBrand()) {
         <a
           class="brand-home-link home-header-brand"
@@ -56,10 +58,10 @@
         </div>
         <img
           class="hero-visual"
-          src="assets/home/hero-dawn.webp"
-          alt="A tugboat guiding a container ship through blue harbour waters"
-          width="1280"
-          height="720"
+          src="assets/home/hero-data-named.webp"
+          alt="A tugboat guiding a ship named DATA carrying shipping containers with server racks through blue harbour waters"
+          width="1672"
+          height="941"
           fetchpriority="high"
         />
       </div>
@@ -79,39 +81,22 @@
 
   <sneat-datatug-platform-block />
 
-  <ion-card>
-    <ion-item color="light" lines="full">
-      <ion-label>
-        <h2>Start a private Detective demo</h2>
-      </ion-label>
-    </ion-item>
-    <ion-card-content>
-      <p>
-        Sign in to create a server-managed Detective demo project and explore
-        its case workflow. No local agent or purchase is needed.
-      </p>
-      <sneat-datatug-detective-demo-starter destination="detective" />
-    </ion-card-content>
-  </ion-card>
-
   <!--
-  Consolidated footer (UX brief §2/§14): one copyright/version block in main
-  content (the sidebar drops its copy on home), plus "Powered by DALgo" as a
-  standalone attribution line, not part of a card.
+  Consolidated footer: one copyright/version row in main content (the sidebar
+  drops its copy on home), with the DALgo credit presented as a trailing badge.
 -->
   <footer class="home-footer">
     <sneat-app-version />
     @if (profile.showPoweredByDalgo) {
-      <p class="powered-by">
-        <a
-          href="https://dalgo.io"
-          target="_blank"
-          rel="noopener"
-          aria-label="Powered by DALgo, the database abstraction layer for Go"
-          data-testid="powered-by-dalgo"
-          >Powered by DALgo ↗</a
-        >
-      </p>
+      <a
+        class="powered-by-badge"
+        href="https://dalgo.io"
+        target="_blank"
+        rel="noopener"
+        aria-label="Powered by DALgo, the database abstraction layer for Go"
+        data-testid="powered-by-dalgo"
+        >Powered by DALgo ↗</a
+      >
     }
   </footer>
 </ion-content>

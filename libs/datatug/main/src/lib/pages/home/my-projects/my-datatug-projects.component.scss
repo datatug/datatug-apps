@@ -14,6 +14,18 @@
   --border-width: 0;
 }
 
+.empty-project-visual {
+  display: block;
+  width: calc(100% - 40px);
+  height: clamp(90px, 12vw, 132px);
+  margin: 0 auto;
+  object-fit: cover;
+  object-position: center 56%;
+  opacity: 0.58;
+  mix-blend-mode: multiply;
+  filter: grayscale(1);
+}
+
 .demo-options { padding: 8px 20px 16px; }
 
 .demo-details {
@@ -113,4 +125,6 @@ ion-item-divider h3 {
   .demo-details { grid-template-columns: 88px minmax(0, 1fr); gap: 16px; }
   .demo-options { padding-inline: 16px; }
   .demo-copy h3 { font-size: 1rem; }
+
+  .empty-project-visual { height: 90px; }
 }
