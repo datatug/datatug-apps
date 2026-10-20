@@ -67,5 +67,8 @@ export const datatugDemoConfig: DatatugDemoConfig = {
 };
 
 // No DataTug API override: DataTug calls use SneatApiBaseUrl, as before.
+// To turn on DataTug API failover, add (and update environment.providers.spec.ts):
+//   { provide: DatatugApiBaseUrls, useValue: ['https://api.datatug.app/v0/', 'https://api2.datatug.app/v0/'] }
+// Not before the "Before switching production" checklist in apps/datatug-app/README.md "DataTug API failover" is done.
 // The Business project preview build replaces this file (environment.business-preview.ts).
 export const datatugEnvironmentProviders: Provider[] = [];

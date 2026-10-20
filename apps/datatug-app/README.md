@@ -90,6 +90,99 @@ collapsed-by-default row, Sneat.Work copyright link, and the same
 (`apps/datatug-app/e2e/build-info.spec.ts`) asserts against, scoped under
 the `sneat-app-version` element.
 
+## DataTug API failover
+
+`DatatugApiService` (`libs/datatug/main/src/lib/services/base/`) can send one DataTug API
+request to an ordered list of base URLs for the same Cloud Run service: the primary
+(`api.datatug.app`, behind Cloudflare) and a fallback (`api2.datatug.app`, DNS-only Cloud Run
+domain mapping). It fails over by itself; nobody has to do anything while the primary is down.
+`SneatApiService`, checkout and auth are untouched. Client code never contains a `run.app` URL.
+
+**It is off in production today.** With the default, `DatatugApiBaseUrls` is just
+`[DatatugApiBaseUrl]` (which mirrors `SneatApiBaseUrl`, `https://api.sneat.cloud/v0/`), and the client
+behaves exactly as before.
+
+### The one-line switch
+
+Once both hosts exist, add this provider to `datatugEnvironmentProviders` in
+`apps/datatug-app/src/environments/environment.prod.ts` (today `[]`), and change the
+expectation in `environment.providers.spec.ts` that production adds no override:
+
+```ts
+{ provide: DatatugApiBaseUrls, useValue: ['https://api.datatug.app/v0/', 'https://api2.datatug.app/v0/'] },
+```
+
+Both URLs end with `/`, the primary first. `DatatugApiBaseUrls` and `DatatugApiFailoverConfig` are
+exported by `@sneat/datatug-semantic`.
+
+### What fails over
+
+| Request | Retried on the next base URL after |
+| --- | --- |
+| GET, HEAD | network error (status 0), 8 s without an answer, 502, 503, 504, Cloudflare 520-523, 525, 526 |
+| POST, PUT, PATCH, DELETE | only Cloudflare 521, 522, 523 (the request never reached the origin) |
+| any write with an `Idempotency-Key` header | the above, and also status 0 |
+| any | never on 4xx, on an application 5xx, or on Cloudflare 524 (the origin may have acted) |
+
+A write is **not** retried on status 0 by default. A browser reports every response that has no CORS
+headers as status 0: Cloudflare 520 and 524, Google/Cloud Run 500 and 504 sent after the origin acted,
+and a connection dropped after the body was sent. Status 0 therefore does not prove that a write never
+ran. Setting an `Idempotency-Key` header on a request opts it into a retry on status 0, and is only
+safe once the server deduplicates that key (it does not yet, so no caller sets it).
+Cloudflare 521-523 reach the page as real statuses only if the edge adds CORS headers to its error
+responses (see the checklist below); without that they also arrive as status 0, so writes simply do not
+fail over on the failing request. Writes still reach the fallback during an outage: the first GET flips
+the breaker, and later writes go straight to it.
+
+The retry is the same request: same method, params, body and `Authorization` header.
+
+### Circuit breaker (in memory, per page session)
+
+After a request succeeded on the fallback following a failure on the primary, the fallback is
+preferred for `breakerMinutes` (default 5). After that the next GET/HEAD tries the primary first and
+switches back when it answers; if it fails again the fallback is held for another interval.
+POST/PUT/PATCH/DELETE never probe the primary, they use whichever host is preferred. Only a deliberate
+probe (or a request that already failed on the fallback) switches back: a late answer from a request that
+left for the primary before the failover does not undo it.
+
+### Timeout
+
+Only GET/HEAD get a timeout, and only while another base URL is left to try (the last one waits as long
+as the browser allows). `primaryTimeoutMs` defaults to 8000: a cold Cloud Run start and normal reads finish
+in a few seconds, and a hard-down primary (DNS, TLS, connect, Cloudflare 52x) fails faster than that. A
+timeout does not prove a write never happened, so writes get no timeout and are never retried on one:
+`datatug/queries/run_query`, `datatug/detective/*` (AI calls) and other long writes run as long as they need.
+GETs under `slowEndpointPrefixes` (detective, exec, run_query,
+`projects/*`, `session-context/*`, `queries/all_queries`, `queries/query_revision`, `github/*`: the
+GitHub-backed reads that can pass 8 s on a cold start) use `slowEndpointTimeoutMs` (60000) instead. Override all of it with:
+
+```ts
+{ provide: DatatugApiFailoverConfig, useValue: { ...DEFAULT_DATATUG_API_FAILOVER_CONFIG, breakerMinutes: 10 } },
+```
+
+### Before switching production
+
+Do not add the `DatatugApiBaseUrls` provider to `environment.prod.ts` until all of these hold:
+
+1. This change (no write retry on status 0) has landed.
+2. A Cloudflare Response Header Transform Rule on `api.datatug.app` adds CORS headers to 5xx and edge
+   error responses (filter `http.response.code ge 500` and the request `Origin` in the allow-list; set
+   `Access-Control-Allow-Origin` to that origin and `Vary: Origin`), and has been tested against a
+   deliberately dead origin. Without it, Cloudflare error pages reach the page as status 0 and the
+   statuses above cannot be told apart. `api2.datatug.app` is DNS-only, gets no such rule, and its
+   Google-generated errors stay status 0, which is why writes never retry on status 0.
+3. Consider server-side idempotency keys for the create endpoints (`create_project`, GitHub project
+   create, `github/oauth/complete`, boards, environments, schemas), then have those callers send
+   `Idempotency-Key`.
+4. p99 of the GitHub-backed GETs is measured against the 8 s timeout (a timed-out GET is sent twice and
+   moves traffic to the fallback for the breaker interval).
+
+### Logging
+
+Each failover logs a warning (`DataTug API failover`) through `LOGGER_FACTORY` and an
+`datatug_api_failover` analytics event with `method`, `fromHost`, `toHost` and `reason` only: no endpoint,
+query string or body.
+
 ## Business project preview (port 18782)
 
 The local Business project preview serves the app on `http://localhost:18782`,
