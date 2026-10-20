@@ -448,8 +448,11 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
       .length;
   const beforeInvalidWindow = queryCount();
   await page.getByRole('button', { name: 'Find evidence' }).click();
-  await expect(page.getByRole('alert')).toHaveText(
+  await expect(page.locator('.timeline [role="alert"]')).toHaveText(
     'Choose a time range no longer than 24 hours.',
+  );
+  await expect(page.locator('.account [role="alert"]')).toContainText(
+    'Google did not confirm revocation of an earlier grant',
   );
   expect(queryCount()).toBe(beforeInvalidWindow);
   await page
