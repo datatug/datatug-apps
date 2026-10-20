@@ -275,6 +275,101 @@ function setRouteId(id: string): void {
   });
 }
 
+
+describe('copied browser table query entry', () => {
+  beforeEach(() => {
+    Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, writable: true, configurable: true });
+  });
+
+  it.each([false, true])('initializes one new editor before delayed restoration and retains runtime/environment/address (prior draft: %s)', async (priorDraft) => {
+    const ref: IProjectRef = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud', branch: 'main' };
+    const project = new BehaviorSubject<IProjectContext | undefined>({ ref } as IProjectContext);
+    const original = { demoDraft: 'token', runtime: 'runtime-edited', env: 'demo', branch: 'main', projectApi: 'cloud' };
+    const params = new BehaviorSubject(convertToParamMap(original));
+    const routeIds = convertToParamMap({ storeId: ref.storeId, projectId: ref.projectId });
+    const route = { queryParamMap: params, paramMap: of(routeIds),
+      snapshot: { paramMap: routeIds, queryParamMap: convertToParamMap(original), params: {} } };
+    const router = { navigate: vi.fn<Router['navigate']>(async () => true), events: of(), currentNavigation: vi.fn(() => null),
+      lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } };
+    const auth = { status: 'authenticated', user: { uid: 'actor' } };
+    const read = new Subject<IQueryDef>();
+    const drafts = { read: vi.fn(() => firstValueFrom(read)), consume: vi.fn() };
+    const activityError = new HttpErrorResponse({ status: 0 });
+    const activity = { ...githubProjectActivityStub(), resolve: vi.fn(() => throwError(() => activityError)) };
+    const logger = { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) };
+    const dispatch = queryDispatchTestStub();
+    dispatchStart.mockClear();
+    await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
+      { provide: ErrorLogger, useValue: logger },
+      { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'table-draft-query') } },
+      { provide: ActivatedRoute, useValue: route }, { provide: Router, useValue: router },
+      { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() } },
+      { provide: QueriesService, useValue: { authentication: () => of(auth), devicePersonal: { list: vi.fn(async () => []) } } },
+      { provide: ProjectService, useValue: { getFull: vi.fn() } },
+      { provide: QueryEditorStateService, useClass: QueryEditorStateService },
+      { provide: QueryContextSqlService, useValue: { setSql: vi.fn(), setTarget: vi.fn() } },
+      { provide: DemoTableDraftService, useValue: drafts },
+      { provide: GitHubProjectActivityService, useValue: activity },
+      { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of({ id: 'demo' })) } },
+      { provide: Coordinator, useValue: { execute: vi.fn() } },
+      { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
+      { provide: DetectiveClientService, useValue: detectiveClientStub() },
+      { provide: QueryDispatchService, useValue: dispatch },
+      { provide: AgentContextService, useValue: agentContextStub() },
+    ] }).overrideComponent(QueryPageComponent, { set: { imports: [], providers: [],
+      template: '<output>{{ queryId }}|{{ queryState.activeEnv?.id }}|{{ queryDef()?.request?.queryType }}</output>',
+    } }).compileComponents();
+    const editor = TestBed.inject(QueryEditorStateService);
+    const old = priorDraft ? editor.newQuery({ id: 'my-other-draft', isNew: true, queryType: QueryType.SQL,
+      request: { queryType: QueryType.SQL, text: 'SELECT keep_my_edits' } as ISqlQueryRequest }) : undefined;
+    const fixture = TestBed.createComponent(QueryPageComponent);
+    const component = fixture.componentInstance;
+    fixture.detectChanges();
+    route.snapshot.queryParamMap = convertToParamMap(original);
+    params.next(route.snapshot.queryParamMap);
+    component.ionViewDidEnter();
+    await fixture.whenStable();
+    expect(component.queryId).toBe('table-draft-query');
+    expect(component.queryState.isNew).toBe(true);
+    expect(component.queryState.isLoading).not.toBe(true);
+    expect(component.queryState.activeEnv?.id).toBe('demo');
+    const navigation = router.navigate.mock.calls.at(-1)?.[1] as { queryParams: Record<string, unknown> } | undefined;
+    expect(navigation?.queryParams['id']).toBeUndefined();
+    expect(navigation?.queryParams['env']).toBe('demo');
+    // Model Angular Router's merge and its real queryParamMap re-emission while authentication/catalog work is pending.
+    const normalized = { ...original, ...navigation?.queryParams };
+    route.snapshot.queryParamMap = convertToParamMap(Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== undefined)));
+    params.next(route.snapshot.queryParamMap);
+    expect(component.queryId).toBe('table-draft-query');
+    const definition: IQueryDef = { id: '', title: 'Artist (browser copy)', connectionId: 'chinook-sqlite',
+      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } as ITextQueryRequest };
+    read.next(definition);
+    await fixture.whenStable();
+    expect(drafts.read).toHaveBeenCalledExactlyOnceWith('token', ref, 'runtime-edited', 'demo', 'actor');
+    expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('token');
+    if (priorDraft) expect(editor.getQueryState('my-other-draft')).toEqual(old);
+    expect(component.queryDef()).toMatchObject({ id: 'table-draft-query', request: definition.request, connectionId: definition.connectionId });
+    expect(component.selectedWorkingCopy()).toBe('runtime-edited');
+    expect(component.runError()).toBeUndefined();
+    expect(fixture.nativeElement.querySelector('output').textContent).toBe('table-draft-query|demo|DTQL');
+    component.ionViewDidEnter();
+    expect(router.navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined, env: 'demo' } });
+    expect(activity.resolve).toHaveBeenCalledExactlyOnceWith(ref);
+    expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to resolve GitHub Business query activity context', { show: false, feedback: false });
+    activity.reportForCurrentProject.mockReturnValue(throwError(() => activityError));
+    component['reportGitHubQueryDispatch'](ref);
+    component['reportGitHubQueryEdit'](ref);
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, 'table-draft-query', 'query_execution_dispatched');
+    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, 'table-draft-query', 'query_edit');
+    expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to record GitHub Business query activity', { show: false, feedback: false });
+    expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to record GitHub Business query edit activity', { show: false, feedback: false });
+    expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
+    expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
+    expect(dispatchStart).not.toHaveBeenCalled();
+    fixture.destroy();
+  });
+});
+
 describe('SqlEditorPage', () => {
   let component: QueryPageComponent;
   let fixture: ComponentFixture<QueryPageComponent>;
@@ -376,6 +471,7 @@ describe('SqlEditorPage', () => {
     const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
     component.project = { ref } as IProjectContext;
     component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
+    component['demoDraftEntry'] = { token: 'token', routeKey: 'unit-restore', queryId: 'demo-query' };
     const params = convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' });
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: params, paramMap: convertToParamMap({}) } });
     Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
@@ -397,6 +493,7 @@ describe('SqlEditorPage', () => {
     const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
     component.project = { ref } as IProjectContext;
     component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
+    component['demoDraftEntry'] = { token: 'token', routeKey: 'unit-restore', queryId: 'demo-query' };
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' }), paramMap: convertToParamMap({}) } });
     const authenticated = of({ status: 'authenticated', user: { uid: 'actor' } });
     const auth = vi.fn(() => authenticated);
@@ -425,6 +522,8 @@ describe('SqlEditorPage', () => {
     const ref = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud' as const, branch: 'main' };
     component.project = { ref } as IProjectContext;
     component.queryState = { ...component.queryState, id: 'demo-query', isNew: true };
+    component['demoDraftEntry'] = { token: 'token', routeKey: 'unit-restore', queryId: 'demo-query' };
+    component['demoDraftEntry'] = { token: 'old-token', routeKey: 'unit-restore', queryId: 'demo-query' };
     const snapshot = { queryParamMap: convertToParamMap({ demoDraft: 'old-token' }), paramMap: convertToParamMap({}) };
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: snapshot });
     Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
@@ -435,6 +534,7 @@ describe('SqlEditorPage', () => {
     const old = component['restoreDemoTableDraft']();
     await Promise.resolve();
     snapshot.queryParamMap = convertToParamMap({ demoDraft: 'new-token' });
+    component['demoDraftEntry'] = { token: 'new-token', routeKey: 'unit-restore', queryId: 'demo-query' };
     await component['restoreDemoTableDraft']();
     reject?.(new Error('stale failure'));
     await old;

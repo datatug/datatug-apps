@@ -841,6 +841,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly agentSelectedEnvironment = signal('');
   private readonly federatedQuery = inject(FederatedQueryService);
   private demoDraftAttempt?: string;
+  private demoDraftEntry?: { token: string; routeKey: string; queryId: string };
   private demoDraftGeneration = 0;
   private async restoreDemoTableDraft(): Promise<void> {
     const params = this.route.snapshot.queryParamMap;
@@ -848,6 +849,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const ref = this.project?.ref;
     const id = this.queryId;
     if (!token || !ref || !id || this.demoDraftAttempt === token) return;
+    // Project context can arrive before route initialization. Never start an
+    // unsaved table handoff against the editor selected by the previous page.
+    if (!params.get('id') && !this.route.snapshot.paramMap.get('queryId') &&
+      (this.demoDraftEntry?.token !== token || this.demoDraftEntry.queryId !== id)) return;
     this.demoDraftAttempt = token;
     const generation = ++this.demoDraftGeneration;
     const isCurrent = () => generation === this.demoDraftGeneration && this.demoDraftAttempt === token && equalProjectRef(ref, this.project?.ref) && this.queryId === id && this.route.snapshot.queryParamMap.get('demoDraft') === token;
@@ -6114,6 +6119,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               this.errorLogger.logError(
                 error,
                 'Failed to resolve GitHub Business query activity context',
+                { show: false, feedback: false },
               ),
           });
         }
@@ -6335,16 +6341,27 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           (resultId && this.resultQueryId ? this.resultQueryId : undefined);
         const runtime = queryParams.get('runtime');
         const requestedEnv = queryParams.get('env') ?? undefined;
-        const routeKey = JSON.stringify({ queryId: addressQueryId, resultId, runtime, requestedEnv,
+        const demoDraft = queryParams.get('demoDraft');
+        const routeKey = JSON.stringify({ queryId: addressQueryId, resultId, demoDraft, runtime, requestedEnv,
           storeId: this.route.snapshot.paramMap.get('storeId'),
           projectId: this.route.snapshot.paramMap.get('projectId'),
           branch: queryParams.get('branch'), projectApi: queryParams.get('projectApi') });
+        // A table entry is an unsaved editor, not a saved-query address. Keep
+        // one identity across editor/env URL normalization while its scoped
+        // draft is authenticated and resolved asynchronously.
+        if (demoDraft && !addressQueryId && !resultId) {
+          if (this.demoDraftEntry?.routeKey !== routeKey) {
+            this.demoDraftEntry = { token: demoDraft, routeKey,
+              queryId: this.randomIdService.newRandomId() };
+          }
+          queryId = this.demoDraftEntry.queryId;
+        }
         const previousRoute = this.entryRouteKey ? JSON.parse(this.entryRouteKey) as {
-          queryId?: string; resultId?: string | null; runtime?: string | null;
+          queryId?: string; resultId?: string | null; demoDraft?: string | null; runtime?: string | null;
         } : undefined;
         const entryChanged = routeKey !== this.entryRouteKey;
         const newSelection = !previousRoute || previousRoute.queryId !== addressQueryId ||
-          previousRoute.resultId !== resultId ||
+          previousRoute.resultId !== resultId || previousRoute.demoDraft !== demoDraft ||
           (previousRoute.runtime !== runtime && runtime !== this.selectedWorkingCopy());
         if (entryChanged) {
           if (previousRoute && previousRoute.resultId !== resultId) {
@@ -6379,6 +6396,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         const isNew = !addressQueryId;
         if (!queryId) {
           queryId = this.randomIdService.newRandomId();
+        }
+        if (demoDraft && !addressQueryId && !resultId) {
+          if (!this.queryEditorStateService.getQueryState(queryId)) {
+            this.queryEditorStateService.newQuery({
+              id: queryId, isNew: true, isLoading: false,
+              queryType: QueryType.SQL,
+              request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest,
+              // Seed this before the synchronous editor emission can normalize
+              // the URL; the draft service still validates the declared env.
+              ...(requestedEnv ? { activeEnv: { id: requestedEnv } } : {}),
+            });
+          } else if (this.queryId !== queryId) {
+            this.queryEditorStateService.setCurrentQuery(queryId);
+          }
         }
         this.setQueryId(queryId, isNew);
         if (entryChanged && newSelection && runtime && queryId) {
@@ -6684,8 +6715,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.resultMode === 'rows-only';
     const savedResultDraft =
       fromResult && this.resultMode === 'draft' && this.queryState.isNew !== true;
+    const unsavedTableDraft = this.queryState.isNew === true &&
+      this.demoDraftEntry?.queryId === this.queryId &&
+      this.demoDraftEntry?.token === this.route.snapshot.queryParamMap.get('demoDraft') &&
+      !this.route.snapshot.queryParamMap.get('id') &&
+      !this.route.snapshot.paramMap.get('queryId');
     const queryParams: Params = {
-      id: unsavedResultDraft ? undefined : this.queryId,
+      id: unsavedResultDraft || unsavedTableDraft ? undefined : this.queryId,
       editor: this.editorTab,
       env: this.queryState.activeEnv?.id,
       ...(savedResultDraft ? { [RESULT_QUERY_PARAM]: undefined } : {}),
@@ -8796,6 +8832,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.errorLogger.logError(
             error,
             'Failed to record GitHub Business query activity',
+            { show: false, feedback: false },
           ),
       });
   }
@@ -8829,6 +8866,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.errorLogger.logError(
             error,
             'Failed to record GitHub Business query edit activity',
+            { show: false, feedback: false },
           ),
       });
   }
