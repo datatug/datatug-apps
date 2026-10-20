@@ -92,7 +92,7 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   });
 
   await page.goto('/incidents');
-  await expect(page.getByText('Create a private project to record your first Incident')).toBeVisible();
+  await expect(page.getByText('Create a private project to record your first hosted Incident, or open your existing private project.')).toBeVisible();
   await page.getByRole('button', { name: 'Set up private project for Incidents' }).click();
   const list = `/space/${spaceID}/store/firestore/project/${projectId}/incidents`;
   await expect(page).toHaveURL(new RegExp(`${list}$`));
