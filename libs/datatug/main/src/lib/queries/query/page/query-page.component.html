@@ -45,6 +45,14 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (demoDraftRecovery(); as message) {
+    <ion-card data-testid="browser-query-recovery" color="warning">
+      <ion-card-content>
+        <p role="alert">{{ message }}</p>
+        <ion-button fill="clear" (click)="openDemoDatabases()">Open demo databases</ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
   @if (project?.ref; as projectRef) {
     <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
   }
@@ -905,7 +913,7 @@
             <ion-label class="ion-text-wrap"><ion-card-title data-workspace-heading>{{ queryPageTitle() }}</ion-card-title>
               <p>{{ isNativeSqlWorkspace() ? 'Native SQL query' : isNativeDtqlWorkspace() ? 'Saved DTQL query' : 'TugQL query' }}</p></ion-label>
               <ion-button slot="end" data-testid="workspace-run" aria-label="Run query" size="default" color="primary" fill="solid"
-                [disabled]="running() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+                [disabled]="running() || demoDraftLoading() || !!demoDraftRecovery() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
                 (click)="runQuery()">
                 @if (running()) { <ion-spinner name="dots" slot="start" /> }
                 Run
@@ -1329,7 +1337,7 @@
       <ng-container *ngTemplateOutlet="executionRuntime" />
       <ion-item lines="none"><ion-buttons>
         <ion-button fill="solid" color="primary"
-          [disabled]="running() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+          [disabled]="running() || demoDraftLoading() || !!demoDraftRecovery() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
           (click)="runQuery()">
           @if (running()) { <ion-spinner name="dots" slot="start" /> }
           Run query
@@ -1383,7 +1391,7 @@
       }
     </ul>
   }
-  @if (runError(); as error) {
+  @if (!demoDraftRecovery() && runError(); as error) {
     <ion-card color="danger">
       <ion-card-content>
         {{ error }}

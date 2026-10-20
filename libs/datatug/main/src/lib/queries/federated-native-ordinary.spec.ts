@@ -149,7 +149,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
     await expect(runFederatedQuery({ ...definition, federation: { ...definition.federation,
       expectedServerIdentity: { baseUrl: 'https://ovdb.demodb.dev', serverId: 'https://ovdb.demodb.dev' } } },
       undefined, '', undefined, undefined, 'full', undefined, undefined, { fetch: fetcher },
-    )).rejects.toThrow('identity differs');
+    )).rejects.toMatchObject({ diagnostic: { stage: 'capability_discovery', reason: 'invalid_response' }, cause: { message: expect.stringContaining('identity differs') } });
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
@@ -172,7 +172,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
         undefined,
         { fetch: fetcher },
       ),
-    ).rejects.toThrow(/identity/);
+    ).rejects.toMatchObject({ diagnostic: { stage: 'capability_discovery', reason: 'invalid_response' }, cause: { message: expect.stringContaining('identity') } });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -188,7 +188,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
     await expect(
       runFederatedQuery(createHostedDemoDbQuery('new-query'), undefined, '',
         undefined, undefined, 'full', undefined, undefined, { fetch: fetcher }),
-    ).rejects.toThrow('OVDB query failed (unsupported): The query cannot run.');
+    ).rejects.toMatchObject({ diagnostic: { stage: 'query_execution', reason: 'http_status', status: 422, code: 'unsupported' }, cause: { message: 'OVDB query failed (unsupported): The query cannot run.' } });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 

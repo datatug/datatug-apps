@@ -54,6 +54,21 @@ describe('federated query worker', () => {
     vi.unstubAllGlobals();
   });
 
+  it.each(['http', 'network'])('serializes only a finite native discovery diagnostic for %s failure', async (kind) => {
+    const cause = new TypeError('https://secret.test/token SQL auth');
+    const fetcher = vi.fn(async () => {
+      if (kind === 'network') throw cause;
+      return new Response('private body SQL auth', { status: 403 });
+    });
+    vi.stubGlobal('fetch', fetcher);
+    await run({ definition: { ...definition, federation: { ...definition.federation, ovdbBaseUrl: 'https://cloud.openvaultdb.com' } } });
+    const failure = posted.find(message => message.type === 'error');
+    expect(failure).toEqual({ type: 'error', message: expect.stringContaining(kind === 'http' ? 'HTTP 403' : 'could not be reached'),
+      diagnostic: { stage: 'capability_discovery', reason: kind === 'http' ? 'http_status' : 'network', ...(kind === 'http' ? { status: 403 } : {}) } });
+    expect(JSON.stringify(failure)).not.toMatch(/secret|private|SQL|auth|stack|cause/);
+    expect(fetcher).toHaveBeenCalledOnce();
+  });
+
   it('reads from the static source it is given, never the global fetch, and reports the source it read', async () => {
     const urls: string[] = [];
     vi.stubGlobal(

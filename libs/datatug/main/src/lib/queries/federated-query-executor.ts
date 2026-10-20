@@ -1,3 +1,4 @@
+import { nativeHttpFailure, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
 import { currentDemoDbOvdbUrl } from './demodb-ovdb';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
 import {
@@ -314,57 +315,59 @@ interface NativeQueryCapability {
 
 async function streamCapability(base: string, database: string, fetcher: typeof fetch,
   authHeaders: Record<string, string>, expectedServerId: string | undefined, effective: AbortSignal): Promise<NativeQueryCapability> {
-  const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}`, {
-    headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: effective,
-  });
-  if (response.redirected || !response.ok || !response.body)
-    throw new Error('OVDB database capability discovery is unavailable.');
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  let reachedEnd = false;
-  try {
-    for (;;) {
-      effective.throwIfAborted();
-      const part = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
-        const abort = (): void => {
-          reject(effective.reason);
-          void reader.cancel(effective.reason).catch(() => undefined);
-        };
-        effective.addEventListener('abort', abort, { once: true });
-        if (effective.aborted) abort();
-        reader.read().then(resolve, reject).finally(() => effective.removeEventListener('abort', abort));
-      });
-      if (part.done) { reachedEnd = true; break; }
-      size += part.value.byteLength;
-      if (size > 1024 * 1024) throw new Error('OVDB capability discovery exceeds the browser limit.');
-      chunks.push(part.value);
+  return withNativeQueryStage('capability_discovery', effective, async () => {
+    const response = await nativeQueryFetch(fetcher, `${base}/v1/databases/${encodeURIComponent(database)}`, {
+      headers: { Accept: 'application/json', ...authHeaders }, redirect: 'error', signal: effective,
+    }, 'capability_discovery');
+    if (response.redirected || !response.ok || !response.body)
+      throw nativeHttpFailure('capability_discovery', response);
+    const reader = response.body.getReader();
+    const chunks: Uint8Array[] = [];
+    let size = 0;
+    let reachedEnd = false;
+    try {
+      for (;;) {
+        effective.throwIfAborted();
+        const part = await new Promise<ReadableStreamReadResult<Uint8Array>>((resolve, reject) => {
+          const abort = (): void => {
+            reject(effective.reason);
+            void reader.cancel(effective.reason).catch(() => undefined);
+          };
+          effective.addEventListener('abort', abort, { once: true });
+          if (effective.aborted) abort();
+          reader.read().then(resolve, reject).finally(() => effective.removeEventListener('abort', abort));
+        });
+        if (part.done) { reachedEnd = true; break; }
+        size += part.value.byteLength;
+        if (size > 1024 * 1024) throw new Error('OVDB capability discovery exceeds the browser limit.');
+        chunks.push(part.value);
+      }
+    } finally {
+      if (reachedEnd) reader.releaseLock();
+      else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
     }
-  } finally {
-    if (reachedEnd) reader.releaseLock();
-    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
-  }
-  const bytes = new Uint8Array(size);
-  let offset = 0;
-  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
-  const metadata: unknown = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
-  if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
-    throw new Error('OVDB returned invalid database capabilities.');
-  const document = metadata as Record<string, unknown>;
-  const capabilities = document['capabilities'];
-  if (capabilities === undefined) return { streaming: false, ordinary: false, mappedErrors: false }; // Legacy route.
-  if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities))
-    throw new Error('OVDB returned invalid database capabilities.');
-  const flags = capabilities as Record<string, unknown>;
-  if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
-    throw new Error('OVDB query capability identity differs from the selected database.');
-  if (flags['dtqlStreaming'] === true && flags['dtql'] !== true)
-    throw new Error('OVDB advertises a query stream without DTQL capability.');
-  return {
-    streaming: flags['dtqlStreaming'] === true,
-    ordinary: flags['dtql'] === true && flags['dtqlStreaming'] !== true,
-    mappedErrors: flags['dtqlStreaming'] === true && flags['dtqlStreamingErrors'] === true,
-  };
+    const bytes = new Uint8Array(size);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const metadata: unknown = strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes));
+    if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata))
+      throw new Error('OVDB returned invalid database capabilities.');
+    const document = metadata as Record<string, unknown>;
+    const capabilities = document['capabilities'];
+    if (capabilities === undefined) return { streaming: false, ordinary: false, mappedErrors: false }; // Legacy route.
+    if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities))
+      throw new Error('OVDB returned invalid database capabilities.');
+    const flags = capabilities as Record<string, unknown>;
+    if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
+      throw new Error('OVDB query capability identity differs from the selected database.');
+    if (flags['dtqlStreaming'] === true && flags['dtql'] !== true)
+      throw new Error('OVDB advertises a query stream without DTQL capability.');
+    return {
+      streaming: flags['dtqlStreaming'] === true,
+      ordinary: flags['dtql'] === true && flags['dtqlStreaming'] !== true,
+      mappedErrors: flags['dtqlStreaming'] === true && flags['dtqlStreamingErrors'] === true,
+    };
+  });
 }
 
 async function runNativeOrdinary(
@@ -397,7 +400,7 @@ async function runNativeOrdinary(
   );
   signal?.throwIfAborted();
   const path = database === undefined ? '/v1/dtql' : `/v1/databases/${encodeURIComponent(database)}/dtql`;
-  const response = await fetcher(
+  const response = await nativeQueryFetch(fetcher,
     `${base}${path}`,
     {
       method: 'POST',
@@ -409,11 +412,11 @@ async function runNativeOrdinary(
       body: (definition.request as ITextQueryRequest).text,
       redirect: 'error',
       signal,
-    },
+    }, 'query_execution',
   );
   if (response.redirected || !response.ok) {
     const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
-    throw new Error(mapped ?? `OVDB ${database ?? 'cross-database'} whole-query execution failed (${response.status}).`);
+    throw nativeHttpFailure('query_execution', response, mapped);
   }
   return consumeOvdbOrdinaryQuery(
     response,
@@ -443,14 +446,14 @@ async function runNativeStream(
   const rights = await preflightSourceRights(base, sources, fetcher, authHeaders, signal, undefined,
     config.expectedSourceRights, expectedServerId);
   signal?.throwIfAborted();
-  const response = await fetcher(`${base}/v1/databases/${encodeURIComponent(database)}/dtql`, {
+  const response = await nativeQueryFetch(fetcher, `${base}/v1/databases/${encodeURIComponent(database)}/dtql`, {
     method: 'POST', headers: { 'Content-Type': 'application/yaml',
       Accept: mappedErrors ? OVDB_ERROR_STREAM_MIME : 'application/json', ...authHeaders },
     body: (definition.request as ITextQueryRequest).text, redirect: 'error', signal,
-  });
+  }, 'query_execution');
   if (response.redirected || !response.ok) {
     const mapped = response.redirected ? undefined : await readOvdbEarlyError(response, signal);
-    throw new Error(mapped ?? `OVDB ${database} whole-query execution failed (${response.status}).`);
+    throw nativeHttpFailure('query_execution', response, mapped);
   }
   const first: Readonly<Record<string, unknown>>[] = [];
   let previewBytes = 0;

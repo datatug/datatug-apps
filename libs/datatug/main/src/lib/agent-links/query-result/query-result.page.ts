@@ -93,7 +93,6 @@ import {
 } from './query-result';
 import { ResultListsComponent } from './result-lists.component';
 
-
 type ResultState =
   | { readonly kind: 'loading' }
   | { readonly kind: 'loaded'; readonly result: StoredResult }
@@ -112,6 +111,9 @@ type RerunState =
   | { readonly kind: 'error'; readonly text: string };
 
 export { isLoopbackStore };
+
+/** How long a link to the Table view waits for the agent to name the result's project before it draws the table. */
+const EDITOR_LOOKUP_WAIT_MS = 3000;
 
 const VIEW_LABELS: Record<ResultView, string> = {
   table: 'Table',
@@ -208,6 +210,18 @@ export class QueryResultPageComponent {
   private editorCommands?: string[];
   /** The address asks for the Table view by name (`?view=table`), the card's "Open in DataTug" target. */
   private tableRequested = false;
+  private holdTimer?: ReturnType<typeof setTimeout>;
+  private handoffGeneration = 0;
+  private lookupPending = false;
+  private tableFallback = false;
+  private navigationPending = false;
+  /**
+   * True while a link that asks for the Table view (`?view=table`) waits for the agent to say whether it knows the
+   * result's project: the page is then replaced by the query editor, so drawing the read-only grid first would draw
+   * it, destroy it a moment later and lose whatever the person did to it (a selection, a resized column, a sort).
+   * The grid is drawn at once when the lookup fails, says no, or takes longer than `EDITOR_LOOKUP_WAIT_MS`.
+   */
+  readonly openingEditor = signal(false);
 
   readonly views = RESULT_VIEWS;
   readonly viewLabels = VIEW_LABELS;
@@ -281,6 +295,11 @@ export class QueryResultPageComponent {
     combineLatest([this.route.paramMap, this.reload$])
       .pipe(
         switchMap(() => {
+          // Invalidate the old result before the next asynchronous result read starts.
+          this.projectSubscription?.unsubscribe();
+          this.lookupPending = false;
+          this.editorCommands = undefined;
+          this.resetEditorHandoff();
           const snapshot = this.route.snapshot;
           const storeId = routeParam(snapshot, routingParamStoreId) ?? '';
           const id = routeParam(snapshot, routingParamResultId);
@@ -320,11 +339,21 @@ export class QueryResultPageComponent {
           state.kind === 'loaded' ? state.result.meta : undefined,
         );
       });
-    this.destroyRef.onDestroy(() => this.projectSubscription?.unsubscribe());
+    this.destroyRef.onDestroy(() => {
+      this.projectSubscription?.unsubscribe();
+      this.handoffGeneration++;
+      clearTimeout(this.holdTimer);
+    });
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((q) => {
-      this.view.set(resultView(q.get(VIEW_QUERY_PARAM)));
+      const view = resultView(q.get(VIEW_QUERY_PARAM));
+      const tableRequested = q.get(VIEW_QUERY_PARAM) === 'table';
+      if (view !== this.view() || tableRequested !== this.tableRequested) {
+        this.resetEditorHandoff();
+      }
+      this.view.set(view);
       this.row.set(resultRow(q.get(ROW_QUERY_PARAM)));
-      this.tableRequested = q.get(VIEW_QUERY_PARAM) === 'table';
+      this.tableRequested = tableRequested;
+      if (this.tableRequested && this.lookupPending) this.holdForProject();
       this.openEditorForTable();
     });
     this.reload$.next();
@@ -339,11 +368,60 @@ export class QueryResultPageComponent {
   private openEditorForTable(): void {
     const commands = this.editorCommands;
     const id = routeParam(this.route.snapshot, routingParamResultId);
-    if (!this.tableRequested || !commands || !validResultId(id)) return;
-    void this.router.navigate(commands, {
-      queryParams: { [RESULT_QUERY_PARAM]: id },
-      replaceUrl: true,
-    });
+    if (
+      !this.tableRequested ||
+      this.tableFallback ||
+      this.navigationPending ||
+      !commands ||
+      !validResultId(id)
+    )
+      return;
+    const generation = this.handoffGeneration;
+    // The lookup deadline must never expose an interactive grid under an in-flight navigation.
+    clearTimeout(this.holdTimer);
+    this.navigationPending = true;
+    this.openingEditor.set(true);
+    void this.router
+      .navigate(commands, {
+        queryParams: { [RESULT_QUERY_PARAM]: id },
+        replaceUrl: true,
+      })
+      .then(
+        (done) => {
+          if (generation === this.handoffGeneration && !done)
+            this.releaseTable();
+        },
+        () => {
+          if (generation === this.handoffGeneration) this.releaseTable();
+        },
+      );
+  }
+
+  /** A result/view change permits a new handoff and fences callbacks of the previous one. */
+  private resetEditorHandoff(): void {
+    this.handoffGeneration++;
+    clearTimeout(this.holdTimer);
+    this.navigationPending = false;
+    this.tableFallback = false;
+    this.openingEditor.set(false);
+  }
+
+  private holdForProject(): void {
+    if (this.tableFallback || this.navigationPending || this.openingEditor())
+      return;
+    const generation = this.handoffGeneration;
+    this.openingEditor.set(true);
+    this.holdTimer = setTimeout(() => {
+      if (generation === this.handoffGeneration) this.releaseTable();
+    }, EDITOR_LOOKUP_WAIT_MS);
+  }
+
+  /** Once visible, the table stays interactive until an explicit view/result change. */
+  private releaseTable(): void {
+    clearTimeout(this.holdTimer);
+    this.tableFallback = true;
+    this.navigationPending = false;
+    this.openingEditor.set(false);
   }
 
   /** Reads the result again (Check again). */
@@ -354,7 +432,14 @@ export class QueryResultPageComponent {
   /** Switches the view; the address follows (it holds the view name only). */
   selectView(value: unknown): void {
     const view = resultView(typeof value === 'string' ? value : '');
+    // Invalidate a pending handoff immediately, before the router emits the new view.
+    if (view !== this.view()) this.resetEditorHandoff();
     this.view.set(view);
+    this.tableRequested = view === 'table';
+    if (this.tableRequested && !this.tableFallback) {
+      if (this.lookupPending) this.holdForProject();
+      else if (this.editorCommands) this.openingEditor.set(true);
+    }
     this.navigate({ [VIEW_QUERY_PARAM]: view });
   }
 
@@ -432,19 +517,24 @@ export class QueryResultPageComponent {
       return;
     }
     const ref = { projectId: ids.project, storeId };
+    this.lookupPending = true;
+    if (this.tableRequested) this.holdForProject();
     this.projectSubscription = this.projectService
       .getSummary(ref)
       .pipe(take(1))
       .subscribe({
         next: (summary) => {
+          this.lookupPending = false;
           if (!summary) {
+            this.releaseTable();
             this.navContext.selectResultProject(url);
             return;
           }
           this.backHref.set(linkBackHref(storeId, ids.project));
           // An agent that lists no environments in the summary cannot say the result's one is missing.
           const envs = summary.environments;
-          const known = envs === undefined || envs.some((e) => e.id === ids.env);
+          const known =
+            envs === undefined || envs.some((e) => e.id === ids.env);
           this.navContext.selectResultProject(
             url,
             { ref, store: { ref: parseDatatugStoreRef(storeId) } },
@@ -453,7 +543,11 @@ export class QueryResultPageComponent {
           this.editorCommands = projectPageCommands(ref, ['query']);
           this.openEditorForTable();
         },
-        error: () => this.navContext.selectResultProject(url),
+        error: () => {
+          this.lookupPending = false;
+          this.releaseTable();
+          this.navContext.selectResultProject(url);
+        },
       });
   }
 

@@ -122,6 +122,7 @@ export class ChatPageComponent {
   readonly turnTabs = signal<Readonly<Record<string, 'rows' | 'dtql' | 'sql' | 'metrics'>>>({});
   readonly question = signal('');
   readonly submitting = signal(false);
+  readonly workspaceActionBlocked = computed(() => this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready');
   readonly providerModalOpen = signal(false);
   readonly providerChoice = signal(this.providers.selectedId() || '');
   readonly providerError = signal<string | undefined>(undefined);
@@ -639,7 +640,7 @@ export class ChatPageComponent {
   }
 
   async workspaceAction(action: ChatWorkspaceAction): Promise<void> {
-    if (this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready') return;
+    if (this.workspaceActionBlocked()) return;
     const scope = this.scope();
     const sessionId = this.activeSessionId();
     const ref = this.projectRef();
@@ -691,10 +692,21 @@ export class ChatPageComponent {
     const reference = this.selectionReference();
     if (selection && reference) void this.workspaceAction({ kind: 'bookmark', reference, title: selection.title });
   }
-  renameBookmark(bookmark: ChatBookmark): void { const title = window.prompt('Bookmark name', bookmark.title); if (title !== null) void this.workspaceAction({ kind: 'renameBookmark', bookmarkId: bookmark.id, title }); }
-  addBookmarkTag(bookmark: ChatBookmark): void { const tag = window.prompt('Tag'); if (tag !== null) void this.workspaceAction({ kind: 'addBookmarkTag', bookmarkId: bookmark.id, tag }); }
+  renameBookmark(bookmark: ChatBookmark): void {
+    if (this.workspaceActionBlocked()) return;
+    const title = window.prompt('Bookmark name', bookmark.title);
+    if (title !== null) void this.workspaceAction({ kind: 'renameBookmark', bookmarkId: bookmark.id, title });
+  }
+  addBookmarkTag(bookmark: ChatBookmark): void {
+    if (this.workspaceActionBlocked()) return;
+    const tag = window.prompt('Tag');
+    if (tag !== null) void this.workspaceAction({ kind: 'addBookmarkTag', bookmarkId: bookmark.id, tag });
+  }
   removeBookmarkTag(bookmark: ChatBookmark, tag: string): void { void this.workspaceAction({ kind: 'removeBookmarkTag', bookmarkId: bookmark.id, tag }); }
-  deleteBookmark(bookmark: ChatBookmark): void { if (window.confirm(`Delete bookmark “${bookmark.title}”?`)) void this.workspaceAction({ kind: 'deleteBookmark', bookmarkId: bookmark.id }); }
+  deleteBookmark(bookmark: ChatBookmark): void {
+    if (this.workspaceActionBlocked()) return;
+    if (window.confirm(`Delete bookmark “${bookmark.title}”?`)) void this.workspaceAction({ kind: 'deleteBookmark', bookmarkId: bookmark.id });
+  }
   showBookmark(bookmark: ChatBookmark): void { this.openBookmark.set(bookmark); }
   bookmarkRows(bookmark: ChatBookmark): Record<string, unknown>[] {
     return [...chatBookmarkRows(bookmark)];

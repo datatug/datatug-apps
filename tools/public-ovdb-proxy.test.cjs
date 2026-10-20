@@ -1,6 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const { readFileSync } = require('node:fs');
+const { resolve } = require('node:path');
 const { once } = require('node:events');
 const config = require('./public-ovdb-proxy.cjs');
 const route = '/__datatug_public_ovdb/cloud';
@@ -25,6 +27,50 @@ function admitted(req) {
   const result = entry.bypass(req, response);
   return result === undefined && !response.writableEnded;
 }
+
+test('Business preview pairs its environment replacement with the closed public OVDB proxy', () => {
+  const project = JSON.parse(
+    readFileSync(
+      resolve(__dirname, '../apps/datatug-app/project.json'),
+      'utf8',
+    ),
+  );
+  const serve = project.targets.serve;
+  const preview = serve.configurations['business-preview'];
+  assert.equal(preview.buildTarget, 'datatug-app:build:business-preview');
+  assert.equal(preview.port, 18782);
+  assert.equal(preview.proxyConfig, 'tools/public-ovdb-proxy.cjs');
+  assert.equal(
+    preview.proxyConfig,
+    serve.configurations.development.proxyConfig,
+  );
+  assert.ok(
+    project.targets.build.configurations[
+      'business-preview'
+    ].fileReplacements.some(
+      ({ replace, with: replacement }) =>
+        replace === 'apps/datatug-app/src/environments/environment.ts' &&
+        replacement ===
+          'apps/datatug-app/src/environments/environment.business-preview.ts',
+    ),
+  );
+  // Keep this transport opt-in: production and SSO do not inherit a dev proxy.
+  assert.equal(serve.options?.proxyConfig, undefined);
+  assert.equal(serve.configurations.production.proxyConfig, undefined);
+  assert.equal(serve.configurations['sso-e2e'].proxyConfig, undefined);
+  assert.equal(entry.target, 'https://cloud.openvaultdb.com');
+  assert.equal(entry.followRedirects, false);
+  assert.equal(admitted(request()), true);
+  assert.equal(
+    admitted(
+      request({
+        headers: { ...request().headers, authorization: 'Bearer private' },
+      }),
+    ),
+    false,
+  );
+  assert.equal(admitted(request({ url: route + '/admin' })), false);
+});
 
 test('fixed HTTPS targets, redirect refusal and narrow public route admission', () => {
   assert.equal(entry.target, 'https://cloud.openvaultdb.com');
@@ -199,7 +245,7 @@ test('proxy returns upstream refusal/redirect without following it', async (t) =
   assert.equal(count, 1);
 });
 
-test('reserves the proxy namespace and configures only development serve', () => {
+test('reserves the proxy namespace and keeps production serve unproxied', () => {
   const blocked = config['^/__datatug_public_ovdb(?:/|$)'];
   const response = { end() { this.writableEnded = true; } };
   blocked.bypass(request({ url: '/__datatug_public_ovdb/arbitrary/v1/dtql' }), response);

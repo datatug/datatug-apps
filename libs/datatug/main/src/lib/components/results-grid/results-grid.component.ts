@@ -69,8 +69,13 @@ const COMPACT_ROW_HEIGHT = 28;
  * 24px less of the fold.
  */
 export const FLOATING_FILTERS_HEIGHT = 40;
-const SAVE_DELAY_MS = 300;
 const STATUS_MS = 5000;
+
+interface LayoutScope {
+  readonly key: string | undefined;
+  readonly signature: string;
+  readonly ids: readonly string[];
+}
 
 /** One column in the column chooser. */
 export interface ChooserColumn {
@@ -382,10 +387,10 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
         (cellFocused)="cellFocused.emit($event)"
         (modelUpdated)="onModelUpdated()"
         (newColumnsLoaded)="onNewColumnsLoaded()"
-        (columnMoved)="onLayoutChanged()"
-        (columnVisible)="onLayoutChanged()"
-        (columnPinned)="onLayoutChanged()"
-        (sortChanged)="onLayoutChanged()"
+        (columnMoved)="onLayoutChanged($event)"
+        (columnVisible)="onLayoutChanged($event)"
+        (columnPinned)="onLayoutChanged($event)"
+        (sortChanged)="onLayoutChanged($event)"
         (columnResized)="onColumnResized($event)"
       />
     </div>
@@ -593,12 +598,15 @@ export class ResultsGridComponent {
   private readonly chartIds = new Set<string>();
   private readonly shown = signal<number | undefined>(undefined);
   private readonly destroyRef = inject(DestroyRef);
-  private saveTimer?: ReturnType<typeof setTimeout>;
   private statusTimer?: ReturnType<typeof setTimeout>;
-  /** Layout events are not saved before this time (the grid's own events while a layout is applied). */
-  private holdUntil = 0;
+  private autosizeTimer?: ReturnType<typeof setTimeout>;
+  private layoutScope?: LayoutScope;
+  private appliedLayout?: { scope: LayoutScope; columns: string };
+  private readonly autosizeOperation = signal<
+    { scope: LayoutScope; remember: boolean } | undefined
+  >(undefined);
   /** True once the person (or a restored layout) set the layout: only then are widths/order/sort stored. */
-  private layoutTouched = false;
+  private readonly layoutTouched = signal(false);
 
   readonly defs = computed<ColDef<GridRow>[]>(() => [
     ...(this.showRowNumbers() ? [ROW_NUMBER_COLUMN] : []),
@@ -673,9 +681,20 @@ export class ResultsGridComponent {
       const signature = this.signature();
       const ids = this.dataColumnIds();
       untracked(() => {
+        // A deferred grid event must not write a previous result's state under new inputs.
+        if (
+          !this.layoutScope ||
+          this.layoutScope.key !== key ||
+          this.layoutScope.signature !== signature
+        ) {
+          this.layoutScope = { key, signature, ids };
+          this.appliedLayout = undefined;
+          clearTimeout(this.autosizeTimer);
+          this.autosizeOperation.set(undefined);
+        }
         const stored = readGridState(key, signature, ids);
         this.density.set(stored?.density ?? 'comfortable');
-        this.layoutTouched = !!stored?.cols;
+        this.layoutTouched.set(!!stored?.cols);
         if (this.api) this.applyStoredLayout();
       });
     });
@@ -686,7 +705,7 @@ export class ResultsGridComponent {
     });
     this.destroyRef.onDestroy(() => {
       this.destroyCharts();
-      clearTimeout(this.saveTimer);
+      clearTimeout(this.autosizeTimer);
       clearTimeout(this.statusTimer);
     });
   }
@@ -735,88 +754,133 @@ export class ResultsGridComponent {
 
   private applyStoredLayout(): void {
     const api = this.api;
-    if (!api) return;
-    const stored = readGridState(
-      this.stateKey(),
-      this.signature(),
-      this.dataColumnIds(),
-    );
+    const scope = this.layoutScope;
+    if (!api || !scope) return;
+    const stored = readGridState(scope.key, scope.signature, scope.ids);
     this.setDensityOnGrid(stored?.density ?? this.density());
-    if (!stored?.cols) return;
-    this.hold(500);
-    api.applyColumnState({
-      state: stored.cols.map((c) => ({
-        colId: c.colId,
-        hide: c.hide,
-        ...(c.width !== undefined ? { width: c.width } : {}),
-        pinned: c.pinned,
-        sort: c.sort,
-        sortIndex: c.sortIndex,
-      })),
-      applyOrder: true,
-    });
-    this.layoutTouched = true;
+    if (stored?.cols) {
+      api.applyColumnState({
+        state: stored.cols.map((c) => ({
+          colId: c.colId,
+          hide: c.hide,
+          ...(c.width !== undefined ? { width: c.width } : {}),
+          pinned: c.pinned,
+          sort: c.sort,
+          sortIndex: c.sortIndex,
+        })),
+        applyOrder: true,
+      });
+      this.layoutTouched.set(true);
+    }
+    this.rememberAppliedLayout();
   }
 
-  private hold(ms: number): void {
-    this.holdUntil = Date.now() + ms;
-  }
-
-  onLayoutChanged(): void {
+  onLayoutChanged(event?: { source?: string; finished?: boolean }): void {
     this.refreshChooser();
-    if (Date.now() < this.holdUntil) return;
-    this.layoutTouched = true;
-    this.scheduleSave();
+    if (event?.finished === false) return;
+    // Replacing definitions dispatches state changes before newColumnsLoaded,
+    // where the remembered layout is restored. They are not completed choices.
+    if (
+      event?.source === 'gridOptionsChanged' ||
+      event?.source === 'gridInitializing' ||
+      event?.source === 'cellDataTypeInferred'
+    )
+      return;
+    const columns = this.captureColumns();
+    if (!columns) return;
+    // AG dispatches restore events asynchronously. Ignore only unchanged replay;
+    // changed API actions (including the column chooser) are still real changes.
+    const applied = this.appliedLayout;
+    if (
+      event?.source === 'api' &&
+      applied &&
+      applied.scope === this.layoutScope &&
+      applied.columns === JSON.stringify(columns)
+    )
+      return;
+    this.layoutTouched.set(true);
+    this.saveLayout(columns);
   }
 
   onColumnResized(event: ColumnResizedEvent): void {
-    // A fit to content (the first data, or the Autosize button, which saves by itself) is not a person's choice.
-    if (!event.finished || event.source === 'autosizeColumns') return;
-    this.onLayoutChanged();
+    if (!event.finished) return;
+    const operation = this.autosizeOperation();
+    if (event.source === 'autosizeColumns') {
+      this.autosizeOperation.set(undefined);
+      if (operation && operation.scope === this.layoutScope) {
+        if (!operation.remember) this.rememberAppliedLayout();
+      }
+      return; // Initial fit is implicit; the explicit button owns its save.
+    }
+    // autoSizeAllColumns also emits intermediate API resize events before its
+    // completion notification. The captured operation owns those, not a timer.
+    if (
+      event.source === 'api' &&
+      operation &&
+      (!operation.remember || operation.scope !== this.layoutScope)
+    )
+      return;
+    this.onLayoutChanged(event);
   }
 
-  private scheduleSave(delay = SAVE_DELAY_MS): void {
-    if (!this.stateKey()) return;
-    clearTimeout(this.saveTimer);
-    this.saveTimer = setTimeout(() => this.saveLayout(), delay);
+  private rememberAppliedLayout(): void {
+    const scope = this.layoutScope;
+    const columns = this.captureColumns();
+    this.appliedLayout =
+      scope && columns
+        ? { scope, columns: JSON.stringify(columns) }
+        : undefined;
   }
 
-  private saveLayout(): void {
-    const key = this.stateKey();
+  private captureColumns(): StoredColumnState[] | undefined {
     const api = this.api;
-    if (!key || !api) return;
-    const ids = new Set(this.dataColumnIds());
-    const cols: StoredColumnState[] = this.layoutTouched
-      ? api
-          .getColumnState()
-          .filter((c) => ids.has(c.colId))
-          .map((c) => ({
-            colId: c.colId,
-            hide: !!c.hide,
-            ...(typeof c.width === 'number' ? { width: c.width } : {}),
-            pinned:
-              c.pinned === 'left' || c.pinned === 'right' ? c.pinned : null,
-            sort: c.sort ?? null,
-            sortIndex: c.sortIndex ?? null,
-          }))
-      : [];
-    writeGridState(key, {
+    const scope = this.layoutScope;
+    if (!api || !scope) return;
+    const ids = new Set(scope.ids);
+    const columns: StoredColumnState[] = api
+      .getColumnState()
+      .filter((c) => ids.has(c.colId))
+      .map((c) => ({
+        colId: c.colId,
+        hide: !!c.hide,
+        ...(typeof c.width === 'number' ? { width: c.width } : {}),
+        pinned: c.pinned === 'left' || c.pinned === 'right' ? c.pinned : null,
+        sort: c.sort ?? null,
+        sortIndex: c.sortIndex ?? null,
+      }));
+    if (
+      columns.length !== ids.size ||
+      new Set(columns.map((c) => c.colId)).size !== ids.size
+    )
+      return;
+    return columns;
+  }
+
+  private saveLayout(columns = this.captureColumns()): void {
+    const scope = this.layoutScope;
+    if (!scope?.key || !columns) return;
+    // Capture and write completed changes in the same turn: navigation, metadata
+    // redraw or grid destruction must not cancel or resample the person's choice.
+    writeGridState(scope.key, {
       v: GRID_STATE_VERSION,
       density: this.density(),
-      ...(cols.length ? { sig: this.signature(), cols } : {}),
+      ...(this.layoutTouched() && columns.length
+        ? { sig: scope.signature, cols: columns }
+        : {}),
     });
+    this.appliedLayout = { scope, columns: JSON.stringify(columns) };
   }
 
   resetColumns(): void {
     const api = this.api;
     if (!api) return;
-    clearTimeout(this.saveTimer);
-    this.hold(800);
-    this.layoutTouched = false;
+    clearTimeout(this.autosizeTimer);
+    this.layoutTouched.set(false);
     // Forget the stored layout first: the grid's own reset events must not find it and apply it again.
     this.saveLayout();
     api.resetColumnState();
-    api.autoSizeAllColumns();
+    this.fitColumns(false);
+    this.rememberAppliedLayout();
     this.refreshChooser();
     this.say('Columns reset.');
   }
@@ -828,7 +892,7 @@ export class ResultsGridComponent {
       this.density() === 'compact' ? 'comfortable' : 'compact';
     this.density.set(next);
     this.setDensityOnGrid(next);
-    this.scheduleSave(0);
+    this.saveLayout();
   }
 
   private setDensityOnGrid(density: GridDensity): void {
@@ -918,12 +982,27 @@ export class ResultsGridComponent {
   }
 
   autosizeAll(): void {
+    this.fitColumns(true);
+  }
+
+  private fitColumns(remember: boolean): void {
     const api = this.api;
-    if (!api) return;
+    const scope = this.layoutScope;
+    if (!api || !scope) return;
+    clearTimeout(this.autosizeTimer);
+    const operation = { scope, remember };
+    this.autosizeOperation.set(operation);
     api.autoSizeAllColumns();
-    this.layoutTouched = true;
-    // The fit reports itself as a program's resize, so the layout is saved by this call, once the fit has finished.
-    this.scheduleSave(600);
+    // Retain the button's delayed fit save, but never sample a different result
+    // when it runs. AG may emit no completion when nothing can be measured, so
+    // both Reset and Autosize intent also expire here without needing an event.
+    this.autosizeTimer = setTimeout(() => {
+      if (this.autosizeOperation() === operation)
+        this.autosizeOperation.set(undefined);
+      if (!remember || this.layoutScope !== scope || this.api !== api) return;
+      this.layoutTouched.set(true);
+      this.saveLayout();
+    }, 600);
   }
 
   onChartCreated(event: ChartCreatedEvent<GridRow>): void {

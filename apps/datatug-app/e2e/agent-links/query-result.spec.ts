@@ -47,8 +47,8 @@ test.describe('query result link', () => {
     await page.goto(link);
     const sources = page.getByTestId('result-sources');
     await expect(sources).toContainText('Invoice', { timeout: 30_000 });
-    expect(page.url()).not.toContain('code=');
-    expect(page.url()).toContain('/result/e2e-invoices?view=sources');
+    await expect.poll(() => page.url()).not.toContain('code=');
+    await expect.poll(() => page.url()).toContain('/result/e2e-invoices?view=sources');
 
     // The project of the result is the current one: the side panel shows its menu, as on the project's own pages.
     const projectMenu = page.locator('sneat-datatug-project-menu');

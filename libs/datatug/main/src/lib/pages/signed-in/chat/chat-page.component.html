@@ -195,14 +195,14 @@
           @for (bookmark of bookmarks(); track bookmark.id) {
             <section class="bookmark-item">
               <div class="dock-title"><strong>{{ bookmark.title }}</strong><span>{{ bookmark.target }} · {{ bookmarkRows(bookmark).length }}</span></div>
-              <div class="bookmark-tags">@for (tag of bookmark.tags; track tag) { <ion-button size="small" fill="clear" (click)="removeBookmarkTag(bookmark, tag)">{{ tag }} ×</ion-button> }</div>
+              <div class="bookmark-tags">@for (tag of bookmark.tags; track tag) { <ion-button size="small" fill="clear" [disabled]="workspaceActionBlocked()" (click)="removeBookmarkTag(bookmark, tag)">{{ tag }} ×</ion-button> }</div>
               <div class="workspace-actions">
                 <ion-button size="small" (click)="showBookmark(bookmark)">Open</ion-button>
-                <ion-button size="small" (click)="toggleAttachment(bookmarkReference(bookmark))">{{ attached(bookmarkReference(bookmark)) ? 'Detach' : 'Attach' }}</ion-button>
-                <ion-button size="small" fill="outline" (click)="workspaceAction({ kind: 'dock', reference: bookmarkReference(bookmark) })">Dock</ion-button>
-                <ion-button size="small" fill="clear" (click)="renameBookmark(bookmark)">Rename</ion-button>
-                <ion-button size="small" fill="clear" (click)="addBookmarkTag(bookmark)">Tag</ion-button>
-                <ion-button size="small" fill="clear" color="danger" (click)="deleteBookmark(bookmark)">Delete</ion-button>
+                <ion-button size="small" [disabled]="workspaceActionBlocked()" (click)="toggleAttachment(bookmarkReference(bookmark))">{{ attached(bookmarkReference(bookmark)) ? 'Detach' : 'Attach' }}</ion-button>
+                <ion-button size="small" fill="outline" [disabled]="workspaceActionBlocked()" (click)="workspaceAction({ kind: 'dock', reference: bookmarkReference(bookmark) })">Dock</ion-button>
+                <ion-button size="small" fill="clear" [disabled]="workspaceActionBlocked()" (click)="renameBookmark(bookmark)">Rename</ion-button>
+                <ion-button size="small" fill="clear" [disabled]="workspaceActionBlocked()" (click)="addBookmarkTag(bookmark)">Tag</ion-button>
+                <ion-button size="small" fill="clear" color="danger" [disabled]="workspaceActionBlocked()" (click)="deleteBookmark(bookmark)">Delete</ion-button>
               </div>
             </section>
           } @empty { <p class="workspace-empty">Bookmark a result or selection to reuse it in another chat session.</p> }
