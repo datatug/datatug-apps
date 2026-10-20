@@ -33,17 +33,7 @@ describe('MyStoresComponent', () => {
           },
         },
       ],
-    })
-      .overrideComponent(MyStoresComponent, {
-        set: {
-          imports: [],
-          template:
-            '<span data-testid="store-state">{{ authStatus() }}:{{ userRecordLoaded() }}:{{ stores()?.length ?? "unknown" }}</span>',
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
-        },
-      })
-      .compileComponents();
+    }).compileComponents();
 
     fixture = TestBed.createComponent(MyStoresComponent);
     component = fixture.componentInstance;
@@ -54,18 +44,71 @@ describe('MyStoresComponent', () => {
     expect(component).toBeTruthy();
   });
 
-  it('renders a user-store update emitted after the first render in zoneless mode', async () => {
+  it('shows connected stores first with one type-specific description per row', async () => {
+    expect(fixture.nativeElement.textContent).toContain('Project stores');
+    expect(fixture.nativeElement.textContent).toContain('DataTug Cloud');
+    expect(fixture.nativeElement.textContent).toContain('GitHub');
     expect(
-      fixture.nativeElement.querySelector('[data-testid="store-state"]')
-        .textContent,
-    ).toContain(':false:unknown');
+      fixture.nativeElement.querySelectorAll('.store-options ion-item'),
+    ).toHaveLength(3);
 
     userStates$.next({ status: 'authenticated', record: null });
     await fixture.whenStable();
 
+    expect(fixture.nativeElement.textContent).toContain('Connected stores');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Compare storage options',
+    );
     expect(
-      fixture.nativeElement.querySelector('[data-testid="store-state"]')
-        .textContent,
-    ).toMatch(/authenticated:true:\d+/);
+      fixture.nativeElement.querySelectorAll('.connected-stores ion-item'),
+    ).toHaveLength(3);
+    expect(fixture.nativeElement.textContent).toContain('GitHub.com');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Fastest setup, with live updates from Cloud storage.',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'version history and branches',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'offline use where supported',
+    );
+    expect(fixture.nativeElement.querySelector('.store-options')).toBeNull();
+    expect(
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          '.connected-stores ion-icon[slot="start"]',
+        ),
+      ).map((icon: Element) => icon.getAttribute('name')),
+    ).toEqual(['cloud-outline', 'logo-github', 'terminal-outline']);
+  });
+
+  it('shows storage options with the same descriptions for signed-out visitors', async () => {
+    userStates$.next({ status: 'notAuthenticated', record: null });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('.store-options')).toBeTruthy();
+    expect(
+      fixture.nativeElement.querySelectorAll('.store-options ion-item'),
+    ).toHaveLength(3);
+    expect(fixture.nativeElement.textContent).toContain(
+      'Choose where project files live',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Fastest setup, with live updates from Cloud storage.',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'version history and branches',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'offline use where supported',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Connected stores');
+    expect(
+      Array.from(
+        fixture.nativeElement.querySelectorAll(
+          '.store-options ion-icon[slot="start"]',
+        ),
+      ).map((icon: Element) => icon.getAttribute('name')),
+    ).toEqual(['cloud-outline', 'logo-github', 'terminal-outline']);
   });
 });
