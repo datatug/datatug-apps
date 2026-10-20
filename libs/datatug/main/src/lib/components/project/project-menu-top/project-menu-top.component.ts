@@ -27,6 +27,7 @@ import {
   IProjectContext,
   parseProjectUrl,
 } from '../../../nav/nav-models';
+import { isSharedProjectRef } from '../../../core/project-context';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
@@ -303,7 +304,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   incidentsProjectRoute(): UrlTree | string {
     const projectRef = this.project?.ref;
-    if (isCanonicalPublicDemo(projectRef) && this.router && projectRef) {
+    if ((isCanonicalPublicDemo(projectRef) || (projectRef && isSharedProjectRef(projectRef))) && this.router && projectRef) {
       return this.router.parseUrl(projectPageHref(projectRef, 'incidents'));
     }
     return '/incidents';

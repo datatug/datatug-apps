@@ -26,6 +26,12 @@
 @import '@ionic/angular/css/text-transformation.css';
 @import '@ionic/angular/css/flex-utils.css';
 
+// Firebase Auth adds this passive text warning above the emulator UI.
+// Keep it visible without blocking the controls underneath it.
+p.firebase-emulator-warning {
+  pointer-events: none;
+}
+
 :root {
   --ion-background-color: #ffffff;
   --ion-background-color-rgb: 255, 255, 255;

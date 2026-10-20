@@ -1,3 +1,4 @@
+import type { IncidentEvent, IncidentArtifactRef, IncidentAssertion } from '../incidents/models';
 import type { DetectiveCase } from './models';
 import type { DetectiveInputValue } from './models';
 
@@ -25,7 +26,26 @@ export interface HostedProjectIncident {
   incident: HostedIncidentView;
 }
 
+export interface HostedIncidentEvents {
+  events: IncidentEvent[];
+  nextAfterSeq: number;
+  hasMore: boolean;
+}
+export interface HostedIncidentMessage {
+  body: string;
+  assertion?: Exclude<IncidentAssertion['kind'], 'deterministic-result'>;
+  refs?: IncidentArtifactRef[];
+}
+
 export type HostedIncidentAction =
+  | {
+      type: 'append-message';
+      incidentRef: string;
+      environment: string;
+      expectedSeq: number;
+      message: HostedIncidentMessage;
+    }
+
   | {
       type: 'create';
       caseId?: string;
@@ -51,6 +71,8 @@ export type HostedIncidentAction =
     };
 
 export interface HostedIncidentResponse {
+  event?: IncidentEvent;
+  replayed?: boolean;
   incident: HostedIncidentView;
   case?: DetectiveCase;
   receipt: string;

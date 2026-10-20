@@ -48,6 +48,7 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
 
   let savedIncident: Record<string, unknown> | undefined;
   let linkedCase: Record<string, unknown> | undefined;
+  const messages: Array<Record<string, unknown>> = [];
   const writes: Array<Record<string, unknown>> = [];
   await page.route('**/v0/datatug/detective/**', async (route) => {
     const request = route.request();
@@ -70,6 +71,18 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
       await route.fulfill({ status: 200, json: { incidents: savedIncident ? [savedIncident] : [] } });
     } else if (endpoint === 'incident') {
       await route.fulfill({ status: savedIncident ? 200 : 404, json: { incident: savedIncident } });
+    } else if (endpoint === 'incident_events') {
+      const after = Number(new URL(request.url()).searchParams.get('afterSeq') || 0);
+      await route.fulfill({ status: 200, json: { events: messages.filter(event => Number(event['seq']) > after), nextAfterSeq: savedIncident?.['lastSeq'] || after, hasMore: false } });
+    } else if (endpoint === 'incident_action' && body?.['type'] === 'append-message') {
+      expect(body['expectedSeq']).toBe(savedIncident?.['lastSeq']);
+      expect(body['actor']).toBeUndefined();
+      expect(body['ifMatch']).toBeUndefined();
+      const seq = Number(savedIncident?.['lastSeq']) + 1;
+      const event = {id: `message-${seq}`, seq, incident: incidentRef, at: '2026-10-21T12:00:00Z', visibleAt: '2026-10-21T12:00:00Z', actor: {kind: 'human', id: localId, via: 'web'}, type: 'note.added', assertion: {kind: 'claim'}, payload: {body: (body['message'] as {body: string}).body}};
+      messages.push(event);
+      savedIncident = {...savedIncident, lastSeq: seq};
+      await route.fulfill({status: 200, json: {incident: savedIncident, event, receipt: body['operationId']}});
     } else if (endpoint === 'incident_action' && body?.['type'] === 'create') {
       expect(body['caseId']).toBeUndefined();
       expect(body['context']).toEqual({ OrderID: { type: 'number', value: 11039 } });
@@ -111,6 +124,12 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   await page.reload();
   await expect(page.getByRole('heading', { name: 'INC-1 — Order 11039 is missing' })).toBeVisible();
   await expect(page.getByText('No Detective Case has been started')).toBeVisible();
+  await page.getByRole('textbox', {name: 'Incident message'}).fill('Request received; carrier assignment is missing.');
+  await page.getByRole('button', {name: 'Post message', exact: true}).click();
+  await expect(page.getByRole('status').filter({hasText: 'Message saved.'})).toBeVisible();
+  await page.reload();
+  await expect(page.getByRole('list', {name: 'Incident messages'})).toContainText('Request received; carrier assignment is missing.');
+  await expect(page.getByRole('list', {name: 'Incident messages'})).toContainText(`${localId} · web`);
   await page.getByRole('button', { name: 'Investigate in a Detective Case' }).click();
   await expect(page).toHaveURL(new RegExp(`/detective/incident-[a-f0-9-]+$`));
   expect(linkedCase?.['id']).not.toBe(incidentRef.incidentId);

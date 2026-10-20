@@ -21,7 +21,7 @@ const caseRecord = {
 
 describe('HostedIncidentsPageComponent', () => {
   const client = {
-    state: vi.fn(), projectIncidents: vi.fn(), projectIncident: vi.fn(), incidentAction: vi.fn(),
+    state: vi.fn(), incidentEvents: vi.fn(), projectIncidents: vi.fn(), projectIncident: vi.fn(), incidentAction: vi.fn(),
   };
   const router = { events: of(), navigate: vi.fn().mockResolvedValue(true), navigateByUrl: vi.fn().mockResolvedValue(true) };
   let routeParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
@@ -29,6 +29,7 @@ describe('HostedIncidentsPageComponent', () => {
   async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref) {
     const project = new BehaviorSubject({ ref: projectRef });
     const authState = new BehaviorSubject({ user: { uid: 'sarah' } });
+    client.incidentEvents.mockReturnValue(of({ events: [], nextAfterSeq: 1, hasMore: false }));
     client.state.mockReturnValue(of({ environments: ['demo'], cases, capabilities: { canWrite } }));
     client.projectIncidents.mockReturnValue(of({ incidents: [incident] }));
     client.projectIncident.mockReturnValue(of({ incident }));
@@ -136,6 +137,21 @@ describe('HostedIncidentsPageComponent', () => {
     expect(router.navigateByUrl).toHaveBeenCalledWith(
       '/space/private-space/store/firestore/project/private-project/detective/incident-new-case',
     );
+  });
+
+  it('accepts a fresh conversation projection without regressing title, status or context on an older replay', async () => {
+    const fixture = await mount('detail', []);
+    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain(incident.title));
+    const page = fixture.componentInstance as unknown as {
+      updateConversationIncident(item: typeof incident): void;
+      incident(): typeof incident;
+    };
+    const current = {...incident, title: 'Current investigation', status: 'investigating', canonicalContext: {order: 11039}, lastSeq: 4};
+    page.updateConversationIncident(current);
+    page.updateConversationIncident({...incident, lastSeq: 2});
+    expect(page.incident()).toEqual(current);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Current investigation');
   });
 
   it('keeps the saved Incident available when navigation fails without sending a second create', async () => {
