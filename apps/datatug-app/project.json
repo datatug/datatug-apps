@@ -221,7 +221,8 @@
         },
         "business-preview": {
           "buildTarget": "datatug-app:build:business-preview",
-          "port": 18782
+          "port": 18782,
+          "proxyConfig": "tools/public-ovdb-proxy.cjs"
         }
       },
       "defaultConfiguration": "development",
