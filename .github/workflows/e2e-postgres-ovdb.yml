@@ -1,0 +1,91 @@
+name: E2E PostgreSQL via OpenVaultDB
+
+# The read-only hosted PostgreSQL DemoDB editions opened THROUGH the public OpenVaultDB server
+# (https://cloud.openvaultdb.com), never Neon directly (apps/datatug-app/e2e/demo-postgresql.spec.ts, Chromium and
+# Firefox, the REAL built app against the REAL live API). It used to be the only job of the nightly CI schedule; the
+# schedule is gone (repo owner policy: no scheduled or polling workflows), so this is the whole trigger list:
+#   - workflow_dispatch (manual), and
+#   - a push to main that touches the OVDB/PostgreSQL code, this test or its config (paths below).
+# It is NOT part of ci.yml, NOT a required check and NOT in `deploy-gate`: an outage of cloud.openvaultdb.com or a rate
+# limit must never block shipping; it shows up as this workflow's own red run. It never runs on pull requests, so a PR
+# can never send a request to the live API.
+#
+# Request budget and fail-fast (same design as the DemoDB guard, see apps/datatug-app/e2e/README.md):
+#   - Playwright retries 0, one worker, maxFailures 1 (playwright.demo-postgresql.config.ts): a retry is another round
+#     of live requests;
+#   - each test may send at most DEMODB_E2E_MAX_OVDB_REQUESTS (40) requests to cloud.openvaultdb.com; further requests
+#     are refused before they are sent;
+#   - the first rate-limit answer (HTTP 429, or a Cloudflare block page such as error 1015/1020/1027) trips a breaker
+#     kept in a file: every further request is refused and the run fails. It is never retried;
+#   - one run at a time (concurrency group below). On main a queued run waits instead of cancelling the one in flight,
+#     so a run is never cut short half-way through a live request budget.
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'libs/datatug/main/src/lib/ovdb/**'
+      - 'libs/datatug/main/src/lib/queries/demodb-ovdb.ts'
+      - 'libs/datatug/main/src/lib/queries/hosted-demo-db-query.ts'
+      - 'apps/datatug-app/e2e/demo-postgresql.spec.ts'
+      - 'apps/datatug-app/e2e/helpers/demodb-*.ts'
+      - 'apps/datatug-app/playwright.demo-postgresql.config.ts'
+      - 'scripts/check-demo-postgresql-catalog.mjs'
+      - '.github/workflows/e2e-postgres-ovdb.yml'
+
+permissions:
+  actions: read
+
+concurrency:
+  group: e2e-postgres-ovdb
+  cancel-in-progress: false
+
+jobs:
+  e2e-postgres-ovdb:
+    name: e2e-postgres-ovdb
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    env:
+      DEMODB_E2E_MAX_OVDB_REQUESTS: '40'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Authenticate private Core artifact verification
+        id: core-artifact-token
+        uses: ./.github/actions/private-core-artifact
+        with:
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
+
+      - uses: ./.github/actions/pnpm
+
+      - name: Install browsers
+        run: pnpm exec playwright install --with-deps chromium firefox
+
+      - name: nx e2e-demo-postgresql
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+        run: pnpm nx run datatug-app:e2e-demo-postgresql --skip-nx-cache
+
+      - name: Print DemoDB request report
+        if: always()
+        run: |
+          shopt -s nullglob
+          reports=("$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md)
+          if [ "${#reports[@]}" -eq 0 ]; then echo 'no request report was written'; fi
+          for report in "${reports[@]}"; do echo "--- $report"; cat "$report"; done
+
+      - name: Upload PostgreSQL e2e report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-postgresql-e2e-playwright-report
+          path: |
+            coverage/apps/datatug-app-demo-postgresql-e2e/report
+            coverage/apps/datatug-app-demo-postgresql-e2e/results
+          if-no-files-found: ignore
