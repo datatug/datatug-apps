@@ -2,7 +2,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { convertToParamMap, ActivatedRoute, Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { AgentContextService } from '@sneat/datatug-semantic';
-import { BehaviorSubject, of, Subject } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DetectiveClientService } from './detective-client.service';
 import { HostedIncidentsPageComponent } from './hosted-incidents-page.component';
@@ -26,10 +26,10 @@ describe('HostedIncidentsPageComponent', () => {
   const router = { events: of(), navigate: vi.fn().mockResolvedValue(true), navigateByUrl: vi.fn().mockResolvedValue(true) };
   let routeParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
 
-  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo') {
-    const project = new BehaviorSubject({ ref });
+  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref) {
+    const project = new BehaviorSubject({ ref: projectRef });
     const authState = new BehaviorSubject({ user: { uid: 'sarah' } });
-    client.state.mockReturnValue(of({ environments: ['demo'], cases }));
+    client.state.mockReturnValue(of({ environments: ['demo'], cases, capabilities: { canWrite } }));
     client.projectIncidents.mockReturnValue(of({ incidents: [incident] }));
     client.projectIncident.mockReturnValue(of({ incident }));
     const data = { incidentMode: mode };
@@ -63,6 +63,7 @@ describe('HostedIncidentsPageComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    sessionStorage.clear();
     router.navigate.mockResolvedValue(true);
     router.navigateByUrl.mockResolvedValue(true);
   });
@@ -100,6 +101,7 @@ describe('HostedIncidentsPageComponent', () => {
         type: 'create', environment: 'demo', title: 'Order 11039 is missing',
         context: { OrderID: { type: 'number', value: 11039 } },
       }),
+      expect.stringMatching(/^operation-/),
     );
     expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('caseId');
     expect(router.navigate).toHaveBeenCalledWith(
@@ -169,5 +171,116 @@ describe('HostedIncidentsPageComponent', () => {
       expect.objectContaining({ kind: 'cloud' }), 'demo',
       'detective-incidents-9c561d36/INC-2',
     );
+  });
+
+  it('keeps viewer Incidents readable while blocking create and start-case actions', async () => {
+    const list = await mount('list', [], 'demo', false);
+    await vi.waitFor(() => expect(list.nativeElement.textContent).toContain('Order 11039 is missing'));
+    expect(list.nativeElement.textContent).toContain('cannot create them');
+    expect(list.nativeElement.textContent).not.toContain('Create Incident');
+    list.destroy();
+    TestBed.resetTestingModule();
+
+    const newPage = await mount('new', [], 'demo', false);
+    const create = newPage.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    create.title.set('Viewer must not create');
+    await create.create();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    newPage.destroy();
+    TestBed.resetTestingModule();
+
+    const detail = await mount('detail', [], 'demo', false);
+    await vi.waitFor(() => expect(detail.nativeElement.textContent).toContain('Order 11039 is missing'));
+    expect(detail.nativeElement.textContent).toContain('cannot start a Detective Case');
+    await (detail.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
+  it('reuses an ambiguous create operation ID after remount, but changes it for changed text or project', async () => {
+    client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
+    const first = await mount('new', []);
+    const firstPage = first.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    firstPage.title.set('Order 11039 is missing');
+    await firstPage.create();
+    const originalId = client.incidentAction.mock.calls[0][2];
+    expect(originalId).toMatch(/^operation-/);
+    first.destroy();
+    TestBed.resetTestingModule();
+
+    const second = await mount('new', []);
+    const secondPage = second.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    secondPage.title.set('Order 11039 is missing');
+    await secondPage.create();
+    expect(client.incidentAction.mock.calls[1][2]).toBe(originalId);
+    secondPage.title.set('A different Incident');
+    client.incidentAction.mockReturnValue(of({ incident, receipt: 'saved' }));
+    await secondPage.create();
+    expect(client.incidentAction.mock.calls[2][2]).not.toBe(originalId);
+    second.destroy();
+    TestBed.resetTestingModule();
+
+    const third = await mount('new', []);
+    const thirdPage = third.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    thirdPage.title.set('Order 11039 is missing');
+    await thirdPage.create();
+    expect(client.incidentAction.mock.calls[3][2]).toBe(originalId);
+    third.destroy();
+    TestBed.resetTestingModule();
+
+    const fourth = await mount('new', [], 'demo', true, { ...ref, projectId: 'another-project' });
+    const fourthPage = fourth.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    fourthPage.title.set('Order 11039 is missing');
+    await fourthPage.create();
+    expect(client.incidentAction.mock.calls[4][2]).not.toBe(originalId);
+  });
+
+  it('holds the environment while a create is in flight', async () => {
+    const pending = new Subject<{ incident: typeof incident; receipt: string }>();
+    client.incidentAction.mockReturnValue(pending.asObservable());
+    const fixture = await mount('new', []);
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void };
+      environment(): string;
+      selectEnvironment(value: string): void;
+      create(): Promise<void>;
+    };
+    page.title.set('Order 11039 is missing');
+    const saving = page.create();
+    await vi.waitFor(() => expect(client.incidentAction).toHaveBeenCalledTimes(1));
+    page.selectEnvironment('other');
+    expect(page.environment()).toBe('demo');
+    expect(router.navigate).not.toHaveBeenCalled();
+    pending.next({ incident, receipt: 'saved' });
+    pending.complete();
+    await saving;
+    expect(router.navigate).toHaveBeenCalledWith(
+      expect.anything(), expect.objectContaining({ queryParams: { environment: 'demo' } }),
+    );
+  });
+
+  it('retries a lost start-case response with the same Case and operation IDs after remount', async () => {
+    client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
+    const first = await mount('detail', []);
+    await vi.waitFor(() => expect(first.nativeElement.textContent).toContain(incident.title));
+    await (first.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    const firstAction = client.incidentAction.mock.calls[0][1];
+    const firstOperation = client.incidentAction.mock.calls[0][2];
+    first.destroy();
+    TestBed.resetTestingModule();
+
+    client.incidentAction.mockReturnValue(of({ incident, case: { ...caseRecord, id: firstAction.case.id }, receipt: 'started' }));
+    const second = await mount('detail', []);
+    await vi.waitFor(() => expect(second.nativeElement.textContent).toContain(incident.title));
+    await (second.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    expect(client.incidentAction.mock.calls[1][1]).toEqual(firstAction);
+    expect(client.incidentAction.mock.calls[1][2]).toBe(firstOperation);
+    second.destroy();
+    TestBed.resetTestingModule();
+
+    const third = await mount('detail', []);
+    await vi.waitFor(() => expect(third.nativeElement.textContent).toContain(incident.title));
+    await (third.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    expect(client.incidentAction.mock.calls[2][1].case.id).not.toBe(firstAction.case.id);
+    expect(client.incidentAction.mock.calls[2][2]).not.toBe(firstOperation);
   });
 });

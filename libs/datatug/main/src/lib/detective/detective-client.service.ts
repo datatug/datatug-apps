@@ -371,6 +371,7 @@ export class DetectiveClientService {
   incidentAction(
     context: DetectiveRequestContext,
     action: HostedIncidentAction,
+    operationIdOverride?: string,
   ): Observable<HostedIncidentResponse> {
     const payload =
       context.kind === 'cloud'
@@ -387,7 +388,7 @@ export class DetectiveClientService {
           };
     const key = JSON.stringify(['incident_action', payload]);
     const operationId =
-      this.pendingOperations.get(key) ?? detectiveOperationId();
+      operationIdOverride ?? this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     const request =
       context.kind === 'cloud'

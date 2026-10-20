@@ -32,10 +32,12 @@ import { projectPageHref } from '../nav/project-page-href';
 import {
   DetectiveClientService,
   detectiveErrorMessage,
+  detectiveOperationId,
 } from './detective-client.service';
 import { useDetectivePageContext } from './detective-page-context';
 import {
   HostedIncidentView,
+  HostedIncidentAction,
   HostedProjectIncident,
   HostedProjectIncidents,
 } from './hosted-linkage.models';
@@ -90,7 +92,7 @@ import { DetectiveCase, DetectiveState } from './models';
           } @else {
             <ion-item>
               <ion-label>Environment</ion-label>
-              <ion-select aria-label="Incident environment" [value]="environment()"
+              <ion-select aria-label="Incident environment" [value]="environment()" [disabled]="busy()"
                 (ionChange)="selectEnvironment($event.detail.value)">
                 @for (name of environments(); track name) {
                   <ion-select-option [value]="name">{{ name }}</ion-select-option>
@@ -100,9 +102,13 @@ import { DetectiveCase, DetectiveState } from './models';
             @if (mode() === 'list') {
               <h1>Incidents</h1>
               <p>Saved incidents in this private project and environment.</p>
-              <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">
-                Create Incident
-              </ion-button>
+              @if (canWrite()) {
+                <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">
+                  Create Incident
+                </ion-button>
+              } @else {
+                <p role="status">You can view Incidents in this project, but cannot create them.</p>
+              }
               @if (loading()) {
                 <p role="status"><ion-spinner name="dots" /> Loading Incidents…</p>
               } @else if (loadError()) {
@@ -141,12 +147,15 @@ import { DetectiveCase, DetectiveState } from './models';
                   [value]="orderId()" (ionInput)="orderId.set($event.detail.value || '')" />
               </ion-item>
               <p>Order ID is saved as structured context. Other details remain in the description.</p>
+              @if (!canWrite()) {
+                <p role="status">You can view Incidents in this project, but cannot create them.</p>
+              }
               @if (saveError()) { <p role="alert">{{ saveError() }}</p> }
               @if (savedIncident(); as saved) {
                 <p role="status">Incident saved. Open its detail to continue.</p>
                 <ion-button (click)="openSavedIncident()">Open saved Incident</ion-button>
               } @else {
-              <ion-button (click)="create()" [disabled]="busy() || !title().trim() || !environment()">
+              <ion-button (click)="create()" [disabled]="!canWrite() || busy() || !title().trim() || !environment()">
                 @if (busy()) { <ion-spinner slot="start" name="dots" /> }
                 Save Incident
               </ion-button>
@@ -176,11 +185,14 @@ import { DetectiveCase, DetectiveState } from './models';
                   <p>No Detective Case has been started for this Incident.</p>
                 }
                 @if (saveError()) { <p role="alert">{{ saveError() }}</p> }
+                @if (!canWrite()) {
+                  <p role="status">You can view this Incident, but cannot start a Detective Case in this project.</p>
+                }
                 @if (savedCase(); as saved) {
                   <p role="status">Detective Case {{ saved.id }} saved for this Incident.</p>
                   <ion-button (click)="openSavedCase()">Open saved Detective Case</ion-button>
                 } @else {
-                <ion-button (click)="startCase()" [disabled]="busy()">
+                <ion-button (click)="startCase()" [disabled]="!canWrite() || busy()">
                   @if (busy()) { <ion-spinner slot="start" name="dots" /> }
                   Investigate in a Detective Case
                 </ion-button>
@@ -215,6 +227,7 @@ export class HostedIncidentsPageComponent {
   protected readonly incidents = signal<HostedIncidentView[] | undefined>(undefined);
   protected readonly incident = signal<HostedIncidentView | undefined>(undefined);
   protected readonly state = signal<DetectiveState | undefined>(undefined);
+  protected readonly canWrite = computed(() => this.state()?.capabilities?.canWrite === true);
   protected readonly linkedCases = computed(() => {
     const item = this.incident();
     const ref = item && `${item.ref.storeId}/${item.ref.incidentId}`;
@@ -304,7 +317,7 @@ export class HostedIncidentsPageComponent {
   }
   protected environmentQuery() { return { environment: this.environment() }; }
   protected selectEnvironment(value: string): void {
-    if (!this.environments().includes(value)) return;
+    if (this.busy() || !this.environments().includes(value)) return;
     this.environment.set(value);
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -320,7 +333,7 @@ export class HostedIncidentsPageComponent {
     const context = this.scope.context();
     const title = this.title().trim();
     const environment = this.environment();
-    if (!context || context.kind !== 'cloud' || !title || !environment || this.busy() || this.savedIncident()) return;
+    if (!context || context.kind !== 'cloud' || !this.canWrite() || !title || !environment || this.busy() || this.savedIncident()) return;
     const identity = this.scope.identity();
     const projectRef = this.scope.ref();
     const rawOrder = this.orderId().trim();
@@ -331,13 +344,27 @@ export class HostedIncidentsPageComponent {
     this.busy.set(true);
     this.saveError.set('');
     try {
-      const result = await firstValueFrom(this.client.incidentAction(context, {
+      const action: HostedIncidentAction = {
         type: 'create', title, description: this.description().trim(), environment,
         ...(rawOrder ? { context: { OrderID: { type: 'number', value: Number(rawOrder) } } } : {}),
-      }));
+      };
+      // Keep an ambiguous create's server operation ID across a page reload. The key is a
+      // digest of the exact request and authenticated scope; no Incident text is stored.
+      const retryKey = await this.retryKey('incident-create', identity, action);
+      let operationId = detectiveOperationId();
+      try {
+        const pending = sessionStorage.getItem(retryKey);
+        if (pending?.startsWith('operation-')) operationId = pending;
+        else sessionStorage.setItem(retryKey, operationId);
+      } catch { /* Session storage can be disabled; in-memory retries still work. */ }
+      if (this.destroyRef.destroyed || this.scope.identity() !== identity || this.environment() !== environment) return;
+      const result = await firstValueFrom(this.client.incidentAction(context, action, operationId));
       const item = result.incident;
       if (!item?.ref?.incidentId || !item.ref.storeId)
         throw new Error('The server did not return a hosted Incident reference.');
+      try {
+        if (sessionStorage.getItem(retryKey) === operationId) sessionStorage.removeItem(retryKey);
+      } catch { /* Storage availability does not change a confirmed server response. */ }
       if (this.destroyRef.destroyed) return;
       const href = projectPageHref(projectRef, ['incidents', item.ref.storeId, item.ref.incidentId]);
       this.savedIncident.set({ href, environment });
@@ -367,25 +394,44 @@ export class HostedIncidentsPageComponent {
     const context = this.scope.context();
     const item = this.incident();
     const environment = this.environment();
-    if (!context || context.kind !== 'cloud' || !item || !environment || this.busy() || this.loading() || this.loadError() || this.savedCase()) return;
+    if (!context || context.kind !== 'cloud' || !this.canWrite() || !item || !environment || this.busy() || this.loading() || this.loadError() || this.savedCase()) return;
     if (`${item.ref.storeId}/${item.ref.incidentId}` !== `${this.routeParams().get('incidentStoreId')}/${this.routeParams().get('incidentId')}`) return;
     const identity = this.scope.identity();
     const projectRef = this.scope.ref();
-    const id = this.pendingCaseId ?? `incident-${crypto.randomUUID()}`;
-    this.pendingCaseId = id;
-    const newCase: DetectiveCase = {
-      id, title: `Investigate ${item.title}`, status: 'active', version: 0,
-      context: {}, incidentRefs: [], scenarioRefs: [], runRefs: [],
-      evidence: [], findings: [], timeline: [],
-    };
+    const incidentRef = `${item.ref.storeId}/${item.ref.incidentId}`;
     this.busy.set(true);
     this.saveError.set('');
     try {
+      const retryKey = await this.retryKey('incident-start-case', identity, [environment, incidentRef]);
+      let draft: { id: string; title: string; operationId: string } | undefined;
+      try {
+        const stored = sessionStorage.getItem(retryKey);
+        if (stored) {
+          const parsed: unknown = JSON.parse(stored);
+          if (this.isCaseRetryDraft(parsed)) draft = parsed;
+        }
+      } catch { /* Session storage can be disabled or contain an invalid prior value. */ }
+      draft ??= {
+        id: this.pendingCaseId ?? `incident-${crypto.randomUUID()}`,
+        title: `Investigate ${item.title}`,
+        operationId: detectiveOperationId(),
+      };
+      this.pendingCaseId = draft.id;
+      try { sessionStorage.setItem(retryKey, JSON.stringify(draft)); } catch { /* In-memory retries remain available. */ }
+      if (this.destroyRef.destroyed || this.scope.identity() !== identity || this.environment() !== environment) return;
+      const newCase: DetectiveCase = {
+        id: draft.id, title: draft.title, status: 'active', version: 0,
+        context: {}, incidentRefs: [], scenarioRefs: [], runRefs: [],
+        evidence: [], findings: [], timeline: [],
+      };
       const response = await firstValueFrom(this.client.incidentAction(context, {
-        type: 'start-case', incidentRef: `${item.ref.storeId}/${item.ref.incidentId}`,
+        type: 'start-case', incidentRef,
         environment, case: newCase, ifMatch: 0,
-      }));
+      }, draft.operationId));
       if (!response.case?.id) throw new Error('The server did not return the new Detective Case.');
+      try {
+        if (sessionStorage.getItem(retryKey) === JSON.stringify(draft)) sessionStorage.removeItem(retryKey);
+      } catch { /* Storage availability does not change a confirmed server response. */ }
       this.pendingCaseId = undefined;
       if (this.destroyRef.destroyed) return;
       this.savedCase.set({ id: response.case.id, href: projectPageHref(projectRef, ['detective', response.case.id]) });
@@ -408,5 +454,18 @@ export class HostedIncidentsPageComponent {
     } catch {
       this.saveError.set('Detective Case saved, but navigation did not complete. Open the saved Case to retry.');
     }
+  }
+
+  private async retryKey(kind: string, identity: string | undefined, payload: unknown): Promise<string> {
+    const digest = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify([identity, payload])));
+    return `datatug:${kind}:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`;
+  }
+
+  private isCaseRetryDraft(value: unknown): value is { id: string; title: string; operationId: string } {
+    if (!value || typeof value !== 'object') return false;
+    const draft = value as Record<string, unknown>;
+    return typeof draft['id'] === 'string' && draft['id'].startsWith('incident-')
+      && typeof draft['title'] === 'string' && draft['title'].startsWith('Investigate ')
+      && typeof draft['operationId'] === 'string' && draft['operationId'].startsWith('operation-');
   }
 }
