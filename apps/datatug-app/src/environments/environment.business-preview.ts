@@ -19,6 +19,10 @@ export const datatugBusinessCheckoutApiOrigin: string | null =
   TEST_CHECKOUT_ORIGIN;
 export const datatugBusinessCheckoutLiveApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveEnabled = false;
+
+// A local preview sends no analytics.
+export const datatugGoogleAnalyticsMeasurementId: string | undefined =
+  undefined;
 export { datatugDemoConfig } from './environment.prod';
 
 // The production Firebase project, so the preview accepts the same ID tokens

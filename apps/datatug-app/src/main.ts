@@ -43,6 +43,7 @@ import {
   provideDatatugBusinessCheckoutLiveEnabled,
 } from './app/checkout/business-checkout-config';
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
+import { provideAnalyticsConsent } from './app/analytics-consent/analytics-consent.provider';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { configureAgGrid } from '@datatug/ag-grid';
@@ -54,8 +55,12 @@ import {
   datatugBusinessCheckoutLiveApiOrigin,
   datatugBusinessCheckoutLiveEnabled,
   datatugEnvironmentProviders,
+  datatugGoogleAnalyticsMeasurementId,
 } from './environments/environment';
-import { withoutDataTugTracking } from './launch-tracking';
+import {
+  dataTugGoogleAnalyticsId,
+  withoutDataTugTracking,
+} from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
@@ -77,10 +82,14 @@ import { withSentryLinkPrivacy } from './app/telemetry/sentry-privacy';
 // First: take the one-time code of a card's link out of the address before Sentry, PostHog or the router read it.
 const agentLinkCode = takeAgentLinkCode(location, history);
 
-const trackedEnvironmentConfig = withoutDataTugTracking(environmentConfig, {
+const productProfile = {
   hostname: location.hostname,
   queryProfile: new URLSearchParams(location.search).get('profile'),
-});
+};
+const trackedEnvironmentConfig = withoutDataTugTracking(
+  environmentConfig,
+  productProfile,
+);
 // REQ:ui-no-context-telemetry (claude-mod-web-links): no fragment, key, row or loopback agent request data reaches
 // PostHog or Sentry, whichever code starts them.
 const datatugAppEnvironmentConfig = {
@@ -128,6 +137,13 @@ bootstrapApplication(DatatugAppComponent, {
     },
     provideAgentAccessForModuleClients(),
     provideLinkTelemetryPrivacy(),
+    // After the two privacy initializers above: a checkout address has set its latch before this one reads it.
+    provideAnalyticsConsent(
+      dataTugGoogleAnalyticsId(
+        datatugGoogleAnalyticsMeasurementId,
+        productProfile,
+      ),
+    ),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },
