@@ -130,7 +130,7 @@ describe('HomePage header & footer (UX brief §1/§2/§14)', () => {
 describe('HomePage composition', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('uses a compact value proposition and the standard full-width card header', () => {
+  it('pairs the home value proposition with the hero image without a redundant card header', () => {
     const fixture = configure('notAuthenticated');
     const hero = fixture.nativeElement.querySelector(
       '[data-testid="home-hero"]',
@@ -141,12 +141,10 @@ describe('HomePage composition', () => {
     expect(hero.querySelector('.hero-copy')?.textContent).toContain(
       'connected data, and saved queries together',
     );
-    // The gray header item is a direct child of the card, not wrapped in an
-    // ion-list: an md-mode list adds 8px of padding that showed as a white
-    // strip above the header.
-    const header = hero.querySelector('ion-item[color="light"][lines="full"]');
-    expect(header).toBeTruthy();
-    expect(header.parentElement).toBe(hero);
+    expect(hero.querySelector('ion-item[color="light"]')).toBeNull();
+    const image = hero.querySelector('img.hero-visual');
+    expect(image?.getAttribute('src')).toBe('assets/home/hero-dawn.webp');
+    expect(image?.getAttribute('alt')).toContain('tugboat');
     expect(hero.querySelector('ion-list')).toBeNull();
   });
 

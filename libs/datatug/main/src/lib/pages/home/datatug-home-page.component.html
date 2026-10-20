@@ -43,30 +43,25 @@
 </ion-header>
 
 <ion-content>
-  <!-- Card-header standard (brief §1; founder 2026-10-14): grayish full-width
-       header divider in the side-panel chrome family, boundary before content. -->
   <ion-card class="home-hero" data-testid="home-hero">
-    <ion-item color="light" lines="full">
-      <ion-label>
-        <p class="hero-eyebrow">DataTug.app</p>
-        <h1>Ask better questions of your data.</h1>
-      </ion-label>
-    </ion-item>
     <ion-card-content>
       <div class="hero-layout">
-        <p class="hero-copy">
-          Keep project structure, connected data, and saved queries together.
-          Explore the context, ask a question, and follow the result back to its
-          source.
-        </p>
-        <div class="hero-visual" aria-hidden="true">
-          <div class="visual-source">
-            <span></span><span></span><span></span>
-          </div>
-          <div class="visual-link"></div>
-          <div class="visual-query"><i></i><i></i><i></i></div>
-          <div class="visual-result"><b></b><b></b><b></b></div>
+        <div class="hero-message">
+          <h1>Ask better questions of your data.</h1>
+          <p class="hero-copy">
+            Keep project structure, connected data, and saved queries together.
+            Explore the context, ask a question, and follow the result back to
+            its source.
+          </p>
         </div>
+        <img
+          class="hero-visual"
+          src="assets/home/hero-dawn.webp"
+          alt="A tugboat guiding a container ship through blue harbour waters"
+          width="1280"
+          height="720"
+          fetchpriority="high"
+        />
       </div>
     </ion-card-content>
   </ion-card>
