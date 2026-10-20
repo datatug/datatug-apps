@@ -116,6 +116,20 @@ async function opfsDatabaseEvidence(
   );
 }
 
+/**
+ * Waits for the success element OR the app's own error state, whichever shows first, so a rejected or corrupt download fails within
+ * seconds with the app's error text instead of waiting out the long download timeout and reporting "element not found".
+ * `timeout` is only the budget of a real, working download.
+ */
+async function waitForSuccessOrAppError(success: Locator, failures: Locator[], what: string, timeout: number): Promise<void> {
+  const failure = failures.reduce((all, next) => all.or(next));
+  await success.or(failure).first().waitFor({ state: 'visible', timeout });
+  if (await failure.first().isVisible()) {
+    const text = (await failure.first().innerText()).replace(/\s+/g, ' ').trim();
+    throw new Error(`${what}: the app reported an error instead of finishing: ${text}`);
+  }
+}
+
 test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload, Reset to pristine - hermetic', async ({
   page,
   context,
@@ -188,7 +202,13 @@ test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload,
   await page.getByTestId('demo-sqlite-continue').click();
   await expect(page.getByTestId('demo-sqlite-progress')).toBeVisible({ timeout: 120_000 });
   await shot('2-downloading');
-  await expect(page.getByTestId('ovdb-table-list')).toBeVisible({ timeout: 600_000 });
+  await waitForSuccessOrAppError(
+    page.getByTestId('ovdb-table-list'),
+    [page.getByTestId('demo-sqlite-failed'), page.getByTestId('demo-sqlite-locked'), page.getByTestId('demo-sqlite-no-storage')],
+    'download and open',
+    600_000,
+  );
+  await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
   mark('opened');
   await expect(page.getByTestId('ovdb-status')).toHaveText('Local copy ready');
   await expect(page.getByTestId('demo-sqlite-not-persistent')).toHaveCount(0);
@@ -267,7 +287,13 @@ test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload,
   await shot('6-reset-confirmation');
   await alert.getByRole('button', { name: 'Reset Database', exact: true }).click();
   await expect(alert).toHaveCount(0);
-  await expect(page.getByTestId('reset-message')).toContainText('Database reset to the original DemoDB data', { timeout: 600_000 });
+  await waitForSuccessOrAppError(
+    page.getByTestId('reset-message'),
+    [page.getByTestId('reset-error'), page.getByTestId('demo-sqlite-failed')],
+    'Reset Database',
+    600_000,
+  );
+  await expect(page.getByTestId('reset-message')).toContainText('Database reset to the original DemoDB data');
   mark('reset-done');
   expect(demodb, 'Reset downloads manifest + parts again').toEqual([...expectedOneDownload, ...expectedOneDownload]);
   await expect(cellOfFirstRow()).toHaveText(original);

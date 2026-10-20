@@ -3,23 +3,22 @@
 ## Lane matrix: which lanes run when, and which touch live hosts
 
 CI is `.github/workflows/ci.yml`. A lane that needs a live third-party host never runs on pull requests, merge groups
-or pushes. Rule of the repo: no live request from a per-PR path (on 2026-10-16 about 25,500 CI requests for one
+or pushes (the live PostgreSQL test has its own workflow, `e2e-postgres-ovdb.yml`). Rule of the repo: no live request from a per-PR path (on 2026-10-16 about 25,500 CI requests for one
 `chinook.demodb.dev` file got the whole demodb.dev zone rate limited with HTTP 429).
 
-| Lane (job) | pull_request / merge_group / push | nightly `schedule` | In `deploy-gate` | Live hosts |
-| --- | --- | --- | --- | --- |
-| `build`, `test` | yes | yes | yes | none |
-| `e2e-checkout` | yes, `nx affected` | yes | yes | none |
-| `e2e-cloud-logs` | yes | yes | yes | none |
-| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
-| `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | yes | none: pinned files from local fixtures |
-| `Demo SQLite AdventureWorks` (own workflow `demo-sqlite-adventureworks.yml`, Chromium) | only when demo SQLite code, catalog, guard or fixtures changed (path filter, `pull_request` and `push` to `main`); also `workflow_dispatch` | no (never scheduled) | no | none: gzip parts from the `demo-db/adventureworks` GitHub repo |
-| `e2e-demo-handoff` | yes, `nx affected` | yes | yes | none (local build, third parties stubbed) |
-| `journey e2e (real datatug-cli agent)` | yes, always | yes | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
-| `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | same | yes (may be `skipped`) | none |
-| `e2e-demo-postgresql` | no | yes | no | `cloud.openvaultdb.com` |
-| `e2e` (strict roll-up of every lane) | no | yes | no | via the lanes above |
-| `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | no | `*.demodb.dev`, Chromium only |
+| Lane (job) | pull_request / merge_group / push | In `deploy-gate` | Live hosts |
+| --- | --- | --- | --- |
+| `build`, `test` | yes | yes | none |
+| `e2e-checkout` | yes, `nx affected` | yes | none |
+| `e2e-cloud-logs` | yes | yes | none |
+| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
+| `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | none: pinned files from local fixtures |
+| `e2e-demo-handoff` | yes, `nx affected` | yes | none (local build, third parties stubbed) |
+| `journey e2e (real datatug-cli agent)` | yes, always | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
+| `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | yes (may be `skipped`) | none |
+| `demo-sqlite-adventureworks.yml` (own workflow, Chromium: only when demo SQLite code, catalog, guard or fixtures changed, on `pull_request` and push to `main`; or manual; never scheduled) | path-filtered | no | none: gzip parts from the `demo-db/adventureworks` GitHub repo |
+| `e2e-postgres-ovdb.yml` (own workflow: manual or path-filtered push to main, never a PR) | no | no | `cloud.openvaultdb.com` |
+| `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | `*.demodb.dev`, Chromium only |
 
 `deploy-gate` requires exact `success` for its lanes (only `agent-links` may be `skipped`), so a lane that is
 `skipped` because `nx affected` found nothing still reports `success` (the job runs, its step is a no-op). A job that is
@@ -49,7 +48,7 @@ All lanes that run on a pull request, merge group or push (above, plus the manua
    `DATATUG_PUBLIC_OVDB_UPSTREAM=refuse` (`demodbServerEnv`): it answers 403 + `x-datatug-ovdb-refused` and the guard counts the
    refusal as an escape. `demodb-guard-selftest.spec.ts` holds a negative control for it. A dev server that is already running
    (`reuseExistingServer` outside CI) keeps its own environment: stop it before a local `nx e2e`. The block action and the
-   Chromium rule also cover `openvaultdb.com`, `www.` and `cloud.`; the nightly live PostgreSQL lane uses neither.
+   Chromium rule also cover `openvaultdb.com`, `www.` and `cloud.`; the live PostgreSQL workflow uses neither.
 5. **The report.** Every Playwright run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE, refused,
    ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), writes `coverage/demodb-request-report-<job>-<pid>.md` (one file per Playwright run) and prints all of them in a late CI step, and fails the run when
    anything escaped or a live budget was exceeded. The `journey`, `session-continuity`, `agent-links`, `checkout`, `hand-off`
@@ -91,7 +90,7 @@ the websites repo and copying the outputs). The `journey` lane downloads nothing
   app spends budget), Playwright retries 0, `maxFailures` 1.
 * A rate-limit answer (HTTP 429, or a Cloudflare block page: 403/503/52x with `cf-mitigated`, or an error 1015/1020/1027
   page) trips a breaker kept in a file, so every worker of the run, also one started after a failure, refuses every
-  further request. `e2e-demo-postgresql` has retries 0, `maxFailures` 1 and a per-test budget of 40 requests to
+  further request. `e2e-postgres-ovdb.yml` (nx target `e2e-demo-postgresql`) has retries 0, `maxFailures` 1 and a per-test budget of 40 requests to
   `cloud.openvaultdb.com` (`DEMODB_E2E_MAX_OVDB_REQUESTS`), refused once spent. `helpers/demodb-guard-state.unit.ts` and
   `helpers/demodb-guard-logic.unit.ts` test the state and the request logic (run in the `test` job together with
   `scripts/mutate-demodb-guard.mjs`, which breaks the budget, count-before-send, breaker and 52x rules one at a time and

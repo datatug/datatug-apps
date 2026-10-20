@@ -10,7 +10,8 @@ name: Demo SQLite AdventureWorks
 #
 # Why its own workflow and not a job of ci.yml: the file is 126.8 MB unpacked (35.4 MB of gzip parts) and is downloaded twice
 # (open, then Reset, because a single-copy dataset keeps no pristine copy), so the lane is the heaviest browser journey. It runs
-#   - on a pull request and on a push to main ONLY when a path below changed (the demo SQLite code, its catalog, the dataset
+#   - on a pull request and on a push to main ONLY when a path below changed (the demo SQLite code, the OVDB browser components
+#     (table list, rows, edit, Reset), its catalog, the dataset
 #     worker, the DemoDB guard and fixtures, this lane, or the dependencies: @dalgo/sqlite-wasm lives in package.json/pnpm-lock),
 #   - by hand (workflow_dispatch), on any ref.
 # NOT on a schedule (the repo policy forbids cron for new workflows), and not part of ci.yml's deploy-gate: the cheap
@@ -21,6 +22,7 @@ on:
   pull_request:
     paths:
       - 'libs/datatug/main/src/lib/demo-sqlite/**'
+      - 'libs/datatug/main/src/lib/ovdb/**'
       - 'libs/datatug/main/src/lib/pages/demo-sqlite/**'
       - 'libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts'
       - 'libs/datatug/main/src/lib/queries/demodb-ovdb.ts'
@@ -39,6 +41,7 @@ on:
       - main
     paths:
       - 'libs/datatug/main/src/lib/demo-sqlite/**'
+      - 'libs/datatug/main/src/lib/ovdb/**'
       - 'libs/datatug/main/src/lib/pages/demo-sqlite/**'
       - 'libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts'
       - 'libs/datatug/main/src/lib/queries/demodb-ovdb.ts'
@@ -72,8 +75,6 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
 
       # Backstop under the Playwright guard: every DemoDB host name is unreachable from this runner (see the action).
       - name: Block DemoDB hosts

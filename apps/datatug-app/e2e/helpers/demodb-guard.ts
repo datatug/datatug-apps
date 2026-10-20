@@ -106,7 +106,7 @@ function refusalFor(url: URL): string {
   if (url.hostname === 'ovdb.demodb.dev' || /(^|\.)openvaultdb\.com$/.test(url.hostname)) {
     return `Refused ${url.href}: the OVDB API (${url.hostname}) has no fixtures and is never reached from CI. Use DEMODB_E2E_MODE=live for the manual smoke.`;
   }
-  if (/\.parts\.json$|\.part[0-9]*\.gz$|\.gz$/.test(url.pathname)) {
+  if (/\.parts\.json$|\.part[0-9]*\.gz$|\.gz$|\.gz\.[0-9a-f]{16}\.part-[0-9]+$/.test(url.pathname)) {
     return `Refused ${url.href}: the chunked AdventureWorks download (manifest and gzip parts) has no fixture on disk. Run \`DEMODB_FIXTURE_ADVENTUREWORKS=1 node scripts/fetch-demodb-fixtures.mjs\` (its lane, playwright.demo-sqlite-adventureworks.config.ts, does), or use live mode.`;
   }
   return (
