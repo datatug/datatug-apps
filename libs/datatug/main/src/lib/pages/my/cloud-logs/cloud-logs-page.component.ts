@@ -172,6 +172,12 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                 ? 'Connect another Google account'
                 : 'Connect Google account'
             }}</ion-button>
+            <ion-button
+              fill="outline"
+              [disabled]="pageState() === 'loading'"
+              (click)="loadConnections()"
+              >Refresh connections</ion-button
+            >
           </section>
 
           <section class="card" aria-labelledby="connect-heading">
@@ -245,9 +251,9 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                 <div class="actions">
                   <ion-button
                     fill="outline"
-                    [disabled]="!connection.active"
+                    [disabled]="busyConnectionId() === connection.id"
                     (click)="selectConnection(connection)"
-                    >View logs</ion-button
+                    >{{ connection.active ? 'View logs' : 'Select to retry' }}</ion-button
                   >
                   <ion-button
                     fill="clear"
@@ -272,21 +278,37 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                   <p role="status">
                     Google denied Cloud Logging access to this view. Ask a
                     project administrator to grant the connected account
-                    permission, then retry the query.
+                    permission, then retry the same query. A successful query
+                    confirms that access has recovered.
                   </p>
+                  <ion-button
+                    [disabled]="queryState() === 'loading'"
+                    (click)="runQuery()"
+                    >Retry query</ion-button
+                  >
                 } @else if (inactiveReason() === 'reconnect_required') {
                   <p role="status">
-                      Google authorization expired. Reconnect the Google
-                      account, then probe this view again.
+                    Google authorization expired. DataTug cannot renew this
+                    grant in place. Explicitly revoke the old grant in Google
+                    accounts above, wait for cleanup to finish, then refresh
+                    connections and confirm it shows Disconnected before
+                    connecting again. Probe and add this view again after the
+                    new authorization. Revocation can affect other Sneat
+                    clients using the shared Google app.
                   </p>
-                  <ion-button (click)="startAuthorization()"
-                    >Reconnect Google account</ion-button
-                  >
+                  <a href="#accounts-heading">Review Google accounts</a>
                 } @else {
                   <p role="status">
-                    This view is inactive. Check Cloud Logging permissions or
-                    reconnect Google access, then probe it again.
+                    This view was marked inactive after a previous query. Check
+                    Cloud Logging permissions or Google authorization, then
+                    retry the query. A successful query confirms access has
+                    recovered.
                   </p>
+                  <ion-button
+                    [disabled]="queryState() === 'loading'"
+                    (click)="runQuery()"
+                    >Retry query</ion-button
+                  >
                 }
               } @else {
                 <form
@@ -365,10 +387,11 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                       (ionInput)="service.set(inputValue($event))"
                   /></label>
                   <p class="filter-note">
-                    Bounds are inclusive. Identifier and service equality is
-                    case-insensitive for ASCII values. Non-ASCII filters are
-                    unsupported. Free-text search is unavailable. Results are
-                    current source evidence, capped at 200 entries.
+                    Bounds are inclusive, with a maximum span of 24 hours.
+                    Identifier and service equality is case-insensitive for
+                    ASCII values. Non-ASCII filters are unsupported. Free-text
+                    search is unavailable. Results are current source
+                    evidence, capped at 200 entries.
                   </p>
                   <ion-button
                     type="submit"
@@ -380,12 +403,6 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                     }}</ion-button
                   >
                 </form>
-                @if (queryState() === 'loading') {
-                  <p role="status">Reading current entries…</p>
-                }
-                @if (queryError()) {
-                  <p role="alert" class="error">{{ queryError() }}</p>
-                }
                 @if (queryState() === 'ready' && !entries().length) {
                   <p role="status">No entries matched this bounded query.</p>
                 }
@@ -472,6 +489,12 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                           </section>
                   }
                 }
+              }
+              @if (queryState() === 'loading') {
+                <p role="status">Reading current entries…</p>
+              }
+              @if (queryError()) {
+                <p role="alert" class="error">{{ queryError() }}</p>
               }
             </section>
           }
@@ -622,6 +645,7 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
 export class CloudLogsPageComponent {
   private queryGeneration = 0;
   private accessGeneration = 0;
+  private connectionListGeneration = 0;
   private readonly hasAccess = signal(false);
   readonly hostedCloudLogsAccess = inject(HostedCloudLogsAccessService);
   private readonly api = inject(CloudLogsApiService);
@@ -643,6 +667,9 @@ export class CloudLogsPageComponent {
   readonly inactiveReason = signal<
     'reconnect_required' | 'permission_denied' | null
   >(null);
+  private readonly inactiveReasonsByConnection = signal<
+    Readonly<Record<string, 'reconnect_required' | 'permission_denied'>>
+  >({});
   readonly entries = signal<readonly PersonalLogEntry[]>([]);
   readonly result = signal<PersonalLogQueryResult | null>(null);
   readonly selectedEntry = signal<PersonalLogEntry | null>(null);
@@ -719,13 +746,37 @@ export class CloudLogsPageComponent {
 
   async loadConnections(generation = this.accessGeneration): Promise<void> {
     if (!this.isCurrentAccess(generation)) return;
+    const listGeneration = ++this.connectionListGeneration;
     this.pageState.set('loading');
     this.pageError.set('');
     try {
       const current = await firstValueFrom(this.api.list());
-      if (!this.isCurrentAccess(generation)) return;
+      if (
+        !this.isCurrentAccess(generation) ||
+        listGeneration !== this.connectionListGeneration
+      )
+        return;
       this.grants.set(current.grants);
-      this.connections.set(current.connections);
+      const inactiveReasons = this.inactiveReasonsByConnection();
+      const refreshedConnections = current.connections.map((connection) =>
+        inactiveReasons[connection.id]
+          ? { ...connection, active: false }
+          : connection,
+      );
+      this.connections.set(refreshedConnections);
+      const selected = this.selectedConnection();
+      if (selected) {
+        const refreshed = refreshedConnections.find(
+          (connection) => connection.id === selected.id,
+        );
+        if (refreshed) {
+          this.selectedConnection.set(refreshed);
+          this.inactiveReason.set(inactiveReasons[refreshed.id] ?? null);
+        } else {
+          this.forgetInactiveReason(selected.id);
+          this.clearSelection();
+        }
+      }
       if (
         !current.grants.some(
           (grant) =>
@@ -737,7 +788,11 @@ export class CloudLogsPageComponent {
         );
       this.pageState.set('ready');
     } catch (error) {
-      if (!this.isCurrentAccess(generation)) return;
+      if (
+        !this.isCurrentAccess(generation) ||
+        listGeneration !== this.connectionListGeneration
+      )
+        return;
       this.pageError.set(errorMessage(error));
       this.pageState.set('error');
     }
@@ -838,6 +893,7 @@ export class CloudLogsPageComponent {
       await this.loadConnections(generation);
       return;
     }
+    this.invalidateConnectionList();
     try {
       const grant = await firstValueFrom(
         this.api.finishGoogleAuthorization({
@@ -846,6 +902,7 @@ export class CloudLogsPageComponent {
         }),
       );
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.grants.update((grants) => [
         ...grants.filter((candidate) => candidate.id !== grant.id),
         grant,
@@ -867,6 +924,7 @@ export class CloudLogsPageComponent {
     if (!this.canConnect()) return;
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    this.invalidateConnectionList();
     this.busy.set(true);
     this.pageError.set('');
     try {
@@ -878,12 +936,15 @@ export class CloudLogsPageComponent {
         }),
       );
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.projectId.set('');
       this.logViewId.set('');
       await this.loadConnections(generation);
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.completeConnectionMutation();
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busy.set(false);
     }
@@ -897,7 +958,9 @@ export class CloudLogsPageComponent {
     this.queryState.set('idle');
     this.queryError.set('');
     this.selectedEntry.set(null);
-    this.inactiveReason.set(null);
+    this.inactiveReason.set(
+      this.inactiveReasonsByConnection()[connection.id] ?? null,
+    );
     this.orderId.set('');
     this.correlationId.set('');
     this.service.set('');
@@ -907,19 +970,24 @@ export class CloudLogsPageComponent {
   async removeView(connection: PersonalLogConnection): Promise<void> {
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    this.invalidateConnectionList();
     this.busyConnectionId.set(connection.id);
     this.pageError.set('');
     try {
       await firstValueFrom(this.api.remove(connection.id));
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.connections.update((connections) =>
         connections.filter((candidate) => candidate.id !== connection.id),
       );
+      this.forgetInactiveReason(connection.id);
       if (this.selectedConnection()?.id === connection.id)
         this.clearSelection();
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.completeConnectionMutation();
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busyConnectionId.set('');
     }
@@ -928,11 +996,13 @@ export class CloudLogsPageComponent {
   async disconnect(grant: GoogleLogGrant): Promise<void> {
     const generation = this.accessGeneration;
     if (!this.isCurrentAccess(generation)) return;
+    this.invalidateConnectionList();
     this.busyGrantId.set(grant.id);
     this.pageError.set('');
     try {
       const result = await firstValueFrom(this.api.disconnect(grant.id));
       if (!this.isCurrentAccess(generation)) return;
+      this.completeConnectionMutation();
       this.confirmGrantId.set('');
       this.grants.update((grants) =>
         grants.map((candidate) =>
@@ -953,6 +1023,7 @@ export class CloudLogsPageComponent {
       this.connections.update((connections) =>
         connections.filter((connection) => connection.grantId !== grant.id),
       );
+      for (const id of removedIds) this.forgetInactiveReason(id);
       const selectedConnection = this.selectedConnection();
       if (selectedConnection && removedIds.includes(selectedConnection.id))
         this.clearSelection();
@@ -964,8 +1035,10 @@ export class CloudLogsPageComponent {
           : 'All views for this account are disabled. Google access revocation is being completed.',
       );
     } catch (error) {
-      if (this.isCurrentAccess(generation))
-      this.pageError.set(errorMessage(error));
+      if (this.isCurrentAccess(generation)) {
+        this.completeConnectionMutation();
+        this.pageError.set(errorMessage(error));
+      }
     } finally {
       if (this.isCurrentAccess(generation)) this.busyGrantId.set('');
     }
@@ -981,6 +1054,11 @@ export class CloudLogsPageComponent {
     const to = toUtc(this.toTime());
     if (!connection || !from || !to || Date.parse(to) < Date.parse(from)) {
       this.queryError.set('Enter a valid increasing UTC time range.');
+      this.queryState.set('error');
+      return;
+    }
+    if (Date.parse(to) - Date.parse(from) > MAX_QUERY_WINDOW_MS) {
+      this.queryError.set('Choose a time range no longer than 24 hours.');
       this.queryState.set('error');
       return;
     }
@@ -1021,6 +1099,24 @@ export class CloudLogsPageComponent {
         return;
       this.entries.set(response.entries);
       this.result.set(response);
+      if (!connection.active) {
+        let found = false;
+        this.connections.update((items) =>
+          items.map((candidate) => {
+            if (candidate.id !== connection.id) return candidate;
+            found = true;
+            return { ...candidate, active: true };
+          }),
+        );
+        if (!found)
+          this.connections.update((items) => [
+            ...items,
+            { ...connection, active: true },
+          ]);
+        this.selectedConnection.set({ ...connection, active: true });
+        this.forgetInactiveReason(connection.id);
+        this.inactiveReason.set(null);
+      }
       this.queryState.set('ready');
     } catch (error) {
       if (
@@ -1034,6 +1130,10 @@ export class CloudLogsPageComponent {
       const code = errorCode(error);
       if (code === 'reconnect_required' || code === 'permission_denied') {
         this.inactiveReason.set(code);
+        this.inactiveReasonsByConnection.update((reasons) => ({
+          ...reasons,
+          [connection.id]: code,
+        }));
         this.connections.update((connections) =>
           connections.map((candidate) =>
             candidate.id === connection.id
@@ -1129,6 +1229,23 @@ export class CloudLogsPageComponent {
     this.queryError.set('');
   }
 
+  private forgetInactiveReason(connectionId: string): void {
+    this.inactiveReasonsByConnection.update((reasons) => {
+      const next = { ...reasons };
+      delete next[connectionId];
+      return next;
+    });
+  }
+
+  private invalidateConnectionList(): void {
+    this.connectionListGeneration++;
+  }
+
+  private completeConnectionMutation(): void {
+    this.invalidateConnectionList();
+    if (this.pageState() === 'loading') this.pageState.set('ready');
+  }
+
   private isCurrentAccess(generation: number): boolean {
     return (
       this.hasAccess() &&
@@ -1139,6 +1256,7 @@ export class CloudLogsPageComponent {
 
   private clearAccessBoundData(): void {
     this.queryGeneration++;
+    this.invalidateConnectionList();
     this.pageState.set('loading');
     this.pageError.set('');
     this.grants.set([]);
@@ -1155,6 +1273,7 @@ export class CloudLogsPageComponent {
     this.queryState.set('idle');
     this.queryError.set('');
     this.inactiveReason.set(null);
+    this.inactiveReasonsByConnection.set({});
     this.entries.set([]);
     this.result.set(null);
     this.selectedEntry.set(null);
@@ -1166,6 +1285,7 @@ function defaultTime(hoursAgo: number): string {
   date.setUTCSeconds(0, 0);
   return date.toISOString().replace(/\.\d{3}Z$/, 'Z');
 }
+const MAX_QUERY_WINDOW_MS = 24 * 60 * 60 * 1000;
 function toUtc(value: string): string | undefined {
   if (
     !/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/.test(value)

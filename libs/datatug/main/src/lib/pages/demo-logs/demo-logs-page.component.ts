@@ -63,6 +63,16 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
             </select>
           </label>
           <label class="untimed"><input type="checkbox" [checked]="includeUntimed()" (change)="includeUntimed.set(checked($event))" /> Include untimed or malformed entries (file source only; ignores time range)</label>
+          @if (includeUntimed() && (orderId().trim() || correlationId().trim())) {
+            <p class="filter-note" role="note">
+              Order, correlation, and severity filters still apply. Malformed
+              entries may not contain those fields. Clear the IDs and select
+              All severity to include entries without those fields.
+            </p>
+            <button type="button" (click)="clearIdentifierFilters()">
+              Clear order and correlation filters
+            </button>
+          }
           <button type="submit" [disabled]="state() === 'loading'">{{ state() === 'loading' ? 'Loading…' : 'Find evidence' }}</button>
           <p class="filter-note">File identifiers and severity use exact equality; Cloud Logging uses provider case-insensitive equality for identifiers. The time range is inclusive unless the untimed control is selected. Use WARN for file entries and WARNING for Cloud Logging. Text search and regex are unavailable. Showing at most 100 newest entries. Edits take effect when you select Find evidence. The optional token stays in this page's memory and is sent only to a loopback server.</p>
         </form>
@@ -175,6 +185,10 @@ export class DemoLogsPageComponent {
 
   inputValue(event: Event): string { return (event.target as HTMLInputElement).value; }
   checked(event: Event): boolean { return (event.target as HTMLInputElement).checked; }
+  clearIdentifierFilters(): void {
+    this.orderId.set('');
+    this.correlationId.set('');
+  }
   text(row: OvdbRow, field: string): string { const value = row.data[field]; return value == null ? '' : String(value); }
   status(row: OvdbRow): string { return this.text(row, 'parse_status') || 'parsed'; }
   isNorthwindSource(): boolean {
