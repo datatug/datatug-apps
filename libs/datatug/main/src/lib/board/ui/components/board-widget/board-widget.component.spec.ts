@@ -1,3 +1,4 @@
+import { NativeQueryFailure } from '../../../../queries/native-query-failure';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -695,6 +696,25 @@ describe('BoardWidgetComponent', () => {
       /update DataTug CLI to v0\.97\.0 or later.*restart its agent/i,
     );
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('uses the existing alert for finite diagnostics and retains the original failure only locally', async () => {
+    const cause = new Error('https://secret.test/token SQL auth body');
+    const failure = new NativeQueryFailure({ stage: 'capability_discovery', reason: 'http_status', status: 403 }, { cause });
+    getQuery.mockReturnValue(of({ id: 'demo/query', title: 'Demo query', request: { queryType: QueryType.SQL, text: 'select 1' }, connectionId: 'chinook-sqlite' }));
+    fixture.componentRef.setInput('projectRef', { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local', branch: 'feature/demo' });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () => throwError(() => failure));
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId: 'demo/query' } } });
+    fixture.detectChanges();
+    await fixture.componentInstance.run();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.runFailure()).toBe(failure);
+    expect(fixture.componentInstance.runFailure()).toHaveProperty('cause', cause);
+    expect(fixture.nativeElement.textContent).toContain('OVDB metadata request failed (HTTP 403)');
+    expect(fixture.nativeElement.textContent).not.toMatch(/secret|SQL auth body/);
+    expect(fixture.componentInstance.runError()).toContain('Retry');
   });
 
   it('keeps an unexpected board read error generic', async () => {
