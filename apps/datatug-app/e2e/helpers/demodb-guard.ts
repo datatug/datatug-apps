@@ -29,7 +29,8 @@ import { readBreaker, type Stored } from './demodb-guard-state';
  *    <repo>/tmp/demodb-fixtures, filled by scripts/fetch-demodb-fixtures.mjs from the public demo-db GitHub repos,
  *    SHA-256 verified, at most one request per file, none when warm), corpus.json and the dataset pages from the repository
  *    (e2e/fixtures/demodb). Anything else is REFUSED (aborted), notably the OVDB API on ovdb.demodb.dev and the chunked
- *    AdventureWorks manifest and parts (`*.parts.json`, gzip parts): they have no fixtures. Live budget: 0.
+ *    AdventureWorks manifest and parts (`*.parts.json`, gzip parts) in a run that did not fetch them
+ *    (DEMODB_FIXTURE_ADVENTUREWORKS, see playwright.demo-sqlite-adventureworks.config.ts). Live budget: 0.
  *  - `live` (opt-in, the manual "DemoDB live smoke" workflow): requests go to the real hosts, but each URL at most once
  *    per run (later requests are answered from a file memo shared by all workers), at most DEMODB_E2E_MAX_LIVE_REQUESTS
  *    (default 15) live requests per test and DEMODB_E2E_MAX_RUN_LIVE_REQUESTS (default 120) per run. The budgets are
@@ -71,6 +72,14 @@ function fixtureFile(url: URL): { path: string; contentType: string } | undefine
   if (sub && data && data[1] === sub) {
     return { path: join(dir, 'data', `${sub}.sqlite`), contentType: 'application/vnd.sqlite3' };
   }
+  // The chunked AdventureWorks download (scripts/fetch-demodb-fixtures.mjs with DEMODB_FIXTURE_ADVENTUREWORKS): manifest + gzip parts.
+  if (sub === 'adventureworks' && url.pathname === '/data/adventureworks.sqlite.parts.json') {
+    return { path: join(dir, 'data', 'adventureworks.sqlite.parts.json'), contentType: 'application/json' };
+  }
+  const part = /^\/data\/(adventureworks\.sqlite\.gz\.[0-9a-f]{16}\.part-[0-9]+)$/.exec(url.pathname);
+  if (sub === 'adventureworks' && part) {
+    return { path: join(dir, 'data', part[1]), contentType: 'application/octet-stream' };
+  }
   const compare = /^\/data\/compare\/([0-9a-f]{64})\.sqlite$/.exec(url.pathname);
   if (sub === 'chinook' && compare) {
     return { path: join(dir, 'data', 'compare', `${compare[1]}.sqlite`), contentType: 'application/vnd.sqlite3' };
@@ -98,7 +107,7 @@ function refusalFor(url: URL): string {
     return `Refused ${url.href}: the OVDB API (${url.hostname}) has no fixtures and is never reached from CI. Use DEMODB_E2E_MODE=live for the manual smoke.`;
   }
   if (/\.parts\.json$|\.part[0-9]*\.gz$|\.gz$/.test(url.pathname)) {
-    return `Refused ${url.href}: the chunked AdventureWorks download (manifest and gzip parts) has no fixtures. Its opt-in tests run only in live mode.`;
+    return `Refused ${url.href}: the chunked AdventureWorks download (manifest and gzip parts) has no fixture on disk. Run \`DEMODB_FIXTURE_ADVENTUREWORKS=1 node scripts/fetch-demodb-fixtures.mjs\` (its lane, playwright.demo-sqlite-adventureworks.config.ts, does), or use live mode.`;
   }
   return (
     `No local fixture for ${url.href}. Run \`node scripts/fetch-demodb-fixtures.mjs\`, ` +

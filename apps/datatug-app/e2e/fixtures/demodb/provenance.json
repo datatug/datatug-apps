@@ -7,7 +7,7 @@
     "corpus.json": "dist/corpus.json (served as https://demodb.dev/corpus.json)",
     "pages/<dataset>.html": "dist/_db/<dataset>/index.html (served as https://<dataset>.demodb.dev/)"
   },
-  "sqliteFiles": "not committed: scripts/fetch-demodb-fixtures.mjs downloads them from github.com/demo-db/<dataset> and verifies the SHA-256 pins of demo-sqlite-catalog.ts",
+  "sqliteFiles": "not committed: scripts/fetch-demodb-fixtures.mjs downloads them from github.com/demo-db/<dataset> and verifies the SHA-256 pins of demo-sqlite-catalog.ts; the AdventureWorks gzip parts only with DEMODB_FIXTURE_ADVENTUREWORKS (its manifest is built locally, the gzip pins are the corpus.json ones)",
   "refresh": "rebuild demo-db/websites at the commit you want, copy the two outputs above, update this file; the live smoke workflow (manual) compares them with the live site",
   "sha256": {
     "corpus.json": "9aace4d4ead0d9632936f53963b19d9b27684f710aa029af7a93a2f6a0451a83",

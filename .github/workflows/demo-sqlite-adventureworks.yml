@@ -1,0 +1,135 @@
+name: Demo SQLite AdventureWorks
+
+# The AdventureWorks in-browser journey (download through the chunked gzip parts, verify, open, read, edit, reload, Reset
+# Database), hermetic: apps/datatug-app/e2e/demo-sqlite-adventureworks.spec.ts, one browser (Chromium), against the BUILT app.
+#
+# No request goes to any demodb.dev or openvaultdb.com host (the 2026-10-16 incident, see apps/datatug-app/e2e/README.md): the
+# guard answers the manifest and the two gzip parts from fixtures taken from the PROVIDER repository demo-db/adventureworks on
+# GitHub (scripts/fetch-demodb-fixtures.mjs, DEMODB_FIXTURE_ADVENTUREWORKS=only; the unpacked file's SHA-256 is checked against
+# the catalog pin), the hosts are mapped to 0.0.0.0 in /etc/hosts and Chromium cannot resolve them.
+#
+# Why its own workflow and not a job of ci.yml: the file is 126.8 MB unpacked (35.4 MB of gzip parts) and is downloaded twice
+# (open, then Reset, because a single-copy dataset keeps no pristine copy), so the lane is the heaviest browser journey. It runs
+#   - on a pull request and on a push to main ONLY when a path below changed (the demo SQLite code, its catalog, the dataset
+#     worker, the DemoDB guard and fixtures, this lane, or the dependencies: @dalgo/sqlite-wasm lives in package.json/pnpm-lock),
+#   - by hand (workflow_dispatch), on any ref.
+# NOT on a schedule (the repo policy forbids cron for new workflows), and not part of ci.yml's deploy-gate: the cheap
+# AdventureWorks checks (download prompt, low-storage refusal) stay in the per-PR e2e-demo-sqlite lane.
+# The fixture cache is keyed by the exact inputs that define the fixture (catalog pins, fetch script, corpus.json), so a warm
+# run makes no download at all; a cold run makes 2 requests to raw.githubusercontent.com, never to DemoDB.
+on:
+  pull_request:
+    paths:
+      - 'libs/datatug/main/src/lib/demo-sqlite/**'
+      - 'libs/datatug/main/src/lib/pages/demo-sqlite/**'
+      - 'libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts'
+      - 'libs/datatug/main/src/lib/queries/demodb-ovdb.ts'
+      - 'apps/datatug-app/e2e/demo-sqlite-adventureworks.spec.ts'
+      - 'apps/datatug-app/e2e/helpers/demodb-*'
+      - 'apps/datatug-app/e2e/fixtures/demodb/**'
+      - 'apps/datatug-app/playwright.demo-sqlite-adventureworks.config.ts'
+      - 'scripts/fetch-demodb-fixtures.mjs'
+      - 'scripts/demodb-*.mjs'
+      - '.github/actions/block-demodb/**'
+      - '.github/workflows/demo-sqlite-adventureworks.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'libs/datatug/main/src/lib/demo-sqlite/**'
+      - 'libs/datatug/main/src/lib/pages/demo-sqlite/**'
+      - 'libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts'
+      - 'libs/datatug/main/src/lib/queries/demodb-ovdb.ts'
+      - 'apps/datatug-app/e2e/demo-sqlite-adventureworks.spec.ts'
+      - 'apps/datatug-app/e2e/helpers/demodb-*'
+      - 'apps/datatug-app/e2e/fixtures/demodb/**'
+      - 'apps/datatug-app/playwright.demo-sqlite-adventureworks.config.ts'
+      - 'scripts/fetch-demodb-fixtures.mjs'
+      - 'scripts/demodb-*.mjs'
+      - '.github/actions/block-demodb/**'
+      - '.github/workflows/demo-sqlite-adventureworks.yml'
+      - 'package.json'
+      - 'pnpm-lock.yaml'
+  workflow_dispatch:
+
+permissions:
+  actions: read
+
+concurrency:
+  group: demo-sqlite-adventureworks-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e-demo-sqlite-adventureworks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # Backstop under the Playwright guard: every DemoDB host name is unreachable from this runner (see the action).
+      - name: Block DemoDB hosts
+        uses: ./.github/actions/block-demodb
+
+      - name: Authenticate private Core artifact verification
+        id: core-artifact-token
+        uses: ./.github/actions/private-core-artifact
+        with:
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
+
+      - uses: ./.github/actions/pnpm
+
+      # Exact key: the fixture is fully determined by the catalog pins, the fetch script (provider commit, naming) and the
+      # committed corpus.json (gzip pins). The fetch script re-verifies size and SHA-256 of whatever it finds, so a poisoned or
+      # stale cache entry is refetched, never trusted.
+      - name: Restore AdventureWorks fixture
+        id: demodb-fixtures
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: demodb-adventureworks-fixture-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs', 'apps/datatug-app/e2e/fixtures/demodb/corpus.json') }}
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: nx e2e-demo-sqlite-adventureworks
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+        run: pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks --skip-nx-cache
+
+      - name: Save AdventureWorks fixture
+        if: ${{ always() && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
+        uses: actions/cache/save@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: ${{ steps.demodb-fixtures.outputs.cache-primary-key }}
+
+      - name: Print evidence and DemoDB request report
+        if: always()
+        run: |
+          shopt -s nullglob
+          for f in "$GITHUB_WORKSPACE"/coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e/results/*/adventureworks-evidence.json; do
+            { echo '### AdventureWorks journey evidence'; echo '```json'; cat "$f"; echo; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          done
+          reports=("$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md)
+          if [ "${#reports[@]}" -eq 0 ]; then echo 'no DemoDB request report was written'; fi
+          for report in "${reports[@]}"; do echo "--- $report"; cat "$report"; done
+
+      - name: Upload AdventureWorks e2e report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: demo-sqlite-adventureworks-e2e-report
+          retention-days: 14
+          path: |
+            coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e/report
+            coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e/results
+          if-no-files-found: ignore
