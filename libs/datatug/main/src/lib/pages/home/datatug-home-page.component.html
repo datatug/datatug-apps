@@ -46,14 +46,15 @@
   <!-- Card-header standard (brief §1; founder 2026-10-14): grayish full-width
        header divider in the side-panel chrome family, boundary before content. -->
   <ion-card class="home-hero" data-testid="home-hero">
-    <ion-list lines="full">
-      <ion-item color="light">
-        <ion-label>
-          <p class="hero-eyebrow">DataTug.app</p>
-          <h1>Ask better questions of your data.</h1>
-        </ion-label>
-      </ion-item>
-    </ion-list>
+    <!-- `lines="full"` lives on the item itself: outside an ion-list nothing
+         inherits it, and without it the md item falls back to the inset
+         (inner-border) divider. -->
+    <ion-item color="light" lines="full">
+      <ion-label>
+        <p class="hero-eyebrow">DataTug.app</p>
+        <h1>Ask better questions of your data.</h1>
+      </ion-label>
+    </ion-item>
     <ion-card-content>
       <div class="hero-layout">
         <p class="hero-copy">
@@ -87,13 +88,11 @@
   <sneat-datatug-platform-block />
 
   <ion-card>
-    <ion-list lines="full">
-      <ion-item color="light">
-        <ion-label>
-          <h2>Start a private Detective demo</h2>
-        </ion-label>
-      </ion-item>
-    </ion-list>
+    <ion-item color="light" lines="full">
+      <ion-label>
+        <h2>Start a private Detective demo</h2>
+      </ion-label>
+    </ion-item>
     <ion-card-content>
       <p>
         Sign in to create a server-managed Detective demo project and explore
