@@ -9,6 +9,7 @@ import {
   input,
   output,
   signal,
+  untracked,
 } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import {
@@ -304,7 +305,9 @@ export class HostedIncidentConversationComponent {
     } catch {
       /* Pending retries remain in memory when storage is unavailable. */
     }
-    void this.read(true);
+    // Only the canonical identity resets a draft. Reads also inspect input
+    // objects, whose equivalent replacements must not trigger another reset.
+    untracked(() => void this.read(true));
   });
 
   protected summary = incidentEventSummary;

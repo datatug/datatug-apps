@@ -109,6 +109,38 @@ describe('HostedIncidentConversationComponent', () => {
     expect(f.nativeElement.textContent).toContain('sarah · web');
     expect(f.nativeElement.textContent).toContain('claim');
   });
+  it('preserves DOM-entered text and readiness when a parent returns an equivalent Incident reference', async () => {
+    const f = await mount();
+    const textarea = f.nativeElement.querySelector(
+      'ion-textarea',
+    ) as HTMLElement;
+    const post = () =>
+      Array.from(f.nativeElement.querySelectorAll('ion-button')).find(
+        (button) =>
+          (button as HTMLElement).textContent?.trim() === 'Post message',
+      ) as HTMLElement & { disabled: boolean };
+    textarea.dispatchEvent(
+      new CustomEvent('ionInput', {
+        detail: { value: 'Request received; carrier assignment is missing.' },
+        bubbles: true,
+      }),
+    );
+    await f.whenStable();
+    expect(post().disabled).toBe(false);
+    const reads = client.projectIncident.mock.calls.length;
+    f.componentRef.setInput('incidentRef', { ...incidentRef });
+    await f.whenStable();
+    expect(client.projectIncident).toHaveBeenCalledTimes(reads);
+    expect((textarea as HTMLElement & { value: string }).value).toBe(
+      'Request received; carrier assignment is missing.',
+    );
+    expect(post().disabled).toBe(false);
+    post().click();
+    await f.whenStable();
+    expect(client.incidentAction.mock.calls[0][1].message.body).toBe(
+      'Request received; carrier assignment is missing.',
+    );
+  });
   it('posts a real note with optimistic sequence and server-owned attribution, then permits the same text as a new message', async () => {
     const f = await mount();
     page(f).body.set('Received, but no assignment.');
