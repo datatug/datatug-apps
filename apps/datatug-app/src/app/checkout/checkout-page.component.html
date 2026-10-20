@@ -167,7 +167,11 @@
             account to review your price and continue to payment.
           }
         </p>
-        <sneat-auth-panel [returnTo]="authReturnTo()" [showIntro]="false" />
+        <sneat-auth-panel
+          [returnTo]="authReturnTo()"
+          [showIntro]="false"
+          [initialMode]="returning() ? undefined : 'sign-up'"
+        />
       </section>
     }
     <section
