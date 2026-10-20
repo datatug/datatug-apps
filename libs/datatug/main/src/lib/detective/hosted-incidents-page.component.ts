@@ -122,7 +122,7 @@ import { DetectiveCase, DetectiveState } from './models';
                     @for (item of items; track item.ref.storeId + '/' + item.ref.incidentId) {
                       <ion-item button detail [routerLink]="detailHref(item)"
                         [queryParams]="environmentQuery()">
-                        <ion-label><h2>{{ item.title }}</h2><p>{{ item.status }}</p></ion-label>
+                        <ion-label><h2>{{ item.ref.incidentId }} — {{ item.title }}</h2><p>{{ item.status }}</p></ion-label>
                       </ion-item>
                     }
                   </ion-list>
@@ -171,8 +171,8 @@ import { DetectiveCase, DetectiveState } from './models';
                 <p role="alert">{{ loadError() }}</p>
                 <ion-button (click)="retryLoad()">Retry</ion-button>
               } @else if (incident(); as item) {
-                <h1>{{ item.title }}</h1>
-                <p>Incident {{ item.ref.storeId }}/{{ item.ref.incidentId }} · {{ item.status }}</p>
+                <h1>{{ item.ref.incidentId }} — {{ item.title }}</h1>
+                <p>{{ item.status }}</p>
                 @if (item.description) { <p>{{ item.description }}</p> }
                 @if (scope.context(); as context) {
                   @if (context.kind === 'cloud') {

@@ -84,6 +84,10 @@ describe('HostedIncidentsPageComponent', () => {
     pending.complete();
     await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Order 11039 is missing'));
     expect(fixture.nativeElement.textContent).toContain('Create Incident');
+    expect(fixture.nativeElement.querySelector('ion-list h2')?.textContent).toBe('INC-1 — Order 11039 is missing');
+    expect(fixture.nativeElement.textContent).not.toContain(incident.ref.storeId);
+    expect((fixture.componentInstance as unknown as { detailHref(item: typeof incident): string }).detailHref(incident))
+      .toBe('/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1');
   });
 
   it('creates an Incident without a Case, preserves numeric OrderID, and opens its returned full ref', async () => {
@@ -122,6 +126,8 @@ describe('HostedIncidentsPageComponent', () => {
       'demo', 'detective-incidents-9c561d36/INC-1',
     ));
     await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Detective Case incident-case-1'));
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('INC-1 — Order 11039 is missing');
+    expect(fixture.nativeElement.textContent).not.toContain(incident.ref.storeId);
     await (fixture.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
     expect(client.incidentAction.mock.calls[0][1]).toMatchObject({
       type: 'start-case', incidentRef: 'detective-incidents-9c561d36/INC-1',
@@ -184,7 +190,8 @@ describe('HostedIncidentsPageComponent', () => {
     routeParams$.next(convertToParamMap({
       incidentStoreId: second.ref.storeId, incidentId: second.ref.incidentId,
     }));
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Second Incident'));
+    await vi.waitFor(() => expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('INC-2 — Second Incident'));
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).not.toContain('INC-1');
     expect(fixture.nativeElement.textContent).not.toContain(incident.title);
     expect(client.projectIncident).toHaveBeenLastCalledWith(
       expect.objectContaining({ kind: 'cloud' }), 'demo',
