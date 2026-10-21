@@ -49,7 +49,11 @@ const initial: Board = {
 };
 describe('HostedBoardWorkspaceComponent DOM authoring', () => {
   let scope: {
-    page: { ref: () => typeof ref; identity: () => string };
+    page: {
+      ref: () => typeof ref;
+      identity: () => string;
+      scopeChanges$: Subject<string>;
+    };
     identity: ReturnType<typeof signal<string>>;
     admitted: ReturnType<typeof signal<boolean>>;
     canWrite: ReturnType<typeof signal<boolean>>;
@@ -76,7 +80,11 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     revision = 'rev1';
     writes = [];
     scope = {
-      page: { ref: () => ref, identity: () => 'sarah/space/training' },
+      page: {
+        ref: () => ref,
+        identity: () => 'sarah/space/training',
+        scopeChanges$: new Subject<string>(),
+      },
       identity: signal('sarah/space/training/demo'),
       admitted: signal(true),
       canWrite: signal(true),

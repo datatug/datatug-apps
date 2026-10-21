@@ -15,6 +15,7 @@ import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { DetectiveClientService } from '../detective/detective-client.service';
 import { ShippingApiService } from '../shipping/shipping-api.service';
 import { ShippingWorkspaceComponent } from '../shipping/shipping-workspace.component';
+import { HostedBoardWorkspaceComponent } from '../board/ui/pages/board/hosted-board-workspace.component';
 import { BoardPageComponent } from '../board/ui/pages/board/board-page.component';
 import { BoardsPageComponent } from '../board/ui/pages/boards/boards-page.component';
 import { ProjectAssetsReadService } from '../services/project/project-assets-read.service';
@@ -29,6 +30,7 @@ const ref = { storeId: 'firestore', spaceID: 'S1', projectId: 'same' };
 const base = '/space/S1/store/firestore/project/same';
 describe('actual native Space router workspaces', () => {
   const shipping = { revision: vi.fn(), action: vi.fn() };
+  const hostedAssets = { board: vi.fn(), boards: vi.fn() };
   const legacyAssets = { board: vi.fn(), boards: vi.fn() };
   beforeEach(() => {
     sessionStorage.clear();
@@ -42,6 +44,15 @@ describe('actual native Space router workspaces', () => {
         artifacts: [],
       }),
     );
+    hostedAssets.board
+      .mockReset()
+      .mockReturnValue(
+        of({
+          board: { id: 'operations', title: 'Operations', rows: [] },
+          revision: 'rev1',
+        }),
+      );
+    hostedAssets.boards.mockReset().mockReturnValue(of([]));
     legacyAssets.board.mockReset();
     legacyAssets.boards.mockReset();
     vi.stubGlobal(
@@ -101,7 +112,7 @@ describe('actual native Space router workspaces', () => {
         { provide: ProjectAssetsReadService, useValue: legacyAssets },
         {
           provide: ProjectAssetsApiService,
-          useValue: { boards: () => of([]), board: vi.fn() },
+          useValue: hostedAssets,
         },
         {
           provide: ProjectQueryApiService,
@@ -168,6 +179,29 @@ describe('actual native Space router workspaces', () => {
         expect(h.routeNativeElement?.textContent).toContain('New board');
     },
   );
+  it('cold-loads the actual scoped Board identity and explicit environment into the canonical hosted renderer', async () => {
+    const h = await RouterTestingHarness.create();
+    const page = await h.navigateByUrl(
+      `${base}/board/operations?environment=training`,
+      BoardPageComponent,
+    );
+    expect(page.boardId()).toBe('operations');
+    const workspace = h.routeDebugElement?.query(
+      By.directive(HostedBoardWorkspaceComponent),
+    )?.componentInstance as HostedBoardWorkspaceComponent | undefined;
+    if (!workspace) throw new Error('Missing actual hosted Board workspace.');
+    await vi.waitFor(() => expect(workspace.draft()?.title).toBe('Operations'));
+    expect(hostedAssets.board).toHaveBeenCalledWith(
+      ref,
+      'training',
+      'operations',
+    );
+    await h.fixture.whenStable();
+    expect(
+      h.routeNativeElement?.querySelector('sneat-datatug-board'),
+    ).toBeTruthy();
+    expect(legacyAssets.board).not.toHaveBeenCalled();
+  });
   it('resolves the actual rendered native menu Boards destination to its existing real page', async () => {
     const h = await RouterTestingHarness.create();
     const menu = TestBed.createComponent(ProjectMenuComponent);

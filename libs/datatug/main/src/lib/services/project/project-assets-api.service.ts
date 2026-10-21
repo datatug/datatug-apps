@@ -103,7 +103,7 @@ export class ProjectAssetsApiService {
         revision?: unknown;
         receipt?: unknown;
       }>('datatug/boards/save_board', body, {
-        retryUnauthorizedOnce: true,
+        retryUnauthorizedOnce: false,
       });
     }).pipe(
       map((saved) => {

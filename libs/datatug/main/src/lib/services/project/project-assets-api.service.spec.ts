@@ -26,6 +26,30 @@ describe('ProjectAssetsApiService', () => {
     http = TestBed.inject(HttpTestingController);
   });
   afterEach(() => http.verify());
+  it('does not retry an old Board mutation with a different current credential after401', async () => {
+    const bridge = TestBed.inject(SneatApiAuthTokenBridge);
+    bridge.setExplicitToken('token-A');
+    const write = {
+      board,
+      operationId: 'sarah-board-op',
+      ifMatch: 'revision-1',
+    };
+    const failed = vi.fn();
+    const subscription = TestBed.inject(ProjectAssetsApiService)
+      .saveBoard(ref, 'demo', write)
+      .subscribe({ error: failed });
+    const first = http.expectOne((r) => r.url.endsWith('/boards/save_board'));
+    expect(first.request.headers.get('Authorization')).toBe('Bearer token-A');
+    bridge.setExplicitToken('token-B');
+    first.flush({}, { status: 401, statusText: 'Unauthorized' });
+    await Promise.resolve();
+    const repeats = http.match((r) => r.url.endsWith('/boards/save_board'));
+    subscription.unsubscribe();
+    expect(repeats.map((r) => r.request.headers.get('Authorization'))).toEqual(
+      [],
+    );
+    expect(failed).toHaveBeenCalledOnce();
+  });
   it('qualifies authenticated board reads with Space/project/environment and retains the opaque revision', async () => {
     const promise = firstValueFrom(
       TestBed.inject(ProjectAssetsApiService).board(ref, 'demo', 'shipping'),

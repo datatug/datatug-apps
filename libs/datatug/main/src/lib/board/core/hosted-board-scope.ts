@@ -20,6 +20,7 @@ export class HostedBoardScope {
     initialValue: this.route.snapshot.queryParamMap,
   });
   readonly state = signal<DetectiveState | undefined>(undefined);
+  private readonly stateIdentity = signal<string | undefined>(undefined);
   readonly error = signal('');
   readonly loading = signal(false);
   private readonly revision = signal(0);
@@ -28,6 +29,7 @@ export class HostedBoardScope {
   readonly admitted = computed(
     () =>
       !!this.page.context()?.principal &&
+      this.stateIdentity() === this.page.identity() &&
       !!this.state()?.capabilities.canRead &&
       this.environments().includes(this.environment()),
   );
@@ -41,6 +43,8 @@ export class HostedBoardScope {
     effect((onCleanup) => {
       this.revision();
       const context = this.page.context();
+      const identity = this.page.identity();
+      this.stateIdentity.set(undefined);
       this.state.set(undefined);
       this.error.set('');
       this.loading.set(false);
@@ -49,7 +53,10 @@ export class HostedBoardScope {
       this.loading.set(true);
       void firstValueFrom(this.client.state(context))
         .then((state) => {
-          if (!cancelled) this.state.set(state);
+          if (!cancelled) {
+            this.stateIdentity.set(identity);
+            this.state.set(state);
+          }
         })
         .catch((error) => {
           if (!cancelled) this.error.set(detectiveErrorMessage(error, true));
@@ -66,6 +73,7 @@ export class HostedBoardScope {
     this.revision.update((n) => n + 1);
   }
   deny(error: unknown): void {
+    this.stateIdentity.set(undefined);
     this.state.set(undefined);
     this.error.set(detectiveErrorMessage(error, true));
   }
