@@ -1,6 +1,6 @@
 import type { Breadcrumb, BrowserOptions, ErrorEvent } from '@sentry/browser';
 import { loopbackAgentOrigin } from '../agent-access/agent-link-code';
-import { onLinkRoute, scrubDeep, scrubUrl } from './link-privacy';
+import { onLinkRoute, scrubDeep, scrubUrl, hasQuickSearchOrigin } from './link-privacy';
 
 /** The transaction event of `beforeSendTransaction` (not exported by `@sentry/browser` itself). */
 export type TransactionEvent = Parameters<
@@ -22,7 +22,7 @@ function scrubRequestBreadcrumb(
 ): Breadcrumb {
   const data = breadcrumb.data ?? {};
   const url = typeof data['url'] === 'string' ? data['url'] : '';
-  if (!loopbackAgentOrigin(url)) {
+  if (!loopbackAgentOrigin(url) && !hasQuickSearchOrigin(url)) {
     return scrubDeep(breadcrumb, dropQuery);
   }
   return {
@@ -37,8 +37,8 @@ function scrubRequestBreadcrumb(
 }
 
 /** Sentry's `beforeBreadcrumb`: see {@link withSentryLinkPrivacy}. */
-export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null {
-  const dropQuery = onLinkRoute();
+export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb, sourceSensitive = false): Breadcrumb | null {
+  const dropQuery = sourceSensitive || onLinkRoute() || hasQuickSearchOrigin(breadcrumb);
   const category = breadcrumb.category ?? '';
   if (dropQuery && PAGE_TEXT_CATEGORIES.has(category)) {
     return null;
@@ -53,7 +53,7 @@ export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb): Breadcrumb | null
 export function scrubSentryEvent<T extends ErrorEvent | TransactionEvent>(
   event: T,
 ): T {
-  const dropQuery = onLinkRoute();
+  const dropQuery = onLinkRoute() || hasQuickSearchOrigin(event);
   const scrubbed = scrubDeep(event, dropQuery);
   if (scrubbed.request) {
     const { url } = scrubbed.request;
@@ -67,7 +67,7 @@ export function scrubSentryEvent<T extends ErrorEvent | TransactionEvent>(
   }
   if (scrubbed.breadcrumbs) {
     scrubbed.breadcrumbs = scrubbed.breadcrumbs
-      .map((b: Breadcrumb) => scrubSentryBreadcrumb(b))
+      .map((b: Breadcrumb) => scrubSentryBreadcrumb(b, dropQuery))
       .filter((b): b is Breadcrumb => !!b);
   }
   if (dropQuery) {
@@ -100,7 +100,7 @@ export function withSentryLinkPrivacy(options: BrowserOptions): BrowserOptions {
         : scrubbed;
     },
     beforeSendSpan: (span) => {
-      const scrubbed = scrubDeep(span, onLinkRoute());
+      const scrubbed = scrubDeep(span, onLinkRoute() || hasQuickSearchOrigin(span));
       return beforeSendSpan ? beforeSendSpan(scrubbed) : scrubbed;
     },
     beforeBreadcrumb: (breadcrumb, hint) => {

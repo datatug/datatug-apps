@@ -508,6 +508,13 @@ ion-card > ion-list:is(.list-md, .list-ios) {
   padding-bottom: 0;
 }
 
+// Project overview cards keep dividers between rows, never beneath their final row.
+sneat-datatug-project ion-card > ion-item:last-child,
+sneat-datatug-project ion-card > ion-list > ion-item:last-child {
+  --border-width: 0;
+  --inner-border-width: 0;
+}
+
 // REQ:semantic-markers-in-grid — env-db-table.page.ts embeds this exact markup (icon
 // + class) directly into a Tabulator column's `title` HTML string (see
 // columnTitleWithMarker() there), because that content is injected via
