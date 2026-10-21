@@ -134,7 +134,9 @@ describe('EnvSelectorComponent renders the current project/env once they arrive 
       fixture.nativeElement.querySelectorAll('ion-segment-button').length,
     ).toBe(2);
     expect(fixture.nativeElement.textContent).toContain('currentEnvId: prod');
-    currentProject$.next({ ...project, summary: { ...project.summary!, environments: undefined } });
+    const summary = project.summary;
+    if (!summary) throw new Error('Expected project summary fixture.');
+    currentProject$.next({ ...project, summary: { ...summary, environments: undefined } });
     await fixture.whenStable();
     expect(fixture.componentInstance.currentEnvId()).toBeUndefined();
     expect(fixture.nativeElement.querySelectorAll('ion-segment-button').length).toBe(0);
