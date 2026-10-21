@@ -153,7 +153,9 @@ describe('HomePage composition', () => {
     );
     expect(hero.querySelector('ion-item[color="light"]')).toBeNull();
     const image = hero.querySelector('img.hero-visual');
-    expect(image?.getAttribute('src')).toBe('assets/home/hero-data-panorama.webp');
+    expect(image?.getAttribute('src')).toBe(
+      'assets/home/hero-data-panorama.webp',
+    );
     expect(image?.getAttribute('alt')).toContain('tugboat');
     expect(hero.querySelector('ion-list')).toBeNull();
   });
@@ -170,4 +172,29 @@ describe('HomePage composition', () => {
       'Explore the public demo',
     );
   });
+});
+
+describe('HomePage intro video', () => {
+  afterEach(() => TestBed.resetTestingModule());
+
+  it('features the DataTug intro video right after the hero', () => {
+    const fixture = configure('notAuthenticated', PRODUCT_PROFILES.datatug);
+    const video = fixture.nativeElement.querySelector(
+      'sneat-datatug-intro-video',
+    );
+    expect(video).not.toBeNull();
+    expect(video.previousElementSibling?.getAttribute('data-testid')).toBe(
+      'home-hero',
+    );
+  });
+
+  it.each(['incidentius', 'dashboardius'] as const)(
+    '%s profile has no intro video',
+    (id) => {
+      const fixture = configure('notAuthenticated', PRODUCT_PROFILES[id]);
+      expect(
+        fixture.nativeElement.querySelector('sneat-datatug-intro-video'),
+      ).toBeNull();
+    },
+  );
 });
