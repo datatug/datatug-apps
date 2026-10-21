@@ -27,6 +27,32 @@ describe('Incident presentation boundary validation', () => {
       status: 'not-eligible',
     });
   });
+  it('keeps compatible legacy operation IDs and rejects unsafe or overlong stored attempts without rewriting them', () => {
+    const pending = { expectedSeq: 1, message: { body: 'Original message' } };
+    for (const operationId of [
+      'operation-legacy_ABC-123',
+      'operation-',
+      'operation-' + 'a'.repeat(118),
+    ]) {
+      expect(isPendingIncidentMessage({ ...pending, operationId })).toBe(true);
+    }
+    for (const operationId of [
+      'operation-/bad',
+      'operation-a.b',
+      'operation- bad',
+      'operation-é',
+      'operation-a\n',
+      'operation-' + 'a'.repeat(119),
+      'legacy-valid_123',
+    ]) {
+      const serialized = JSON.stringify({ ...pending, operationId });
+      const restored: unknown = JSON.parse(serialized);
+      expect(isPendingIncidentMessage(restored)).toBe(false);
+      // Invalid stored attempts reach the existing blocked/reviewed-abandonment
+      // branch; validation must never sanitize them into dispatchable retries.
+      expect(JSON.stringify(restored)).toBe(serialized);
+    }
+  });
   it('validates stored pending shapes without coercing optional refs or changing payloads', () => {
     const pending = {
       operationId: 'operation-original',

@@ -66,6 +66,8 @@ export function isPendingIncidentMessage(
     !keys(value, ['operationId', 'expectedSeq', 'message']) ||
     typeof value['operationId'] !== 'string' ||
     !value['operationId'].startsWith('operation-') ||
+    value['operationId'].length > 128 ||
+    /[^A-Za-z0-9_-]/.test(value['operationId']) ||
     !Number.isSafeInteger(value['expectedSeq']) ||
     (value['expectedSeq'] as number) < 1
   )
