@@ -515,9 +515,7 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     await fixture.whenStable();
     const input = (type: string) => {
       const element = Array.from(
-        fixture.nativeElement.querySelectorAll('ion-input') as NodeListOf<
-          HTMLElement & { placeholder: string }
-        >,
+        fixture.nativeElement.querySelectorAll('ion-input') as NodeListOf<HTMLIonInputElement>,
       ).find((element) => element.placeholder === type);
       if (!element) throw new Error(`Missing ${type} parameter input`);
       return element;
@@ -529,8 +527,8 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     const parameterSection = fixture.nativeElement.querySelector('section.board-parameters');
     expect(parameterSection.getAttribute('aria-label')).toBe('Board parameters');
     expect(parameterSection.querySelector('ion-card')).toBeNull();
-    expect((input('integer') as HTMLElement & { label: string; labelPlacement: string }).label).toBe('Count');
-    expect((input('integer') as HTMLElement & { labelPlacement: string }).labelPlacement).toBe('fixed');
+    expect(input('integer').label).toBe('Count');
+    expect(input('integer').labelPlacement).toBe('fixed');
     const original = fixture.componentInstance.boardContext();
     enter('integer', '42');
     enter('boolean', 'false');
