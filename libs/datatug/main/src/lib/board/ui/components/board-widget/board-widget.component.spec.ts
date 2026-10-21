@@ -197,11 +197,13 @@ describe('BoardWidgetComponent', () => {
     });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Run on board');
+    expect(fixture.nativeElement.querySelector('ion-toolbar ion-buttons[slot="end"] ion-button')?.getAttribute('aria-label')).toContain('Run on board');
     await fixture.componentInstance.run();
     fixture.detectChanges();
     expect(readBoard).toHaveBeenCalledWith(ref, 'board1');
     expect(getQuery).toHaveBeenCalledTimes(2);
     expect(run).toHaveBeenCalledTimes(1);
+    expect(fixture.componentInstance.primaryActionLabel()).toBe('Refresh on board');
     expect(run.mock.calls[0][0]).toMatchObject({
       definition: { connectionId: 'chinook-sqlite' },
       projectRef: ref,

@@ -6,8 +6,15 @@ import {
   input,
   computed,
 } from '@angular/core';
-import { IonCard, IonItem, IonLabel } from '@ionic/angular';
+import {
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonToolbar,
+  IonButtons,
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
+import { NgTemplateOutlet } from '@angular/common';
 import { BoardCard, BoardWidgetName } from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
@@ -37,7 +44,15 @@ export class BoardCardTabService {
   templateUrl: './board-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [BoardCardTabService],
-  imports: [IonCard, IonItem, IonLabel, BoardWidgetComponent],
+  imports: [
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonToolbar,
+    IonButtons,
+    NgTemplateOutlet,
+    BoardWidgetComponent,
+  ],
   host: {
     '[attr.data-board-card-id]': 'boarCardDef()?.id',
     '[attr.tabindex]':
@@ -46,6 +61,19 @@ export class BoardCardTabService {
   },
   styles: [
     `
+      ion-card-header {
+        padding: 0;
+      }
+      ion-toolbar {
+        --min-height: 3rem;
+        --padding-start: 1rem;
+        --padding-end: 0.5rem;
+      }
+      ion-card-title {
+        font-size: 1rem;
+        padding-block: 0.65rem;
+        overflow-wrap: anywhere;
+      }
       .tutorial-card-guide {
         margin: 0.75rem;
         padding: 1rem;

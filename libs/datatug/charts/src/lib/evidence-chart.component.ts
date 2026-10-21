@@ -43,19 +43,25 @@ echarts.use([
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section role="region" [attr.aria-label]="title()">
-      <header>
-        <h3>{{ title() }}</h3>
-        <span>Held query result</span>
-      </header>
+      @if (showHeader()) {
+        <header>
+          <h3>{{ title() }}</h3>
+          <span>Held query result</span>
+        </header>
+      }
       @if (loading()) {
-        <p role="status">Preparing held evidence…</p>
+        <p role="status">
+          {{ embedded() ? 'Loading chart…' : 'Preparing held evidence…' }}
+        </p>
       } @else if (error()) {
         <p role="alert">{{ error() }}</p>
       } @else if (data(); as held) {
-        <p class="scope">
-          {{ held.source.id }} · generation {{ held.source.generation }} ·
-          {{ held.provenance.observedAt }}
-        </p>
+        @if (!embedded()) {
+          <p class="scope">
+            {{ held.source.id }} · generation {{ held.source.generation }} ·
+            {{ held.provenance.observedAt }}
+          </p>
+        }
         @if (held.limitations.length) {
           <p role="note">
             Source policy limitations apply. Inspect the source result for
@@ -73,10 +79,21 @@ echarts.use([
             "
           ></div>
           <p class="meaning">{{ meaning() }}</p>
-          <details open>
+          <details [open]="!embedded()">
             <summary>
-              Exact held rows and evidence ({{ held.rows.length }})
+              {{
+                embedded()
+                  ? 'Source and exact data'
+                  : 'Exact held rows and evidence'
+              }}
+              ({{ held.rows.length }})
             </summary>
+            @if (embedded()) {
+              <p class="scope">
+                {{ held.source.id }} · generation {{ held.source.generation }} ·
+                {{ held.provenance.observedAt }}
+              </p>
+            }
             <div
               class="table-scroll"
               tabindex="0"
@@ -139,10 +156,31 @@ echarts.use([
             </div>
           </details>
         } @else {
-          <p role="status">No rows in this held result.</p>
+          <p role="status">
+            {{
+              embedded()
+                ? 'The query returned no rows.'
+                : 'No rows in this held result.'
+            }}
+          </p>
+          @if (embedded()) {
+            <details>
+              <summary>Source details</summary>
+              <p class="scope">
+                {{ held.source.id }} · generation {{ held.source.generation }} ·
+                {{ held.provenance.observedAt }}
+              </p>
+            </details>
+          }
         }
       } @else {
-        <p role="status">A complete admitted held result is required.</p>
+        <p role="status">
+          {{
+            embedded()
+              ? 'Run this chart to load its data.'
+              : 'A complete admitted held result is required.'
+          }}
+        </p>
       }
     </section>
   `,
@@ -255,6 +293,9 @@ echarts.use([
   `,
 })
 export class EvidenceChartComponent {
+  readonly embedded = input(false);
+  readonly showHeader = input(true);
+  readonly heading = input<string>();
   readonly data = input<PreparedEvidenceChart | null>(null);
   readonly loading = input(false);
   readonly error = input<string | null>(null);
@@ -299,6 +340,8 @@ export class EvidenceChartComponent {
     });
   }
   title(): string {
+    const heading = this.heading()?.trim();
+    if (heading) return heading;
     return this.data()?.kind === 'timeline'
       ? 'Observed milestones'
       : this.data()?.kind === 'heatmap'

@@ -465,8 +465,11 @@
                         /></label>
                       }
                     }
-                    <sneat-datatug-chart-source-editor [definition]="chart" [queries]="tutorialSourceQueries(editor)" (edit)="editTutorialSource(editor, $event)" />
-
+                    <sneat-datatug-chart-source-editor
+                      [definition]="chart"
+                      [queries]="tutorialSourceQueries(editor)"
+                      (edit)="editTutorialSource(editor, $event)"
+                    />
                   }
                 </fieldset>
               }
@@ -477,54 +480,58 @@
     }
 
     @if (boardDef() && parameters()?.length) {
-      <ion-card>
+      <section class="board-parameters" aria-label="Board parameters">
         @if (lookupUnavailable()) {
-          <p class="ion-padding" role="status">
+          <p class="parameter-help" role="status">
             Lookup is unavailable for this project connection or branch. Enter
             parameter values manually.
           </p>
         }
-        <p class="ion-padding">
-          Parameter changes clear previous results. Run or refresh a card to use
-          the new values.
+        <p class="parameter-help">
+          Change a value, then run or refresh a card. Previous results are cleared.
         </p>
         @for (p of parameters(); track p.def.id) {
-          <ion-item [title]="'@' + p.def.id">
-            <ion-label color="medium">{{ p.def.title || p.def.id }}</ion-label>
-            <ion-input
-              [placeholder]="p.def.type"
-              [value]="parameterText(p)"
-              [attr.aria-invalid]="parameterErrors()[p.def.id] ? 'true' : null"
-              [attr.aria-describedby]="
-                parameterErrors()[p.def.id]
-                  ? 'board-parameter-error-' + p.def.id
-                  : null
-              "
-              (ionInput)="setParameterValue(p, $event.detail.value)"
-            />
-            <ion-buttons slot="end">
-              @if (p.def.lookup && !lookupUnavailable()) {
-                <ion-button
-                  color="medium"
-                  [title]="p.def.lookup.sql"
-                  (click)="lookup(p)"
-                >
-                  <ion-icon name="list-outline" />
-                </ion-button>
-              }
-            </ion-buttons>
-          </ion-item>
-          @if (parameterErrors()[p.def.id]; as error) {
-            <p
-              role="alert"
-              class="ion-padding-horizontal"
-              [id]="'board-parameter-error-' + p.def.id"
-            >
-              {{ error }}
-            </p>
-          }
+          <div class="board-parameter">
+            <ion-item [title]="'@' + p.def.id">
+              <ion-input
+                [label]="p.def.title || p.def.id"
+                labelPlacement="fixed"
+                [placeholder]="p.def.type"
+                [value]="parameterText(p)"
+                [attr.aria-invalid]="
+                  parameterErrors()[p.def.id] ? 'true' : null
+                "
+                [attr.aria-describedby]="
+                  parameterErrors()[p.def.id]
+                    ? 'board-parameter-error-' + p.def.id
+                    : null
+                "
+                (ionInput)="setParameterValue(p, $event.detail.value)"
+              />
+              <ion-buttons slot="end">
+                @if (p.def.lookup && !lookupUnavailable()) {
+                  <ion-button
+                    color="medium"
+                    [title]="p.def.lookup.sql"
+                    (click)="lookup(p)"
+                  >
+                    <ion-icon name="list-outline" />
+                  </ion-button>
+                }
+              </ion-buttons>
+            </ion-item>
+            @if (parameterErrors()[p.def.id]; as error) {
+              <p
+                role="alert"
+                class="ion-padding-horizontal"
+                [id]="'board-parameter-error-' + p.def.id"
+              >
+                {{ error }}
+              </p>
+            }
+          </div>
         }
-      </ion-card>
+      </section>
     }
 
     @if (

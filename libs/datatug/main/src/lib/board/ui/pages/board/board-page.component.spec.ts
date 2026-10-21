@@ -526,6 +526,11 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       input(type).dispatchEvent(
         new CustomEvent('ionInput', { detail: { value }, bubbles: true }),
       );
+    const parameterSection = fixture.nativeElement.querySelector('section.board-parameters');
+    expect(parameterSection.getAttribute('aria-label')).toBe('Board parameters');
+    expect(parameterSection.querySelector('ion-card')).toBeNull();
+    expect((input('integer') as HTMLElement & { label: string; labelPlacement: string }).label).toBe('Count');
+    expect((input('integer') as HTMLElement & { labelPlacement: string }).labelPlacement).toBe('fixed');
     const original = fixture.componentInstance.boardContext();
     enter('integer', '42');
     enter('boolean', 'false');

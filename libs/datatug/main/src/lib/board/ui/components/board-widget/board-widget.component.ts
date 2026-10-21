@@ -1,6 +1,10 @@
-import { NgComponentOutlet } from '@angular/common';
+import { NgComponentOutlet, NgTemplateOutlet } from '@angular/common';
 import { IndependentBarsComponent } from './independent-bars.component';
-import { admitIndependentSource, prepareIndependentBars, type IndependentSourceState } from './independent-bars';
+import {
+  admitIndependentSource,
+  prepareIndependentBars,
+  type IndependentSourceState,
+} from './independent-bars';
 import { HttpErrorResponse } from '@angular/common/http';
 import { HeldRowEvidenceComponent } from '../../../../evidence/held-row-evidence.component';
 import { RetainedEvidenceViewerComponent } from '../../../../evidence/retained-evidence-viewer.component';
@@ -28,12 +32,21 @@ import {
   input,
   output,
   WritableSignal,
+  TemplateRef,
+  viewChild,
   untracked,
 } from '@angular/core';
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
-import { IonButton } from '@ionic/angular';
+import {
+  IonButton,
+  IonButtons,
+  IonToolbar,
+  IonTitle,
+  IonIcon,
+} from '@ionic/angular';
+import { playOutline, openOutline } from 'ionicons/icons';
 import {
   BoardWidget,
   ChartWidgetDef,
@@ -115,7 +128,14 @@ export interface BoardResultSnapshot {
   templateUrl: './board-widget.component.html',
   styleUrl: './board-widget.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgComponentOutlet, IndependentBarsComponent,
+  imports: [
+    NgComponentOutlet,
+    NgTemplateOutlet,
+    IonButtons,
+    IonToolbar,
+    IonTitle,
+    IonIcon,
+    IndependentBarsComponent,
     RetainedEvidenceViewerComponent,
     HeldRowEvidenceComponent,
     EvidenceChartComponent,
@@ -130,6 +150,41 @@ export interface BoardResultSnapshot {
   ],
 })
 export class BoardWidgetComponent {
+  readonly embedded = input(false);
+  readonly cardTitle = input<string>();
+  readonly headerActions = viewChild<TemplateRef<unknown>>(
+    'widgetHeaderActions',
+  );
+  readonly playIcon = playOutline;
+  readonly openIcon = openOutline;
+  readonly displayTitle = computed(
+    () =>
+      this.cardTitle() ||
+      this.chartWidgetDef()?.title ||
+      this.sqlWidgetDef()?.title ||
+      this.definition()?.title ||
+      (this.widgetDef()?.name === 'chart'
+        ? 'Chart'
+        : this.widgetDef()?.name === 'SQL'
+          ? 'Query results'
+          : this.widgetDef()?.name || 'Widget'),
+  );
+  readonly hasHeaderActions = computed(
+    () =>
+      !this.executionOnly() &&
+      !this.independent() &&
+      ['chart', 'SQL'].includes(this.widgetDef()?.name || ''),
+  );
+  readonly primaryActionLabel = computed(() => {
+    const attach =
+      this.evidenceKind() && !!this.boardContext()?.evidenceSelection;
+    if (this.running()) return attach ? 'Running and attaching…' : 'Running…';
+    const verb = this.runError() ? 'Retry' : this.result() ? 'Refresh' : 'Run';
+    return this.widgetDef()?.name === 'chart'
+      ? `${verb}${attach ? ' and attach' : ''} chart`
+      : `${verb} on board`;
+  });
+
   /** Select a real binding while retaining the complete widget for fresh board admission. */
   readonly sourceBindingId = input<string>();
   readonly executionOnly = input(false);

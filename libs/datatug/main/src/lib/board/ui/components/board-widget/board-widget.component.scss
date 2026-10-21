@@ -80,3 +80,12 @@ th {
   outline: 3px solid #2563eb;
   outline-offset: 2px;
 }
+
+.widget-header {
+  --min-height: 3rem;
+}
+@media (max-width: 36rem) {
+  .header-action-text {
+    display: none;
+  }
+}
