@@ -189,6 +189,12 @@ export class NativeSemanticBrowserComponent {
         ])
       : undefined;
   });
+  readonly mappingChoiceAvailable = computed(
+    () =>
+      this.resolution()?.provenance !== 'declared' ||
+      !!this.pending() ||
+      this.blocked(),
+  );
   readonly saveAllowed = computed(() => {
     const selected = this.selected(),
       resolved = this.resolution(),
@@ -203,6 +209,7 @@ export class NativeSemanticBrowserComponent {
       !!selected &&
       !!resolved &&
       resolved.value.type !== 'null' &&
+      resolved.provenance !== 'declared' &&
       !!e?.revision &&
       !!f &&
       f.type === resolved.value.type
@@ -476,6 +483,7 @@ export class NativeSemanticBrowserComponent {
     if (
       this.busy() ||
       !this.resolution() ||
+      !this.mappingChoiceAvailable() ||
       this.resolution()?.value.type === 'null'
     )
       return;

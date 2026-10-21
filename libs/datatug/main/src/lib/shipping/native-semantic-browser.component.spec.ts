@@ -206,6 +206,82 @@ describe('Native physical inspection and durable mapping DOM', () => {
     expect(f.nativeElement.textContent).toContain('Applicable Checks');
     expect(api.addMapping).not.toHaveBeenCalled();
   });
+  it('keeps a declared mapping readable without offering or dispatching a fresh mapping', async () => {
+    api.resolve.mockResolvedValue({
+      column: 'request_id',
+      value: { type: 'string', value: 'request-11045' },
+      entity: 'ShippingRequest',
+      field: 'id',
+      provenance: 'declared',
+    });
+    const f = await mount();
+    await inspect(f);
+    expect(f.nativeElement.textContent).toContain('Declared');
+    expect(f.nativeElement.textContent).toContain('ShippingRequest.id');
+    expect(f.nativeElement.textContent).not.toContain('Add existing meaning');
+    await f.componentInstance.openPicker();
+    f.componentInstance.fieldId.set('id');
+    expect(f.componentInstance.entity()?.entity.id).toBe('ShippingRequest');
+    expect(f.componentInstance.picker()).toBe(false);
+    expect(f.componentInstance.saveAllowed()).toBe(false);
+    await f.componentInstance.save();
+    expect(api.addMapping).not.toHaveBeenCalled();
+    expect(assets.entities).not.toHaveBeenCalled();
+  });
+  it('allows an inferred meaning to become explicit and keeps pending recovery available after declaration', async () => {
+    api.resolve.mockResolvedValue({
+      column: 'request_id',
+      value: { type: 'string', value: 'request-11045' },
+      entity: 'ShippingRequest',
+      field: 'id',
+      provenance: 'inferred',
+    });
+    const f = await mount();
+    await prepare(f);
+    expect(f.nativeElement.textContent).toContain('Add existing meaning');
+    expect(f.componentInstance.saveAllowed()).toBe(true);
+    await f.componentInstance.save();
+    expect(f.componentInstance.pending()).toBeTruthy();
+    api.resolve.mockResolvedValue({
+      column: 'request_id',
+      value: { type: 'string', value: 'request-11045' },
+      entity: 'ShippingRequest',
+      field: 'id',
+      provenance: 'declared',
+    });
+    await f.componentInstance.selectCell(0, 0);
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain('Choose entity for review');
+    expect(f.nativeElement.textContent).not.toContain('Add existing meaning');
+    await f.componentInstance.openPicker();
+    expect(f.componentInstance.picker()).toBe(true);
+    expect(f.componentInstance.saveAllowed()).toBe(false);
+    await f.componentInstance.chooseEntity('ShippingRequest');
+    await f.componentInstance.reviewPending();
+    expect(f.componentInstance.reviewed()).toBe(true);
+    expect(api.addMapping).toHaveBeenCalledOnce();
+  });
+  it('keeps corrupt-attempt recovery entity review available for an already declared cell', async () => {
+    sessionStorage.setItem(mappingJournalKey(scope()), '{');
+    api.resolve.mockResolvedValue({
+      column: 'request_id',
+      value: { type: 'string', value: 'request-11045' },
+      entity: 'ShippingRequest',
+      field: 'id',
+      provenance: 'declared',
+    });
+    const f = await mount();
+    await inspect(f);
+    expect(f.componentInstance.blocked()).toBe(true);
+    expect(f.nativeElement.textContent).toContain('Choose entity for review');
+    await f.componentInstance.openPicker();
+    await f.componentInstance.chooseEntity('ShippingRequest');
+    f.componentInstance.fieldId.set('id');
+    expect(f.componentInstance.saveAllowed()).toBe(false);
+    await f.componentInstance.reviewPending();
+    expect(f.componentInstance.reviewed()).toBe(true);
+    expect(api.addMapping).not.toHaveBeenCalled();
+  });
   it('keeps Cancel at the same cell and missing entity revision/readonly/type mismatch cannot save', async () => {
     const f = await mount();
     await prepare(f);

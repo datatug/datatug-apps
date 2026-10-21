@@ -194,15 +194,17 @@
           @if (resolved.rule) {
             <p>{{ resolved.rule }}</p>
           }
-          <ion-button
-            (click)="openPicker()"
-            [disabled]="busy() || restoring()"
-            >{{
-              pending() || blocked()
-                ? 'Choose entity for review'
-                : 'Add existing meaning'
-            }}</ion-button
-          >
+          @if (mappingChoiceAvailable()) {
+            <ion-button
+              (click)="openPicker()"
+              [disabled]="busy() || restoring()"
+              >{{
+                pending() || blocked()
+                  ? 'Choose entity for review'
+                  : 'Add existing meaning'
+              }}</ion-button
+            >
+          }
           @if (!canWrite()) {
             <p>
               Read-only project. Mapping changes require current write
