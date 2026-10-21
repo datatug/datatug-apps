@@ -168,9 +168,11 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'queries', 'checks', 'detective', 'incidents'].includes(
+            ['overview', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board'].includes(
               segments[6].path,
             )) ||
+          (segments.length === 8 && segments[6].path === 'boards' && segments[7].path === 'new') ||
+          (segments.length === 8 && segments[6].path === 'board' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
             ['checks', 'detective', 'incidents'].includes(segments[6].path) &&
             /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
@@ -198,6 +200,23 @@ export const datatugRoutes: Routes = [
             (m) => m.ProjectPageComponent,
           ),
       })),
+      {
+        path: 'shipping',
+        loadComponent: () => import('../shipping/shipping-workspace.component').then((m) => m.ShippingWorkspaceComponent),
+      },
+      {
+        path: 'boards/new', data: { createBoard: true },
+        loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
+      },
+      {
+        path: 'board/:board',
+        loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
+      },
+      { path: 'board', pathMatch: 'full', redirectTo: 'boards' },
+      {
+        path: 'boards',
+        loadComponent: () => import('../board/ui/pages/boards/boards-page.component').then((m) => m.BoardsPageComponent),
+      },
       {
         path: 'sessions', providers: [SessionWorkspaceService],
         loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),

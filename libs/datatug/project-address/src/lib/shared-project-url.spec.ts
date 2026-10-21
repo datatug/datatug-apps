@@ -6,6 +6,7 @@ describe('Space-qualified metadata addresses', () => {
     '',
     'overview',
     'queries',
+    'shipping',
     'boards',
     'boards/new',
     'board/new',

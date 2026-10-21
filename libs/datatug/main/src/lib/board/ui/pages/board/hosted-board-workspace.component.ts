@@ -15,7 +15,7 @@ import {
   untracked,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { toSignal, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   IonButton,
   IonItem,
@@ -31,7 +31,7 @@ import {
   BoardCard,
   canonicalBoardQueryIds,
 } from '@datatug/board-models';
-import { firstValueFrom, map, tap } from 'rxjs';
+import { filter, firstValueFrom, map, merge, takeUntil, tap } from 'rxjs';
 import {
   ProjectAssetsApiService,
   BoardAssetSnapshot,
@@ -343,6 +343,7 @@ export class HostedBoardWorkspaceComponent {
     () => this.route.snapshot.data['createBoard'] === true,
   );
   readonly draft = signal<Board | undefined>(undefined);
+  private readonly loadedKey = signal<string | undefined>(undefined);
   readonly revision = signal<string | undefined>(undefined);
   readonly queries = signal<QueryChoice[]>([]);
   readonly selectedQuery = signal('');
@@ -424,6 +425,7 @@ export class HostedBoardWorkspaceComponent {
       this.refresh();
       let cancelled = false;
       const generation = ++this.generation;
+      this.loadedKey.set(undefined);
       this.draft.set(undefined);
       this.queries.set([]);
       this.error.set('');
@@ -552,6 +554,7 @@ export class HostedBoardWorkspaceComponent {
             throw error;
           });
       if (cancelled() || !this.active(key, generation)) return;
+      this.loadedKey.set(key);
       this.queries.set(choices);
       this.revision.set(held?.revision);
       this.pending.set(pending);
@@ -696,6 +699,12 @@ export class HostedBoardWorkspaceComponent {
       error instanceof HttpErrorResponse &&
       [401, 403].includes(error.status)
     ) {
+      // A401 may follow a delivered save. Keep its exact journal for explicit
+      // same-principal recovery; current403 revocation clears protected intent.
+      if (error.status === 403) {
+        this.journal.clear(this.key());
+        this.pending.set(undefined);
+      }
       this.draft.set(undefined);
       this.queries.set([]);
       this.scope.deny(error);
@@ -707,6 +716,7 @@ export class HostedBoardWorkspaceComponent {
     if (
       !ref ||
       !board ||
+      this.loadedKey() !== this.key() ||
       !this.scope.canWrite() ||
       this.saving() ||
       this.conflict()
@@ -721,7 +731,19 @@ export class HostedBoardWorkspaceComponent {
         this.pending() ?? this.journal.create(key, board, this.revision());
       this.pending.set(intent);
       await firstValueFrom(
-        this.api.saveBoard(ref, this.scope.environment(), intent.write),
+        this.api.saveBoard(ref, this.scope.environment(), intent.write).pipe(
+          takeUntil(
+            merge(
+              this.scope.page.scopeChanges$,
+              this.route.queryParamMap,
+              this.route.paramMap,
+            ).pipe(
+              map(() => this.key()),
+              filter((current) => current !== key),
+            ),
+          ),
+          takeUntilDestroyed(this.destroyRef),
+        ),
       );
       if (!this.active(key, generation)) return;
       // A replay may return an older receipt. Always fetch the current authorized definition.

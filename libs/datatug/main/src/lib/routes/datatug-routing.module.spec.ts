@@ -44,6 +44,11 @@ describe('datatugRoutes', () => {
     expect(route?.children?.map((child) => child.path)).toEqual([
       '',
       'overview',
+      'shipping',
+      'boards/new',
+      'board/:board',
+      'board',
+      'boards',
       'sessions',
       'incidents',
       'queries',
@@ -65,7 +70,9 @@ describe('datatugRoutes', () => {
     expect(matches([...base, 'queries'])).toBe(true);
     expect(matches([...base, 'incidents'])).toBe(true);
     expect(matches([...base, 'incidents', 'new'])).toBe(true);
-    expect(matches([...base, 'incidents', 'detective-incidents-9c561d36', 'INC-1'])).toBe(true);
+    expect(
+      matches([...base, 'incidents', 'detective-incidents-9c561d36', 'INC-1']),
+    ).toBe(true);
     expect(matches([...base, 'checks'])).toBe(true);
     expect(matches([...base, 'checks', 'invoice-check'])).toBe(true);
     expect(matches([...base, 'detective'])).toBe(true);

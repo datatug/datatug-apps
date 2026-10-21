@@ -27,6 +27,7 @@ Feature specifications for this project.
 | [Hosted Incident conversation](hosted-incident-conversation/README.md) | Draft | Authenticated human Incident messages, scoped history and replay-safe posting in the private project web UI. |
 | [Shared shipping evidence charts](shared-shipping-evidence-charts/README.md) | Draft | Core-compatible held evidence preparation and one shared three-kind SVG presentation leaf. |
 | [Hosted board authoring](hosted-board-authoring/README.md) | Draft | Create, edit, save and reload canonical boards in an explicitly scoped hosted project. |
+| [Shipping working copy controls](shipping-working-copy-controls/README.md) | Draft | Expose the published Backend v0.42 working-copy lifecycle in the native hosted project web UI. This is one bounded part of the [shipping investigation story](https://github.com/datatug/backstage/tree/main/spec/features/unsigned-shipping-investigation), not recording-readiness proof. |
 
 ## Open Questions
 

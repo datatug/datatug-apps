@@ -174,6 +174,13 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    path: 'shipping',
+    loadComponent: () =>
+      import('../shipping/shipping-workspace.component').then(
+        (m) => m.ShippingWorkspaceComponent,
+      ),
+  },
+  {
     path: 'boards/new',
     data: { createBoard: true },
     loadComponent: () =>

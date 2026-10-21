@@ -143,6 +143,11 @@ describe('real cold shared overview route and metadata read', () => {
     expect(title(h)).toBe('First title');
     expect(h.routeNativeElement?.textContent).toContain('Space: S1');
     expect(
+      h.routeNativeElement?.querySelector(
+        'a[href="/space/S1/store/firestore/project/same/shipping"], ion-item[href="/space/S1/store/firestore/project/same/shipping"]',
+      ),
+    ).toBeTruthy();
+    expect(
       h.routeNativeElement?.querySelector('sneat-datatug-folder'),
     ).toBeNull();
     expect(h.routeNativeElement?.querySelector('ion-select')).toBeNull();
@@ -182,7 +187,7 @@ describe('real cold shared overview route and metadata read', () => {
     await settle(h);
     expect(title(h)).toBe('Bob title');
   });
-  it.each(['chat', 'env/local', 'boards'])(
+  it.each(['chat', 'env/local', 'boards/other'])(
     'cold unsupported %s refuses before storage',
     async (operation) => {
       const h = await RouterTestingHarness.create();
