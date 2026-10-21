@@ -1,5 +1,8 @@
 import goldens from '../../../models/definition/environment-receipts.golden.json';
-import { EnvironmentOperationRecoveryService } from '../../../services/project/environment-operation-recovery.service';
+import {
+  EnvironmentOperationRecoveryService,
+  PendingEnvironmentOperation,
+} from '../../../services/project/environment-operation-recovery.service';
 import {
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
@@ -15,12 +18,41 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 import { ProjectEnvironmentStateService } from '../../../services/project/project-environment-state.service';
-import { EnvironmentState } from '../../../models/definition/environment-state';
+import {
+  EnvironmentState,
+  EnvironmentOperationResult,
+} from '../../../models/definition/environment-state';
+import { EnvironmentWrite } from '../../../models/definition/environment-receipt';
+import { IEnvironmentFull } from '../../../models/definition/environments';
+
+interface EnvironmentPageTestPort {
+  recoveryReady(): boolean;
+  editing(): boolean;
+  message(): string;
+  draft: { set(environments: readonly IEnvironmentFull[]): void };
+  manage(): void;
+  submit(kind: 'create' | 'order'): Promise<void>;
+  retry(): Promise<void>;
+  name: string;
+  readonly unresolved: boolean;
+}
+function requiredGolden(kind: EnvironmentOperationResult['kind']) {
+  const fixture = goldens.find(
+    (item) => item.transport === 'cli' && item.receipt.kind === kind,
+  );
+  if (!fixture) throw new Error(`Missing CLI golden for ${kind}`);
+  return {
+    before: fixture.before as unknown as EnvironmentState,
+    after: fixture.after as unknown as EnvironmentState,
+    request: fixture.request as EnvironmentWrite,
+    receipt: fixture.receipt as EnvironmentOperationResult,
+  };
+}
 
 const focusEnvironmentInput = vi.fn();
 const readyEnvironmentInput = vi.fn();
 @Component({
-  selector: 'environment-test-name-input',
+  selector: 'sneat-environment-test-name-input',
   template: '<input aria-label="Environment name" />',
 })
 class EnvironmentNameInputStub {
@@ -65,13 +97,13 @@ describe('Environments management', () => {
     items: EnvironmentState['environments'];
   }>();
   const nav = { goEnvironment: vi.fn() };
-  let stored: any;
+  let stored: PendingEnvironmentOperation | undefined;
   const recovery = {
     read: vi.fn(async () => stored),
-    reserve: vi.fn(async (operation: any) => {
+    reserve: vi.fn(async (operation: PendingEnvironmentOperation) => {
       stored = operation;
     }),
-    attempt: vi.fn(async (operation: any) => {
+    attempt: vi.fn(async (operation: PendingEnvironmentOperation) => {
       stored = { ...operation, attempts: operation.attempts + 1 };
       return stored;
     }),
@@ -82,15 +114,15 @@ describe('Environments management', () => {
   const api = {
     view: vi.fn(() => response),
     changed: vi.fn(),
-    mutation: vi.fn(() => ({
+    mutation: vi.fn<ProjectEnvironmentStateService['mutation']>(() => ({
       scope: state.scope,
       ifRevision: 'r1',
       operationId: 'op',
     })),
-    save: vi.fn(),
-    create: vi.fn(),
-    read: vi.fn(),
-    status: vi.fn(),
+    save: vi.fn<ProjectEnvironmentStateService['save']>(),
+    create: vi.fn<ProjectEnvironmentStateService['create']>(),
+    read: vi.fn<ProjectEnvironmentStateService['read']>(),
+    status: vi.fn<ProjectEnvironmentStateService['status']>(),
   };
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -131,7 +163,7 @@ describe('Environments management', () => {
     await TestBed.overrideComponent(EnvironmentsPageComponent, {
       set: {
         imports: [EnvironmentNameInputStub],
-        template: `<button (click)="add()">Add environment</button>@if (creating()) { <environment-test-name-input #nameInput /> }`,
+        template: `<button (click)="add()">Add environment</button>@if (creating()) { <sneat-environment-test-name-input #nameInput /> }`,
       },
     }).compileComponents();
     focusEnvironmentInput.mockClear();
@@ -180,31 +212,36 @@ describe('Environments management', () => {
     );
   });
   it('retains the exact operation after a lost save response and verifies real Go proof before closing', async () => {
-    const golden = goldens.find(
-      (fixture) =>
-        fixture.transport === 'cli' &&
-        fixture.receipt.kind === 'save-environment-order',
-    )!;
+    const golden = requiredGolden('save-environment-order');
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
-    const page = fixture.componentInstance as any;
-    api.mutation.mockReturnValue(golden.request as any);
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
+    api.mutation.mockReturnValue(golden.request);
     api.read.mockReturnValue(of(golden.before));
     response.next({
-      state: golden.before as any,
+      state: golden.before,
       items: golden.before.environments,
     });
     await vi.waitFor(() => expect(page.recoveryReady()).toBe(true));
     page.manage();
+    if (!('environmentOrder' in golden.request))
+      throw new Error('Order golden must contain environmentOrder');
     page.draft.set(
-      golden.request.environmentOrder!.map((id) =>
-        golden.before.environments.find((row) => row.id === id),
-      ),
+      golden.request.environmentOrder.map((id) => {
+        const environment = golden.before.environments.find(
+          (row) => row.id === id,
+        );
+        if (!environment)
+          throw new Error(`Golden order references missing environment ${id}`);
+        return environment;
+      }),
     );
     api.save.mockReturnValue(throwError(() => ({ status: 0 })));
     api.status.mockReturnValue(of({ ...golden.receipt, status: 'pending' }));
     await page.submit('order');
     expect(page.editing()).toBe(true);
     const original = api.save.mock.calls[0][1];
+    if (!stored) throw new Error('Lost-response operation was not retained');
     expect(stored.request).toEqual(original);
     api.save.mockReturnValue(of(golden.receipt));
     api.read.mockReturnValue(of(golden.after));
@@ -218,7 +255,8 @@ describe('Environments management', () => {
   it('blocks fresh mutations when recovery storage cannot be read', async () => {
     recovery.read.mockRejectedValueOnce(new Error('storage denied'));
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
-    const page = fixture.componentInstance as any;
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
     response.next({ state, items: state.environments });
     await vi.waitFor(() => expect(page.message()).toContain('storage'));
     page.name = 'Fresh';
@@ -227,11 +265,7 @@ describe('Environments management', () => {
     expect(page.recoveryReady()).toBe(false);
   });
   it('restores unresolved create before offering another mutation after route reentry', async () => {
-    const golden = goldens.find(
-      (fixture) =>
-        fixture.transport === 'cli' &&
-        fixture.receipt.kind === 'create-environment',
-    )!;
+    const golden = requiredGolden('create-environment');
     stored = {
       version: 1,
       actor: golden.before.scopeBinding,
@@ -243,12 +277,15 @@ describe('Environments management', () => {
     api.read.mockReturnValue(of(golden.before));
     api.status.mockReturnValue(of({ ...golden.receipt, status: 'pending' }));
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
-    const page = fixture.componentInstance as any;
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
     response.next({
-      state: golden.before as any,
+      state: golden.before,
       items: golden.before.environments,
     });
     await vi.waitFor(() => expect(page.message()).toContain('unresolved'));
+    if (!('name' in golden.request))
+      throw new Error('Create golden must contain name');
     expect(page.name).toBe(golden.request.name);
     expect(page.unresolved).toBe(true);
     await page.submit('create');
@@ -256,7 +293,8 @@ describe('Environments management', () => {
   });
   it('does not allow mutations without the corresponding current capability', () => {
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
-    const page = fixture.componentInstance as any;
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
     response.next({
       state: {
         ...state,
