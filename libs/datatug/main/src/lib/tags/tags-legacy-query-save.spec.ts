@@ -1,3 +1,4 @@
+import { createSemanticModel } from '../queries/semantic-mapping';
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { firstValueFrom, of } from 'rxjs';
@@ -5,7 +6,11 @@ import { QueryEditorStateService } from '../queries/query-editor-state-service';
 import { QueriesService } from '../queries/queries.service';
 import { ProjectService } from '../services/project/project.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { QueryType, ITextQueryRequest } from '../models/definition/query-def';
+import {
+  QueryType,
+  ITextQueryRequest,
+  IQueryDef,
+} from '../models/definition/query-def';
 import { ProjectQuerySave } from '../services/project/project-query-api.service';
 describe('unqualified local query tag saves', () => {
   const ref = { storeId: 'http-localhost:8989', projectId: 'demo' };
@@ -18,7 +23,17 @@ describe('unqualified local query tag saves', () => {
       text: 'SELECT 1',
     } as ITextQueryRequest,
   };
-  function setup(stale = false) {
+  function setup(stale = false, withMeanings = false, semanticSupport = true) {
+    const savedDef: IQueryDef = withMeanings
+      ? {
+          ...def,
+          semanticModel: createSemanticModel({
+            queryHash: 'a'.repeat(64),
+            resultIndex: 0,
+            columns: [],
+          }),
+        }
+      : def;
     const saveRevision = vi.fn((_ref: unknown, write: ProjectQuerySave) =>
       of({
         query: { ...write.query },
@@ -46,7 +61,8 @@ describe('unqualified local query tag saves', () => {
                 currentBranch: 'main',
                 branches: [{ name: 'main', head: 'h1' }],
               }),
-            capabilities: () => of({ querySave: true }),
+            capabilities: () =>
+              of({ querySave: true, semanticModel: semanticSupport }),
             getRevision: () =>
               of({
                 query: {
@@ -56,6 +72,9 @@ describe('unqualified local query tag saves', () => {
                   tags: ['ops'],
                   type: QueryType.SQL,
                   text: stale ? 'SELECT 2' : 'SELECT 1',
+                  ...('semanticModel' in savedDef
+                    ? { semanticModel: savedDef.semanticModel }
+                    : {}),
                 },
                 revision: 'r1',
                 branchHead: 'h1',
@@ -79,7 +98,7 @@ describe('unqualified local query tag saves', () => {
     service.newQuery({
       id: 'q',
       queryType: QueryType.SQL,
-      def,
+      def: savedDef,
       title: 'Query',
       request: def.request,
       isNew: false,
@@ -88,7 +107,7 @@ describe('unqualified local query tag saves', () => {
       ...service.getQueryState('q'),
       id: 'q',
       queryType: QueryType.SQL,
-      def,
+      def: savedDef,
       request: def.request,
       title: 'Query',
       tags: [],
@@ -114,6 +133,34 @@ describe('unqualified local query tag saves', () => {
     );
     expect(service.getQueryState('q')?.def?.tags).toEqual([]);
     expect(service.getQueryState('q')?.tags).toBeUndefined();
+  });
+  it('preserves existing meanings and remove-all tags through the qualified revision upgrade', async () => {
+    const { service, state, saveRevision, updateQuery } = setup(false, true);
+    await firstValueFrom(service.saveQuery(state, ref));
+    expect(updateQuery).not.toHaveBeenCalled();
+    expect(saveRevision).toHaveBeenCalledWith(
+      expect.objectContaining({ projectApi: 'local', branch: 'main' }),
+      expect.objectContaining({
+        query: expect.objectContaining({
+          semanticModel: state.def.semanticModel,
+          tags: [],
+        }),
+        ifMatch: 'r1',
+        expectedBranchHead: 'h1',
+      }),
+    );
+    expect(service.getQueryState('q')?.def?.semanticModel).toEqual(
+      state.def.semanticModel,
+    );
+    expect(service.getQueryState('q')?.def?.tags).toEqual([]);
+  });
+  it('keeps meanings fail-closed if the upgraded local provider lacks semantic support', async () => {
+    const { service, state, saveRevision } = setup(false, true, false);
+    await expect(firstValueFrom(service.saveQuery(state, ref))).rejects.toThrow(
+      'does not support meanings',
+    );
+    expect(saveRevision).not.toHaveBeenCalled();
+    expect(service.getQueryState('q')?.tags).toEqual([]);
   });
   it('preserves the draft and refuses a changed saved base', async () => {
     const { service, state, saveRevision } = setup(true);

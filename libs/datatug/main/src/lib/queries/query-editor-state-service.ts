@@ -749,18 +749,6 @@ export class QueryEditorStateService {
     queryState: IQueryState,
     projectRef: IProjectRef,
   ): Observable<void> {
-    if (
-      queryState.def?.semanticModel &&
-      !isDevicePersonalQuery(queryState.id ?? '') &&
-      !projectRef.projectApi &&
-      !isSharedProjectRef(projectRef)
-    )
-      return throwError(
-        () =>
-          new Error(
-            'This legacy project cannot save meanings safely. Use a personal copy on this device.',
-          ),
-      );
     if (!this.currentProject) {
       return throwError(() => 'no current project');
     }
@@ -778,6 +766,18 @@ export class QueryEditorStateService {
       !['github', 'github.com', 'firestore'].includes(projectRef.storeId)
     )
       return this.saveLocalTaggedQuery(queryState, projectRef);
+    if (
+      queryState.def?.semanticModel &&
+      !isDevicePersonalQuery(queryState.id ?? '') &&
+      !projectRef.projectApi &&
+      !isSharedProjectRef(projectRef)
+    )
+      return throwError(
+        () =>
+          new Error(
+            'This legacy project cannot save meanings safely. Use a personal copy on this device.',
+          ),
+      );
     if (
       !isDevicePersonalQuery(queryState.id ?? '') &&
       (projectRef.projectApi || isSharedProjectRef(projectRef))
