@@ -1,3 +1,12 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
+import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
+import {
+  EvidenceSharePanelComponent,
+  EvidenceShareSelection,
+} from '../evidence/evidence-share-panel.component';
+import { requireAppliedInputMatch } from '../evidence/applied-evidence';
+import { RetainedRunIntent } from '../evidence/run-intent';
 import { SessionDetectiveRunComponent } from '../session-context/session-detective-run.component';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { CommonModule, DOCUMENT } from '@angular/common';
@@ -5,12 +14,14 @@ import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
+  Injector,
   computed,
   effect,
   inject,
   signal,
 } from '@angular/core';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Router, RouterLink, UrlTree } from '@angular/router';
 import {
@@ -21,6 +32,7 @@ import {
   IonCardContent,
   IonContent,
   IonHeader,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -104,6 +116,7 @@ interface QueryInputRow extends CheckInput {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     SessionDetectiveRunComponent,
+    EvidenceSharePanelComponent,
     CommonModule,
     FormsModule,
     RouterLink,
@@ -114,6 +127,7 @@ interface QueryInputRow extends CheckInput {
     IonCardContent,
     IonContent,
     IonHeader,
+    IonIcon,
     IonInput,
     IonItem,
     IonLabel,
@@ -134,8 +148,12 @@ interface QueryInputRow extends CheckInput {
   ],
 })
 export class ChecksPageComponent {
-  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
-  protected readonly nativeSessionId = computed(() => this.sessionWorkspace ? this.params()?.get('sessionId') || '' : '');
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, {
+    optional: true,
+  });
+  protected readonly nativeSessionId = computed(() =>
+    this.sessionWorkspace ? this.params()?.get('sessionId') || '' : '',
+  );
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly client = inject(DetectiveClientService);
@@ -143,6 +161,74 @@ export class ChecksPageComponent {
   private readonly queriesService = inject(QueriesService);
   private readonly document = inject(DOCUMENT);
   protected readonly scope = useDetectivePageContext();
+  private readonly destroyRef = inject(DestroyRef);
+  private runLifetime = new AbortController();
+  private readonly nativeRunLifetime = useNativeRunLifetime();
+  private readonly evidenceInjector = inject(Injector);
+  private readonly retainedIntent = new RetainedRunIntent();
+  protected readonly evidenceSelection = signal<
+    EvidenceShareSelection | undefined
+  >(undefined);
+  protected readonly retainedPending = signal(false);
+  protected readonly retainedReviewed = signal(false);
+  constructor() {
+    this.nativeRunLifetime.changes$
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.invalidateHeldRun());
+    this.scope.scopeChanges$
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.invalidateHeldRun());
+    this.route.paramMap
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.invalidateHeldRun());
+    this.route.queryParamMap
+      .pipe(takeUntilDestroyed())
+      .subscribe(() => this.invalidateHeldRun());
+    this.destroyRef.onDestroy(() => this.invalidateHeldRun());
+  }
+  private invalidateHeldRun(): void {
+    this.runLifetime.abort();
+    this.runLifetime = new AbortController();
+    this.selectedRun.set(undefined);
+    this.evidenceSelection.set(undefined);
+    this.retainedIntent.clearHeld();
+    this.retainedPending.set(false);
+    this.retainedReviewed.set(false);
+  }
+  protected changeRunEnvironment(value: string): void {
+    if (this.retainedPending()) return;
+    this.invalidateHeldRun();
+    this.environment.set(value);
+  }
+  protected chooseEvidence(
+    selection: EvidenceShareSelection | undefined,
+  ): void {
+    if (!this.retainedPending()) this.evidenceSelection.set(selection);
+  }
+  protected async reviewRetainedRun(): Promise<void> {
+    this.retainedReviewed.set(false);
+    const identity = this.pageIdentity();
+    try {
+      await this.refresh();
+      if (
+        !this.destroyRef.destroyed &&
+        this.isCurrentScope(identity) &&
+        this.retainedPending()
+      )
+        this.retainedReviewed.set(true);
+    } catch (error) {
+      if (this.isCurrentScope(identity))
+        this.error.set(detectiveErrorMessage(error, true));
+    }
+  }
+  protected abandonRetainedRun(): void {
+    if (!this.retainedReviewed() || this.busy()) return;
+    this.retainedIntent.abandonReviewed();
+    this.retainedPending.set(false);
+    this.retainedReviewed.set(false);
+    this.evidenceSelection.set(undefined);
+  }
+
   protected readonly publicDemo = computed(
     () =>
       this.scope.ref()?.storeId === 'github.com' &&
@@ -415,10 +501,17 @@ export class ChecksPageComponent {
       this.environment.set(active);
   });
 
-  protected pageRoute(href: string): UrlTree { return this.router.parseUrl(href); }
+  protected pageRoute(href: string): UrlTree {
+    return this.router.parseUrl(href);
+  }
   private sessionPageHref(page: string | string[]): string {
     const id = this.nativeSessionId();
-    return projectPageHref(this.scope.ref(), id ? ['sessions', id, ...(typeof page === 'string' ? [page] : page)] : page);
+    return projectPageHref(
+      this.scope.ref(),
+      id
+        ? ['sessions', id, ...(typeof page === 'string' ? [page] : page)]
+        : page,
+    );
   }
   protected checksUrl(): string {
     return this.sessionPageHref('checks');
@@ -442,7 +535,25 @@ export class ChecksPageComponent {
       : validator.field
         ? ` · ${validator.field}${validator.otherField ? ` / ${validator.otherField}` : ''}`
         : '';
-    return `${validator.scope} ${validator.kind || 'published'} · ${validator.severity}${target}`;
+    return `${validator.scope} ${validator.kind || 'published'} · configured failure severity: ${validator.severity}${target}`;
+  }
+  protected recordedUpdateAt(value: string | undefined): string | undefined {
+    if (!value) return undefined;
+    const parsed = new Date(value);
+    return Number.isFinite(parsed.valueOf()) && parsed.getUTCFullYear() > 1
+      ? value
+      : undefined;
+  }
+  protected checkInputLabel(name: string): string {
+    return name
+      .split(/[_\-\s]+/)
+      .filter(Boolean)
+      .map((part) =>
+        part.toLowerCase() === 'id'
+          ? 'ID'
+          : part.charAt(0).toUpperCase() + part.slice(1),
+      )
+      .join(' ');
   }
   private focusRunResult(): void {
     // The results card is conditional on the returned run. Let Angular render
@@ -450,7 +561,14 @@ export class ChecksPageComponent {
     setTimeout(() => {
       const result = this.document.getElementById('detective-check-run-result');
       result?.focus();
-      result?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      const reducedMotion =
+        this.document.defaultView?.matchMedia?.(
+          '(prefers-reduced-motion: reduce)',
+        ).matches ?? false;
+      result?.scrollIntoView({
+        behavior: reducedMotion ? 'auto' : 'smooth',
+        block: 'start',
+      });
     });
   }
   private notify(
@@ -1123,6 +1241,10 @@ export class ChecksPageComponent {
     key: 'value' | 'end',
     value: string,
   ): void {
+    if (this.retainedPending()) return;
+    this.runLifetime.abort();
+    this.runLifetime = new AbortController();
+    this.selectedRun.set(undefined);
     this.runInputText.update((all) => ({
       ...all,
       [name]: {
@@ -1173,8 +1295,19 @@ export class ChecksPageComponent {
     const context = this.scope.context();
     const identity = this.pageIdentity();
     const check = this.current();
-    if (this.nativeSessionId()) { this.error.set('Use the native session input preview. Legacy execution is unavailable in a session.'); return; }
-    if (!context || !check) return;
+    if (this.nativeSessionId()) {
+      this.error.set(
+        'Use the native session input preview. Legacy execution is unavailable in a session.',
+      );
+      return;
+    }
+    if (
+      !context ||
+      !check ||
+      identity !== this.activeScopeIdentity ||
+      this.busy()
+    )
+      return;
     if (this.caseId() && !this.caseCheckCompatible()) {
       this.error.set(
         'This Check cannot run as evidence for this Case because its confirmed set or range inputs do not match the Check schema.',
@@ -1205,24 +1338,162 @@ export class ChecksPageComponent {
       );
       return;
     }
+    const selection = this.evidenceSelection();
+    if (
+      selection &&
+      (selection.identity !== this.scope.identity() ||
+        selection.environment !== environment ||
+        selection.choice.evidence.context.scope.environmentId !== environment)
+    ) {
+      this.error.set(
+        'The applied selection belongs to a previous scope. Choose it again.',
+      );
+      return;
+    }
+    if (selection) {
+      try {
+        requireAppliedInputMatch(selection.choice, inputs);
+      } catch (error) {
+        this.error.set(
+          error instanceof Error ? error.message : 'Review the applied input.',
+        );
+        return;
+      }
+    }
+    let signal = this.runLifetime.signal;
+    if (context.kind === 'cloud') {
+      try {
+        const ref = this.scope.ref();
+        if (!ref) return;
+        signal = AbortSignal.any([
+          signal,
+          this.nativeRunLifetime.capture(
+            ref,
+            context.principal,
+            selection
+              ? { sourceId: 'shipping-working-copy', environment }
+              : undefined,
+          ).signal,
+        ]);
+      } catch (error) {
+        this.error.set(
+          error instanceof Error
+            ? error.message
+            : 'Current scope is unavailable.',
+        );
+        return;
+      }
+    }
     this.busy.set(true);
     this.error.set('');
     try {
+      const action = {
+        type: 'run-check' as const,
+        checkId: check.id,
+        caseId: this.caseId(),
+        environment,
+        inputs,
+        ...(selection ? { evidence: selection.choice.evidence } : {}),
+      };
+      const intent =
+        context.kind === 'cloud'
+          ? await this.retainedIntent.prepare(
+              JSON.stringify([identity, environment, check.version]),
+              action,
+            )
+          : undefined;
+      if (
+        signal.aborted ||
+        !this.isCurrentScope(identity) ||
+        environment !== this.environment()
+      )
+        return;
+      if (intent) this.retainedPending.set(true);
       const response = await firstValueFrom(
-        this.client.action(context, {
-          type: 'run-check',
-          checkId: check.id,
-          caseId: this.caseId(),
-          environment,
-          inputs,
+        this.client.action(context, action, undefined, {
+          signal,
+          ...(intent ? { operationId: intent.operationId } : {}),
         }),
       );
-      if (!this.isCurrentScope(identity)) return;
+      if (
+        signal.aborted ||
+        !this.isCurrentScope(identity) ||
+        environment !== this.environment()
+      )
+        return;
       if (!response.run)
         throw new Error('The project store did not return a run.');
+      if (
+        selection &&
+        (response.run.actor !== context.principal ||
+          response.run.checkId !== check.id ||
+          response.run.environment !== environment)
+      )
+        throw new Error(
+          'The actual retained Check run could not be verified. Retry the original operation.',
+        );
+      let admittedRun = response.run;
+      if (selection && response.run.executionStatus === 'completed') {
+        const projectRef = this.scope.ref();
+        if (
+          !projectRef ||
+          !Number.isSafeInteger(response.run.definition?.version) ||
+          response.run.definition.version < 1
+        )
+          throw new Error(
+            'The returned Check definition version is unavailable. Retry its original receipt.',
+          );
+        const retained = await this.evidenceInjector
+          .get(RetainedEvidenceApiService)
+          .read(
+            { projectRef, environment, actor: context.principal || '' },
+            {
+              kind: 'check-run',
+              checkRun: {
+                storeId: projectRef.storeId,
+                projectId: projectRef.projectId,
+                environment,
+                checkId: response.run.checkId,
+                checkVersion: response.run.definition.version,
+                runId: response.run.id,
+              },
+            },
+            signal,
+          );
+        if (!('run' in retained))
+          throw new Error(
+            'The retained Check receipt did not identify an actual Check run.',
+          );
+        const selected = selection.choice.evidence.context,
+          binding = selected.bindings[0];
+        if (
+          retained.run.actor !== context.principal ||
+          retained.manifest.incidentRef !==
+            selection.choice.evidence.incidentRef ||
+          retained.manifest.sessionId !== selected.sessionId ||
+          retained.manifest.entryId !== binding?.entryId ||
+          retained.manifest.revisionId !== binding?.revisionId ||
+          retained.manifest.identityDomain !== selected.scope.identityDomain
+        )
+          throw new Error(
+            'The retained Check manifest does not match the explicitly shared context.',
+          );
+        if (
+          signal.aborted ||
+          !this.isCurrentScope(identity) ||
+          environment !== this.environment()
+        )
+          return;
+        admittedRun = retained.run;
+      }
+      if (intent && response.run.executionStatus === 'completed') {
+        this.retainedIntent.confirm();
+        this.retainedPending.set(false);
+        this.retainedReviewed.set(false);
+      }
       await this.refresh();
       if (!this.isCurrentScope(identity)) return;
-      this.selectedRun.set(response.run);
+      this.selectedRun.set(admittedRun);
       const linkText = caseRunLinkMessage(
         this.caseId(),
         response.run.id,
@@ -1233,11 +1504,21 @@ export class ChecksPageComponent {
         linkText ? { runId: response.run.id, text: linkText } : undefined,
       );
       this.notify(
-        `Run ${response.run.id}: ${response.run.outcome}.${linkText ? ` ${linkText}` : ''}`,
+        `Run ${response.run.id}: ${response.run.outcome}.${response.run.definition?.version !== check.version ? ` Actual admitted Check version ${response.run.definition?.version}; the displayed request used version ${check.version}. This is a different actual definition, not a requested-version confirmation.` : ''}${linkText ? ` ${linkText}` : ''}`,
         response.run.outcome,
       );
       this.focusRunResult();
     } catch (error) {
+      this.retainedIntent.rejectConflict(error);
+      if (this.retainedIntent.hasPending) this.retainedPending.set(true);
+      if (
+        error instanceof HttpErrorResponse &&
+        [401, 403].includes(error.status)
+      ) {
+        this.selectedRun.set(undefined);
+        this.evidenceSelection.set(undefined);
+        this.state.set(undefined);
+      }
       if (!this.isCurrentScope(identity)) return;
       this.error.set(
         detectiveErrorMessage(error, this.scope.context()?.kind === 'cloud'),

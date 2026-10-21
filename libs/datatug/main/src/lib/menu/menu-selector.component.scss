@@ -1,3 +1,7 @@
+:host {
+  display: block;
+}
+
 .menu-selector-item {
   --padding-start: 16px;
   --inner-padding-end: 12px;
@@ -59,6 +63,20 @@ ion-select.menu-project-field::part(text) {
   flex: 0 0 100%;
   margin-inline-start: 52px;
   font-size: 0.75rem;
+}
+
+.menu-project-add {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  margin: 0;
+}
+
+.menu-project-add ion-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  margin: 0;
 }
 
 .menu-env-clear {

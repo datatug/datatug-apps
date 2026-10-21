@@ -259,4 +259,70 @@ describe('MenuProjectSelectorComponent', () => {
       'Failed to list projects in the selected store',
     );
   });
+
+  it('keeps the current project selectable and exposes an accessible icon-only add action', async () => {
+    const currentStoreId = new BehaviorSubject<string | undefined>('firestore');
+    const currentProject = new BehaviorSubject<IProjectContext | undefined>({
+      ref: { storeId: 'firestore', projectId: 'detective-demo' },
+      summary: { title: 'Detective demo with a long project title' },
+    });
+    const navigateToNewProjectPage = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [MenuProjectSelectorComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: NewProjectService,
+          useValue: { navigateToNewProjectPage },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentStoreId,
+            currentProject,
+            setCurrentProject: vi.fn(),
+          },
+        },
+        { provide: DatatugNavService, useValue: { goProject: vi.fn() } },
+        {
+          provide: DatatugStoreService,
+          useValue: { getProjects: vi.fn(() => of([])) },
+        },
+      ],
+    }).compileComponents();
+
+    const fixture = TestBed.createComponent(MenuProjectSelectorComponent);
+    fixture.componentRef.setInput('datatugUser', {
+      datatug: {
+        stores: {
+          firestore: { type: 'firestore', title: 'Cloud', projects: {} },
+        },
+      },
+    });
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.projects().map(({ id }) => id)).toEqual([
+      'detective-demo',
+    ]);
+    expect(fixture.nativeElement.textContent).toContain(
+      'Detective demo with a long project title',
+    );
+    const button = fixture.nativeElement.querySelector(
+      'ion-button[aria-label="New project"]',
+    );
+    expect(button?.getAttribute('title')).toBe('New project');
+    expect(button?.textContent?.trim()).toBe('');
+    expect(button?.querySelector('ion-icon')?.getAttribute('slot')).toBe(
+      'icon-only',
+    );
+    button?.click();
+    expect(navigateToNewProjectPage).toHaveBeenCalledOnce();
+  });
 });

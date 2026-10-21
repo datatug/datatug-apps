@@ -1,3 +1,4 @@
+import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
 /** Browser mirror of datatug-cli/pkg/detective/model.go. Keep JSON names in sync. */
 export type DetectiveValue =
   | {
@@ -258,6 +259,7 @@ export interface DetectiveState {
 }
 
 export interface DetectiveActionRequest {
+  evidence?: AppliedEvidenceRequest;
   type:
     | 'save-check'
     | 'save-validator'
@@ -292,6 +294,7 @@ export interface DetectiveActionRequest {
 }
 
 export interface DetectiveActionResponse {
+  receipt?: string;
   check?: CheckDefinition;
   validator?: PublishedValidator;
   queryValidators?: QueryValidators;

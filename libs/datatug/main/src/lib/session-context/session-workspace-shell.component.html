@@ -32,7 +32,7 @@
       <ion-buttons class="session-secondary-actions">
         <ion-button (click)="beginRename()" [disabled]="!workspace.canExecute()">Rename</ion-button>
         <ion-button (click)="openWorkspacePage('invoice-explorer')">Explorer</ion-button>
-        <ion-button (click)="openWorkspacePage('invoice-overview')">Invoice overview</ion-button>
+        <ion-button (click)="openWorkspacePage(invoiceOverviewAvailable() ? 'invoice-overview' : 'overview')">{{ invoiceOverviewAvailable() ? 'Invoice overview' : 'Project overview' }}</ion-button>
         <ion-button (click)="openWorkspacePage('composer')">Composer</ion-button>
         @if (workspace.capabilities()?.nativeDetective === true) {
           <ion-button (click)="openWorkspacePage('checks')">Checks</ion-button>

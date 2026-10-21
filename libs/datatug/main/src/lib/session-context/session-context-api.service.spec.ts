@@ -346,6 +346,48 @@ describe('SessionContextApiService DataTug API base URL', () => {
   });
 });
 
+describe('Session command native credential cancellation', () => {
+  const ref = { storeId: 'firestore', projectId: 'chinook', spaceID: 'space_1' };
+  beforeEach(() => TestBed.configureTestingModule({ providers: [SessionContextApiService, ...datatugApiRealProviders()] }));
+  it('does not automatically resend the original operation under a replacement credential after401', async () => {
+    const { SneatApiAuthTokenBridge } = await import('@sneat/api');
+    const bridge = TestBed.inject(SneatApiAuthTokenBridge);
+    const http = TestBed.inject(HttpTestingController);
+    bridge.setExplicitToken('token-A');
+    const pending = TestBed.inject(SessionContextApiService).command(ref, capabilities, command);
+    const denied = expect(pending).rejects.toMatchObject({status:401});
+    const request = http.expectOne(r=>r.url.endsWith('/session-context/commands'));
+    expect(request.request.headers.get('Authorization')).toBe('Bearer token-A');
+    bridge.setExplicitToken('token-B');
+    request.flush({}, {status:401,statusText:'Unauthorized'});
+    await denied;
+    http.expectNone(r=>r.url.endsWith('/session-context/commands'));
+    http.verify();
+  });
+  it('cancels an initial native token wait before replacement token dispatch', async () => {
+    const { SneatApiAuthTokenBridge } = await import('@sneat/api');
+    const bridge = TestBed.inject(SneatApiAuthTokenBridge);
+    const http = TestBed.inject(HttpTestingController);
+    const readiness = bridge.beginAuthentication();
+    let finish: ((token:string)=>void)|undefined;
+    readiness.resolveWithTokenResolver(()=>new Promise<string>(resolve=>{finish=resolve;}));
+    const lifetime = new AbortController();
+    const pending = TestBed.inject(SessionContextApiService).command(ref, capabilities, command, lifetime.signal);
+    const cancelled = expect(pending).rejects.toThrow();
+    lifetime.abort();
+    bridge.setExplicitToken('token-B');
+    finish?.('late-token-A');
+    await cancelled;
+    await Promise.resolve();
+    http.expectNone(r=>r.url.endsWith('/session-context/commands'));
+    http.verify();
+  });
+  it('does not dispatch with an already invalidated scope', async () => {
+    const lifetime = new AbortController();lifetime.abort();
+    await expect(TestBed.inject(SessionContextApiService).command(ref,capabilities,command,lifetime.signal)).rejects.toThrow(/scope changed/);
+    TestBed.inject(HttpTestingController).expectNone(()=>true);
+  });
+});
 
 describe('per-scope native dispatch metadata', () => {
   it.each([false, undefined])('preserves explicit false or omitted eligibility without dropping either demo domain: %s', async eligibility => {

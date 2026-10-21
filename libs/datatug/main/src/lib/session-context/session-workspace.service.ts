@@ -1,4 +1,4 @@
-import { Injectable, InjectionToken, computed, inject, signal } from '@angular/core';
+import { DestroyRef, Injectable, InjectionToken, computed, inject, signal } from '@angular/core';
 import { openDB } from 'idb';
 import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import type { Fact } from '@sneat/datatug-semantic';
@@ -76,6 +76,8 @@ const refsKey = (refs: readonly ContextEntryRef[]): string => JSON.stringify([..
 @Injectable()
 export class SessionWorkspaceService {
   private readonly api = inject(SessionContextApiService);
+  private commandsLifetime = new AbortController();
+  constructor() { inject(DestroyRef).onDestroy(() => { this.reset(); this.commandsLifetime.abort(); }); }
   private readonly drafts = inject(SESSION_DEVICE_DRAFTS);
   private project?: IProjectRef;
   private authActorHint = '';
@@ -597,7 +599,7 @@ export class SessionWorkspaceService {
       await this.drafts.writePending(pendingKey, pending);
       if (!isCurrent()) return false;
       dispatched = true;
-      const receipt = await this.api.command(project, capabilities, command);
+      const receipt = await this.api.command(project, capabilities, command, this.commandsLifetime.signal);
       if (!isCurrent()) return false;
       commandAccepted = true;
       const targetSessionId = command.action === 'importLegacy' ? receipt.sessionId : command.sessionId;
@@ -682,6 +684,8 @@ export class SessionWorkspaceService {
   }
   private saveOpenTabs(): void { try { localStorage.setItem(this.tabKey(), JSON.stringify(this.openSessionIds())); } catch { /* Tab preferences carry no authority; draft persistence has a separate error. */ } }
   private reset(): void {
+    this.commandsLifetime.abort();
+    this.commandsLifetime = new AbortController();
     this.generation++; this.focusGeneration++; this.searchGeneration++; this.searchAllLoading.set(false); this.searchAllProgress.set(0); this.searchAllError.set(''); this.capabilities.set(undefined); this.authRequired.set(false); this.agentReconnectRequired.set(false); this.sessions.set([]); this.snapshots.set({}); this.deviceDrafts.set({});
     this.focusedSessionId.set(''); this.openSessionIds.set([]); this.pending.set(undefined); this.busy.set(false); this.loading.set(false); this.error.set(''); this.draftError.set(''); this.notice.set('');
   }

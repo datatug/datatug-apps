@@ -40,14 +40,14 @@
     </ion-note>
   }
   @if (currentStoreId() === 'firestore' && !hasSavedProjects()) {
-    <ion-buttons slot="end" class="ion-margin-end">
+    <ion-buttons slot="end" class="menu-project-add">
       <ion-button
         color="primary"
+        aria-label="New project"
+        title="New project"
         (click)="newProject()"
-        [disabled]="!projects()"
       >
-        <ion-icon slot="start" name="add" />
-        <ion-label>New project</ion-label>
+        <ion-icon slot="icon-only" name="add" />
       </ion-button>
     </ion-buttons>
   }
