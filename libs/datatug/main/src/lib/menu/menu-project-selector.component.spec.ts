@@ -264,7 +264,11 @@ describe('MenuProjectSelectorComponent', () => {
     const currentStoreId = new BehaviorSubject<string | undefined>('firestore');
     const currentProject = new BehaviorSubject<IProjectContext | undefined>({
       ref: { storeId: 'firestore', projectId: 'detective-demo' },
-      summary: { title: 'Detective demo with a long project title' },
+      summary: {
+        id: 'detective-demo',
+        title: 'Detective demo with a long project title',
+        access: 'private',
+      },
     });
     const navigateToNewProjectPage = vi.fn();
     await TestBed.configureTestingModule({
