@@ -1,3 +1,4 @@
+import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
 import { ShippingQueryAccessComponent } from './shipping-query-access.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
@@ -48,6 +49,7 @@ import {
     IonHeader,
     IonTitle,
     IonToolbar,
+    ShippingComponentInstallerComponent,
   ],
   template: ` <ion-header
       ><ion-toolbar
@@ -200,6 +202,9 @@ import {
             >Open Incidents and select an environment</a
           >
         </p>
+      }
+      @if (native()) {
+        <sneat-shipping-component-installer />
       }
     </ion-content>`,
 })

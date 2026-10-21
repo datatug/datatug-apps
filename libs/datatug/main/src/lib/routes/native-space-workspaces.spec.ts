@@ -1,3 +1,4 @@
+import { ShippingComponentApiService } from '../shipping/shipping-component-api.service';
 import { TestBed } from '@angular/core/testing';
 import { Router, RouterLink, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -64,6 +65,21 @@ describe('actual native Space router workspaces', () => {
     TestBed.configureTestingModule({
       imports: [ProjectMenuComponent],
       providers: [
+        {
+          provide: ShippingComponentApiService,
+          useValue: {
+            current: () =>
+              of({
+                available: {
+                  componentId: 'shipping-investigation',
+                  version: 1,
+                  digest: 'a'.repeat(64),
+                  sourceCommit: 'cb841345e88d01229857b2bdb51cc07f4ef4bec7',
+                },
+                exists: false,
+              }),
+          },
+        },
         // The actual production Space parent/children are used, not a parallel
         // fixture route list, guard invocation, or replacement page template.
         provideRouter(
@@ -142,6 +158,89 @@ describe('actual native Space router workspaces', () => {
       `${base}/overview`,
     );
     expect(shipping.revision).toHaveBeenCalledWith(ref);
+    expect(shipping.action).not.toHaveBeenCalled();
+  });
+  it('opens the actual installed Board from shipping setup and cold URL without executing a query', async () => {
+    TestBed.overrideProvider(ShippingComponentApiService, {
+      useValue: {
+        current: () =>
+          of({
+            available: {
+              componentId: 'shipping-investigation',
+              version: 1,
+              digest: 'a'.repeat(64),
+              sourceCommit: 'cb841345e88d01229857b2bdb51cc07f4ef4bec7',
+            },
+            exists: true,
+            installation: {
+              boardIds: ['shipping'],
+              checkIds: ['shipping-request-received'],
+            },
+          }),
+      },
+    });
+    TestBed.overrideProvider(DetectiveClientService, {
+      useValue: {
+        state: () =>
+          of({
+            environments: ['demo'],
+            capabilities: { canRead: true, canWrite: true },
+          }),
+      },
+    });
+    hostedAssets.board.mockReturnValue(
+      of({
+        board: { id: 'shipping', title: 'Shipping investigation', rows: [] },
+        revision: 'shipping-rev',
+      }),
+    );
+    const h = await RouterTestingHarness.create();
+    await h.navigateByUrl(`${base}/shipping`, ShippingWorkspaceComponent);
+    await vi.waitFor(() =>
+      expect(h.routeNativeElement?.textContent).toContain(
+        'Open shipping board',
+      ),
+    );
+    expect(
+      h.routeNativeElement?.querySelector(
+        'sneat-datatug-shipping-query-access',
+      ),
+    ).toBeTruthy();
+    expect(
+      h.routeNativeElement?.querySelector('sneat-shipping-component-installer'),
+    ).toBeTruthy();
+    const router = TestBed.inject(Router);
+    const destination = h.routeDebugElement
+      ?.queryAll(By.directive(RouterLink))
+      .map((item) => item.injector.get(RouterLink).urlTree)
+      .find(
+        (tree) =>
+          tree &&
+          router.serializeUrl(tree) ===
+            `${base}/board/shipping?environment=demo`,
+      );
+    if (!destination)
+      throw new Error('Missing actual installed Board destination');
+    await h.navigateByUrl(router.serializeUrl(destination), BoardPageComponent);
+    await vi.waitFor(() =>
+      expect(hostedAssets.board).toHaveBeenCalledWith(ref, 'demo', 'shipping'),
+    );
+    expect(
+      h.routeNativeElement?.querySelector(
+        'sneat-datatug-hosted-board-workspace',
+      ),
+    ).toBeTruthy();
+    await h.navigateByUrl(`${base}/boards`, BoardsPageComponent);
+    await h.navigateByUrl(
+      `${base}/board/shipping?environment=demo`,
+      BoardPageComponent,
+    );
+    await vi.waitFor(() =>
+      expect(h.routeNativeElement?.textContent).toContain(
+        'Shipping investigation',
+      ),
+    );
+    expect(legacyAssets.board).not.toHaveBeenCalled();
     expect(shipping.action).not.toHaveBeenCalled();
   });
   it('cold-opens the real native Boards list and its existing canonical hosted list', async () => {
