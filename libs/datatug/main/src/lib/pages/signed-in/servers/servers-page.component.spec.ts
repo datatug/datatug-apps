@@ -322,6 +322,51 @@ describe('ServersPage source discovery lifecycle', () => {
     expect(text).toContain('chinook');
   });
 
+  it('keeps independent evidence visible while environments are initially pending and retrying, then applies the successful selection', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([
+      {
+        dbServer: {
+          driver: 'sqlite3',
+          host: '',
+          path: 'data/dev.sqlite',
+        },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
+      },
+    ]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-sqlite',
+          dataset: 'chinook',
+          storage: 'sqlite',
+          readiness: 'public-api',
+          environments: ['dev'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+
+    environmentsByRequest[0].error(new Error('environment read unavailable'));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+
+    fixture.componentInstance['retryEnvironments']();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+
+    environmentsByRequest[1].next([{ id: 'prod', title: 'PROD' }]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).not.toContain('chinook');
+  });
+
   it('does not call the unsupported catalog transport for a shared project', async () => {
     current$.next({
       storeId: 'firestore',

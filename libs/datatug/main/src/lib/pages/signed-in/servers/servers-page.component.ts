@@ -173,7 +173,7 @@ export class ServersPageComponent implements OnDestroy {
       const sources = this.catalogSources();
       if (!sources) return undefined;
       const selected = this.selectedEnvironmentIds();
-      const environmentFilterAvailable = !this.environmentsError();
+      const environmentFilterAvailable = this.environments() !== undefined;
       const query = this.filterText().trim().toLocaleLowerCase();
       const groups = new Map<string, ProjectConnectionSource[]>();
       for (const source of sources) {
@@ -237,7 +237,7 @@ export class ServersPageComponent implements OnDestroy {
         return undefined;
       }
       const selected = this.selectedEnvironmentIds();
-      const environmentFilterAvailable = !this.environmentsError();
+      const environmentFilterAvailable = this.environments() !== undefined;
       const query = this.filterText().trim().toLocaleLowerCase();
       return servers
         .map((server) => {
