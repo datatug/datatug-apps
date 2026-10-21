@@ -15,11 +15,24 @@ export function projectItemLink(
   }
   return tree;
 }
+/** Assigned legacy metadata can exceed the detail limit; keep read links scoped and usable. */
+const admitsTagDetail = (tag: string): boolean =>
+  tag.length > 0 && new TextEncoder().encode(tag).length <= 50;
+
+const tagDiscoveryLink = (ref: IProjectRef | undefined, name: string): UrlTree =>
+  projectItemLink(ref, 'tag-discovery', { name });
+
+export const projectTagDiscoveryHref = (
+  ref: IProjectRef | undefined,
+  name: string,
+): string => serializer.serialize(tagDiscoveryLink(ref, name));
+
 /** Path-like tag text stays opaque in a query parameter, avoiding browser dot normalization. */
 export function projectTagLink(
   ref: IProjectRef | undefined,
   tag: string,
 ): UrlTree {
+  if (!admitsTagDetail(tag)) return tagDiscoveryLink(ref, tag);
   const pathLike =
     tag.split(/[\\/]/).some((part) => !part || part === '.' || part === '..') ||
     [...tag].some(

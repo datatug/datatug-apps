@@ -198,3 +198,12 @@ it('keeps one real Tags route and redirects distinctive legacy name-discovery de
   expect(new DefaultUrlSerializer().serialize(redirect as UrlTree)).toBe('/space/S/store/firestore/project/P/tag-discovery?name=Ops%20%2F%20%C3%89%3F&branch=main&projectApi=local');
   expect(legacyTagDiscovery({...route,queryParamMap:convertToParamMap({})} as ActivatedRouteSnapshot,{} as RouterStateSnapshot)).toBe(true);
 });
+
+
+it.each(['A'.repeat(51), 'é'.repeat(25) + 'a'])(
+  'keeps legacy long-tag read links in scoped discovery without relaxing detail routes', tag => {
+    const link = projectTagLink(ref, tag);
+    expect(link.root.children['primary'].segments.at(-1)?.path).toBe('tag-discovery');
+    expect(link.queryParams).toEqual({projectApi: 'local', branch: 'main', name: tag});
+  },
+);

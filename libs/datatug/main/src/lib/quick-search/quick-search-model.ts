@@ -1,4 +1,7 @@
-import { projectTagHref } from '../tags/tag-navigation';
+import {
+  projectTagDiscoveryHref,
+  projectTagHref,
+} from '../tags/tag-navigation';
 import { isPublicChecksProject } from '../detective/public-checks-project';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
@@ -208,7 +211,7 @@ export function searchItemHref(
 
 /** Name groups retain cross-kind discovery separately from actual tag detail. */
 export function searchNameHref(ref: IProjectRef, name: string): string {
-  return withParameters(projectPageHref(ref, ['tag-discovery']), {name});
+  return projectTagDiscoveryHref(ref, name);
 }
 
 export type CheckMetadataTarget =

@@ -115,3 +115,23 @@ describe('typed Check metadata destinations',()=>{
     const params=new URLSearchParams(query);expect(checkMetadataTarget(params)).toEqual({kind:'invalid'});
   });
 });
+
+
+describe('assigned tag navigation byte boundaries', () => {
+  const ref = {storeId: 'firestore', spaceID: 'S', projectId: 'P'};
+  it.each(['A'.repeat(51), 'é'.repeat(25) + 'a', '😀'.repeat(13), ' ' + 'A'.repeat(49) + ' '])(
+    'uses closed exact-tag discovery when a legacy name exceeds the detail byte contract', name => {
+      expect(searchItemHref(ref, {kind: 'tag', id: name, name, tags: [], reference: {objectId: name}}))
+        .toBe(searchNameHref(ref, name));
+    },
+  );
+  it.each(['A'.repeat(50), 'é'.repeat(25), '😀'.repeat(12) + '//'])(
+    'retains exact detail navigation for valid 50-byte names, including opaque text', name => {
+      const href = searchItemHref(ref, {kind: 'tag', id: name, name, tags: [], reference: {objectId: name}});
+      const url = new URL(href || '/', 'https://example.test');
+      expect(url.pathname).not.toContain('/tag-discovery');
+      expect(url.pathname).not.toBe('/');
+      expect(url.searchParams.get('tag') ?? decodeURIComponent(url.pathname.split('/').at(-1) || '')).toBe(name);
+    },
+  );
+});
