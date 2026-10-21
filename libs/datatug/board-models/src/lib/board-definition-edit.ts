@@ -41,7 +41,7 @@ export function validateHostedBoardDefinition(board: Board): void {
       'rows',
     ]) ||
     !/^[A-Za-z0-9_-]{1,128}$/.test(board.id) ||
-    (board.title !== undefined && typeof board.title !== 'string')
+    typeof board.title !== 'string'
   )
     throw new Error('Unsupported or incomplete board definition.');
   parameters(board.parameters);

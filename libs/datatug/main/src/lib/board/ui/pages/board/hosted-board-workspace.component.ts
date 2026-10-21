@@ -267,7 +267,7 @@ interface QueryFolder {
         <ion-button
           (click)="save()"
           [disabled]="
-            saving() || loading() || conflict() || !board.title?.trim()
+            saving() || loading() || conflict() || !board.title.trim()
           "
           >{{
             saving()

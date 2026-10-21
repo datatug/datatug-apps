@@ -95,6 +95,7 @@ describe('canonical durable board definition edits', () => {
     expect(next.rows?.flatMap((row) => row.cards ?? []).length).toBe(2);
   });
   it('refuses source text, unsupported graph fields and unlisted saved queries without loss', () => {
+    expect(() => validateHostedBoardDefinition({ id: 'missing-title' } as Board)).toThrow('incomplete');
     const value = board();
     expect(() =>
       editBoardDefinition(
