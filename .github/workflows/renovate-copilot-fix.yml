@@ -1,0 +1,75 @@
+name: Renovate Copilot fix
+
+# When CI fails on a Renovate pull request, ask Copilot coding agent to fix the
+# branch by mentioning @copilot on the pull request. The logic, guards and
+# attempt limit live in .github/scripts/renovate-copilot-fix.sh.
+#
+# Setup:
+# - COPILOT_TRIGGER_TOKEN: a fine-grained personal access token of a user with a
+#   Copilot seat, scoped to this repository with Pull requests: read and write.
+#   Copilot only acts on mentions from such a user. Without the secret the
+#   workflow reports what it would request and changes nothing.
+# - Copilot's pushes run CI only after a human approves them, unless
+#   Settings > Copilot > cloud agent > "Require approval for workflow runs" is off.
+#   Until then a fixed branch waits for that click, and auto-merge waits with it.
+# - Settings > General > "Allow auto-merge" must stay on for Renovate's automerge.
+#   The renovate-needs-human label is created on first use.
+#
+# Known limits:
+# - Only pull_request CI runs are handled. A Renovate PR that passes its own CI but
+#   fails in the merge queue (merge_group) is dropped from the queue with no
+#   Copilot request; watch for those in the queue and the Dependency Dashboard.
+# - Once Copilot commits to a Renovate branch, Renovate stops updating or
+#   rebasing it, so a later conflict there needs a human.
+#
+# workflow_run runs this file from the default branch, never from the pull
+# request, and the job checks out only .github/scripts from the default branch.
+# Event-driven only (repo owner policy: no scheduled or polling workflows); the
+# manual run is the sweep for pull requests that failed before this existed.
+
+on:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      pr:
+        description: Renovate pull request number (empty = every open Renovate pull request whose latest CI run failed)
+        type: string
+        default: ''
+
+permissions:
+  actions: read
+  contents: read
+  issues: write
+  pull-requests: read
+
+concurrency:
+  group: renovate-copilot-fix-${{ github.event.workflow_run.head_branch || github.run_id }}
+  cancel-in-progress: false
+
+jobs:
+  request-fix:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.event == 'pull_request' &&
+       github.event.workflow_run.conclusion == 'failure' &&
+       startsWith(github.event.workflow_run.head_branch, 'renovate/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github/scripts
+          persist-credentials: false
+      - name: Ask Copilot to fix failing Renovate pull requests
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COPILOT_TRIGGER_TOKEN: ${{ secrets.COPILOT_TRIGGER_TOKEN }}
+          REPO: ${{ github.repository }}
+          MAX_ATTEMPTS: '2'
+          RUN_ID: ${{ github.event.workflow_run.id }}
+          HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+          INPUT_PR: ${{ inputs.pr }}
+        run: bash .github/scripts/renovate-copilot-fix.sh
