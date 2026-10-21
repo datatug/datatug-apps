@@ -1,3 +1,4 @@
+import { projectTagLink } from '../../../../tags/tag-navigation';
 import {
   Component,
   OnDestroy,
@@ -103,6 +104,7 @@ import { projectPageHref } from '../../../../nav/project-page-href';
   ],
 })
 export class BoardsPageComponent implements OnInit, OnDestroy {
+  readonly tagLink = projectTagLink;
   readonly tagFilter = inject(TagFilterState);
   readonly filter = signal('');
   readonly filteredBoards = computed(() =>

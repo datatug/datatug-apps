@@ -17,7 +17,6 @@
 </ion-header>
 
 <ion-content color="light">
-  <sneat-datatug-project-tags-cloud [projectRef]="project()?.ref" />
   @if (shippingHref(); as href) {
     <ion-item [routerLink]="href" detail="true"
       ><ion-label>Shipping training workspace</ion-label></ion-item
@@ -71,6 +70,8 @@
             <button
               type="button"
               class="environment-shortcut"
+              data-testid="overview-environment-item"
+              [attr.data-environment-id]="environment.id"
               (click)="goEnvironment(environment)"
               [attr.aria-label]="
                 'Open ' +
@@ -102,23 +103,26 @@
         />
       }
     </section>
-    <nav
-      class="overview-tabs"
-      role="group"
-      aria-label="Project overview sections"
-    >
-      @for (tab of overviewTabs; track tab.id) {
-        <button
-          type="button"
-          [class.active]="activeTab() === tab.id"
-          [attr.aria-pressed]="activeTab() === tab.id"
-          (click)="selectTab(tab.id)"
-        >
-          {{ tab.label }}
-        </button>
-      }
-    </nav>
   }
+  <nav
+    class="overview-tabs"
+    role="group"
+    aria-label="Project overview sections"
+  >
+    @for (
+      tab of project()?.ref?.spaceID ? sharedOverviewTabs : overviewTabs;
+      track tab.id
+    ) {
+      <button
+        type="button"
+        [class.active]="activeTab() === tab.id"
+        [attr.aria-pressed]="activeTab() === tab.id"
+        (click)="selectTab(tab.id)"
+      >
+        {{ tab.label }}
+      </button>
+    }
+  </nav>
 
   <!--	<sneat-datatug-card-list [projItemType]="DbModel"-->
   <!--					   title="DB models"-->
@@ -138,7 +142,9 @@
   <!--							 (itemClick)="goEntity($event)"-->
   <!--							 (cardTitleClick)="goProjFolder(Entity)"/>-->
 
-  @if (project()?.ref?.spaceID) {
+  @if (activeTab() === 'tags') {
+    <sneat-datatug-project-tags-cloud [projectRef]="project()?.ref" />
+  } @else if (project()?.ref?.spaceID) {
     <ion-card>
       <ion-item><ion-label>Shared project</ion-label></ion-item>
       @if (metadataState() === 'available') {
@@ -213,66 +219,6 @@
       <sneat-datatug-project-database-servers-preview
         [projectRef]="project()?.ref"
       />
-    }
-  } @else if (activeTab() === 'environments') {
-    @if (projectAssetsUnsupported()) {
-      <ion-card
-        ><ion-card-content role="status"
-          >Environments are unavailable for this project connection or
-          branch.</ion-card-content
-        ></ion-card
-      >
-    } @else {
-      <ion-card>
-        <ion-list>
-          @if (environmentError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                environmentErrorMessage() ||
-                  'Environments could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
-          } @else if (environments(); as items) {
-            @for (environment of items; track environment.id) {
-              <ion-item
-                button
-                detail
-                (click)="goEnvironment(environment)"
-                data-testid="overview-environment-item"
-              >
-                <ion-icon
-                  slot="start"
-                  [icon]="environmentPresentation(environment).icon"
-                  aria-hidden="true"
-                />
-                <ion-label
-                  ><h3>{{ environmentPresentation(environment).label }}</h3>
-                  @if (
-                    environmentPresentation(environment).label !==
-                    environment.id
-                  ) {
-                    <p>Environment ID: {{ environment.id }}</p>
-                  }
-                  @if (
-                    environmentPresentation(environment).safetyLabel;
-                    as safety
-                  ) {
-                    <p>{{ safety }}</p>
-                  }
-                </ion-label>
-              </ion-item>
-            } @empty {
-              <ion-item
-                ><ion-label
-                  >No environments have been configured yet.</ion-label
-                ></ion-item
-              >
-            }
-          } @else {
-            <ion-item><ion-label>Loading environments…</ion-label></ion-item>
-          }
-        </ion-list>
-      </ion-card>
     }
   } @else {
     @if (projectAssetsUnsupported()) {

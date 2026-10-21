@@ -1,3 +1,6 @@
+import { refreshOutline } from 'ionicons/icons';
+import { IDbServer, getDbServerId } from '../models/definition/apis/database';
+import { projectTagLink, projectItemLink } from './tag-navigation';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -15,6 +18,8 @@ import {
   IonCard,
   IonChip,
   IonItem,
+  IonList,
+  IonIcon,
   IonLabel,
   IonSelect,
   IonSelectOption,
@@ -26,19 +31,31 @@ import { QueriesService } from '../queries/queries.service';
 import { DbServerService } from '../services/unsorted/db-server.service';
 import { DatatugServicesUnsortedModule } from '../services/unsorted/datatug-services-unsorted.module';
 import { IQueryFolder } from '../models/definition/query-def';
-import { projectPageHref } from '../nav/project-page-href';
 import { HostedBoardScope } from '../board/core/hosted-board-scope';
 import { TaggedItem, tagCounts } from './tags';
 type Kind = 'boards' | 'queries' | 'servers';
 interface CatalogState {
-  items?: readonly TaggedItem[];
+  items?: readonly CatalogItem[];
   error?: string;
 }
-function queryItems(folder: IQueryFolder | null | undefined): TaggedItem[] {
+interface CatalogItem extends TaggedItem {
+  readonly id?: string;
+  readonly title?: string;
+  readonly dbServer?: IDbServer;
+}
+function queryItems(
+  folder: IQueryFolder | null | undefined,
+  path: readonly string[] = [],
+): CatalogItem[] {
   if (!folder) throw new Error('Query catalog unavailable.');
   return [
-    ...(folder.items ?? []),
-    ...(folder.folders ?? []).flatMap(queryItems),
+    ...(folder.items ?? []).map((item) => ({
+      ...item,
+      id: [...path, item.id].join('/'),
+    })),
+    ...(folder.folders ?? []).flatMap((child) =>
+      queryItems(child, [...path, child.id]),
+    ),
   ];
 }
 @Component({
@@ -52,6 +69,8 @@ function queryItems(folder: IQueryFolder | null | undefined): TaggedItem[] {
     IonCard,
     IonChip,
     IonItem,
+    IonList,
+    IonIcon,
     IonLabel,
     IonButton,
     IonSelect,
@@ -61,14 +80,27 @@ function queryItems(folder: IQueryFolder | null | undefined): TaggedItem[] {
   template: `<ion-card>
     <ion-item-divider color="light"
       ><ion-label
-        ><h2>Tags</h2>
-        <p>Project items, counted once per tag.</p></ion-label
+        ><h2>
+          {{ selectedTag() === undefined ? 'Tags' : 'Tag: ' + selectedTag() }}
+        </h2>
+        <p>
+          {{
+            selectedTag() === undefined
+              ? 'Project items, counted once per tag.'
+              : 'Matching project items. Open an item to view its details and tag editing access.'
+          }}
+        </p></ion-label
       ><ion-buttons slot="end"
-        ><ion-button color="medium" fill="clear" (click)="reload()"
-          >Reload tags</ion-button
-        ></ion-buttons
-      ></ion-item-divider
-    >
+        ><ion-button
+          color="medium"
+          fill="clear"
+          aria-label="Reload tags"
+          title="Reload tags"
+          (click)="reload()"
+          ><ion-icon
+            slot="icon-only"
+            [icon]="refreshIcon" /></ion-button></ion-buttons
+    ></ion-item-divider>
     @if (shared()) {
       <ion-item
         ><ion-select
@@ -103,55 +135,92 @@ function queryItems(folder: IQueryFolder | null | undefined): TaggedItem[] {
         </p>
       }
     }
-    <div class="tags-cloud">
-      @for (entry of entries(); track entry.tag) {
-        <section [attr.aria-label]="'Tag ' + entry.tag">
-          <strong>{{ entry.tag }}</strong>
-          @for (kind of kinds; track kind) {
-            @if (catalog()[kind].items) {
-              <a
-                [routerLink]="href(kind)"
-                [queryParams]="params(kind, entry.tag)"
-                ><ion-chip [outline]="true"
-                  >{{ labels[kind] }}: {{ entry.counts[kind] }}</ion-chip
-                ></a
+    @if (selectedTag() !== undefined) {
+      <ion-list class="tag-items">
+        @for (kind of kinds; track kind) {
+          <ion-item-divider color="light"
+            ><ion-label>{{ labels[kind] }}</ion-label></ion-item-divider
+          >
+          @if (catalog()[kind].items) {
+            @for (item of matchingItems(kind); track itemKey(item)) {
+              <ion-item [routerLink]="itemHref(kind, item)" detail="true">
+                <ion-label class="ion-text-wrap">{{
+                  itemTitle(kind, item)
+                }}</ion-label>
+              </ion-item>
+            } @empty {
+              <ion-item lines="none"
+                ><ion-label
+                  >No matching {{ labels[kind].toLowerCase() }}.</ion-label
+                ></ion-item
               >
             }
           }
-        </section>
-      } @empty {
-        @if (complete()) {
-          <p>
-            No tags yet. Open a board, query, or database server to add tags.
-          </p>
-        } @else {
-          <p>No tags are available from the loaded item catalogs.</p>
         }
-      }
-    </div>
+      </ion-list>
+    } @else {
+      <ion-list class="tags-cloud">
+        @for (entry of entries(); track entry.tag) {
+          <ion-item
+            class="tag-row"
+          >
+            <ion-label class="ion-text-wrap"
+              ><a [routerLink]="tagHref(projectRef(), entry.tag)"
+                ><strong>{{ entry.tag }}</strong></a
+              ></ion-label
+            >
+            <div slot="end" class="tag-counts" role="group" [attr.aria-label]="'Tag ' + entry.tag">
+              @for (kind of kinds; track kind) {
+                @if (catalog()[kind].items && entry.counts[kind] > 0) {
+                  <a [routerLink]="href(kind, entry.tag)">
+                    <ion-chip [outline]="true"
+                      >{{ labels[kind] }}: {{ entry.counts[kind] }}</ion-chip
+                    >
+                  </a>
+                }
+              }
+            </div>
+          </ion-item>
+        } @empty {
+          <ion-item lines="none"
+            ><ion-label class="ion-text-wrap">
+              @if (complete()) {
+                No tags yet. Open a board, query, or database server to add
+                tags.
+              } @else {
+                No tags are available from the loaded item catalogs.
+              }
+            </ion-label></ion-item
+          >
+        }
+      </ion-list>
+    }
   </ion-card>`,
   styles: [
     `
-      .tags-cloud {
+      .tag-counts {
         display: flex;
         flex-wrap: wrap;
-        gap: 1rem;
-        padding: 0 1rem 1rem;
+        justify-content: flex-end;
+        max-width: 100%;
       }
-      .tags-cloud section {
-        display: flex;
-        flex-wrap: wrap;
-        align-items: center;
-        gap: 0.25rem;
-      }
-      .tags-cloud a {
+      .tag-counts a {
         text-decoration: none;
+      }
+      .tag-row::part(native) {
+        flex-wrap: wrap;
+      }
+      .tag-row ion-label {
+        min-width: 6rem;
       }
     `,
   ],
 })
 export class ProjectTagsCloudComponent {
   readonly projectRef = input<IProjectRef>();
+  readonly selectedTag = input<string>();
+  readonly tagHref = projectTagLink;
+  readonly refreshIcon = refreshOutline;
   readonly scope = inject(HostedBoardScope);
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly queries = inject(QueriesService);
@@ -202,7 +271,7 @@ export class ProjectTagsCloudComponent {
       const subscriptions = new Subscription();
       this.catalog.set({ boards: {}, queries: {}, servers: {} });
       if (!ref) return;
-      const load = (kind: Kind, request: Observable<readonly TaggedItem[]>) =>
+      const load = (kind: Kind, request: Observable<readonly CatalogItem[]>) =>
         subscriptions.add(
           request.subscribe({
             next: (items) =>
@@ -238,12 +307,53 @@ export class ProjectTagsCloudComponent {
       onCleanup(() => subscriptions.unsubscribe());
     });
   }
+  matchingItems(kind: Kind): readonly CatalogItem[] {
+    return (this.catalog()[kind].items ?? []).filter((item) =>
+      item.tags?.includes(this.selectedTag() ?? ''),
+    );
+  }
+  itemKey(item: CatalogItem): string {
+    return item.dbServer
+      ? `${item.dbServer.driver}:${getDbServerId(item.dbServer)}`
+      : (item.id ?? '');
+  }
+  itemTitle(kind: Kind, item: CatalogItem): string {
+    return (
+      item.title ||
+      (kind === 'servers' && item.dbServer
+        ? `${item.dbServer.driver}: ${item.dbServer.host || '(no host)'}${item.dbServer.port ? ':' + item.dbServer.port : ''}`
+        : item.id) ||
+      'Project item'
+    );
+  }
+  itemHref(kind: Kind, item: CatalogItem) {
+    const ref = this.projectRef();
+    if (kind === 'servers' && item.dbServer)
+      return projectItemLink(ref, [
+        'servers',
+        'db',
+        item.dbServer.driver,
+        getDbServerId(item.dbServer),
+      ]);
+    return projectItemLink(
+      ref,
+      kind === 'boards' ? ['board', item.id ?? ''] : 'query',
+      this.itemParams(kind, item),
+    );
+  }
+  itemParams(kind: Kind, item: CatalogItem) {
+    return kind === 'queries'
+      ? { id: item.id }
+      : kind === 'boards' && this.shared()
+        ? { environment: this.scope.environment() }
+        : {};
+  }
   reload(): void {
     this.scope.refresh();
     this.revision.update((value) => value + 1);
   }
-  href(kind: Kind): string {
-    return projectPageHref(this.projectRef(), kind);
+  href(kind: Kind, tag: string) {
+    return projectItemLink(this.projectRef(), kind, this.params(kind, tag));
   }
   params(kind: Kind, tag: string) {
     return {

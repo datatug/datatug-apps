@@ -20,6 +20,13 @@ import { BoardCardComponent } from '../../components/board-card/board-card.compo
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { IProjectRef } from '../../../../core/project-context';
 
+@Component({ selector: 'sneat-datatug-board-widget', template: '' })
+class BoardWidgetStub {
+  readonly actionsTemplate = () => undefined;
+  readonly chartView = () => 'chart' as const;
+  setChartView(): void { /* Playback is covered by board-widget specs. */ }
+}
+
 @Component({
   selector: 'sneat-datatug-board',
   imports: [BoardCardComponent],
@@ -130,7 +137,7 @@ describe('BoardPage same-route tutorial overlay', () => {
         },
       })
       .overrideComponent(BoardCardComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        set: { imports: [BoardWidgetStub], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
     const fixture = TestBed.createComponent(BoardPageComponent);

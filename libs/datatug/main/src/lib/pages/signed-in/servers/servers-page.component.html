@@ -105,7 +105,7 @@
                 @if (dbServer.tags?.length) {
                   <p>
                     @for (tag of dbServer.tags || []; track tag) {
-                      <ion-badge color="light">{{ tag }}</ion-badge>
+                      <a [routerLink]="tagLink(target(), tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
                     }
                   </p>
                 }

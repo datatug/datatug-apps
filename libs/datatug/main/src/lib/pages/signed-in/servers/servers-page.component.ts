@@ -1,3 +1,5 @@
+import { projectTagLink } from '../../../tags/tag-navigation';
+import { RouterLink } from '@angular/router';
 import { TagFilterComponent } from '../../../tags/tag-filter.component';
 import { TagFilterState } from '../../../tags/tag-filter-state';
 import { matchesTags } from '../../../tags/tags';
@@ -64,6 +66,7 @@ const isGithubStoreId = (storeId: string): boolean =>
   providers: [TagFilterState],
   styleUrls: ['./servers-page.component.scss'],
   imports: [
+    RouterLink,
     // `ProjectContextService` (injected below) and `DbServerService`
     // (injected below, itself needing `ProjectContextService`/
     // `ProjectService`) were plain `@Injectable()`s provided by
@@ -121,6 +124,7 @@ const isGithubStoreId = (storeId: string): boolean =>
   ],
 })
 export class ServersPageComponent implements OnDestroy {
+  readonly tagLink = projectTagLink;
   readonly tagFilter = inject(TagFilterState);
   protected readonly getDbServerId = getDbServerId;
   private readonly projectContextService = inject(ProjectContextService);
@@ -224,7 +228,7 @@ export class ServersPageComponent implements OnDestroy {
   // Written from the same `.subscribe()` callback as `dbServers` above.
   // Never read by the template, but kept as a signal too for consistency
   // and so tools/check-zoneless-fields.mjs doesn't need a carve-out for it.
-  private readonly target = signal<IProjectRef | undefined>(undefined);
+  readonly target = signal<IProjectRef | undefined>(undefined);
   // A signal, not a plain field mutated in place: `this.isDeletingServer[id]
   // = ...` / `delete this.isDeletingServer[id]` from deleteDbServer()'s
   // `.subscribe()` callback below used to mutate a plain `Record` — a

@@ -20,7 +20,7 @@ const renderedBoard = (page: Page) =>
   });
 const cardTitles = (page: Page) =>
   page
-    .locator('sneat-datatug-board-card > ion-card > ion-item ion-label')
+    .locator('sneat-datatug-board-card > ion-card > .board-card-header > ion-item > ion-label')
     .allTextContents();
 
 async function changeStep(
@@ -268,7 +268,7 @@ test('guided trend, source and race views replay one held result with reduced mo
   await changeStep(tutorial, 'Previous');
   await expect(
     race.getByRole('tab', { name: 'Chart', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(race.getByRole('slider', { name: 'Choose month' })).toHaveValue(
     '3',
   );
@@ -277,7 +277,7 @@ test('guided trend, source and race views replay one held result with reduced mo
   await changeStep(tutorial, 'Next Step');
   await expect(
     race.getByRole('tab', { name: 'Source rows', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(
     race.locator('sneat-datatug-held-result-presentation'),
   ).toContainText('830 rows');
@@ -297,7 +297,7 @@ test('guided trend, source and race views replay one held result with reduced mo
   await expect(race).toContainText('830 source orders');
   await expect(
     race.getByRole('tab', { name: 'Chart', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+  ).toHaveAttribute('aria-selected', 'true');
   expect(ledger.posts.filter((query) => query === 'orders')).toHaveLength(2);
   expect(ledger.downloads).toEqual([]);
   expect(ledger.mutations).toEqual([]);

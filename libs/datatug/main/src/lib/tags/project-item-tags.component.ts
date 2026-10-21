@@ -33,6 +33,7 @@ interface TagSnapshot {
   template: `
     <sneat-datatug-tags-editor
       [tags]="tags()"
+      [projectRef]="projectRef()"
       [readOnlyDescription]="
         connectionReadOnly() ? 'are read-only for this project connection' : ''
       "

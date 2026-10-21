@@ -1,3 +1,4 @@
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 
@@ -14,6 +15,7 @@ describe('TagsPage', () => {
     await TestBed.configureTestingModule({
       imports: [TagsPageComponent],
       providers: [
+        { provide: ActivatedRoute, useValue: { paramMap: of(convertToParamMap({})) } },
         {
           provide: ProjectContextService,
           useValue: { current$: of(undefined) },

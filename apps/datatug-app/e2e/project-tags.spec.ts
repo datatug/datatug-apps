@@ -55,6 +55,7 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
         },
       });
     if (request.method() === 'OPTIONS') return reply({});
+    if (path.endsWith('/projects/projects_summary')) return reply([]);
     if (path.endsWith('/agent-info')) return reply({ version: 'v0.103.4' });
     if (path.endsWith('/projects/capabilities'))
       return reply({
@@ -184,18 +185,84 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
       exact: true,
     }),
   ).toHaveCount(0);
+  await page.goto(`${base}/overview`);
+  const overviewTabs = activePage(page).getByRole('group', {
+    name: 'Project overview sections',
+  });
+  await expect(
+    overviewTabs.getByRole('button', { name: 'Environments', exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    activePage(page).locator('.overview-environments'),
+  ).toBeVisible();
+  await expect(
+    activePage(page).locator('sneat-datatug-project-tags-cloud'),
+  ).toHaveCount(0);
+  await overviewTabs.getByRole('button', { name: 'Tags', exact: true }).click();
+  await expect(
+    activePage(page).getByRole('group', { name: 'Tag ops', exact: true }),
+  ).toContainText('Boards: 1');
+  const overviewCloud = activePage(page).locator(
+    'sneat-datatug-project-tags-cloud',
+  );
+  await expect(overviewCloud.locator('ion-list ion-item.tag-row')).toHaveCount(
+    2,
+  );
+  await expect(overviewCloud.locator('ion-item.tag-row ion-chip')).toHaveCount(
+    4,
+  );
+  await expect(overviewCloud.getByRole('link', { name: /: 0$/ })).toHaveCount(
+    0,
+  );
+  await page.screenshot({
+    path: testInfo.outputPath('overview-tags-tab.png'),
+    fullPage: true,
+  });
   await page.goto(`${base}/tags`);
-  const ops = activePage(page).getByRole('region', {
+  const ops = activePage(page).getByRole('group', {
     name: 'Tag ops',
     exact: true,
   });
   await expect(ops).toContainText('Boards: 1');
   await expect(ops).toContainText('Queries: 1');
+  await expect(ops.getByRole('link', { name: 'Queries: 1', exact: true })).not.toHaveAttribute('href', /folder=|null/);
   await expect(ops).toContainText('Database servers: 1');
   await page.screenshot({
     path: testInfo.outputPath('tag-cloud.png'),
     fullPage: true,
   });
+  await activePage(page).getByRole('link', { name: 'ops', exact: true }).click();
+  await expect(page).toHaveURL(/\/tag\/ops$/);
+  const detail = activePage(page).locator('sneat-datatug-project-tags-cloud').filter({ has: page.locator('.tag-items') });
+  await expect(
+    detail.getByRole('heading', { name: 'Tag: ops', exact: true }),
+  ).toBeVisible();
+  await expect(detail.locator('.tag-items')).toContainText('Operations board');
+  await expect(detail.locator('.tag-items')).toContainText('Operations query');
+  await expect(detail.locator('ion-item[href*="/board/b"]')).toBeVisible();
+  await expect(detail.locator('ion-item[href*="query?id=q"]')).toBeVisible();
+  await expect(
+    detail.locator('ion-item[href*="/servers/db/sqlite3/-"]'),
+  ).toBeVisible();
+  await detail
+    .getByRole('button', { name: 'Reload tags', exact: true })
+    .click();
+  await expect(detail.locator('.tag-items')).toContainText('Operations board');
+  await page.reload();
+  await expect(detail.locator('.tag-items')).toContainText('Operations query');
+  await page.screenshot({ path: testInfo.outputPath('tag-detail.png'), fullPage: true });
+  const specialTag = 'Ops / É?#';
+  await page.goto(`${base}/tag/${encodeURIComponent(specialTag)}`);
+  await expect(
+    detail.getByRole('heading', { name: `Tag: ${specialTag}`, exact: true }),
+  ).toBeVisible();
+  await expect(detail.locator('.tag-items')).toContainText(
+    'No matching boards.',
+  );
+  await activePage(page)
+    .getByRole('link', { name: 'All tags', exact: true })
+    .click();
+  await expect(page).toHaveURL(/\/tags$/);
   await ops.getByRole('link', { name: 'Boards: 1', exact: true }).click();
   await expect(page).toHaveURL(/tag=ops/);
   await activePage(page)
@@ -371,7 +438,7 @@ test('project tags: dashboard uses light card headers with Ionic tabs beside the
       access: 'public',
       boards: [fixtureBoard],
     };
-    const json = path.endsWith('/boards/board')
+    const json = path.endsWith('/projects/projects_summary') ? [] : path.endsWith('/boards/board')
       ? fixtureBoard
       : path.endsWith('/projects/capabilities')
         ? { querySave: false }

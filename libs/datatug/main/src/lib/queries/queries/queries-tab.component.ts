@@ -1,3 +1,5 @@
+import { projectTagLink } from '../../tags/tag-navigation';
+import { RouterLink } from '@angular/router';
 import { TagFilterComponent } from '../../tags/tag-filter.component';
 import { TagFilterState } from '../../tags/tag-filter-state';
 import { matchesTags } from '../../tags/tags';
@@ -64,6 +66,7 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   templateUrl: 'queries-tab.component.html',
   providers: [TagFilterState],
   imports: [
+    RouterLink,
     SqlEditorComponent,
     TagFilterComponent,
     IonItem,
@@ -80,6 +83,7 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   ],
 })
 export class QueriesTabComponent {
+  readonly tagLink = projectTagLink;
   readonly tagFilter = inject(TagFilterState);
   readonly catalogItems = signal<IQueryDef[]>([]);
   readonly loading = signal(false);

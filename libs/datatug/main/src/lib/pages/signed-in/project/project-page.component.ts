@@ -194,15 +194,16 @@ export class ProjectPageComponent
   >('loading');
   protected readonly metadataReadError = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
-    'boards' | 'queries' | 'environments' | 'entities' | 'databases'
+    'boards' | 'queries' | 'tags' | 'entities' | 'databases'
   >('boards');
   protected readonly overviewTabs = [
     { id: 'boards', label: 'Boards' },
     { id: 'queries', label: 'Queries' },
-    { id: 'environments', label: 'Environments' },
+    { id: 'tags', label: 'Tags' },
     { id: 'entities', label: 'Entities' },
     { id: 'databases', label: 'Databases' },
   ] as const;
+  protected readonly sharedOverviewTabs = [{ id: 'boards', label: 'Project' }, { id: 'tags', label: 'Tags' }] as const;
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
@@ -412,7 +413,7 @@ export class ProjectPageComponent
   }
 
   protected selectTab(
-    tab: 'boards' | 'queries' | 'environments' | 'entities' | 'databases',
+    tab: 'boards' | 'queries' | 'tags' | 'entities' | 'databases',
   ): void {
     this.activeTab.set(tab);
   }

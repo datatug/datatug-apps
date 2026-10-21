@@ -446,11 +446,16 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Boards',
       'Queries',
-      'Environments',
+      'Tags',
       'Entities',
       'Databases',
     ]);
     expect(fixture.nativeElement.querySelector('ion-segment')).toBeNull();
+    expect(fixture.nativeElement.querySelector('.overview-environments')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('sneat-datatug-project-tags-cloud')).toBeNull();
+    buttons[2].click();
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('sneat-datatug-project-tags-cloud')).not.toBeNull();
     buttons[1].click();
     fixture.detectChanges();
     expect(
@@ -582,7 +587,6 @@ describe('ProjectPage rendering a local-agent store project', () => {
     });
 
     for (const [tab, label] of [
-      [2, 'Environments'],
       [3, 'Entities'],
       [4, 'Databases'],
     ] as const) {

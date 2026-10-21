@@ -174,14 +174,6 @@
     }
   }
 
-  @if (queryDef(); as definition) {
-    <sneat-datatug-tags-editor
-      [tags]="definition.tags || []"
-      [disabled]="!!queryState.isSaving"
-      [readonly]="queryState.saveSupported === false || !canSaveQuery()"
-      (tagsChange)="updateTags($event)"
-    />
-  }
   @if (queryDef()?.publicData; as saved) {
     <ion-card
       ><ion-card-header
@@ -1980,6 +1972,15 @@
   @if (!isTextQueryWorkspace()) {
     <ng-container *ngTemplateOutlet="queryEditor" />
     <ng-container *ngTemplateOutlet="queryResults" />
+  }
+  @if (queryDef(); as definition) {
+    <sneat-datatug-tags-editor
+      [tags]="definition.tags || []"
+      [projectRef]="project?.ref"
+      [disabled]="!!queryState.isSaving"
+      [readonly]="queryState.saveSupported === false || !canSaveQuery()"
+      (tagsChange)="updateTags($event)"
+    />
   }
 </ion-content>
 

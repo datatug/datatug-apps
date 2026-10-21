@@ -1,3 +1,6 @@
+import { RouterLink } from '@angular/router';
+import { IProjectRef } from '../core/project-context';
+import { projectTagLink } from './tag-navigation';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -21,6 +24,7 @@ import { newTagError } from './tags';
   selector: 'sneat-datatug-tags-editor',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RouterLink,
     IonCard,
     IonItemDivider,
     IonButtons,
@@ -47,18 +51,27 @@ import { newTagError } from './tags';
     ></ion-item-divider>
     <div class="tag-list">
       @for (tag of tags(); track tag) {
-        @if (readonly()) {
-          <ion-chip>{{ tag }}</ion-chip>
-        } @else {
-          <button
-            type="button"
-            [disabled]="disabled()"
-            [attr.aria-label]="'Remove tag ' + tag"
-            (click)="remove(tag)"
-          >
-            <ion-chip [outline]="true">{{ tag }} ×</ion-chip>
-          </button>
-        }
+        <ion-chip [outline]="!readonly()">
+          @if (projectRef()) {
+            <a
+              [routerLink]="tagLink(projectRef(), tag)"
+              (click)="$event.stopPropagation()"
+              >{{ tag }}</a
+            >
+          } @else {
+            {{ tag }}
+          }
+          @if (!readonly()) {
+            <button
+              type="button"
+              [disabled]="disabled()"
+              [attr.aria-label]="'Remove tag ' + tag"
+              (click)="remove(tag)"
+            >
+              ×
+            </button>
+          }
+        </ion-chip>
       } @empty {
         <ion-note>No tags yet.</ion-note>
       }
@@ -101,9 +114,14 @@ import { newTagError } from './tags';
         align-items: center;
         padding: 0.75rem 1rem;
       }
+      .tag-list a { color: inherit; }
       button {
         background: transparent;
         padding: 0;
+        min-width: 1.75rem;
+        min-height: 1.75rem;
+        margin-inline-start: .35rem;
+        cursor: pointer;
         border: 0;
         color: inherit;
       }
@@ -111,6 +129,8 @@ import { newTagError } from './tags';
   ],
 })
 export class TagsEditorComponent {
+  readonly projectRef = input<IProjectRef>();
+  readonly tagLink = projectTagLink;
   readonly tags = input<readonly string[]>([]);
   readonly readOnlyDescription = input('');
   readonly disabled = input(false);

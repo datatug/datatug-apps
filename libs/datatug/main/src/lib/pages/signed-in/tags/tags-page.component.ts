@@ -1,7 +1,13 @@
+import { computed } from '@angular/core';
+import { projectItemLink } from '../../../tags/tag-navigation';
+import { ActivatedRoute, RouterLink } from '@angular/router';
+import { map } from 'rxjs';
 import { Component, inject, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   IonBackButton,
+  IonItem,
+  IonLabel,
   IonButtons,
   IonContent,
   IonHeader,
@@ -17,7 +23,13 @@ import { ProjectTagsCloudComponent } from '../../../tags/project-tags-cloud.comp
   selector: 'sneat-datatug-tags',
   templateUrl: './tags-page.component.html',
   imports: [
-    IonHeader, IonToolbar, IonTitle, IonContent,
+    RouterLink,
+    IonItem,
+    IonLabel,
+    IonHeader,
+    IonToolbar,
+    IonTitle,
+    IonContent,
     IonButtons,
     IonBackButton,
     IonMenuButton,
@@ -27,7 +39,15 @@ import { ProjectTagsCloudComponent } from '../../../tags/project-tags-cloud.comp
 })
 export class TagsPageComponent {
   private readonly cloud = viewChild(ProjectTagsCloudComponent);
+  readonly tag = toSignal(
+    inject(ActivatedRoute).paramMap.pipe(
+      map((params) => params.get('tag') ?? undefined),
+    ),
+  );
   readonly projectRef = toSignal(inject(ProjectContextService).current$);
+  readonly allTagsLink = computed(() =>
+    projectItemLink(this.projectRef(), 'tags'),
+  );
   ionViewWillEnter(): void {
     this.cloud()?.reload();
   }

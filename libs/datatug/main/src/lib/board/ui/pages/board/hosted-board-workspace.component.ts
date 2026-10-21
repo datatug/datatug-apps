@@ -185,6 +185,7 @@ interface QueryFolder {
       }
       <sneat-datatug-tags-editor
         [tags]="board.tags || []"
+        [projectRef]="scope.page.ref()"
         [readonly]="!scope.canWrite() || !editing()"
         [disabled]="saving() || !!pending()"
         (tagsChange)="updateTags($event)"

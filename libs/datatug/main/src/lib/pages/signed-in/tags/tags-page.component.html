@@ -2,9 +2,18 @@
   ><ion-toolbar
     ><ion-buttons slot="start"
       ><ion-back-button /><ion-menu-button /></ion-buttons
-    ><ion-title>Tags</ion-title></ion-toolbar
+    ><ion-title>{{
+      tag() === undefined ? 'Tags' : 'Tag: ' + tag()
+    }}</ion-title></ion-toolbar
   ></ion-header
 >
-<ion-content color="light"
-  ><sneat-datatug-project-tags-cloud [projectRef]="projectRef()"
+<ion-content color="light">
+  @if (tag() !== undefined) {
+    <ion-item [routerLink]="allTagsLink()"
+      ><ion-label>All tags</ion-label></ion-item
+    >
+  }
+  <sneat-datatug-project-tags-cloud
+    [projectRef]="projectRef()"
+    [selectedTag]="tag()"
 /></ion-content>

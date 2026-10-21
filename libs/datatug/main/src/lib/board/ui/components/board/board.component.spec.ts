@@ -66,7 +66,7 @@ describe('BoardComponent saved-query journey', () => {
       expect(fixture.nativeElement.textContent).toContain('Customer spend');
       const link = fixture.debugElement.query(By.directive(RouterLink));
       expect(link).not.toBeNull();
-      expect(link.nativeElement.textContent).toContain('Edit query');
+      expect(link.nativeElement.getAttribute('aria-label')).toBe('Edit query');
       const urlTree = link.injector.get(RouterLink).urlTree;
       if (!urlTree) throw new Error('Expected a saved-query RouterLink URL');
       expect(TestBed.inject(Router).serializeUrl(urlTree)).toBe(

@@ -1,3 +1,4 @@
+import { projectTagLink } from '../../../../tags/tag-navigation';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -105,7 +106,7 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
               >{{ board.title || board.id }}</a
             >
             @for (tag of board.tags || []; track tag) {
-              <ion-badge color="light">{{ tag }}</ion-badge>
+              <a [routerLink]="tagLink(scope.page.ref(), tag)"><ion-badge color="light">{{ tag }}</ion-badge></a>
             }
           </li>
         }
@@ -114,6 +115,7 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
   </section>`,
 })
 export class HostedBoardListComponent {
+  readonly tagLink = projectTagLink;
   readonly scope = inject(HostedBoardScope);
   private readonly api = inject(ProjectAssetsApiService);
   readonly tagFilter = inject(TagFilterState);
