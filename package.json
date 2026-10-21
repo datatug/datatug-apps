@@ -36,7 +36,7 @@
     "@codemirror/language": "6.12.4",
     "@codemirror/state": "6.7.1",
     "@codemirror/view": "6.43.6",
-    "@dalgo/core": "github:dal-go/dalgo-js#24eb5b7ef8f044c274cb33beda353b2413e17c42",
+    "@dalgo/core": "github:dal-go/dalgo-js#469c9157e7945f097cf9da8169fac2fc4b58d311",
     "@dalgo/indexeddb": "github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb",
     "@dalgo/ovdb": "github:dal-go/dalgo-http-adapters#28bc59754f068335d08fb31c7aae5216b9f8bf56&path:/packages/ovdb",
     "@dalgo/sqlite-sql": "github:dal-go/dalgo-http-adapters#ab42235a0e125139ebd4eea904c9ffca6aba7c42&path:/packages/sqlite-sql",
