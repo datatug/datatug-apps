@@ -244,7 +244,7 @@ export class RepositoryMeaningsReaderService {
           meanings: NATIVE_MEANINGS_REGISTRY,
         });
         const reader = new CanonicalMetadataReader(
-          fetch,
+          (url, init) => fetch(url, init),
           this.cache,
           AbortSignal.timeout(15000),
         );

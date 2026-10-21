@@ -28,7 +28,14 @@ function setup() {
       value.revision,
       value.files,
     );
-  vi.stubGlobal('fetch', gh.fetch);
+  vi.stubGlobal(
+    'fetch',
+    function (this: unknown, url: string, init: RequestInit) {
+      if (this != null && this !== globalThis)
+        throw new TypeError('Illegal invocation');
+      return gh.fetch(url, init);
+    },
+  );
   const files = data[demo].files,
     ids = ['Customer', 'Invoice', 'Country'];
   const assets = {
