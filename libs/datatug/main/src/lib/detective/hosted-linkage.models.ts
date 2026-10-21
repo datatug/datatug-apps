@@ -1,8 +1,16 @@
-import type { IncidentEvent, IncidentArtifactRef, IncidentAssertion, IncidentNotePresentation } from '../incidents/models';
+import type {
+  IncidentEvent,
+  IncidentArtifactRef,
+  IncidentAssertion,
+  IncidentNotePresentation,
+} from '../incidents/models';
+import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
+import type { IncidentResolutionCriterion } from '../incidents/models';
 import type { DetectiveCase } from './models';
 import type { DetectiveInputValue } from './models';
 
 export interface HostedIncidentView {
+  resolutionCriterion?: IncidentResolutionCriterion;
   ref: { storeId: string; incidentId: string };
   uid: string;
   title: string;
@@ -27,7 +35,11 @@ export interface HostedProjectIncident {
 }
 
 export type IncidentMessagePresentationCapability =
-  | { status: 'available'; kind: 'demo-character'; characterIds: ['sarah', 'maya', 'daniel'] }
+  | {
+      status: 'available';
+      kind: 'demo-character';
+      characterIds: ['sarah', 'maya', 'daniel'];
+    }
   | { status: 'not-eligible' | 'unavailable' };
 
 export interface HostedIncidentEvents {
@@ -43,7 +55,25 @@ export interface HostedIncidentMessage {
   refs?: IncidentArtifactRef[];
 }
 
+export type HostedCriterionAction =
+  | {
+      type: 'criterion-draft';
+      incidentRef: string;
+      environment: string;
+      expectedSeq: number;
+      criterion: { version: number; checkID: string; maxAgeSeconds: number };
+      evidence: AppliedEvidenceRequest;
+    }
+  | {
+      type: 'criterion-finalize';
+      incidentRef: string;
+      environment: string;
+      expectedSeq: number;
+      criterionVersion: number;
+    };
+
 export type HostedIncidentAction =
+  | HostedCriterionAction
   | {
       type: 'append-message';
       incidentRef: string;
@@ -51,7 +81,6 @@ export type HostedIncidentAction =
       expectedSeq: number;
       message: HostedIncidentMessage;
     }
-
   | {
       type: 'create';
       caseId?: string;

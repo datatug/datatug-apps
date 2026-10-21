@@ -1,3 +1,4 @@
+import { isIncidentResolutionCriterion } from './resolution-criterion';
 import {
   HttpClient,
   HttpErrorResponse,
@@ -216,7 +217,7 @@ function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
   return { cursor: value['cursor'], event };
 }
 
-function decodeIncidentEvent(value: unknown): IncidentStreamItem['event'] {
+export function decodeIncidentEvent(value: unknown): IncidentStreamItem['event'] {
   const event = value;
   if (
     !isRecord(event) ||
@@ -347,6 +348,8 @@ function isIncidentEventPayload(
     return false;
   }
   switch (type) {
+    case 'incident.criterion-set':
+      return isIncidentResolutionCriterion(payload);
     case 'incident.created':
       return (
         hasOnlyKeys(payload, [
@@ -464,6 +467,7 @@ function decodeIncident(value: unknown): IncidentDetail {
       'assetRefs',
       'notes',
       'lastSeq',
+      'resolutionCriterion',
     ]) ||
     !isIncidentRef(ref) ||
     typeof incident['uid'] !== 'string' ||
@@ -484,6 +488,7 @@ function decodeIncident(value: unknown): IncidentDetail {
       sameIncidentRef(ref, incident['mergedInto'])) ||
     !optionalProjectRefs(incident['projects']) ||
     !optionalParticipants(incident['participants']) ||
+    ('resolutionCriterion' in incident && !isIncidentResolutionCriterion(incident['resolutionCriterion'])) ||
     !isContextView(incident['canonicalContext']) ||
     !optionalContextPromotions(incident['contextPromotions']) ||
     !optionalContextRejections(incident['contextRejections']) ||
@@ -897,6 +902,7 @@ function isEventCursor(value: unknown): value is string {
 
 function isIncidentEventType(value: unknown): boolean {
   return (
+    value === 'incident.criterion-set' ||
     value === 'incident.created' ||
     value === 'incident.status' ||
     value === 'incident.outcome' ||

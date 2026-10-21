@@ -189,7 +189,28 @@ export const INCIDENT_OUTCOMES = [
 export type IncidentOutcome = (typeof INCIDENT_OUTCOMES)[number];
 
 /** One row of `GET /datatug/incidents` (hub REQ:api-and-cli). */
+export interface IncidentResolutionCriterion {
+  readonly version: number;
+  readonly finalized: boolean;
+  readonly finalizedAt?: string;
+  readonly enforcement: 'required';
+  readonly scope: {
+    readonly project: IncidentProjectRef;
+    readonly sourceID: string;
+    readonly generation: string;
+    readonly affectedInputs: Readonly<Record<string, TypedValue>>;
+    readonly sessionRef: string;
+    readonly bagID: string;
+    readonly appliedManifestRef: string;
+  };
+  readonly checkID: string;
+  readonly checkVersion: number;
+  readonly definitionDigest: string;
+  readonly maxAgeSeconds: number;
+}
+
 export interface IncidentSummary {
+  readonly resolutionCriterion?: IncidentResolutionCriterion;
   readonly ref: IncidentRef;
   readonly uid: string;
   readonly title: string;
@@ -280,6 +301,7 @@ export interface IncidentEvent {
   };
   readonly actor: IncidentActor;
   readonly type:
+    | 'incident.criterion-set'
     | 'incident.created'
     | 'incident.status'
     | 'incident.outcome'
@@ -292,6 +314,7 @@ export interface IncidentEvent {
   readonly assertion: IncidentAssertion;
   readonly refs?: readonly IncidentArtifactRef[];
   readonly payload:
+    | IncidentResolutionCriterion
     | {
         readonly uid: string;
         readonly title: string;

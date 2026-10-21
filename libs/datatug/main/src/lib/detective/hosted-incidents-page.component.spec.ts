@@ -1,3 +1,4 @@
+import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { IncidentEmptyStateComponent } from '../incidents/incident-empty-state.component';
@@ -78,6 +79,23 @@ describe('HostedIncidentsPageComponent', () => {
   });
 
 
+
+  it('gates parent Case and environment mutations while the real child owns an unresolved operation',async()=>{
+    const f=await mount('detail',[],'demo',true,ref,'',[incident],['demo','staging']);
+    await vi.waitFor(()=>expect(f.debugElement.query(By.directive(HostedIncidentConversationComponent))).not.toBeNull());
+    const child=f.debugElement.query(By.directive(HostedIncidentConversationComponent)).componentInstance as HostedIncidentConversationComponent;
+    const reply=new Subject<unknown>();client.incidentAction.mockReturnValue(reply.asObservable());
+    const conversation=child as unknown as {body:{set(value:string):void};send():Promise<void>};
+    conversation.body.set('Pending conversation write');const sending=conversation.send();
+    const parent=f.componentInstance as unknown as {startCase():Promise<void>;selectEnvironment(value:string):void;environment():string};
+    await parent.startCase();parent.selectEnvironment('staging');
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);expect(parent.environment()).toBe('demo');
+    reply.error(new Error('Lost reply'));await sending;
+    // An unresolved journal keeps the parent locked even after transport ends.
+    parent.selectEnvironment('staging');expect(parent.environment()).toBe('demo');
+    child.mutationBusy.emit(false);
+    parent.selectEnvironment('staging');expect(parent.environment()).toBe('staging');
+  });
   it('offers the shared landing only for an empty hosted list', async () => {
     const fixture = await mount('list', [], 'demo', true, ref, '', []);
     await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));

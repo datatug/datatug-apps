@@ -1,3 +1,5 @@
+import { validateHostedCriterionView, validateHostedCriterionHistory, validateHostedCriterionSuccess } from './hosted-criterion-contract';
+import { isHostedCriterionAction } from './incident-message-presentation';
 import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
 import type { RetainedSourcePin } from '../evidence/retained-evidence-contract';
 import {
@@ -374,7 +376,7 @@ export class DetectiveClientService {
       this.cloudParams(context)
         .set('environment', environment)
         .set('incidentRef', incidentRef),
-    );
+    ).pipe(map(response => { validateHostedCriterionView(response.incident, incidentRef, context, environment); return response; }));
   }
 
   incidentEvents(
@@ -386,7 +388,7 @@ export class DetectiveClientService {
   ): Observable<HostedIncidentEvents> {
     return this.api.get<HostedIncidentEvents>('datatug/detective/incident_events',
       this.cloudParams(context).set('environment', environment)
-        .set('incidentRef', incidentRef).set('afterSeq', afterSeq).set('limit', limit));
+        .set('incidentRef', incidentRef).set('afterSeq', afterSeq).set('limit', limit)).pipe(map(page => { validateHostedCriterionHistory(page, incidentRef, context, environment, afterSeq, limit); return page; }));
   }
 
   incidentAction(
@@ -396,6 +398,9 @@ export class DetectiveClientService {
     signal?: AbortSignal,
   ): Observable<HostedIncidentResponse> {
     action = structuredClone(action);
+    if ('evidence' in action && action.type !== 'criterion-draft') return throwError(() => new Error('Evidence is only accepted by criterion draft.'));
+    if ((action.type === 'criterion-draft' || action.type === 'criterion-finalize') && !isHostedCriterionAction(action)) return throwError(() => new Error('Invalid criterion intent.'));
+
     const payload =
       context.kind === 'cloud'
         ? {
@@ -430,6 +435,7 @@ export class DetectiveClientService {
       takeUntil(signal ? fromEvent(signal, 'abort') : new Observable<never>()),
       tap({next: response => {
         if(context.kind==='cloud' && response.receipt!==operationId)throw new Error('The server did not confirm this exact Incident operation. Retry the original intent.');
+        if(context.kind==='cloud' && (action.type==='criterion-draft' || action.type==='criterion-finalize')) validateHostedCriterionSuccess(response, action, context);
         this.pendingOperations.delete(key);
       }}),
     );

@@ -107,7 +107,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
           } @else {
             <ion-item>
               <ion-label>Environment</ion-label>
-              <ion-select aria-label="Incident environment" [value]="environment()" [disabled]="busy()"
+              <ion-select aria-label="Incident environment" [value]="environment()" [disabled]="busy() || conversationBusy()"
                 (ionChange)="selectEnvironment($event.detail.value)">
                 @for (name of environments(); track name) {
                   <ion-select-option [value]="name">{{ name }}</ion-select-option>
@@ -191,6 +191,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                 @if (scope.context(); as context) {
                   @if (context.kind === 'cloud') {
                     <sneat-datatug-hosted-incident-conversation [context]="context" [environment]="environment()"
+                      [parentBusy]="busy()" (mutationBusy)="conversationBusy.set($event)"
                       [incidentRef]="item.ref" [canWrite]="canWrite()" [checks]="state()?.checks || []"
                       (incidentUpdated)="updateConversationIncident($event)" />
                   }
@@ -215,7 +216,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                   <p role="status">Detective Case {{ saved.id }} saved for this Incident.</p>
                   <ion-button (click)="openSavedCase()">Open saved Detective Case</ion-button>
                 } @else {
-                <ion-button (click)="startCase()" [disabled]="!canWrite() || busy()">
+                <ion-button (click)="startCase()" [disabled]="!canWrite() || busy() || conversationBusy()">
                   @if (busy()) { <ion-spinner slot="start" name="dots" /> }
                   Investigate in a Detective Case
                 </ion-button>
@@ -337,6 +338,7 @@ export class HostedIncidentsPageComponent {
     }
   }
 
+  protected readonly conversationBusy = signal(false);
   protected readonly busy = signal(false);
   protected readonly saveError = signal('');
   protected readonly savedIncident = signal<{ href: string; environment: string } | undefined>(undefined);
@@ -425,7 +427,7 @@ export class HostedIncidentsPageComponent {
   }
   protected environmentQuery() { return { environment: this.environment() }; }
   protected selectEnvironment(value: string): void {
-    if (this.busy() || !this.environments().includes(value)) return;
+    if (this.busy() || this.conversationBusy() || !this.environments().includes(value)) return;
     this.clearMappedInputs();
     this.environment.set(value);
     void this.router.navigate([], {
@@ -528,7 +530,7 @@ export class HostedIncidentsPageComponent {
     const context = this.scope.context();
     const item = this.incident();
     const environment = this.environment();
-    if (!context || context.kind !== 'cloud' || !this.canWrite() || !item || !environment || this.busy() || this.loading() || this.loadError() || this.savedCase()) return;
+    if (!context || context.kind !== 'cloud' || !this.canWrite() || !item || !environment || this.busy() || this.conversationBusy() || this.loading() || this.loadError() || this.savedCase()) return;
     if (`${item.ref.storeId}/${item.ref.incidentId}` !== `${this.routeParams().get('incidentStoreId')}/${this.routeParams().get('incidentId')}`) return;
     const identity = this.scope.identity();
     const projectRef = this.scope.ref();

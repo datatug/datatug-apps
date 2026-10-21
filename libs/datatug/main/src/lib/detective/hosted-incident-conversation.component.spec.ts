@@ -1,8 +1,12 @@
+import { AgentContextService } from '@sneat/datatug-semantic';
+import criterionFixture from './testdata/backend-criterion-v069.json';
+import type { AppliedEvidenceChoice, AppliedEvidenceRequest } from '../evidence/applied-evidence';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router, RouterLink } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { DetectiveClientService } from './detective-client.service';
 import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
@@ -29,6 +33,13 @@ const message = (seq = 2): IncidentEvent => ({
   payload: { body: 'Received, but no assignment.' },
 });
 type Page = {
+  criterionChoice: { set(v: AppliedEvidenceChoice): void };
+  criterionCheckID: { set(v: string): void };
+  criterionOpen: { set(v: boolean): void };
+  finalizeReview: { set(v: boolean): void };
+  saveCriterion(): Promise<void>;
+  finalizeCriterion(): Promise<void>;
+  retryCriterion(): Promise<void>;
   body: { set(v: string): void };
   send(): Promise<void>;
   refresh(): void;
@@ -53,8 +64,9 @@ describe('HostedIncidentConversationComponent', () => {
       imports: [HostedIncidentConversationComponent],
       providers: [
         provideRouter([]),
+        { provide: AgentContextService, useValue: {} },
         { provide: SneatAuthStateService, useValue: { authState: new BehaviorSubject({status: 'authenticated', user: {uid: 'sarah'}}) } },
-        { provide: DatatugNavContextService, useValue: { currentProject: new BehaviorSubject({ref: {storeId: 'firestore', spaceID: 'space', projectId: 'training'}}) } },
+        { provide: DatatugNavContextService, useValue: { currentEnv: of(undefined), currentProject: new BehaviorSubject({ref: {storeId: 'firestore', spaceID: 'space', projectId: 'training'}}) } },
         { provide: DetectiveClientService, useValue: client },
       ],
     }).compileComponents();
@@ -643,6 +655,112 @@ describe('HostedIncidentConversationComponent', () => {
     expect(client.incidentAction).toHaveBeenCalledTimes(2);
     expect(client.incidentAction.mock.calls[1][1].message).not.toHaveProperty('presentation');
     expect(client.incidentAction.mock.calls[1][2]).not.toBe(client.incidentAction.mock.calls[0][2]);
+  });
+
+  function criterionResult(finalized=false) {
+    const result=structuredClone(finalized?criterionFixture.finalizeSuccess:criterionFixture.draftSuccess);
+    result.incident.ref=incidentRef; result.event.incident=incidentRef; result.event.actor.id='sarah';
+    result.incident.resolutionCriterion.scope.project.projectId='training';
+    result.event.payload.scope.project.projectId='training';
+    return result;
+  }
+  function selectCriterion(f: ComponentFixture<HostedIncidentConversationComponent>,session='shipping-session') {
+    const evidence: AppliedEvidenceRequest={...structuredClone(criterionFixture.draftRequest.evidence),retention:'project-pinned'};
+    const selected={...evidence,incidentRef:`${incidentRef.storeId}/${incidentRef.incidentId}`,context:{...evidence.context,sessionId:session}};
+    page(f).criterionChoice.set({evidence:selected,value:{type:'integer',value:'11045'},bagId:'shipping-bag',label:session});
+    page(f).criterionCheckID.set('assignment');
+  }
+  it('cold-opens the actual finalized projection alongside chronological criterion and message history',async()=>{
+    const draft=criterionResult(),final=criterionResult(true), note=message(4);
+    client.projectIncident.mockReturnValue(of({incident:{...final.incident,lastSeq:4}}));
+    history={events:[draft.event,final.event,note] as IncidentEvent[],nextAfterSeq:4,hasMore:false};
+    const f=await mount();
+    await vi.waitFor(()=>expect(f.nativeElement.textContent).toContain('Finalized · criterion 2'));
+    expect(f.nativeElement.textContent).toContain('Criterion draft saved');
+    expect(f.nativeElement.textContent).toContain('Criterion finalized');
+    expect(f.nativeElement.textContent).toContain('Received, but no assignment.');
+    expect(f.nativeElement.textContent).toContain(final.incident.resolutionCriterion.definitionDigest);
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    const link=f.debugElement.queryAll(By.directive(RouterLink)).find(el=>el.nativeElement.textContent.includes('Open saved Check'));
+    expect(TestBed.inject(Router).serializeUrl(link!.injector.get(RouterLink).urlTree!)).toContain('/checks/fault-check?environment=demo');
+  });
+  it('requires durable readback before criterion dispatch and retains a failed storage attempt',async()=>{
+    const f=await mount();selectCriterion(f);
+    const spy=vi.spyOn(sessionStorage,'setItem').mockImplementation(()=>{throw new Error('storage denied');});
+    await page(f).saveCriterion();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    spy.mockRestore();
+    page(f).body.set('Do not compete');await page(f).send();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    await f.whenStable();expect(f.nativeElement.textContent).toContain('storage denied');
+  });
+  it('retains exact selected Session intent through lost reply and remount without creating a competing chat',async()=>{
+    let f=await mount();selectCriterion(f,'session-second-same-order');
+    client.incidentAction.mockReturnValue(throwError(()=>new HttpErrorResponse({status:0})));
+    await page(f).saveCriterion();const original=structuredClone(client.incidentAction.mock.calls[0].slice(0,3));
+    expect(original[1].evidence.context.sessionId).toBe('session-second-same-order');
+    page(f).body.set('unrelated message');await page(f).send();
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    f.destroy();TestBed.resetTestingModule();f=await mount();
+    await page(f).retryCriterion();
+    expect(client.incidentAction.mock.calls[1].slice(0,3)).toEqual(original);
+    expect(sessionStorage.length).toBe(1);
+  });
+  it('requires explicit reviewed abandonment after409 and uses a new operation for a changed draft',async()=>{
+    const f=await mount();selectCriterion(f);
+    client.incidentAction.mockReturnValue(throwError(()=>new HttpErrorResponse({status:409})));
+    await page(f).saveCriterion();const original=client.incidentAction.mock.calls[0][2];
+    sequence=7;history={events:[],nextAfterSeq:7,hasMore:false};
+    await page(f).reviewConflict();await page(f).saveCriterion();
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    page(f).abandonPending();selectCriterion(f);await page(f).saveCriterion();
+    expect(client.incidentAction.mock.calls[1][1].expectedSeq).toBe(7);
+    expect(client.incidentAction.mock.calls[1][2]).not.toBe(original);
+  });
+  it('finalizes only after explicit review and renders actual next server version while preserving unsent chat',async()=>{
+    const draft=criterionResult();client.projectIncident.mockReturnValue(of({incident:draft.incident}));
+    history={events:[draft.event as IncidentEvent],nextAfterSeq:2,hasMore:false};
+    const f=await mount();page(f).body.set('Keep my text');page(f).checkID.set('assignment');
+    await page(f).finalizeCriterion();expect(client.incidentAction).not.toHaveBeenCalled();
+    page(f).finalizeReview.set(true);
+    client.incidentAction.mockImplementation((_context,_action,id)=>of({...criterionResult(true),receipt:id}));
+    await page(f).finalizeCriterion();await f.whenStable();
+    expect(client.incidentAction.mock.calls[0][1]).toEqual({type:'criterion-finalize',incidentRef:`${incidentRef.storeId}/${incidentRef.incidentId}`,environment:'demo',expectedSeq:2,criterionVersion:1});
+    await vi.waitFor(()=>expect(f.nativeElement.textContent).toContain('Finalized · criterion 2'));
+    expect(f.nativeElement.querySelector('ion-textarea').value).toBe('Keep my text');
+    expect((page(f).checkID as unknown as ()=>string)()).toBe('assignment');
+  });
+  it('blocks chat and criterion dispatch while the parent owns an Incident mutation',async()=>{
+    const f=await mount();selectCriterion(f);page(f).body.set('Wait');f.componentRef.setInput('parentBusy',true);
+    await page(f).send();await page(f).saveCriterion();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+  it('retains unsupported stored variants and overlong intent until explicit reviewed abandonment',async()=>{
+    const identity=JSON.stringify([context,'demo',incidentRef]),key=`datatug:incident-message:${identity}`;
+    const raw=JSON.stringify({operationId:'operation-unknown',expectedSeq:1,action:{type:'future-write'},padding:'x'.repeat(33000)});
+    sessionStorage.setItem(key,raw);const f=await mount();selectCriterion(f);await page(f).saveCriterion();
+    expect(client.incidentAction).not.toHaveBeenCalled();expect(sessionStorage.getItem(key)).toBe(raw);
+    await page(f).reviewPending();page(f).abandonPending();expect(sessionStorage.getItem(key)).toBeNull();
+  });
+
+  it('discards a late criterion result after account invalidation and retains the old scoped journal',async()=>{
+    const f=await mount();selectCriterion(f);const reply=new Subject<unknown>();
+    client.incidentAction.mockReturnValue(reply.asObservable());
+    const sending=page(f).saveCriterion();
+    const original=client.incidentAction.mock.calls[0], stored=sessionStorage.key(0)!;
+    const updates:unknown[]=[];f.componentInstance.incidentUpdated.subscribe(value=>updates.push(value));
+    const auth=TestBed.inject(SneatAuthStateService).authState as unknown as BehaviorSubject<unknown>;
+    auth.next({status:'authenticated',user:{uid:'another-account'}});
+    reply.next({...criterionResult(),receipt:original[2]});reply.complete();await sending;await f.whenStable();
+    expect(updates).toEqual([]);expect(sessionStorage.getItem(stored)).toContain(original[2]);
+    await page(f).retryCriterion();expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    expect(f.nativeElement.textContent).not.toContain('Draft saved · criterion');
+  });
+  it('retains an unknown criterion success with an incorrect receipt instead of retiring its intent',async()=>{
+    const f=await mount();selectCriterion(f);
+    client.incidentAction.mockReturnValue(of({...criterionResult(),receipt:'wrong-operation'}));
+    await page(f).saveCriterion();expect(sessionStorage.length).toBe(1);
+    page(f).body.set('blocked');await page(f).send();expect(client.incidentAction).toHaveBeenCalledTimes(1);
   });
 
 });

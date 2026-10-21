@@ -1,3 +1,6 @@
+import criterionFixture from './testdata/backend-criterion-v069.json';
+import type { HostedCriterionAction } from './hosted-linkage.models';
+import { firstValueFrom } from 'rxjs';
 import { HttpErrorResponse, provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
@@ -39,6 +42,30 @@ describe('DetectiveClientService', () => {
   });
   afterEach(() => http.verify());
 
+
+  it('freezes complete criterion requests and validates real server receipts before accepting success',async()=>{
+    const {storage,spaceID,project,operationId:_id,...draft}=structuredClone(criterionFixture.draftRequest);
+    const cloud={kind:'cloud' as const,storage:storage as 'firestore',spaceID,project,principal:'actor'};
+    const response={...criterionFixture.draftSuccess,receipt:'operation-criterion-fixed'};
+    api.post.mockReturnValue(of(response));
+    await expect(firstValueFrom(client.incidentAction(cloud,draft as HostedCriterionAction,'operation-criterion-fixed'))).resolves.toEqual(response);
+    const sent=api.post.mock.calls[0][1];
+    expect(sent.evidence).toEqual(criterionFixture.draftRequest.evidence);
+    expect(sent).not.toHaveProperty('actor');expect(sent).not.toHaveProperty('definitionDigest');
+    api.post.mockReturnValue(of({...response,receipt:'operation-other'}));
+    await expect(firstValueFrom(client.incidentAction(cloud,draft as HostedCriterionAction,'operation-criterion-fixed'))).rejects.toThrow('exact Incident operation');
+  });
+  it('rejects action payload mixing and malformed hosted criterion reads',async()=>{
+    const cloud={kind:'cloud' as const,storage:'firestore' as const,spaceID:'space',project:criterionFixture.draftRequest.project,principal:'actor'};
+    const {storage:_s,spaceID:_i,project:_p,operationId:_o,...finalize}=criterionFixture.finalizeRequest;
+    await expect(firstValueFrom(client.incidentAction(cloud,{...finalize,evidence:criterionFixture.draftRequest.evidence} as unknown as HostedCriterionAction))).rejects.toThrow('Evidence is only');
+    expect(api.post).not.toHaveBeenCalled();
+    const incident=structuredClone(criterionFixture.draftSuccess.incident);incident.resolutionCriterion.definitionDigest='missing';
+    api.get.mockReturnValue(of({incident}));
+    await expect(firstValueFrom(client.projectIncident(cloud,'demo',criterionFixture.draftRequest.incidentRef))).rejects.toThrow('criterion is unavailable');
+    api.get.mockReturnValue(of({events:[{...criterionFixture.draftSuccess.event,payload:{...criterionFixture.draftSuccess.event.payload,checkId:'alias'}}],nextAfterSeq:2,hasMore:false}));
+    await expect(firstValueFrom(client.incidentEvents(cloud,'demo',criterionFixture.draftRequest.incidentRef))).rejects.toThrow();
+  });
   it('reads state from the scoped agent without a browser persistence fallback', () => {
     client.state(context).subscribe();
     const request = http.expectOne(
@@ -469,6 +496,7 @@ describe('DetectiveClientService', () => {
     client.projectIncidents(cloud, 'demo').subscribe();
     expect(api.get.mock.calls[0][0]).toBe('datatug/detective/project_incidents');
     expect(api.get.mock.calls[0][1].toString()).toContain('environment=demo');
+    api.get.mockReturnValueOnce(of({incident:{ref:{storeId:'detective-incidents-9c561d36',incidentId:'INC-1'},lastSeq:1}}));
     client.projectIncident(cloud, 'demo', 'detective-incidents-9c561d36/INC-1').subscribe();
     expect(api.get.mock.calls[1][0]).toBe('datatug/detective/incident');
     expect(api.get.mock.calls[1][1].get('incidentRef')).toBe('detective-incidents-9c561d36/INC-1');

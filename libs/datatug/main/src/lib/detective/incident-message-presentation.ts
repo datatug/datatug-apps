@@ -1,3 +1,10 @@
+import {
+  criterionObject,
+  criterionID,
+  criterionVersion,
+  isCriterionEvidence,
+} from '../incidents/resolution-criterion';
+import type { HostedCriterionAction } from './hosted-linkage.models';
 import { decodeEvidenceArtifactRef } from '@sneat/datatug-semantic';
 import type {
   IncidentCharacterID,
@@ -13,7 +20,17 @@ export const INCIDENT_CHARACTERS: readonly IncidentCharacterID[] = [
   'maya',
   'daniel',
 ];
+export type PendingCriterion = {
+  operationId: string;
+  expectedSeq: number;
+  action: HostedCriterionAction;
+  message?: never;
+};
+export type PendingIncidentOperation =
+  | PendingIncidentMessage
+  | PendingCriterion;
 export type PendingIncidentMessage = {
+  action?: never;
   operationId: string;
   expectedSeq: number;
   message: HostedIncidentMessage;
@@ -104,4 +121,64 @@ export function isPendingIncidentMessage(
   }
   // Validate the stored object without rebuilding/coercing its optional fields.
   return true;
+}
+
+export function isHostedCriterionAction(
+  value: unknown,
+): value is HostedCriterionAction {
+  if (
+    !criterionObject(value) ||
+    !criterionID(value['incidentRef']) ||
+    !criterionID(value['environment']) ||
+    !criterionVersion(value['expectedSeq'])
+  )
+    return false;
+  if (value['type'] === 'criterion-finalize')
+    return (
+      keys(value, [
+        'type',
+        'incidentRef',
+        'environment',
+        'expectedSeq',
+        'criterionVersion',
+      ]) && criterionVersion(value['criterionVersion'])
+    );
+  const c = value['criterion'];
+  return (
+    value['type'] === 'criterion-draft' &&
+    keys(value, [
+      'type',
+      'incidentRef',
+      'environment',
+      'expectedSeq',
+      'criterion',
+      'evidence',
+    ]) &&
+    criterionObject(c) &&
+    keys(c, ['version', 'checkID', 'maxAgeSeconds']) &&
+    criterionVersion(c['version']) &&
+    criterionID(c['checkID']) &&
+    criterionVersion(c['maxAgeSeconds']) &&
+    c['maxAgeSeconds'] <= 86400 &&
+    isCriterionEvidence(
+      value['evidence'],
+      value['incidentRef'],
+      value['environment'],
+    )
+  );
+}
+export function isPendingIncidentOperation(
+  value: unknown,
+): value is PendingIncidentOperation {
+  if (isPendingIncidentMessage(value)) return true;
+  return (
+    criterionObject(value) &&
+    keys(value, ['operationId', 'expectedSeq', 'action']) &&
+    typeof value['operationId'] === 'string' &&
+    /^operation-[A-Za-z0-9_-]+$/.test(value['operationId']) &&
+    value['operationId'].length <= 128 &&
+    criterionVersion(value['expectedSeq']) &&
+    isHostedCriterionAction(value['action']) &&
+    value['action'].expectedSeq === value['expectedSeq']
+  );
 }
