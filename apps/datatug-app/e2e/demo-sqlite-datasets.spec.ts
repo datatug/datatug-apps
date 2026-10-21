@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
+import { APIRequestContext, Locator } from '@playwright/test';
 import {
   DEMODB_HOST,
   DEMODB_LIVE,
@@ -7,6 +7,7 @@ import {
   test,
   type DemodbGuard,
 } from './helpers/demodb-guard';
+import { hasOpfs, trackDemodbRequests } from './helpers/demo-sqlite';
 // The catalog is plain TypeScript with no Angular imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
@@ -370,28 +371,5 @@ for (const id of demoSqliteDatasetIds) {
           description: String(Date.now() - started),
         });
     });
-  });
-}
-
-/** Every request any page or worker of the context makes to demodb.dev. */
-function trackDemodbRequests(context: BrowserContext): string[] {
-  const urls: string[] = [];
-  context.on('request', (request) => {
-    if (DEMODB.test(new URL(request.url()).hostname)) urls.push(request.url());
-  });
-  return urls;
-}
-
-/** Whether this browser context gives pages OPFS (asked of the browser itself, on the app's origin). */
-async function hasOpfs(page: Page): Promise<boolean> {
-  await page.goto('/demo/sqlite');
-  await expect(page.getByTestId('demo-sqlite-datasets')).toBeVisible();
-  return page.evaluate(async () => {
-    try {
-      await navigator.storage.getDirectory();
-      return true;
-    } catch {
-      return false;
-    }
   });
 }
