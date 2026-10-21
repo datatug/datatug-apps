@@ -9,7 +9,8 @@ export function assertScalarString(value: string): void {
     const unit = value.charCodeAt(i);
     if (unit >= 0xd800 && unit <= 0xdbff) {
       const next = value.charCodeAt(++i);
-      if (!(next >= 0xdc00 && next <= 0xdfff)) throw new Error('Invalid Unicode environment ID');
+      if (!(next >= 0xdc00 && next <= 0xdfff))
+        throw new Error('Invalid Unicode environment ID');
     } else if (unit >= 0xdc00 && unit <= 0xdfff) {
       throw new Error('Invalid Unicode environment ID');
     }
@@ -19,8 +20,13 @@ export function assertScalarString(value: string): void {
 export function scalarCompare(a: string, b: string): number {
   assertScalarString(a);
   assertScalarString(b);
-  const left = Array.from(a, (c) => c.codePointAt(0)!);
-  const right = Array.from(b, (c) => c.codePointAt(0)!);
+  const codePoint = (character: string): number => {
+    const point = character.codePointAt(0);
+    if (point === undefined) throw new Error('Missing Unicode scalar');
+    return point;
+  };
+  const left = Array.from(a, codePoint);
+  const right = Array.from(b, codePoint);
   for (let i = 0; i < Math.min(left.length, right.length); i++) {
     if (left[i] !== right[i]) return left[i] - right[i];
   }
@@ -43,7 +49,11 @@ const stage = (id: string): number => {
 export function compareEnvironmentIds(a: string, b: string): number {
   const left = normalizedEnvironmentId(a);
   const right = normalizedEnvironmentId(b);
-  return stage(left) - stage(right) || scalarCompare(left, right) || scalarCompare(a, b);
+  return (
+    stage(left) - stage(right) ||
+    scalarCompare(left, right) ||
+    scalarCompare(a, b)
+  );
 }
 
 /** Never drops a live ID; saved order is exact/case-sensitive project metadata. */
@@ -54,19 +64,27 @@ export function resolveEnvironmentOrder<T extends { readonly id: string }>(
   const byId = new Map<string, T>();
   for (const environment of environments) {
     assertScalarString(environment.id);
-    if (byId.has(environment.id)) throw new Error('Duplicate live environment ID');
+    if (byId.has(environment.id))
+      throw new Error('Duplicate live environment ID');
     byId.set(environment.id, environment);
   }
   const items: T[] = [];
   for (const id of savedOrder || []) {
     assertScalarString(id);
     const item = byId.get(id);
-    if (item) { items.push(item); byId.delete(id); }
+    if (item) {
+      items.push(item);
+      byId.delete(id);
+    }
   }
-  const missing = [...byId.values()].sort((a, b) => compareEnvironmentIds(a.id, b.id));
+  const missing = [...byId.values()].sort((a, b) =>
+    compareEnvironmentIds(a.id, b.id),
+  );
   items.push(...missing);
   const order = items.map((item) => item.id);
-  const needsRepair = savedOrder != null &&
-    (savedOrder.length !== order.length || savedOrder.some((id, i) => id !== order[i]));
+  const needsRepair =
+    savedOrder != null &&
+    (savedOrder.length !== order.length ||
+      savedOrder.some((id, i) => id !== order[i]));
   return { items, order, needsRepair };
 }

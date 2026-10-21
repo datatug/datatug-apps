@@ -1,3 +1,4 @@
+import { IEnvironmentFull } from '../../models/definition/environments';
 import { ProjectEnvironmentStateService } from './project-environment-state.service';
 import { map as environmentMap } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
@@ -33,8 +34,10 @@ describe('ProjectService', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
-            watch: (_ref: unknown, legacy: () => Observable<any[]>) =>
-              legacy().pipe(environmentMap((items) => ({ items }))),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
           },
         },
         { provide: HttpClient, useValue: http },
@@ -291,8 +294,10 @@ describe('ProjectService local summary HTTP context', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
-            watch: (_ref: unknown, legacy: () => Observable<any[]>) =>
-              legacy().pipe(environmentMap((items) => ({ items }))),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
           },
         },
         provideHttpClient(),
@@ -383,8 +388,10 @@ describe('ProjectService shared operation fence', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
-            watch: (_ref: unknown, legacy: () => Observable<any[]>) =>
-              legacy().pipe(environmentMap((items) => ({ items }))),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
           },
         },
         { provide: HttpClient, useValue: http },
@@ -421,8 +428,10 @@ describe('ProjectService DataTug API base URL', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
-            watch: (_ref: unknown, legacy: () => Observable<any[]>) =>
-              legacy().pipe(environmentMap((items) => ({ items }))),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
           },
         },
         ...datatugApiRealProviders(),
