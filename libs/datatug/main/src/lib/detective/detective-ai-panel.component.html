@@ -9,6 +9,8 @@
     <ion-buttons slot="end">
       <ion-button
         fill="clear"
+        [sneatNativeAriaExpanded]="open()"
+        [sneatNativeAriaControls]="contentId"
         size="small"
         [attr.aria-controls]="contentId"
         [attr.aria-expanded]="open()"

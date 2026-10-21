@@ -3,7 +3,9 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  Directive,
   effect,
+  ElementRef,
   inject,
   input,
   output,
@@ -58,6 +60,10 @@ import {
   ValidatorDefinition,
 } from './models';
 
+type IonButtonHost = HTMLElement & {
+  componentOnReady?: () => Promise<unknown>;
+};
+
 type InputEdit = {
   type: DetectiveValue['type'];
   cardinality: 'scalar' | 'set' | 'range';
@@ -88,6 +94,42 @@ function editFromValue(value: DetectiveInputValue): InputEdit {
   };
 }
 
+@Directive({
+  selector: 'ion-button[sneatNativeAriaExpanded]',
+  standalone: true,
+})
+class NativeAriaExpandedDirective {
+  readonly sneatNativeAriaExpanded = input(false);
+  readonly sneatNativeAriaControls = input.required<string>();
+  private readonly host =
+    inject<ElementRef<IonButtonHost>>(ElementRef).nativeElement;
+
+  constructor() {
+    effect((onCleanup) => {
+      const expanded = this.sneatNativeAriaExpanded();
+      const controlsId = this.sneatNativeAriaControls();
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+      const sync = async (): Promise<void> => {
+        await this.host.componentOnReady?.();
+        if (cancelled) return;
+        const button = this.host.shadowRoot?.querySelector<HTMLButtonElement>(
+          'button[part~="native"]',
+        );
+        if (!button) return;
+        button.setAttribute('aria-expanded', String(expanded));
+        button.setAttribute('aria-controls', controlsId);
+        const content = this.host.ownerDocument.getElementById(controlsId);
+        if (content && 'ariaControlsElements' in button)
+          button.ariaControlsElements = [content];
+      };
+      void sync().catch(() => undefined);
+    });
+  }
+}
+
 @Component({
   selector: 'sneat-datatug-detective-ai-panel',
   standalone: true,
@@ -107,6 +149,7 @@ function editFromValue(value: DetectiveInputValue): InputEdit {
     IonSelect,
     IonSelectOption,
     IonTextarea,
+    NativeAriaExpandedDirective,
   ],
   templateUrl: './detective-ai-panel.component.html',
   styleUrl: './detective-pages.scss',

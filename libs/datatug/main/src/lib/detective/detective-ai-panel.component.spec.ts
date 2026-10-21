@@ -112,7 +112,7 @@ describe('DetectiveAiPanelComponent', () => {
     }).compileComponents();
   });
 
-  it('uses an explanatory card header and an accessible disclosure without requesting proposals while collapsed', () => {
+  it('keeps the native disclosure button state, controls, and focus synchronized without requesting proposals', async () => {
     const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
     fixture.detectChanges();
     const header = fixture.nativeElement.querySelector(
@@ -125,8 +125,20 @@ describe('DetectiveAiPanelComponent', () => {
     expect(header?.querySelector('ion-icon')?.getAttribute('name')).toBe(
       'sparkles-outline',
     );
-    const action = header?.querySelector('ion-button');
+    const action = header?.querySelector('ion-button') as HTMLElement | null;
+    await fixture.whenStable();
+    const nativeButton = document.createElement('button');
+    nativeButton.setAttribute('part', 'native');
+    nativeButton.setAttribute('aria-expanded', 'false');
+    Object.defineProperty(nativeButton, 'ariaControlsElements', {
+      value: null,
+      writable: true,
+    });
+    (
+      action?.shadowRoot ?? action?.attachShadow({ mode: 'open' })
+    )?.replaceChildren(nativeButton);
     expect(action?.getAttribute('aria-expanded')).toBe('false');
+    expect(nativeButton.getAttribute('aria-expanded')).toBe('false');
     expect(action?.getAttribute('aria-label')).toBe(
       'Open AI investigation proposals',
     );
@@ -134,6 +146,37 @@ describe('DetectiveAiPanelComponent', () => {
       'ion-card-content.detective-ai-proposals-content',
     );
     expect(action?.getAttribute('aria-controls')).toBe(content?.id);
+    expect(nativeButton.getAttribute('aria-controls')).toBeNull();
+    const contentId = content?.id;
+    nativeButton.focus();
+    expect(action?.shadowRoot?.activeElement).toBe(nativeButton);
+    const panel = fixture.componentInstance as unknown as {
+      toggleOpen(): void;
+    };
+    panel.toggleOpen();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(action?.getAttribute('aria-expanded')).toBe('true');
+    expect(nativeButton.getAttribute('aria-expanded')).toBe('true');
+    expect(action?.shadowRoot?.querySelector('button[part~="native"]')).toBe(
+      nativeButton,
+    );
+    expect(action?.shadowRoot?.activeElement).toBe(nativeButton);
+    expect(nativeButton.getAttribute('aria-controls')).toBe(contentId);
+    expect(nativeButton.ariaControlsElements).toEqual([content]);
+    expect(content?.id).toBe(contentId);
+    panel.toggleOpen();
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(action?.getAttribute('aria-expanded')).toBe('false');
+    expect(nativeButton.getAttribute('aria-expanded')).toBe('false');
+    expect(nativeButton.getAttribute('aria-controls')).toBe(contentId);
+    expect(nativeButton.ariaControlsElements).toEqual([content]);
+    expect(action?.shadowRoot?.querySelector('button[part~="native"]')).toBe(
+      nativeButton,
+    );
+    expect(nativeButton.tabIndex).toBe(0);
+    expect(content?.id).toBe(contentId);
     expect(fixture.nativeElement.textContent).toContain(
       'Review every suggestion before applying it.',
     );
