@@ -241,3 +241,28 @@ describe('authorized cloud schema metadata detail', () => {
     expect(forbidden).not.toHaveBeenCalled();
   });
 });
+
+
+describe('hosted Firestore canonical preview',()=>{
+  it('preserves actual check/dashboard tags and coverage from the authorized environment snapshot',async()=>{
+    const hosted={storeId:'firestore',spaceID:'space',projectId:'project'};
+    const snapshot={documents:[
+      {kind:'check',id:'check-1',name:'Customer check',tags:['customers'],reference:{objectId:'check-1',environmentId:'env'}},
+      {kind:'dashboard',id:'dashboard-1',name:'Customer dashboard',tags:['sales','customers'],reference:{objectId:'dashboard-1',environmentId:'env'}},
+    ],sourceCoverage:[{kind:'check',status:'complete',count:1},{kind:'dashboard',status:'complete',count:1},{kind:'table',status:'unavailable',count:0}]};
+    const preview=vi.fn(()=>of(snapshot));const {service,forbidden}=setup(preview);
+    expect(await service.preview(hosted,'env')).toBe(snapshot);
+    expect(preview).toHaveBeenCalledExactlyOnceWith(hosted,'env');
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+  it('does not fall back to local summaries after a hosted authorization failure',async()=>{
+    const {service,forbidden}=setup(vi.fn(()=>throwError(()=>new Error('denied'))));
+    await expect(service.preview({storeId:'firestore',spaceID:'space',projectId:'project'},'env')).rejects.toThrow('denied');
+    expect(forbidden).not.toHaveBeenCalled();
+  });
+  it('rejects an invalid shared scope before any metadata read',async()=>{
+    const preview=vi.fn();const {service,forbidden}=setup(preview);
+    await expect(service.preview({storeId:'firestore',spaceID:'../other',projectId:'project'})).rejects.toThrow('Invalid project scope');
+    expect(preview).not.toHaveBeenCalled();expect(forbidden).not.toHaveBeenCalled();
+  });
+});

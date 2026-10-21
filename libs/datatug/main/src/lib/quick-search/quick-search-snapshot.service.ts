@@ -11,7 +11,7 @@ import {
   inlineSchemaModel,
   schemaTableMetadata,
 } from './quick-search-schema-metadata';
-import { IProjectRef } from '../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { ProjectService } from '../services/project/project.service';
 import { QueriesService } from '../queries/queries.service';
@@ -121,9 +121,11 @@ export class QuickSearchSnapshotService {
   ): Promise<SearchSnapshot> {
     // One authorized immutable server snapshot; never mix private cloud metadata
     // with cached summaries, browser GitHub reads, or a second reader's commit.
+    if (ref.storeId === 'firestore' && ref.spaceID !== undefined && !isSharedProjectRef(ref))
+      throw new Error('Invalid project scope');
     if (
-      ref.projectApi === 'cloud' &&
-      ['github', 'github.com'].includes(ref.storeId)
+      isSharedProjectRef(ref) ||
+      (ref.projectApi === 'cloud' && ['github', 'github.com'].includes(ref.storeId))
     )
       return firstValueFrom(
         this.quickSearch.preview(ref, environmentId).pipe(timeout(15000)),
