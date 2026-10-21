@@ -169,6 +169,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
     },
     ...ProjectMenuTopComponent.sortProjectPages([
       { path: 'quick-search', title: 'Quick Search', icon: 'search-outline' },
+      { path: 'incidents', title: 'Incidents', icon: 'warning-outline' },
       {
         path: 'sessions',
         title: 'Sessions',
