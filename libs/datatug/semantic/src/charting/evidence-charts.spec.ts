@@ -1,3 +1,9 @@
+import {
+  canonicalRecordsetJSON,
+  recordsetFingerprint,
+  resolveRowEvidence,
+  verifyRowEvidence,
+} from './evidence-integrity';
 import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import fingerprintJSON from './testdata/recordset-fingerprints.json?raw';
@@ -12,13 +18,7 @@ const fingerprints = JSON.parse(fingerprintJSON) as {
 import legacy from '../contract/fixtures/result_live.json';
 import { decodeResult } from '../contract/decoders';
 import type { Result, TypedValue } from '../contract/types';
-import {
-  canonicalRecordsetJSON,
-  decodeEvidenceArtifactRef,
-  decodeRowEvidence,
-  recordsetFingerprint,
-  resolveRowEvidence,
-} from './row-evidence';
+import { decodeEvidenceArtifactRef, decodeRowEvidence } from './row-evidence';
 import type { RowEvidenceSelector } from './row-evidence';
 import { decodeEvidenceResultJSON } from './evidence-json';
 import {
@@ -648,5 +648,127 @@ describe('three prepared chart kinds from exact held values', () => {
       { ...timeline, valueColumn: null },
     ])
       expect(() => decodeEvidenceChartSpec(spec)).toThrow();
+  });
+});
+
+describe('public integrity entry points cannot bypass Core structural validation', () => {
+  const asResult = (value: unknown) => value as Result;
+  const asRecordset = (value: unknown) => value as Result['recordset'];
+  it('rejects unknown column types and malformed non-key cells before public hashing or matching-ref resolution', async () => {
+    const r = fixture();
+    for (const malformed of [
+      {
+        ...r.recordset,
+        columns: r.recordset.columns.map((c, i) =>
+          i === 1 ? { ...c, type: 'NOT_A_CORE_TYPE' } : c,
+        ),
+      },
+      {
+        ...r.recordset,
+        columns: r.recordset.columns.map((c, i) =>
+          i === 1 ? { ...c, name: '' } : c,
+        ),
+      },
+      {
+        ...r.recordset,
+        rows: [
+          r.recordset.rows[0].map((v, i) =>
+            i === 1 ? { type: 'boolean', value: 'not boolean' } : v,
+          ),
+        ],
+      },
+      {
+        ...r.recordset,
+        rows: [
+          r.recordset.rows[0].map((v, i) => (i === 1 ? { type: 'null' } : v)),
+        ],
+      },
+      { ...r.recordset, rows: [r.recordset.rows[0].slice(1)] },
+    ]) {
+      // Compute the attacker's matching digest independently of public validation.
+      const fingerprint = createHash('sha256')
+        .update(JSON.stringify(malformed))
+        .digest('hex');
+      const forged = asResult({
+        ...r,
+        recordset: malformed,
+        rowEvidence: { ...metadata(r), recordsetFingerprint: fingerprint },
+      });
+      expect(() => canonicalRecordsetJSON(asRecordset(malformed))).toThrow();
+      await expect(
+        recordsetFingerprint(asRecordset(malformed)),
+      ).rejects.toThrow();
+      await expect(
+        verifyRowEvidence(forged.rowEvidence, forged),
+      ).rejects.toThrow();
+      await expect(
+        resolveRowEvidence(forged, {
+          ...selector(r),
+          recordsetFingerprint: fingerprint,
+        }),
+      ).rejects.toThrow();
+    }
+  });
+  it.each([
+    'provenance',
+    'limitations',
+    'bindingsApplied',
+    'truncated',
+    'recordset',
+  ])(
+    'requires full Result.%s even with a valid digest and even without metadata',
+    async (field) => {
+      const r = fixture();
+      const malformed: Record<string, unknown> = { ...r };
+      delete malformed[field];
+      await expect(
+        verifyRowEvidence(metadata(r), asResult(malformed)),
+      ).rejects.toThrow();
+      await expect(
+        resolveRowEvidence(asResult(malformed), selector(r)),
+      ).rejects.toThrow();
+      delete malformed['rowEvidence'];
+      await expect(
+        resolveRowEvidence(asResult(malformed), selector(r)),
+      ).rejects.toThrow();
+    },
+  );
+  it('rejects invalid provenance, limitations, bindings and unretained execution identities through the same Result decoder', async () => {
+    const r = fixture();
+    for (const malformed of [
+      { ...r, provenance: { ...r.provenance, source: '' } },
+      { ...r, provenance: { ...r.provenance, observedAt: 'not a timestamp' } },
+      {
+        ...r,
+        provenance: { ...r.provenance, observedAt: '2018-02-31T10:05:00Z' },
+      },
+      {
+        ...r,
+        provenance: { ...r.provenance, mode: 'snapshot', snapshotId: '' },
+      },
+      {
+        ...r,
+        limitations: [{ policy: '', rowsFiltered: false, hiddenColumns: [] }],
+      },
+      {
+        ...r,
+        bindingsApplied: [
+          {
+            parameterId: 'p',
+            value: text('x'),
+            origin: 'manual',
+            originEvidence: 'server-default',
+          },
+        ],
+      },
+      {
+        ...r,
+        execution: { ...execution, executionId: 'bad/path' },
+        rowEvidence: undefined,
+      },
+    ])
+      await expect(
+        resolveRowEvidence(asResult(malformed), selector(r)),
+      ).rejects.toThrow();
   });
 });

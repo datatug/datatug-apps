@@ -1,7 +1,7 @@
+import { verifyRowEvidence } from './evidence-integrity';
 import { decodeResult } from '../contract/decoders';
 import type { Result, TypedValue, ExecutionRef } from '../contract/types';
 import {
-  verifyRowEvidence,
   evidenceKey,
   evidenceObject,
   evidenceText,

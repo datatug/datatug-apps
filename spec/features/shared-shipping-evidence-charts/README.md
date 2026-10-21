@@ -47,6 +47,10 @@ Given each prepared kind, the same shared leaf renders a distinct actual SVG ser
 
 Leaf tests make no provider/ACL, current retention, Board persistence, canonical editor/profile integration, deployed rendering or full shipping journey claim.
 
+### Review correction
+
+Independent review of `fcf15711` found that direct public hashing and evidence resolution could bypass full recordset/Result validation. One shared decodeRecordset path now validates closed Core column types, names, every cell and row width before all public hashes; public verify/resolve use the shared full Result decoder, including the absent-sidecar path, before exposing references. Digest and verified operations live in a separate integrity module to avoid a decoder import cycle. Regressions include independently computed matching digests for invalid non-key cells/columns and missing required Result envelopes. No validation bypass or authority waiver is accepted.
+
 ## Open Questions
 
 Canonical Board/editor and declarative Dashboardius profile integration, actual retained provider enrichment, current-rights open behavior and browser-authored Go Project Store roundtrip remain owning consumer gates.

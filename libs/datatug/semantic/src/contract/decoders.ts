@@ -94,6 +94,23 @@ function requireString(v: unknown, path: string): string {
   return v as string;
 }
 
+function requireNonEmptyString(v: unknown, path: string): string {
+  const value = requireString(v, path);
+  if (!value.trim()) fail(path, 'nonempty string required');
+  return value;
+}
+function requireRefSegment(v: unknown, path: string): string {
+  const value = requireNonEmptyString(v, path);
+  if (
+    value.trim() !== value ||
+    value === '.' ||
+    value === '..' ||
+    /[/\\\p{Cc}]/u.test(value)
+  )
+    fail(path, 'canonical reference segment required');
+  return value;
+}
+
 function requireBoolean(v: unknown, path: string): boolean {
   if (typeof v !== 'boolean') {
     fail(path, `expected a boolean, got ${typeof v} (no coercion)`);
@@ -198,7 +215,11 @@ export function decodeTypedValue(v: unknown, path = 'value'): TypedValue {
     }
     case 'datetime': {
       const s = requireString(obj['value'], `${path}.value`);
-      if (!DATETIME_PATTERN.test(s) || Number.isNaN(Date.parse(s))) {
+      if (
+        !DATETIME_PATTERN.test(s) ||
+        Number.isNaN(Date.parse(s)) ||
+        new Date(Date.parse(s)).toISOString().slice(0, 19) !== s.slice(0, 19)
+      ) {
         fail(`${path}.value`, `"${s}" is not RFC3339 normalized to UTC`);
       }
       return { type: 'datetime', value: s };
@@ -346,7 +367,7 @@ export function decodeLimitation(v: unknown, path = 'limitation'): Limitation {
     `${path}.hiddenColumns`,
   ).map((x, i) => requireString(x, `${path}.hiddenColumns[${i}]`));
   return {
-    policy: requireString(obj['policy'], `${path}.policy`),
+    policy: requireNonEmptyString(obj['policy'], `${path}.policy`),
     rowsFiltered: requireBoolean(obj['rowsFiltered'], `${path}.rowsFiltered`),
     hiddenColumns,
   };
@@ -370,7 +391,7 @@ export function decodeBinding(v: unknown, path = 'binding'): Binding {
     ['parameterId', 'value', 'origin', 'originEvidence', 'factId'],
     path,
   );
-  return {
+  const binding: Binding = {
     parameterId: requireString(obj['parameterId'], `${path}.parameterId`),
     value: decodeTypedValue(obj['value'], `${path}.value`),
     origin: requireEnum(obj['origin'], BINDING_ORIGINS, `${path}.origin`),
@@ -381,17 +402,72 @@ export function decodeBinding(v: unknown, path = 'binding'): Binding {
     ),
     factId: optional(obj['factId'], `${path}.factId`, requireString),
   };
+  if (
+    !binding.parameterId.trim() ||
+    binding.parameterId.trim() !== binding.parameterId
+  )
+    fail(`${path}.parameterId`, 'canonical parameter identity required');
+  const evidence =
+    binding.origin === 'default' ? 'server-default' : 'client-reported';
+  if (binding.originEvidence !== evidence)
+    fail(`${path}.originEvidence`, 'binding origin and evidence mismatch');
+  if (binding.origin === 'selection' || binding.origin === 'context')
+    requireNonEmptyString(binding.factId, `${path}.factId`);
+  else if (binding.factId)
+    fail(
+      `${path}.factId`,
+      'manual/default binding cannot claim fact provenance',
+    );
+  return binding;
 }
 
 // ---- Result ----
 
+const RESULT_COLUMN_TYPES = [
+  'string',
+  'number',
+  'integer',
+  'decimal',
+  'boolean',
+  'date',
+  'datetime',
+] as const;
 function decodeResultColumn(v: unknown, path: string): ResultColumn {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['name', 'type'], path);
+  const name = requireString(obj['name'], `${path}.name`);
+  if (!name.trim()) fail(`${path}.name`, 'column name is required');
   return {
-    name: requireString(obj['name'], `${path}.name`),
-    type: requireString(obj['type'], `${path}.type`),
+    name,
+    type: requireEnum(obj['type'], RESULT_COLUMN_TYPES, `${path}.type`),
   };
+}
+
+/** One shared structural Recordset validator, also used before public hashes. */
+export function decodeRecordset(
+  v: unknown,
+  path = 'recordset',
+  normalizeNilArrays = false,
+): Result['recordset'] {
+  const obj = requireObject(v, path);
+  requireExactKeys(obj, ['columns', 'rows'], path);
+  const normalize = (value: unknown): unknown =>
+    normalizeNilArrays && value == null ? [] : value;
+  const columns = requireArray(
+    normalize(obj['columns']),
+    `${path}.columns`,
+  ).map((c, i) => decodeResultColumn(c, `${path}.columns[${i}]`));
+  const rows = requireArray(normalize(obj['rows']), `${path}.rows`).map(
+    (row, i) => {
+      const values = requireArray(normalize(row), `${path}.rows[${i}]`).map(
+        (cell, j) => decodeTypedValue(cell, `${path}.rows[${i}][${j}]`),
+      );
+      if (values.length !== columns.length)
+        fail(`${path}.rows[${i}]`, 'row width must match columns');
+      return values;
+    },
+  );
+  return { columns, rows };
 }
 
 const EXECUTION_MODES: readonly ExecutionMode[] = ['live', 'snapshot'];
@@ -415,8 +491,8 @@ function decodeResultProvenance(v: unknown, path: string): ResultProvenance {
     ],
     path,
   );
-  return {
-    source: requireString(obj['source'], `${path}.source`),
+  const provenance: ResultProvenance = {
+    source: requireNonEmptyString(obj['source'], `${path}.source`),
     collection: optional(
       obj['collection'],
       `${path}.collection`,
@@ -436,15 +512,22 @@ function decodeResultProvenance(v: unknown, path: string): ResultProvenance {
       `${path}.executionProfile`,
     ),
   };
+  decodeTypedValue(
+    { type: 'datetime', value: provenance.observedAt },
+    `${path}.observedAt`,
+  );
+  if (provenance.mode === 'snapshot')
+    requireNonEmptyString(provenance.snapshotId, `${path}.snapshotId`);
+  return provenance;
 }
 
 function decodeExecutionRef(v: unknown, path: string): ExecutionRef {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['storeId', 'projectId', 'executionId'], path);
   return {
-    storeId: requireString(obj['storeId'], `${path}.storeId`),
-    projectId: requireString(obj['projectId'], `${path}.projectId`),
-    executionId: requireString(obj['executionId'], `${path}.executionId`),
+    storeId: requireRefSegment(obj['storeId'], `${path}.storeId`),
+    projectId: requireRefSegment(obj['projectId'], `${path}.projectId`),
+    executionId: requireRefSegment(obj['executionId'], `${path}.executionId`),
   };
 }
 
@@ -465,18 +548,7 @@ export function decodeResult(v: unknown, path = 'result'): Result {
     ],
     path,
   );
-  const recordsetObj = requireObject(obj['recordset'], `${path}.recordset`);
-  requireExactKeys(recordsetObj, ['columns', 'rows'], `${path}.recordset`);
-  const columns = requireArray(
-    recordsetObj['columns'],
-    `${path}.recordset.columns`,
-  ).map((c, i) => decodeResultColumn(c, `${path}.recordset.columns[${i}]`));
-  const rows = requireArray(recordsetObj['rows'], `${path}.recordset.rows`).map(
-    (row, i) =>
-      requireArray(row, `${path}.recordset.rows[${i}]`).map((cell, j) =>
-        decodeTypedValue(cell, `${path}.recordset.rows[${i}][${j}]`),
-      ),
-  );
+  const recordset = decodeRecordset(obj['recordset'], `${path}.recordset`);
   const limitations = requireArray(
     obj['limitations'],
     `${path}.limitations`,
@@ -487,7 +559,7 @@ export function decodeResult(v: unknown, path = 'result'): Result {
   ).map((b, i) => decodeBinding(b, `${path}.bindingsApplied[${i}]`));
   const result: Result = {
     ...decodeSourceRightsEvidence(obj),
-    recordset: { columns, rows },
+    recordset,
     limitations,
     bindingsApplied,
     provenance: decodeResultProvenance(obj['provenance'], `${path}.provenance`),

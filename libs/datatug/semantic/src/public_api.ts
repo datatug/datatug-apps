@@ -63,3 +63,5 @@ export * from './lib/components/source-rights-notice.component';
 export * from './charting/row-evidence';
 export * from './charting/evidence-json';
 export * from './charting/evidence-charts';
+
+export * from './charting/evidence-integrity';

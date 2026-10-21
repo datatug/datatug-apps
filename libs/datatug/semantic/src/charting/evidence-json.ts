@@ -1,4 +1,4 @@
-import { verifyRowEvidence } from './row-evidence';
+import { verifyRowEvidence } from './evidence-integrity';
 import { decodeResult } from '../contract/decoders';
 import type { Result } from '../contract/types';
 
