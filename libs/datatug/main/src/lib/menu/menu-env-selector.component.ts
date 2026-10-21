@@ -9,12 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  ErrorLogger,
-  IErrorLogger,
-  STORE_ID_GITHUB_COM,
-  STORE_TYPE_GITHUB,
-} from '@sneat/core';
+import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   IonBadge,
   IonButton,
@@ -75,27 +70,18 @@ export class MenuEnvSelectorComponent implements OnChanges {
         switchMap((project) => {
           this.environments.set([]);
           if (!project?.ref.projectId) return of([] as IProjEnv[]);
-          const storeId = project.ref.storeId;
-          if (
-            storeId !== STORE_ID_GITHUB_COM &&
-            storeId !== STORE_TYPE_GITHUB
-          ) {
-            return of([...(project.summary?.environments ?? [])]);
-          }
-          return this.environmentService
-            .listEnvironments(project.ref.projectId)
-            .pipe(
-              map((environments) =>
-                environments.map(({ id, title }) => ({ id, title })),
-              ),
-              catchError((error: unknown) => {
-                this.errorLogger.logError(
-                  error,
-                  'Failed to list project environments',
-                );
-                return of([] as IProjEnv[]);
-              }),
-            );
+          return this.environmentService.listEnvironments(project.ref).pipe(
+            map((environments) =>
+              environments.map(({ id, title }) => ({ id, title })),
+            ),
+            catchError((error: unknown) => {
+              this.errorLogger.logError(
+                error,
+                'Failed to list project environments',
+              );
+              return of([] as IProjEnv[]);
+            }),
+          );
         }),
         takeUntilDestroyed(this.destroyRef),
       )
