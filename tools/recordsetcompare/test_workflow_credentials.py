@@ -43,7 +43,7 @@ class PrivateCoreWorkflowTests(unittest.TestCase):
 
     def test_artifact_action_requests_only_core_read_permissions(self):
         action = (ROOT / ".github/actions/private-core-artifact/action.yml").read_text()
-        for required in ("uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1", "client-id: Iv23li26w131Kv6u3IdM", "owner: datatug", "repositories: datatug-core", "permission-contents: read", "permission-attestations: read"):
+        for required in ("uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510", "client-id: Iv23li26w131Kv6u3IdM", "owner: datatug", "repositories: datatug-core", "permission-contents: read", "permission-attestations: read"):
             self.assertIn(required, action)
         self.assertNotIn("GITHUB_ENV", action)
         self.assertNotIn(": write", action)
