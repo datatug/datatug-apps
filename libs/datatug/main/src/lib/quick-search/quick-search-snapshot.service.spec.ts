@@ -18,6 +18,7 @@ describe('Quick Search actual metadata snapshot', () => {
           {
             dbmodels: ['Chinook'],
             'dbmodels/Chinook': ['dbo'],
+            'dbmodels/Chinook/dbo': ['tables'],
             'dbmodels/Chinook/dbo/tables': ['Customers'],
             'dbmodels/Chinook/dbo/views': [],
           } as Record<string, string[]>
@@ -52,7 +53,12 @@ describe('Quick Search actual metadata snapshot', () => {
         { provide: ProjectQueryApiService, useValue: {} },
         {
           provide: GithubProjectReaderService,
-          useValue: { listDirectory: directory, getRawJson: raw },
+          useValue: {
+            readInfo: () => of({ commit: 'a'.repeat(40) }),
+            visitEpoch: () => '0.0',
+            listDirectory: directory,
+            getRawJson: raw,
+          },
         },
       ],
     });
@@ -106,7 +112,7 @@ describe('Quick Search actual metadata snapshot', () => {
 });
 
 describe('public object metadata authority',()=>{
-  function setup(missingBoard=false) {
+  function setup(missingBoard=false, rawOverride?:unknown) {
     const getBoard=vi.fn((_project:string,id:string,options:unknown)=>{
       expect(options).toEqual({requireExisting:true});
       if(missingBoard && id==='second') throw new Error('missing');
@@ -117,7 +123,7 @@ describe('public object metadata authority',()=>{
       {provide:ProjectService,useValue:{watchProjectSummary:()=>of({id:'p',boards:[{id:'first',title:'Brief'},{id:'second'}],entities:[{id:'customer',title:'Brief entity'}],environments:[{id:'dev',title:'Brief env'}]})}},
       {provide:ProjectQueryApiService,useValue:{}},
       {provide:QueriesService,useValue:{getQueriesFolder:()=>of({id:'~',items:[]})}},
-      {provide:GithubProjectReaderService,useValue:{getBoard,listDirectory:()=>of([]),readInfo:()=>of({commit:'a'.repeat(40)}),visitEpoch:()=> '0',getRawJson:(_project:string,path:string)=>of({id:path.startsWith('entities/')?'customer':'dev',title:'Full source title',tags:['real-tag'],secrets:'private-secret'})}},
+      {provide:GithubProjectReaderService,useValue:{getBoard,listDirectory:()=>of([]),readInfo:()=>of({commit:'a'.repeat(40)}),visitEpoch:()=> '0',getRawJson:(_project:string,path:string)=>of(rawOverride !== undefined ? rawOverride : {id:path.startsWith('entities/')?'customer':'dev',title:'Full source title',tags:['real-tag'],secrets:'private-secret'})}},
     ]});
     return TestBed.inject(QuickSearchSnapshotService).preview({storeId:'github.com',projectId:'repo@owner@'});
   }
@@ -133,4 +139,11 @@ describe('public object metadata authority',()=>{
     expect(snapshot.documents.some(d=>d.kind==='dashboard')).toBe(false);
     expect(snapshot.sourceCoverage.find(c=>c.kind==='dashboard')).toMatchObject({status:'unavailable',count:0});
   });
+  it.each([[],{id:'customer',tags:null}])('rejects malformed full metadata without changing successful categories (%j)',async raw=>{
+    const snapshot=await setup(false,raw);
+    expect(snapshot.documents.filter(d=>d.kind==='dashboard')).toHaveLength(2);
+    expect(snapshot.documents.some(d=>d.kind==='entity'||d.kind==='environment')).toBe(false);
+    expect(snapshot.sourceCoverage.find(c=>c.kind==='entity')).toMatchObject({status:'unavailable',count:0});
+  });
+
 });
