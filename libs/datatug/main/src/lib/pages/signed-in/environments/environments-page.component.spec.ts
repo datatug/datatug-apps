@@ -18,12 +18,20 @@ import { ProjectEnvironmentStateService } from '../../../services/project/projec
 import { EnvironmentState } from '../../../models/definition/environment-state';
 
 const focusEnvironmentInput = vi.fn();
+const readyEnvironmentInput = vi.fn();
 @Component({
   selector: 'environment-test-name-input',
   template: '<input aria-label="Environment name" />',
 })
 class EnvironmentNameInputStub {
   private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  async getInputElement(): Promise<HTMLInputElement> {
+    readyEnvironmentInput();
+    await Promise.resolve();
+    const input = this.host.nativeElement.querySelector('input');
+    if (!input) throw new Error('Native input is not rendered');
+    return input;
+  }
   async setFocus(): Promise<void> {
     focusEnvironmentInput();
     this.host.nativeElement.querySelector('input')?.focus();
@@ -119,7 +127,7 @@ describe('Environments management', () => {
       })
       .compileComponents();
   });
-  it('focuses the inline creation input after Angular renders it', async () => {
+  it('focuses the inline creation input after Angular render and Ionic native-input readiness', async () => {
     await TestBed.overrideComponent(EnvironmentsPageComponent, {
       set: {
         imports: [EnvironmentNameInputStub],
@@ -127,6 +135,7 @@ describe('Environments management', () => {
       },
     }).compileComponents();
     focusEnvironmentInput.mockClear();
+    readyEnvironmentInput.mockClear();
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
     fixture.detectChanges();
     response.next({ state, items: state.environments });
@@ -134,6 +143,7 @@ describe('Environments management', () => {
     expect(fixture.nativeElement.querySelector('input')).toBeNull();
     fixture.nativeElement.querySelector('button').click();
     await fixture.whenStable();
+    expect(readyEnvironmentInput).toHaveBeenCalledOnce();
     expect(focusEnvironmentInput).toHaveBeenCalledOnce();
     expect(document.activeElement).toBe(
       fixture.nativeElement.querySelector('input'),

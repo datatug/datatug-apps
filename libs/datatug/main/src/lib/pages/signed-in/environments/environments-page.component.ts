@@ -280,7 +280,19 @@ export class EnvironmentsPageComponent {
     afterNextRender(
       () => {
         if (generation === this.generation && this.creating()) {
-          void this.nameInput()?.setFocus();
+          const input = this.nameInput();
+          if (input) {
+            void input.getInputElement().then(() => {
+              if (
+                generation === this.generation &&
+                this.creating() &&
+                !this.busy() &&
+                !this.pending
+              ) {
+                return input.setFocus();
+              }
+            });
+          }
         }
       },
       { injector: this.injector },
