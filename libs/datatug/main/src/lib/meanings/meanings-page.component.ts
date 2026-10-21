@@ -82,9 +82,6 @@ import type {
         gap: 0.5rem;
         margin-top: 1rem;
       }
-      .meaning-field {
-        --padding-start: 2rem;
-      }
       .identity {
         overflow-wrap: anywhere;
       }
