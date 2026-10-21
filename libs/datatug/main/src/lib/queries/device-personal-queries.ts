@@ -1,3 +1,4 @@
+import { isQueryCreationTime } from './query-creation-time';
 import {
   validateSemanticModel,
   detachProjectMeaningReferences,
@@ -50,11 +51,12 @@ export class DevicePersonalQueries {
       const request = tx.objectStore('queries').getAll();
       tx.oncomplete = () => {
         db.close();
-        resolve(
-          (request.result as Stored[]).filter(
-            (item) => item.scope === scope(ref),
-          ),
-        );
+        const items = (request.result as Stored[]).filter(item => item.scope === scope(ref));
+        if (items.some(item => !isQueryCreationTime(item.query.createdAt))) {
+          reject(new Error('Saved queries require a valid creation timestamp.'));
+          return;
+        }
+        resolve(items);
       };
       tx.onabort = () => {
         db.close();
@@ -89,6 +91,7 @@ export class DevicePersonalQueries {
       const store = tx.objectStore('queries');
       const request = store.get(key);
       let conflict = false;
+      let invalidCreation = false;
       let saved: Stored = {
         key,
         scope: scope(ref),
@@ -96,9 +99,19 @@ export class DevicePersonalQueries {
         revision: expectedRevision + 1,
       };
       request.onsuccess = () => {
+        // Persisted metadata is required and remains immutable across edits and retries.
+        const definition: { -readonly [K in keyof IQueryDef]: IQueryDef[K] } = { ...query };
+        delete definition.createdAt;
+        const createdAt = request.result ? request.result.query.createdAt : new Date().toISOString();
+        if (!isQueryCreationTime(createdAt)) {
+          invalidCreation = true;
+          tx.abort();
+          return;
+        }
+        saved.query = structuredClone({ ...definition, ...(createdAt ? { createdAt } : {}) });
         if (
           request.result?.revision === expectedRevision + 1 &&
-          JSON.stringify(request.result.query) === JSON.stringify(query)
+          JSON.stringify(request.result.query) === JSON.stringify(saved.query)
         ) {
           saved = request.result;
           return;
@@ -118,7 +131,9 @@ export class DevicePersonalQueries {
         db.close();
         reject(
           new Error(
-            conflict
+            invalidCreation
+              ? 'Saved queries require a valid creation timestamp.'
+              : conflict
               ? 'This personal query changed in another tab. Reload before saving; your draft is retained.'
               : 'Personal query was not saved. Your draft is retained.',
           ),

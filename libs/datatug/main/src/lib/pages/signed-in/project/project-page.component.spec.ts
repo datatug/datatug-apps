@@ -15,6 +15,7 @@ import { ErrorLogger } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
 import { Observable, of, Subject, throwError } from 'rxjs';
 
+import { QueriesService } from '../../../queries/queries.service';
 import { ProjectPageComponent } from './project-page.component';
 import { DatatugBoardService } from '../../../board/core/datatug-board.service';
 import { DatatugFolderComponent } from '../../../folders/ui/datatug-folder.component';
@@ -39,6 +40,7 @@ function baseProviders(
 ): Provider[] {
   const paramMap = convertToParamMap(routeParams);
   return [
+    { provide: QueriesService, useValue: { getQueriesFolder: vi.fn(() => of({ id: '~', items: [], folders: [] })) } },
     {
       provide: ErrorLogger,
       useValue: {
@@ -445,11 +447,12 @@ describe('ProjectPage rendering a local-agent store project', () => {
     ) as HTMLButtonElement[];
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Boards',
-      'Queries',
+      'Queries 0',
       'Environments',
       'Entities',
       'Databases',
     ]);
+    expect(buttons[1].querySelector('ion-chip')?.textContent?.trim()).toBe('0');
     expect(fixture.nativeElement.querySelector('ion-segment')).toBeNull();
     buttons[1].click();
     fixture.detectChanges();
@@ -458,6 +461,28 @@ describe('ProjectPage rendering a local-agent store project', () => {
         'sneat-datatug-project-queries-preview',
       ),
     ).not.toBeNull();
+  });
+
+  it('updates the query count on another tab and cancels stale project counts', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const get = TestBed.inject(QueriesService).getQueriesFolder as ReturnType<typeof vi.fn>;
+    const first = new Subject<unknown>();
+    const second = new Subject<unknown>();
+    get.mockReturnValueOnce(first).mockReturnValueOnce(second);
+    const page = fixture.componentInstance as unknown as { setProjRef: (ref: { storeId: string; projectId: string }) => void };
+    page.setProjRef({ storeId: 'localhost:8989', projectId: 'first' });
+    first.next({ id: '~', items: [{ id: 'a' }], folders: [{ id: 'nested', items: [{ id: 'b' }] }] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')?.textContent?.trim()).toBe('2');
+    expect(fixture.nativeElement.querySelector('sneat-datatug-project-queries-preview')).toBeNull();
+    page.setProjRef({ storeId: 'localhost:8989', projectId: 'second' });
+    first.next({ id: '~', items: [{ id: 'stale' }] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')).toBeNull();
+    second.next({ id: '~', items: [] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')?.textContent?.trim()).toBe('0');
   });
 
   it('uses sandbox setup copy for an existing signed-in session', async () => {
