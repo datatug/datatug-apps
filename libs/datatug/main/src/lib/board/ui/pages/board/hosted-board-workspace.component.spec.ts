@@ -14,7 +14,6 @@ import { HostedBoardScope } from '../../../core/hosted-board-scope';
 import { BoardComponent } from '../../components/board/board.component';
 import {
   ProjectAssetsApiService,
-  BoardAssetSnapshot,
   BoardAssetWrite,
 } from '../../../../services/project/project-assets-api.service';
 import { ProjectQueryApiService } from '../../../../services/project/project-query-api.service';
@@ -199,7 +198,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     expect(writes[0].ifNoneMatch).toBe(true);
     expect(writes[0].ifMatch).toBeUndefined();
     expect(
-      (writes[0].board.rows![0].cards![0].widget!.data as { sql: unknown }).sql,
+      (writes[0].board.rows?.[0].cards?.[0].widget?.data as { sql: unknown }).sql,
     ).toEqual({
       queryId: 'assignment',
       parameters: [{ id: 'order_id', value: 11045 }],
@@ -238,13 +237,14 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     expect(f.nativeElement.querySelector('ion-input').value).toBe(
       'Original intent',
     );
-    saved = { ...original!.board, title: 'Newer current board' };
+    if (!original) throw new Error('Expected original save intent.');
+    saved = { ...original.board, title: 'Newer current board' };
     revision = 'rev3';
     api.saveBoard.mockReturnValueOnce(
       of({
-        board: original!.board,
+        board: original.board,
         revision: 'rev2',
-        receipt: original!.operationId,
+        receipt: original.operationId,
       }),
     );
     button(f, 'Retry original save').click();

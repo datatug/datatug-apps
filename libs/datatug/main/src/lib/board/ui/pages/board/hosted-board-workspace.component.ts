@@ -61,7 +61,7 @@ interface QueryFolder {
   items?: QueryChoice[];
 }
 @Component({
-  selector: 'datatug-hosted-board-workspace',
+  selector: 'sneat-datatug-hosted-board-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
   imports: [

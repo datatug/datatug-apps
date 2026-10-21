@@ -20,7 +20,7 @@ import { ProjectAssetsApiService } from '../../../../services/project/project-as
 import { projectPageHref } from '../../../../nav/project-page-href';
 import { detectiveErrorMessage } from '../../../../detective/detective-client.service';
 @Component({
-  selector: 'datatug-hosted-board-list',
+  selector: 'sneat-datatug-hosted-board-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
   imports: [

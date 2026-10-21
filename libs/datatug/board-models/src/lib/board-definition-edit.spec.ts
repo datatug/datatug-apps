@@ -104,7 +104,9 @@ describe('canonical durable board definition edits', () => {
       ),
     ).toThrow('currently available');
     const raw = board();
-    (raw.rows![0].cards![1].widget!.data as { sql: object }).sql = {
+    const rawData = raw.rows?.[0].cards?.[1].widget?.data as { sql: object } | undefined;
+    if (!rawData) throw new Error('Expected saved-query fixture.');
+    rawData.sql = {
       queryId: 'q',
       text: 'SELECT secret',
     };
@@ -152,7 +154,7 @@ describe('canonical durable board definition edits', () => {
     );
     expect(
       (
-        next.rows![0].cards![1].widget!.data as {
+        next.rows?.[0].cards?.[1].widget?.data as {
           sql: { parameters: unknown[] };
         }
       ).sql.parameters,
