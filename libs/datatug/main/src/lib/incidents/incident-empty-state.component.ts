@@ -54,7 +54,7 @@ addIcons({ addOutline, flaskOutline });
       <img
         class="harbor"
         src="/assets/illustrations/incidentius-harbor-800.webp"
-        alt="" loading="lazy" decoding="async"
+        alt="" loading="eager" decoding="async"
         width="800"
         height="450"
       />
