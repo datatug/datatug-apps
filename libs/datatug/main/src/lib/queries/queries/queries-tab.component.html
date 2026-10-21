@@ -132,7 +132,7 @@
           {{ item.query.title || item.query.id }}
           <p>
             @for (tag of item.query.tags || []; track tag) {
-              <a [routerLink]="tagLink(project()?.ref, tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(project()?.ref, tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
             }
           </p>
           @if (item.folders.length) {
@@ -166,7 +166,7 @@
           </h3>
           <p>
             @for (tag of query.tags || []; track tag) {
-              <a [routerLink]="tagLink(project()?.ref, tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(project()?.ref, tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
             }
           </p>
           @if (query.targets; as targets) {

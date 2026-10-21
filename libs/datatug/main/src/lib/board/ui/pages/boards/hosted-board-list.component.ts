@@ -106,7 +106,7 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
               >{{ board.title || board.id }}</a
             >
             @for (tag of board.tags || []; track tag) {
-              <a [routerLink]="tagLink(scope.page.ref(), tag)"><ion-badge color="light">{{ tag }}</ion-badge></a>
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(scope.page.ref(), tag)"><ion-badge color="light">{{ tag }}</ion-badge></a>
             }
           </li>
         }

@@ -60,6 +60,7 @@ function queryItems(
 }
 @Component({
   selector: 'sneat-datatug-project-tags-cloud',
+  host: {class: 'ph-no-capture ph-mask sentry-mask', 'data-sentry-mask': ''},
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
   imports: [

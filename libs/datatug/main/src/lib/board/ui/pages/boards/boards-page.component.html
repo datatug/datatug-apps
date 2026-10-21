@@ -66,7 +66,7 @@
                 </h3>
                 <p>
                   @for (tag of board.tags || []; track tag) {
-                    <a
+                    <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask
                       [routerLink]="tagLink(project()?.ref, tag)"
                       (click)="$event.stopPropagation()"
                       ><ion-badge color="light">{{ tag }}</ion-badge></a

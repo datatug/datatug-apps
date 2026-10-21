@@ -22,6 +22,7 @@ import {
 import { newTagError } from './tags';
 @Component({
   selector: 'sneat-datatug-tags-editor',
+  host: {class: 'ph-no-capture ph-mask sentry-mask', 'data-sentry-mask': ''},
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,

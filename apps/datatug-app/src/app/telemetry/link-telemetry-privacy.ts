@@ -12,7 +12,7 @@ export function provideLinkTelemetryPrivacy() {
     const router = inject(Router);
     router.events.subscribe((event) => {
       if (event instanceof NavigationStart) {
-        applyPosthogRoutePrivacy(event.url.split(/[?#]/)[0]);
+        applyPosthogRoutePrivacy(event.url.split('#')[0]);
       }
     });
   });

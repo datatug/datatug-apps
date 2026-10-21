@@ -1,3 +1,4 @@
+import { legacyTagDiscovery } from '../tags/legacy-tag-discovery';
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
@@ -65,6 +66,29 @@ const emptyShellProjectRoutes: Routes = [
 
 export const datatugProjectRoutes: Routes = [
   ...projectMeaningsRoutes,
+  {
+    path: 'quick-search',
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'tag-discovery',
+    data: { discovery: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'search-schema/:dbModelId',
+    data: { schemaDetail: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
   {
     path: 'browser-db/:connectionId/table/:table',
     loadComponent: () =>
@@ -354,6 +378,7 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'tags',
+    canActivate: [legacyTagDiscovery],
     loadComponent: () =>
       import('../pages/signed-in/tags/tags-page.component').then(
         (m) => m.TagsPageComponent,
@@ -370,6 +395,10 @@ export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter(
     [
       'chat',
       'overview',
+      'quick-search',
+      'tag-discovery',
+      'tags',
+      'search-schema/:dbModelId',
       'board/:board',
       'boards',
       'entities',

@@ -77,7 +77,7 @@
               >
             }
             @for (tag of instance.tags || []; track tag) {
-              <a [routerLink]="tagLink(projectRef(), tag)"
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(projectRef(), tag)"
                 ><ion-chip [outline]="true">{{ tag }}</ion-chip></a
               >
             }

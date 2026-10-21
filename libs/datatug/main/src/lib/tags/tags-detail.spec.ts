@@ -1,3 +1,5 @@
+import { legacyTagDiscovery } from './legacy-tag-discovery';
+import { ActivatedRouteSnapshot, RouterStateSnapshot, UrlTree, convertToParamMap } from '@angular/router';
 import { UrlSegment } from '@angular/router';
 import { datatugRoutes } from '../routes/datatug-routing.module';
 import { TestBed } from '@angular/core/testing';
@@ -188,3 +190,11 @@ it.each(['.', '..', 'a//b', 'team/', 'Ops / É?#', 'Case'])(
     }
   },
 );
+
+it('keeps one real Tags route and redirects distinctive legacy name-discovery deep links within project scope', () => {
+  expect(datatugProjectRoutes.filter(route=>route.path==='tags')).toHaveLength(1);
+  const route={queryParamMap:convertToParamMap({name:'Ops / É?'}),queryParams:{name:'Ops / É?',branch:'main',projectApi:'local'}} as unknown as ActivatedRouteSnapshot;
+  const redirect=legacyTagDiscovery(route,{url:'/space/S/store/firestore/project/P/tags?name=Ops'} as RouterStateSnapshot);
+  expect(new DefaultUrlSerializer().serialize(redirect as UrlTree)).toBe('/space/S/store/firestore/project/P/tag-discovery?name=Ops%20%2F%20%C3%89%3F&branch=main&projectApi=local');
+  expect(legacyTagDiscovery({...route,queryParamMap:convertToParamMap({})} as ActivatedRouteSnapshot,{} as RouterStateSnapshot)).toBe(true);
+});

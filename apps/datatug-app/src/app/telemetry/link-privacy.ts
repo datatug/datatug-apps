@@ -1,3 +1,4 @@
+import { parseProjectUrl } from '@datatug/project-address';
 import { loopbackAgentOrigin } from '../agent-access/agent-link-code';
 
 /**
@@ -18,10 +19,50 @@ const RESULT_ROUTE = /^\/store\/[^/]+\/result\/[^/?#]+\/?$/;
  */
 const RESULT_EDITOR_ROUTE = /^\/store\/[^/]+\/project\/[^/]+\/query\/?$/;
 
+/** Only real project search/discovery routes carry this privacy boundary. */
+function quickSearchPage(
+  pathname: string,
+): 'quick-search' | 'tags' | 'tag' | 'tag-discovery' | 'search-schema' | 'boards' | 'queries' | 'servers' | undefined {
+  const project = parseProjectUrl(pathname.split(/[?#]/)[0]);
+  if (!project.ok) return undefined;
+  const rest = project.rest.replace(/^\/sessions\/[A-Za-z0-9_-]{1,128}/, '');
+  if (/^\/tag(?:\/[^/]+)?$/.test(rest)) return 'tag';
+  const list = /^\/(boards|queries|servers)$/.exec(rest);
+  if (list && new URLSearchParams(pathname.split('?')[1]?.split('#')[0] || '').has('tag')) return list[1] as 'boards' | 'queries' | 'servers';
+  const match = /^\/(quick-search|tags|tag-discovery|search-schema\/[^/]+)\/?$/.exec(rest);
+  return match
+    ? match[1].startsWith('search-schema/')
+      ? 'search-schema'
+      : (match[1] as 'quick-search' | 'tags' | 'tag-discovery')
+    : undefined;
+}
+
+/** Lifecycle/search requests carry scope identifiers even after the page is left. */
+const QUICK_SEARCH_API_ROUTE =
+  /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|enable|refresh|search|disable)\/?$/;
+const SEARCH_ORIGIN_URLS =
+  /https?:\/\/[^\s"'<>`]+|\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+/g;
+
+/** A queued SDK payload retains its originating URLs; never rely only on current location. */
+export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
+  if (depth >= 10) return false;
+  if (typeof value === 'string')
+    return (value.match(SEARCH_ORIGIN_URLS) || []).some((address) => {
+      const path = address
+        .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
+      return !!quickSearchPage(path) || QUICK_SEARCH_API_ROUTE.test(path.split(/[?#]/)[0]);
+    });
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value).some((item) =>
+    hasQuickSearchOrigin(item, depth + 1),
+  );
+}
+
 /** Whether pathname (no query or fragment) is a table, view, records, record, query result or result editor page. */
 export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
   return (
+    !!quickSearchPage(pathname) ||
     LINK_ROUTE.test(path) ||
     RESULT_ROUTE.test(path) ||
     RESULT_EDITOR_ROUTE.test(path)
@@ -66,7 +107,7 @@ export function redactResultIds(text: string): string {
 
 /** Whether the current page is a table, view, records or record page. */
 export function onLinkRoute(): boolean {
-  return typeof location !== 'undefined' && isLinkRoute(location.pathname);
+  return typeof location !== 'undefined' && isLinkRoute(location.pathname + location.search);
 }
 
 /**
@@ -76,14 +117,30 @@ export function onLinkRoute(): boolean {
 export function scrubUrl(url: string, dropQuery: boolean): string {
   const noFragment = url.split('#')[0];
   const path = noFragment.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
-  if (dropQuery || loopbackAgentOrigin(noFragment) || isLinkRoute(path)) {
+  const searchPage = quickSearchPage(path);
+  if (searchPage) {
+    const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i.exec(noFragment)?.[0] || '';
+    return (
+      origin +
+      '/project/:projectId/' +
+      searchPage +
+      (searchPage === 'search-schema' ? '/:dbModelId' : searchPage === 'tag' ? '/:tag' : '')
+    );
+  }
+  if (
+    QUICK_SEARCH_API_ROUTE.test(path.split('?')[0]) ||
+    dropQuery ||
+    loopbackAgentOrigin(noFragment) ||
+    isLinkRoute(path)
+  ) {
     return redactResultIds(noFragment.split('?')[0]);
   }
   return redactResultIds(noFragment);
 }
 
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
-const RELATIVE_LINK_PATH = /(^|[\s"'(=:])(\/store\/[^\s"'<>`]+)/g;
+const RELATIVE_LINK_PATH =
+  /(^|[\s"'(=:])(\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+)/g;
 const LINK_FRAGMENT_PARTS = /#(?:[^\s"'<>`#]*&)?(?:code|pk)=[^\s"'<>`]*/g;
 
 /**

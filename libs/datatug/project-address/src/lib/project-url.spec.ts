@@ -1316,7 +1316,7 @@ describe('parseProjectUrl: the review cases (page validation, store, .git.git)',
 
 describe('shared project tag address family', () => {
   const ref = { storeId: 'firestore', spaceID: 'S', projectId: 'P' };
-  it.each([{ page: 'tags' }, { page: 'tag' }, { page: ['tag', 'Ops / É?#'] }] as const)(
+  it.each([{ page: 'tags' }, { page: 'tag-discovery' }, { page: 'tag' }, { page: ['tag', 'Ops / É?#'] }] as const)(
     'builds and parses narrow tag page $page',
     ({ page }) => {
       const path = projectUrl(ref, page);

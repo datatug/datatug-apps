@@ -15,6 +15,7 @@ import {
 import { TaggedItem, tagCounts } from './tags';
 @Component({
   selector: 'sneat-datatug-tag-filter',
+  host: {class: 'ph-no-capture ph-mask sentry-mask', 'data-sentry-mask': ''},
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonButton, IonChip, IonItemDivider, IonLabel, IonNote],
   template: ` <section aria-label="Filter by tags">
