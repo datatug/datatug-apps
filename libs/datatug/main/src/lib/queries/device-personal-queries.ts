@@ -1,4 +1,7 @@
-import { validateSemanticModel } from './semantic-mapping';
+import {
+  validateSemanticModel,
+  detachProjectMeaningReferences,
+} from './semantic-mapping';
 import { Injectable } from '@angular/core';
 import type { IProjectRef } from '../core/project-context';
 import type { IQueryDef } from '../models/definition/query-def';
@@ -70,7 +73,13 @@ export class DevicePersonalQueries {
     query: IQueryDef,
     expectedRevision: number,
   ): Promise<Stored> {
-    if (query.semanticModel) validateSemanticModel(query.semanticModel);
+    if (query.semanticModel) {
+      validateSemanticModel(query.semanticModel);
+      query = {
+        ...query,
+        semanticModel: detachProjectMeaningReferences(query.semanticModel),
+      };
+    }
     if (!isDevicePersonalQuery(query.id))
       throw new Error('Invalid personal query identity.');
     const db = await this.open();

@@ -1,3 +1,4 @@
+import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { SNEAT_AUTH_GUARDS } from '@sneat/auth-core';
@@ -168,9 +169,10 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board'].includes(
+            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'meanings'].includes(
               segments[6].path,
             )) ||
+          (segments.length === 8 && segments[6].path === 'meanings' && ['new-entity', 'entity', 'new-field', 'field'].includes(segments[7].path)) ||
           (segments.length === 8 && segments[6].path === 'boards' && segments[7].path === 'new') ||
           (segments.length === 8 && segments[6].path === 'board' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
@@ -196,6 +198,7 @@ export const datatugRoutes: Routes = [
       {path: 'quick-search', loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
       {path: 'tags', data: {discovery: true}, loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
       {path: 'search-schema/:dbModelId', data: {schemaDetail: true}, loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
+      ...projectMeaningsRoutes,
       ...['', 'overview'].map((path) => ({
         path,
         loadComponent: () =>

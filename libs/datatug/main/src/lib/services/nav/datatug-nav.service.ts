@@ -34,6 +34,7 @@ export type ProjectTopLevelPage =
   | 'boards'
   | 'dbmodels'
   | 'entities'
+  | 'meanings'
   | 'environments'
   | 'servers'
   | 'queries'
