@@ -91,6 +91,33 @@ describe('SqlQueriesPage', () => {
     expect(component.orderTagsBy).toBe('count');
     expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
   });
+  it('removes an incoming fragment on entry while preserving query and history state', () => {
+    const previousUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const previousState = window.history.state;
+    const state = { keep: 'router-state' };
+    const path = '/project/github.com/o/r/queries';
+    window.history.replaceState(state, '', `${path}?x=1#frag`);
+    const replaceState = vi.spyOn(window.history, 'replaceState');
+
+    try {
+      component.ionViewWillEnter();
+
+      expect(window.location.pathname).toBe(path);
+      expect(window.location.search).toBe('?x=1');
+      expect(window.location.hash).toBe('');
+      expect(window.history.state).toEqual(state);
+      expect(replaceState).toHaveBeenCalledOnce();
+      expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
+
+      window.history.replaceState(state, '', `${path}?x=1`);
+      replaceState.mockClear();
+      component.ionViewWillEnter();
+      expect(replaceState).not.toHaveBeenCalled();
+    } finally {
+      replaceState.mockRestore();
+      window.history.replaceState(previousState, '', previousUrl);
+    }
+  });
   it('returns a cold Space query-list URL to its owning project', () => {
     TestBed.inject(ProjectContextService).setCurrent({ storeId: 'firestore', spaceID: 'S1', projectId: 'P1' });
     expect(component.defaultBackHref).toBe('/space/S1/store/firestore/project/P1');

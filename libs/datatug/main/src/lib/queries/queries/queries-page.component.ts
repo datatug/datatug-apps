@@ -156,6 +156,16 @@ export class QueriesPageComponent
   }
 
   ionViewWillEnter(): void {
+    // Query lists have no fragment-based deep links. Clear an incoming
+    // fragment without routing so unrelated query parameters and Back history
+    // remain untouched.
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        window.location.pathname + window.location.search,
+      );
+    }
     this.isActiveView = true;
   }
 

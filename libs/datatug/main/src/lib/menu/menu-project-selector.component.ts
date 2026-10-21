@@ -5,6 +5,7 @@ import {
   OnChanges,
   OnDestroy,
   Output,
+  computed,
   SimpleChanges,
   inject,
   input,
@@ -77,6 +78,11 @@ export class MenuProjectSelectorComponent implements OnChanges, OnDestroy {
   @Output() projectChanged = new EventEmitter<IProjectContext>();
 
   readonly projects = signal<ProjectChoice[]>([]);
+  readonly selectedProjectTitle = computed(
+    () =>
+      this.projects().find((project) => project.id === this.currentProjectId())
+        ?.title ?? this.currentProjectId(),
+  );
   readonly projectListState = signal<'ready' | 'loading' | 'error'>('ready');
   readonly projectSelectInterfaceOptions = {
     cssClass: 'menu-project-options',

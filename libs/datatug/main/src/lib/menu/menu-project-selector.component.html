@@ -11,6 +11,7 @@
       interface="popover"
       [interfaceOptions]="projectSelectInterfaceOptions"
       [value]="currentProjectId()"
+      [selectedText]="selectedProjectTitle()"
       (ionChange)="switchProject($event)"
     >
       @for (project of projects(); track project.ref.projectId + ':' + project.ref.branch) {

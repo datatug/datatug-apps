@@ -175,6 +175,48 @@ describe('MenuProjectSelectorComponent', () => {
     expect(setCurrentProject).toHaveBeenCalledWith(expect.objectContaining({ ref }));
   });
 
+  it('updates the selected title when the current project summary arrives during a project-list error', async () => {
+    const currentStoreId = new BehaviorSubject<string | undefined>(
+      'http-localhost:3284',
+    );
+    const currentProject = new BehaviorSubject<IProjectContext | undefined>({
+      ref: { storeId: 'http-localhost:3284', projectId: 'demo-project-1' },
+    });
+    const projects = new Subject<IProjectBase[]>();
+    await TestBed.configureTestingModule({
+      imports: [MenuProjectSelectorComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        { provide: NewProjectService, useValue: { navigateToNewProjectPage: vi.fn() } },
+        { provide: DatatugNavContextService, useValue: { currentStoreId, currentProject, setCurrentProject: vi.fn() } },
+        { provide: DatatugNavService, useValue: { goProject: vi.fn() } },
+        { provide: DatatugStoreService, useValue: { getProjects: vi.fn(() => projects.asObservable()) } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(MenuProjectSelectorComponent);
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedProjectTitle()).toBe(
+      'demo-project-1',
+    );
+    currentProject.next({
+      ref: { storeId: 'http-localhost:3284', projectId: 'demo-project-1' },
+      summary: { id: 'demo-project-1', title: 'Demo project 1' },
+    } as IProjectContext);
+    projects.error(new Error('agent is unavailable'));
+    fixture.detectChanges();
+
+    expect(fixture.componentInstance.selectedProjectTitle()).toBe(
+      'Demo project 1',
+    );
+    expect(
+      (fixture.nativeElement.querySelector('ion-select') as HTMLElement & {
+        selectedText?: string;
+      }).selectedText,
+    ).toBe('Demo project 1');
+  });
+
   it('loads real agent projects and ignores a late result after the store changes', async () => {
     const currentStoreId = new BehaviorSubject<string | undefined>('http-localhost:8989');
     const currentProject = new BehaviorSubject<IProjectContext | undefined>(undefined);
