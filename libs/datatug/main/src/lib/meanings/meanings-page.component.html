@@ -13,7 +13,7 @@
     }
   </ion-toolbar>
 </ion-header>
-<ion-content color="light">
+<ion-content color="light" class="ion-padding">
   @if (loading()) {
     <ion-card
       ><ion-card-content role="status"
@@ -51,6 +51,12 @@
           pending() ? 'Verifying source…' : 'Copy this demo project to GitHub'
         }}</ion-button
       >
+    }
+    @if (catalog.discoveryComplete === false) {
+      <p class="ion-margin" role="status">
+        Meaning discovery is incomplete. Some definitions or resource
+        associations could not be verified.
+      </p>
     }
     @for (notice of catalog.notices ?? []; track notice) {
       <ion-card
@@ -140,18 +146,27 @@
                 <p>{{ entity.description }}</p>
                 <p>
                   {{ sourceLabel(entity) }} · {{ entity.conceptId }}
+                  @if (entity.conceptKind) {
+                    · {{ entity.conceptKind }}
+                  }
                 </p></ion-label
               ></ion-item
             >
-            @for (field of entity.fields; track field.conceptId) {
+            @for (
+              field of entity.fields;
+              track field.documentId + ':' + field.conceptId
+            ) {
               <ion-item
                 [routerLink]="link(href('field', entity, field))"
                 detail
                 class="meaning-field"
                 ><ion-label
                   ><h3>{{ field.name }}</h3>
-                  <p>{{ field.description }}</p></ion-label
-                ></ion-item
+                  <p>{{ field.description }}</p>
+                  @if (field.conceptKind) {
+                    <p>{{ field.conceptKind }}</p>
+                  }
+                </ion-label></ion-item
               >
             }
           } @empty {
@@ -159,7 +174,9 @@
               ><ion-label>{{
                 filter()
                   ? 'No matching meanings.'
-                  : 'No MeaningGraph entities are defined in this project yet.'
+                  : catalog.notices?.length
+                    ? 'No meanings could be resolved from the available project declarations.'
+                    : 'No meanings are declared in this project yet.'
               }}</ion-label></ion-item
             >
           }
@@ -177,17 +194,43 @@
                 }}
               </p>
               <p class="identity">
+                @if (
+                  mode() === 'field' ? field()?.conceptKind : entity.conceptKind
+                ) {
+                  {{
+                    mode() === 'field'
+                      ? field()?.conceptKind
+                      : entity.conceptKind
+                  }}
+                  ·
+                }
                 {{ sourceLabel(entity) }} ·
                 {{ mode() === 'field' ? field()?.conceptId : entity.conceptId }}
               </p></ion-label
             ></ion-item
           >
+          @if (sourceHref(); as source) {
+            <ion-item
+              [href]="source"
+              target="_blank"
+              rel="noopener noreferrer"
+              detail
+            >
+              <ion-label
+                ><h2>Source definition</h2>
+                <p>{{ sourceLabel(entity) }}</p></ion-label
+              >
+            </ion-item>
+          }
           @if (mode() === 'field') {
             <ion-item [routerLink]="link(href('entity', entity))" detail
               ><ion-label>Entity: {{ entity.name }}</ion-label></ion-item
             >
           }
-          @if (mode() === 'entity') {
+          @if (
+            mode() === 'entity' &&
+            (!entity.conceptKind || entity.conceptKind === 'entity')
+          ) {
             <ion-item color="light"
               ><ion-label><h2>Fields</h2></ion-label>
               @if (catalog.writable && entity.origin === 'project') {
@@ -199,14 +242,20 @@
               }
             </ion-item>
             <ion-list>
-              @for (field of entity.fields; track field.conceptId) {
+              @for (
+                field of entity.fields;
+                track field.documentId + ':' + field.conceptId
+              ) {
                 <ion-item
                   [routerLink]="link(href('field', entity, field))"
                   detail
                   ><ion-label
                     ><h3>{{ field.name }}</h3>
-                    <p>{{ field.description }}</p></ion-label
-                  ></ion-item
+                    <p>{{ field.description }}</p>
+                    @if (field.conceptKind) {
+                      <p>{{ field.conceptKind }}</p>
+                    }
+                  </ion-label></ion-item
                 >
               } @empty {
                 <ion-item
