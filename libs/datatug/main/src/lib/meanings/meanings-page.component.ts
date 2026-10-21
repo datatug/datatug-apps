@@ -174,7 +174,10 @@ export class MeaningsPageComponent implements ViewWillEnter, ViewWillLeave {
   );
   readonly field = computed(() =>
     this.entity()?.fields.find(
-      (field) => field.conceptId === this.params().get('field'),
+      (field) =>
+        field.conceptId === this.params().get('field') &&
+        field.documentId ===
+          (this.params().get('fieldDocument') ?? this.entity()?.documentId),
     ),
   );
   readonly filteredEntities = computed(() => {
@@ -329,7 +332,11 @@ export class MeaningsPageComponent implements ViewWillEnter, ViewWillLeave {
       target.searchParams.set('document', entity.documentId);
       target.searchParams.set('concept', entity.conceptId);
     }
-    if (field) target.searchParams.set('field', field.conceptId);
+    if (field) {
+      target.searchParams.set('field', field.conceptId);
+      if (field.documentId !== entity?.documentId)
+        target.searchParams.set('fieldDocument', field.documentId);
+    }
     return target.pathname + target.search;
   }
   backHref(): string {
@@ -340,9 +347,25 @@ export class MeaningsPageComponent implements ViewWillEnter, ViewWillLeave {
         : this.href();
   }
   sourceLabel(entity: MeaningEntity): string {
+    const source = this.field()?.source ?? entity.source;
+    if (source)
+      return `${source.kind === 'core' ? 'Core meaning' : source.kind === 'custom' ? 'Custom meaning' : 'Project repository'} · ${source.repository.replace('https://github.com/', '')} @ ${source.revision.length === 40 ? source.revision.slice(0, 7) : source.revision}`;
     return entity.origin === 'project'
       ? 'Project definition'
       : `Defined in ${entity.resources.find((resource) => resource.kind === 'query')?.title || 'saved query'}`;
+  }
+  sourceHref(): string | undefined {
+    const source = this.field()?.source ?? this.entity()?.source;
+    if (
+      !source ||
+      !source.path ||
+      !/^https:\/\/github\.com\/[a-z0-9_.-]+\/[a-z0-9_.-]+$/.test(
+        source.repository,
+      ) ||
+      !/^[a-f0-9]{40}$/.test(source.revision)
+    )
+      return undefined;
+    return `${source.repository}/blob/${source.revision}/${source.path.split('/').map(encodeURIComponent).join('/')}`;
   }
   resourceHref(resource: MeaningResource): string {
     const path =
@@ -438,6 +461,7 @@ export class MeaningsPageComponent implements ViewWillEnter, ViewWillLeave {
       this.params().get('document'),
       this.params().get('concept'),
       this.params().get('field'),
+      this.params().get('fieldDocument'),
     ]);
   }
   private async mutate(

@@ -1,3 +1,4 @@
+import { QuickSearchApiService } from './quick-search-api.service';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom, take, filter, timeout } from 'rxjs';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
@@ -10,7 +11,7 @@ import {
   inlineSchemaModel,
   schemaTableMetadata,
 } from './quick-search-schema-metadata';
-import { IProjectRef } from '../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { ProjectService } from '../services/project/project.service';
 import { QueriesService } from '../queries/queries.service';
@@ -99,7 +100,7 @@ export function queryDocuments(
       return {
         kind: 'query' as const,
         id,
-        name: item.title || item.id,
+        name: item.title || id.split('/').pop() || id,
         tags: metadataTags(item),
         reference: { objectId: id.split('/').pop() || id, folder: path || '~' },
       };
@@ -109,14 +110,115 @@ export function queryDocuments(
 }
 @Injectable({ providedIn: 'root' })
 export class QuickSearchSnapshotService {
+  private readonly quickSearch = inject(QuickSearchApiService);
   private readonly projects = inject(ProjectService);
   private readonly queries = inject(QueriesService);
   private readonly github = inject(GithubProjectReaderService);
   private readonly projectApi = inject(ProjectQueryApiService);
+  /** Read-only public fallback for one exact Check. Private scopes always use authenticated preview. */
+  async publicCheckMetadata(
+    ref: IProjectRef,
+    objectId: string,
+    isCurrent: () => boolean = () => true,
+  ): Promise<SearchDocument | undefined> {
+    const assertCurrent = () => {
+      if (!isCurrent()) throw new Error('Check metadata request changed');
+    };
+    assertCurrent();
+    if (
+      !['github', 'github.com'].includes(ref.storeId) ||
+      ref.projectApi ||
+      ref.spaceID ||
+      !/^[A-Za-z0-9_-]{1,128}$/.test(objectId)
+    )
+      throw new Error('Unsupported check metadata scope');
+    const address = readGithubProjectId(ref.projectId);
+    if (
+      !address.ok ||
+      (ref.branch && address.id.ref && ref.branch !== address.id.ref)
+    )
+      throw new Error('Invalid project branch');
+    const pinned = {
+      ...ref,
+      projectId: formatGithubProjectId({
+        ...address.id,
+        ...(ref.branch ? { ref: ref.branch } : {}),
+      }),
+    };
+    const publicAccess = async () => {
+      assertCurrent();
+      const status = await firstValueFrom(
+        this.quickSearch.status(ref).pipe(timeout(15000)),
+      );
+      assertCurrent();
+      if (!status.eligible || status.audience !== 'public')
+        throw new Error('Public metadata unavailable');
+    };
+    await publicAccess();
+    const initial = await firstValueFrom(
+      this.github.readInfo(pinned.projectId),
+    );
+    assertCurrent();
+    if (!initial.commit || !/^[a-f0-9]{40}$/i.test(initial.commit))
+      throw new Error('Pinned check metadata unavailable');
+    const epoch = this.github.visitEpoch(pinned.projectId);
+    const raw = await firstValueFrom(
+      this.github
+        .getRawJson<{
+          id?: string;
+          title?: string;
+          tags?: string[];
+        }>(pinned.projectId, `checks/${objectId}.json`)
+        .pipe(timeout(15000)),
+    );
+    assertCurrent();
+    const final = await firstValueFrom(this.github.readInfo(pinned.projectId));
+    assertCurrent();
+    await publicAccess();
+    if (
+      epoch !== this.github.visitEpoch(pinned.projectId) ||
+      initial.commit !== final.commit
+    )
+      throw new Error('Project metadata changed during read');
+    if (raw === undefined || raw === null) return undefined;
+    if (
+      typeof raw !== 'object' ||
+      Array.isArray(raw) ||
+      (raw.id !== undefined && raw.id !== objectId) ||
+      (raw.title !== undefined && typeof raw.title !== 'string') ||
+      ('tags' in raw &&
+        (!Array.isArray(raw.tags) ||
+          raw.tags.some((tag) => typeof tag !== 'string')))
+    )
+      throw new Error('Invalid check metadata');
+    return {
+      kind: 'check',
+      id: objectId,
+      name: raw.title || objectId,
+      tags: metadataTags(raw),
+      reference: { objectId },
+    };
+  }
   async preview(
     ref: IProjectRef,
     environmentId?: string,
   ): Promise<SearchSnapshot> {
+    // One authorized immutable server snapshot; never mix private cloud metadata
+    // with cached summaries, browser GitHub reads, or a second reader's commit.
+    if (
+      ref.storeId === 'firestore' &&
+      ref.spaceID !== undefined &&
+      !isSharedProjectRef(ref)
+    )
+      throw new Error('Invalid project scope');
+    if (
+      isSharedProjectRef(ref) ||
+      (ref.projectApi === 'cloud' &&
+        ['github', 'github.com'].includes(ref.storeId))
+    )
+      return firstValueFrom(
+        this.quickSearch.preview(ref, environmentId).pipe(timeout(15000)),
+      );
     if (['github', 'github.com'].includes(ref.storeId) && ref.branch) {
       const address = readGithubProjectId(ref.projectId);
       if (!address.ok || (address.id.ref && address.id.ref !== ref.branch))
@@ -147,21 +249,65 @@ export class QuickSearchSnapshotService {
       ['entity', summary.entities],
       ['environment', summary.environments],
     ] as const) {
-      // A missing inventory is unknown, never an empty complete category.
+      // Brief inventories identify objects; only their full source owns names/tags.
       if (items && (!ref.spaceID || kind === 'environment' || environmentId)) {
-        complete.add(kind);
-        for (const item of items)
-          documents.push({
-            kind,
-            id: item.id,
-            name: item.title || item.id,
-            tags: metadataTags(item),
-            reference: {
-              objectId: item.id,
-              ...(ref.spaceID && environmentId ? { environmentId } : {}),
-              ...(kind === 'environment' ? { environmentId: item.id } : {}),
-            },
-          });
+        try {
+          const category: SearchDocument[] = [];
+          for (const brief of items) {
+            let item: { id?: string; title?: string } = brief;
+            if (
+              ['github', 'github.com'].includes(ref.storeId) &&
+              !ref.projectApi
+            ) {
+              const raw = await firstValueFrom(
+                kind === 'dashboard'
+                  ? this.github.getBoard(ref.projectId, brief.id, {
+                      requireExisting: true,
+                    })
+                  : this.github.getRawJson<{
+                      id?: string;
+                      title?: string;
+                      tags?: string[];
+                    }>(
+                      ref.projectId,
+                      kind === 'entity'
+                        ? `entities/${brief.id}/${brief.id}.entity.json`
+                        : `environments/${brief.id}/${brief.id}.env.json`,
+                    ),
+              );
+              if (
+                !raw ||
+                Array.isArray(raw) ||
+                typeof raw !== 'object' ||
+                (raw.id !== undefined && raw.id !== brief.id) ||
+                (raw.title !== undefined && typeof raw.title !== 'string')
+              )
+                throw new Error('Object metadata unavailable');
+              if (
+                'tags' in raw &&
+                (!Array.isArray(raw.tags) ||
+                  raw.tags.some((tag) => typeof tag !== 'string'))
+              )
+                throw new Error('Invalid object tags');
+              item = raw;
+            }
+            category.push({
+              kind,
+              id: brief.id,
+              name: item.title || brief.id,
+              tags: metadataTags(item),
+              reference: {
+                objectId: brief.id,
+                ...(ref.spaceID && environmentId ? { environmentId } : {}),
+                ...(kind === 'environment' ? { environmentId: brief.id } : {}),
+              },
+            });
+          }
+          documents.push(...category);
+          complete.add(kind);
+        } catch {
+          // Never publish a partial category or manufacture empty completeness.
+        }
       }
     }
     if (summary.tags && ['github', 'github.com'].includes(ref.storeId)) {
@@ -255,7 +401,11 @@ export class QuickSearchSnapshotService {
     const entries = await directory('dbmodels');
     const candidates = new Map<
       string,
-      { inline: SchemaIndexModel[]; split?: SchemaIndexModel; descriptor: boolean }
+      {
+        inline: SchemaIndexModel[];
+        split?: SchemaIndexModel;
+        descriptor: boolean;
+      }
     >();
     const candidate = (id: string) => {
       if (!id || id.includes('/')) throw new Error('Invalid model identity');
@@ -289,8 +439,16 @@ export class QuickSearchSnapshotService {
       if (schemas.length) {
         const model: SchemaIndexModel = { id: entry.name, schemas: [] };
         for (const schema of schemas) {
-          const inventory = await directory(`dbmodels/${entry.name}/${schema.name}`);
-          if (!inventory.some(item => item.type === 'dir' && ['tables', 'views'].includes(item.name))) throw new Error('Schema inventory unavailable');
+          const inventory = await directory(
+            `dbmodels/${entry.name}/${schema.name}`,
+          );
+          if (
+            !inventory.some(
+              (item) =>
+                item.type === 'dir' && ['tables', 'views'].includes(item.name),
+            )
+          )
+            throw new Error('Schema inventory unavailable');
           const target = {
             id: schema.name,
             tables: [] as NonNullable<
@@ -304,6 +462,7 @@ export class QuickSearchSnapshotService {
             for (const table of await directory(
               `dbmodels/${entry.name}/${schema.name}/${category}`,
             )) {
+              if (table.type === 'file' && table.name === '.gitkeep') continue;
               if (table.type !== 'dir')
                 throw new Error('Unsupported schema inventory');
               const path = `dbmodels/${entry.name}/${schema.name}/${category}/${table.name}/${schema.name}.${table.name}.columns.json`;
@@ -325,7 +484,8 @@ export class QuickSearchSnapshotService {
         .sort((a, b) => a.id.localeCompare(b.id)),
     });
     for (const value of candidates.values()) {
-      if (value.descriptor && !value.split) throw new Error('Schema descriptor has no complete split inventory');
+      if (value.descriptor && !value.split)
+        throw new Error('Schema descriptor has no complete split inventory');
       const chosen = value.split || value.inline[0];
       if (!chosen) throw new Error('Schema inventory unavailable');
       const expected = JSON.stringify(canonical(chosen, !!value.split));
