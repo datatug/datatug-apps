@@ -146,7 +146,7 @@ export class ShippingApiService {
     return defer(() => {
       validateShippingIntent(ref, intent, actor);
       return this.api.post<ShippingAck>('datatug/shipping/action', intent, {
-        retryUnauthorizedOnce: true,
+        retryUnauthorizedOnce: false,
       });
     }).pipe(
       map((value) => {

@@ -100,6 +100,70 @@ describe('Shipping native authenticated transport', () => {
       expect((await result).current.revision).toBe(3);
     },
   );
+  it('never resubmits an old actor mutation with a replacement credential after401', async () => {
+    const bridge = TestBed.inject(SneatApiAuthTokenBridge);
+    bridge.setExplicitToken('token-A');
+    const intent: ShippingIntent = {
+      spaceID: 'space',
+      projectId: 'training',
+      sourceId: SHIPPING_SOURCE,
+      operationId: 'op-sarah',
+      action: 'initialize',
+    };
+    const failed = vi.fn();
+    const subscription = TestBed.inject(ShippingApiService)
+      .action(ref, intent, 'sarah')
+      .subscribe({ error: failed });
+    const first = http.expectOne((r) => r.url.endsWith('/shipping/action'));
+    expect(first.request.headers.get('Authorization')).toBe('Bearer token-A');
+    bridge.setExplicitToken('token-B');
+    first.flush({}, { status: 401, statusText: 'Unauthorized' });
+    await Promise.resolve();
+    const repeats = http.match((r) => r.url.endsWith('/shipping/action'));
+    subscription.unsubscribe();
+    expect(repeats.map((r) => r.request.headers.get('Authorization'))).toEqual(
+      [],
+    );
+    expect(failed).toHaveBeenCalledOnce();
+  });
+  it('permits only an explicit same-scope retry with the original body operation and pointer', async () => {
+    const bridge = TestBed.inject(SneatApiAuthTokenBridge);
+    bridge.setExplicitToken('token-A');
+    const intent: ShippingIntent = {
+      spaceID: 'space',
+      projectId: 'training',
+      sourceId: SHIPPING_SOURCE,
+      operationId: 'op-sarah',
+      action: 'correct',
+      expected: { generation: 'g1', revision: 1, sha256: 'a'.repeat(64) },
+    };
+    const api = TestBed.inject(ShippingApiService);
+    const firstResult = firstValueFrom(api.action(ref, intent, 'sarah'));
+    const rejected = expect(firstResult).rejects.toMatchObject({ status: 401 });
+    http
+      .expectOne((r) => r.url.endsWith('/shipping/action'))
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    await rejected;
+    http.expectNone((r) => r.url.endsWith('/shipping/action'));
+    bridge.setExplicitToken('refreshed-token-A');
+    const retried = firstValueFrom(api.action(ref, intent, 'sarah'));
+    const retry = http.expectOne((r) => r.url.endsWith('/shipping/action'));
+    expect(retry.request.body).toEqual(intent);
+    expect(retry.request.headers.get('Authorization')).toBe(
+      'Bearer refreshed-token-A',
+    );
+    retry.flush({
+      receipt: {
+        operationId: 'op-sarah',
+        actorId: 'sarah',
+        action: 'correct',
+        outcome: 'applied',
+        revision: revisionFixture(),
+      },
+      current: revisionFixture(2),
+    });
+    expect((await retried).current.revision).toBe(2);
+  });
   it('refuses a response attributed to a different actor while retaining the original intent for caller review', async () => {
     const intent: ShippingIntent = {
       spaceID: 'space',

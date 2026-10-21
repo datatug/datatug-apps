@@ -1,5 +1,6 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import {
+  DestroyRef,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -16,7 +17,8 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { firstValueFrom } from 'rxjs';
+import { filter, firstValueFrom, takeUntil } from 'rxjs';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { useDetectivePageContext } from '../detective/detective-page-context';
 import {
   DetectiveClientService,
@@ -183,6 +185,7 @@ import {
 export class ShippingWorkspaceComponent {
   readonly page = useDetectivePageContext();
   private readonly api = inject(ShippingApiService);
+  private readonly destroyRef = inject(DestroyRef);
   private readonly detective = inject(DetectiveClientService);
   readonly native = computed(() => {
     const ref = this.page.ref();
@@ -326,8 +329,20 @@ export class ShippingWorkspaceComponent {
     this.busy.set(true);
     this.error.set('');
     try {
-      await firstValueFrom(this.api.action(ref, intent, context.principal));
-      if (identity !== this.page.identity()) return;
+      await firstValueFrom(
+        this.api
+          .action(ref, intent, context.principal)
+          .pipe(
+            takeUntil(
+              this.page.scopeChanges$.pipe(
+                filter((current) => current !== identity),
+              ),
+            ),
+            takeUntilDestroyed(this.destroyRef),
+          ),
+      );
+      if (this.destroyRef.destroyed || identity !== this.page.identity())
+        return;
       this.clearJournal();
       this.pending.set(undefined);
       this.notice.set(
@@ -335,7 +350,8 @@ export class ShippingWorkspaceComponent {
       );
       this.refresh();
     } catch (error) {
-      if (identity !== this.page.identity()) return;
+      if (this.destroyRef.destroyed || identity !== this.page.identity())
+        return;
       if (error instanceof HttpErrorResponse && error.status === 409) {
         this.conflict.set(true);
         this.writeJournal(intent, true);
@@ -343,7 +359,8 @@ export class ShippingWorkspaceComponent {
       }
       this.fail(error);
     } finally {
-      if (identity === this.page.identity()) this.busy.set(false);
+      if (!this.destroyRef.destroyed && identity === this.page.identity())
+        this.busy.set(false);
     }
   }
   reviewConflict(): void {
@@ -407,10 +424,12 @@ export class ShippingWorkspaceComponent {
   }
   private fail(error: unknown): void {
     this.error.set(detectiveErrorMessage(error, true));
-    if (
-      error instanceof HttpErrorResponse &&
-      [401, 403].includes(error.status)
-    ) {
+    if (error instanceof HttpErrorResponse && error.status === 401) {
+      // Expired credentials do not prove that the original mutation was never
+      // delivered. Keep its intent for explicit same-principal recovery.
+      this.grantedFor.set(undefined);
+      this.revision.set(undefined);
+    } else if (error instanceof HttpErrorResponse && error.status === 403) {
       this.clearJournal();
       this.grantedFor.set(undefined);
       this.revision.set(undefined);

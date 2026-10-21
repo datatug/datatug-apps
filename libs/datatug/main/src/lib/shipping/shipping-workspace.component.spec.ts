@@ -31,6 +31,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
     spaceID: 'space',
     projectId: 'training',
   });
+  const changes = new Subject<string | undefined>();
   const actor = signal('sarah');
   const identity = () => JSON.stringify([ref(), actor()]);
   const api = { revision: vi.fn(), action: vi.fn() };
@@ -40,6 +41,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
     ref.set({ storeId: 'firestore', spaceID: 'space', projectId: 'training' });
     actor.set('sarah');
     page.current = {
+      scopeChanges$: changes,
       ref,
       identity,
       context: () => ({
@@ -125,6 +127,28 @@ describe('Shipping workspace native DOM lifecycle', () => {
     await f.whenStable();
     expect(api.action.mock.calls[1][1]).toEqual(intent);
     expect(f.componentInstance.revision()?.revision).toBe(4);
+  });
+  it('retains401 uncertainty for explicit same-actor refresh and exact retry without an automatic POST', async () => {
+    const f = await mount();
+    api.action.mockReturnValueOnce(
+      throwError(() => new HttpErrorResponse({ status: 401 })),
+    );
+    button(f, 'Correct routing').click();
+    await f.whenStable();
+    const intent = api.action.mock.calls[0][1];
+    expect(f.componentInstance.pending()).toEqual(intent);
+    expect(f.componentInstance.canWrite()).toBe(false);
+    expect(api.action).toHaveBeenCalledTimes(1);
+    button(f, 'Refresh current').click();
+    await vi.waitFor(() => expect(f.componentInstance.canWrite()).toBe(true));
+    await f.whenStable();
+    expect(api.action).toHaveBeenCalledTimes(1);
+    api.action.mockReturnValueOnce(
+      throwError(() => new Error('still uncertain')),
+    );
+    button(f, 'Retry original').click();
+    await f.whenStable();
+    expect(api.action.mock.calls[1][1]).toEqual(intent);
   });
   it('restores the exact uncertain operation on remount without resubmitting automatically', async () => {
     const f = await mount();
