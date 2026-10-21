@@ -1,3 +1,7 @@
+import {
+  keepVisibleOnWidthReflow,
+  type WidthReflowAnchor,
+} from './width-reflow-anchor';
 import { TagsEditorComponent } from '../../../tags/tags-editor.component';
 import {
   prepareLocalMeaningSave,
@@ -1405,6 +1409,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   @ViewChild(AuthorCodeEditorComponent)
   private authorCodeEditor?: AuthorCodeEditorComponent;
+
+  private receiptReflowAnchor?: WidthReflowAnchor;
+
+  @ViewChild('executionReceipt', { read: ElementRef })
+  private set executionReceiptRef(ref: ElementRef<HTMLElement> | undefined) {
+    this.receiptReflowAnchor?.destroy();
+    this.receiptReflowAnchor = undefined;
+    const element = ref?.nativeElement;
+    const root = element
+      ?.closest('ion-content')
+      ?.shadowRoot?.querySelector<HTMLElement>('.inner-scroll');
+    if (!element || !root) return;
+    this.receiptReflowAnchor = keepVisibleOnWidthReflow(
+      element,
+      root,
+      () => [this.currentQueryIdentity(), this.historyScope(), this.runResult()],
+      () => this.authorViewActive && this.isCurrentRoute(),
+    );
+  }
 
   private workspaceTabBar?: ElementRef<HTMLElement>;
   private workspaceTabResizeObserver?: ResizeObserver;
@@ -3583,6 +3606,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public ionViewWillLeave(): void {
+    this.receiptReflowAnchor?.clear();
     this.invalidateSemanticMapping();
     this.authorViewActive = false;
     // Ionic retains this component after navigation. The dispatcher session owns
@@ -6742,6 +6766,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.receiptReflowAnchor?.destroy();
     ++this.demoDraftGeneration;
     this.demoDraftCancelled.next();
     this.demoDraftCancelled.complete();
