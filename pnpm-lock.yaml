@@ -117,7 +117,7 @@ importers:
         version: 0.1.0
       '@ingitdb/client-github':
         specifier: 0.1.2
-        version: 0.1.2(@ingr/codec@0.0.1)(axios@1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0))(idb@8.0.3)
+        version: 0.1.2(@ingr/codec@0.0.1)(axios@1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0))(idb@8.0.4)
       '@ingr/codec':
         specifier: ^0.0.1
         version: 0.0.1
@@ -237,7 +237,7 @@ importers:
         version: 12.10.0
       idb:
         specifier: ^8.0.3
-        version: 8.0.3
+        version: 8.0.4
       ionicons:
         specifier: 8.0.13
         version: 8.0.13
@@ -4230,6 +4230,7 @@ packages:
   '@opentelemetry/sdk-trace-base@2.2.0':
     resolution: {integrity: sha512-xWQgL0Bmctsalg6PaXExmzdedSp3gyKV8mQBwK/j9VGdCDu2fmXIb2gAehBKbkXCpJ4HPkgv3QfoJWRT4dHWbw==}
     engines: {node: ^18.19.0 || >=20.6.0}
+    deprecated: Use @opentelemetry/sdk-trace package
     peerDependencies:
       '@opentelemetry/api': '>=1.3.0 <1.10.0'
 
@@ -8240,8 +8241,8 @@ packages:
   idb@7.1.1:
     resolution: {integrity: sha512-gchesWBzyvGHRO9W8tzUWFDycow5gwjvFKfyV9FF32Y7F50yZMp7mP+T2mJIWFx49zicqyC4uefHM17o6xKIVQ==}
 
-  idb@8.0.3:
-    resolution: {integrity: sha512-LtwtVyVYO5BqRvcsKuB2iUMnHwPVByPCXFXOpuU96IZPPoPN6xjOGxZQ74pgSVVLQWtUOYgyeL4GE98BY5D3wg==}
+  idb@8.0.4:
+    resolution: {integrity: sha512-jd0ITCrN+Zah4J7R/Z2jnR3W7A4BXDAjmo62MwWuSjxCiueUAf7X5rbodEdidWzeknwXHmLpdZkoiiCppNi30Q==}
 
   ieee754@1.2.1:
     resolution: {integrity: sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA==}
@@ -14838,12 +14839,12 @@ snapshots:
   '@img/sharp-win32-x64@0.35.4':
     optional: true
 
-  '@ingitdb/client-github@0.1.2(@ingr/codec@0.0.1)(axios@1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0))(idb@8.0.3)':
+  '@ingitdb/client-github@0.1.2(@ingr/codec@0.0.1)(axios@1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0))(idb@8.0.4)':
     dependencies:
       '@ingitdb/client': 0.1.0
       '@ingr/codec': 0.0.1
       axios: 1.18.1(debug@4.4.3(supports-color@7.2.0))(supports-color@7.2.0)
-      idb: 8.0.3
+      idb: 8.0.4
 
   '@ingitdb/client@0.1.0':
     dependencies:
@@ -20445,7 +20446,7 @@ snapshots:
 
   idb@7.1.1: {}
 
-  idb@8.0.3: {}
+  idb@8.0.4: {}
 
   ieee754@1.2.1: {}
 
