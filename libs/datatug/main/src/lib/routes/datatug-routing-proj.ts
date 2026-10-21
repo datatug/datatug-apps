@@ -29,13 +29,6 @@ const emptyShellProjectRoutes: Routes = [
       ),
   },
   {
-    path: 'tags',
-    loadComponent: () =>
-      import('../pages/signed-in/tags/tags-page.component').then(
-        (m) => m.TagsPageComponent,
-      ),
-  },
-  {
     path: 'dbmodel/:' + routingParamDbModelId,
     loadComponent: () =>
       import('../pages/signed-in/db-schema/db-model-page.component').then(
@@ -343,6 +336,14 @@ export const datatugProjectRoutes: Routes = [
         (m) => m.InvestigationContextPageComponent,
       ),
   },
+  {
+    path: 'tags',
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
+  },
+
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
 ];
 

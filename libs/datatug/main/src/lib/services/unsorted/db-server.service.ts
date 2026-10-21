@@ -16,6 +16,8 @@ import {
   IProjDbServerSummary,
 } from '../../models/definition/apis/database';
 import { ProjectContextService } from '../project/project-context.service';
+import { ProjectQueryApiService } from '../project/project-query-api.service';
+import { githubProjectAddressForRef } from '../project/project-assets-read.service';
 import { ProjectService } from '../project/project.service';
 
 const isGithubStoreId = (storeId: string): boolean =>
@@ -42,6 +44,7 @@ export const GITHUB_DBSERVER_DETAIL_MESSAGE =
 @Injectable()
 export class DbServerService {
   private readonly http = inject(HttpClient);
+  private readonly queryApi = inject(ProjectQueryApiService);
   private readonly projectContextService = inject(ProjectContextService);
   private readonly projectService = inject(ProjectService);
   private readonly githubReader = inject(GithubProjectReaderService);
@@ -119,12 +122,34 @@ export class DbServerService {
     projectRef: IProjectRef,
   ): Observable<IProjDbServerSummary[]> {
     if (isGithubStoreId(projectRef.storeId)) {
-      return this.getGithubDbServers(projectRef.projectId);
+      return this.getGithubDbServers(githubProjectAddressForRef(projectRef));
     }
+    if (projectRef.spaceID || projectRef.projectApi === 'cloud')
+      return throwError(
+        () =>
+          new Error(
+            'Database server catalog is unavailable for this project connection.',
+          ),
+      );
+    if (projectRef.branch || projectRef.projectApi)
+      return this.queryApi
+        .dbServers<
+          { tags?: string[]; server: IDbServer; databases?: unknown[] }[]
+        >(projectRef)
+        .pipe(
+          map((items) =>
+            items.map((item) => ({
+              dbServer: item.server,
+              tags: item.tags,
+              databasesCount: item.databases?.length ?? 0,
+            })),
+          ),
+        );
     return this.projectService.getFull(projectRef).pipe(
       map((p) =>
         p.dbServers?.map((dbServerFull) => ({
-          dbServer: dbServerFull.dbServer,
+          dbServer: dbServerFull.dbServer ?? dbServerFull.server,
+          tags: dbServerFull.tags,
           databasesCount: dbServerFull.databases?.length || 0,
         })),
       ),
@@ -152,26 +177,36 @@ export class DbServerService {
             )
           : of([]),
       ),
-      map((summaries) => {
+      switchMap((summaries) =>
+        forkJoin({
+          summaries: of(summaries),
+          definitions: this.githubReader.getDbServerDefinitions(projectId),
+        }),
+      ),
+      map(({ summaries, definitions }) => {
         const byKey = new Map<
           string,
           { dbServer: IDbServer; environments: IProjDbServerEnvironmentUsage[] }
         >();
         for (const summary of summaries) {
           for (const s of summary.dbServers || []) {
-            const key = `${s.driver}:${s.host}`;
+            const key = `${s.driver}:${s.host ?? ''}:${s.port ?? 0}`;
             const environments = byKey.get(key)?.environments ?? [];
             environments.push({
               envId: summary.id,
               databasesCount: s.catalogs?.length || 0,
             });
             byKey.set(key, {
-              dbServer: { driver: s.driver, host: s.host },
+              dbServer: {
+                driver: s.driver,
+                host: s.host,
+                ...(s.port ? { port: s.port } : {}),
+              },
               environments,
             });
           }
         }
-        return [...byKey.values()].map(
+        const rows = [...byKey.values()].map(
           ({ dbServer, environments }): IProjDbServerSummary => ({
             dbServer,
             databasesCount: environments.reduce(
@@ -181,6 +216,34 @@ export class DbServerService {
             environments,
           }),
         );
+        const defined = new Set<string>();
+        for (const definition of definitions) {
+          const server = definition.server;
+          if (
+            !server ||
+            typeof server.driver !== 'string' ||
+            (server.host !== undefined && typeof server.host !== 'string')
+          )
+            throw new Error('Invalid database server definition.');
+          const identity = `${server.driver}:${server.host ?? ''}:${server.port ?? 0}`;
+          if (defined.has(identity))
+            throw new Error('Duplicate database server definitions.');
+          defined.add(identity);
+          const row = rows.find(
+            (row) =>
+              row.dbServer.driver === server.driver &&
+              (row.dbServer.host ?? '') === (server.host ?? '') &&
+              (row.dbServer.port ?? 0) === (server.port ?? 0),
+          );
+          if (row) row.tags = definition.tags;
+          else
+            rows.push({
+              dbServer: { ...server, host: server.host ?? '' },
+              tags: definition.tags,
+              databasesCount: definition.databases?.length ?? 0,
+            });
+        }
+        return rows;
       }),
     );
   }

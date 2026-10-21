@@ -4,6 +4,7 @@ import {
   computed,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { race, Subject, of } from 'rxjs';
@@ -70,6 +71,7 @@ import { ProjectAssetsReadService } from '../../../services/project/project-asse
 import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
+import { ProjectTagsCloudComponent } from '../../../tags/project-tags-cloud.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
@@ -80,6 +82,7 @@ import { readGithubProjectId } from '@datatug/project-address';
   templateUrl: './project-page.component.html',
   styleUrls: ['./project-page.component.scss'],
   imports: [
+    ProjectTagsCloudComponent,
     RouterLink,
     DatatugCoreModule,
     DatatugServicesNavModule,
@@ -345,8 +348,7 @@ export class ProjectPageComponent
       this.projectService
         .watchProjectSummary(ref)
         .pipe(
-          takeUntil(cancel$),
-        )
+          takeUntil(cancel$))
         .subscribe({
           next: (summary) => this.onProjectSummaryChanged(ref, summary),
           complete: () => {
@@ -378,7 +380,9 @@ export class ProjectPageComponent
     }
   };
 
+  private readonly tagsCloud = viewChild(ProjectTagsCloudComponent);
   ionViewWillEnter(): void {
+    this.tagsCloud()?.reload();
     this.isActiveView = true;
   }
 
@@ -522,5 +526,4 @@ export class ProjectPageComponent
       projectContext: project,
     });
   }
-
 }

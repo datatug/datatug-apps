@@ -15,6 +15,20 @@
 </ion-header>
 
 <ion-content>
+  @if (dbServer(); as server) {
+    <sneat-datatug-project-item-tags
+      [projectRef]="projectRef()"
+      kind="dbserver"
+      [initialTags]="serverTags()"
+      [driver]="server.driver"
+      [itemId]="
+        server.driver +
+        ':' +
+        (server.host || '') +
+        (server.port ? ':' + server.port : '')
+      "
+    />
+  }
   <ion-card>
     <ion-item-divider>
       @switch (dbServer()?.driver) {

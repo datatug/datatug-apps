@@ -13,6 +13,7 @@ import {
   distinctUntilChanged,
   Subject,
   takeUntil,
+  finalize,
 } from 'rxjs';
 import { Injectable, inject } from '@angular/core';
 import {
@@ -52,6 +53,11 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
     return true;
   }
   if (
+    JSON.stringify(queryState.tags ?? def.tags ?? []) !==
+    JSON.stringify(def.tags ?? [])
+  )
+    return true;
+  if (
     queryState.connectionId !== undefined &&
     queryState.connectionId !== (def.connectionId ?? '')
   ) {
@@ -83,6 +89,7 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
     // rather than duplicated.
     case QueryType.SQL:
     case QueryType.DTQL:
+    case QueryType.TugQL:
       return (
         (queryState.request as ISqlQueryRequest).text !=
         (def.request as ISqlQueryRequest).text
@@ -139,6 +146,7 @@ export class QueryEditorStateService {
   private authSubscription?: Subscription;
   private denialSubscription?: Subscription;
   private readonly quarantinedQueries = new Map<string, IQueryState>();
+  private readonly tagSaveProbes = new Set<string>();
   private readonly readVersions = new Map<string, number>();
   private readonly pendingSaves = new Map<
     string,
@@ -151,6 +159,7 @@ export class QueryEditorStateService {
     this.pendingSaves.clear();
     this.quarantinedQueries.clear();
     this.readVersions.clear();
+    this.tagSaveProbes.clear();
     $state.next({ activeQueries: [] });
   }
 
@@ -174,7 +183,11 @@ export class QueryEditorStateService {
         this.authSubscription?.unsubscribe();
         this.denialSubscription?.unsubscribe();
         this.clearScope();
-        if (currentProject && (currentProject.ref.projectApi === 'cloud' || isSharedProjectRef(currentProject.ref))) {
+        if (
+          currentProject &&
+          (currentProject.ref.projectApi === 'cloud' ||
+            isSharedProjectRef(currentProject.ref))
+        ) {
           this.denialSubscription = this.queriesService
             .authorityDenied?.()
             .subscribe((denied) => {
@@ -237,7 +250,9 @@ export class QueryEditorStateService {
       expectedProjectRef &&
       !equalProjectRef(this.currentProject?.ref, expectedProjectRef)
     ) {
-      throw new Error('The active project changed before the query could open.');
+      throw new Error(
+        'The active project changed before the query could open.',
+      );
     }
     if (def.id !== id) {
       throw new Error('The authorized query definition does not match its ID.');
@@ -260,8 +275,8 @@ export class QueryEditorStateService {
                 cached.saveSupported !== false,
               saveError:
                 revision.saveSupported === false
-                  ? revision.unsupportedSaveReason ??
-                    'This query can be read, but the current save API cannot preserve all its fields.'
+                  ? (revision.unsupportedSaveReason ??
+                    'This query can be read, but the current save API cannot preserve all its fields.')
                   : cached.saveSupported === false
                     ? cached.saveError
                     : undefined,
@@ -275,7 +290,9 @@ export class QueryEditorStateService {
         id,
         queryType: def.request.queryType,
         def,
-        request: cached?.isLoading ? def.request : (cached?.request ?? def.request),
+        request: cached?.isLoading
+          ? def.request
+          : (cached?.request ?? def.request),
         title: cached?.title ?? def.title,
         isLoading: false,
         ...(revision
@@ -285,8 +302,8 @@ export class QueryEditorStateService {
               saveSupported: revision.saveSupported !== false,
               saveError:
                 revision.saveSupported === false
-                  ? revision.unsupportedSaveReason ??
-                    'This query can be read, but the current save API cannot preserve all its fields.'
+                  ? (revision.unsupportedSaveReason ??
+                    'This query can be read, but the current save API cannot preserve all its fields.')
                   : undefined,
             }
           : {}),
@@ -329,7 +346,9 @@ export class QueryEditorStateService {
       };
       let queryState = state?.activeQueries?.find((q) => q.id === id);
       if (
-        (this.currentProject?.ref.projectApi === 'cloud' || (this.currentProject && isSharedProjectRef(this.currentProject.ref))) &&
+        (this.currentProject?.ref.projectApi === 'cloud' ||
+          (this.currentProject &&
+            isSharedProjectRef(this.currentProject.ref))) &&
         queryState &&
         !queryState.isNew
       ) {
@@ -560,7 +579,8 @@ export class QueryEditorStateService {
         error: (error) => {
           if (isDevicePersonalQuery(id)) {
             const state = this.getQueryState(id);
-            if (state) this.updateQueryState({ ...state, isLoading: false, saveError: error instanceof Error ? error.message : 'Personal query unavailable on this device.' });
+            if (state) this.updateQueryState({ ...state, isLoading: false, saveError: error instanceof Error ? error.message : 'Personal query unavailable on this device.',
+              });
           } else this.loadQueryFromProjectFull(currentProject, id, onCompleted);
         },
       });
@@ -729,8 +749,18 @@ export class QueryEditorStateService {
     queryState: IQueryState,
     projectRef: IProjectRef,
   ): Observable<void> {
-    if (queryState.def?.semanticModel && !isDevicePersonalQuery(queryState.id ?? '') && !projectRef.projectApi && !isSharedProjectRef(projectRef))
-      return throwError(() => new Error('This legacy project cannot save meanings safely. Use a personal copy on this device.'));
+    if (
+      queryState.def?.semanticModel &&
+      !isDevicePersonalQuery(queryState.id ?? '') &&
+      !projectRef.projectApi &&
+      !isSharedProjectRef(projectRef)
+    )
+      return throwError(
+        () =>
+          new Error(
+            'This legacy project cannot save meanings safely. Use a personal copy on this device.',
+          ),
+      );
     if (!this.currentProject) {
       return throwError(() => 'no current project');
     }
@@ -740,7 +770,18 @@ export class QueryEditorStateService {
           'An attempt to save a query after current project have been changed',
       );
     }
-    if (!isDevicePersonalQuery(queryState.id ?? "") && (projectRef.projectApi || isSharedProjectRef(projectRef)))
+    if (
+      queryState.tags !== undefined &&
+      !isDevicePersonalQuery(queryState.id ?? '') &&
+      !projectRef.projectApi &&
+      !projectRef.spaceID &&
+      !['github', 'github.com', 'firestore'].includes(projectRef.storeId)
+    )
+      return this.saveLocalTaggedQuery(queryState, projectRef);
+    if (
+      !isDevicePersonalQuery(queryState.id ?? '') &&
+      (projectRef.projectApi || isSharedProjectRef(projectRef))
+    )
       return this.saveCommonQuery(queryState, projectRef);
     const { id } = queryState;
     if (!id) {
@@ -772,6 +813,7 @@ export class QueryEditorStateService {
       const query: IQueryDef = {
         ...queryState.def,
         ...(queryState.title !== undefined ? { title: queryState.title } : {}),
+        tags: queryState.tags ?? queryState.def.tags,
         request: queryState.request,
         federation: queryState.federation ?? queryState.def.federation,
       };
@@ -795,6 +837,12 @@ export class QueryEditorStateService {
           this.updateQueryState({
             ...currentState,
             def: value,
+            tags:
+              JSON.stringify(
+                currentState.tags ?? currentState.def?.tags ?? [],
+              ) === JSON.stringify(query.tags ?? [])
+                ? undefined
+                : currentState.tags,
             title: titleChangedDuringSave ? currentState.title : value.title,
             request: requestChangedDuringSave
               ? currentState.request
@@ -820,6 +868,81 @@ export class QueryEditorStateService {
       return throwError(e);
     }
   }
+  /** Upgrade a tag edit from the legacy reader to the lossless, conditional local query API. */
+  private saveLocalTaggedQuery(
+    state: IQueryState,
+    ref: IProjectRef,
+  ): Observable<void> {
+    return defer(() => {
+      const id = state.id;
+      if (!id || !state.def || this.tagSaveProbes.has(id))
+        throw new Error('Load this query before saving its tags.');
+      const generation = this.generation;
+      const base = JSON.stringify(toProjectQueryWire(state.def, id));
+      this.tagSaveProbes.add(id);
+      return this.queriesService.branches(ref).pipe(
+        switchMap((branches) => {
+          if (
+            generation !== this.generation ||
+            !branches.currentBranch ||
+            (ref.branch && ref.branch !== branches.currentBranch)
+          )
+            throw new Error('The local project branch changed.');
+          const selected: IProjectRef = {
+            ...ref,
+            branch: ref.branch ?? branches.currentBranch,
+            projectApi: 'local',
+          };
+          if (state.isNew)
+            return this.saveCommonQuery(
+              {
+                ...state,
+                branchHead: branches.branches.find(
+                  (branch) => branch.name === selected.branch,
+                )?.head,
+              },
+              selected,
+            );
+          return this.queriesService.getRevision(selected, id).pipe(
+            switchMap((snapshot) => {
+              if (
+                generation !== this.generation ||
+                snapshot.saveSupported === false ||
+                JSON.stringify(
+                  toProjectQueryWire(fromProjectQueryWire(snapshot.query), id),
+                ) !== base
+              )
+                throw new Error('The saved query changed.');
+              return this.saveCommonQuery(
+                {
+                  ...state,
+                  revision: snapshot.revision,
+                  branchHead: snapshot.branchHead,
+                },
+                selected,
+              );
+            }),
+          );
+        }),
+        finalize(() => this.tagSaveProbes.delete(id)),
+      );
+    }).pipe(
+      catchError((error) => {
+        if (state.id && equalProjectRef(ref, this.currentProject?.ref)) {
+          const current = this.getQueryState(state.id);
+          if (current)
+            this.updateQueryState({
+              ...current,
+              isSaving: false,
+              saveError:
+                'Query tags were not confirmed saved. Your draft is preserved. Reload the saved query or check that this agent supports branch-aware query saves.',
+            });
+        }
+        return throwError(() => error);
+      }),
+    );
+  }
+
   private publishCommonQueryState(state: IQueryState): void {
     if (state.id && this.quarantinedQueries.has(state.id))
       this.quarantinedQueries.set(state.id, state);
@@ -844,13 +967,19 @@ export class QueryEditorStateService {
         throw new Error(
           'This query cannot be saved losslessly by the current API.',
         );
-      if (!id || !queryState.def || !queryState.request || (!isSharedProjectRef(ref) && !ref.branch))
+      if (
+        !id ||
+        !queryState.def ||
+        !queryState.request ||
+        (!isSharedProjectRef(ref) && !ref.branch)
+      )
         throw new Error('Load a query and select its branch before saving.');
       const generation = this.generation;
       const query = toProjectQueryWire(
         {
           ...queryState.def,
           title: queryState.title,
+          tags: queryState.tags ?? queryState.def.tags,
           request: queryState.request,
           federation: queryState.federation ?? queryState.def.federation,
           connectionId:
@@ -879,7 +1008,9 @@ export class QueryEditorStateService {
               ...(queryState.isNew
                 ? { ifNoneMatch: true as const }
                 : { ifMatch: queryState.revision }),
-              ...(ref.branch ? { expectedBranchHead: queryState.branchHead } : {}),
+              ...(ref.branch
+                ? { expectedBranchHead: queryState.branchHead }
+                : {}),
             };
       if (!queryState.isNew && !queryState.revision)
         throw new Error(
@@ -895,7 +1026,10 @@ export class QueryEditorStateService {
         switchMap((capabilities) => {
           if (generation !== this.generation)
             throw new Error('Project scope changed during save.');
-          if (query.semanticModel && !capabilities.semanticModel) throw new Error("This server does not support meanings yet. Save a personal copy on this device.");
+          if (query.semanticModel && !capabilities.semanticModel)
+            throw new Error(
+              'This server does not support meanings yet. Save a personal copy on this device.',
+            );
           if (!capabilities.querySave)
             throw new Error(
               'This project does not currently allow saving queries.',
@@ -934,6 +1068,11 @@ export class QueryEditorStateService {
           this.publishCommonQueryState({
             ...current,
             def,
+            tags:
+              JSON.stringify(current.tags ?? current.def?.tags ?? []) ===
+              JSON.stringify(query.tags ?? [])
+                ? undefined
+                : current.tags,
             revision: result.revision,
             branchHead: result.branchHead,
             isNew: false,

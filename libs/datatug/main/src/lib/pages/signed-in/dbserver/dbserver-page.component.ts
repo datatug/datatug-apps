@@ -1,3 +1,6 @@
+import { ProjectItemTagsComponent } from '../../../tags/project-item-tags.component';
+import { IProjectRef } from '../../../core/project-context';
+import { getDbServerId } from '../../../models/definition/apis/database';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute } from '@angular/router';
@@ -41,6 +44,7 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
   selector: 'sneat-datatug-dbserver',
   templateUrl: './dbserver-page.component.html',
   imports: [
+    ProjectItemTagsComponent,
     // `DbServerService` (injected below) is a plain `@Injectable()`,
     // provided by `DatatugServicesUnsortedModule` — its own dependencies
     // (`HttpClient`, `ProjectContextService`, `ProjectService`,
@@ -78,6 +82,11 @@ export class DbserverPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly dbServerService = inject(DbServerService);
   private readonly projectContextService = inject(ProjectContextService);
+
+  readonly serverTags = signal<string[]>([]);
+  private metadataReadGeneration = 0;
+  readonly projectRef = signal<IProjectRef | undefined>(undefined);
+  readonly getDbServerId = getDbServerId;
 
   tab: 'known' | 'unknown' = 'known';
   // Signals, not plain fields: this app is zoneless
@@ -133,6 +142,30 @@ export class DbserverPageComponent implements OnDestroy {
       .pipe(takeUntil(this.destroyed))
       .subscribe(([dbServer, target]) => {
         this.dbServer.set(dbServer);
+        this.projectRef.set(target);
+        const metadataGeneration = ++this.metadataReadGeneration;
+        this.serverTags.set([]);
+        if (target && dbServer)
+          this.dbServerService
+            .getDbServers(target)
+            .pipe(takeUntil(this.destroyed))
+            .subscribe({
+              next: (items) => {
+                if (metadataGeneration === this.metadataReadGeneration)
+                  this.serverTags.set(
+                    items.find(
+                      (item) =>
+                        item.dbServer.driver === dbServer.driver &&
+                        (item.dbServer.host ?? '') === (dbServer.host ?? '') &&
+                        (item.dbServer.port ?? 0) === (dbServer.port ?? 0),
+                    )?.tags ?? [],
+                  );
+              },
+              error: () => {
+                if (metadataGeneration === this.metadataReadGeneration)
+                  this.serverTags.set([]);
+              },
+            });
         if (dbServer && target) {
           this.loadData();
         }

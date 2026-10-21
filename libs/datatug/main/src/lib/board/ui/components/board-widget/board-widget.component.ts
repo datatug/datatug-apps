@@ -25,12 +25,23 @@ import {
   input,
   output,
   WritableSignal,
+  TemplateRef,
+  viewChild,
   untracked,
 } from '@angular/core';
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
-import { IonButton } from '@ionic/angular';
+import { ChartViewTabsComponent } from './chart-view-tabs.component';
+import { NgTemplateOutlet } from '@angular/common';
+import {
+  IonButton,
+  IonItemDivider,
+  IonLabel,
+  IonItem,
+  IonButtons,
+  IonIcon,
+} from '@ionic/angular';
 import {
   BoardWidget,
   ChartWidgetDef,
@@ -78,7 +89,10 @@ import {
   HeldResultPresentationComponent,
   type CategoryBarFields,
 } from '../held-result-presentation/held-result-presentation.component';
-import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
+import {
+  isPublishedShowcaseBoard,
+  isShowcaseTutorialBoard,
+} from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { isSavedPublicChartQueryId } from '../../../../queries/public-data/public-chart-query';
 import {
@@ -113,6 +127,13 @@ export interface BoardResultSnapshot {
   styleUrl: './board-widget.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
+    ChartViewTabsComponent,
+    IonItemDivider,
+    IonLabel,
+    IonItem,
+    IonButtons,
+    IonIcon,
     RetainedEvidenceViewerComponent,
     HeldRowEvidenceComponent,
     EvidenceChartComponent,
@@ -127,6 +148,10 @@ export interface BoardResultSnapshot {
   ],
 })
 export class BoardWidgetComponent {
+  readonly headerInCard = input(false);
+  readonly actionsInCardHeader = input(false);
+  readonly actionsTemplate =
+    viewChild<TemplateRef<{ iconOnly: boolean }>>('cardActions');
   readonly presentationSelection = inject(BoardPresentationSelection, {
     optional: true,
   });
@@ -308,6 +333,18 @@ export class BoardWidgetComponent {
       return false;
     try {
       return isShowcaseTutorialBoard(ref, {
+        id: this.boardId() ?? '',
+        title: '',
+      });
+    } catch {
+      return false;
+    }
+  });
+  readonly publishedShowcase = computed(() => {
+    const ref = this.projectRef();
+    if (!ref) return false;
+    try {
+      return isPublishedShowcaseBoard(this.queryReadRef(ref), {
         id: this.boardId() ?? '',
         title: '',
       });
@@ -691,7 +728,7 @@ export class BoardWidgetComponent {
       const definition = this.definition();
       const identity = this.executionIdentity();
       const eligible =
-        this.showcase() &&
+        this.publishedShowcase() &&
         definition &&
         !this.unsupportedReason() &&
         this.readBoardForRun();

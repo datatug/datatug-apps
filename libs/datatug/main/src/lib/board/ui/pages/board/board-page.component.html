@@ -1,5 +1,5 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light" style="--background: var(--ion-color-light)">
     <ion-buttons slot="start">
       <ion-back-button [defaultHref]="defaultHref" />
       <ion-menu-button />
@@ -15,19 +15,36 @@
     <ion-grid>
       <ion-row>
         <ion-col size="12" class="ion-padding-start">
-          <h1 tabindex="-1" data-board-page-heading>
-            {{ projBoard()?.title || 'Board' }}
-          </h1>
-          <div class="board-header-actions">
+          <div class="board-title-row">
+            <h1 tabindex="-1" data-board-page-heading>
+              {{ projBoard()?.title || 'Board' }}
+            </h1>
             @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
-              <ion-button fill="outline" (click)="toggleFavorite()">
-                {{
+              <ion-button
+                fill="clear"
+                color="medium"
+                [attr.aria-label]="
                   choicesForBoard().favorite
                     ? 'Remove from favorites'
                     : 'Add to favorites'
-                }}
-              </ion-button>
+                "
+                [title]="
+                  choicesForBoard().favorite
+                    ? 'Remove from favorites (saved in this browser)'
+                    : 'Add to favorites (saved in this browser)'
+                "
+                (click)="toggleFavorite()"
+                ><ion-icon
+                  slot="icon-only"
+                  [icon]="
+                    choicesForBoard().favorite
+                      ? favoriteIcons.heart
+                      : favoriteIcons.heartOutline
+                  "
+              /></ion-button>
             }
+          </div>
+          <div class="board-header-actions">
             @if (tutorialAvailable() && !tutorialActive()) {
               <button
                 type="button"
@@ -47,7 +64,6 @@
             }
           </div>
           @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
-            <p>Favorites are saved in this browser.</p>
             @if (favoriteError()) {
               <p role="alert">{{ favoriteError() }}</p>
             }
@@ -68,6 +84,16 @@
       <p class="ion-padding" role="alert">{{ loadError() }}</p>
     }
 
+    @if (boardDef(); as definition) {
+      @if (!tutorialActive()) {
+        <sneat-datatug-project-item-tags
+          [projectRef]="projectRef()"
+          kind="board"
+          [itemId]="definition.id"
+          [initialTags]="definition.tags || []"
+        />
+      }
+    }
     @if (tutorialActive()) {
       <section class="tutorial-panel" aria-labelledby="tutorial-heading">
         <div class="tutorial-heading">

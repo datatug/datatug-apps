@@ -1,7 +1,23 @@
-@if(retainedPending()) {
-  <p role="status">The previous retained run has no confirmed outcome and may already be attached. Retry the unchanged card, or review current board access before abandoning it.</p>
-  <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="running()">Review current board access</ion-button>
-  @if(retainedReviewed()){<ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="running()">Abandon original retry</ion-button>}
+@if (retainedPending()) {
+  <p role="status">
+    The previous retained run has no confirmed outcome and may already be
+    attached. Retry the unchanged card, or review current board access before
+    abandoning it.
+  </p>
+  <ion-button
+    fill="outline"
+    (click)="reviewRetainedRun()"
+    [disabled]="running()"
+    >Review current board access</ion-button
+  >
+  @if (retainedReviewed()) {
+    <ion-button
+      color="warning"
+      (click)="abandonRetainedRun()"
+      [disabled]="running()"
+      >Abandon original retry</ion-button
+    >
+  }
 }
 @let widget = widgetDef();
 @switch (widget?.name) {
@@ -21,41 +37,24 @@
     />
   }
   @case ('chart') {
+    @if (!headerInCard()) {
+      <header class="chart-widget-header">
+        <ion-item-divider color="light"
+          ><ion-label class="ion-text-wrap">{{
+            chartWidgetDef()?.title || 'Chart'
+          }}</ion-label>
+          @if (chartWidgetDef()?.chart?.type === 'bar-race') {
+            <sneat-datatug-chart-view-tabs
+              slot="end"
+              [view]="chartView()"
+              [hasTrend]="!!chartWidgetDef()?.sources?.[0]?.transform"
+              (viewChange)="setChartView($event)"
+            />
+          }
+        </ion-item-divider>
+      </header>
+    }
     <div class="ion-padding">
-      <div class="chart-heading">
-        <p>{{ chartWidgetDef()?.title }}</p>
-        @if (chartWidgetDef()?.chart?.type === 'bar-race') {
-          <div
-            class="chart-view-switch"
-            role="group"
-            aria-label="Chart result view"
-          >
-            <button
-              type="button"
-              (click)="setChartView('chart')"
-              [attr.aria-pressed]="chartView() === 'chart'"
-            >
-              Chart
-            </button>
-            @if (chartWidgetDef()?.sources?.[0]?.transform) {
-              <button
-                type="button"
-                (click)="setChartView('trend')"
-                [attr.aria-pressed]="chartView() === 'trend'"
-              >
-                Monthly trend
-              </button>
-            }
-            <button
-              type="button"
-              (click)="setChartView('grid')"
-              [attr.aria-pressed]="chartView() === 'grid'"
-            >
-              Source rows
-            </button>
-          </div>
-        }
-      </div>
       @if (definitionLoading() || running()) {
         <p role="status">Loading saved chart…</p>
       }
@@ -70,27 +69,23 @@
           (inspect)="inspectHeldEvidence($event)"
         />
         @if (inspectedEvidence(); as selection) {
-          <sneat-datatug-retained-evidence-viewer [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [selector]="selection.selector" [heldResult]="result()" />
-        }
-        <ion-button
-          [disabled]="
-            running() ||
-            definitionLoading() ||
-            !definition() ||
-            !!unsupportedReason()
-          "
-          (click)="run()"
-          >{{boardContext()?.evidenceSelection ? 'Run and attach chart' : 'Refresh chart'}}</ion-button
-        >
-        @if (queryUrlTree(); as tree) {
-          <ion-button fill="clear" [routerLink]="tree"
-            >Open saved query</ion-button
-          >
+          <sneat-datatug-retained-evidence-viewer
+            [projectRef]="projectRef()"
+            [environment]="boardContext()?.environment || ''"
+            [selector]="selection.selector"
+            [heldResult]="result()"
+          />
         }
       } @else if (chartWidgetDef()?.chart?.type === 'bar-race') {
         <div [hidden]="chartView() !== 'chart'">
           <datatug-bar-race-chart
             [views]="preparedRace().views ?? null"
+            [embedded]="true"
+            [emptyMessage]="
+              result()
+                ? 'No chart data is available.'
+                : 'Run this card to load its chart.'
+            "
             [initialMode]="raceInitialMode()"
             [initialTopN]="raceInitialTopN()"
             [active]="chartView() === 'chart'"
@@ -128,63 +123,7 @@
             <sneat-datatug-source-rights-notice [evidence]="held" />
           </details>
         }
-        <ion-button
-          size="small"
-          fill="outline"
-          color="medium"
-          [disabled]="
-            running() ||
-            definitionLoading() ||
-            !definition() ||
-            !!unsupportedReason()
-          "
-          (click)="run()"
-          >{{
-            running()
-              ? 'Refreshing…'
-              : runError()
-                ? 'Retry chart'
-                : 'Refresh chart'
-          }}</ion-button
-        >
-        @if (queryUrlTree(); as tree) {
-          <ion-button
-            size="small"
-            fill="clear"
-            color="medium"
-            [routerLink]="tree"
-            >Open saved query</ion-button
-          >
-        }
       } @else {
-        <ion-button
-          size="small"
-          fill="outline"
-          color="medium"
-          [disabled]="
-            running() ||
-            definitionLoading() ||
-            !definition() ||
-            !!unsupportedReason()
-          "
-          (click)="run()"
-          >{{
-            running()
-              ? 'Refreshing…'
-              : runError()
-                ? 'Retry chart'
-                : 'Refresh chart'
-          }}</ion-button
-        >
-        @if (queryUrlTree(); as tree) {
-          <ion-button
-            size="small"
-            fill="clear"
-            color="medium"
-            [routerLink]="tree"
-            >Open saved query</ion-button
-          >
-        }
         <sneat-datatug-held-result-presentation
           [embedded]="true"
           [result]="result() ?? null"
@@ -199,6 +138,16 @@
         />
       }
     </div>
+    @if (!actionsInCardHeader()) {
+      <ion-item lines="none" class="board-card-footer"
+        ><ion-buttons
+          ><ng-container
+            *ngTemplateOutlet="
+              actionsTemplate() || null;
+              context: { iconOnly: false }
+            " /></ion-buttons
+      ></ion-item>
+    }
   }
   @case ('SQL') {
     <div class="ion-padding">
@@ -243,15 +192,8 @@
             </select>
           </label>
         }
-        <ion-button [disabled]="running()" (click)="run()">{{
-          running() ? 'Running…' : 'Run on board'
-        }}</ion-button>
       }
-      @if (queryUrlTree(); as urlTree) {
-        <ion-button [routerLink]="urlTree" (click)="rememberChoice()">
-          Open saved query
-        </ion-button>
-      } @else {
+      @if (!queryUrlTree()) {
         <p role="status">This saved query is unavailable.</p>
       }
       @if (runError(); as error) {
@@ -274,8 +216,15 @@
           <button class="clear-country" type="button" (click)="clearCountry()">
             Clear country
           </button>
-          @if(heldSnapshot();as snapshot){<sneat-datatug-held-row-evidence [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [result]="snapshot.result" [identity]="snapshot.evidenceIdentity" />}
-    </div>
+          @if (heldSnapshot(); as snapshot) {
+            <sneat-datatug-held-row-evidence
+              [projectRef]="projectRef()"
+              [environment]="boardContext()?.environment || ''"
+              [result]="snapshot.result"
+              [identity]="snapshot.evidenceIdentity"
+            />
+          }
+        </div>
       }
       @if (presentation.result; as answer) {
         @if (
@@ -341,6 +290,16 @@
         }
       }
     </div>
+    @if (!actionsInCardHeader()) {
+      <ion-item lines="none" class="board-card-footer"
+        ><ion-buttons
+          ><ng-container
+            *ngTemplateOutlet="
+              actionsTemplate() || null;
+              context: { iconOnly: false }
+            " /></ion-buttons
+      ></ion-item>
+    }
   }
   @default {
     <div class="ion-margin-top">
@@ -354,3 +313,72 @@
     </div>
   }
 }
+
+<ng-template #cardActions let-iconOnly="iconOnly">
+  @let chart = widgetDef()?.name === 'chart';
+  @if (
+    chart || (!definitionLoading() && !unsupportedReason() && definition())
+  ) {
+    <ion-button
+      fill="clear"
+      color="medium"
+      [attr.aria-label]="
+        chart
+          ? boardContext()?.evidenceSelection
+            ? 'Run and attach chart'
+            : running()
+              ? 'Refreshing…'
+              : runError()
+                ? 'Retry chart'
+                : 'Refresh chart'
+          : running()
+            ? 'Running…'
+            : 'Run on board'
+      "
+      [disabled]="
+        running() ||
+        definitionLoading() ||
+        !definition() ||
+        !!unsupportedReason()
+      "
+      (click)="run()"
+    >
+      <ion-icon
+        name="refresh-outline"
+        [attr.slot]="iconOnly ? null : 'start'"
+      />
+      @if (!iconOnly) {
+        {{
+          chart
+            ? boardContext()?.evidenceSelection
+              ? 'Run and attach chart'
+              : running()
+                ? 'Refreshing…'
+                : runError()
+                  ? 'Retry chart'
+                  : 'Refresh chart'
+            : running()
+              ? 'Running…'
+              : 'Run on board'
+        }}
+      }
+    </ion-button>
+  }
+  @if (queryUrlTree(); as tree) {
+    <ion-button
+      fill="clear"
+      color="medium"
+      aria-label="Edit query"
+      title="Edit query"
+      [routerLink]="tree"
+      (click)="rememberChoice()"
+      ><ion-icon
+        name="create-outline"
+        [attr.slot]="iconOnly ? null : 'start'"
+      />
+      @if (!iconOnly) {
+        Edit query
+      }
+    </ion-button>
+  }
+</ng-template>

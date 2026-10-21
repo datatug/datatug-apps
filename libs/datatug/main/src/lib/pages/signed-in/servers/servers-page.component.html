@@ -57,6 +57,10 @@
     }
   </ion-card>
   <ion-card>
+    @if (loadError()) {
+      <p class="ion-padding" role="alert">{{ loadError() }}</p>
+      <ion-button (click)="reloadServers()">Retry loading servers</ion-button>
+    }
     @if (tab === 'db') {
       <ion-item>
         <ion-input
@@ -67,6 +71,11 @@
         />
       </ion-item>
     }
+    <sneat-datatug-tag-filter
+      [items]="dbServers() || []"
+      [selected]="tagFilter.selected()"
+      (selectedChange)="tagFilter.set($event)"
+    />
     <ion-card-header>
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="db">
@@ -91,7 +100,16 @@
               getDbServerId(dbServer.dbServer)
           ) {
             <ion-item tappable (click)="goDbServer(dbServer)">
-              <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
+              <ion-label
+                >{{ serverLabel(dbServer.dbServer) }}
+                @if (dbServer.tags?.length) {
+                  <p>
+                    @for (tag of dbServer.tags || []; track tag) {
+                      <ion-badge color="light">{{ tag }}</ion-badge>
+                    }
+                  </p>
+                }
+              </ion-label>
               <ion-badge color="medium">{{
                 dbServer.dbServer.driver
               }}</ion-badge>
@@ -114,7 +132,7 @@
           } @empty {
             <ion-item>
               <ion-label color="medium">{{
-                filterText().trim()
+                filterText().trim() || tagFilter.selected().length
                   ? 'No matching database servers.'
                   : 'No database servers in the selected environments.'
               }}</ion-label>

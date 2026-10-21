@@ -7,8 +7,18 @@ import {
   signal,
   viewChild,
 } from '@angular/core';
+import { FormsModule } from '@angular/forms';
+import { TagFilterComponent } from '../../../../tags/tag-filter.component';
+import { TagFilterState } from '../../../../tags/tag-filter-state';
+import { matchesTags } from '../../../../tags/tags';
 import { Router, RouterLink } from '@angular/router';
 import {
+  IonInput,
+  IonItem,
+  IonLabel,
+  IonList,
+  IonBadge,
+  IonCard,
   IonBackButton,
   IonButton,
   IonButtons,
@@ -17,7 +27,6 @@ import {
   IonMenuButton,
   IonToolbar,
 } from '@ionic/angular';
-import { SneatCardListComponent } from '@sneat/components';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { BehaviorSubject, combineLatest, of, Subject } from 'rxjs';
 import {
@@ -52,6 +61,7 @@ import { projectPageHref } from '../../../../nav/project-page-href';
 @Component({
   selector: 'sneat-datatug-boards',
   templateUrl: './boards-page.component.html',
+  providers: [TagFilterState],
   imports: [
     // `DatatugNavContextService` (injected below) was a plain `@Injectable()`
     // provided by `DatatugServicesNavModule` (it and its whole dependency
@@ -73,7 +83,14 @@ import { projectPageHref } from '../../../../nav/project-page-href';
     DatatugServicesProjectModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
-    SneatCardListComponent,
+    FormsModule,
+    TagFilterComponent,
+    IonInput,
+    IonItem,
+    IonLabel,
+    IonList,
+    IonBadge,
+    IonCard,
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonButtons,
@@ -86,6 +103,17 @@ import { projectPageHref } from '../../../../nav/project-page-href';
   ],
 })
 export class BoardsPageComponent implements OnInit, OnDestroy {
+  readonly tagFilter = inject(TagFilterState);
+  readonly filter = signal('');
+  readonly filteredBoards = computed(() =>
+    (this.boards() ?? []).filter(
+      (board) =>
+        matchesTags(board, this.tagFilter.selected()) &&
+        (board.title || board.id)
+          .toLocaleLowerCase()
+          .includes(this.filter().trim().toLocaleLowerCase()),
+    ),
+  );
   private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -132,7 +160,8 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   private readonly hostedList = viewChild(HostedBoardListComponent);
   ionViewWillEnter(): void {
     // Ionic retains routed pages. Re-entry must read the current authorized catalog.
-    this.hostedList()?.reload();
+    if (this.hostedProject()) this.hostedList()?.reload();
+    else this.retryLoad();
   }
 
   folderPath = '~';

@@ -1,3 +1,4 @@
+import { TagsEditorComponent } from '../../../tags/tags-editor.component';
 import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
 import { heldEvidenceIdentity } from '../../../evidence/retained-evidence-contract';
 import type { HeldEvidenceIdentity } from '@sneat/datatug-semantic';
@@ -794,6 +795,7 @@ let queryParameterEditorId = 0;
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    TagsEditorComponent,
     SemanticMappingDialogComponent,
     GitHubReauthorizationBannerComponent,
     EvidenceSharePanelComponent,
@@ -3423,6 +3425,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       !isSharedProjectRef(this.project.ref) ||
       this.sharedQuerySaveAllowed()
     );
+  }
+
+  public updateTags(tags: string[]): void {
+    if (
+      this.queryState.isSaving ||
+      this.queryState.saveSupported === false ||
+      !this.canSaveQuery()
+    )
+      return;
+    this.queryEditorStateService.updateQueryState({ ...this.queryState, tags });
   }
 
   public querySaveState(): string {
@@ -6471,6 +6483,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               ? { title: queryState.title }
               : {}),
             ...(queryState.request ? { request: queryState.request } : {}),
+            tags: queryState.tags ?? queryState.def.tags,
             federation: queryState.federation ?? queryState.def.federation,
             connectionId:
               queryState.connectionId !== undefined

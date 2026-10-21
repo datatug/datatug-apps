@@ -137,7 +137,8 @@ export interface GithubProjectCreateStatus {
 
 export interface PendingGithubProjectSetup {
   readonly operationID: string;
-  readonly status: 'initializing' | 'pending_merge' | 'needs_review' | 'closed_unmerged' | 'failed';
+  readonly status:
+    | 'initializing' | 'pending_merge' | 'needs_review' | 'closed_unmerged' | 'failed';
   readonly spaceID: string;
   readonly projectID: string;
   readonly title: string;
@@ -293,16 +294,26 @@ export class ProjectQueryApiService {
           error: (error) => {
             const status = error?.status;
             const errorCode = apiErrorCode(error);
-            const isGitHub = ref.storeId === 'github' || ref.storeId === 'github.com';
-            const requiresReauthorization = errorCode === 'reauthorization_required';
-            const denied = [401, 403].includes(status) || (isGitHub && requiresReauthorization);
+            const isGitHub =
+              ref.storeId === 'github' || ref.storeId === 'github.com';
+            const requiresReauthorization =
+              errorCode === 'reauthorization_required';
+            const denied =
+              [401, 403].includes(status) ||
+              (isGitHub && requiresReauthorization);
             if (
               denied &&
               (ref.projectApi === 'cloud' || isSharedProjectRef(ref))
             )
               this.deniedReads.next(ref);
-            if (isGitHub && ([401, 403].includes(status) || requiresReauthorization))
-              this.githubReauthorization.next({ ref, requiredScopes: ['repo'] });
+            if (
+              isGitHub &&
+              ([401, 403].includes(status) || requiresReauthorization)
+            )
+              this.githubReauthorization.next({
+                ref,
+                requiredScopes: ['repo'],
+              });
           },
         }),
       );
@@ -348,6 +359,14 @@ export class ProjectQueryApiService {
     return this.qualifiedRead(
       ref,
       'boards/all_boards',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
+  dbServers<T>(ref: IProjectRef): Observable<T> {
+    return this.qualifiedRead(
+      ref,
+      'dbservers/all_dbservers',
       ref.branch ? { branch: ref.branch } : undefined,
     );
   }
@@ -437,7 +456,9 @@ export class ProjectQueryApiService {
     );
   }
 
-  createStatus(request: GithubProjectCreateStatusRequest): Observable<GithubProjectCreateStatus> {
+  createStatus(
+    request: GithubProjectCreateStatusRequest,
+  ): Observable<GithubProjectCreateStatus> {
     return this.api.get<GithubProjectCreateStatus>(
       'datatug/projects/create_project/status',
       new HttpParams({ fromObject: { ...request, store: 'github.com' } }),

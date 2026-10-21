@@ -164,7 +164,11 @@ export class ProjectAssetsReadService {
         .getFull(ref)
         .pipe(
           map((project) =>
-            (project.boards ?? []).map(({ id, title }) => ({ id, title })),
+            (project.boards ?? []).map(({ id, title, tags }) => ({
+              id,
+              title,
+              tags,
+            })),
           ),
         );
     return this.api.boards<IProjBoard[]>(ref);

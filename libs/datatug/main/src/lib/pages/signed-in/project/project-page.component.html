@@ -10,11 +10,14 @@
         "
       />
     </ion-buttons>
-    <ion-title><h1 class="project-title">{{ projectTitle() }}</h1></ion-title>
+    <ion-title
+      ><h1 class="project-title">{{ projectTitle() }}</h1></ion-title
+    >
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
+  <sneat-datatug-project-tags-cloud [projectRef]="project()?.ref" />
   @if (shippingHref(); as href) {
     <ion-item [routerLink]="href" detail="true"
       ><ion-label>Shipping training workspace</ion-label></ion-item
@@ -35,7 +38,8 @@
   }
   @if (metadataState() === 'unavailable' && !metadataReadError()) {
     <p class="project-metadata-unavailable" role="status">
-      Project details are unavailable. Showing the project identity from its address.
+      Project details are unavailable. Showing the project identity from its
+      address.
     </p>
   }
   @if (metadataReadError(); as error) {

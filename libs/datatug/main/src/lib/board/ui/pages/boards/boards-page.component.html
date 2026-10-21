@@ -1,5 +1,5 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light" style="--background: var(--ion-color-light)">
     <ion-buttons slot="start">
       <ion-back-button [defaultHref]="defaultHref" />
       <ion-menu-button />
@@ -38,14 +38,48 @@
         }
       </section>
     }
-    <sneat-card-list
-      [isLoading]="!boards()"
-      noItemsText="No boards yet"
-      [items]="boards()"
-      itemIcon="easel-outline"
-      [isFilterable]="boards() && boards()!.length > 7"
-      [getRouterLink]="getLinkToBoard"
-      (itemClick)="goBoard($event)"
-    />
+    <ion-card>
+      <ion-item
+        ><ion-input
+          aria-label="Filter boards"
+          placeholder="Filter boards"
+          [value]="filter()"
+          (ionInput)="filter.set($event.detail.value || '')"
+        /><ion-button slot="end" fill="clear" (click)="retryLoad()"
+          >Reload</ion-button
+        ></ion-item
+      >
+      @if (boards(); as items) {
+        <sneat-datatug-tag-filter
+          [items]="items"
+          [selected]="tagFilter.selected()"
+          (selectedChange)="tagFilter.set($event)"
+        />
+        <ion-list>
+          @for (board of filteredBoards(); track board.id) {
+            <ion-item [routerLink]="boardLink(board.id)"
+              ><ion-label
+                ><h3>{{ board.title || board.id }}</h3>
+                <p>
+                  @for (tag of board.tags || []; track tag) {
+                    <ion-badge color="light">{{ tag }}</ion-badge>
+                  }
+                </p></ion-label
+              ></ion-item
+            >
+          } @empty {
+            <ion-item
+              ><ion-label>{{
+                items.length
+                  ? 'No boards match the selected filters.'
+                  : 'No boards yet'
+              }}</ion-label></ion-item
+            >
+          }
+        </ion-list>
+      } @else {
+        <p class="ion-padding" role="status">Loading boards…</p>
+      }
+    </ion-card>
   }
 </ion-content>

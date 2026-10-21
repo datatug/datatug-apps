@@ -124,12 +124,6 @@ export class ProjectMenuTopComponent implements OnDestroy {
       count: (proj) => proj?.dbModels?.length,
     },
     {
-      path: 'tags',
-      title: 'Tags',
-      icon: 'pricetags-outline',
-      count: (proj) => Object.keys(proj?.tags || {}).length,
-    },
-    {
       path: 'widgets',
       title: 'Widgets',
       icon: 'easel-outline',
@@ -145,6 +139,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       icon: 'home-outline',
     },
     ...ProjectMenuTopComponent.sortProjectPages([
+      { path: 'tags', title: 'Tags', icon: 'pricetags-outline' },
       {
         path: 'sessions',
         title: 'Sessions',

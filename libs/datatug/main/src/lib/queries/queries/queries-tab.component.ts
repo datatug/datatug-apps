@@ -1,3 +1,6 @@
+import { TagFilterComponent } from '../../tags/tag-filter.component';
+import { TagFilterState } from '../../tags/tag-filter-state';
+import { matchesTags } from '../../tags/tags';
 import { QueriesUiService } from '../queries-ui.service';
 import { TitleCasePipe } from '@angular/common';
 import {
@@ -59,8 +62,10 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
 @Component({
   selector: 'sneat-datatug-queries-tab',
   templateUrl: 'queries-tab.component.html',
+  providers: [TagFilterState],
   imports: [
     SqlEditorComponent,
+    TagFilterComponent,
     IonItem,
     IonLabel,
     IonInput,
@@ -75,6 +80,10 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   ],
 })
 export class QueriesTabComponent {
+  readonly tagFilter = inject(TagFilterState);
+  readonly catalogItems = signal<IQueryDef[]>([]);
+  readonly loading = signal(false);
+  readonly loadError = signal('');
   private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
@@ -249,6 +258,10 @@ export class QueriesTabComponent {
       ),
     });
     this.trackCurrentProject();
+    effect(() => {
+      this.tagFilter.selected();
+      this.applyFilter();
+    });
 
     // `rootFolder` is a signal `input()` — unlike an `@Input()`-decorated
     // property, its value is not readable in the constructor (Angular only
@@ -317,7 +330,9 @@ export class QueriesTabComponent {
   }
 
   public isFiltering(): boolean {
-    return !!this.filter && this.type !== '*';
+    return (
+      !!this.filter || this.type !== '*' || this.tagFilter.selected().length > 0
+    );
   }
 
   getText(query: IQueryDef): string {
@@ -329,6 +344,8 @@ export class QueriesTabComponent {
   public clearFilter(): void {
     this.filter = '';
     this.type = '*';
+    this.tagFilter.set([]);
+    this.applyFilter();
   }
 
   public get isRoot(): boolean {
@@ -377,7 +394,11 @@ export class QueriesTabComponent {
   private populateFilteredItems(path: string[], folder: IQueryFolder): void {
     const f = this.filter.toLowerCase();
     folder?.items?.forEach((item) => {
-      if ((item.title || item.id).toLowerCase().includes(f)) {
+      if (
+        (item.title || item.id).toLowerCase().includes(f) &&
+        (this.type === '*' || item.request.queryType === this.type) &&
+        matchesTags(item, this.tagFilter.selected())
+      ) {
         this.filteredItems?.push({ query: item, folders: path });
       }
     });
@@ -423,6 +444,7 @@ export class QueriesTabComponent {
     this.router
       .navigate([], {
         queryParams: { [name]: value },
+        queryParamsHandling: 'merge',
         replaceUrl: true,
       })
       .catch(
@@ -452,13 +474,18 @@ export class QueriesTabComponent {
       this.queriesSub.unsubscribe();
     }
     this.personalQueriesNotice.set(undefined);
+    this.loading.set(true);
+    this.loadError.set('');
     this.queriesSub = this.queriesService
       .getQueriesFolder(projRef, path, rootFolder)
       .subscribe({
         next: (folder: IQueryFolder | null | undefined) => {
+          this.loading.set(false);
           this.onFolderRetrieved(path, folder);
         },
         error: (err: unknown) => {
+          this.loading.set(false);
+          this.catalogItems.set([]);
           if (isGithubPersonalQueriesError(err)) {
             this.allQueries = [];
             this.currentFolder = { path: '~', id: '~', folders: [], items: [] };
@@ -488,9 +515,16 @@ export class QueriesTabComponent {
             this.changeDetectorRef.markForCheck();
             return;
           }
+          this.loadError.set('Queries could not be loaded. Please try again.');
           this.errorLogger.logError(err, 'Failed to load queries');
         },
       });
+  }
+
+  reload(): void {
+    const project = this.project();
+    if (project)
+      this.fetchFolder(project.ref, this.currentFolder.path, this.rootFolder());
   }
 
   private onFolderRetrieved(path: string, folder?: IQueryFolder | null): void {
@@ -506,6 +540,11 @@ export class QueriesTabComponent {
     if (!folder && path === '~') {
       folder = { id: '~', folders: [], items: [] };
     }
+    const collect = (value: IQueryFolder): IQueryDef[] => [
+      ...(value.items ?? []),
+      ...(value.folders ?? []).flatMap(collect),
+    ];
+    this.catalogItems.set(collect(folder));
     this.allQueries = folder?.items || [];
     if (folder) {
       this.currentFolder = {
@@ -593,10 +632,9 @@ export class QueriesTabComponent {
   public supportsFolderMutations(): boolean {
     const ref = this.project()?.ref;
     return !(
-      (ref?.spaceID !== undefined) ||
+      ref?.spaceID !== undefined ||
       (ref?.projectApi === 'cloud' &&
-      (ref.storeId === 'github.com' || ref.storeId === 'github')
-      )
+        (ref.storeId === 'github.com' || ref.storeId === 'github'))
     );
   }
 

@@ -32,14 +32,31 @@
   </section>
 }
 <ion-card>
-  @if (boarCardDef()?.title) {
-    <ion-item>
-      @if (boarCardDef()?.title) {
-        <ion-label>{{ boarCardDef()?.title }}</ion-label>
+  <header class="board-card-header">
+    <ion-item color="light" lines="none">
+      <ion-label class="ion-text-wrap">{{ headerTitle() }}</ion-label>
+      @if (raceWidget(); as race) {
+        <sneat-datatug-chart-view-tabs
+          slot="end"
+          [view]="widget.chartView()"
+          [hasTrend]="race.sources.length > 0 && !!race.sources[0].transform"
+          (viewChange)="widget.setChartView($event)"
+        />
+      } @else if (!hasSwitchingTabs()) {
+        <ion-buttons slot="end"
+          ><ng-container
+            *ngTemplateOutlet="
+              widget.actionsTemplate() || null;
+              context: { iconOnly: true }
+            "
+        /></ion-buttons>
       }
     </ion-item>
-  }
+  </header>
   <sneat-datatug-board-widget
+    #widget
+    [headerInCard]="true"
+    [actionsInCardHeader]="!hasSwitchingTabs()"
     [level]="0"
     [cardTab]="boardCardTab.currentTab"
     [widgetDef]="boarCardDef()?.widget"

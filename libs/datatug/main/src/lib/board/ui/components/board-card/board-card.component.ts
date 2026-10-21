@@ -6,9 +6,13 @@ import {
   input,
   computed,
 } from '@angular/core';
-import { IonCard, IonItem, IonLabel } from '@ionic/angular';
+import { NgTemplateOutlet } from '@angular/common';
+import { ChartViewTabsComponent } from '../board-widget/chart-view-tabs.component';
+import { IonCard, IonItem, IonLabel, IonButtons } from '@ionic/angular';
 import { Subject } from 'rxjs';
-import { BoardCard, BoardWidgetName } from '@datatug/board-models';
+import { BoardCard, BoardWidgetName,
+  ChartWidgetDef,
+} from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
 import { QueryType } from '../../../../models/definition/query-def';
@@ -37,7 +41,12 @@ export class BoardCardTabService {
   templateUrl: './board-card.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [BoardCardTabService],
-  imports: [IonCard, IonItem, IonLabel, BoardWidgetComponent],
+  imports: [
+    NgTemplateOutlet,
+    IonButtons,
+    ChartViewTabsComponent,
+    IonCard, IonItem, IonLabel, BoardWidgetComponent,
+  ],
   host: {
     '[attr.data-board-card-id]': 'boarCardDef()?.id',
     '[attr.tabindex]':
@@ -83,6 +92,20 @@ export class BoardCardTabService {
   ],
 })
 export class BoardCardComponent {
+  readonly raceWidget = computed(() => {
+    const widget = this.boarCardDef()?.widget;
+    const chart =
+      widget?.name === 'chart'
+        ? (widget.data as ChartWidgetDef | undefined)
+        : undefined;
+    return chart?.chart?.type === 'bar-race' ? chart : undefined;
+  });
+  readonly hasSwitchingTabs = computed(
+    () => !!this.raceWidget() || this.boarCardDef()?.widget?.name === 'tabs',
+  );
+  readonly headerTitle = computed(
+    () => this.boarCardDef()?.title || this.raceWidget()?.title || 'Board card',
+  );
   readonly tutorialRuntime = inject(TutorialBoardRuntime, { optional: true });
   readonly tutorialNotice = computed(() => {
     if (!this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId()))

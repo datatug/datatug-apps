@@ -157,6 +157,7 @@ interface IGithubGitTreeResponse {
  * here): datatug-cli's `GET /queries/all_queries`/`get_query` responses, and this
  * GitHub reader, both ultimately describe the same on-disk `datatug.QueryDef` JSON. */
 export interface IGithubWireQueryItem {
+  tags?: string[];
   id: string;
   title?: string;
   type: string;
@@ -193,6 +194,7 @@ export interface IGithubEnvDbServer {
   id: string;
   driver: string;
   host: string;
+  port?: number;
   catalogs?: string[];
 }
 
@@ -205,6 +207,7 @@ export interface IGithubEnvironmentSummary {
 }
 
 interface IGithubEnvDbServerFile {
+  port?: number;
   driver: string;
   host?: string;
   catalogs?: string[];
@@ -1126,6 +1129,7 @@ export class GithubProjectReaderService {
             id: [s.driver, ...(s.catalogs || [])].join(':') || `server-${i}`,
             driver: s.driver,
             host: s.host || '',
+            ...(s.port ? { port: s.port } : {}),
             catalogs: s.catalogs,
           })),
         };
@@ -1293,7 +1297,14 @@ export class GithubProjectReaderService {
       return defFileName.slice(0, -'.json'.length);
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    const ext = type === 'HTTP' ? 'http' : type === 'TugQL' ? 'tugql' : type === 'DTQL' ? 'dtql' : 'sql';
+    const ext =
+      type === 'HTTP'
+        ? 'http'
+        : type === 'TugQL'
+          ? 'tugql'
+          : type === 'DTQL'
+            ? 'dtql'
+            : 'sql';
     return `${stem}.${ext}`;
   }
 
@@ -1306,64 +1317,125 @@ export class GithubProjectReaderService {
    * call stays cheap (one raw fetch per DEFINITION file only, no body
    * fetches) and the query PAGE ({@link getQuery}) remains the only place a
    * body is ever read. */
+  public getDbServerDefinitions(
+    projectId: string,
+  ): Observable<
+    {
+      id: string;
+      tags?: string[];
+      server: { driver: string; host: string; port?: number };
+      databases?: unknown[];
+    }[]
+  > {
+    return this.listDirectory(projectId, 'dbs').pipe(
+      switchMap((drivers) =>
+        drivers.length
+          ? forkJoin(
+              drivers
+                .filter((item) => item.type === 'dir')
+                .map((driver) =>
+                  this.listDirectory(projectId, `dbs/${driver.name}`).pipe(
+                    switchMap((files) => {
+                      const definitions = files.filter(
+                        (file) =>
+                          (file.type === 'file' &&
+                            file.name.endsWith('.dbserver.json')) ||
+                          file.type === 'dir',
+                      );
+                      if (definitions.length > 100)
+                        return throwError(
+                          () =>
+                            new Error(
+                              'Server catalog exceeds 100 definitions.',
+                            ),
+                        );
+                      return definitions.length
+                        ? forkJoin(
+                            definitions.map((file) =>
+                              this.getRawJson<{
+                                id: string;
+                                tags?: string[];
+                                server: {
+                                  driver: string;
+                                  host: string;
+                                  port?: number;
+                                };
+                                databases?: unknown[];
+                              }>(
+                                projectId,
+                                `dbs/${driver.name}/${file.name}${file.type === 'dir' ? '/.datatug-dbserver.json' : ''}`,
+                              ),
+                            ),
+                          )
+                        : of([]);
+                    }),
+                  ),
+                ),
+            )
+          : of([]),
+      ),
+      map((groups) =>
+        groups.flat().map((item) => {
+          if (!item) throw new Error('Database server definition unavailable.');
+          return item;
+        }),
+      ),
+    );
+  }
+
   public getQueriesFolder(
     projectId: string,
   ): Observable<IGithubWireQueryFolder> {
-    return this.listDirectory(projectId, 'queries').pipe(
-      switchMap((entries) => {
-        const subfolders = entries
-          .filter((e) => e.type === 'dir')
-          .map((e) => e.name);
-        const rootItemFiles = entries
-          .filter(
-            (e) =>
-              e.type === 'file' &&
-              GithubProjectReaderService.isQueryDefFile(e.name),
-          )
-          .map((e) => e.name);
-
-        const rootItems$ = this.loadQueryItems(projectId, '', rootItemFiles);
-        const folders$: Observable<IGithubWireQueryFolder[]> = subfolders.length
-          ? forkJoin(
-              subfolders.map((folderName) =>
-                this.listDirectory(projectId, `queries/${folderName}`).pipe(
-                  switchMap((folderEntries) => {
-                    const itemFiles = folderEntries
-                      .filter(
-                        (e) =>
-                          e.type === 'file' &&
-                          GithubProjectReaderService.isQueryDefFile(e.name),
-                      )
-                      .map((e) => e.name);
-                    return this.loadQueryItems(
-                      projectId,
-                      folderName,
-                      itemFiles,
-                    ).pipe(
-                      map(
-                        (items): IGithubWireQueryFolder => ({
-                          id: folderName,
-                          items: items.length ? items : undefined,
-                        }),
-                      ),
-                    );
-                  }),
-                ),
-              ),
-            )
-          : of([]);
-
-        return forkJoin([rootItems$, folders$]).pipe(
-          map(([rootItems, folders]) => ({
-            id: '~',
-            folders: folders.length
-              ? folders.sort((a, b) => a.id.localeCompare(b.id))
-              : undefined,
-            items: rootItems.length ? rootItems : undefined,
-          })),
+    const readFolder = (
+      folder: string,
+      depth = 0,
+    ): Observable<IGithubWireQueryFolder> => {
+      if (depth > 20)
+        return throwError(
+          () => new Error('Query folder depth exceeds the supported limit.'),
         );
-      }),
-    );
+      return this.listDirectory(
+        projectId,
+        folder ? `queries/${folder}` : 'queries',
+      ).pipe(
+        switchMap((entries) => {
+          const dirs = entries.filter((entry) => entry.type === 'dir');
+          const files = entries.filter(
+            (entry) =>
+              entry.type === 'file' &&
+              GithubProjectReaderService.isQueryDefFile(entry.name),
+          );
+          if (entries.length > 1000)
+            return throwError(
+              () => new Error('Query folder exceeds the supported limit.'),
+            );
+          return forkJoin({
+            items: this.loadQueryItems(
+              projectId,
+              folder,
+              files.map((entry) => entry.name),
+            ),
+            folders: dirs.length
+              ? forkJoin(
+                  dirs.map((dir) =>
+                    readFolder(
+                      folder ? `${folder}/${dir.name}` : dir.name,
+                      depth + 1,
+                    ),
+                  ),
+                )
+              : of([]),
+          }).pipe(
+            map(({ items, folders }) => ({
+              id: folder.split('/').pop() || '~',
+              items,
+              folders,
+            })),
+          );
+        }),
+      );
+    };
+    return readFolder('');
   }
 
   private loadQueryItems(
@@ -1385,6 +1457,7 @@ export class GithubProjectReaderService {
             return {
               id: def?.id || bareId,
               title: def?.title,
+              tags: def?.tags,
               type: def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
               parameters: def?.parameters,
@@ -1476,6 +1549,7 @@ export class GithubProjectReaderService {
                 (text): IGithubWireQueryItem => ({
                   id: def?.id || bareId,
                   title: def?.title,
+                  tags: def?.tags,
                   type,
                   text,
                   ...(def?.connectionId

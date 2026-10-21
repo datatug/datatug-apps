@@ -45,6 +45,7 @@ export interface IProjectSummary extends IProjectBase {
 }
 
 export interface IProjItemBrief {
+  tags?: string[];
   id: string;
   title?: string;
 }

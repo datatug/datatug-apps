@@ -207,3 +207,13 @@ h1[data-board-page-heading]:focus-visible,
     flex: 1 1 auto;
   }
 }
+
+.board-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.board-title-row h1 {
+  flex: 0 1 auto;
+  min-width: 0;
+}

@@ -131,9 +131,7 @@ for (const [name, viewport] of [
       await paired.getByRole('button', { name: 'Chart', exact: true }).click();
       await expect(sort).toHaveValue('difference');
       await canada.click();
-      await race
-        .getByRole('button', { name: 'Monthly trend', exact: true })
-        .click();
+      await race.locator('ion-segment-button[value="trend"]').click();
       const monthly = race.getByRole('region', {
         name: 'Monthly orders trend',
       });
@@ -154,13 +152,11 @@ for (const [name, viewport] of [
           cells.reduce((sum, cell) => sum + Number(cell.textContent), 0),
         );
       expect(monthlySum).toBe(830);
-      await race
-        .getByRole('button', { name: 'Source rows', exact: true })
-        .click();
+      await race.locator('ion-segment-button[value="grid"]').click();
       await expect(
         race.locator('sneat-datatug-held-result-presentation'),
       ).toContainText('830 rows');
-      await race.getByRole('button', { name: 'Chart', exact: true }).click();
+      await race.locator('ion-segment-button[value="chart"]').click();
       await expect(
         race.getByRole('slider', { name: 'Choose month' }),
       ).toHaveValue(racePosition);
@@ -271,9 +267,7 @@ for (const scenario of ['retry', 'partial-orders', 'synthetic-zero'] as const) {
           .locator('ion-card')
           .filter({ hasText: 'Where Northwind orders shipped' })
           .first();
-        await race
-          .getByRole('button', { name: 'Monthly trend', exact: true })
-          .click();
+        await race.locator('ion-segment-button[value="trend"]').click();
         const monthly = race.getByRole('region', {
           name: 'Monthly orders trend',
         });

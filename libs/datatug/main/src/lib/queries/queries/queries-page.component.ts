@@ -1,10 +1,9 @@
-import { Component, inject } from '@angular/core';
+import { Component, inject, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
 import { ActivatedRoute, Params, Router } from '@angular/router';
 import {
   IonBackButton,
-  IonBadge,
   IonButton,
   IonButtons,
   IonCard,
@@ -12,20 +11,16 @@ import {
   IonContent,
   IonHeader,
   IonIcon,
-  IonItem,
   IonLabel,
   IonSegment,
   IonSegmentButton,
-  IonSelect,
-  IonSelectOption,
   IonToolbar,
 } from '@ionic/angular';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   ViewDidEnter,
   ViewDidLeave,
-  ViewWillEnter,
-} from '@ionic/angular';
+  ViewWillEnter } from '@ionic/angular';
 import { DatatugCoreModule } from '../../core/datatug-core.module';
 import { IProjectContext } from '../../nav/nav-models';
 import { projectPageHref } from '../../nav/project-page-href';
@@ -86,10 +81,6 @@ type OrderBy = (typeof orderBys)[number];
     IonCard,
     IonCardContent,
     QueriesTabComponent,
-    IonItem,
-    IonSelect,
-    IonSelectOption,
-    IonBadge,
     IonSegment,
     IonContent,
   ],
@@ -97,11 +88,13 @@ type OrderBy = (typeof orderBys)[number];
 export class QueriesPageComponent
   implements ViewWillEnter, ViewDidEnter, ViewDidLeave
 {
+  private readonly queryList = viewChild(QueriesTabComponent);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly projectContext = inject(ProjectContextService);
-  private readonly currentProjectRef = toSignal(this.projectContext.current$, { initialValue: undefined });
+  private readonly currentProjectRef = toSignal(this.projectContext.current$, { initialValue: undefined,
+  });
 
   public isActiveView = false;
 
@@ -167,6 +160,7 @@ export class QueriesPageComponent
       );
     }
     this.isActiveView = true;
+    this.queryList()?.reload();
   }
 
   ionViewDidEnter(): void {
@@ -178,6 +172,6 @@ export class QueriesPageComponent
   }
 
   reloadQueries(): void {
-    // this.loadQueries();
+    this.queryList()?.reload();
   }
 }

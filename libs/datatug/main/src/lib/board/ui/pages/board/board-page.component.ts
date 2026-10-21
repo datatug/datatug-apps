@@ -1,3 +1,4 @@
+import { heart, heartOutline } from 'ionicons/icons';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
   Component,
@@ -82,6 +83,7 @@ import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { tabKey } from '../../components/board-widget/nested-tab-path';
+import { ProjectItemTagsComponent } from '../../../../tags/project-item-tags.component';
 import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
 import { isSharedProjectRef } from '../../../../core/project-context';
 import { currentTutorialStep, tutorialSteps } from './tutorial-scenario';
@@ -112,6 +114,7 @@ interface TutorialStatus {
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
   imports: [
+    ProjectItemTagsComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
     // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
@@ -152,6 +155,7 @@ interface TutorialStatus {
   providers: [QueryParamsService, ParameterLookupService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
+  readonly favoriteIcons = { heart, heartOutline };
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
   private focusGeneration = 0;
@@ -935,7 +939,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       return { ...context, parameters };
     });
   }
-
 
   ngOnInit() {
     try {

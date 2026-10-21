@@ -1,7 +1,8 @@
 import { BrowserContext, Locator, Page } from '@playwright/test';
 import { DEMODB_HOST, expect, test } from './helpers/demodb-guard';
 import { execFileSync } from 'node:child_process';
-import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
@@ -29,8 +30,10 @@ const DEMODB = DEMODB_HOST;
 const SQLITE_ORIGINAL_ARTIST_1 = 'AC/DC';
 const ARTIST_WITHOUT_ALBUMS = 'Milton Nascimento & Bebeto'; // ArtistId 25: nothing refers to it
 
-test('an edited local copy runs on a saved Board card and ordinary query page', async ({ page, context }) => {
-  test.skip(!process.env['DATATUG_E2E_GITHUB_FAKE'], 'requires the offline demo project checkout');
+test('an edited local copy runs on a saved Board card and ordinary query page', async ({ page, context,
+}) => {
+  test.skip(!process.env['DATATUG_E2E_GITHUB_FAKE'], 'requires the offline demo project checkout',
+  );
   const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
   if (!source) return;
   test.setTimeout(180_000);
@@ -47,15 +50,19 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     writeFileSync(join(project, 'queries/demodb/live-artist-names.query.json'), JSON.stringify({
       id: 'live-artist-names', title: 'Live artist names', type: 'DTQL', connectionId: 'chinook-sqlite',
       recordsets: [{ columns: [{ name: 'Name', type: 'string' }] }],
-    }));
+    }),
+    );
     // limit 1000: a board card needs a COMPLETE result (query-dispatch.service.ts execute(): hasMore -> "Narrow the query" since
     // 1c6ec429); Artist has 275 rows, so the old limit of 100 made the card show an error instead of the rows.
     writeFileSync(join(project, 'queries/demodb/live-artist-names.query.dtql'),
-      'from:\n  name: "Artist"\nlimit: 1000\n');
+      'from:\n  name: "Artist"\nlimit: 1000\n',
+    );
     execFileSync('git', ['-C', checkout, 'add', '-A']);
     execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
-      'commit', '--quiet', '-m', 'Create saved working copy query']);
-    await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: checkout }]);
+      'commit', '--quiet', '-m', 'Create saved working copy query',
+    ]);
+    await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: checkout },
+    ]);
     await installPinnedChinookSqlite(context, checkout);
 
     const requests = trackDemodbRequests(context);
@@ -64,13 +71,15 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     await editName(page, SQLITE_ORIGINAL_ARTIST_1, edited);
     await page.locator('a.brand-home-link').first().click();
     await page.getByTestId('open-demo-github').click();
-    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
+    const environment = page.locator('sneat-datatug-menu-env-selector ion-select',
+    );
     await expect(environment).toBeVisible();
     await environment.click();
     await page.getByRole('radio', { name: 'dev' }).click();
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
     await page.getByRole('link', { name: 'Chinook customer insights' }).last().click();
-    const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Live artist names' });
+    const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Live artist names',
+    });
     await expect(card).toBeVisible();
     const runtime = card.locator('select option').filter({ hasText: 'working copy' });
     await expect(runtime).toHaveCount(1);
@@ -78,23 +87,40 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     if (!selectionId) throw new Error('The working copy has no runtime selection ID');
     await card.locator('select').selectOption(selectionId);
     await card.getByRole('button', { name: 'Run on board' }).click();
-    await expect(card.locator('table tbody')).toContainText(edited, { timeout: 30_000 });
-    await expect(card.getByRole('link', { name: 'Open saved query' })).toHaveAttribute('href', new RegExp(`runtime=${selectionId}`));
-    await card.getByRole('link', { name: 'Open saved query' }).click();
+    await expect(card.locator('table tbody')).toContainText(edited, { timeout: 30_000,
+    });
+    await expect(card.getByRole('link', { name: 'Edit query' }),
+    ).toHaveAttribute('href', new RegExp(`runtime=${selectionId}`));
+    await card.getByRole('link', { name: 'Edit query' }).click();
     await expect(page).toHaveURL(new RegExp(`runtime=${selectionId}`));
-    const queryRuntime = page.locator('sneat-datatug-sql-editor select option').filter({ hasText: 'working copy' });
+    const queryRuntime = page
+      .locator('sneat-datatug-sql-editor select option')
+      .filter({ hasText: 'working copy' });
     await expect(queryRuntime).toHaveCount(1);
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
-      .toHaveValue(selectionId, { timeout: 20_000 });
+    await expect(
+      page
+        .locator('sneat-datatug-sql-editor')
+        .getByRole('combobox', { name: 'Execution runtime', exact: true }),
+    ).toHaveValue(selectionId, { timeout: 20_000 });
     await page.getByRole('button', { name: 'Run query', exact: true }).click();
-    await expect(page.locator('sneat-datatug-sql-editor .result-grid-viewport')).toContainText(edited, { timeout: 30_000 });
-    expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
+    await expect(
+      page.locator('sneat-datatug-sql-editor .result-grid-viewport'),
+    ).toContainText(edited, { timeout: 30_000 });
+    expect(
+      requests.filter((url) => url.endsWith('/data/chinook.sqlite')),
+    ).toHaveLength(1);
     await page.reload();
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
-      .toHaveValue(selectionId, { timeout: 20_000 });
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('alert'))
-      .toContainText('selected working copy is unavailable');
-    await expect(page.getByRole('button', { name: 'Run query', exact: true })).toBeDisabled();
+    await expect(
+      page
+        .locator('sneat-datatug-sql-editor')
+        .getByRole('combobox', { name: 'Execution runtime', exact: true }),
+    ).toHaveValue(selectionId, { timeout: 20_000 });
+    await expect(
+      page.locator('sneat-datatug-sql-editor').getByRole('alert'),
+    ).toContainText('selected working copy is unavailable');
+    await expect(
+      page.getByRole('button', { name: 'Run query', exact: true }),
+    ).toBeDisabled();
   } finally {
     rmSync(scratch, { recursive: true, force: true });
   }
@@ -106,7 +132,11 @@ test.beforeEach(async ({ context, baseURL }) => {
     const url = new URL(route.request().url());
     // demodb.dev requests fall through to the guard in helpers/demodb-guard.ts (local fixtures by default).
     if (DEMODB.test(url.hostname)) return route.fallback();
-    if (url.origin === own || url.protocol === 'data:' || url.protocol === 'blob:') {
+    if (
+      url.origin === own ||
+      url.protocol === 'data:' ||
+      url.protocol === 'blob:'
+    ) {
       return route.continue();
     }
     return route.abort();
@@ -136,12 +166,18 @@ async function hasOpfs(page: Page): Promise<boolean> {
   });
 }
 
-async function openDataset(page: Page, dataset: string, table?: string): Promise<void> {
+async function openDataset(
+  page: Page,
+  dataset: string,
+  table?: string,
+): Promise<void> {
   await page.goto(`/demo/sqlite/${dataset}${table ? `/table/${table}` : ''}`);
-  await expect(page.getByTestId(table ? 'ovdb-rows' : 'ovdb-table-list')).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByTestId(table ? 'ovdb-rows' : 'ovdb-table-list'),
+  ).toBeVisible({ timeout: 90_000 });
 }
 
-test('project copy choices are optional and local instructions preserve SQLite editing', async ({ page, context }) => {
+test('project copy choices are optional and local instructions preserve SQLite editing', async ({ page, context,
+}) => {
   const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
   test.skip(!source, 'requires the offline demo project checkout');
   if (!source) return;
@@ -149,12 +185,18 @@ test('project copy choices are optional and local instructions preserve SQLite e
   await openDataset(page, 'chinook', 'Artist');
   await expect(page.getByTestId('project-copy-offer')).toBeVisible();
   await expect(page.getByTestId('project-copy-github')).toBeVisible();
-  await expect(page.locator('[data-testid=project-copy-github], [data-testid=project-copy-local]')).toHaveCount(2);
+  await expect(page.locator('[data-testid=project-copy-github], [data-testid=project-copy-local]',
+    ),
+  ).toHaveCount(2);
   await page.getByTestId('project-copy-local').click();
   await page.getByTestId('project-copy-file-path').locator('input').fill('/tmp/chinook-edited.sqlite');
-  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('git clone https://github.com/datatug/datatug-demo-project.git chinook-datatug');
-  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--as local --role admin --allow-writes --open-browser');
-  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('OPFS');
+  await expect(page.getByTestId('project-copy-local-instructions'),
+  ).toContainText('git clone https://github.com/datatug/datatug-demo-project.git chinook-datatug',
+  );
+  await expect(page.getByTestId('project-copy-local-instructions'),
+  ).toContainText('--as local --role admin --allow-writes --open-browser');
+  await expect(page.getByTestId('project-copy-local-instructions'),
+  ).toContainText('OPFS');
   await page.getByTestId('project-copy-dismiss').click();
   await expect(page.getByTestId('project-copy-offer')).toHaveCount(0);
   await editName(page, SQLITE_ORIGINAL_ARTIST_1, 'Project copy stays optional');
@@ -174,10 +216,12 @@ test('project copy choices are optional and local instructions preserve SQLite e
   await expect(page.getByTestId('project-copy-offer')).toBeVisible();
 });
 
-test('edited SQLite download registers and queries through the real local CLI', async ({ page, context }, testInfo) => {
+test('edited SQLite download registers and queries through the real local CLI', async ({ page, context,
+}, testInfo) => {
   const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
   const cli = process.env['DATATUG_E2E_LOCAL_CLI'];
-  test.skip(!source || !cli, 'requires offline source checkout and native CLI with --config');
+  test.skip(!source || !cli, 'requires offline source checkout and native CLI with --config',
+  );
   if (!source || !cli) return;
   await installPinnedChinookSqlite(context, source);
   await openDataset(page, 'chinook', 'Artist');
@@ -190,22 +234,30 @@ test('edited SQLite download registers and queries through the real local CLI', 
   expect(download.suggestedFilename()).toBe('chinook-edited.sqlite');
   const file = testInfo.outputPath('chinook-edited.sqlite');
   await download.saveAs(file);
-  expect(readFileSync(file).subarray(0, 16).toString()).toBe('SQLite format 3\0');
+  expect(readFileSync(file).subarray(0, 16).toString()).toBe('SQLite format 3\0',
+  );
   const project = testInfo.outputPath('chinook-datatug', 'demo-project-1');
   mkdirSync(project, { recursive: true });
   cpSync(join(source, 'demo-project-1'), project, { recursive: true });
   const settings = testInfo.outputPath('isolated-cli.yaml');
-  const run = (args: string[]) => execFileSync(cli, ['--config', settings, ...args], { encoding: 'utf8', env: { ...process.env, DATATUG_TELEMETRY: '0' } });
-  run(['projects', 'add', '--project', 'chinook-datatug', '--directory', project]);
-  run(['db', 'add', '--project', 'chinook-datatug', '--db', file, '--env', 'local', '--name', 'chinook-browser']);
-  const result = run(['query', 'run', '--db', 'datatug://chinook-datatug/chinook-browser?env=local', '--from', 'Artist', '--limit', '1', '--no-policies', '--format', 'json']);
+  const run = (args: string[]) => execFileSync(cli, ['--config', settings, ...args], { encoding: 'utf8', env: { ...process.env, DATATUG_TELEMETRY: '0' },
+    });
+  run(['projects', 'add', '--project', 'chinook-datatug', '--directory', project,
+  ]);
+  run(['db', 'add', '--project', 'chinook-datatug', '--db', file, '--env', 'local', '--name', 'chinook-browser',
+  ]);
+  const result = run(['query', 'run', '--db', 'datatug://chinook-datatug/chinook-browser?env=local', '--from', 'Artist', '--limit', '1', '--no-policies', '--format', 'json',
+  ]);
   expect(result).toContain(edited);
   await page.getByTestId('project-copy-file-path').locator('input').fill(file);
-  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--directory "$PWD"');
-  await expect(page.getByTestId('project-copy-local-instructions')).toContainText('--env local --name chinook-browser');
+  await expect(page.getByTestId('project-copy-local-instructions'),
+  ).toContainText('--directory "$PWD"');
+  await expect(page.getByTestId('project-copy-local-instructions'),
+  ).toContainText('--env local --name chinook-browser');
 });
 
-test('demo project GitHub choice carries verified source into the existing setup form', async ({ page, context }) => {
+test('demo project GitHub choice carries verified source into the existing setup form', async ({ page, context,
+}) => {
   const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
   test.skip(!source, 'requires the offline demo project checkout');
   if (!source) return;
@@ -216,25 +268,39 @@ test('demo project GitHub choice carries verified source into the existing setup
     const path = new URL(route.request().url()).pathname;
     const json = path.endsWith('/commits/main') ? { sha: commit, commit: { tree: { sha: 'c'.repeat(40) } } }
       : path.includes('/git/trees/') ? { tree: [{ path: 'demo-project-1', type: 'tree', sha: tree }] }
-      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main' };
+      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main',
+            };
     await route.fulfill({ json });
-  });
+  },
+  );
   await openDataset(page, 'chinook');
   await page.getByTestId('project-copy-github').click();
   await expect(page).toHaveURL(/\/new-project\?/);
-  await expect(page.getByTestId('project-copy-summary')).toContainText(`demo-project-1 at ${commit.slice(0, 10)}`);
-  await expect(page.getByTestId('project-copy-summary')).not.toContainText(commit);
-  await expect(page.locator('ion-title').filter({ hasText: 'Copy DataTug Project' })).toBeVisible();
-  await expect(page.locator('ion-footer').getByText('Copy project', { exact: true })).toBeVisible();
-  await expect(page.getByTestId('project-copy-summary')).toContainText('Choose a repository below');
+  await expect(page.getByTestId('project-copy-summary')).toContainText(`demo-project-1 at ${commit.slice(0, 10)}`,
+  );
+  await expect(page.getByTestId('project-copy-summary')).not.toContainText(
+    commit,
+  );
+  await expect(
+    page.locator('ion-title').filter({ hasText: 'Copy DataTug Project' }),
+  ).toBeVisible();
+  await expect(
+    page.locator('ion-footer').getByText('Copy project', { exact: true }),
+  ).toBeVisible();
+  await expect(page.getByTestId('project-copy-summary')).toContainText(
+    'Choose a repository below',
+  );
   await page.getByTitle('Cancel', { exact: true }).click();
   await expect(page).toHaveURL(/\/demo\/sqlite\/chinook$/);
   await expect(page.getByTestId('ovdb-table-list')).toBeVisible();
 });
 
-const rows = (page: Page): Locator => page.getByTestId('ovdb-rows').locator('tbody tr');
-const rowWith = (page: Page, text: string): Locator => rows(page).filter({ hasText: text });
-const nameCell = (page: Page, name: string): Locator => page.getByRole('cell', { name, exact: true });
+const rows = (page: Page): Locator =>
+  page.getByTestId('ovdb-rows').locator('tbody tr');
+const rowWith = (page: Page, text: string): Locator =>
+  rows(page).filter({ hasText: text });
+const nameCell = (page: Page, name: string): Locator =>
+  page.getByRole('cell', { name, exact: true });
 
 async function editName(page: Page, from: string, to: string): Promise<void> {
   await rowWith(page, from).first().click();
@@ -267,8 +333,12 @@ async function hideOpfsFromWorkers(context: BrowserContext): Promise<void> {
 /** What the page promises where the copy cannot be kept: a warning, working edits, and no memory of them. */
 async function expectMemoryOnlyBehaviour(page: Page): Promise<void> {
   await openDataset(page, 'chinook', 'Artist');
-  await expect(page.getByTestId('demo-sqlite-not-persistent')).toContainText('Changes will not be saved in this browser');
-  await expect(page.getByTestId('ovdb-status')).toHaveText('Local copy (memory only)');
+  await expect(page.getByTestId('demo-sqlite-not-persistent')).toContainText(
+    'Changes will not be saved in this browser',
+  );
+  await expect(page.getByTestId('ovdb-status')).toHaveText(
+    'Local copy (memory only)',
+  );
   await editName(page, SQLITE_ORIGINAL_ARTIST_1, 'AC/DC (memory)');
   await page.reload();
   await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
@@ -277,7 +347,9 @@ async function expectMemoryOnlyBehaviour(page: Page): Promise<void> {
 }
 
 test.describe('Chinook as a local SQLite copy', () => {
-  test('creates a record, rejects a duplicate, and persists until reset', async ({ page }) => {
+  test('creates a record, rejects a duplicate, and persists until reset', async ({
+    page,
+  }) => {
     test.setTimeout(180_000);
     const persistent = await hasOpfs(page);
     await openDataset(page, 'chinook', 'Genre');
@@ -300,8 +372,11 @@ test.describe('Chinook as a local SQLite copy', () => {
     await expect(page.getByTestId('record-error')).toContainText('already');
     await page.getByTestId('record-cancel').click();
     await page.reload();
-    await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
-    if (persistent) await expect(nameCell(page, 'Created in browser')).toBeVisible();
+    await expect(page.getByTestId('ovdb-rows')).toBeVisible({
+      timeout: 90_000,
+    });
+    if (persistent)
+      await expect(nameCell(page, 'Created in browser')).toBeVisible();
     else await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
     await page.getByTestId('reset-database').click();
     await confirmAlert(page, 'Reset Database');
@@ -309,22 +384,38 @@ test.describe('Chinook as a local SQLite copy', () => {
     await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
   });
 
-  test('browse, edit, delete and reset all persist across reloads', async ({ page, context }) => {
+  test('browse, edit, delete and reset all persist across reloads', async ({
+    page,
+    context,
+  }) => {
     test.setTimeout(240_000);
     const demodb = trackDemodbRequests(context);
     if (!(await hasOpfs(page))) {
-      test.info().annotations.push({ type: 'mode', description: 'in-memory: this browser context has no OPFS' });
+      test
+        .info()
+        .annotations.push({
+          type: 'mode',
+          description: 'in-memory: this browser context has no OPFS',
+        });
       await expectMemoryOnlyBehaviour(page);
       return;
     }
-    test.info().annotations.push({ type: 'mode', description: 'persistent: OPFS' });
+    test
+      .info()
+      .annotations.push({ type: 'mode', description: 'persistent: OPFS' });
 
     // Open: the local SQLite copy initialises (one download of the pinned file) and lands in the table list.
     await openDataset(page, 'chinook');
-    await expect(page.getByTestId('ovdb-status')).toHaveText('Local copy ready');
+    await expect(page.getByTestId('ovdb-status')).toHaveText(
+      'Local copy ready',
+    );
     await expect(page.getByTestId('demo-sqlite-not-persistent')).toHaveCount(0);
-    await expect(page.getByTestId('ovdb-table-list').locator('[data-testid^="table-"]')).toHaveCount(11);
-    expect(demodb.some((url) => url.endsWith('/data/chinook.sqlite'))).toBe(true);
+    await expect(
+      page.getByTestId('ovdb-table-list').locator('[data-testid^="table-"]'),
+    ).toHaveCount(11);
+    expect(demodb.some((url) => url.endsWith('/data/chinook.sqlite'))).toBe(
+      true,
+    );
 
     // Open a table and see its records.
     await page.getByTestId('table-Artist').click();
@@ -342,8 +433,12 @@ test.describe('Chinook as a local SQLite copy', () => {
     // Edit a known record, reload: the edit persisted.
     await editName(page, SQLITE_ORIGINAL_ARTIST_1, 'AC/DC (edited by e2e)');
     await page.reload();
-    await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
-    await expect(page.getByTestId('ovdb-status')).toHaveText('Local copy ready');
+    await expect(page.getByTestId('ovdb-rows')).toBeVisible({
+      timeout: 90_000,
+    });
+    await expect(page.getByTestId('ovdb-status')).toHaveText(
+      'Local copy ready',
+    );
     await expect(nameCell(page, 'AC/DC (edited by e2e)')).toBeVisible();
     await expect(nameCell(page, SQLITE_ORIGINAL_ARTIST_1)).toHaveCount(0);
 
@@ -355,7 +450,9 @@ test.describe('Chinook as a local SQLite copy', () => {
     await confirmAlert(page, 'Delete');
     await expect(rowWith(page, ARTIST_WITHOUT_ALBUMS)).toHaveCount(0);
     await page.reload();
-    await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('ovdb-rows')).toBeVisible({
+      timeout: 90_000,
+    });
     await expect(rowWith(page, ARTIST_WITHOUT_ALBUMS)).toHaveCount(0);
     await expect(nameCell(page, 'AC/DC (edited by e2e)')).toBeVisible();
 
@@ -369,21 +466,29 @@ test.describe('Chinook as a local SQLite copy', () => {
     await openDataset(page, 'chinook', 'Artist');
     await page.getByTestId('reset-database').click();
     await expect(alert(page)).toHaveCount(1);
-    await expect(alert(page)).toContainText('All your local changes to Chinook (local SQLite) will be lost');
+    await expect(alert(page)).toContainText(
+      'All your local changes to Chinook (local SQLite) will be lost',
+    );
     await expect(alert(page)).toContainText('cannot be undone');
     await confirmAlert(page, 'Reset Database');
-    await expect(page.getByTestId('reset-message')).toContainText('Database reset to the original DemoDB data');
+    await expect(page.getByTestId('reset-message')).toContainText(
+      'Database reset to the original DemoDB data',
+    );
     await expect(nameCell(page, SQLITE_ORIGINAL_ARTIST_1)).toBeVisible();
     await expect(rowWith(page, ARTIST_WITHOUT_ALBUMS)).toHaveCount(1);
     await expect(nameCell(page, 'AC/DC (edited by e2e)')).toHaveCount(0);
     await page.reload();
-    await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
+    await expect(page.getByTestId('ovdb-rows')).toBeVisible({
+      timeout: 90_000,
+    });
     await expect(nameCell(page, SQLITE_ORIGINAL_ARTIST_1)).toBeVisible();
     await expect(rowWith(page, ARTIST_WITHOUT_ALBUMS)).toHaveCount(1);
     await expect(nameCell(page, 'AC/DC (edited by e2e)')).toHaveCount(0);
 
     // Reset restored the stored pristine copy: the file was downloaded exactly once, on the first open.
-    expect(demodb.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
+    expect(
+      demodb.filter((url) => url.endsWith('/data/chinook.sqlite')),
+    ).toHaveLength(1);
   });
 
   test('two tabs share one copy: a follower reads and writes, and another tab takes over when the leader closes', async ({
@@ -391,7 +496,10 @@ test.describe('Chinook as a local SQLite copy', () => {
     context,
   }) => {
     test.setTimeout(240_000);
-    test.skip(!(await hasOpfs(page)), 'This browser context has no OPFS, so tabs cannot share a stored copy.');
+    test.skip(
+      !(await hasOpfs(page)),
+      'This browser context has no OPFS, so tabs cannot share a stored copy.',
+    );
     const demodb = trackDemodbRequests(context);
 
     await openDataset(page, 'chinook', 'Artist');
@@ -411,16 +519,25 @@ test.describe('Chinook as a local SQLite copy', () => {
 
     // The leader closes; the follower takes over and keeps working on the same data.
     await page.close();
-    await expect.poll(() => follower.workers().length, { timeout: 30_000 }).toBe(1);
+    await expect
+      .poll(() => follower.workers().length, { timeout: 30_000 })
+      .toBe(1);
     await editName(follower, 'Aerosmith', 'Aerosmith (after takeover)');
     await follower.reload();
-    await expect(follower.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
+    await expect(follower.getByTestId('ovdb-rows')).toBeVisible({
+      timeout: 90_000,
+    });
     await expect(nameCell(follower, 'Accept (follower edit)')).toBeVisible();
-    await expect(nameCell(follower, 'Aerosmith (after takeover)')).toBeVisible();
+    await expect(
+      nameCell(follower, 'Aerosmith (after takeover)'),
+    ).toBeVisible();
     expect(demodb).toHaveLength(downloadsByLeader);
   });
 
-  test('where the copy cannot be kept it opens in memory, says so, and forgets edits on reload', async ({ page, context }) => {
+  test('where the copy cannot be kept it opens in memory, says so, and forgets edits on reload', async ({
+    page,
+    context,
+  }) => {
     test.setTimeout(240_000);
     await hideOpfsFromWorkers(context);
     await expectMemoryOnlyBehaviour(page);
@@ -428,22 +545,33 @@ test.describe('Chinook as a local SQLite copy', () => {
 });
 
 test.describe('AdventureWorks', () => {
-  test('asks before downloading, and requests nothing from demodb.dev until Continue', async ({ page, context }) => {
+  test('asks before downloading, and requests nothing from demodb.dev until Continue', async ({
+    page,
+    context,
+  }) => {
     const demodb = trackDemodbRequests(context);
     const opfs = await hasOpfs(page);
     await page.goto('/demo/sqlite/adventureworks');
     if (!opfs) {
       // Without OPFS a large dataset is refused before any download (it must never run from memory).
-      await expect(page.getByTestId('demo-sqlite-unsupported')).toContainText('regular desktop browser window');
+      await expect(page.getByTestId('demo-sqlite-unsupported')).toContainText(
+        'regular desktop browser window',
+      );
       await page.waitForTimeout(1500);
       expect(demodb).toEqual([]);
       return;
     }
     const confirm = page.getByTestId('demo-sqlite-confirm-large');
     await expect(confirm).toBeVisible();
-    const figures = (await page.getByTestId('demo-sqlite-confirm-figures').innerText()).replace(/\s+/g, ' ');
-    expect(figures).toContain('downloads ~35.4 MB (compressed in transit; 126.8 MB once unpacked)');
-    expect(figures).toContain('uses ~126.8 MB of browser storage (one working copy)');
+    const figures = (
+      await page.getByTestId('demo-sqlite-confirm-figures').innerText()
+    ).replace(/\s+/g, ' ');
+    expect(figures).toContain(
+      'downloads ~35.4 MB (compressed in transit; 126.8 MB once unpacked)',
+    );
+    expect(figures).toContain(
+      'uses ~126.8 MB of browser storage (one working copy)',
+    );
     expect(figures).toContain('Reset Database downloads it again');
     await page.waitForTimeout(1500);
     expect(demodb).toEqual([]);
@@ -455,7 +583,10 @@ test.describe('AdventureWorks', () => {
     expect(demodb).toEqual([]);
   });
 
-  test('is refused when the browser reports too little storage, with nothing downloaded', async ({ page, context }) => {
+  test('is refused when the browser reports too little storage, with nothing downloaded', async ({
+    page,
+    context,
+  }) => {
     const demodb = trackDemodbRequests(context);
     await page.addInitScript(() => {
       Object.defineProperty(StorageManager.prototype, 'estimate', {
@@ -477,19 +608,31 @@ test.describe('AdventureWorks', () => {
     page,
     context,
   }) => {
-    test.skip(!process.env['DATATUG_E2E_ADVENTUREWORKS'], 'Set DATATUG_E2E_ADVENTUREWORKS=1 to download the 126.8 MB dataset.');
+    test.skip(
+      !process.env['DATATUG_E2E_ADVENTUREWORKS'],
+      'Set DATATUG_E2E_ADVENTUREWORKS=1 to download the 126.8 MB dataset.',
+    );
     test.setTimeout(600_000);
     const demodb = trackDemodbRequests(context);
     test.skip(!(await hasOpfs(page)), 'AdventureWorks needs OPFS.');
     await page.goto('/demo/sqlite/adventureworks');
     await page.getByTestId('demo-sqlite-continue').click();
-    await expect(page.getByTestId('demo-sqlite-progress')).toContainText('(unpacked size)', { timeout: 120_000 });
-    await expect(page.getByTestId('ovdb-table-list')).toBeVisible({ timeout: 480_000 });
-    await expect(page.getByTestId('ovdb-status')).toHaveText('Local copy ready');
+    await expect(page.getByTestId('demo-sqlite-progress')).toContainText(
+      '(unpacked size)',
+      { timeout: 120_000 },
+    );
+    await expect(page.getByTestId('ovdb-table-list')).toBeVisible({
+      timeout: 480_000,
+    });
+    await expect(page.getByTestId('ovdb-status')).toHaveText(
+      'Local copy ready',
+    );
     const downloaded = demodb.length;
     expect(downloaded).toBeGreaterThan(0);
     await page.reload();
-    await expect(page.getByTestId('ovdb-table-list')).toBeVisible({ timeout: 120_000 });
+    await expect(page.getByTestId('ovdb-table-list')).toBeVisible({
+      timeout: 120_000,
+    });
     await expect(page.getByTestId('demo-sqlite-confirm-large')).toHaveCount(0);
     expect(demodb).toHaveLength(downloaded);
   });

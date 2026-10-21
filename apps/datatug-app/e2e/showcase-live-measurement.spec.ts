@@ -386,7 +386,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
       await top.press('Tab');
       await race.getByRole('slider', { name: 'Choose month' }).fill('3');
       await race
-        .getByRole('button', { name: 'Monthly trend', exact: true })
+        .locator('ion-segment-button[value="trend"]')
         .click();
       receipt['monthlyDataWithCountrySelectedAndTop5'] =
         await monthlyData(race);
@@ -401,10 +401,10 @@ test('bounded deployed showcase network and held-result measurement', async ({
     });
     await observedAction('source rows and restored paused race', async () => {
       await race
-        .getByRole('button', { name: 'Source rows', exact: true })
+        .locator('ion-segment-button[value="grid"]')
         .click();
       await expect(race.locator('table tbody tr')).toHaveCount(25);
-      await race.getByRole('button', { name: 'Chart', exact: true }).click();
+      await race.locator('ion-segment-button[value="chart"]').click();
       await expect(
         race.getByRole('slider', { name: 'Choose month' }),
       ).toHaveValue('3');
@@ -424,12 +424,12 @@ test('bounded deployed showcase network and held-result measurement', async ({
         firstOrder,
       );
       await race
-        .getByRole('button', { name: 'Monthly trend', exact: true })
+        .locator('ion-segment-button[value="trend"]')
         .click();
       expect(await monthlyData(race)).toEqual(
         receipt['monthlyDataWithCountrySelectedAndTop5'],
       );
-      await race.getByRole('button', { name: 'Chart', exact: true }).click();
+      await race.locator('ion-segment-button[value="chart"]').click();
     });
     ledger.phase('refresh', 1, { comparison: 1 });
     const beforeRefresh = ledger.summary().queryAttempts;
@@ -481,7 +481,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
         // The heading describes the NEXT action. This cue still has the race visible.
         await expect(race).toContainText('830 source orders');
         await expect(
-          race.getByRole('button', { name: 'Chart', exact: true }),
+          race.getByRole('tab', { name: 'Chart', exact: true }),
         ).toHaveAttribute('aria-pressed', 'true');
         await waitSettled();
         ledger.phase('tutorial-view-revisit', 0);
@@ -500,7 +500,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
               'Inspect the monthly trend',
             );
             await expect(
-              race.getByRole('button', { name: 'Chart', exact: true }),
+              race.getByRole('tab', { name: 'Chart', exact: true }),
             ).toHaveAttribute('aria-pressed', 'true');
             await next.click();
             await expect(tutorial.locator('.tutorial-step h3')).toHaveText(
@@ -529,7 +529,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
       if (title === 'Inspect the source rows') await monthlyData(race);
       if (title === 'Return to the paused race')
         await expect(
-          race.getByRole('button', { name: 'Source rows', exact: true }),
+          race.getByRole('tab', { name: 'Source rows', exact: true }),
         ).toHaveAttribute('aria-pressed', 'true');
       const before = await indicator.innerText();
       const queryBefore = ledger.summary().queryAttempts;
@@ -537,14 +537,14 @@ test('bounded deployed showcase network and held-result measurement', async ({
       await expect(indicator).not.toHaveText(before);
       if (title === 'Inspect the source rows') {
         await expect(
-          race.getByRole('button', { name: 'Source rows', exact: true }),
+          race.getByRole('tab', { name: 'Source rows', exact: true }),
         ).toHaveAttribute('aria-pressed', 'true');
         await expect(race.locator('table tbody tr')).toHaveCount(25);
         sawSourceRows = true;
       }
       if (title === 'Return to the paused race') {
         await expect(
-          race.getByRole('button', { name: 'Chart', exact: true }),
+          race.getByRole('tab', { name: 'Chart', exact: true }),
         ).toHaveAttribute('aria-pressed', 'true');
         sawPausedRace = true;
       }

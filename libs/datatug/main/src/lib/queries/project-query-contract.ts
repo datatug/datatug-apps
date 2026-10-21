@@ -7,10 +7,11 @@ import {
 
 /** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
 export interface ProjectQueryWire {
-  readonly semanticModel?: IQueryDef["semanticModel"];
+  readonly semanticModel?: IQueryDef['semanticModel'];
   readonly folderPath: string;
   readonly id: string;
   readonly title?: string;
+  readonly tags?: string[];
   readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL;
   readonly text: string;
   readonly draft?: boolean;
@@ -32,6 +33,8 @@ export interface ProjectQueryRevision {
 }
 
 export interface ProjectQueryCapabilities {
+  readonly boardTags?: boolean;
+  readonly dbServerTags?: boolean;
   readonly queryRead: boolean;
   readonly semanticModel?: boolean;
   readonly querySave: boolean;
@@ -74,6 +77,7 @@ export function toProjectQueryWire(
   assertFields(query, [
     'id',
     'title',
+    'tags',
     'request',
     'draft',
     'connectionId',
@@ -81,7 +85,8 @@ export function toProjectQueryWire(
     'semanticModel',
   ]);
   assertFields(query['request'], ['queryType', 'text']);
-  if (![QueryType.SQL, QueryType.TugQL, QueryType.DTQL].includes(query['request'].queryType))
+  if (![QueryType.SQL, QueryType.TugQL, QueryType.DTQL].includes(query['request'].queryType,
+    ))
     throw new UnsupportedQueryContractError();
   const text = (query['request'] as ITextQueryRequest).text;
   if (typeof text !== 'string') throw new UnsupportedQueryContractError();
@@ -114,6 +119,7 @@ export function toProjectQueryWire(
     throw new UnsupportedQueryContractError();
   return structuredClone({
     ...(query.semanticModel ? { semanticModel: query.semanticModel } : {}),
+    ...(query.tags !== undefined ? { tags: query.tags } : {}),
     folderPath,
     id,
     ...(query.title !== undefined ? { title: query.title } : {}),

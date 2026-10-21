@@ -118,6 +118,7 @@ export interface IProjDbServerEnvironmentUsage {
 }
 
 export interface IProjDbServerSummary {
+  tags?: string[];
   dbServer: IDbServer;
   databasesCount: number;
   /**
@@ -140,7 +141,9 @@ export interface IProjDbServerSummary {
 }
 
 export interface IProjDbServerFull extends IDbServer {
+  tags?: string[];
   dbServer: IDbServer;
+  server: IDbServer;
   databases: IDatabaseFull[];
 }
 

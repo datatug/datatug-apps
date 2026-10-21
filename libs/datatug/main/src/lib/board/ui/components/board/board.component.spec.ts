@@ -66,7 +66,7 @@ describe('BoardComponent saved-query journey', () => {
       expect(fixture.nativeElement.textContent).toContain('Customer spend');
       const link = fixture.debugElement.query(By.directive(RouterLink));
       expect(link).not.toBeNull();
-      expect(link.nativeElement.textContent).toContain('Open saved query');
+      expect(link.nativeElement.textContent).toContain('Edit query');
       const urlTree = link.injector.get(RouterLink).urlTree;
       if (!urlTree) throw new Error('Expected a saved-query RouterLink URL');
       expect(TestBed.inject(Router).serializeUrl(urlTree)).toBe(
@@ -82,18 +82,22 @@ describe('BoardComponent saved-query journey', () => {
       );
       expect(githubFetch).not.toHaveBeenCalled();
 
-      const firstWidget = fixture.debugElement.query(By.directive(BoardWidgetComponent)).componentInstance as BoardWidgetComponent;
+      const firstWidget = fixture.debugElement.query(By.directive(BoardWidgetComponent),
+      ).componentInstance as BoardWidgetComponent;
       firstWidget.runError.set('Held widget state');
       const current = fixture.componentInstance.boardDef();
       const firstCard = current?.rows?.[0]?.cards?.[0];
       if (!current || !firstCard) throw new Error('Expected the first board card');
       fixture.componentRef.setInput('boardDef', {
         ...current,
-        rows: [{ ...current.rows?.[0], cards: [firstCard, { id: 'second-card', title: 'Second card' }] }],
+        rows: [{ ...current.rows?.[0], cards: [firstCard, { id: 'second-card', title: 'Second card' }],
+          },
+        ],
       });
       fixture.detectChanges();
       await fixture.whenStable();
-      const widgets = fixture.debugElement.queryAll(By.directive(BoardWidgetComponent));
+      const widgets = fixture.debugElement.queryAll(By.directive(BoardWidgetComponent),
+      );
       expect(widgets).toHaveLength(2);
       expect(widgets[0].componentInstance).toBe(firstWidget);
       expect(firstWidget.runError()).toBe('Held widget state');

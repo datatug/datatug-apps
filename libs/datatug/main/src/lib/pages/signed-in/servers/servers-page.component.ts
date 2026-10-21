@@ -1,3 +1,6 @@
+import { TagFilterComponent } from '../../../tags/tag-filter.component';
+import { TagFilterState } from '../../../tags/tag-filter-state';
+import { matchesTags } from '../../../tags/tags';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -24,7 +27,7 @@ import {
   ModalController,
   NavController,
 } from '@ionic/angular';
-import { Subject } from 'rxjs';
+import { Subject, Subscription } from 'rxjs';
 import { map, takeUntil } from 'rxjs/operators';
 import {
   ErrorLogger,
@@ -32,7 +35,7 @@ import {
   STORE_ID_GITHUB_COM,
   STORE_TYPE_GITHUB,
 } from '@sneat/core';
-import { IProjectRef } from '../../../core/project-context';
+import { IProjectRef, equalProjectRef } from '../../../core/project-context';
 import { AddDbServerComponent } from '../../../db/modals/add-db-serve/add-db-server.component';
 import {
   getDbServerId,
@@ -58,6 +61,7 @@ const isGithubStoreId = (storeId: string): boolean =>
 @Component({
   selector: 'sneat-datatug-servers',
   templateUrl: './servers-page.component.html',
+  providers: [TagFilterState],
   styleUrls: ['./servers-page.component.scss'],
   imports: [
     // `ProjectContextService` (injected below) and `DbServerService`
@@ -92,6 +96,7 @@ const isGithubStoreId = (storeId: string): boolean =>
     DatatugServicesProjectModule,
     DatatugServicesUnsortedModule,
     FormsModule,
+    TagFilterComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
@@ -116,6 +121,7 @@ const isGithubStoreId = (storeId: string): boolean =>
   ],
 })
 export class ServersPageComponent implements OnDestroy {
+  readonly tagFilter = inject(TagFilterState);
   protected readonly getDbServerId = getDbServerId;
   private readonly projectContextService = inject(ProjectContextService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -136,6 +142,11 @@ export class ServersPageComponent implements OnDestroy {
   protected readonly dbServers = signal<IProjDbServerSummary[] | undefined>(
     undefined,
   );
+  readonly loadError = signal('');
+  private serverRead?: Subscription;
+  private environmentRead?: Subscription;
+  private environmentReadGeneration = 0;
+  private serverReadGeneration = 0;
   protected readonly filterText = signal('');
 
   // The project's real environment list (S153: the "Local"/"PROD" checkboxes
@@ -173,6 +184,7 @@ export class ServersPageComponent implements OnDestroy {
       const selected = this.selectedEnvironmentIds();
       const query = this.filterText().trim().toLocaleLowerCase();
       return servers
+        .filter((server) => matchesTags(server, this.tagFilter.selected()))
         .map((server) => {
           if (!server.environments) {
             return server;
@@ -230,18 +242,33 @@ export class ServersPageComponent implements OnDestroy {
       .subscribe((target) => {
         const previousTarget = this.target();
         if (
-          target &&
-          (previousTarget?.storeId !== target?.storeId ||
-            previousTarget?.projectId !== target?.projectId)
+          target && !equalProjectRef(previousTarget, target)
         ) {
+          this.target.set(target);
           this.loadDbServers(target);
           this.loadEnvironments(target);
+        }
+        if (!target) {
+          this.serverRead?.unsubscribe();
+          this.serverReadGeneration++;
+          this.dbServers.set(undefined);
+          this.environments.set(undefined);
+          this.selectedEnvironmentIds.set(new Set());
         }
         this.target.set(target);
       });
   }
 
+  ionViewWillEnter(): void {
+    const ref = this.target();
+    if (ref) this.loadDbServers(ref);
+  }
+
   ngOnDestroy() {
+    this.serverRead?.unsubscribe();
+    this.environmentRead?.unsubscribe();
+    this.serverReadGeneration++;
+    this.environmentReadGeneration++;
     this.destroyed.next();
   }
 
@@ -395,13 +422,32 @@ export class ServersPageComponent implements OnDestroy {
       );
   }
 
+  reloadServers(): void {
+    const ref = this.target();
+    if (ref) this.loadDbServers(ref);
+  }
   private loadDbServers(target: IProjectRef): void {
-    this.dbServerService.getDbServers(target).subscribe({
-      next: (dbServers) => {
-        this.dbServers.set(dbServers || []);
+    this.serverRead?.unsubscribe();
+    const generation = ++this.serverReadGeneration;
+    this.dbServers.set(undefined);
+    this.loadError.set('');
+    this.serverRead = this.dbServerService.getDbServers(target).subscribe({
+      next: (servers) => {
+        if (
+          generation === this.serverReadGeneration &&
+          equalProjectRef(target, this.target())
+        )
+          this.dbServers.set(servers ?? []);
       },
-      error: (err) =>
-        this.errorLogger.logError(err, 'Failed to load list of DB servers'),
+      error: () => {
+        if (
+          generation === this.serverReadGeneration &&
+          equalProjectRef(target, this.target())
+        )
+          this.loadError.set(
+            'Database servers could not be loaded. Check project access and retry.',
+          );
+      },
     });
   }
 
@@ -417,14 +463,26 @@ export class ServersPageComponent implements OnDestroy {
       : this.projectService
           .getFull(target)
           .pipe(map((full) => full.environments || []));
-    environments$.subscribe({
-      next: (environments) => {
-        this.environments.set(environments);
-        this.selectedEnvironmentIds.set(new Set(environments.map((e) => e.id)));
-      },
-      error: (err) =>
-        this.errorLogger.logError(err, 'Failed to load project environments'),
-    });
+    this.environmentRead?.unsubscribe();
+    const generation = ++this.environmentReadGeneration;
+    this.environments.set(undefined);
+    this.environmentRead = environments$
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (environments) => {
+          if (
+            !equalProjectRef(target, this.target()) ||
+            generation !== this.environmentReadGeneration
+          )
+            return;
+          this.environments.set(environments);
+          this.selectedEnvironmentIds.set(
+            new Set(environments.map((e) => e.id)),
+          );
+        },
+        error: (err) =>
+          this.errorLogger.logError(err, 'Failed to load project environments'),
+      });
   }
 }
 
