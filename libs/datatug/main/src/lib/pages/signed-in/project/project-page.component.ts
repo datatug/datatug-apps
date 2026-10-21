@@ -161,9 +161,18 @@ export class ProjectPageComponent
       project.brief?.access ? `Access: ${project.brief.access}` : undefined,
     ].filter((value): value is string => !!value);
   });
-  protected readonly quickSearchHref = computed(() =>
-    this.router.parseUrl(projectPageHref(this.project()?.ref, ['quick-search'])),
-  );
+  readonly quickSearchQuery = signal('');
+  updateQuickSearch(event: Event): void {
+    if (event.target instanceof HTMLInputElement) this.quickSearchQuery.set(event.target.value);
+  }
+  submitQuickSearch(event: Event): void {
+    event.preventDefault();
+    const ref=this.project()?.ref,q=this.quickSearchQuery().trim();
+    if (!ref || !q) return;
+    const destination=this.router.parseUrl(projectPageHref(ref,['quick-search']));
+    destination.queryParams={...destination.queryParams,q};
+    void this.router.navigateByUrl(destination).catch(() => this.errorLogger.logError('Could not open Quick Search'));
+  }
 
   protected readonly publicDataHref = computed(() => {
     const ref = this.project()?.ref;
@@ -261,6 +270,7 @@ export class ProjectPageComponent
   private setProjRef = (ref: IProjectRef) => {
     try {
       this.scopeChanged.next();
+      if (!equalProjectRef(this.project()?.ref, ref)) this.quickSearchQuery.set('');
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },

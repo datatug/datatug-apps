@@ -322,4 +322,34 @@ describe('Quick Search consent and async state', () => {
     await fixture.whenStable();
     expect(page.items().map((item) => item.name)).toEqual(['ID']);
   });
+  it('searches the overview query and observes later query changes on a reused route', () => {
+    const query = new BehaviorSubject(convertToParamMap({ q: 'Customers' }));
+    TestBed.overrideProvider(ActivatedRoute, {
+      useValue: {
+        snapshot: {
+          data: {},
+          paramMap: convertToParamMap({}),
+          queryParamMap: query.value,
+        },
+        queryParamMap: query,
+      },
+    });
+    const page = TestBed.createComponent(
+      QuickSearchPageComponent,
+    ).componentInstance;
+    expect(api.search).toHaveBeenLastCalledWith(
+      { storeId: 'firestore', spaceID: 's', projectId: 'p' },
+      'Customers',
+      [],
+      [],
+    );
+    query.next(convertToParamMap({ q: 'Invoices' }));
+    expect(page.query()).toBe('Invoices');
+    expect(api.search).toHaveBeenLastCalledWith(
+      { storeId: 'firestore', spaceID: 's', projectId: 'p' },
+      'Invoices',
+      [],
+      [],
+    );
+  });
 });

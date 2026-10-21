@@ -77,6 +77,14 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
           ],
         },
       });
+    if (
+      [
+        '/boards/all_boards',
+        '/entities/all_entities',
+        '/environments/all_environments',
+      ].some((endpoint) => path.endsWith(endpoint))
+    )
+      return route.fulfill({ json: [] });
     if (path.endsWith('/queries/all_queries'))
       return route.fulfill({ json: { id: '~', folders: [], items: [] } });
     return route.fulfill({ json: {} });
@@ -119,7 +127,18 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     }
     return route.fulfill({ status: 404 });
   });
-  await page.goto(projectPath + '/quick-search');
+  await page.goto(projectPath + '/overview');
+  const overviewSearch = page.getByRole('searchbox', {
+    name: 'Quick Search',
+    exact: true,
+  });
+  await overviewSearch.fill('Customers');
+  await page.screenshot({
+    path: testInfo.outputPath('quick-search-overview-input.png'),
+    fullPage: true,
+  });
+  await overviewSearch.press('Enter');
+  await expect(page).toHaveURL(/quick-search\?q=Customers$/);
   await page.locator('sneat-datatug-quick-search').waitFor();
   // Development-only Angular debug API supplies the controlled HTTP fixture's
   // bearer token through the real auth bridge; no application test hook ships.
@@ -198,6 +217,15 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     path: testInfo.outputPath('quick-search-grouped-desktop.png'),
     fullPage: true,
   });
+  await page.getByRole('link', { name: 'Overview', exact: true }).click();
+  await page
+    .getByRole('searchbox', { name: 'Quick Search', exact: true })
+    .fill('Customers');
+  await page
+    .getByRole('searchbox', { name: 'Quick Search', exact: true })
+    .press('Enter');
+  await expect(page).toHaveURL(/quick-search\?q=Customers$/);
+  await expect(main.locator('.results > li')).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
   await main.getByRole('link', { name: 'Table@Chinook', exact: true }).focus();
   await expect(
@@ -212,7 +240,9 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
-  await page.keyboard.press('Enter');
+  await main
+    .getByRole('link', { name: 'Table@Chinook', exact: true })
+    .press('Enter');
   await expect(page).toHaveURL(
     /search-schema\/Chinook\?schema=dbo&table=Customers/,
   );
@@ -234,7 +264,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
 
   await page.goBack();
   await expect(main).toHaveCount(1);
-  await expect(page).toHaveURL(/quick-search$/);
+  await expect(page).toHaveURL(/quick-search\?q=Customers$/);
   await expect(
     main.getByRole('link', { name: 'Table@Northwind', exact: true }),
   ).toBeVisible();
@@ -245,7 +275,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   ).toBeVisible();
   await expect(tagPage.locator('.results > li')).toHaveCount(1);
   await page.goBack();
-  await expect(page).toHaveURL(/quick-search$/);
+  await expect(page).toHaveURL(/quick-search\?q=Customers$/);
   await main
     .getByRole('button', { name: 'Index settings', exact: true })
     .click();

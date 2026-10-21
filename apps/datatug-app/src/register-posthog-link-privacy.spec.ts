@@ -113,3 +113,71 @@ describe('PostHog on the pages a card link opens', () => {
   });
 
 });
+
+const SEARCH_PRIVACY_PAGES = [
+  '/store/private-agent/project/private-project/quick-search',
+  '/space/private-space/store/firestore/project/private-project/tags',
+  '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model',
+];
+describe('Quick Search project metadata privacy', () => {
+  it.each(SEARCH_PRIVACY_PAGES)(
+    '%s suppresses capture/replay and removes URLs and result DOM',
+    (path) => {
+      const query =
+        '?q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
+      const config = start(path + query);
+      expect(config.autocapture).toBe(false);
+      expect(config.disable_session_recording).toBe(true);
+      const out = config.before_send({
+        event: '$pageview',
+        properties: {
+          $current_url: 'https://datatug.app' + path + query,
+          $pathname: path,
+          $referrer: 'https://datatug.app' + path + query,
+          $el_text: 'private-result',
+          $elements: [{ text: 'private-result' }],
+          $elements_chain: 'private-result',
+        },
+      });
+      const serialized = JSON.stringify(out);
+      for (const secret of [
+        'private-agent',
+        'private-project',
+        'private-space',
+        'private-owner',
+        'private-repo',
+        'private-ref',
+        'private-folder',
+        'private-model',
+        'private-query',
+        'private-tag',
+        'private-schema',
+        'private-table',
+        'private-column',
+        'private-result',
+      ])
+        expect(serialized).not.toContain(secret);
+      expect(
+        config.before_send({
+          event: '$autocapture',
+          properties: { $el_text: 'private-result' },
+        }),
+      ).toBeNull();
+      expect(
+        config.before_send({
+          event: '$snapshot',
+          properties: { $snapshot_data: 'private-result' },
+        }),
+      ).toBeNull();
+    },
+  );
+  it('turns capture and recording off when navigation enters Quick Search', () => {
+    start('/');
+    applyPosthogRoutePrivacy(SEARCH_PRIVACY_PAGES[0]);
+    expect(sdk.stopSessionRecording).toHaveBeenCalledOnce();
+    expect(sdk.set_config).toHaveBeenLastCalledWith({
+      autocapture: false,
+      disable_session_recording: true,
+    });
+  });
+});

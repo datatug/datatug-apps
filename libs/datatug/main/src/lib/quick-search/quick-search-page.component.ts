@@ -473,7 +473,11 @@ export class QuickSearchPageComponent {
   readonly schemaDetail = this.route.snapshot.data['schemaDetail'] === true;
   readonly project = signal<IProjectRef | undefined>(undefined);
   readonly environmentId = signal<string | undefined>(undefined);
-  readonly query = signal(this.route.snapshot.queryParamMap.get('name') || '');
+  readonly query = signal(
+    this.route.snapshot.queryParamMap.get(
+      this.route.snapshot.data['discovery'] ? 'name' : 'q',
+    ) || '',
+  );
   readonly schemaModel = signal(
     this.route.snapshot.paramMap.get('dbModelId') || '',
   );
@@ -589,9 +593,9 @@ export class QuickSearchPageComponent {
       }
     });
     this.route.queryParamMap?.pipe(takeUntilDestroyed()).subscribe((params) => {
-      const name = params.get('name') || '';
-      if (this.discovery && this.query() !== name) {
-        this.query.set(name);
+      const query = params.get(this.discovery ? 'name' : 'q') || '';
+      if (!this.schemaDetail && this.query() !== query) {
+        this.query.set(query);
         this.invalidateSearch();
         this.search();
       }

@@ -245,3 +245,55 @@ describe('the query editor opened from a stored result', () => {
     expect(url).not.toContain(CODE);
   });
 });
+
+describe('Quick Search Sentry project metadata privacy', () => {
+  it.each([
+    '/store/private-agent/project/private-project/quick-search',
+    '/space/private-space/store/firestore/project/private-project/tags',
+    '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model',
+  ])('scrubs %s URLs, identifiers and DOM breadcrumbs', (path) => {
+    const address =
+      path +
+      '?q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
+    history.replaceState(null, '', address);
+    expect(isLinkRoute(path)).toBe(true);
+    const event = {
+      message: 'Navigation ' + address,
+      request: {
+        url: 'https://datatug.app' + address,
+        query_string: 'q=private-query',
+      },
+      breadcrumbs: [
+        { category: 'ui.click', message: 'private-result' },
+        { category: 'ui.input', message: 'private-query' },
+        { category: 'console', message: 'private-result' },
+      ],
+      extra: { result: 'private-result' },
+    };
+    const result = options.beforeSend?.(event as ErrorEvent, {});
+    const serialized = JSON.stringify(result);
+    for (const secret of [
+      'private-agent',
+      'private-project',
+      'private-space',
+      'private-owner',
+      'private-repo',
+      'private-ref',
+      'private-folder',
+      'private-model',
+      'private-query',
+      'private-tag',
+      'private-schema',
+      'private-table',
+      'private-column',
+      'private-result',
+    ])
+      expect(serialized).not.toContain(secret);
+  });
+  it('does not classify lookalike nonproject routes', () => {
+    expect(isLinkRoute('/pricing/quick-search')).toBe(false);
+    expect(isLinkRoute('/store/agent/project/project/quick-search/extra')).toBe(
+      false,
+    );
+  });
+});

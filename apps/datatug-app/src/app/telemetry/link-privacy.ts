@@ -1,3 +1,4 @@
+import { parseProjectUrl } from '@datatug/project-address';
 import { loopbackAgentOrigin } from '../agent-access/agent-link-code';
 
 /**
@@ -18,10 +19,26 @@ const RESULT_ROUTE = /^\/store\/[^/]+\/result\/[^/?#]+\/?$/;
  */
 const RESULT_EDITOR_ROUTE = /^\/store\/[^/]+\/project\/[^/]+\/query\/?$/;
 
+/** Only real project search/discovery routes carry this privacy boundary. */
+function quickSearchPage(
+  pathname: string,
+): 'quick-search' | 'tags' | 'search-schema' | undefined {
+  const project = parseProjectUrl(pathname.split(/[?#]/)[0]);
+  if (!project.ok) return undefined;
+  const rest = project.rest.replace(/^\/sessions\/[A-Za-z0-9_-]{1,128}/, '');
+  const match = /^\/(quick-search|tags|search-schema\/[^/]+)\/?$/.exec(rest);
+  return match
+    ? match[1].startsWith('search-schema/')
+      ? 'search-schema'
+      : (match[1] as 'quick-search' | 'tags')
+    : undefined;
+}
+
 /** Whether pathname (no query or fragment) is a table, view, records, record, query result or result editor page. */
 export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
   return (
+    !!quickSearchPage(path) ||
     LINK_ROUTE.test(path) ||
     RESULT_ROUTE.test(path) ||
     RESULT_EDITOR_ROUTE.test(path)
@@ -76,6 +93,16 @@ export function onLinkRoute(): boolean {
 export function scrubUrl(url: string, dropQuery: boolean): string {
   const noFragment = url.split('#')[0];
   const path = noFragment.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
+  const searchPage = quickSearchPage(path);
+  if (searchPage) {
+    const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i.exec(noFragment)?.[0] || '';
+    return (
+      origin +
+      '/project/:projectId/' +
+      searchPage +
+      (searchPage === 'search-schema' ? '/:dbModelId' : '')
+    );
+  }
   if (dropQuery || loopbackAgentOrigin(noFragment) || isLinkRoute(path)) {
     return redactResultIds(noFragment.split('?')[0]);
   }
@@ -83,7 +110,8 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
 }
 
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
-const RELATIVE_LINK_PATH = /(^|[\s"'(=:])(\/store\/[^\s"'<>`]+)/g;
+const RELATIVE_LINK_PATH =
+  /(^|[\s"'(=:])(\/(?:store|space|project)\/[^\s"'<>`]+)/g;
 const LINK_FRAGMENT_PARTS = /#(?:[^\s"'<>`#]*&)?(?:code|pk)=[^\s"'<>`]*/g;
 
 /**
