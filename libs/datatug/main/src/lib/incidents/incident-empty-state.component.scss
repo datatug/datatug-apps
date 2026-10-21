@@ -13,12 +13,19 @@
   border-radius: 16px;
   color: #fff;
 }
+.incident-welcome::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, #071c36 36%, rgb(7 28 54 / 92%) 48%, rgb(7 28 54 / 45%) 64%, transparent 84%);
+}
 .welcome-copy {
   position: relative;
   z-index: 1;
   width: 62%;
   padding: 28px;
-  background: linear-gradient(90deg, #071c36 70%, transparent);
 }
 .eyebrow {
   margin: 0 0 12px;
@@ -119,10 +126,12 @@ li p {
     min-height: 0;
     padding-top: 150px;
   }
+  .incident-welcome::after {
+    background: linear-gradient(180deg, transparent 65px, #071c36 225px);
+  }
   .welcome-copy {
     width: 100%;
     padding: 24px;
-    background: linear-gradient(0deg, #071c36 86%, transparent);
   }
   .harbor {
     width: 100%;
