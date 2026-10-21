@@ -99,6 +99,15 @@ describe('BoardWidgetComponent', () => {
     );
   });
 
+  // Ionic toolbar slot text is absent from the ancestor's textContent in the
+  // test DOM. Inspect the rendered action labels themselves, including nested tabs.
+  function renderedHeaderActions(): string[] {
+    return Array.from(
+      fixture.nativeElement.querySelectorAll('ion-buttons[slot="end"] .header-action-text') as NodeListOf<HTMLElement>,
+      (label) => label.textContent?.trim() || '',
+    );
+  }
+
   function renderedQueryLink(): string {
     fixture.detectChanges();
     const button = fixture.debugElement.query(By.directive(RouterLink));
@@ -196,7 +205,7 @@ describe('BoardWidgetComponent', () => {
       data: { sql: { queryId } },
     });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Run on board');
     expect(fixture.nativeElement.querySelector('ion-toolbar ion-buttons[slot="end"] ion-button')?.getAttribute('aria-label')).toContain('Run on board');
     await fixture.componentInstance.run();
     fixture.detectChanges();
@@ -539,7 +548,7 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).not.toContain(
       'To be implemented: HTTP',
     );
-    expect(fixture.nativeElement.textContent).toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Run on board');
     expect(tabs.activePath()).toEqual(['id:grid']);
   });
 
@@ -884,8 +893,8 @@ describe('BoardWidgetComponent', () => {
       data: { sql: { queryId: 'demodb/q' } },
     });
     fixture.detectChanges();
-    expect(fixture.nativeElement.textContent).toContain('Open saved query');
-    expect(fixture.nativeElement.textContent).not.toContain('Run on board');
+    expect(renderedHeaderActions()).toContain('Open saved query');
+    expect(renderedHeaderActions()).not.toContain('Run on board');
     expect(getQuery).toHaveBeenCalledTimes(1);
   });
 
