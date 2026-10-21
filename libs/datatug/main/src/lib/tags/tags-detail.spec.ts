@@ -36,6 +36,7 @@ it('encodes a tag as one exact path segment and retains its project transport', 
 it('uses exact matching item identities, keeps failed kinds unknown, and clears stale project catalogs', async () => {
   const a = new Subject<{ id: string; title: string; tags: string[] }[]>();
   const b = new Subject<{ id: string; title: string; tags: string[] }[]>();
+  const identity = signal('account-a');
   const boards = vi.fn((target) => (target.projectId === 'A' ? a : b));
   TestBed.configureTestingModule({
     imports: [ProjectTagsCloudComponent],
@@ -45,6 +46,7 @@ it('uses exact matching item identities, keeps failed kinds unknown, and clears 
         useValue: {
           environment: signal(''),
           admitted: signal(false),
+          page: { identity },
           refresh: vi.fn(),
         },
       },
@@ -95,7 +97,12 @@ it('uses exact matching item identities, keeps failed kinds unknown, and clears 
     branch: 'main',
     id: 'nested/q',
   });
-  expect(component.href('queries', 'Ops').queryParams).toEqual({ projectApi: 'local', branch: 'main', tag: 'Ops', tab: 'shared' });
+  expect(component.href('queries', 'Ops').queryParams).toEqual({
+    projectApi: 'local',
+    branch: 'main',
+    tag: 'Ops',
+    tab: 'shared',
+  });
   expect(component.catalog().servers.items).toBeUndefined();
   expect(component.catalog().servers.error).toBeTruthy();
   fixture.componentRef.setInput('projectRef', { ...ref, projectId: 'B' });
@@ -112,18 +119,72 @@ it('uses exact matching item identities, keeps failed kinds unknown, and clears 
   await fixture.whenStable();
   expect(component.matchingItems('boards')).toEqual([]);
   expect(boards).toHaveBeenCalledTimes(2);
+  identity.set('account-b');
+  await fixture.whenStable();
+  expect(component.catalog().boards.items).toBeUndefined();
+  expect(boards).toHaveBeenCalledTimes(3);
   component.reload();
   await fixture.whenStable();
-  expect(boards).toHaveBeenCalledTimes(3);
+  expect(boards).toHaveBeenCalledTimes(4);
+  fixture.componentRef.setInput('projectRef', {
+    storeId: 'firestore',
+    spaceID: 'S',
+    projectId: 'P',
+  });
+  fixture.componentRef.setInput('selectedTag', 'Ops');
+  await fixture.whenStable();
+  const sharedQuery = component.itemHref(
+    'queries',
+    component.matchingItems('queries')[0],
+  );
+  expect(new DefaultUrlSerializer().serialize(sharedQuery)).toBe(
+    '/space/S/store/firestore/project/P/query/nested%2Fq?id=nested%2Fq',
+  );
 });
 
 it('admits tag lists and encoded detail segments only inside an admitted shared project route', () => {
-  const route = datatugRoutes.find(route => route.path === 'space/:spaceId/store/:storeId/project/:projectId');
-  const guard = route?.canMatch?.[0] as (route: unknown, segments: UrlSegment[]) => boolean;
-  const segments = (space: string, rest: string[]) => ['space', space, 'store', 'firestore', 'project', 'P', ...rest].map(path => new UrlSegment(path, {}));
+  const route = datatugRoutes.find(
+    (route) =>
+      route.path === 'space/:spaceId/store/:storeId/project/:projectId',
+  );
+  const guard = route?.canMatch?.[0] as (
+    route: unknown,
+    segments: UrlSegment[],
+  ) => boolean;
+  const segments = (space: string, rest: string[]) =>
+    ['space', space, 'store', 'firestore', 'project', 'P', ...rest].map(
+      (path) => new UrlSegment(path, {}),
+    );
   expect(guard(route, segments('S', ['tags']))).toBe(true);
+  expect(guard(route, segments('S', ['tag']))).toBe(true);
+  expect(route?.children?.some(child => child.path === 'tag')).toBe(true);
   expect(guard(route, segments('S', ['tag', 'Ops / É?#']))).toBe(true);
   expect(guard(route, segments('/', ['tag', 'Ops']))).toBe(false);
   expect(guard(route, segments('S', ['tag', 'x'.repeat(51)]))).toBe(false);
-  expect(route?.children?.some(child => child.path === 'tag/:tag')).toBe(true);
+  expect(route?.children?.some((child) => child.path === 'tag/:tag')).toBe(
+    true,
+  );
 });
+it.each(['.', '..', 'a//b', 'team/', 'Ops / É?#', 'Case'])(
+  'round-trips accepted opaque tag %s for local and shared projects without root fallback',
+  (tag) => {
+    for (const target of [
+      ref,
+      { storeId: 'firestore', spaceID: 'S', projectId: 'P' },
+    ]) {
+      const link = projectTagLink(target, tag);
+      const address = new URL(
+        new DefaultUrlSerializer().serialize(link),
+        'https://example.test',
+      );
+      expect(address.pathname).not.toBe('/');
+      expect(
+        address.searchParams.get('tag') ??
+          decodeURIComponent(address.pathname.split('/').at(-1) ?? ''),
+      ).toBe(tag);
+      expect(link.queryParams.projectApi).toBe(
+        target === ref ? 'local' : undefined,
+      );
+    }
+  },
+);

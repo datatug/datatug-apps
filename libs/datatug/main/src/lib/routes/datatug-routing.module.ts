@@ -168,7 +168,7 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'tags'].includes(
+            ['overview', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'tags', 'tag'].includes(
               segments[6].path,
             )) ||
           (segments.length === 8 && segments[6].path === 'tag' && segments[7].path.length > 0 && new TextEncoder().encode(segments[7].path).length <= 50) ||
@@ -201,7 +201,7 @@ export const datatugRoutes: Routes = [
             (m) => m.ProjectPageComponent,
           ),
       })),
-      ...['tags', 'tag/:tag'].map((path) => ({ path, loadComponent: () => import('../pages/signed-in/tags/tags-page.component').then(m => m.TagsPageComponent) })),
+      ...['tags', 'tag', 'tag/:tag'].map((path) => ({ path, loadComponent: () => import('../pages/signed-in/tags/tags-page.component').then(m => m.TagsPageComponent) })),
       {
         path: 'shipping',
         loadComponent: () => import('../shipping/shipping-workspace.component').then((m) => m.ShippingWorkspaceComponent),

@@ -13,7 +13,12 @@
       ><ion-label>All tags</ion-label></ion-item
     >
   }
-  <sneat-datatug-project-tags-cloud
-    [projectRef]="projectRef()"
-    [selectedTag]="tag()"
-/></ion-content>
+  @if (tagError(); as error) {
+    <p role="alert">{{ error }}</p>
+  } @else {
+    <sneat-datatug-project-tags-cloud
+      [projectRef]="projectRef()"
+      [selectedTag]="tag()"
+    />
+  }
+</ion-content>

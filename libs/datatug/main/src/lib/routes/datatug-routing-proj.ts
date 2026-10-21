@@ -337,8 +337,18 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    path: 'tag',
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
+  },
+  {
     path: 'tag/:tag',
-    loadComponent: () => import('../pages/signed-in/tags/tags-page.component').then(m => m.TagsPageComponent),
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
   },
   {
     path: 'tags',

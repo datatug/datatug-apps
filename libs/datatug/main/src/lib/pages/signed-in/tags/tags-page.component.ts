@@ -1,7 +1,7 @@
 import { computed } from '@angular/core';
 import { projectItemLink } from '../../../tags/tag-navigation';
 import { ActivatedRoute, RouterLink } from '@angular/router';
-import { map } from 'rxjs';
+import { map, combineLatest } from 'rxjs';
 import { Component, inject, viewChild } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
@@ -39,11 +39,26 @@ import { ProjectTagsCloudComponent } from '../../../tags/project-tags-cloud.comp
 })
 export class TagsPageComponent {
   private readonly cloud = viewChild(ProjectTagsCloudComponent);
+  private readonly route = inject(ActivatedRoute);
   readonly tag = toSignal(
-    inject(ActivatedRoute).paramMap.pipe(
-      map((params) => params.get('tag') ?? undefined),
+    combineLatest([this.route.paramMap, this.route.queryParamMap]).pipe(
+      map(
+        ([params, query]) =>
+          params.get('tag') ??
+          (this.route.snapshot?.routeConfig?.path === 'tag'
+            ? query.get('tag')
+            : null) ??
+          undefined,
+      ),
     ),
   );
+  readonly tagError = computed(() => {
+    const tag = this.tag();
+    return tag !== undefined &&
+      (!tag.length || new TextEncoder().encode(tag).length > 50)
+      ? 'A tag must contain 1 to 50 UTF-8 bytes.'
+      : '';
+  });
   readonly projectRef = toSignal(inject(ProjectContextService).current$);
   readonly allTagsLink = computed(() =>
     projectItemLink(this.projectRef(), 'tags'),

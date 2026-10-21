@@ -40,7 +40,7 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
     boards: [board()],
     environments: [],
   });
-  await page.route('http://localhost:44378/**', async (route) => {
+  await page.context().route('http://localhost:44378/**', async (route) => {
     const request = route.request();
     const url = new URL(request.url());
     const path = url.pathname;
@@ -225,15 +225,21 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   });
   await expect(ops).toContainText('Boards: 1');
   await expect(ops).toContainText('Queries: 1');
-  await expect(ops.getByRole('link', { name: 'Queries: 1', exact: true })).not.toHaveAttribute('href', /folder=|null/);
+  await expect(
+    ops.getByRole('link', { name: 'Queries: 1', exact: true }),
+  ).not.toHaveAttribute('href', /folder=|null/);
   await expect(ops).toContainText('Database servers: 1');
   await page.screenshot({
     path: testInfo.outputPath('tag-cloud.png'),
     fullPage: true,
   });
-  await activePage(page).getByRole('link', { name: 'ops', exact: true }).click();
+  await activePage(page)
+    .getByRole('link', { name: 'ops', exact: true })
+    .click();
   await expect(page).toHaveURL(/\/tag\/ops$/);
-  const detail = activePage(page).locator('sneat-datatug-project-tags-cloud').filter({ has: page.locator('.tag-items') });
+  const detail = activePage(page)
+    .locator('sneat-datatug-project-tags-cloud')
+    .filter({ has: page.locator('.tag-items') });
   await expect(
     detail.getByRole('heading', { name: 'Tag: ops', exact: true }),
   ).toBeVisible();
@@ -250,7 +256,10 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   await expect(detail.locator('.tag-items')).toContainText('Operations board');
   await page.reload();
   await expect(detail.locator('.tag-items')).toContainText('Operations query');
-  await page.screenshot({ path: testInfo.outputPath('tag-detail.png'), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath('tag-detail.png'),
+    fullPage: true,
+  });
   const specialTag = 'Ops / É?#';
   await page.goto(`${base}/tag/${encodeURIComponent(specialTag)}`);
   await expect(
@@ -265,6 +274,26 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   await expect(page).toHaveURL(/\/tags$/);
   await ops.getByRole('link', { name: 'Boards: 1', exact: true }).click();
   await expect(page).toHaveURL(/tag=ops/);
+  const boardRow = activePage(page)
+    .locator('ion-item')
+    .filter({
+      has: page.getByRole('link', { name: 'Operations board', exact: true }),
+    });
+  await expect(boardRow).not.toHaveAttribute('href');
+  await expect(
+    boardRow.getByRole('link', { name: 'Operations board', exact: true }),
+  ).toHaveAttribute('href', /\/board\/b$/);
+  await expect(
+    boardRow.getByRole('link', { name: 'ops', exact: true }),
+  ).toHaveAttribute('href', /\/tag\/ops$/);
+  const popupPromise = page.context().waitForEvent('page');
+  await boardRow
+    .getByRole('link', { name: 'ops', exact: true })
+    .click({ button: 'middle' });
+  const popup = await popupPromise;
+  await expect(popup).toHaveURL(/\/tag\/ops$/);
+  await popup.close();
+  await expect(page).toHaveURL(/\/boards\?tag=ops$/);
   await activePage(page)
     .getByRole('button', { name: 'prod (1)', exact: true })
     .click();
@@ -364,6 +393,37 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
       exact: true,
     }),
   ).toBeVisible();
+  for (const opaque of ['..', 'team/']) {
+    await add(opaque);
+    await activePage(page)
+      .getByRole('button', { name: 'Save changes', exact: true })
+      .click();
+    await expect.poll(() => queryTags.includes(opaque)).toBe(true);
+    await activePage(page)
+      .getByRole('link', { name: opaque, exact: true })
+      .click();
+    await expect(page).toHaveURL(/\/tag\?tag=/);
+    const opaqueDetail = activePage(page)
+      .locator('sneat-datatug-project-tags-cloud')
+      .filter({ has: page.locator('.tag-items') });
+    await expect(
+      opaqueDetail.getByRole('heading', {
+        name: `Tag: ${opaque}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+    await page.reload();
+    await expect(opaqueDetail.locator('.tag-items')).toContainText(
+      'Operations query',
+    );
+    await page.goto(`${base}/query?id=q`);
+    await expect(
+      activePage(page).getByRole('button', {
+        name: `Remove tag ${opaque}`,
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
 });
 
 test('project tags: dashboard uses light card headers with Ionic tabs beside the title', async ({
@@ -438,17 +498,19 @@ test('project tags: dashboard uses light card headers with Ionic tabs beside the
       access: 'public',
       boards: [fixtureBoard],
     };
-    const json = path.endsWith('/projects/projects_summary') ? [] : path.endsWith('/boards/board')
-      ? fixtureBoard
-      : path.endsWith('/projects/capabilities')
-        ? { querySave: false }
-        : path.endsWith('/projects/project_full')
-          ? { ...summary, dbServers: [], environments: [] }
-          : path.endsWith('/projects/project_summary')
-            ? summary
-            : path.endsWith('/agent-info')
-              ? { version: 'v0.103.4' }
-              : {};
+    const json = path.endsWith('/projects/projects_summary')
+      ? []
+      : path.endsWith('/boards/board')
+        ? fixtureBoard
+        : path.endsWith('/projects/capabilities')
+          ? { querySave: false }
+          : path.endsWith('/projects/project_full')
+            ? { ...summary, dbServers: [], environments: [] }
+            : path.endsWith('/projects/project_summary')
+              ? summary
+              : path.endsWith('/agent-info')
+                ? { version: 'v0.103.4' }
+                : {};
     return route.fulfill({
       json,
       headers: { 'access-control-allow-origin': '*' },

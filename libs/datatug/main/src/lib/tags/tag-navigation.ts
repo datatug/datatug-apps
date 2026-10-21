@@ -2,12 +2,6 @@ import { DefaultUrlSerializer, Params, UrlTree } from '@angular/router';
 import { ProjectPage } from '../nav/nav-models';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
-/** Route builders encode each tag as one case-sensitive path segment. */
-export const projectTagHref = (
-  ref: IProjectRef | undefined,
-  tag: string,
-): string => projectPageHref(ref, ['tag', tag]);
-
 const serializer = new DefaultUrlSerializer();
 export function projectItemLink(
   ref: IProjectRef | undefined,
@@ -21,7 +15,21 @@ export function projectItemLink(
   }
   return tree;
 }
-export const projectTagLink = (
+/** Path-like tag text stays opaque in a query parameter, avoiding browser dot normalization. */
+export function projectTagLink(
   ref: IProjectRef | undefined,
   tag: string,
-): UrlTree => projectItemLink(ref, ['tag', tag]);
+): UrlTree {
+  const pathLike =
+    tag.split(/[\\/]/).some((part) => !part || part === '.' || part === '..') ||
+    [...tag].some(
+      (char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127,
+    );
+  return pathLike
+    ? projectItemLink(ref, 'tag', { tag })
+    : projectItemLink(ref, ['tag', tag]);
+}
+export const projectTagHref = (
+  ref: IProjectRef | undefined,
+  tag: string,
+): string => serializer.serialize(projectTagLink(ref, tag));

@@ -161,15 +161,18 @@ function queryItems(
     } @else {
       <ion-list class="tags-cloud">
         @for (entry of entries(); track entry.tag) {
-          <ion-item
-            class="tag-row"
-          >
+          <ion-item class="tag-row">
             <ion-label class="ion-text-wrap"
               ><a [routerLink]="tagHref(projectRef(), entry.tag)"
                 ><strong>{{ entry.tag }}</strong></a
               ></ion-label
             >
-            <div slot="end" class="tag-counts" role="group" [attr.aria-label]="'Tag ' + entry.tag">
+            <div
+              slot="end"
+              class="tag-counts"
+              role="group"
+              [attr.aria-label]="'Tag ' + entry.tag"
+            >
               @for (kind of kinds; track kind) {
                 @if (catalog()[kind].items && entry.counts[kind] > 0) {
                   <a [routerLink]="href(kind, entry.tag)">
@@ -268,6 +271,8 @@ export class ProjectTagsCloudComponent {
       this.revision();
       const environment = this.scope.environment();
       const admitted = this.scope.admitted();
+      // Project refs can remain unchanged across sign-out/account changes.
+      this.scope.page?.identity();
       const subscriptions = new Subscription();
       this.catalog.set({ boards: {}, queries: {}, servers: {} });
       if (!ref) return;
@@ -337,7 +342,11 @@ export class ProjectTagsCloudComponent {
       ]);
     return projectItemLink(
       ref,
-      kind === 'boards' ? ['board', item.id ?? ''] : 'query',
+      kind === 'boards'
+        ? ['board', item.id ?? '']
+        : this.shared()
+          ? ['query', item.id ?? '']
+          : 'query',
       this.itemParams(kind, item),
     );
   }
