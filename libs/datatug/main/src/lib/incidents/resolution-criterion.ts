@@ -19,6 +19,7 @@ export const criterionVersion = (v: unknown): v is number =>
 export function isIncidentResolutionCriterion(
   v: unknown,
 ): v is IncidentResolutionCriterion {
+  try { if (JSON.stringify(v)?.length > 32768) return false; } catch { return false; }
   if (
     !criterionObject(v) ||
     !keys(v, [

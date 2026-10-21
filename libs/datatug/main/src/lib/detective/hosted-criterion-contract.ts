@@ -80,6 +80,7 @@ export function validateHostedCriterionEvent(
   context: Cloud,
   environment: string,
 ): void {
+  if (!criterionObject(event) || !['incident.created','incident.status','incident.outcome','incident.merged','note.added','context.fact.added','context.fact.promoted','context.fact.rejected','compare.run','incident.criterion-set'].includes(event.type)) throw new Error('Unsupported Incident history event.');
   if (event.type !== 'incident.criterion-set') return;
   decodeIncidentEvent(event);
   if (

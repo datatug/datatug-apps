@@ -763,4 +763,15 @@ describe('HostedIncidentConversationComponent', () => {
     page(f).body.set('blocked');await page(f).send();expect(client.incidentAction).toHaveBeenCalledTimes(1);
   });
 
+  it('keeps competing writes locked when a confirmed criterion cannot retire its durable retry',async()=>{
+    const draft=criterionResult();client.projectIncident.mockReturnValue(of({incident:draft.incident}));
+    history={events:[draft.event as IncidentEvent],nextAfterSeq:2,hasMore:false};
+    const f=await mount();page(f).finalizeReview.set(true);
+    client.incidentAction.mockImplementation((_context,_action,id)=>of({...criterionResult(true),receipt:id}));
+    const remove=vi.spyOn(sessionStorage,'removeItem').mockImplementation(()=>{throw new Error('retirement denied');});
+    await page(f).finalizeCriterion();expect(sessionStorage.length).toBe(1);
+    page(f).body.set('competing');await page(f).send();expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    remove.mockRestore();await page(f).retryCriterion();expect(client.incidentAction).toHaveBeenCalledTimes(2);expect(sessionStorage.length).toBe(0);
+  });
+
 });

@@ -1136,8 +1136,13 @@ export class HostedIncidentConversationComponent {
       }
       try {
         sessionStorage.removeItem(this.storageKey(identity));
+        if (pending.action && sessionStorage.getItem(this.storageKey(identity)) !== null) throw new Error('The criterion retry remains in storage.');
       } catch {
-        /* Server receipt already confirmed. */
+        if (pending.action) {
+          this.pending.set(pending);
+          this.sendError.set('The criterion was saved, but its local retry could not be retired. Retry the exact operation or review and abandon it locally.');
+        }
+        /* The exact server receipt is confirmed; a retained criterion still blocks competing writes. */
       }
       const confirmed = result.event;
       this.events.update((events) =>
