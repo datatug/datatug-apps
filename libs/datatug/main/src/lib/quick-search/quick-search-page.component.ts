@@ -41,11 +41,16 @@ import {
 import { Subscription, combineLatest, firstValueFrom, timeout } from 'rxjs';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { IProjectRef, equalProjectRef } from '../core/project-context';
+import {
+  IProjectRef,
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
 import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import {
+  checkMetadataTarget,
   SearchDocument,
   SearchKind,
   SearchSnapshot,
@@ -62,7 +67,7 @@ import {
   selector: 'sneat-datatug-quick-search',
   host: {
     '[attr.data-search-view]':
-      "schemaDetail ? 'schema' : discovery ? 'tags' : 'search'",
+      "checkDetail() ? 'check' : schemaDetail ? 'schema' : discovery ? 'tags' : 'search'",
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
@@ -89,14 +94,16 @@ import {
           ><ion-menu-button /><ion-back-button
             [defaultHref]="overviewHref()" /></ion-buttons
         ><ion-title>{{
-          discovery
-            ? 'Tag discovery'
-            : schemaDetail
-              ? 'Schema metadata'
-              : 'Quick Search'
+          checkDetail()
+            ? 'Check metadata'
+            : discovery
+              ? 'Tag discovery'
+              : schemaDetail
+                ? 'Schema metadata'
+                : 'Quick Search'
         }}</ion-title
         ><ion-buttons slot="end">
-          @if (!discovery && !schemaDetail) {
+          @if (!discovery && !schemaDetail && !checkDetail()) {
             <ion-button (click)="settings.set(!settings())"
               >Index settings</ion-button
             >
@@ -118,7 +125,7 @@ import {
           <h1>{{ schemaTable() }}</h1>
           <p>Selected schema snapshot · {{ schemaName() }}</p>
         }
-        @if (!schemaDetail) {
+        @if (!schemaDetail && !checkDetail()) {
           <form (ngSubmit)="search()">
             <ion-input
               label="Search project names and tags"
@@ -154,7 +161,7 @@ import {
             </div>
           </form>
         }
-        @if (settings()) {
+        @if (settings() && !checkDetail()) {
           <section aria-label="Index settings">
             <h2>Index settings</h2>
             @if (project()?.spaceID) {
@@ -321,22 +328,25 @@ import {
         @if (status()?.error) {
           <p role="alert">{{ status()?.error }}</p>
         }
-        @if (!busy() && status()?.state === 'disabled') {
+        @if (!checkDetail() && !busy() && status()?.state === 'disabled') {
           <p role="status">
             Quick Search is disabled. Open Index settings to preview metadata
             and give indexing consent.
           </p>
           @if (!schemaDetail) {
-            <ion-button (click)="settings.set(true)">Open Index settings</ion-button>
+            <ion-button (click)="settings.set(true)"
+              >Open Index settings</ion-button
+            >
           }
         }
-        @if (status()?.state === 'ready' || schemaDetail) {
+        @if (!checkDetail() && (status()?.state === 'ready' || schemaDetail)) {
           <p aria-live="polite">
-            {{ groups().length }} {{ groups().length === 1 ? 'name' : 'names' }} ·
+            {{ groups().length }}
+            {{ groups().length === 1 ? 'name' : 'names' }} ·
             {{ items().length }} items
           </p>
         }
-        @if (!busy() && searched() && !groups().length) {
+        @if (!checkDetail() && !busy() && searched() && !groups().length) {
           <p role="status">
             {{
               discovery
@@ -345,34 +355,51 @@ import {
             }}
           </p>
         }
-        <ul class="results">
-          @for (group of groups(); track group.key) {
-            <li>
-              <a class="name" [routerLink]="groupHref(group.name)">{{
-                group.name
-              }}</a>
-              <div class="chips">
-                @for (item of group.items; track $index) {
-                  @if (itemHref(item); as href) {
-                    <a
-                      class="chip"
-                      [routerLink]="href"
-                      [attr.aria-label]="label(item, group)"
-                      ><ion-icon
-                        [name]="icons[item.kind]"
-                        aria-hidden="true"
-                      />{{ label(item, group) }}</a
-                    >
-                  } @else {
-                    <span class="chip"
-                      >{{ label(item, group) }} · unavailable</span
-                    >
+        @if (checkDetail()) {
+          <section aria-label="Check metadata">
+            @if (items()[0]; as item) {
+              <h1>{{ item.name }}</h1>
+              <p>Check metadata · Read-only names and tags</p>
+              <p>Identifier: {{ item.reference.objectId }}</p>
+              @if (item.tags.length) {
+                <p>Tags: {{ item.tags.join(', ') }}</p>
+              }
+            } @else if (!busy() && !error()) {
+              <p role="status">
+                This Check metadata is unavailable for the selected project.
+              </p>
+            }
+          </section>
+        } @else {
+          <ul class="results">
+            @for (group of groups(); track group.key) {
+              <li>
+                <a class="name" [routerLink]="groupHref(group.name)">{{
+                  group.name
+                }}</a>
+                <div class="chips">
+                  @for (item of group.items; track $index) {
+                    @if (itemHref(item); as href) {
+                      <a
+                        class="chip"
+                        [routerLink]="href"
+                        [attr.aria-label]="label(item, group)"
+                        ><ion-icon
+                          [name]="icons[item.kind]"
+                          aria-hidden="true"
+                        />{{ label(item, group) }}</a
+                      >
+                    } @else {
+                      <span class="chip"
+                        >{{ label(item, group) }} · unavailable</span
+                      >
+                    }
                   }
-                }
-              </div>
-            </li>
-          }
-        </ul>
+                </div>
+              </li>
+            }
+          </ul>
+        }
       </main></ion-content
     >`,
   styles: [
@@ -478,6 +505,15 @@ export class QuickSearchPageComponent {
   private readonly destroy = inject(DestroyRef);
   readonly discovery = this.route.snapshot.data['discovery'] === true;
   readonly schemaDetail = this.route.snapshot.data['schemaDetail'] === true;
+  readonly detailTarget = signal(
+    checkMetadataTarget(this.route.snapshot.queryParamMap),
+  );
+  readonly checkDetail = computed(
+    () =>
+      !this.schemaDetail &&
+      !this.discovery &&
+      this.detailTarget().kind !== 'none',
+  );
   readonly project = signal<IProjectRef | undefined>(undefined);
   readonly environmentId = signal<string | undefined>(undefined);
   readonly query = signal(
@@ -597,11 +633,27 @@ export class QuickSearchPageComponent {
         this.environmentId.set(environment?.id);
         this.snapshot.set(undefined);
         this.consent.set(false);
+        if (this.checkDetail()) this.loadStatus();
       }
     });
     this.route.queryParamMap?.pipe(takeUntilDestroyed()).subscribe((params) => {
+      const target = checkMetadataTarget(params);
+      if (
+        !this.schemaDetail &&
+        !this.discovery &&
+        JSON.stringify(target) !== JSON.stringify(this.detailTarget())
+      ) {
+        this.detailTarget.set(target);
+        this.invalidateSearch();
+        this.snapshot.set(undefined);
+        this.consent.set(false);
+        this.settings.set(false);
+        this.query.set(params.get('q') || '');
+        this.loadStatus();
+        return;
+      }
       const query = params.get(this.discovery ? 'name' : 'q') || '';
-      if (!this.schemaDetail && this.query() !== query) {
+      if (!this.schemaDetail && !this.checkDetail() && this.query() !== query) {
         this.query.set(query);
         this.invalidateSearch();
         this.search();
@@ -655,6 +707,10 @@ export class QuickSearchPageComponent {
         if (generation !== this.generation) return;
         this.status.set(status);
         this.busy.set(false);
+        if (this.checkDetail()) {
+          void this.checkMetadata();
+          return;
+        }
         if (!this.schemaDetail && status.state === 'ready') this.search();
         if (this.schemaDetail) void this.schemaPreview();
       },
@@ -670,7 +726,7 @@ export class QuickSearchPageComponent {
   }
   search() {
     const ref = this.project();
-    if (!ref || this.status()?.state !== 'ready') return;
+    if (!ref || this.checkDetail() || this.status()?.state !== 'ready') return;
     if (!this.query().trim()) {
       this.invalidateSearch();
       return;
@@ -704,9 +760,58 @@ export class QuickSearchPageComponent {
         },
       });
   }
+  async checkMetadata() {
+    const ref = this.project(),
+      target = this.detailTarget(),
+      environmentId = this.environmentId();
+    if (!ref || !this.checkDetail()) return;
+    const generation = ++this.generation;
+    this.request?.unsubscribe();
+    this.items.set([]);
+    this.snapshot.set(undefined);
+    this.busy.set(true);
+    this.error.set('');
+    try {
+      if (target.kind !== 'check') throw new Error('Invalid metadata target');
+      let document: SearchDocument | undefined;
+      if (
+        ref.projectApi === 'cloud' ||
+        isSharedProjectRef(ref) ||
+        this.status()?.supportsMetadataPreview
+      ) {
+        const snapshot = await firstValueFrom(
+          this.api.preview(ref, environmentId).pipe(timeout(15000)),
+        );
+        document = snapshot.documents.find(
+          (item) =>
+            item.kind === 'check' &&
+            item.reference.objectId === target.objectId &&
+            (!item.reference.environmentId ||
+              item.reference.environmentId === environmentId),
+        );
+      } else {
+        document = await this.snapshots.publicCheckMetadata(
+          ref,
+          target.objectId,
+          () => generation === this.generation,
+        );
+      }
+      if (generation !== this.generation) return;
+      this.items.set(document ? [document] : []);
+    } catch {
+      if (generation === this.generation)
+        this.error.set(
+          target.kind === 'invalid'
+            ? 'Invalid Check metadata link.'
+            : 'Could not read this Check metadata. Check project access and retry.',
+        );
+    } finally {
+      if (generation === this.generation) this.busy.set(false);
+    }
+  }
   async preview() {
     const ref = this.project();
-    if (!ref) return;
+    if (!ref || this.checkDetail()) return;
     const generation = ++this.generation;
     this.request?.unsubscribe();
     this.busy.set(true);
@@ -714,7 +819,9 @@ export class QuickSearchPageComponent {
     this.error.set('');
     try {
       const snapshot = this.status()?.supportsMetadataPreview
-        ? await firstValueFrom(this.api.preview(ref, this.environmentId()).pipe(timeout(15000)))
+        ? await firstValueFrom(
+            this.api.preview(ref, this.environmentId()).pipe(timeout(15000)),
+          )
         : await this.snapshots.preview(ref, this.environmentId());
       if (generation === this.generation) this.snapshot.set(snapshot);
     } catch {
@@ -745,6 +852,7 @@ export class QuickSearchPageComponent {
     this.searched.set(true);
   }
   enable() {
+    if (this.checkDetail()) return;
     const ref = this.project(),
       snapshot = this.snapshot();
     if (
@@ -758,12 +866,14 @@ export class QuickSearchPageComponent {
     this.mutate(this.api.enable(ref, snapshot));
   }
   refresh() {
+    if (this.checkDetail()) return;
     const ref = this.project(),
       snapshot = this.snapshot();
     if (!ref || !snapshot || this.capacityExceeded() || this.busy()) return;
     this.mutate(this.api.refresh(ref, snapshot));
   }
   disable() {
+    if (this.checkDetail()) return;
     const ref = this.project();
     if (!ref || this.busy()) return;
     this.items.set([]);
