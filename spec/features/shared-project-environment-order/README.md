@@ -93,8 +93,18 @@ Recognized stages sort in the table's order. Multiple IDs in one stage sort by
 normalized ID and then by the exact stable ID. Unclassified custom IDs sort by
 normalized ID and then exact stable ID after UAT and before PROD. This keeps a
 recognized production environment last while retaining every custom
-environment. The comparator is locale-independent and returns the same result
+environment. Both normalized-ID and exact-ID comparisons are lexicographic comparisons of
+Unicode scalar-value sequences (numeric code points), with a shorter equal
+prefix sorting first. Only the stated ASCII normalization applies: no Unicode
+case folding, normalization, locale collation, UTF-16 code-unit comparison, or
+UTF-8 byte comparison. IDs must be valid Unicode scalar sequences; malformed
+UTF-8 or unpaired UTF-16 surrogates are rejected at the contract boundary.
+The comparator is locale-independent and returns the same result
 in the web app, Go backend, GitHub reader, and local agent.
+Shared golden fixtures must explicitly expect `Dev` before `dev`,
+`qa-test` before `qa_test` before `qatest` when normalized IDs collide, and
+custom IDs `é`, `Ω`, ``, `𐀀`, `😀` in that scalar-value order.
+These examples use exact IDs and preserve their original spelling.
 
 ### Explicit project order
 
@@ -124,9 +134,11 @@ levels until the project contract gains an explicit severity value.
 The full Environments page renders every environment on a neutral background.
 For a `danger` or `warning` tone it shows a small severity chip containing the
 existing caution text and matching accessible danger or warning color, and
-styles the environment navigation link with that same caution color. The chip text and
-warning icon make the meaning available without color. For `primary`,
-`success`, invalid, or missing tone metadata, the row and link use the normal
+styles the environment navigation link with that same caution color. The chip adds a fixed caution triangle icon, distinct from and in addition to
+the stored environment artwork icon; chip text makes meaning available without
+color. Both chip text and navigation-link text meet WCAG AA contrast, and the
+link has a visible keyboard focus indicator in every supported theme. For
+`neutral`, `primary`, `success`, invalid, or missing tone metadata, the row and link use the normal
 neutral text treatment and no caution chip is shown; these tones do not imply a
 safety level. Custom IDs and aliases receive no caution treatment merely from
 their ID or resolved position. The compact overview row uses the same resolver
@@ -146,25 +158,49 @@ capability and the current actor has project write access. Activating it reveals
 one inline editor as the final list row and moves focus to its name input.
 Cancel clears the draft, hides the row, and returns focus to the header action.
 
-Submission reuses the existing `EnvironmentService.createEnvironment` contract:
-`POST datatug/environment/create_environment` with the exact `projectRef` and a
-trimmed, nonempty `name`. The server remains authoritative for ID generation,
-duplicate names, store-specific validation, and access. Enter and the Add
-button submit the same operation. While it is pending, the input and both
-submission paths cannot send a second request. A validation, authorization,
-conflict, network, or server error keeps the editor and draft visible, restores
-usable controls, associates the error with the input/action, and permits retry
-or cancel.
+Creation is a required end-to-end deliverable for every current supported
+store: hosted Space, GitHub, and local agent. The existing
+`datatug/environment/create_environment` browser route is a starting point,
+not proof of an implemented handler. DESIGN must specify the authenticated
+Go handler and transport mapping for each store before implementation. Each
+request carries the exact project identity described below, a trimmed nonempty
+name, an opaque membership/order precondition, and a client-generated operation
+ID. The authority generates the stable environment ID and validates names;
+duplicate trimmed names within the exact project scope are rejected explicitly.
+Enter and Add submit the same guarded operation; at most one request is in
+flight. Validation or definitive denial keeps the draft and associated error
+visible and restores usable controls.
 
-The page does not optimistically claim creation from an HTTP acknowledgement.
-After success it rereads the canonical environment collection. Only that read
-adds the new stable ID to the list, after which the shared order resolver places
-it using the saved-order reconciliation rule for missing live IDs. Creation
-does not rewrite `environmentOrder`, classify from the display name, or change
-any existing environment ID, metadata, selection, or scope. A store without a
-verified authenticated implementation of the create contract exposes no
-enabled Add action; the browser never substitutes a direct Firestore, provider,
-or filesystem write.
+The operation ID is scoped to actor identity plus the complete project identity
+(including store, Space, repository/folder, branch, API and agent authority).
+The authority persists a durable receipt atomically with the environment
+creation and membership revision, including normalized request payload and
+server-issued ID. An identical retry returns that same ID/result, including
+when the original precondition is now stale; reuse with any changed scope or
+payload conflicts. Receipts remain replayable for at least seven days. After
+expiry the authority rejects the expired operation rather than creating again;
+the client must reconcile canonical state before offering a fresh operation.
+The response includes receipt expiry. An expired-operation tombstone remains
+durable so expiry can never silently turn the same ID into a new create. These guarantees apply to all three
+transports, including provider commits and agent restart recovery.
+
+After success or any uncertain outcome (timeout, disconnect, or lost response),
+the client reads canonical environment state and reconciles the operation
+receipt/server-issued ID before declaring success or enabling a fresh create.
+While reconciliation is unavailable it keeps the draft, shows an unresolved
+state, and allows only same-operation replay, reload/reconcile, or closing the
+editor; Cancel does not cancel a possibly committed write. Only canonical
+state establishes that the new stable ID exists exactly once. A definitive
+uncommitted rejection may permit a corrected fresh operation. Scope changes
+fence all late create responses and receipt reads just as they fence saves.
+
+The shared resolver places the new ID using the missing-live-ID reconciliation
+rule. Creation does not rewrite `environmentOrder`, classify from display name,
+or change existing IDs, metadata, selection or scope. Add may be disabled for a
+read-only actor, revoked provider grant, or explicitly unsupported old agent
+version with a visible upgrade reason. Missing create implementation on a
+current supported store fails feature acceptance; hiding Add cannot satisfy it.
+The browser never substitutes direct Firestore, provider, or filesystem writes.
 
 ### Shared persistence and authority
 
@@ -182,6 +218,38 @@ store:
 - A local project save goes through the authenticated local-agent HTTP
   transport and its existing project-file store. The web app never writes a
   local file directly.
+
+DESIGN must deliver one store-neutral environment-state DTO and read/create/
+order-save operations. The read request, response and every mutation retain all
+`IProjectRef` qualifiers: `storeId`, `projectId`, `spaceID`, `projectApi`, and
+`branch`, plus resolved repository/folder and agent authority where applicable.
+No reader may collapse this to `projectId` alone. The response contains the exact
+resolved identity, canonical live IDs and stored presentation, raw saved order,
+reconciled complete order and repair status, one opaque revision covering both
+membership and order, and independently authoritative `canReadOrder`,
+`canWriteOrder`, and `canCreateEnvironment` capabilities with denial reasons.
+Capabilities come from the relevant current store authority and are rechecked
+on mutation; UI code must not infer them from authentication, `querySave`,
+billing alone, Firestore readability, or presence of an environment list.
+
+DESIGN must name concrete record/file paths, routes, serialization/versioning,
+and authority checks for each store: hosted Space project metadata and
+membership under its exact Space/project record through authenticated Go
+handlers only; GitHub project metadata plus environment files under the exact
+repository/folder/branch through a provider-backed atomic branch-head-fenced
+commit; local project metadata plus environment files under the agent-resolved
+project root through authenticated agent/store operations. It must specify how
+create receipts and revisions are atomically persisted and recovered on each
+store. Hosted Firestore summary serialization and every alternative collection
+reader must expose the same authorized contract without browser writes.
+
+Read/create/save responses distinguish unauthenticated, forbidden, unsupported
+version/capability, invalid payload, stale revision, operation-ID conflict,
+expired receipt, transient failure, and unresolved outcome. A canonical reread
+uses the identical scoped state operation: the Go-backed authoritative hosted
+record, GitHub state at the committed branch head, or agent project-file state
+at the committed revision. Cached summaries or mutation acknowledgements alone
+cannot prove persistence. Capabilities are refreshed on denial and scope change.
 
 Every reader returns an opaque environment-order revision, or an equivalent
 store precondition such as the exact Git branch head, together with the order.
@@ -235,10 +303,12 @@ title in a card heading, fills each row with `presentation.tone`, and has no
 reorder or inline-add action. An existing browser client calls
 `datatug/environment/create_environment` with `projectRef` and name, but no
 matching handler was found in the surveyed current backend or local-agent
-repositories; implementation must verify each store's real authenticated
-capability before enabling Add. Design and implementation must close these gaps
-end to end and reconcile the pending project-overview work before editing that
-shared surface. A UI-only sort, browser storage, unverified create route, or
+repositories; all three current supported stores require real authenticated create and order
+implementations. PR #464 is the landed overview baseline on fresh `origin/main`
+at `356c79fb430bf68bd5a68e8662030841eb2d771b`. The specification branch has
+integrated that baseline through WB. DESIGN and implementation must start from
+current `origin/main`, preserve its distinct overview content, and close these
+gaps end to end before editing the shared surface. A UI-only sort, browser storage, unverified create route, or
 demo-specific data path does not satisfy this feature.
 
 ## Acceptance Criteria
@@ -275,16 +345,17 @@ demo-specific data path does not satisfy this feature.
   effect. The links are presented as navigation, not selected filter chips.
 - Given the compact overview row or full Environments page, when environments
   have `danger` or `warning` presentation tone, then their links use the
-  matching accessible caution color and icon and the full-page row has a small
+  matching accessible caution color, preserve stored artwork, and chips add a
+  fixed caution icon and the full-page row has a small
   severity chip reading **High caution** or **Use caution**. The environment row
   itself has a neutral background and the caution meaning does not depend on
   color alone.
-- Given an environment with `primary`, `success`, invalid, or missing tone, or
+- Given an environment with `neutral`, `primary`, `success`, invalid, or missing tone, or
   with a custom ID, when it is shown, then its link uses neutral text and no
   caution chip is invented from the ID, alias, list position, or order. Stored
   presentation metadata and warning semantics remain unchanged.
 - Given environment add/edit/detail or other actions present in the overview or
-  pending integration when the duplicate tab is removed, then each action is
+  landed baseline when the duplicate tab is removed, then each action is
   retained or moved to the full Environments page and remains reachable by
   keyboard and touch.
 - Given the full Environments page, when it renders, then it has one page-level
@@ -297,23 +368,25 @@ demo-specific data path does not satisfy this feature.
   focus to the page-header action.
 - Given an empty or whitespace-only name, when submission is attempted, then no
   request is sent and the name error is associated with the input. Given a
-  nonempty name, submission trims it and sends the existing
-  `datatug/environment/create_environment` request with the exact project
-  reference; Enter and Add share the same guarded operation.
+  nonempty name, submission trims it and sends the extended create request
+  mapped from `datatug/environment/create_environment` with the exact project
+  reference, operation ID and membership/order precondition through the
+  store-specific authenticated handler; Enter and Add share the guarded operation.
 - Given environment creation is pending, when Add is clicked, Enter is pressed,
-  or the action is clicked again, then only one request is in flight. Given a
-  validation, duplicate, authorization, conflict, network, or server error,
-  then the draft remains visible, the controls become usable, and an associated
-  error offers retry or Cancel without changing environment order.
+  or the action is clicked again, then only one request is in flight. Definitive validation, duplicate,
+  authorization or conflict rejection retains the draft with a specific error.
+  An uncertain network/server outcome enters reconciliation; it cannot enable
+  a fresh operation until the canonical state and receipt establish the result.
 - Given the create request succeeds, when the canonical environment collection
   is reread, then the server-issued stable ID appears exactly once through the
   shared resolver's missing-live-ID rule. No success state or new row is
   published from the acknowledgement alone, and the create does not silently
   rewrite a saved order or current selection.
-- Given a read-only actor or a store without a verified authenticated create
-  implementation, when the page renders, then there is no enabled Add
-  environment mutation. Direct client Firestore, provider, or filesystem writes
-  cannot substitute for the missing capability.
+- Given a read-only actor, revoked provider grant, or explicitly unsupported
+  old agent version, when the page renders, then there is no enabled Add
+  environment mutation. The reason is visible and an old agent offers upgrade guidance.
+  Missing implementation on a current supported store fails acceptance.
+  Direct client Firestore, provider, or filesystem writes cannot substitute.
 - Given an authorized project editor on Project overview → Environments label →
   full Environments page, when Manage order is opened, then the editor shows
   actual project environments with stable identity and presentation, a drag
@@ -358,6 +431,24 @@ demo-specific data path does not satisfy this feature.
   capability changes while a save is pending, when a late response arrives,
   then it cannot publish into the new scope or replace its displayed order.
 
+- Given each supported store, when environment state is read as a writer or
+  read-only actor, then the mandatory DTO retains every identity qualifier,
+  canonical membership/presentation, raw/reconciled order, combined revision,
+  repair state and three independently authoritative capabilities. Tests prove
+  that different Space, branch, API, folder or agent qualifiers never alias.
+- Given create commits but its response is lost on each supported transport,
+  when the same operation is replayed or reconciled after a client/agent
+  restart, then canonical state exposes the original server-issued ID exactly
+  once, the same result is returned, and no false failure/success is shown.
+  Changed payload/scope conflicts; expired receipts reject replay and require
+  reconciliation before a fresh operation; concurrent create/order writes
+  cannot bypass the combined revision fence.
+- Given any current supported hosted, GitHub or local store with authorized
+  write access, then authenticated create and order operations are implemented
+  and exercised through the real transport. Missing handlers or permanently
+  hidden Add fail acceptance. Per-store contract tests include validation,
+  denial, stale membership, receipt replay/expiry and canonical reread.
+
 ### Store and safety boundaries
 
 - Given a hosted Space project, when its order is saved, then a Go HTTPS handler
@@ -384,7 +475,10 @@ demo-specific data path does not satisfy this feature.
 ### Verification
 
 - Focused contract tests cover the default comparator, aliases, case,
-  deterministic custom-ID ordering, duplicate/unknown/missing reconciliation,
+  deterministic custom-ID ordering using identical JS/Go golden fixtures
+  containing `Dev`/`dev`, `qa-test`/`qa_test`/`qatest`, BMP `é`/`Ω`, and
+  supplementary `😀`/`𐀀` versus BMP `` (scalar order, not UTF-16 order),
+  invalid-scalar rejection, duplicate/unknown/missing reconciliation,
   complete-permutation validation, revision conflicts, idempotent retry, and
   scope changes.
 - Focused UI tests exercise the compact overview row, removed duplicate tab,
@@ -396,8 +490,9 @@ demo-specific data path does not satisfy this feature.
   controls, cancel, pending, denial, conflict, reorder failure/retry, canonical
   order reread, and selected-environment stability in the zoneless app.
 - Store tests prove hosted Firestore, provider-backed GitHub, and local-agent
-  project-file persistence through their real adapters. A whole browser journey
-  uses a real writable project: the editor adds an environment through a
+  project-file persistence through their real adapters. A real web-browser acceptance journey for each materially different
+  transport (hosted Go, GitHub provider, local authenticated agent) uses a real
+  writable project on that store: the editor adds an environment through a
   capability-backed create route, observes it after canonical reread, reader A
   reorders a standard and custom environment, reloads, reader B observes the
   same order, and an existing query still runs against the previously selected
