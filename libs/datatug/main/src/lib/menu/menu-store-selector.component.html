@@ -9,7 +9,7 @@
       <ion-icon name="storefront-outline" />
     </ion-button>
   </ion-buttons>
-  @if (currentStoreId() && !stores()?.length) {
+  @if (currentStoreId() && !stores().length) {
     <ion-label color="medium">Store</ion-label>
     <ion-select class="menu-selector-field" disabled [value]="currentStoreId()">
       <ion-select-option [value]="currentStoreId()">{{
@@ -17,7 +17,7 @@
       }}</ion-select-option>
     </ion-select>
   }
-  @if (stores()?.length) {
+  @if (stores().length) {
     <ion-select
       class="menu-selector-field"
       aria-label="Store"
