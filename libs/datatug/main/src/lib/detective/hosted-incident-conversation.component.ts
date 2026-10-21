@@ -996,7 +996,6 @@ export class HostedIncidentConversationComponent {
     }
     const identity = this.identity();
     const context = this.context();
-    const ref = this.incidentRef();
     const environment = this.environment();
     let lifetime: ReturnType<typeof this.nativeLifetime.capture>;
     try {

@@ -45,6 +45,7 @@ describe('DetectiveClientService', () => {
 
   it('freezes complete criterion requests and validates real server receipts before accepting success',async()=>{
     const {storage,spaceID,project,operationId:_id,...draft}=structuredClone(criterionFixture.draftRequest);
+    void _id;
     const cloud={kind:'cloud' as const,storage:storage as 'firestore',spaceID,project,principal:'actor'};
     const response={...criterionFixture.draftSuccess,receipt:'operation-criterion-fixed'};
     api.post.mockReturnValue(of(response));
@@ -58,6 +59,7 @@ describe('DetectiveClientService', () => {
   it('rejects action payload mixing and malformed hosted criterion reads',async()=>{
     const cloud={kind:'cloud' as const,storage:'firestore' as const,spaceID:'space',project:criterionFixture.draftRequest.project,principal:'actor'};
     const {storage:_s,spaceID:_i,project:_p,operationId:_o,...finalize}=criterionFixture.finalizeRequest;
+    void [_s,_i,_p,_o];
     await expect(firstValueFrom(client.incidentAction(cloud,{...finalize,evidence:criterionFixture.draftRequest.evidence} as unknown as HostedCriterionAction))).rejects.toThrow('Evidence is only');
     expect(api.post).not.toHaveBeenCalled();
     const incident=structuredClone(criterionFixture.draftSuccess.incident);incident.resolutionCriterion.definitionDigest='missing';

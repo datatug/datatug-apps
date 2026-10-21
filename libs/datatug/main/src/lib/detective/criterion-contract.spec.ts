@@ -28,6 +28,7 @@ const action = (which: 'draft' | 'finalize'): HostedCriterionAction => {
     operationId: _o,
     ...value
   } = which === 'draft' ? fixture.draftRequest : fixture.finalizeRequest;
+  void [_s, _i, _p, _o];
   return value as HostedCriterionAction;
 };
 describe('Hosted criterion frozen Core69 transport', () => {

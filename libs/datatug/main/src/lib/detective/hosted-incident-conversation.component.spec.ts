@@ -682,7 +682,10 @@ describe('HostedIncidentConversationComponent', () => {
     expect(f.nativeElement.textContent).toContain(final.incident.resolutionCriterion.definitionDigest);
     expect(client.incidentAction).not.toHaveBeenCalled();
     const link=f.debugElement.queryAll(By.directive(RouterLink)).find(el=>el.nativeElement.textContent.includes('Open saved Check'));
-    expect(TestBed.inject(Router).serializeUrl(link!.injector.get(RouterLink).urlTree!)).toContain('/checks/fault-check?environment=demo');
+    if (!link) throw new Error('Saved Check navigation is missing.');
+    const tree=link.injector.get(RouterLink).urlTree;
+    if (!tree) throw new Error('Saved Check route is unavailable.');
+    expect(TestBed.inject(Router).serializeUrl(tree)).toContain('/checks/fault-check?environment=demo');
   });
   it('requires durable readback before criterion dispatch and retains a failed storage attempt',async()=>{
     const f=await mount();selectCriterion(f);
@@ -747,7 +750,8 @@ describe('HostedIncidentConversationComponent', () => {
     const f=await mount();selectCriterion(f);const reply=new Subject<unknown>();
     client.incidentAction.mockReturnValue(reply.asObservable());
     const sending=page(f).saveCriterion();
-    const original=client.incidentAction.mock.calls[0], stored=sessionStorage.key(0)!;
+    const original=client.incidentAction.mock.calls[0], stored=sessionStorage.key(0);
+    if (!stored) throw new Error('Criterion retry was not durably saved.');
     const updates:unknown[]=[];f.componentInstance.incidentUpdated.subscribe(value=>updates.push(value));
     const auth=TestBed.inject(SneatAuthStateService).authState as unknown as BehaviorSubject<unknown>;
     auth.next({status:'authenticated',user:{uid:'another-account'}});
