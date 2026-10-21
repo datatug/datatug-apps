@@ -645,9 +645,8 @@ test.describe('GitHub-store project — every side-menu page loads without error
         hasText: 'Queries',
       })
       .click();
-    await activePage(page)
-      .locator('ion-item', { hasText: 'customers' })
-      .click();
+    await expect(page).toHaveURL(`${PAGES_URL}/queries`);
+    await activePage(page).getByText('customers', { exact: true }).click();
     await activePage(page)
       .locator('ion-item', { hasText: 'Customer invoices' })
       .getByTitle('Edit')
