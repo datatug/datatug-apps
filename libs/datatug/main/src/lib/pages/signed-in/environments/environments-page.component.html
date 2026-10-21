@@ -76,7 +76,14 @@
                 </h3></ion-label
               >
               @if (presentation(environment).safetyLabel; as safety) {
-                <ion-chip slot="end" [color]="presentation(environment).tone"
+                <ion-chip
+                  slot="end"
+                  [class.severity-warning]="
+                    presentation(environment).tone === 'warning'
+                  "
+                  [class.severity-danger]="
+                    presentation(environment).tone === 'danger'
+                  "
                   ><ion-icon
                     [icon]="warningIcon"
                     aria-hidden="true"

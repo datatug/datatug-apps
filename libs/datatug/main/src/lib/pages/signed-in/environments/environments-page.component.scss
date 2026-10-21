@@ -4,11 +4,11 @@
 .environment-danger {
   color: var(--ion-color-danger-shade);
 }
-ion-chip[color='warning'] {
+ion-chip.severity-warning {
   --background: #fff1bf;
   --color: #594300;
 }
-ion-chip[color='danger'] {
+ion-chip.severity-danger {
   --background: #ffe5e8;
   --color: #a31630;
 }
@@ -16,11 +16,11 @@ ion-chip[color='danger'] {
   .environment-warning {
     color: #ffd866;
   }
-  ion-chip[color='warning'] {
+  ion-chip.severity-warning {
     --background: #4a3900;
     --color: #ffe49b;
   }
-  ion-chip[color='danger'] {
+  ion-chip.severity-danger {
     --background: #591525;
     --color: #ffd8df;
   }
