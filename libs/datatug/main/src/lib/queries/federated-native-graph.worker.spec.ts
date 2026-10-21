@@ -88,6 +88,10 @@ describe('native graph Worker/service/storage fixture integration, no publicatio
     const evidenceIndex = locations?.recordset.columns.findIndex((column) => column.name === 'Exact reference evidence');
     expect(evidenceIndex).toBe(14);
     expect(locations?.recordset.rows[0][14].value).toBe(token ?? 'missing-field');
+    if (token === '-0') {
+      expect(locations?.recordset.rows[0][4]).toEqual({ type: 'decimal', value: '-0' });
+      expect(locations?.recordset.rows[0][14]).toEqual({ type: 'string', value: '-0' });
+    }
     expect(locations?.recordset.rows[1][14].value).toBe('4431780');
     const keys = control.wireRequests.filter((query) => query['from'].name === definition.federation?.nativeGraph?.stages.places.collection).flatMap((query) => query['where'].right.values);
     expect(keys).toContain('4431780'); expect(keys).not.toContain('4369596'); expect(keys).not.toContain('1000');

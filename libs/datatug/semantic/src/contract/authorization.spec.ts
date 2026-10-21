@@ -2,7 +2,7 @@ import { decodeErrorEnvelope } from './decoders';
 import { describe, expect, it } from 'vitest';
 import { isAuthorizationResult, isUpdateResponse } from './authorization';
 
-function executionResult(enforced: boolean): unknown {
+function executionResult(enforced: boolean) {
   return {
     apiVersion: 'dtql.org/authorization/v1',
     requestId: 'request-1',
@@ -62,7 +62,7 @@ describe('OpenVaultDB authorization response validation', () => {
 
   it('requires dry-run restrictions to remain unenforced', () => {
     const authorization = {
-      ...(executionResult(false) as Record<string, unknown>),
+      ...executionResult(false),
       mode: 'plan',
       result: 'conditional',
       allowed: false,

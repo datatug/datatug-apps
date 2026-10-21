@@ -228,9 +228,12 @@ describe('complete held Orders monthly trend', () => {
           spec,
         ).ok,
       ).toBe(false);
+    // Keep the malformed wire cell: missing value must still be refused.
+    const malformedNull: TypedValue = { type: 'null', value: null };
+    Reflect.deleteProperty(malformedNull, 'value');
     expect(
       prepareOrdersMonthlyTrend(
-        input([[integer(1), { type: 'null' }, text('A')]]),
+        input([[integer(1), malformedNull, text('A')]]),
         spec,
       ).ok,
     ).toBe(false);
