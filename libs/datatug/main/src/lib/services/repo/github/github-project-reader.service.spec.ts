@@ -687,3 +687,158 @@ describe('GithubProjectReaderService', () => {
     });
   });
 });
+
+describe('actual legacy entity provenance and equivalent dual layouts', () => {
+  it.each(['flat', 'nested', 'equivalent', 'conflict'])(
+    'reads %s layout without inventing a source path',
+    async (mode) => {
+      const { gh, service } = setup();
+      const flat = 'demo-project-1/entities/Customer.entity.json',
+        nested = 'demo-project-1/entities/Customer/Customer.entity.json';
+      const files: Record<string, string> = {
+        'demo-project-1/datatug-project.json': '{}',
+      };
+      if (mode !== 'nested')
+        files[flat] =
+          '{"fields":[{"id":"ID","type":"string"}],"title":"Customer"}';
+      if (mode !== 'flat')
+        files[nested] =
+          mode === 'conflict'
+            ? ' {"title":"Different","fields":[]}'
+            : '{"title":"Customer","fields":[{"type":"string","id":"ID"}]}';
+      gh.addRepo(REPO, SHA, files);
+      expect(await first(service.listEntityIds(PROJECT_ID))).toEqual([
+        'Customer',
+      ]);
+      if (mode === 'conflict')
+        await expect(
+          first(service.getEntity(PROJECT_ID, 'Customer')),
+        ).rejects.toThrow('ambiguous');
+      else {
+        expect(
+          await first(service.entityDefinitionPath(PROJECT_ID, 'Customer')),
+        ).toBe(
+          mode === 'flat'
+            ? 'entities/Customer.entity.json'
+            : 'entities/Customer/Customer.entity.json',
+        );
+        expect(
+          await first(service.getEntity(PROJECT_ID, 'Customer')),
+        ).toMatchObject({
+          id: 'Customer',
+          title: 'Customer',
+          fields: [{ id: 'ID', type: 'string' }],
+        });
+      }
+    },
+  );
+});
+
+describe('strict board metadata reads for search projection',()=>{
+  it('refuses a missing full board instead of inventing searchable title metadata',async()=>{
+    const {service}=setup();
+    await expect(first(service.getBoard(PROJECT_ID,'missing',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
+    expect(await first(service.getBoard(PROJECT_ID,'missing'))).toMatchObject({id:'missing',title:'missing'});
+  });
+});
+
+describe('strict schema inventory completeness', () => {
+  function strictSetup(tree?: unknown, missing = false) {
+    const gh = new FakeGithub();
+    if (!missing) gh.addRepo(REPO, SHA, demoFiles());
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: GITHUB_FETCH,
+          useValue: async (url: string, init: RequestInit) =>
+            url.includes('/git/trees/') && tree !== undefined
+              ? new Response(JSON.stringify(tree), { status: 200 })
+              : gh.fetch(url, init),
+        },
+        { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+        { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+      ],
+    });
+    return { gh, service: TestBed.inject(GithubProjectReaderService) };
+  }
+  it.each([
+    { tree: [], truncated: true },
+    { tree: null, truncated: false },
+    { tree: [{ path: 2, type: 'blob' }], truncated: false },
+    { tree: [] },
+  ])('refuses incomplete or malformed listing %j', async (tree) => {
+    const { service } = strictSetup(tree);
+    await expect(
+      first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+  it('does not reuse a permissive listing and reuses a proven strict tree across directories', async () => {
+    const { service, gh } = strictSetup();
+    await first(service.listDirectory(PROJECT_ID, 'dbmodels'));
+    await first(
+      service.listDirectory(PROJECT_ID, 'dbmodels', { requireComplete: true }),
+    );
+    await first(
+      service.listDirectory(PROJECT_ID, 'dbmodels/chinook', {
+        requireComplete: true,
+      }),
+    );
+    expect(gh.urls().filter((url) => url.includes('/git/trees/'))).toHaveLength(
+      2,
+    );
+  });
+  it('accepts an explicitly complete empty tree', async () => {
+    const { service } = strictSetup({ tree: [], truncated: false });
+    expect(
+      await first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).toEqual([]);
+  });
+  it('refuses a missing project instead of manufacturing an empty strict inventory', async () => {
+    const { service } = strictSetup(undefined, true);
+    await expect(
+      first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+  it.each([403, 'network', 'redirect'] as const)('refuses an unresolved, refused or moved commit (%s)',async failure=>{
+    const {service,gh}=strictSetup();
+    gh.fail.api=failure;
+    await expect(first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).rejects.toThrow();
+  });
+  it('ignores a persisted legacy tree without complete provenance',async()=>{
+    const gh=new FakeGithub();gh.addRepo(REPO,SHA,demoFiles());
+    const getFile=vi.fn(async (_commit:string,path:string)=>path==='#tree'?{text:'[]',bytes:2}:undefined);
+    TestBed.configureTestingModule({providers:[
+      {provide:GITHUB_FETCH,useValue:gh.fetch},
+      {provide:GITHUB_CLOCK,useValue:()=>1_000_000},
+      {provide:GITHUB_FILE_STORE,useValue:{...NO_GITHUB_FILE_STORE,getFile}},
+    ]});
+    const service=TestBed.inject(GithubProjectReaderService);
+    expect(await first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).not.toEqual([]);
+    expect(getFile.mock.calls.some(call=>call[1]==='#tree')).toBe(false);
+  });
+
+  it.each(['[]','"invalid"','null'])('rejects malformed board bodies %s in strict mode',async body=>{
+    const {service}=setup({'demo-project-1/boards/board1/board.json':body});
+    await expect(first(service.getBoard(PROJECT_ID,'board1',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
+  });
+
+});
+
+it.each(['', '   ', '\n\t'])('keeps the neutral entity default for an empty flat definition (%j)',async body=>{
+  const {gh,service}=setup();
+  gh.addRepo(REPO,SHA,{'demo-project-1/datatug-project.json':'{}','demo-project-1/entities/Customer.entity.json':body});
+  expect(await first(service.entityDefinitionPath(PROJECT_ID,'Customer'))).toBe('entities/Customer.entity.json');
+  expect(await first(service.getEntity(PROJECT_ID,'Customer'))).toEqual({id:'Customer',fields:[]});
+});

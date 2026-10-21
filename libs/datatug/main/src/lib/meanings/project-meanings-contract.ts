@@ -10,15 +10,23 @@ export interface MeaningResource {
   readonly title: string;
   readonly environment?: string;
 }
+export interface MeaningSource {
+  readonly repository: string;
+  readonly revision: string;
+  readonly path?: string;
+  readonly kind: 'project' | 'core' | 'custom';
+}
 export interface MeaningField extends MeaningIdentity {
+  readonly source?: MeaningSource;
+  readonly conceptKind?: string;
   readonly name: string;
   readonly description: string;
   readonly resources: readonly MeaningResource[];
 }
-export interface MeaningEntity extends MeaningIdentity {
+export interface MeaningEntity extends MeaningField {
   readonly name: string;
   readonly description: string;
-  readonly origin: 'project' | 'query';
+  readonly origin: 'project' | 'query' | 'repository' | 'external';
   readonly fields: readonly MeaningField[];
   readonly resources: readonly MeaningResource[];
 }
@@ -33,6 +41,8 @@ export interface ProjectMeaningsCatalog {
   readonly entities: readonly MeaningEntity[];
   /** Read-only discovery notes, never mutation authority. */
   readonly notices?: readonly string[];
+  /** Completeness of optional read-only repository discovery, independent of provider reference authority. */
+  readonly discoveryComplete?: boolean;
 }
 export type ProjectMeaningAction =
   | {
@@ -97,11 +107,12 @@ export function validateProjectMeaningsCatalog(
       throw new ProjectMeaningsCapacityError();
     return v as unknown[];
   };
-  const identity = (v: Record<string, unknown>): void => {
+  const identity = (v: Record<string, unknown>, projected = false): void => {
     if (
       !text(v['documentId'], 1024) ||
       !text(v['conceptId'], 80) ||
-      !/^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$/.test(v['conceptId'] as string)
+      (!projected &&
+        !/^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$/.test(v['conceptId'] as string))
     )
       fail();
   };
@@ -126,7 +137,9 @@ export function validateProjectMeaningsCatalog(
     root['version'] !== 1 ||
     !text(root['revision'], 512) ||
     typeof root['writable'] !== 'boolean' ||
-    typeof root['referencesComplete'] !== 'boolean'
+    typeof root['referencesComplete'] !== 'boolean' ||
+    (root['discoveryComplete'] !== undefined &&
+      typeof root['discoveryComplete'] !== 'boolean')
   )
     fail();
   const scope = object(root['scope']);
@@ -143,16 +156,41 @@ export function validateProjectMeaningsCatalog(
       : scope['spaceID'] !== undefined)
   )
     fail();
+  const source = (value: Record<string, unknown>, required: boolean) => {
+    if (value['source'] === undefined) {
+      if (required) fail();
+      return;
+    }
+    const s = object(value['source']);
+    if (
+      !text(s['repository'], 1024) ||
+      !text(s['revision'], 256) ||
+      (s['path'] !== undefined && !text(s['path'], 1024)) ||
+      !['project', 'core', 'custom'].includes(s['kind'] as string) ||
+      ((s['path'] as string | undefined) ?? 'verified-provider')
+        .split('/')
+        .some((part) => !part || part === '.' || part === '..')
+    )
+      fail();
+    if (value['conceptKind'] !== undefined && !text(value['conceptKind'], 32))
+      fail();
+  };
   const keys = new Set<string>();
   let conceptCount = 0;
   for (const item of list(root['entities'])) {
     if (++conceptCount > 4096) throw new ProjectMeaningsCapacityError();
     const entity = object(item);
-    identity(entity);
+    const projected = ['repository', 'external'].includes(
+      entity['origin'] as string,
+    );
+    identity(entity, projected);
+    source(entity, projected);
     const key = JSON.stringify([entity['documentId'], entity['conceptId']]);
     if (
       keys.has(key) ||
-      !['project', 'query'].includes(entity['origin'] as string) ||
+      !['project', 'query', 'repository', 'external'].includes(
+        entity['origin'] as string,
+      ) ||
       !text(entity['name'], 512) ||
       typeof entity['description'] !== 'string' ||
       (entity['description'] as string).length > 4096
@@ -169,16 +207,17 @@ export function validateProjectMeaningsCatalog(
     for (const item of list(entity['fields'])) {
       if (++conceptCount > 4096) throw new ProjectMeaningsCapacityError();
       const field = object(item);
-      identity(field);
+      identity(field, projected);
+      source(field, projected);
       if (
-        field['documentId'] !== entity['documentId'] ||
-        fields.has(field['conceptId'] as string) ||
+        (!projected && field['documentId'] !== entity['documentId']) ||
+        fields.has(JSON.stringify([field['documentId'], field['conceptId']])) ||
         !text(field['name'], 512) ||
         typeof field['description'] !== 'string' ||
         (field['description'] as string).length > 4096
       )
         fail();
-      fields.add(field['conceptId'] as string);
+      fields.add(JSON.stringify([field['documentId'], field['conceptId']]));
       resources(field['resources']);
     }
   }

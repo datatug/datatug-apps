@@ -194,3 +194,26 @@ describe('queued Quick Search PostHog events after leaving the page',()=>{
     expect(config.before_send({event:'public_event',properties:{$current_url:'https://datatug.app/home',label:'public-label'}})).toEqual({event:'public_event',properties:{$current_url:'https://datatug.app/home',label:'public-label'}});
   });
 });
+
+describe('queued authenticated metadata preview privacy',()=>{
+  it('drops queued DOM capture and scrubs private preview scope after navigation to Home',()=>{
+    const config=start('/home');
+    const properties={$current_url:'https://api.sneat.cloud/v0/datatug/project/quick-search/preview?storage=github.com&project=private-repo%40private-owner%40private-folder&branch=private-ref',$el_text:'private-table',$elements:[{text:'private-column'}],$elements_chain:'private-result'};
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties:{...properties,$snapshot_data:'private-result'}})).toBeNull();
+    const out=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-repo','private-owner','private-folder','private-ref','private-table','private-column','private-result']) expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});
+
+describe('queued Check metadata query-mode privacy',()=>{
+  it('scrubs private check identity and DOM metadata after navigation away',()=>{
+    const path='/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/quick-search?detailKind=check&objectId=private-check';
+    const config=start(path);history.replaceState(null,'','/home');applyPosthogRoutePrivacy('/home');
+    const properties={$current_url:'https://datatug.app'+path,$el_text:'private-title',$elements:[{text:'private-tag'}]};
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties})).toBeNull();
+    const out=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-owner','private-repo','private-ref','private-folder','private-check','private-title','private-tag'])expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});

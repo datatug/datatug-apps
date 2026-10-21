@@ -159,6 +159,7 @@ interface IGithubGitTreeResponse {
 export interface IGithubWireQueryItem {
   tags?: string[];
   semanticModel?: IQueryDef['semanticModel'];
+  targets?: IQueryDef['targets'];
   id: string;
   title?: string;
   type: string;
@@ -410,6 +411,7 @@ interface IGithubSession {
   epoch: number;
   mirrorUsed: boolean;
   tree?: IGithubRead<IGithubGitTreeEntry[]>;
+  completeTree?: IGithubRead<IGithubGitTreeEntry[]>;
   readonly files: Map<string, IGithubRead<string | undefined>>;
   readonly json: Map<string, Promise<unknown>>;
 }
@@ -648,6 +650,7 @@ export class GithubProjectReaderService {
     session.commit = Promise.resolve(commit);
     session.epoch++;
     session.mirrorUsed = false;
+    if (session.completeTree?.done) session.completeTree = undefined;
     if (session.tree?.done) {
       session.tree = undefined;
     }
@@ -697,19 +700,23 @@ export class GithubProjectReaderService {
   // Low-level: tree (directory listing) + raw file content
   // ---------------------------------------------------------------------
 
-  private getTree(projectId: string): Observable<IGithubGitTreeEntry[]> {
+  private getTree(
+    projectId: string,
+    requireComplete = false,
+  ): Observable<IGithubGitTreeEntry[]> {
     return defer(() => {
       const session = this.session(readableId(projectId));
-      let tree = session.tree;
+      const key = requireComplete ? 'completeTree' : 'tree';
+      let tree = session[key];
       if (!tree) {
         tree = startRead<IGithubGitTreeEntry[]>((read) =>
-          this.loadTree(session, read),
+          this.loadTree(session, read, requireComplete),
         );
         const started = tree;
-        session.tree = started;
+        session[key] = started;
         started.promise.catch(() => {
-          if (session.tree === started) {
-            session.tree = undefined;
+          if (session[key] === started) {
+            session[key] = undefined;
           }
         });
       }
@@ -765,16 +772,29 @@ export class GithubProjectReaderService {
   private loadTree(
     session: IGithubSession,
     read: IGithubRead<IGithubGitTreeEntry[]>,
+    requireComplete = false,
   ): Promise<IGithubGitTreeEntry[]> {
     return this.readAtCommit(session, read, (commit) =>
-      this.loadTreeAt(session, commit),
+      this.loadTreeAt(session, commit, requireComplete),
     );
   }
 
   private async loadTreeAt(
     session: IGithubSession,
     commit: IGithubResolvedCommit,
+    requireComplete = false,
   ): Promise<IGithubGitTreeEntry[] | typeof STALE> {
+    if (
+      requireComplete &&
+      (!commit.sha ||
+        !COMMIT_SHA.test(commit.sha) ||
+        commit.refused ||
+        ['missing', 'moved', 'unresolved'].includes(commit.state))
+    )
+      throw new Error('Complete project inventory unavailable');
+    const treeCachePath = requireComplete
+      ? '#complete-tree-v1'
+      : TREE_CACHE_PATH;
     if (commit.state === 'missing' || commit.state === 'moved') {
       return [];
     }
@@ -782,7 +802,7 @@ export class GithubProjectReaderService {
       ? `${session.org}/${session.repo}@${commit.sha}`
       : undefined;
     if (commitKey) {
-      const hit = await this.store.getFile(commitKey, TREE_CACHE_PATH);
+      const hit = await this.store.getFile(commitKey, treeCachePath);
       const kept = hit?.text ? readCachedTree(hit.text) : undefined;
       if (kept) {
         return kept;
@@ -797,12 +817,19 @@ export class GithubProjectReaderService {
     switch (out.kind) {
       case 'ok': {
         const response = JSON.parse(out.text) as IGithubGitTreeResponse;
+        if (
+          requireComplete &&
+          (response.truncated !== false ||
+            !Array.isArray(response.tree) ||
+            !response.tree.every(isTreeEntry))
+        )
+          throw new Error('Complete project inventory unavailable');
         const tree = (response.tree || []).map(({ path, type }) => ({
           path,
           type,
         }));
         if (commitKey) {
-          await this.store.putFile(commitKey, TREE_CACHE_PATH, {
+          await this.store.putFile(commitKey, treeCachePath, {
             text: JSON.stringify(tree),
             bytes: out.bytes,
           });
@@ -810,6 +837,8 @@ export class GithubProjectReaderService {
         return tree;
       }
       case 'missing': {
+        if (requireComplete)
+          throw new Error('Complete project inventory unavailable');
         // A remembered commit that the listing does not know may be gone: ask again which commit it is.
         const outcome = commit.remembered
           ? await this.doubt(session, commit)
@@ -828,6 +857,8 @@ export class GithubProjectReaderService {
         return [];
       }
       case 'moved':
+        if (requireComplete)
+          throw new Error('Complete project inventory unavailable');
         return [];
       case 'refused':
         throw new Error(GITHUB_RATE_LIMIT_MESSAGE);
@@ -855,11 +886,12 @@ export class GithubProjectReaderService {
   public listDirectory(
     projectId: string,
     relativePath: string,
+    options?: { readonly requireComplete?: boolean },
   ): Observable<IGithubDirEntry[]> {
     const { folder } = parseGithubProjectId(projectId);
     const base = [folder, relativePath].filter(Boolean).join('/');
     const prefix = base ? `${base}/` : '';
-    return this.getTree(projectId).pipe(
+    return this.getTree(projectId, options?.requireComplete).pipe(
       map((tree) => {
         const children = new Map<string, 'file' | 'dir'>();
         for (const entry of tree) {
@@ -1230,23 +1262,84 @@ export class GithubProjectReaderService {
   public listEntityIds(projectId: string): Observable<string[]> {
     return this.listDirectory(projectId, 'entities').pipe(
       map((entries) =>
-        entries.filter((e) => e.type === 'dir').map((e) => e.name),
+        [
+          ...new Set(
+            entries.flatMap((entry) =>
+              entry.type === 'dir'
+                ? [entry.name]
+                : entry.name.endsWith('.entity.json')
+                  ? [entry.name.slice(0, -'.entity.json'.length)]
+                  : [],
+            ),
+          ),
+        ].sort(),
       ),
     );
   }
-
-  /** One entity's full definition — `entities/<id>/<id>.entity.json`
-   * (mirrors `entity.service.ts`'s pre-existing `getEntityFromGithub`, now
-   * routed through this shared reader instead of its own ad hoc URL/split
-   * that silently ignored a project id's `@folder` segment). */
+  /** Resolve actual legacy layout before presenting a source link; ambiguous definitions fail closed. */
+  public entityDefinitionPath(
+    projectId: string,
+    entityId: string,
+  ): Observable<string> {
+    if (!entityId || /[\\/]/.test(entityId))
+      return throwError(() => new Error('Invalid entity identity.'));
+    const { folder } = parseGithubProjectId(projectId),
+      prefix = folder ? `${folder}/` : '';
+    const candidates = [
+      `entities/${entityId}/${entityId}.entity.json`,
+      `entities/${entityId}.entity.json`,
+    ];
+    return this.getTree(projectId).pipe(
+      switchMap((tree) => {
+        const matches = candidates.filter((path) =>
+          tree.some(
+            (entry) => entry.type === 'blob' && entry.path === prefix + path,
+          ),
+        );
+        if (!matches.length)
+          throw new Error('The project entity definition is missing.');
+        if (matches.length === 1) return of(matches[0]);
+        const decoded = (value: unknown) =>
+          JSON.stringify(value, (_key, item) =>
+            item && typeof item === 'object' && !Array.isArray(item)
+              ? Object.fromEntries(
+                  Object.entries(item).sort(([a], [b]) => a.localeCompare(b)),
+                )
+              : item,
+          );
+        return forkJoin(
+          matches.map((path) =>
+            this.getRawJson<IGithubEntityFile>(projectId, path),
+          ),
+        ).pipe(
+          map((definitions) => {
+            const normalized = definitions.map((value) =>
+              value ? { ...value, id: value.id || entityId } : value,
+            );
+            if (
+              !normalized[0] ||
+              decoded(normalized[0]) !== decoded(normalized[1])
+            )
+              throw new Error('The project entity definition is ambiguous.');
+            return matches[0];
+          }),
+        );
+      }),
+    );
+  }
   public getEntity(
     projectId: string,
     entityId: string,
   ): Observable<IGithubEntityFile> {
-    return this.getRawJson<IGithubEntityFile>(
-      projectId,
-      `entities/${entityId}/${entityId}.entity.json`,
-    ).pipe(map((data) => data || { id: entityId, fields: [] }));
+    return this.entityDefinitionPath(projectId, entityId).pipe(
+      switchMap((path) => this.getRawJson<IGithubEntityFile>(projectId, path)),
+      map((data) => {
+        // Existing entity callers keep their neutral default for an empty JSON body.
+        return data
+          ? { ...data, id: data.id || entityId }
+          : { id: entityId, fields: [] };
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -1256,11 +1349,15 @@ export class GithubProjectReaderService {
   public getBoard(
     projectId: string,
     boardId: string,
+    options?: { readonly requireExisting?: boolean },
   ): Observable<IGithubBoardFile & { id: string }> {
     return this.getRawJson<IGithubBoardFile>(
       projectId,
       `boards/${boardId}/board.json`,
-    ).pipe(map((file) => ({ id: boardId, title: boardId, ...file })));
+    ).pipe(map((file) => {
+      if (options?.requireExisting && (!file || typeof file !== 'object' || Array.isArray(file))) throw new Error('Board metadata unavailable');
+      return { id: boardId, title: boardId, ...file };
+    }));
   }
 
   // ---------------------------------------------------------------------
@@ -1412,6 +1509,7 @@ export class GithubProjectReaderService {
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
                 : {}),
+              targets: def?.targets,
               parameters: def?.parameters,
               relationshipBindings: def?.relationshipBindings,
               recordsets: def?.recordsets,
@@ -1509,6 +1607,7 @@ export class GithubProjectReaderService {
                   ...(def?.semanticModel
                     ? { semanticModel: def.semanticModel }
                     : {}),
+                  targets: def?.targets,
                   parameters: def?.parameters,
                   relationshipBindings: def?.relationshipBindings,
                   recordsets: def?.recordsets,

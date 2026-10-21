@@ -38,9 +38,9 @@ import {
 //      the address;
 //   2. the project.
 //
-// The visitor's question (`msg`, and the old `q`) must not survive in any address these routes match: whatever the
+// The visitor's chat question (`msg`, and the old `q`) is removed; only the exact Quick Search page owns `q`. Whatever the
 // inline script of the app concluded about the path (it cannot read every spelling of it the way the router does),
-// the first thing route 1 does is redirect to the same address without them, query and fragment otherwise kept.
+// route 1 removes chat question parameters, keeping Quick Search q and every other parameter/fragment.
 // That holds for in-app navigations as well. A hand-off address (the project chat that arrived with a question) is
 // never seen here: the app's hand-off route takes it first.
 //
@@ -106,11 +106,13 @@ const QUESTION_PARAMS = ['msg', 'q'];
  * The URL of this navigation without the visitor's question, in every other way as it was (path as typed, other
  * parameters, fragment); undefined when it has none, or when there is no navigation (a guard run outside one).
  */
-function withoutQuestion(router: Router): UrlTree | undefined {
+function withoutQuestion(router: Router, segments: readonly UrlSegment[], allowSearchQuery: boolean): UrlTree | undefined {
+  const address = readShortGithubAddress(paths(segments));
+  const questionParams = allowSearchQuery && address.kind === 'project' && address.parts.rest === '/quick-search' ? ['msg'] : QUESTION_PARAMS;
   const typed = router.getCurrentNavigation()?.extractedUrl;
   if (
     !typed ||
-    !QUESTION_PARAMS.some((name) =>
+    !questionParams.some((name) =>
       Object.prototype.hasOwnProperty.call(typed.queryParams, name),
     )
   ) {
@@ -118,7 +120,7 @@ function withoutQuestion(router: Router): UrlTree | undefined {
   }
   const kept = Object.fromEntries(
     Object.entries(typed.queryParams).filter(
-      ([name]) => !QUESTION_PARAMS.includes(name),
+      ([name]) => !questionParams.includes(name),
     ),
   );
   return new UrlTree(typed.root, kept, typed.fragment);
@@ -166,13 +168,14 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
   const router = inject(Router);
   // The question first, before anything is asked of GitHub: the address may be kept in the address bar for as long
   // as that takes.
-  const stripped = withoutQuestion(router);
+  const outletGroup = urlHasOutletGroup(router, inject(Location));
+  const stripped = withoutQuestion(router, segments, !outletGroup);
   if (stripped) {
     return stripped;
   }
   const check = inject(GithubAddressCheck);
   const state = inject(GithubAddressProblemState);
-  if (urlHasOutletGroup(router, inject(Location))) {
+  if (outletGroup) {
     state.problem.set({ kind: 'unsupported', reason: 'invalid-path-segment' });
     return true;
   }

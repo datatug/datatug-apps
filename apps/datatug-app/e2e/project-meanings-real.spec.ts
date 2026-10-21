@@ -150,7 +150,7 @@ test('durable meanings CRUD, query references and protected deletion through a r
     await page.goto(root);
     await expect(
       active().getByText(
-        'No MeaningGraph entities are defined in this project yet.',
+        'No meanings could be resolved from the available project declarations.',
       ),
     ).toBeVisible();
     await active()
@@ -354,7 +354,7 @@ test('durable meanings CRUD, query references and protected deletion through a r
     await expect(page).toHaveURL(/\/meanings\?projectApi=local/);
     await expect(
       active().getByText(
-        'No MeaningGraph entities are defined in this project yet.',
+        'No meanings could be resolved from the available project declarations.',
       ),
     ).toBeVisible();
     await page.screenshot({
