@@ -11,6 +11,15 @@ import { IncidentListPageComponent } from './list/incident-list-page.component';
 @Component({
   selector: 'sneat-datatug-project-incidents',
   imports: [IncidentListPageComponent, PublicDemoInvestigationPreviewComponent],
+  styles: `
+    :host > sneat-datatug-incident-list,
+    :host > sneat-public-demo-investigation-preview {
+      display: flex;
+      flex: 1;
+      flex-direction: column;
+      min-height: 0;
+    }
+  `,
   template: `
     @if (publicDemo()) {
       <sneat-public-demo-investigation-preview section="incidents" />
