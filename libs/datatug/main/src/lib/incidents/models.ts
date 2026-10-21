@@ -96,6 +96,12 @@ export interface IncidentContextInput {
   readonly facts: readonly IncidentFactInput[];
 }
 
+export type IncidentCharacterID = 'sarah' | 'maya' | 'daniel';
+export interface IncidentNotePresentation {
+  readonly kind: 'demo-character';
+  readonly characterId: IncidentCharacterID;
+}
+
 export interface IncidentActor {
   readonly kind: 'human' | 'agent' | 'system';
   readonly id: string;
@@ -299,7 +305,7 @@ export interface IncidentEvent {
     | { readonly status: IncidentStatus }
     | { readonly outcome: IncidentOutcome }
     | { readonly into: IncidentRef; readonly mergeId: string }
-    | { readonly body: string }
+    | { readonly body: string; readonly presentation?: IncidentNotePresentation }
     | { readonly fact: IncidentFactInput }
     | {
         readonly fact: IncidentContextFactRef;

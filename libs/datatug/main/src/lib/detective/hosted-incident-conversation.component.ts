@@ -40,23 +40,27 @@ import {
   detectiveErrorMessage,
   detectiveOperationId,
 } from './detective-client.service';
-import {
-  HostedIncidentMessage,
-  HostedIncidentView,
-} from './hosted-linkage.models';
+import { HostedIncidentView } from './hosted-linkage.models';
 import { CheckDefinition } from './models';
 
+import {
+  INCIDENT_CHARACTERS,
+  admittedMessagePresentation,
+  incidentCharacterLabel,
+  isIncidentNotePresentation,
+  isPendingIncidentMessage,
+  type PendingIncidentMessage,
+} from './incident-message-presentation';
+import type { IncidentCharacterID } from '../incidents/models';
+import type { IncidentMessagePresentationCapability } from './hosted-linkage.models';
+
 type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
-type PendingMessage = {
-  operationId: string;
-  expectedSeq: number;
-  message: HostedIncidentMessage;
-};
 
 /** A hosted transport adapter for the existing Incident event stream, not an AI chat. */
 @Component({
   selector: 'sneat-datatug-hosted-incident-conversation',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  styles: `.character-choice { --min-height: 2.75rem; } .character-choice ion-select { padding-block: 0.25rem; }`,
   imports: [
     RetainedEvidenceViewerComponent,
     RouterLink,
@@ -88,6 +92,7 @@ type PendingMessage = {
           <ion-item>
             <ion-label class="ion-text-wrap">
               <h3 style="white-space: pre-wrap">{{ summary(event) }}</h3>
+              @if (characterAttribution(event); as label) { <p>{{ label }} · fictional character</p> }
               <p>
                 {{ event.actor.id }} ·
                 {{ event.actor.via || 'interface unavailable' }} ·
@@ -130,12 +135,25 @@ type PendingMessage = {
         </p>
       }
       @if (canWrite()) {
+        @if (messagePresentation()?.status === 'available' || pending()?.message?.presentation) {
+          <ion-item class="character-choice">
+            <ion-select label="Speaker" labelPlacement="start" aria-label="Message speaker" interface="popover"
+              [value]="character()" [disabled]="loading() || !ready() || sending() || !!pending() || invalidPending() || messagePresentation()?.status !== 'available'"
+              (ionChange)="setCharacter($event.detail.value)">
+              <ion-select-option value="">Me</ion-select-option>
+              @for (id of characters; track id) { <ion-select-option [value]="id">{{ characterLabel(id) }} · fictional character</ion-select-option> }
+            </ion-select>
+          </ion-item>
+        } @else if (messagePresentation()?.status === 'unavailable') {
+          <p role="status">Fictional speakers are unavailable. You can post as yourself.</p>
+        }
+        @if (invalidPending()) { <p role="alert">A saved message attempt cannot be safely retried. Review the conversation and explicitly abandon it before posting a new message.</p> }
         <ion-item>
           <ion-label position="stacked">Message</ion-label>
           <ion-textarea
             aria-label="Incident message"
             [value]="body()"
-            [disabled]="sending() || !!pending()"
+            [disabled]="sending() || !!pending() || invalidPending()"
             (ionInput)="body.set($event.detail.value || '')"
           />
         </ion-item>
@@ -144,7 +162,7 @@ type PendingMessage = {
           <ion-select
             aria-label="Message type"
             [value]="assertion()"
-            [disabled]="sending() || !!pending()"
+            [disabled]="sending() || !!pending() || invalidPending()"
             (ionChange)="setAssertion($event.detail.value)"
           >
             <ion-select-option value="claim">Claim</ion-select-option>
@@ -161,7 +179,7 @@ type PendingMessage = {
             <ion-select
               aria-label="Reference a saved Check"
               [value]="checkID()"
-              [disabled]="sending() || !!pending()"
+              [disabled]="sending() || !!pending() || invalidPending()"
               (ionChange)="checkID.set($event.detail.value || '')"
             >
               <ion-select-option value="">None</ion-select-option>
@@ -187,7 +205,7 @@ type PendingMessage = {
             >Review latest conversation</ion-button
           >
         }
-        @if (pending() && !conflict()) {
+        @if ((pending() || invalidPending()) && !conflict()) {
           <ion-button
             fill="clear"
             (click)="reviewPending()"
@@ -234,6 +252,7 @@ type PendingMessage = {
             sending() ||
             conflict() ||
             pendingReview() ||
+            invalidPending() ||
             !body().trim()
           "
         >
@@ -273,6 +292,7 @@ export class HostedIncidentConversationComponent {
       ++this.requestGeneration;
       this.events.set([]); this.retainedTarget.set(undefined);
       this.ready.set(false); this.body.set(''); this.pending.set(undefined);
+      this.messagePresentation.set(undefined); this.character.set(''); this.invalidPending.set(false);
       this.sending.set(false); this.loading.set(false);
     });
   }
@@ -282,12 +302,25 @@ export class HostedIncidentConversationComponent {
   protected readonly ready = signal(false);
   protected readonly readError = signal('');
   protected readonly sendError = signal('');
+  readonly characters = INCIDENT_CHARACTERS;
+  protected readonly characterLabel = incidentCharacterLabel;
+  protected readonly character = signal<IncidentCharacterID | ''>('');
+  protected readonly messagePresentation = signal<IncidentMessagePresentationCapability | undefined>(undefined);
+  protected readonly invalidPending = signal(false);
+  protected setCharacter(value: unknown): void {
+    if (this.pending() || this.invalidPending() || this.sending() || !this.ready() || this.loading() || this.messagePresentation()?.status !== 'available') return;
+    if (value === '' || INCIDENT_CHARACTERS.some(id => id === value)) this.character.set(value as IncidentCharacterID | '');
+  }
+  protected characterAttribution(event: IncidentEvent): string | undefined {
+    if (event.type !== 'note.added' || !event.payload || typeof event.payload !== 'object' || !('presentation' in event.payload) || !isIncidentNotePresentation(event.payload.presentation)) return undefined;
+    return incidentCharacterLabel(event.payload.presentation.characterId);
+  }
   protected readonly body = signal('');
   protected readonly assertion = signal<
     'claim' | 'question' | 'hypothesis' | 'observation'
   >('claim');
   protected readonly checkID = signal('');
-  protected readonly pending = signal<PendingMessage | undefined>(undefined);
+  protected readonly pending = signal<PendingIncidentMessage | undefined>(undefined);
   protected readonly conflict = signal(false);
   protected readonly pendingReview = signal(false);
   protected readonly recoveryNotice = signal('');
@@ -307,6 +340,7 @@ export class HostedIncidentConversationComponent {
     this.ready.set(false);
     this.body.set('');
     this.pending.set(undefined);
+    this.messagePresentation.set(undefined); this.character.set(''); this.invalidPending.set(false);
     this.pendingReview.set(false);
     this.recoveryNotice.set('');
     this.sendError.set('');
@@ -317,20 +351,23 @@ export class HostedIncidentConversationComponent {
     this.assertion.set('claim');
     this.lastSeq.set(0);
     this.sending.set(false);
+    let raw: string | null = null;
+    try { raw = sessionStorage.getItem(this.storageKey(identity)); } catch { /* Browser storage is optional for a fresh draft. */ }
     try {
-      const raw = sessionStorage.getItem(this.storageKey(identity));
       const value: unknown = raw ? JSON.parse(raw) : undefined;
-      if (this.isPending(value)) {
+      if (isPendingIncidentMessage(value)) {
         this.pending.set(value);
         this.body.set(value.message.body);
+        this.character.set(value.message.presentation?.characterId || '');
         this.setAssertion(value.message.assertion || 'claim');
         this.checkID.set(
           value.message.refs?.find((ref) => ref.kind === 'check')?.artifact
             ?.id || '',
         );
-      }
+      } else if (raw !== null) this.invalidPending.set(true);
     } catch {
-      /* Pending retries remain in memory when storage is unavailable. */
+      this.invalidPending.set(true);
+      /* Unreadable or invalid storage is never silently rewritten into a new attempt. */
     }
     // Only the canonical identity resets a draft. Reads also inspect input
     // objects, whose equivalent replacements must not trigger another reset.
@@ -349,18 +386,6 @@ export class HostedIncidentConversationComponent {
   }
   private storageKey(identity = this.identity()): string {
     return `datatug:incident-message:${identity}`;
-  }
-  private isPending(value: unknown): value is PendingMessage {
-    if (!value || typeof value !== 'object') return false;
-    const p = value as PendingMessage;
-    return (
-      typeof p.operationId === 'string' &&
-      p.operationId.startsWith('operation-') &&
-      Number.isSafeInteger(p.expectedSeq) &&
-      p.expectedSeq >= 1 &&
-      typeof p.message?.body === 'string' &&
-      new TextEncoder().encode(p.message.body).length <= 4000
-    );
   }
   private current(identity: string, generation: number): boolean {
     return (
@@ -382,6 +407,7 @@ export class HostedIncidentConversationComponent {
     const environment = this.environment();
     const ref = this.incidentRef();
     this.loading.set(true);
+    this.messagePresentation.set(undefined);
     this.readError.set('');
     this.ready.set(false);
     if (reset) {
@@ -447,6 +473,9 @@ export class HostedIncidentConversationComponent {
       this.lastSeq.set(
         Math.max(this.lastSeq(), detail.incident.lastSeq, page.nextAfterSeq),
       );
+      const capability = admittedMessagePresentation(page.messagePresentation);
+      this.messagePresentation.set(capability || { status: 'unavailable' });
+      if (!this.pending() && capability?.status !== 'available') this.character.set('');
       this.ready.set(true);
       return true;
     } catch (error) {
@@ -461,7 +490,7 @@ export class HostedIncidentConversationComponent {
     }
   }
   protected async reviewPending(): Promise<void> {
-    if (!this.pending() || this.conflict() || this.loading() || this.sending())
+    if ((!this.pending() && !this.invalidPending()) || this.conflict() || this.loading() || this.sending())
       return;
     this.pendingReview.set(true);
     await this.read(true);
@@ -472,7 +501,7 @@ export class HostedIncidentConversationComponent {
   protected abandonPending(): void {
     if (
       !this.pendingReview() ||
-      !this.pending() ||
+      (!this.pending() && !this.invalidPending()) ||
       this.conflict() ||
       !this.canWrite() ||
       !this.ready() ||
@@ -484,6 +513,7 @@ export class HostedIncidentConversationComponent {
     // Only this explicit reviewed action retires the uncertain intent. It
     // cannot retract a message the server may already have committed.
     this.pending.set(undefined);
+    this.invalidPending.set(false); this.character.set('');
     this.pendingReview.set(false);
     this.checkID.set('');
     this.sendError.set('');
@@ -509,6 +539,7 @@ export class HostedIncidentConversationComponent {
     }
     if (!this.ready() || this.loading()) return;
     this.pending.set(undefined);
+    this.character.set('');
     this.conflict.set(false);
     this.conflictHistoryLoaded.set(false);
     this.sendError.set('');
@@ -520,6 +551,7 @@ export class HostedIncidentConversationComponent {
   }
   protected async send(): Promise<void> {
     if (
+      this.invalidPending() ||
       !this.canWrite() ||
       !this.ready() ||
       this.loading() ||
@@ -542,6 +574,7 @@ export class HostedIncidentConversationComponent {
     catch (error) { this.sendError.set(detectiveErrorMessage(error, true)); return; }
     let pending = this.pending();
     if (!pending) {
+      if (this.character() && this.messagePresentation()?.status !== 'available') { this.sendError.set('Choose Me or refresh current fictional speaker availability.'); return; }
       const selected = this.checks().find(
         (check) => check.id === this.checkID(),
       );
@@ -568,6 +601,7 @@ export class HostedIncidentConversationComponent {
         message: {
           body: this.body(),
           assertion: this.assertion(),
+          ...(this.character() ? { presentation: { kind: 'demo-character' as const, characterId: this.character() as IncidentCharacterID } } : {}),
           ...(refs.length ? { refs } : {}),
         },
       };
@@ -618,6 +652,7 @@ export class HostedIncidentConversationComponent {
         );
       this.pending.set(undefined);
       this.body.set('');
+      this.character.set('');
       this.checkID.set('');
       this.posted.set(true);
       try {

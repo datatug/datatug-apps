@@ -1,4 +1,4 @@
-import type { IncidentEvent, IncidentArtifactRef, IncidentAssertion } from '../incidents/models';
+import type { IncidentEvent, IncidentArtifactRef, IncidentAssertion, IncidentNotePresentation } from '../incidents/models';
 import type { DetectiveCase } from './models';
 import type { DetectiveInputValue } from './models';
 
@@ -26,12 +26,18 @@ export interface HostedProjectIncident {
   incident: HostedIncidentView;
 }
 
+export type IncidentMessagePresentationCapability =
+  | { status: 'available'; kind: 'demo-character'; characterIds: ['sarah', 'maya', 'daniel'] }
+  | { status: 'not-eligible' | 'unavailable' };
+
 export interface HostedIncidentEvents {
+  messagePresentation?: IncidentMessagePresentationCapability;
   events: IncidentEvent[];
   nextAfterSeq: number;
   hasMore: boolean;
 }
 export interface HostedIncidentMessage {
+  presentation?: IncidentNotePresentation;
   body: string;
   assertion?: Exclude<IncidentAssertion['kind'], 'deterministic-result'>;
   refs?: IncidentArtifactRef[];

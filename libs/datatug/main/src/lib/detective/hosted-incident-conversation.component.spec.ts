@@ -543,4 +543,106 @@ describe('HostedIncidentConversationComponent', () => {
     await page(f).send();
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
+  const availablePresentation = { status: 'available' as const, kind: 'demo-character' as const, characterIds: ['sarah', 'maya', 'daniel'] as ['sarah', 'maya', 'daniel'] };
+  async function chooseSpeaker(f: ComponentFixture<HostedIncidentConversationComponent>, value: string) {
+    await vi.waitFor(() => expect(f.nativeElement.querySelector('.character-choice ion-select')).not.toBeNull());
+    const select = f.nativeElement.querySelector('.character-choice ion-select');
+    expect(select).not.toBeNull();
+    select.dispatchEvent(new CustomEvent('ionChange', { detail: { value }, bubbles: true }));
+  }
+  it('offers only server-admitted fictional speakers, defaults to Me, and retains the real server actor with persisted labels', async () => {
+    history.messagePresentation = availablePresentation;
+    const f = await mount();
+    await vi.waitFor(() => expect(f.nativeElement.querySelector('.character-choice ion-select')).not.toBeNull());
+    const select = f.nativeElement.querySelector('.character-choice ion-select');
+    expect(select).not.toBeNull();
+    expect(select.value).toBe('');
+    page(f).body.set('Ordinary account message');
+    await page(f).send();
+    expect(client.incidentAction.mock.calls[0][1].message).not.toHaveProperty('presentation');
+    page(f).refresh(); await vi.waitFor(() => expect(f.nativeElement.textContent).not.toContain('Loading conversation'));
+    // The mock history changed on the confirmed ordinary note; explicitly admit the next current read.
+    history.messagePresentation = availablePresentation;
+    page(f).refresh(); await vi.waitFor(() => expect(f.nativeElement.textContent).not.toContain('Loading conversation'));
+    await chooseSpeaker(f, 'maya');
+    client.incidentAction.mockImplementationOnce((_context, action) => {
+      const event = { ...message(3), payload: structuredClone(action.message) };
+      history = { events: [message(), event], nextAfterSeq: 3, hasMore: false, messagePresentation: { status: 'not-eligible' } };
+      sequence = 3;
+      return of({ event, incident: { ref: incidentRef, lastSeq: 3 }, receipt: 'persona-saved' });
+    });
+    page(f).body.set('I will inspect the assignment.');
+    await page(f).send(); await f.whenStable();
+    expect(client.incidentAction.mock.calls[1][1].message.presentation).toEqual({ kind: 'demo-character', characterId: 'maya' });
+    expect(f.nativeElement.textContent).toContain('Maya · fictional character');
+    expect(f.nativeElement.textContent).toContain('sarah · web');
+    expect(f.nativeElement.querySelector('.character-choice ion-select').value).toBe('');
+    page(f).refresh(); await vi.waitFor(() => expect(f.nativeElement.textContent).not.toContain('Loading conversation'));
+    await vi.waitFor(() => expect(f.nativeElement.querySelector('.character-choice ion-select')).toBeNull());
+    expect(f.nativeElement.textContent).toContain('Maya · fictional character');
+  });
+  it('freezes character and absent refs across lost reply, remount and unavailable advertisement', async () => {
+    history.messagePresentation = availablePresentation;
+    client.incidentAction.mockReturnValueOnce(throwError(() => new Error('lost reply')));
+    const first = await mount(); await chooseSpeaker(first, 'daniel');
+    page(first).body.set('The configuration is corrected; replay is still required.');
+    await page(first).send();
+    const original = structuredClone(client.incidentAction.mock.calls[0].slice(0, 3));
+    expect(original[1].message).not.toHaveProperty('refs');
+    first.destroy(); TestBed.resetTestingModule();
+    history.messagePresentation = { status: 'not-eligible' };
+    const second = await mount();
+    await vi.waitFor(() => expect(second.nativeElement.querySelector('.character-choice ion-select')).not.toBeNull());
+    const selector = second.nativeElement.querySelector('.character-choice ion-select');
+    expect(selector.value).toBe('daniel'); expect(selector.disabled).toBe(true);
+    await chooseSpeaker(second, 'sarah');
+    client.incidentAction.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 403 })));
+    await page(second).send();
+    expect(client.incidentAction.mock.calls[1].slice(0, 3)).toEqual(original);
+    expect(client.incidentAction.mock.calls.every(call => call[1].type === 'append-message')).toBe(true);
+  });
+  it('blocks corrupted saved presentation without changing storage until explicit reviewed abandonment', async () => {
+    client.incidentAction.mockReturnValueOnce(throwError(() => new Error('lost reply')));
+    const first = await mount(); page(first).body.set('Uncertain message'); await page(first).send();
+    const key = Array.from({ length: sessionStorage.length }, (_, i) => sessionStorage.key(i)).find(key => key?.startsWith('datatug:incident-message:'));
+    if (!key) throw new Error('Expected persisted pending attempt');
+    const saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    saved.message.presentation = { kind: 'demo-character', characterId: 'maya', actorId: 'forged' };
+    const corrupt = JSON.stringify(saved); sessionStorage.setItem(key, corrupt);
+    first.destroy(); TestBed.resetTestingModule();
+    const second = await mount(); page(second).body.set('A fresh draft'); await page(second).send();
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    expect(sessionStorage.getItem(key)).toBe(corrupt);
+    expect(second.nativeElement.textContent).toContain('cannot be safely retried');
+    await page(second).reviewPending(); page(second).abandonPending();
+    expect(sessionStorage.getItem(key)).toBeNull();
+    await page(second).send(); expect(client.incidentAction).toHaveBeenCalledTimes(2);
+    expect(client.incidentAction.mock.calls[1][2]).not.toBe(saved.operationId);
+  });
+  it('does not admit late old-scope presentation and keeps ordinary posting when capability is missing', async () => {
+    const delayed = new Subject<HostedIncidentEvents>();
+    client.incidentEvents.mockReturnValueOnce(delayed.asObservable());
+    const f = await mount();
+    f.componentRef.setInput('context', { ...context, project: 'other', principal: 'maya' });
+    await f.whenStable();
+    delayed.next({ events: [], nextAfterSeq: 1, hasMore: false, messagePresentation: availablePresentation }); delayed.complete();
+    await f.whenStable();
+    expect(f.nativeElement.querySelector('.character-choice ion-select')).toBeNull();
+    await page(f).send(); expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
+  it('starts a reviewed conflicting persona draft as Me when current eligibility has gone away', async () => {
+    history.messagePresentation = availablePresentation;
+    const f = await mount(); await chooseSpeaker(f, 'sarah');
+    page(f).body.set('Review this conflicting draft');
+    client.incidentAction.mockReturnValueOnce(throwError(() => new HttpErrorResponse({ status: 409 })));
+    await page(f).send();
+    history.messagePresentation = { status: 'not-eligible' };
+    await page(f).reviewConflict();
+    await page(f).send();
+    expect(client.incidentAction).toHaveBeenCalledTimes(2);
+    expect(client.incidentAction.mock.calls[1][1].message).not.toHaveProperty('presentation');
+    expect(client.incidentAction.mock.calls[1][2]).not.toBe(client.incidentAction.mock.calls[0][2]);
+  });
+
 });
