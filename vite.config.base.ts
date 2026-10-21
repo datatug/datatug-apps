@@ -86,7 +86,8 @@ export function createBaseViteConfig(
       name,
       watch: false,
       globals: true,
-      pool: 'vmThreads',
+      // vmThreads gives every file a fresh VM context, so sharing modules needs forks.
+      pool: shareModulesAcrossFiles ? 'forks' : 'vmThreads',
       environment: 'happy-dom',
       // With projects, each one names its own files: `extends` would append to this list, not replace it.
       include: shareModulesAcrossFiles ? [] : SPEC_FILES,
