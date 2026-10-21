@@ -298,6 +298,15 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   await expect(
     boardRow.getByRole('link', { name: 'ops', exact: true }),
   ).toHaveAttribute('href', /\/tag\/ops$/);
+  // Ionic can expose stable link geometry before its entering view accepts native pointer actions.
+  const boardsView = page.locator('sneat-datatug-boards:not(.ion-page-hidden)');
+  await expect(boardsView).toBeVisible();
+  await expect.poll(() => boardsView.evaluate(host => ({
+    interactive: getComputedStyle(host).pointerEvents !== 'none',
+    animations: host.getAnimations({subtree: true}).filter(animation =>
+      animation.playState === 'running' && animation.effect?.getComputedTiming().iterations !== Infinity,
+    ).length,
+  }))).toEqual({interactive: true, animations: 0});
   const popupPromise = page.context().waitForEvent('page');
   await boardRow
     .getByRole('link', { name: 'ops', exact: true })
