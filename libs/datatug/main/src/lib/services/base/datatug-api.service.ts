@@ -1,4 +1,9 @@
-import { HttpClient, HttpHandler, HttpParams } from '@angular/common/http';
+import {
+  HttpClient,
+  HttpHandler,
+  HttpParams,
+  HttpResponse,
+} from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { SneatApiAuthTokenBridge, SneatApiService } from '@sneat/api';
 import { AnalyticsService, LOGGER_FACTORY, loggerFactory } from '@sneat/core';
@@ -57,14 +62,39 @@ export class DatatugApiService extends SneatApiService {
   private readonly projectPreview =
     inject(DatatugApiBaseUrl) === DATATUG_TEST_PREVIEW_API_BASE_URL;
 
-  override get<T>(endpoint: string, params?: HttpParams, options?: Parameters<SneatApiService['get']>[2]) {
-    return this.projectPreview && endpoint === 'datatug/github/oauth/repositories'
+  override get<T>(
+    endpoint: string,
+    params?: HttpParams,
+    options?: Parameters<SneatApiService['get']>[2],
+  ) {
+    return this.projectPreview &&
+      endpoint === 'datatug/github/oauth/repositories'
       ? this.authoritativeApi.get<T>(endpoint, params, options)
       : super.get<T>(endpoint, params, options);
   }
 
-  override post<T>(endpoint: string, body: unknown, options?: Parameters<SneatApiService['post']>[2]) {
-    const identityEndpoint = endpoint === 'datatug/github/oauth/start' ||
+  /** Header-aware reads use the same authenticated/401-safe transport.
+   * Sneat's runtime forwards observe, but its current public options type is body-only.
+   */
+  getResponse<T>(
+    endpoint: string,
+    params?: HttpParams,
+    responseType: 'json' | 'text' = 'json',
+  ) {
+    const options = {
+      observe: 'response',
+      responseType,
+    } as unknown as NonNullable<Parameters<SneatApiService['get']>[2]>;
+    return this.get<HttpResponse<T>>(endpoint, params, options);
+  }
+
+  override post<T>(
+    endpoint: string,
+    body: unknown,
+    options?: Parameters<SneatApiService['post']>[2],
+  ) {
+    const identityEndpoint =
+      endpoint === 'datatug/github/oauth/start' ||
       endpoint === 'datatug/github/oauth/complete' ||
       endpoint === 'datatug/github/oauth/resolve-repository' ||
       endpoint === 'datatug/github/authorization/start' ||

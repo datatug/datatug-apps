@@ -70,8 +70,20 @@ const emptyShellProjectRoutes: Routes = [
 ];
 
 export const datatugProjectRoutes: Routes = [
-  { path: 'browser-db/:connectionId/table/:table', loadComponent: () => import('../pages/project-browser-db/project-browser-db.component').then(m => m.ProjectBrowserDbComponent) },
-  { path: 'browser-db/:connectionId', loadComponent: () => import('../pages/project-browser-db/project-browser-db.component').then(m => m.ProjectBrowserDbComponent) },
+  {
+    path: 'browser-db/:connectionId/table/:table',
+    loadComponent: () =>
+      import('../pages/project-browser-db/project-browser-db.component').then(
+        (m) => m.ProjectBrowserDbComponent,
+      ),
+  },
+  {
+    path: 'browser-db/:connectionId',
+    loadComponent: () =>
+      import('../pages/project-browser-db/project-browser-db.component').then(
+        (m) => m.ProjectBrowserDbComponent,
+      ),
+  },
   {
     path: 'checks/:checkId',
     loadComponent: () =>
@@ -159,6 +171,14 @@ export const datatugProjectRoutes: Routes = [
     loadComponent: () =>
       import('../pages/signed-in/project/project-page.component').then(
         (m) => m.ProjectPageComponent,
+      ),
+  },
+  {
+    path: 'boards/new',
+    data: { createBoard: true },
+    loadComponent: () =>
+      import('../board/ui/pages/board/board-page.component').then(
+        (m) => m.BoardPageComponent,
       ),
   },
   {

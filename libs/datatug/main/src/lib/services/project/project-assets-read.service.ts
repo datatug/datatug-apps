@@ -19,6 +19,7 @@ import {
 import { Board } from '@datatug/board-models';
 import { IEntity } from '../../models/definition/metapedia/entity';
 import { ProjectService } from './project.service';
+import { ProjectAssetsApiService } from './project-assets-api.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import {
   GithubProjectReaderService,
@@ -74,6 +75,7 @@ function safeEnvironmentPresentation(
 @Injectable({ providedIn: 'root' })
 export class ProjectAssetsReadService {
   private readonly api = inject(ProjectQueryApiService);
+  private readonly hosted = inject(ProjectAssetsApiService);
   private readonly project = inject(ProjectService);
   private readonly github = inject(GithubProjectReaderService);
 
@@ -127,7 +129,9 @@ export class ProjectAssetsReadService {
     );
   }
 
-  boards(ref: IProjectRef): Observable<IProjBoard[]> {
+  boards(ref: IProjectRef, environment?: string): Observable<IProjBoard[]> {
+    if (isSharedProjectRef(ref))
+      return this.hosted.boards(ref, environment || '');
     const invalid = this.invalidTransport(ref);
     if (invalid) return invalid;
     if (this.isUnsupported(ref))
@@ -166,7 +170,11 @@ export class ProjectAssetsReadService {
     return this.api.boards<IProjBoard[]>(ref);
   }
 
-  board(ref: IProjectRef, id: string): Observable<Board> {
+  board(ref: IProjectRef, id: string, environment?: string): Observable<Board> {
+    if (isSharedProjectRef(ref))
+      return this.hosted
+        .board(ref, environment || '', id)
+        .pipe(map((snapshot) => snapshot.board));
     const invalid = this.invalidTransport(ref);
     if (invalid) return invalid;
     if (this.isUnsupported(ref))

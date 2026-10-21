@@ -26,6 +26,7 @@ Feature specifications for this project.
 | [Reusable held result exploration](held-result-exploration/README.md) | Implementing | Explore admitted held results with clear actions, stable sorting and complete monthly Orders trends without extra execution. |
 | [Hosted Incident conversation](hosted-incident-conversation/README.md) | Draft | Authenticated human Incident messages, scoped history and replay-safe posting in the private project web UI. |
 | [Shared shipping evidence charts](shared-shipping-evidence-charts/README.md) | Draft | Core-compatible held evidence preparation and one shared three-kind SVG presentation leaf. |
+| [Hosted board authoring](hosted-board-authoring/README.md) | Draft | Create, edit, save and reload canonical boards in an explicitly scoped hosted project. |
 
 ## Open Questions
 
