@@ -25,20 +25,22 @@ describe('HostedIncidentsPageComponent', () => {
   };
   const router = { events: of(), navigate: vi.fn().mockResolvedValue(true), navigateByUrl: vi.fn().mockResolvedValue(true) };
   let routeParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let queryParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
 
-  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref) {
+  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref, draft = '', initialIncidents = [incident]) {
     const project = new BehaviorSubject({ ref: projectRef });
     const authState = new BehaviorSubject({ status: 'authenticated', user: { uid: 'sarah' } });
     client.incidentEvents.mockReturnValue(of({ events: [], nextAfterSeq: 1, hasMore: false }));
     client.state.mockReturnValue(of({ environments: ['demo'], cases, capabilities: { canWrite } }));
-    client.projectIncidents.mockReturnValue(of({ incidents: [incident] }));
+    client.projectIncidents.mockReturnValue(of({ incidents: initialIncidents }));
     client.projectIncident.mockReturnValue(of({ incident }));
     const data = { incidentMode: mode };
     const params = convertToParamMap(mode === 'detail' ? {
       incidentStoreId: incident.ref.storeId, incidentId: incident.ref.incidentId,
     } : {});
     routeParams$ = new BehaviorSubject(params);
-    const queryParams = convertToParamMap({ environment: requestedEnvironment });
+    const queryParams = convertToParamMap({ environment: requestedEnvironment, ...(draft ? { draft } : {}) });
+    queryParams$ = new BehaviorSubject(queryParams);
     await TestBed.configureTestingModule({
       imports: [HostedIncidentsPageComponent],
       providers: [
@@ -46,7 +48,7 @@ describe('HostedIncidentsPageComponent', () => {
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: {
           snapshot: { data, paramMap: params, queryParamMap: queryParams },
-          data: of(data), paramMap: routeParams$.asObservable(), queryParamMap: of(queryParams),
+          data: of(data), paramMap: routeParams$.asObservable(), queryParamMap: queryParams$.asObservable(),
         } },
         { provide: DatatugNavContextService, useValue: {
           currentProject: project.asObservable(), currentEnv: of(undefined),
@@ -71,6 +73,53 @@ describe('HostedIncidentsPageComponent', () => {
   afterEach(() => {
     TestBed.resetTestingModule();
     vi.restoreAllMocks();
+  });
+
+
+  it('offers the shared landing only for an empty hosted list', async () => {
+    const fixture = await mount('list', [], 'demo', true, ref, '', []);
+    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
+    expect(fixture.nativeElement.textContent).toContain('Report an incident');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
+  it('lets the user edit a test draft and only creates on explicit submission', async () => {
+    const fixture = await mount('new', [], 'demo', true, ref, 'test');
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void; (): string };
+      description: { set(value: string): void };
+      create(): Promise<void>;
+    };
+    expect(page.title()).toBe('[Test] Investigate a delayed delivery');
+    expect(fixture.nativeElement.textContent).toContain('editable example');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    page.title.set('[Test] Edited title');
+    page.description.set('Edited observation');
+    client.incidentAction.mockReturnValue(of({ incident }));
+    await page.create();
+    expect(client.incidentAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cloud' }), expect.objectContaining({ title: '[Test] Edited title', description: 'Edited observation', environment: 'demo' }), expect.any(String), expect.any(AbortSignal));
+    expect(router.navigate).toHaveBeenCalledWith([expect.stringContaining('/incidents/detective-incidents-9c561d36/INC-1')], { queryParams: { environment: 'demo' }, replaceUrl: true });
+  });
+  it('clears canceled sample text and preserves an unsaved hosted draft on query changes', async () => {
+    const fixture = await mount('new', [], 'demo', true, ref, 'test');
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void; (): string };
+      description: { (): string };
+      cancelDraft(): void;
+    };
+    page.cancelDraft();
+    fixture.componentInstance.ionViewWillEnter();
+    expect(page.title()).toBe('[Test] Investigate a delayed delivery');
+    page.cancelDraft();
+    queryParams$.next(convertToParamMap({ environment: 'demo' }));
+    await fixture.whenStable();
+    expect(page.title()).toBe('');
+    expect(page.description()).toBe('');
+    page.title.set('Unsaved hosted report');
+    queryParams$.next(convertToParamMap({ environment: 'demo', draft: 'test' }));
+    await fixture.whenStable();
+    expect(page.title()).toBe('Unsaved hosted report');
+    expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('lists private Incidents after the scoped backend responds, with a route to create', async () => {

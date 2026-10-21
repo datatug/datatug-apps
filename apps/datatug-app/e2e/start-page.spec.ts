@@ -68,7 +68,7 @@ test('under the incidentius profile / still ends on /incidents', async ({
 
   await expect(page).toHaveURL('/incidents');
   await expect(
-    page.getByText("Houston, we've got a problem", { exact: true }),
+    page.getByText('Follow the evidence.', { exact: false }),
   ).toBeVisible();
   await expect(startPageHeading(page)).toHaveCount(0);
 });
@@ -80,7 +80,7 @@ test('under the incidentius profile /home goes to /incidents and never shows the
 
   await expect(page).toHaveURL('/incidents');
   await expect(
-    page.getByText("Houston, we've got a problem", { exact: true }),
+    page.getByText('Follow the evidence.', { exact: false }),
   ).toBeVisible();
   await expect(startPageHeading(page)).toHaveCount(0);
   await expect(page.locator('sneat-datatug-home')).toHaveCount(0);

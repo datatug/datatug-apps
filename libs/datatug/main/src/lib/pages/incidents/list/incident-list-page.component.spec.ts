@@ -58,10 +58,12 @@ describe('IncidentListPageComponent', () => {
   let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
-  let setInvestigationScopeSpy: Mock<(
-    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
-    agentUrl?: string,
-  ) => void>;
+  let setInvestigationScopeSpy: Mock<
+    (
+      scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+      agentUrl?: string,
+    ) => void
+  >;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let listResult$: Subject<IncidentApiResult<IncidentSummary[]>>;
@@ -120,7 +122,10 @@ describe('IncidentListPageComponent', () => {
           },
         },
         { provide: IncidentClientService, useValue: { list: listSpy } },
-        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: of({ status: 'notAuthenticated' }) },
+        },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
@@ -144,16 +149,49 @@ describe('IncidentListPageComponent', () => {
     await render();
   });
 
-  it('shows the "Houston, we\'ve got a problem" entry point', () => {
-    expect(fixture.nativeElement.innerHTML).toContain(
-      "Houston, we've got a problem",
-    );
+  it('shows the investigation welcome with setup guidance', () => {
+    expect(fixture.nativeElement.innerHTML).toContain('Follow the evidence.');
+  });
+
+  it('only offers test creation after a successful empty response', () => {
+    selectScope();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-incident-empty-state'),
+    ).toBeNull();
+    listResult$.next({
+      kind: 'error',
+      code: 'NOT_AVAILABLE',
+      message: 'Agent unavailable',
+    });
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-incident-empty-state'),
+    ).toBeNull();
+  });
+
+  it('shows the hero for an empty response and keeps a populated list compact', async () => {
+    selectScope();
+    listResult$.next({ kind: 'ok', data: [] });
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Try a test incident');
+    listResult$.next({
+      kind: 'ok',
+      data: [incident('billing', 'INC-1', 'An existing report')],
+    });
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector('sneat-datatug-incident-empty-state'),
+    ).toBeNull();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.innerHTML).toContain('Report an incident');
   });
 
   it('shows an "open a project" guidance state without a complete scope', () => {
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain('Create a private project');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Create a private project',
+    );
     expect(listSpy).not.toHaveBeenCalled();
   });
 
@@ -387,7 +425,7 @@ describe('IncidentListPageComponent', () => {
     listResult$.next({ kind: 'ok', data: [] });
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain('No incidents yet');
+    expect(fixture.nativeElement.innerHTML).toContain('Try a test incident');
   });
 
   it('builds a route-store-authoritative detail link', () => {

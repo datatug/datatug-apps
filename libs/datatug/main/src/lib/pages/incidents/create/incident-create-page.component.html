@@ -3,13 +3,21 @@
     <ion-buttons slot="start">
       <ion-menu-button />
     </ion-buttons>
-    <ion-title>Houston, we've got a problem</ion-title>
+    <ion-title>Report an incident</ion-title>
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
   <ion-card>
     <ion-card-content>
+      @if (isTestDraft()) {
+        <h1>Try a test incident</h1>
+        <p role="status">
+          This is an editable example. Change the title and description below.
+          Choosing Create incident saves a real incident in the selected project
+          and environment.
+        </p>
+      }
       <ion-item>
         <ion-input
           label="Title"
@@ -49,11 +57,14 @@
           aria-live="polite"
           data-testid="incident-scope-guidance"
         >
-          Open a project and environment connected to a DataTug server before creating a local Incident.
-          To create a hosted Incident, open a private project first.
+          Open a project and environment connected to a DataTug server before
+          creating a local Incident. To create a hosted Incident, open a private
+          project first.
         </ion-note>
         @if (hostedIncidentNewHref(); as href) {
-          <ion-button [routerLink]="href">Create Incident in private project</ion-button>
+          <ion-button [routerLink]="href"
+            >Create Incident in private project</ion-button
+          >
         } @else {
           <sneat-datatug-detective-demo-starter destination="incidents" />
         }
@@ -88,12 +99,13 @@
           } @else {
             <ion-icon slot="start" name="rocket-outline" />
           }
-          Houston, we've got a problem
+          Create incident
         </ion-button>
       }
       <ion-button
         expand="block"
         fill="clear"
+        (click)="cancelDraft()"
         routerLink="/incidents"
         [queryParams]="scopeQueryParams()"
         [disabled]="isSubmitting()"
