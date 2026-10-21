@@ -1,3 +1,5 @@
+import type { ProjectMeaningsCatalog } from '../meanings/project-meanings-contract';
+import type { SemanticMeaningScope } from './semantic-mapping';
 import type { IQueryDef } from '../models/definition/query-def';
 import {
   conceptId,
@@ -8,6 +10,7 @@ import {
 } from './semantic-mapping';
 
 export interface SavedMeaningChoice {
+  readonly sourceKind?: 'device' | 'project';
   readonly key: string;
   readonly sourceQueryId: string;
   readonly sourceTitle: string;
@@ -147,6 +150,10 @@ export function importMeaningDefinitions(
 ): SemanticModel {
   const concepts = meaningDefinitions(document, target),
     merged = structuredClone(target);
+  if (concepts.some((concept) => concept.meaningRef))
+    throw new Error(
+      'Project meaning references must be selected from this project. Import an independent definition or use the project meanings picker.',
+    );
   for (const concept of concepts) {
     const existing = merged.meaning.concepts.find(
       (item) => item.id === concept.id,
@@ -163,4 +170,47 @@ export function importMeaningDefinitions(
   const result = rebuildMeaningBindings(merged);
   validateSemanticModel(result);
   return result;
+}
+
+/** Standalone project definitions retain exact provider scope and canonical identity when reused. */
+export function projectMeaningChoices(
+  catalog: ProjectMeaningsCatalog,
+  scope: SemanticMeaningScope,
+): SavedMeaningChoice[] {
+  return catalog.entities
+    .filter(
+      (entity) =>
+        entity.origin === 'project' && entity.documentId === 'project',
+    )
+    .flatMap((entity) =>
+      entity.fields.map((field) => ({
+        key: `saved:project:${JSON.stringify([entity.conceptId, field.conceptId])}`,
+        sourceKind: 'project' as const,
+        sourceQueryId: '',
+        sourceTitle: 'Project meanings',
+        entity: {
+          id: entity.conceptId,
+          kind: 'entity' as const,
+          labels: { en: entity.name },
+          description: entity.description || entity.name,
+          meaningRef: {
+            documentId: 'project' as const,
+            conceptId: entity.conceptId,
+            scope: structuredClone(scope),
+          },
+        },
+        property: {
+          id: field.conceptId,
+          kind: 'property' as const,
+          labels: { en: field.name },
+          description: field.description || field.name,
+          of: entity.conceptId,
+          meaningRef: {
+            documentId: 'project' as const,
+            conceptId: field.conceptId,
+            scope: structuredClone(scope),
+          },
+        },
+      })),
+    );
 }

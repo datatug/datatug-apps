@@ -221,3 +221,11 @@ Tracked in the DataTug hub Feature (`datatug/datatug` →
   choice at view time. The exact field shape (`queryId` + the binding list)
   is the coding agent's design carrying out that direction, not the
   founder's own wording — see `BOARD_MODELS_VERSION` bump to `0.2.0`.
+
+### Core v0.63 evidence chart variants
+
+Board models version `0.4.0` adds timeline, timing-bars and heatmap to the existing discriminated ChartSpec union, reusing the shared semantic mapping types without a runtime dependency on its transport modules. Each new variant has exactly one saved-query source, a selection ID and its matching closed mapping branch. Timing endpoints may share clock and precision columns. Legacy bar/bar-race definitions retain their wire shape.
+
+The unchanged shipping Board fixture comes from Demo commit `da6f75453cfcfaecdb127a39e013dda3f2c19107`, `demo-project-1/boards/shipping/board.json`. It includes dynamic integer order_id bindings. The canonical DataTug BoardWidget and declarative Dashboardius profile consume the same persisted definitions and shared EvidenceChartComponent. The external Dashboardius repository described above is not a separate consumer implementation in this slice.
+
+An admitted held identity is optional runtime snapshot state, never a persisted Board field. Missing authenticated provider identity or retained-open support remains unavailable. Source tests do not establish a deployed Go Project Store/browser or full shipping-story acceptance receipt.

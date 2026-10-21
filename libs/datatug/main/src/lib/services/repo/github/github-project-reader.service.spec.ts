@@ -1,3 +1,4 @@
+import { createSemanticModel } from '../../../queries/semantic-mapping';
 import { firstValueFrom } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 
@@ -505,6 +506,18 @@ describe('GithubProjectReaderService', () => {
   });
 
   describe('getQueriesFolder', () => {
+    it('preserves MeaningGraph documents through nested query catalog and cold query reads', async () => {
+      const semanticModel = createSemanticModel({queryHash:'a'.repeat(64),resultIndex:0,columns:[{name:'ID',dataType:'integer'}]});
+      semanticModel.meaning.concepts = [{id:'customer',kind:'entity',labels:{en:'Customer'},description:'A buyer'}];
+      const {service} = setup({
+        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',semanticModel}),
+        'demo-project-1/queries/sales/regional/customers.query.sql': 'SELECT 1 AS ID',
+      });
+      const folder = await first(service.getQueriesFolder(PROJECT_ID));
+      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].semanticModel).toEqual(semanticModel);
+      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({semanticModel,text:'SELECT 1 AS ID'});
+    });
+
     it('builds the recursive folder tree, one folder per queries/ subfolder', async () => {
       const { service } = setup({
         'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
@@ -673,4 +686,93 @@ describe('GithubProjectReaderService', () => {
       });
     });
   });
+});
+
+describe('strict schema inventory completeness', () => {
+  function strictSetup(tree?: unknown, missing = false) {
+    const gh = new FakeGithub();
+    if (!missing) gh.addRepo(REPO, SHA, demoFiles());
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: GITHUB_FETCH,
+          useValue: async (url: string, init: RequestInit) =>
+            url.includes('/git/trees/') && tree !== undefined
+              ? new Response(JSON.stringify(tree), { status: 200 })
+              : gh.fetch(url, init),
+        },
+        { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+        { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+      ],
+    });
+    return { gh, service: TestBed.inject(GithubProjectReaderService) };
+  }
+  it.each([
+    { tree: [], truncated: true },
+    { tree: null, truncated: false },
+    { tree: [{ path: 2, type: 'blob' }], truncated: false },
+    { tree: [] },
+  ])('refuses incomplete or malformed listing %j', async (tree) => {
+    const { service } = strictSetup(tree);
+    await expect(
+      first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+  it('does not reuse a permissive listing and reuses a proven strict tree across directories', async () => {
+    const { service, gh } = strictSetup();
+    await first(service.listDirectory(PROJECT_ID, 'dbmodels'));
+    await first(
+      service.listDirectory(PROJECT_ID, 'dbmodels', { requireComplete: true }),
+    );
+    await first(
+      service.listDirectory(PROJECT_ID, 'dbmodels/chinook', {
+        requireComplete: true,
+      }),
+    );
+    expect(gh.urls().filter((url) => url.includes('/git/trees/'))).toHaveLength(
+      2,
+    );
+  });
+  it('accepts an explicitly complete empty tree', async () => {
+    const { service } = strictSetup({ tree: [], truncated: false });
+    expect(
+      await first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).toEqual([]);
+  });
+  it('refuses a missing project instead of manufacturing an empty strict inventory', async () => {
+    const { service } = strictSetup(undefined, true);
+    await expect(
+      first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).rejects.toThrow();
+  });
+  it.each([403, 'network', 'redirect'] as const)('refuses an unresolved, refused or moved commit (%s)',async failure=>{
+    const {service,gh}=strictSetup();
+    gh.fail.api=failure;
+    await expect(first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).rejects.toThrow();
+  });
+  it('ignores a persisted legacy tree without complete provenance',async()=>{
+    const gh=new FakeGithub();gh.addRepo(REPO,SHA,demoFiles());
+    const getFile=vi.fn(async (_commit:string,path:string)=>path==='#tree'?{text:'[]',bytes:2}:undefined);
+    TestBed.configureTestingModule({providers:[
+      {provide:GITHUB_FETCH,useValue:gh.fetch},
+      {provide:GITHUB_CLOCK,useValue:()=>1_000_000},
+      {provide:GITHUB_FILE_STORE,useValue:{...NO_GITHUB_FILE_STORE,getFile}},
+    ]});
+    const service=TestBed.inject(GithubProjectReaderService);
+    expect(await first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).not.toEqual([]);
+    expect(getFile.mock.calls.some(call=>call[1]==='#tree')).toBe(false);
+  });
+
 });

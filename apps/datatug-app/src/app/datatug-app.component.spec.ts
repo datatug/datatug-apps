@@ -115,7 +115,7 @@ describe('AppComponent', () => {
   });
 });
 
-describe('DatatugAppComponent shell — signed-out home panel hidden (founder 2026-10-14)', () => {
+describe('DatatugAppComponent shell — Home panel closed by default', () => {
   const render = async (status: 'authenticated' | 'notAuthenticated') => {
     await TestBed.configureTestingModule({
       imports: [DatatugAppComponent],
@@ -144,19 +144,18 @@ describe('DatatugAppComponent shell — signed-out home panel hidden (founder 20
     return fixture;
   };
 
-  it('signed out on the start page: panel hidden at every width', async () => {
-    const fixture = await render('notAuthenticated');
-    const c = fixture.componentInstance;
-    expect(peek(c).homePanelHidden()).toBe(true);
-    expect(peek(c).paneWhen()).toBe(false);
-  });
-
-  it('signed in on the start page: panel returns', async () => {
-    const fixture = await render('authenticated');
-    const c = fixture.componentInstance;
-    expect(peek(c).homePanelHidden()).toBe(false);
-    expect(peek(c).paneWhen()).toBe('(min-width: 992px)');
-  });
+  it.each(['notAuthenticated', 'authenticated'] as const)(
+    '%s on the start page: panel hidden at every width, menu stays enabled',
+    async (status) => {
+      const fixture = await render(status);
+      const c = fixture.componentInstance;
+      expect(peek(c).homePanelHidden()).toBe(true);
+      expect(peek(c).paneWhen()).toBe(false);
+      const menu = fixture.nativeElement.querySelector('ion-menu');
+      expect(menu.disabled).toBe(false);
+      expect(menu.style.display).toBe('');
+    },
+  );
 });
 
 // The shared app shell (brand header) rendered under each product-profile

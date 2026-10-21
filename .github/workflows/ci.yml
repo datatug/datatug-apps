@@ -9,12 +9,11 @@ on:
       - main
   pull_request:
   merge_group:
-  # Nightly run of everything, including the lanes that need live third-party hosts (e2e-demo-postgresql). Those lanes
-  # run ONLY on this event; pull_request, merge_group and push run the offline lanes (see e2e/README.md "Lane matrix").
-  schedule:
-    - cron: '17 3 * * *'
-  # Manual runs allow the default CI checks and hosted Cloud Logging E2E lane;
-  # the remaining full browser lanes stay nightly-only.
+  # No scheduled run (repo owner policy: no scheduled or polling workflows). Every lane here is offline and runs on
+  # pull_request, merge_group and push. The one lane that needs a live third-party host (PostgreSQL through
+  # cloud.openvaultdb.com) lives in e2e-postgres-ovdb.yml: manual or path-filtered, never required (see e2e/README.md
+  # "Lane matrix").
+  # Manual runs allow the default CI checks and hosted Cloud Logging E2E lane.
   workflow_dispatch:
 
 permissions:
@@ -55,8 +54,8 @@ jobs:
           GROUP_BASE: ${{ github.event.merge_group.base_sha }}
           GROUP_HEAD: ${{ github.event.merge_group.head_sha }}
         run: |
-          if [ "$EVENT_NAME" = schedule ] || [ "$EVENT_NAME" = workflow_dispatch ]; then
-            echo '::notice::Scheduled or manual validation always runs the full application suites.'
+          if [ "$EVENT_NAME" = workflow_dispatch ]; then
+            echo '::notice::Manual validation always runs the full application suites.'
             echo 'mode=full' >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -221,7 +220,7 @@ jobs:
       - name: DemoDB guard unit tests, mutation check and public OVDB proxy test
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
-          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./apps/datatug-app/e2e/helpers/ts-extensionless.mjs --test apps/datatug-app/e2e/helpers/demodb-guard-logic.unit.ts apps/datatug-app/e2e/helpers/demodb-guard-state.unit.ts apps/datatug-app/e2e/helpers/demodb-request-reporter.unit.ts
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./apps/datatug-app/e2e/helpers/ts-extensionless.mjs --test apps/datatug-app/e2e/helpers/demodb-guard-logic.unit.ts apps/datatug-app/e2e/helpers/demodb-guard-state.unit.ts apps/datatug-app/e2e/helpers/demodb-request-reporter.unit.ts apps/datatug-app/e2e/helpers/live-fetch-headers.unit.ts
           node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/mutate-demodb-guard.mjs
           node --test tools/public-ovdb-proxy.unit.cjs
 
@@ -234,8 +233,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
-  # Run full browser suites nightly at 03:17 UTC. Independent runners keep their
-  # app servers, Playwright artifacts and Nx state from contending.
+  # Independent runners keep the browser suites' app servers, Playwright artifacts and Nx state from contending.
   e2e-checkout:
     if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
@@ -291,11 +289,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          if [ "${{ github.event_name }}" = schedule ]; then
-            pnpm nx run datatug-app:e2e-checkout --skip-nx-cache
-          else
-            pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
-          fi
+          pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
@@ -472,11 +466,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          if [ "${{ github.event_name }}" = schedule ]; then
-            pnpm nx run datatug-app:e2e --skip-nx-cache -- --project=chromium
-          else
-            pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} -- --project=chromium
-          fi
+          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} -- --project=chromium
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -578,11 +568,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          if [ "${{ github.event_name }}" = schedule ]; then
-            pnpm nx run datatug-app:e2e-query-mobile --skip-nx-cache
-          else
-            pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
-          fi
+          pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -689,11 +675,7 @@ jobs:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
           test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = 'f40286a57ea3a04b93875335234665ece2595ed0'
-          if [ "${{ github.event_name }}" = schedule ]; then
-            pnpm nx run datatug-app:e2e-demo-sqlite --skip-nx-cache
-          else
-            pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
-          fi
+          pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -718,67 +700,6 @@ jobs:
           path: |
             coverage/apps/datatug-app-demo-sqlite-e2e/report
             coverage/apps/datatug-app-demo-sqlite-e2e/results
-          if-no-files-found: ignore
-
-  # /demo/ovdb/<dataset>-postgresql (apps/datatug-app/e2e/demo-postgresql.spec.ts): the hosted, read-only PostgreSQL
-  # DemoDB editions opened THROUGH the public OpenVaultDB server (cloud.openvaultdb.com), never Neon directly. Runs the
-  # built app in Chromium and Firefox against the REAL live API (so it needs the network and tolerates cold starts:
-  # long waits and the app's own 503 back-off; Playwright never retries a test, every test has a request budget, and
-  # HTTP 429 stops the run). Chromium smoke-tests every edition; Firefox only Chinook. Nightly only: it needs a live
-  # third-party host, so it never runs on pull requests, merge groups or pushes. Its own job, so an outage of the live
-  # API fails this lane and nothing else; it is part of the nightly "e2e" aggregate below.
-  e2e-demo-postgresql:
-    if: always() && github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    needs: [preflight, build]
-    permissions:
-      actions: read
-      contents: read
-      attestations: read
-    steps:
-      - name: Require successful metadata preflight
-        run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
-      - name: Verified metadata-only change; application checks not applicable
-        if: needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'metadata-only'
-        run: echo 'Verified SpecScore status-only change; application checks not applicable.' >> "$GITHUB_STEP_SUMMARY"
-      - name: Checkout repository
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - name: Authenticate private Core artifact verification
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        id: core-artifact-token
-        uses: ./.github/actions/private-core-artifact
-        with:
-          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
-
-      - uses: ./.github/actions/pnpm
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-
-      - name: Derive appropriate SHAs for base and head for nx affected commands
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        uses: nrwl/nx-set-shas@v5
-
-      - name: Install demo PostgreSQL browsers
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        run: pnpm exec playwright install --with-deps chromium firefox
-
-      - name: nx e2e-demo-postgresql
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        env:
-          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
-        run: pnpm nx run datatug-app:e2e-demo-postgresql --skip-nx-cache
-
-      - name: Upload demo PostgreSQL e2e report
-        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (failure()) }}
-        uses: actions/upload-artifact@v7
-        with:
-          name: demo-postgresql-e2e-playwright-report
-          path: |
-            coverage/apps/datatug-app-demo-postgresql-e2e/report
-            coverage/apps/datatug-app-demo-postgresql-e2e/results
           if-no-files-found: ignore
 
   e2e-demo-handoff:
@@ -834,11 +755,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          if [ "${{ github.event_name }}" = schedule ]; then
-            pnpm nx run datatug-app:e2e-demo-handoff --skip-nx-cache
-          else
-            pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
-          fi
+          pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
 
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
@@ -856,54 +773,19 @@ jobs:
           path: coverage/apps/datatug-app-demo-handoff-e2e/report
           if-no-files-found: ignore
 
-  # `e2e` is the strict nightly aggregate of browser and real-agent lanes,
-  # including the live-API PostgreSQL lane. Production uses `deploy-gate` below.
-  # Keep the existing check name for nightly reports. `always()` makes it run even
-  # when build fails and GitHub skips its dependent lanes; every lane must
-  # actually succeed, so a skipped or cancelled lane cannot pass this check.
-  e2e:
-    if: always() && github.event_name == 'schedule'
-    runs-on: ubuntu-latest
-    needs: [build, e2e-checkout, e2e-cloud-logs, e2e-app, e2e-query-mobile, e2e-demo-sqlite, e2e-demo-postgresql, e2e-demo-handoff, journey, agent-links]
-    steps:
-      - name: Require every E2E lane
-        env:
-          BUILD_RESULT: ${{ needs.build.result }}
-          CHECKOUT_RESULT: ${{ needs.e2e-checkout.result }}
-          CLOUD_LOGS_RESULT: ${{ needs.e2e-cloud-logs.result }}
-          APP_RESULT: ${{ needs.e2e-app.result }}
-          QUERY_MOBILE_RESULT: ${{ needs.e2e-query-mobile.result }}
-          SQLITE_RESULT: ${{ needs.e2e-demo-sqlite.result }}
-          POSTGRESQL_RESULT: ${{ needs.e2e-demo-postgresql.result }}
-          HANDOFF_RESULT: ${{ needs.e2e-demo-handoff.result }}
-          JOURNEY_RESULT: ${{ needs.journey.result }}
-          LINKS_RESULT: ${{ needs.agent-links.result }}
-          LINKS_REF: ${{ vars.DATATUG_LINKS_CLI_REF }}
-        run: |
-          for result in "$BUILD_RESULT" "$CHECKOUT_RESULT" "$CLOUD_LOGS_RESULT" "$APP_RESULT" "$QUERY_MOBILE_RESULT" "$SQLITE_RESULT" "$POSTGRESQL_RESULT" "$HANDOFF_RESULT" "$JOURNEY_RESULT"; do
-            if [[ "$result" != success ]]; then
-              echo "Required E2E dependency ended with: $result" >&2
-              exit 1
-            fi
-          done
-          if [[ ( -n "$LINKS_REF" && "$LINKS_RESULT" != success ) || ( -z "$LINKS_REF" && "$LINKS_RESULT" != skipped ) ]]; then
-            echo "Card-link E2E ended with: $LINKS_RESULT (ref configured: $([[ -n "$LINKS_REF" ]] && echo yes || echo no))" >&2
-            exit 1
-          fi
-
   # Production deploy gate (deploy.yml requires this job's conclusion to be
   # `success` for the commit it deploys; also safe to make a required check).
   # Gates on every offline lane that proves the shipped app: the browser suites
   # (none of which sends a request to demodb.dev or any other live third party),
   # the real-agent journey and, once DATATUG_LINKS_CLI_REF is set, the card
-  # links. Deliberately NOT on e2e-demo-postgresql: it drives the real
-  # cloud.openvaultdb.com API, so it runs nightly only. `always()` + exact
+  # links. Deliberately NOT on the PostgreSQL-through-OVDB test (e2e-postgres-ovdb.yml): it drives the real
+  # cloud.openvaultdb.com API, so it is its own workflow. `always()` + exact
   # `success` per lane: a failed, skipped or cancelled lane (including lanes
   # skipped because `build` failed) fails the gate; agent-links alone may be
-  # `skipped`. Add new lanes here. Not run on the nightly schedule.
+  # `skipped`. Add new lanes here.
   deploy-gate:
     name: deploy-gate
-    if: always() && github.event_name != 'schedule' && github.event_name != 'workflow_dispatch'
+    if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     needs:
       - build
@@ -942,7 +824,7 @@ jobs:
   # runs affected specs; this one always runs and proves the actual web <->
   # agent contract). Always runs (not gated by `nx affected`) because it is
   # the one suite that can catch a datatug-cli-side regression even when no
-  # file in this repo changed. Run it nightly with the other E2E suites.
+  # file in this repo changed. It runs on every pull request, merge group and push.
   journey:
     if: always() && github.event_name != 'workflow_dispatch'
     # `env` is not an available context for `jobs.<job_id>.name`, so the

@@ -10,60 +10,44 @@
         "
       />
     </ion-buttons>
-    <ion-title color="medium">Project</ion-title>
+    <ion-title><h1 class="project-title">{{ projectTitle() }}</h1></ion-title>
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
-  <ion-card class="project-context-card">
-    <ion-item>
-      <ion-input
-        style="font-weight: bold"
-        readonly
-        [value]="
-          project()?.brief?.title ||
-          (metadataState() === 'loading' ? 'Loading...' : 'Project unavailable')
-        "
-      />
-      @if (!project()?.ref?.spaceID) {
-        <ion-select
-          slot="end"
-          interface="popover"
-          placeholder="Go to..."
-          (ionChange)="goTo($event)"
-        >
-          <ion-select-option value="boards">Boards</ion-select-option>
-          <ion-select-option value="environments"
-            >Environments</ion-select-option
-          >
-          <ion-select-option value="queries">Queries</ion-select-option>
-          <ion-select-option value="public-data"
-            >Public data lookup</ion-select-option
-          >
-          @if (enableEmptyShellPages) {
-            <ion-select-option value="tags">Tags</ion-select-option>
-          }
-        </ion-select>
+  <form class="overview-quick-search ph-no-capture" role="search" (submit)="submitQuickSearch($event)">
+    <label for="project-quick-search">Quick Search</label>
+    <div>
+      <input id="project-quick-search" class="ph-no-capture ph-mask sentry-mask" data-sentry-mask type="search" name="q" placeholder="Search tables, columns, queries, tags…" [value]="quickSearchQuery()" (input)="updateQuickSearch($event)" />
+      <button type="submit" [disabled]="!quickSearchQuery().trim() || !project()?.ref">Search</button>
+    </div>
+  </form>
+  @if (shippingHref(); as href) {
+    <ion-item [routerLink]="href" detail="true"
+      ><ion-label>Shipping training workspace</ion-label></ion-item
+    >
+  }
+  @if (projectMetadata().length) {
+    <p class="project-context-meta" aria-label="Project connection details">
+      @for (item of projectMetadata(); track item) {
+        <span>{{ item }}</span>
+        @if (!$last) {
+          <span aria-hidden="true">·</span>
+        }
       }
-    </ion-item>
-    @if (metadataReadError(); as error) {
-      <ion-card-content role="alert">{{ error }}</ion-card-content>
-    }
-    <!--		<ion-item>-->
-    <!--			<ion-label color="medium" style="font-weight: bold;">ID</ion-label>-->
-    <!--			<ion-input readonly [value]="project?.ref?.projectId" color="medium"></ion-input>-->
-    <!--		</ion-item>-->
-    @if (project()?.ref && project()?.ref?.storeId !== 'firestore') {
-      <ion-item>
-        <ion-label color="medium" style="font-weight: bold">Store</ion-label>
-        <ion-input
-          readonly="true"
-          [value]="storeDisplayLabel(project()?.ref?.storeId)"
-          color="medium"
-        />
-      </ion-item>
-    }
-  </ion-card>
+      @if (publicDataHref(); as href) {
+        <a [routerLink]="href">Public data lookup</a>
+      }
+    </p>
+  }
+  @if (metadataState() === 'unavailable' && !metadataReadError()) {
+    <p class="project-metadata-unavailable" role="status">
+      Project details are unavailable. Showing the project identity from its address.
+    </p>
+  }
+  @if (metadataReadError(); as error) {
+    <p class="project-metadata-error" role="alert">{{ error }}</p>
+  }
 
   @if (project()?.ref; as projectRef) {
     <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
@@ -121,7 +105,11 @@
         />
       }
     </section>
-    <nav class="overview-tabs" aria-label="Project overview sections">
+    <nav
+      class="overview-tabs"
+      role="group"
+      aria-label="Project overview sections"
+    >
       @for (tab of overviewTabs; track tab.id) {
         <button
           type="button"
@@ -337,11 +325,23 @@
         <ion-card-title>Private DemoDB sandbox</ion-card-title>
       </ion-card-header>
       <ion-card-content>
-        <p>
-          Sign in to create a private, writable clone of six sample databases
-          when the sandbox service is available.
-        </p>
-        <ion-button [routerLink]="href">Check sandbox availability</ion-button>
+        @if (signedIn()) {
+          <p>
+            Create a private, writable clone of six sample databases for your
+            registered account.
+          </p>
+          <ion-button fill="outline" [routerLink]="href"
+            >Set up private sandbox</ion-button
+          >
+        } @else {
+          <p>
+            Sign in to create a private, writable clone of six sample databases
+            for your registered account.
+          </p>
+          <ion-button fill="outline" [routerLink]="href"
+            >Sign in to use a private sandbox</ion-button
+          >
+        }
       </ion-card-content>
     </ion-card>
   }

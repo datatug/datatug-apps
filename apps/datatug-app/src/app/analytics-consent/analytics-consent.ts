@@ -33,9 +33,17 @@ export interface AnalyticsEnv {
       type: 'storage',
       listener: (event: { key: string | null }) => void,
     ): void;
+    addEventListener(
+      type: 'pageshow',
+      listener: (event: { persisted: boolean }) => void,
+    ): void;
     removeEventListener(
       type: 'storage',
       listener: (event: { key: string | null }) => void,
+    ): void;
+    removeEventListener(
+      type: 'pageshow',
+      listener: (event: { persisted: boolean }) => void,
     ): void;
   } & Record<string, unknown>;
   document: {
@@ -237,6 +245,9 @@ export function createAnalyticsConsent(
   const onStorage = (event: { key: string | null }) => {
     if (event.key === null || event.key === ANALYTICS_CONSENT_KEY) refresh();
   };
+  const onPageShow = (event: { persisted: boolean }) => {
+    if (event.persisted) refresh();
+  };
 
   return {
     choice,
@@ -267,11 +278,13 @@ export function createAnalyticsConsent(
     },
     start() {
       env.window.addEventListener('storage', onStorage);
+      env.window.addEventListener('pageshow', onPageShow);
       sync();
       notify();
     },
     stop() {
       env.window.removeEventListener('storage', onStorage);
+      env.window.removeEventListener('pageshow', onPageShow);
     },
   };
 }

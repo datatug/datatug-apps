@@ -1,0 +1,143 @@
+:host {
+  display: block;
+}
+
+.menu-selector-item {
+  --padding-start: 16px;
+  --inner-padding-end: 12px;
+  --min-height: 56px;
+}
+
+.menu-selector-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  margin: 0 12px 0 0;
+}
+
+.menu-selector-icon ion-icon {
+  font-size: 20px;
+}
+
+.menu-selector-icon-button {
+  width: 40px;
+  height: 44px;
+  margin: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
+
+.menu-selector-icon-button ion-icon {
+  font-size: 20px;
+}
+
+ion-select.menu-selector-field {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none !important;
+}
+
+.menu-selector-row-label {
+  flex: 0 0 auto;
+  min-width: 48px;
+}
+
+.menu-project-selector-item {
+  --min-height: 72px;
+}
+
+ion-select.menu-project-field::part(text) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-project-empty {
+  flex: 1 1 auto;
+}
+
+.menu-project-error {
+  flex: 0 0 100%;
+  margin-inline-start: 52px;
+  font-size: 0.75rem;
+}
+
+.menu-project-add {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  margin: 0;
+}
+
+.menu-project-add ion-button {
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  margin: 0;
+}
+
+.menu-env-clear {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  margin: 0;
+  align-self: flex-end;
+  margin-block-end: 4px;
+}
+
+.menu-env-clear ion-button {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
+
+.menu-env-content {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding-block: 10px;
+}
+
+.menu-env-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+  font-size: 0.75rem;
+
+  a {
+    color: var(--ion-color-primary);
+    text-decoration: none;
+
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+    }
+  }
+
+  ion-badge {
+    font-size: 0.6875rem;
+    font-weight: normal;
+  }
+}
+
+ion-select.menu-env-field {
+  display: flex;
+  justify-content: space-between;
+  padding: 0;
+  min-height: 32px;
+}
+
+ion-select.menu-env-field::part(container) {
+  flex: 1;
+  justify-content: space-between;
+}
+
+.menu-env-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 6px;
+}

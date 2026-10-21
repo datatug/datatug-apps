@@ -1,3 +1,7 @@
+import retainedFixture from '../../../../evidence/testdata/backend-v044-retained.json';
+import { readRetainedQueryResponse } from '../../../../evidence/retained-evidence-contract';
+import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
+import { NativeQueryFailure } from '../../../../queries/native-query-failure';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -41,6 +45,7 @@ describe('BoardWidgetComponent', () => {
     async () => [] as { selectionId: string; title: string }[],
   );
   let runtimeRevision = signal(0);
+  let nativeProject: BehaviorSubject<{ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>;
   let authState: BehaviorSubject<{
     status: 'notAuthenticated' | 'authenticated';
     user?: { uid: string };
@@ -51,6 +56,7 @@ describe('BoardWidgetComponent', () => {
     run.mockReset();
     availableWorkingCopies.mockReset().mockResolvedValue([]);
     runtimeRevision = signal(0);
+    nativeProject = new BehaviorSubject<{ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>(undefined);
     authState = new BehaviorSubject<{
       status: 'notAuthenticated' | 'authenticated';
       user?: { uid: string };
@@ -62,6 +68,7 @@ describe('BoardWidgetComponent', () => {
         BoardPresentationSelection,
         { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
+        {provide:DatatugNavContextService,useValue:{currentProject:nativeProject,currentEnv:of(undefined)}},
         {
           provide: SneatAuthStateService,
           useValue: { authState: authState.asObservable() },
@@ -71,6 +78,7 @@ describe('BoardWidgetComponent', () => {
           provide: QueryDispatchService,
           useValue: {
             execute: run,
+            executeHeld: async (...args: Parameters<typeof run>) => ({ result: await run(...args) }),
             runtimeRevision: runtimeRevision.asReadonly(),
             availableWorkingCopies,
           },
@@ -697,6 +705,25 @@ describe('BoardWidgetComponent', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('uses the existing alert for finite diagnostics and retains the original failure only locally', async () => {
+    const cause = new Error('https://secret.test/token SQL auth body');
+    const failure = new NativeQueryFailure({ stage: 'capability_discovery', reason: 'http_status', status: 403 }, { cause });
+    getQuery.mockReturnValue(of({ id: 'demo/query', title: 'Demo query', request: { queryType: QueryType.SQL, text: 'select 1' }, connectionId: 'chinook-sqlite' }));
+    fixture.componentRef.setInput('projectRef', { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local', branch: 'feature/demo' });
+    fixture.componentRef.setInput('boardId', 'board1');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('readBoardForRun', () => throwError(() => failure));
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId: 'demo/query' } } });
+    fixture.detectChanges();
+    await fixture.componentInstance.run();
+    fixture.detectChanges();
+    expect(fixture.componentInstance.runFailure()).toBe(failure);
+    expect(fixture.componentInstance.runFailure()).toHaveProperty('cause', cause);
+    expect(fixture.nativeElement.textContent).toContain('OVDB metadata request failed (HTTP 403)');
+    expect(fixture.nativeElement.textContent).not.toMatch(/secret|SQL auth body/);
+    expect(fixture.componentInstance.runError()).toContain('Retry');
+  });
+
   it('keeps an unexpected board read error generic', async () => {
     getQuery.mockReturnValue(
       of({
@@ -1088,6 +1115,86 @@ describe('BoardWidgetComponent', () => {
     expect(() => component.clearCountry()).not.toThrow();
     expect(component.selectedCountry()).toBeUndefined();
     expect(run).not.toHaveBeenCalled();
+  });
+
+  it('dispatches a native-demo DTQL saved query from the canonical SQL widget to the explicit hosted target', async () => {
+    const queryId = 'detective/invoice-detail';
+    const { board, readBoard } = configureShowcase({
+      name: 'SQL',
+      data: { sql: { queryId, parameters: [{ id: 'invoice_id', value: 7 }] } },
+    });
+    const ref = {
+      storeId: 'firestore',
+      spaceID: 'space',
+      projectId: 'training',
+    };
+    const definition = {
+      id: 'invoice-detail',
+      title: 'Invoice totals and customer',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from: {database: invoices-db, name: InvoiceDetail}',
+      },
+      parameters: [{ id: 'invoice_id', type: 'integer', isRequired: true }],
+    };
+    getQuery.mockReturnValue(of(definition));
+    authState.next({ status: 'authenticated', user: { uid: 'sarah' } });
+    nativeProject.next({ref});
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardContext', {
+      environment: 'demo',
+      executionTarget: { kind: 'hosted-cloud' },
+    });
+    run.mockRejectedValue(
+      new QueryDispatchError('Current source unavailable.'),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await fixture.componentInstance.run();
+    expect(fixture.componentInstance.unsupportedReason()).toBeUndefined();
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRef: ref,
+        queryId,
+        definition,
+        environment: 'demo',
+        target: { kind: 'hosted-cloud' },
+        parameters: { invoice_id: { type: 'integer', value: '7' } },
+      }),
+      { maxRows: 1000 },
+    );
+    expect(fixture.componentInstance.runError()).toContain(
+      'Current source unavailable',
+    );
+    const changed = JSON.parse(JSON.stringify(board)) as typeof board;
+    changed.rows[0].cards[0].widget = {
+      name: 'SQL',
+      data: { sql: { queryId, parameters: [{ id: 'invoice_id', value: 8 }] } },
+    };
+    readBoard.mockReturnValue(of(changed));
+    run.mockClear();
+    await fixture.componentInstance.run();
+    expect(run).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.runError()).toContain(
+      'board card changed',
+    );
+  });
+
+  it('pairs authenticated provider identity with the complete held Result, never trusts a sidecar alone, and clears both on native actor change', async () => {
+    const queryId='shipping/receipt',ref={storeId:'firestore',spaceID:'fixture-space',projectId:'fixture-project'};
+    configureShowcase({name:'SQL',data:{sql:{queryId}}});
+    getQuery.mockReturnValue(of({id:'receipt',title:'Request received',request:{queryType:QueryType.SQL,text:'SELECT request_id FROM shipping_requests'}}));
+    authState.next({status:'authenticated',user:{uid:'sarah'}});nativeProject.next({ref});
+    fixture.componentRef.setInput('projectRef',ref);fixture.componentRef.setInput('boardContext',{environment:'demo',executionTarget:{kind:'hosted-cloud'}});
+    const response=await readRetainedQueryResponse(retainedFixture.query,{projectRef:ref,environment:'demo',actor:'sarah'},queryId);
+    const execute=vi.spyOn(TestBed.inject(QueryDispatchService),'executeHeld').mockResolvedValue({result:response.result,hostedResponse:response});
+    fixture.detectChanges();await fixture.whenStable();await fixture.componentInstance.run();
+    expect(fixture.componentInstance.result()).toMatchObject({rowEvidence:response.result.rowEvidence});
+    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity?.source.generation).toBe(response.sourcePin?.revision.generation);
+    execute.mockResolvedValue({result:response.result});await fixture.componentInstance.run();
+    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity).toBeUndefined();
+    authState.next({status:'authenticated',user:{uid:'maya'}});
+    expect(fixture.componentInstance.result()).toBeUndefined();expect(fixture.componentInstance.heldSnapshot()).toBeUndefined();
   });
 
   it('runs a saved server DTQL definition by default without choosing a working copy', async () => {

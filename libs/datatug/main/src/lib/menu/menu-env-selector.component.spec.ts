@@ -1,5 +1,6 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
@@ -9,6 +10,9 @@ import { EnvironmentService } from '../services/unsorted/environment.service';
 import { MenuEnvSelectorComponent } from './menu-env-selector.component';
 
 describe('MenuEnvSelectorComponent', () => {
+  beforeEach(() => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+  });
   it('hides old project environments while the next project is loading', async () => {
     const nextProjectEnvironments = new Subject<
       { id: string; title: string }[]

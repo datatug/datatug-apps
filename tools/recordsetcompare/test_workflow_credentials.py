@@ -21,7 +21,7 @@ def builds_or_serves_app(step):
 class PrivateCoreWorkflowTests(unittest.TestCase):
     def test_every_app_build_or_server_command_receives_core_read_token(self):
         count = 0
-        for filename in ("ci.yml", "checkout-provider-test.yml"):
+        for filename in ("ci.yml", "checkout-provider-test.yml", "e2e-postgres-ovdb.yml"):
             workflow = (ROOT / ".github/workflows" / filename).read_text()
             for job in re.split(r"(?m)(?=^  [\w-]+:\n)", workflow):
                 consumer_steps = []

@@ -1,5 +1,7 @@
 // Public API entry — see ../public_api.ts.
 
+import type { EvidenceChartSpec } from '@sneat/datatug-semantic';
+
 import { WidgetBase } from './widget-base';
 import { WidgetParameterBinding } from './widget-sql';
 
@@ -13,7 +15,10 @@ export const CHART_SOURCE_TRANSFORM_ORDERS_MONTHLY_COUNTRY_COUNT =
 /** Persisted chart types currently admitted by boards.go. */
 export const CHART_TYPE_BAR = 'bar' as const;
 export const CHART_TYPE_BAR_RACE = 'bar-race' as const;
-export type ChartType = typeof CHART_TYPE_BAR | typeof CHART_TYPE_BAR_RACE;
+export type ChartType =
+  | typeof CHART_TYPE_BAR
+  | typeof CHART_TYPE_BAR_RACE
+  | EvidenceChartSpec['type'];
 
 /** Persisted view choices currently admitted by boards.go. */
 export type ChartDefaultView = 'chart' | 'grid';
@@ -88,7 +93,20 @@ export interface BarRaceChartSpec {
 }
 
 /** Mirrors `ChartSpec` (boards.go), with validated chart variants represented as a discriminated union. */
+/** Core evidence variants reuse the shared mapping contract, never cached rows. */
+export type EvidenceBoardChartSpec = EvidenceChartSpec & {
+  categoryColumn?: never;
+  valueColumn?: never;
+  series?: never;
+  unit?: never;
+  periodColumn?: never;
+  grain?: never;
+  onDuplicate?: never;
+  mode?: never;
+  topN?: never;
+};
 export type ChartSpec =
+  | EvidenceBoardChartSpec
   | BarChartSpec
   | MultiSeriesBarChartSpec
   | BarRaceChartSpec;

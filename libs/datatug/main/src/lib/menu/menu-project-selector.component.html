@@ -1,39 +1,54 @@
-<ion-item class="ion-no-padding">
-  <ion-icon name="albums-outline" slot="start" aria-hidden="true" />
-  <ion-label color="medium">Project</ion-label>
-  <!--		<ion-select *ngIf="projects?.length"-->
-  <!--						[value]="currentProjectId"-->
-  <!--						(ionChange)="switchProject($event)"-->
-  <!--						interface="popover"-->
-  <!--		>-->
-  <!--			<ion-select-option *ngFor="let p of projects" [value]="p.id">{{p.title || p.id}}</ion-select-option>-->
-  <!--		</ion-select>-->
-  @if (projects()?.length) {
+<ion-item class="menu-selector-item menu-project-selector-item">
+  <span slot="start" class="menu-selector-icon" aria-hidden="true">
+    <ion-icon name="albums-outline" />
+  </span>
+  @if (projects().length) {
     <ion-select
+      class="menu-selector-field menu-project-field"
       aria-label="Project"
+      label="Project"
+      labelPlacement="floating"
       interface="popover"
+      [interfaceOptions]="projectSelectInterfaceOptions"
       [value]="currentProjectId()"
+      [selectedText]="selectedProjectTitle()"
       (ionChange)="switchProject($event)"
     >
-      @for (project of projects(); track project.id) {
-        <ion-select-option [value]="project.id">
-          {{ project.title || project.id }}
+      @for (project of projects(); track project.ref.projectId + ':' + project.ref.branch) {
+        <ion-select-option
+          [value]="project.id"
+          [description]="projectChoiceDescription(project)"
+        >
+          {{ project.title }}
         </ion-select-option>
       }
     </ion-select>
   }
-  @if (!projects()?.length && currentProjectId()) {
-    <ion-label>{{ projectLabel() }}</ion-label>
+  @if (!projects().length) {
+    <ion-label color="medium" class="menu-project-empty">
+      @if (projectListState() === 'loading') {
+        Loading projects…
+      } @else if (projectListState() === 'error') {
+        Could not load projects
+      } @else {
+        No projects available
+      }
+    </ion-label>
   }
-  @if (currentStoreId() === 'firestore' && !projects()?.length) {
-    <ion-buttons slot="end" class="ion-margin-end">
+  @if (projects().length && projectListState() === 'error') {
+    <ion-note color="medium" class="menu-project-error">
+      Could not load all projects
+    </ion-note>
+  }
+  @if (currentStoreId() === 'firestore' && !hasSavedProjects()) {
+    <ion-buttons slot="end" class="menu-project-add">
       <ion-button
         color="primary"
+        aria-label="New project"
+        title="New project"
         (click)="newProject()"
-        [disabled]="!projects()"
       >
-        <ion-icon slot="start" name="add" />
-        <ion-label>New project</ion-label>
+        <ion-icon slot="icon-only" name="add" />
       </ion-button>
     </ion-buttons>
   }

@@ -4,7 +4,7 @@ import {
   checkoutPrivacyActive,
   isCheckoutAddress,
 } from './app/checkout/checkout-privacy-state';
-import { isLinkRoute, onLinkRoute, scrubDeep } from './app/telemetry/link-privacy';
+import { isLinkRoute, onLinkRoute, scrubDeep, hasQuickSearchOrigin } from './app/telemetry/link-privacy';
 
 let initialized = false;
 /** The autocapture and recording settings PostHog was started with, restored when a link route is left. */
@@ -24,7 +24,7 @@ const ELEMENT_TEXT_PROPERTIES = ['$elements', '$elements_chain', '$el_text'];
  */
 export function scrubPosthogEvent<T extends PosthogEvent | null>(event: T): T | null {
   if (!event) return event;
-  const dropQuery = onLinkRoute();
+  const dropQuery = onLinkRoute() || hasQuickSearchOrigin(event);
   if (dropQuery && (event.event === '$autocapture' || event.event === '$snapshot')) return null;
   const scrubbed = scrubDeep(event, dropQuery);
   if (dropQuery && scrubbed.properties) {

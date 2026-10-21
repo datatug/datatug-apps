@@ -1,4 +1,5 @@
 import { computed, inject } from '@angular/core';
+import { distinctUntilChanged, map, merge } from 'rxjs';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { AgentContextService } from '@sneat/datatug-semantic';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -74,7 +75,14 @@ export function useDetectivePageContext() {
       request.kind === 'agent' ? request.securityContextId : '',
     ]);
   });
+  // Original native streams notify synchronously. Mutation cancellation must not
+  // wait for an Angular effect before a replacement credential can resolve.
+  const scopeChanges$ = merge(auth.authState, navigation.currentProject).pipe(
+    map(() => identity()),
+    distinctUntilChanged(),
+  );
   return {
+    scopeChanges$,
     project: project as () => IProjectContext | undefined,
     ref,
     currentEnvironment,

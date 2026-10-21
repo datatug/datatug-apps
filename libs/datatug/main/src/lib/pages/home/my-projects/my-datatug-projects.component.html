@@ -1,25 +1,17 @@
 <ion-card>
-  <ion-list lines="full">
-    <ion-item color="light">
-      <ion-label
-        ><h2>{{ title() }}</h2></ion-label
-      >
-      <ion-buttons slot="end">
-        @switch (authState?.status) {
-          @case ('authenticated') {
-            <ion-button
-              color="medium"
-              (click)="addProject()"
-              title="Add new project"
-            >
-              <ion-icon name="add" slot="start" color="primary" />
-              <ion-label>Add</ion-label>
-            </ion-button>
-          }
-        }
-      </ion-buttons>
-    </ion-item>
+  <ion-item color="light" lines="full">
+    <ion-label
+      ><h2>{{ title() }}</h2></ion-label
+    >
+    <ion-buttons slot="end">
+      <ion-button color="medium" (click)="addProject()" title="Add new project">
+        <ion-icon name="add" slot="start" color="primary" />
+        <ion-label>Add</ion-label>
+      </ion-button>
+    </ion-buttons>
+  </ion-item>
 
+  <ion-list lines="full" class="project-list">
     @switch (authState?.status) {
       @case ('authenticating') {
         <ion-item>
@@ -35,13 +27,21 @@
       }
       @case ('authenticated') {
         @if (userRecordLoaded) {
-          @for (
-            item of projects || [];
-            track item.ref.projectId + item.ref.storeId
-          ) {
-            <ion-item button (click)="goProject(item)" detail="true">
-              <ion-icon name="file-tray-full-outline" slot="start" />
-              {{ item.project.title }}
+          @if (projects?.length) {
+            @for (
+              item of projects || [];
+              track item.ref.projectId + item.ref.storeId
+            ) {
+              <ion-item button (click)="goProject(item)" detail="true">
+                <ion-icon name="file-tray-full-outline" slot="start" />
+                {{ item.project.title }}
+              </ion-item>
+            }
+          } @else {
+            <ion-item>
+              <ion-label color="medium"
+                >You have no personal or shared projects yet.</ion-label
+              >
             </ion-item>
           }
         } @else {
@@ -54,91 +54,63 @@
     }
   </ion-list>
 
+  @if (
+    authState?.status === 'notAuthenticated' ||
+    (authState?.status === 'authenticated' && userRecordLoaded && !projects?.length)
+  ) {
+    <img
+      class="empty-project-visual"
+      src="assets/home/empty-harbour-pencil.webp"
+      alt=""
+      width="2161"
+      height="728"
+      loading="lazy"
+      aria-hidden="true"
+    />
+  }
+
   @if (showDemoProjects) {
     <ion-list lines="full" class="demo-list">
-      <ion-item-divider>
+      <ion-item-divider color="light">
         <ion-label><h3>Demo projects</h3></ion-label>
       </ion-item-divider>
-      @for (demo of demoOptions; track demo.project.id) {
-        <ion-item button detail="true" (click)="goDemoProject(demo.project)">
-          <ion-icon name="file-tray-full-outline" slot="start" />
-          <ion-label>
-            <h3>{{ demo.project.title }}</h3>
-            <p>{{ demo.provider }}</p>
-          </ion-label>
-        </ion-item>
-      }
-    </ion-list>
-    <ion-card-content class="demo-experiences">
+      <div class="demo-options">
       @for (demo of demoOptions; track demo.project.id) {
         <section class="demo-details" [attr.data-demo-slot]="demo.provider">
-          <div class="demo-copy">
-            <h3>Explore the {{ demo.provider }} demo</h3>
-            <p>{{ demo.summary }}</p>
-            <ul aria-label="What you can explore">
-              @for (highlight of demo.highlights; track highlight) {
-                <li>{{ highlight }}</li>
-              }
-            </ul>
-            <ion-button
-              color="primary"
-              fill="outline"
-              (click)="goDemoProject(demo.project)"
-              [attr.data-testid]="'open-demo-' + demo.provider.toLowerCase()"
-            >
-              Open public demo
-              <ion-icon
-                name="arrow-forward-outline"
-                slot="end"
-                aria-hidden="true"
-              />
-            </ion-button>
+          <img class="demo-visual" src="assets/home/demo-public-pencil.webp" alt="" width="1536" height="1024" loading="lazy" />
+          <div class="demo-overview">
+            <div class="demo-copy">
+              <p class="demo-provider">Public · {{ demo.provider }}</p>
+              <h3>{{ demo.project.title }}</h3>
+              <p class="demo-summary">{{ demo.summary }}</p>
+              <ion-button
+                color="primary"
+                fill="solid"
+                (click)="goDemoProject(demo.project)"
+                [attr.data-testid]="'open-demo-' + demo.provider.toLowerCase()"
+              >
+                Open public demo
+              </ion-button>
+            </div>
           </div>
-          <svg
-            class="demo-visual"
-            viewBox="0 0 160 112"
-            aria-hidden="true"
-            focusable="false"
-          >
-            <rect
-              class="visual-board"
-              x="1"
-              y="1"
-              width="158"
-              height="110"
-              rx="14"
-            />
-            <rect
-              class="visual-folder"
-              x="13"
-              y="22"
-              width="43"
-              height="64"
-              rx="8"
-            />
-            <path class="visual-folder-line" d="M22 40h25M22 50h19M22 60h22" />
-            <path class="visual-flow" d="M61 54h19m0 0-6-6m6 6-6 6" />
-            <rect
-              class="visual-query"
-              x="86"
-              y="20"
-              width="59"
-              height="27"
-              rx="7"
-            />
-            <path class="visual-query-line" d="M94 29h28M94 36h18" />
-            <rect
-              class="visual-result"
-              x="86"
-              y="54"
-              width="59"
-              height="33"
-              rx="7"
-            />
-            <path class="visual-result-line" d="M94 64h41M94 72h32M94 80h36" />
-          </svg>
+
         </section>
       }
-    </ion-card-content>
+      <section class="demo-details private-demo-entry">
+          <img class="demo-visual" src="assets/home/demo-detective-pencil.webp" alt="" width="1536" height="1024" loading="lazy" />
+        <div class="demo-overview">
+          <div class="demo-copy">
+            <p class="demo-provider">Private workspace</p>
+            <h3>Detective demo</h3>
+            <p class="demo-summary">
+              Create a private Detective project and explore its case workflow.
+            </p>
+            <sneat-datatug-detective-demo-starter destination="detective" />
+          </div>
+        </div>
+
+      </section>
+      </div>
+    </ion-list>
   }
 </ion-card>

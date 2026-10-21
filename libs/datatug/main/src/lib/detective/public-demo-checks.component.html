@@ -1,9 +1,7 @@
 <ion-card>
-  <ion-list lines="full"
-    ><ion-item color="light"
-      ><ion-label><h1>Public demo Checks</h1></ion-label></ion-item
-    ></ion-list
-  >
+  <ion-item color="light" lines="full">
+    <ion-label><h1>Public demo Checks</h1></ion-label>
+  </ion-item>
   <ion-card-content>
     <p>
       Browse saved Checks and run them against the pinned Chinook SQLite
@@ -33,10 +31,10 @@
 }
 @if (!checkId()) {
   <ion-card>
-    <ion-list lines="full"
-      ><ion-item color="light"
-        ><ion-label>Sample Checks · {{ checks().length }}</ion-label></ion-item
-      >
+    <ion-item color="light" lines="full">
+      <ion-label>Sample Checks · {{ checks().length }}</ion-label>
+    </ion-item>
+    <ion-list lines="full">
       @for (check of checks(); track check.id) {
         <ion-item [routerLink]="url(check.id)" detail="true"
           ><ion-label class="ion-text-wrap"
@@ -55,13 +53,11 @@
   </ion-card>
 } @else if (current(); as check) {
   <ion-card [attr.data-public-check]="check.id">
-    <ion-list lines="full"
-      ><ion-item color="light"
-        ><ion-label class="ion-text-wrap"
-          ><h2>{{ check.title }}</h2></ion-label
-        ></ion-item
-      ></ion-list
-    >
+    <ion-item color="light" lines="full">
+      <ion-label class="ion-text-wrap"
+        ><h2>{{ check.title }}</h2></ion-label
+      >
+    </ion-item>
     <ion-card-content>
       <p>{{ check.description }}</p>
       <p>
@@ -89,13 +85,9 @@
   </ion-card>
   @if (displayedRun(); as run) {
     <ion-card data-testid="public-check-result">
-      <ion-list lines="full"
-        ><ion-item color="light"
-          ><ion-label
-            >Browser run result · {{ run.outcome }}</ion-label
-          ></ion-item
-        ></ion-list
-      >
+      <ion-item color="light" lines="full">
+        <ion-label>Browser run result · {{ run.outcome }}</ion-label>
+      </ion-item>
       <ion-card-content>
         @for (step of run.steps; track step.stepId) {
           @for (validator of step.validators; track validator.validatorId) {
@@ -109,11 +101,11 @@
     </ion-card>
   }
   @if (history().length) {
-    <ion-card
-      ><ion-list lines="full"
-        ><ion-item color="light"
-          ><ion-label>Runs in this page visit</ion-label></ion-item
-        >
+    <ion-card>
+      <ion-item color="light" lines="full">
+        <ion-label>Runs in this page visit</ion-label>
+      </ion-item>
+      <ion-list lines="full">
         @for (run of history(); track run.id) {
           <ion-item button (click)="selectedRun.set(run)"
             ><ion-label class="ion-text-wrap"
@@ -121,8 +113,8 @@
             ></ion-item
           >
         }
-      </ion-list></ion-card
-    >
+      </ion-list>
+    </ion-card>
   }
 } @else if (!loading() && !error()) {
   <ion-card

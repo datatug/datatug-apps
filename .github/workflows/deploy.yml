@@ -23,10 +23,10 @@ name: Deploy (Cloudflare)
 #      between this check and publish (the newer commit's own deploy then runs
 #      after this one, via the concurrency group). Details: deploy-gate.sh.
 #   3. that CI run's `deploy-gate` job concluded `success`. The lane list lives
-#      in ci.yml next to the lanes. It covers every lane except the live-API
-#      PostgreSQL demo lane (e2e-demo-postgresql: an outage of
-#      cloud.openvaultdb.com must not block shipping, but it still fails the
-#      `e2e` aggregate and its own check, so the outage stays visible). A
+#      in ci.yml next to the lanes. It covers every offline lane; the live-API
+#      PostgreSQL test lives in its own workflow (e2e-postgres-ovdb.yml: an
+#      outage of cloud.openvaultdb.com must not block shipping, and it shows
+#      up as that workflow's own failed run). A
 #      missing, skipped, cancelled or failed deploy-gate means no deploy.
 # Logic and its tests: .github/scripts/deploy-gate.sh.
 # Runs are serialised (one deploy at a time, none cancelled mid-publish).

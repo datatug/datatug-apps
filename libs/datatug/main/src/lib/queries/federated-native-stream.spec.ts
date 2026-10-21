@@ -166,7 +166,7 @@ limit: 10`;
       : new Response('{"error":{"code":"unsupported","message":"The query cannot run."}}',
         { status: 422, headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher })).rejects.toThrow('OVDB query failed (unsupported): The query cannot run.');
+      { fetch: fetcher })).rejects.toMatchObject({ diagnostic: { stage: 'query_execution', reason: 'http_status', status: 422, code: 'unsupported' }, cause: { message: 'OVDB query failed (unsupported): The query cannot run.' } });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -175,7 +175,7 @@ limit: 10`;
       ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
       : new Response('{"error":{"code":"unsupported"}}', { status: 422, headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher })).rejects.toThrow(/whole-query execution failed \(422\)/);
+      { fetch: fetcher })).rejects.toMatchObject({ diagnostic: { stage: 'query_execution', reason: 'http_status', status: 422 } });
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -204,7 +204,7 @@ limit: 10`;
       ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
       : new Response(body, { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher, deadline: Date.now() + 50, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort/i);
+      { fetch: fetcher, deadline: Date.now() + 50, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort|deadline/i);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 

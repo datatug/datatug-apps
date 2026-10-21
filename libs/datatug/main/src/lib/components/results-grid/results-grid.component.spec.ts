@@ -522,10 +522,11 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
   });
 
   it('autosizes all columns and remembers the result', async () => {
-    const { el } = await ready(KEY);
+    const { el, cmp } = await ready(KEY);
     vi.useFakeTimers();
     click(el, 'results-grid-autosize');
     expect(api.autoSizeAllColumns).toHaveBeenCalled();
+    cmp.onColumnResized({ finished: true, source: 'autosizeColumns' } as never);
     vi.advanceTimersByTime(700);
     const saved = JSON.parse(localStorage.getItem(KEY) ?? '{}');
     expect(saved.cols.map((c: { colId: string }) => c.colId)).toEqual(['c0']);
@@ -603,6 +604,242 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
     expect(localStorage.getItem(KEY)).not.toBeNull();
   });
 
+  describe('completed layout durability', () => {
+    const originalState =
+      api.getColumnState.getMockImplementation() ?? (() => []);
+    const originalApply = api.applyColumnState.getMockImplementation();
+    let width: number;
+    let hidden: boolean;
+    const stored = (key = KEY) =>
+      JSON.parse(localStorage.getItem(key) ?? 'null');
+    const resize = (cmp: ResultsGridComponent, source = 'uiColumnResized') =>
+      cmp.onColumnResized({ finished: true, source } as never);
+    const seed = async () => {
+      const first = await ready(KEY);
+      vi.useFakeTimers();
+      first.cmp.onLayoutChanged();
+      vi.advanceTimersByTime(400);
+      expect(stored().cols[0].width).toBe(200);
+      first.fixture.destroy();
+      vi.useRealTimers();
+      TestBed.resetTestingModule();
+      resetAgGridSetupForTests();
+    };
+    beforeEach(() => {
+      width = 200;
+      hidden = false;
+      api.getColumnState.mockImplementation(() => [
+        {
+          colId: 'c0',
+          width,
+          hide: hidden,
+          pinned: null,
+          sort: 'desc',
+          sortIndex: 0,
+        },
+      ]);
+      api.applyColumnState.mockImplementation(
+        (params: { state: { width?: number; hide?: boolean }[] }) => {
+          width = params.state[0].width ?? width;
+          hidden = params.state[0].hide ?? false;
+        },
+      );
+    });
+    afterEach(() => {
+      api.getColumnState.mockImplementation(originalState);
+      api.applyColumnState.mockReset();
+      if (originalApply) api.applyColumnState.mockImplementation(originalApply);
+    });
+
+    it('reopens a completed resize even when destroyed before the old debounce', async () => {
+      await seed();
+      const second = await ready(KEY);
+      width = 220;
+      resize(second.cmp);
+      second.fixture.destroy();
+      expect(stored().cols[0]).toMatchObject({ width: 220, sort: 'desc' });
+      TestBed.resetTestingModule();
+      resetAgGridSetupForTests();
+      width = 90;
+      await ready(KEY);
+      expect(width).toBe(220);
+    });
+
+    it('does not store unfinished resize or move drag events', async () => {
+      const { cmp, grid } = await ready(KEY);
+      const write = vi.spyOn(localStorage, 'setItem');
+      try {
+        width = 220;
+        cmp.onColumnResized({
+          finished: false,
+          source: 'uiColumnResized',
+        } as never);
+        (grid as unknown as GridStubComponent).columnMoved.emit({
+          finished: false,
+          source: 'uiColumnMoved',
+        });
+        expect(write).not.toHaveBeenCalled();
+        (grid as unknown as GridStubComponent).columnMoved.emit({
+          finished: true,
+          source: 'uiColumnMoved',
+        });
+        expect(stored().cols[0].width).toBe(220);
+        expect(write).toHaveBeenCalledTimes(1);
+      } finally {
+        write.mockRestore();
+      }
+    });
+
+    it('does not replay an earlier width over a completed resize on new columns', async () => {
+      await seed();
+      const { cmp } = await ready(KEY);
+      vi.useFakeTimers();
+      vi.advanceTimersByTime(501);
+      width = 220;
+      resize(cmp);
+      // A column-definition refresh dispatches its own resize before the load.
+      width = 200;
+      resize(cmp, 'gridOptionsChanged');
+      cmp.onNewColumnsLoaded();
+      expect(width).toBe(220);
+      vi.advanceTimersByTime(400);
+      expect(stored().cols[0].width).toBe(220);
+    });
+
+    it('ignores deferred unchanged API restoration but accepts an immediate changed API action', async () => {
+      await seed();
+      const { cmp, grid } = await ready(KEY);
+      vi.useFakeTimers();
+      const write = vi.spyOn(localStorage, 'setItem');
+      try {
+        setTimeout(() => resize(cmp, 'api'), 0);
+        vi.advanceTimersByTime(1);
+        expect(write).not.toHaveBeenCalled();
+        hidden = true;
+        (grid as unknown as GridStubComponent).columnVisible.emit({
+          source: 'api',
+        });
+        expect(stored().cols[0].hide).toBe(true);
+        expect(write).toHaveBeenCalledTimes(1);
+        hidden = false;
+        (grid as unknown as GridStubComponent).columnVisible.emit({
+          source: 'api',
+        });
+        expect(stored().cols[0].hide).toBe(false);
+        expect(write).toHaveBeenCalledTimes(2);
+      } finally {
+        write.mockRestore();
+      }
+    });
+
+    it('flushes a captured density change only to its original scope', async () => {
+      const { cmp, fixture } = await ready(KEY);
+      vi.useFakeTimers();
+      cmp.toggleDensity();
+      fixture.componentRef.setInput('stateKey', `${KEY}:other`);
+      fixture.detectChanges();
+      vi.advanceTimersByTime(400);
+      expect(stored()).toMatchObject({ density: 'compact' });
+      expect(stored(`${KEY}:other`)).toBeNull();
+    });
+
+    it('keeps the initial content fit implicit but records completion of explicit Autosize', async () => {
+      const { cmp } = await ready(KEY);
+      vi.useFakeTimers();
+      resize(cmp, 'autosizeColumns');
+      expect(stored()).toBeNull();
+      cmp.autosizeAll();
+      width = 90;
+      resize(cmp, 'autosizeColumns');
+      vi.advanceTimersByTime(700);
+      expect(stored().cols[0].width).toBe(90);
+    });
+
+    it('cancels the previous scope Autosize timer and ignores an implicit completion', async () => {
+      const { cmp, fixture } = await ready(KEY);
+      vi.useFakeTimers();
+      cmp.autosizeAll();
+      fixture.componentRef.setInput('stateKey', `${KEY}:other`);
+      fixture.detectChanges();
+      width = 90;
+      resize(cmp, 'autosizeColumns');
+      vi.advanceTimersByTime(700);
+      expect(stored()).toBeNull();
+      expect(stored(`${KEY}:other`)).toBeNull();
+    });
+
+    it('accepts a changed API resize after scope change when Autosize emitted no completion', async () => {
+      const { cmp, fixture } = await ready(KEY);
+      vi.useFakeTimers();
+      cmp.autosizeAll(); // AG emits no completion when no columns can be measured.
+      fixture.componentRef.setInput('stateKey', `${KEY}:other`);
+      fixture.detectChanges();
+      width = 230;
+      resize(cmp, 'api');
+      expect(stored(`${KEY}:other`).cols[0].width).toBe(230);
+      expect(stored()).toBeNull();
+    });
+
+    it('expires Reset intent even when its content fit emitted no completion', async () => {
+      const { cmp } = await ready(KEY);
+      vi.useFakeTimers();
+      cmp.resetColumns();
+      vi.advanceTimersByTime(601);
+      width = 230;
+      resize(cmp, 'api');
+      expect(stored().cols[0].width).toBe(230);
+    });
+  });
+
+  it('keeps native asynchronous Reset replay implicit', async () => {
+    ModuleRegistry.registerModules([AllCommunityModule]);
+    const { cmp, fixture } = await ready(KEY);
+    const host = document.createElement('div');
+    document.body.append(host);
+    let callbacks = 0;
+    const native = createGrid(host, {
+      theme: 'legacy',
+      columnDefs: cmp.defs(),
+      rowData: cmp.rowData(),
+      defaultColDef: cmp.defaultColDef(),
+      onColumnVisible: (event) => {
+        callbacks++;
+        cmp.onLayoutChanged(event);
+      },
+      onColumnResized: (event) => {
+        callbacks++;
+        cmp.onColumnResized(event);
+      },
+    });
+    try {
+      cmp.onGridReady({ api: native } as never);
+      native.setColumnWidths([{ key: 'c0', newWidth: 220 }]);
+      native.setColumnsVisible(['c0'], false);
+      await vi.waitFor(() =>
+        expect(
+          JSON.parse(localStorage.getItem(KEY) ?? '{}').cols?.[0],
+        ).toMatchObject({ width: 220, hide: true }),
+      );
+      const before = callbacks;
+      cmp.resetColumns();
+      // Native grid callbacks are deferred, just like AgGridAngular's global
+      // listener. A synchronous mock here would test a different ordering.
+      expect(callbacks).toBe(before);
+      await vi.waitFor(() => expect(callbacks).toBeGreaterThan(before));
+      expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({
+        v: 1,
+        density: 'comfortable',
+      });
+      expect(
+        native.getColumnState().find((c) => c.colId === 'c0'),
+      ).toMatchObject({ hide: false });
+    } finally {
+      native.destroy();
+      fixture.destroy();
+      host.remove();
+    }
+  });
+
   it('ignores a remembered layout of other columns', async () => {
     localStorage.setItem(
       KEY,
@@ -660,9 +897,7 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
       density: 'compact',
     });
     // The grid's own events after a reset do not bring the old layout back.
-    (
-      fixture.componentInstance as unknown as { onLayoutChanged(): void }
-    ).onLayoutChanged();
+    fixture.componentInstance.onLayoutChanged({ source: 'api' });
     vi.advanceTimersByTime(1000);
     expect(JSON.parse(localStorage.getItem(KEY) ?? '{}')).toEqual({
       v: 1,

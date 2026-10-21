@@ -139,7 +139,7 @@ for (const width of [1440, 900, 390]) {
     ).toBeVisible();
     await incident
       .getByRole('button', {
-        name: /Sign in to start Detective demo|Open private Detective demo/,
+        name: /Sign in to set up a private Incidents project|Set up private project for Incidents/,
       })
       .scrollIntoViewIfNeeded();
     await expect(incident).toContainText('web UI link');

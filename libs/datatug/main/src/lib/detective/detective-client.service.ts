@@ -1,3 +1,5 @@
+import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
+import type { RetainedSourcePin } from '../evidence/retained-evidence-contract';
 import {
   HttpClient,
   HttpErrorResponse,
@@ -6,7 +8,7 @@ import {
 import { Injectable, inject } from '@angular/core';
 import { DatatugApiService } from '../services/base/datatug-api.service';
 import type { RunQueryResponse } from '@sneat/datatug-semantic';
-import { Observable, throwError } from 'rxjs';
+import { Observable, defer, fromEvent, takeUntil, throwError } from 'rxjs';
 import { map, tap } from 'rxjs/operators';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
@@ -17,7 +19,10 @@ import {
 } from './models';
 import {
   HostedIncidentAction,
+  HostedIncidentEvents,
   HostedIncidentLinks,
+  HostedProjectIncidents,
+  HostedProjectIncident,
   HostedIncidentResponse,
   HostedKnowledgeAction,
   HostedKnowledgePage,
@@ -93,10 +98,13 @@ export interface CaseEventsPage {
 }
 
 export interface HostedQueryResponse {
+  sourcePin?: RetainedSourcePin;
+  appliedManifestRef?: string;
+  attachedIncidentRef?: string;
   result: RunQueryResponse & { readonly execution?: DetectiveExecutionRef };
   queryRevision: string;
   resultFingerprint: string;
-  receipt?: unknown;
+  receipt?: string;
 }
 
 export function normalizeDetectiveState(
@@ -227,10 +235,12 @@ export class DetectiveClientService {
     context: DetectiveRequestContext,
     action: Omit<DetectiveActionRequest, 'project' | 'securityContextId'>,
     ifMatch?: number,
+    intent?: { operationId?: string; signal?: AbortSignal },
   ): Observable<DetectiveActionResponse> {
+    action = structuredClone(action);
     const key = JSON.stringify(['action', context, action, ifMatch]);
     const operationId =
-      this.pendingOperations.get(key) ?? detectiveOperationId();
+      intent?.operationId ?? this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
     if (context.kind === 'cloud') {
       const resourceVersion =
@@ -247,14 +257,15 @@ export class DetectiveClientService {
         ...action,
         ...(expectedVersion === undefined ? {} : { ifMatch: expectedVersion }),
       };
-      return this.api
-        .post<DetectiveActionResponse>('datatug/detective/action', {
-          ...payload,
-          operationId,
-        })
+      const request = defer(() => {
+        intent?.signal?.throwIfAborted();
+        return this.api.post<DetectiveActionResponse>('datatug/detective/action', { ...payload, operationId }, { retryUnauthorizedOnce: false });
+      });
+      return (intent?.signal ? request.pipe(takeUntil(fromEvent(intent.signal, 'abort'))) : request)
         .pipe(
           tap({
             next: (response) => {
+              if (intent?.operationId && response.receipt !== intent.operationId) throw new Error('The server did not confirm the original run operation.');
               if (response.run?.executionStatus !== 'pending')
                 this.pendingOperations.delete(key);
             },
@@ -343,10 +354,48 @@ export class DetectiveClientService {
     );
   }
 
+  projectIncidents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+  ): Observable<HostedProjectIncidents> {
+    return this.api.get<HostedProjectIncidents>(
+      'datatug/detective/project_incidents',
+      this.cloudParams(context).set('environment', environment),
+    );
+  }
+
+  projectIncident(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+    incidentRef: string,
+  ): Observable<HostedProjectIncident> {
+    return this.api.get<HostedProjectIncident>(
+      'datatug/detective/incident',
+      this.cloudParams(context)
+        .set('environment', environment)
+        .set('incidentRef', incidentRef),
+    );
+  }
+
+  incidentEvents(
+    context: Extract<DetectiveRequestContext, { kind: 'cloud' }>,
+    environment: string,
+    incidentRef: string,
+    afterSeq = 0,
+    limit = 50,
+  ): Observable<HostedIncidentEvents> {
+    return this.api.get<HostedIncidentEvents>('datatug/detective/incident_events',
+      this.cloudParams(context).set('environment', environment)
+        .set('incidentRef', incidentRef).set('afterSeq', afterSeq).set('limit', limit));
+  }
+
   incidentAction(
     context: DetectiveRequestContext,
     action: HostedIncidentAction,
+    operationIdOverride?: string,
+    signal?: AbortSignal,
   ): Observable<HostedIncidentResponse> {
+    action = structuredClone(action);
     const payload =
       context.kind === 'cloud'
         ? {
@@ -360,22 +409,29 @@ export class DetectiveClientService {
             securityContextId: context.securityContextId,
             ...action,
           };
-    const key = JSON.stringify(['incident_action', payload]);
+    const key = JSON.stringify(['incident_action', context, payload]);
     const operationId =
-      this.pendingOperations.get(key) ?? detectiveOperationId();
+      operationIdOverride ?? this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
-    const request =
-      context.kind === 'cloud'
+    const request = defer(() => {
+      if (signal?.aborted) return throwError(() => new Error('The Incident scope changed before dispatch.'));
+      return context.kind === 'cloud'
         ? this.api.post<HostedIncidentResponse>(
             'datatug/detective/incident_action',
             { ...payload, operationId },
+            { retryUnauthorizedOnce: false },
           )
         : this.http.post<HostedIncidentResponse>(
             buildAgentUrl(context.agentStoreId, '/detective/incident-action'),
             { ...payload, operationId },
           );
+    });
     return request.pipe(
-      tap({ next: () => this.pendingOperations.delete(key) }),
+      takeUntil(signal ? fromEvent(signal, 'abort') : new Observable<never>()),
+      tap({next: response => {
+        if(context.kind==='cloud' && response.receipt!==operationId)throw new Error('The server did not confirm this exact Incident operation. Retry the original intent.');
+        this.pendingOperations.delete(key);
+      }}),
     );
   }
 
@@ -565,24 +621,29 @@ export class DetectiveClientService {
     queryId: string,
     environment: string,
     inputs: Record<string, import('./models').DetectiveInputValue>,
+    intent?: { evidence?: AppliedEvidenceRequest; operationId?: string; signal?: AbortSignal },
   ): Observable<HostedQueryResponse> {
-    const payload = {
+    const payload = structuredClone({
       storage: context.storage,
       spaceID: context.spaceID,
       project: context.project,
       queryId,
       environment,
       inputs,
-    };
-    const key = JSON.stringify(payload);
+      ...(intent?.evidence ? { evidence: intent.evidence } : {}),
+    });
+    const key = JSON.stringify(['hosted-run', context, payload]);
     const operationId =
-      this.pendingOperations.get(key) ?? detectiveOperationId();
+      intent?.operationId ?? this.pendingOperations.get(key) ?? detectiveOperationId();
     this.pendingOperations.set(key, operationId);
-    return this.api
-      .post<HostedQueryResponse>('datatug/queries/run_query', {
-        ...payload,
-        operationId,
-      })
-      .pipe(tap({ next: () => this.pendingOperations.delete(key) }));
+    const request = defer(() => {
+      intent?.signal?.throwIfAborted();
+      return this.api.post<HostedQueryResponse>('datatug/queries/run_query', { ...payload, operationId }, { retryUnauthorizedOnce: false });
+    });
+    return (intent?.signal ? request.pipe(takeUntil(fromEvent(intent.signal, 'abort'))) : request)
+      .pipe(tap({ next: (response) => {
+        if (intent?.operationId && response.receipt !== intent.operationId) throw new Error('The server did not confirm the original query operation.');
+        this.pendingOperations.delete(key);
+      } }));
   }
 }

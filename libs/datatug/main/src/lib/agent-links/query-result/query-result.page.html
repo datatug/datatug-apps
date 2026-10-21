@@ -71,7 +71,15 @@
     </ion-segment-button>
     }
   </ion-segment>
-  @if (view() === 'table') {
+  @if (view() === 'table' && openingEditor()) {
+  <ion-card>
+    <ion-card-content
+      ><ion-text color="medium" data-testid="result-opening-editor" role="status"
+        >Opening the query editor…</ion-text
+      ></ion-card-content
+    >
+  </ion-card>
+  } @else if (view() === 'table') {
   <div class="result-grid" data-testid="result-table">
     <sneat-datatug-results-grid
       [columnDefs]="gridColumns()"

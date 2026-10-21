@@ -166,12 +166,8 @@ const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/c
  * table TYPE strings those URLs used to embed, e.g. "main.Album", are gone
  * with them — a table is now reached by its plain name, the way a user
  * actually clicks it). Walks the real click path: the project page's own
- * "Go to..." select (`ion-select[placeholder="Go to..."]`,
- * project-page.component.html) -> its "Environments" option (rendered
- * inside a transient `<ion-popover>` Ionic appends to the document while
- * open — scoping the click to that popover, not activePage(), is
- * deliberate: it is not part of <ion-router-outlet> at all) -> the
- * environments list -> the named environment row -> the catalog row under
+ * "Environments" overview tab -> the named environment row -> the catalog
+ * row under
  * "Data connections" on the environment page -> the
  * catalog's own table list (EnvDbPageComponent, Task 17 items A.2/B.1 —
  * Tabulator grid, `[tabulator-field="name"]`). Leaves the caller on that
@@ -188,14 +184,12 @@ async function goToCatalogTables(
   envId: string,
   catalogId: string,
 ): Promise<void> {
-  await page.locator('ion-select[placeholder="Go to..."]').click();
-  await page
-    .locator('ion-popover')
-    .getByText('Environments', { exact: true })
+  await activePage(page)
+    .getByRole('button', { name: 'Environments', exact: true })
     .click();
 
   const environment = activePage(page)
-    .getByTestId('environment-list-item')
+    .getByTestId('overview-environment-item')
     .filter({ hasText: new RegExp(envId, 'i') });
   await expect(environment).toBeVisible({ timeout: 15_000 });
   await environment.click();
@@ -277,30 +271,15 @@ test.describe('J1 — first useful result (the null-action path)', () => {
 
     // "the browser opens the demo project" — real navigation, no interception.
     await page.goto(projectUrl);
-    // "the project appears with nobody doing anything else": the title comes
-    // from `GET /datatug/projects/project_summary` and is bound to the VALUE
-    // of the read-only Title `ion-input` (project-page.component.html) — so
-    // assert that textbox's value. `getByText` can never see an input's value
-    // and stayed at 0 matches even once the page rendered, so it failed the
-    // same way for a rendered and an unrendered page. Needs the agent side's
-    // auth-hook fix (datatug/datatug-cli#205, merged). The title renders
-    // with or without datatug/datatug-apps#69; what #69 removes is the
-    // uncaught `unknown store: <host:port>` the page's folder child threw
-    // out of ngOnChanges on every visit (console ERROR, Boards card stuck
-    // loading).
+    // The project heading proves the real summary request completed and the
+    // address has the expected human-readable title.
     await expect(
       page
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user clicks Album": real in-app navigation (Task 17 item B.2,
-    // S121b) — project -> "Go to..." -> Environments -> DEMO_ENV_ID ->
+    // S121b) — project -> Environments tab -> DEMO_ENV_ID ->
     // Databases -> DEMO_DB_CATALOG_ID -> the Album row in
     // EnvDbPageComponent's own Tabulator grid (Task 17 items A.2/B.1). See
     // goToCatalogTables()'s own doc comment above for the exact click path,
@@ -355,14 +334,8 @@ test.describe('J2 — from a value to related knowledge', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user opens the Customer table" — real in-app navigation (Task 17
     // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
@@ -525,14 +498,8 @@ test.describe('J2b — HTTP reference source', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -606,14 +573,8 @@ test.describe('J2b — HTTP reference source', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -692,14 +653,8 @@ test.describe('J3 — carrying context', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -840,14 +795,8 @@ test.describe('J4 — restricted principal', () => {
     await page.goto(projectUrl);
     await expect(
       page
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user opens the Customer table" — real in-app navigation (Task 17
     // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
@@ -1093,8 +1042,8 @@ test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)
     // mechanism.
     await page.goto(projectUrl);
     await expect(
-      page.locator('ion-card ion-input').first().getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+      page.locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
 
     // "the user opens Queries" — the persistent "Queries" side-menu item
     // (ProjectMenuTopComponent, reachable from any project page — same

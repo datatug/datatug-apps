@@ -6,12 +6,25 @@ describe('Space-qualified metadata addresses', () => {
     '',
     'overview',
     'queries',
+    'shipping',
+    'meanings',
+    'meanings/new-entity',
+    'meanings/entity',
+    'meanings/new-field',
+    'meanings/field',
+    'boards',
+    'boards/new',
+    'board/new',
+    'board/shipping-1',
     'query/q',
     'checks',
     'checks/invoice-check',
     'detective',
     'detective/invoice-case',
     'detective/scenario/invoice-review',
+    'incidents',
+    'incidents/new',
+    'incidents/detective-incidents-9c561d36/INC-1',
   ])('round trips %s without losing Space ownership', (page) => {
     const url = tryProjectUrl(ref, page);
     expect(url).toBe(
@@ -22,15 +35,21 @@ describe('Space-qualified metadata addresses', () => {
       ...ref,
     });
   });
-  it.each(['query', 'chat', 'env/local', 'boards', 'public-data'])(
-    'refuses unsupported %s',
-    (page) => {
-      expect(tryProjectUrl(ref, page)).toMatchObject({ ok: false });
-      expect(
-        parseProjectUrl(`/space/S1/store/firestore/project/same/${page}`),
-      ).toMatchObject({ ok: false });
-    },
-  );
+  it.each([
+    'query',
+    'chat',
+    'env/local',
+    'meanings/unknown',
+    'meanings/entity/extra',
+    'boards/other',
+    'board/a/b',
+    'public-data',
+  ])('refuses unsupported %s', (page) => {
+    expect(tryProjectUrl(ref, page)).toMatchObject({ ok: false });
+    expect(
+      parseProjectUrl(`/space/S1/store/firestore/project/same/${page}`),
+    ).toMatchObject({ ok: false });
+  });
   it('keeps a folder-qualified query id as one encoded page segment', () => {
     const url = tryProjectUrl(ref, ['query', 'folder/q']);
     expect(url).toBe('/space/S1/store/firestore/project/same/query/folder%2Fq');

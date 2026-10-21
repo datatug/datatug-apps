@@ -203,7 +203,7 @@ for (const id of demoSqliteDatasetIds) {
     }) => {
       test.skip(
         large && !RUN_ADVENTUREWORKS,
-        'Set DATATUG_E2E_ADVENTUREWORKS=1 to download the 126.8 MB dataset (twice: open, then Reset).',
+        'Set DATATUG_E2E_ADVENTUREWORKS=1 (live mode) to download the 126.8 MB dataset (twice: open, then Reset). The hermetic fixture-served journey is demo-sqlite-adventureworks.spec.ts.',
       );
       test.setTimeout(large ? 1_200_000 : 240_000);
       const loadTimeout = large ? 600_000 : 90_000;

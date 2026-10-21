@@ -85,7 +85,11 @@ test.describe('Session continuity with the native local CLI', () => {
     await createDialog.getByRole('button', { name: 'Create session', exact: true }).click();
     const sessionTab = page.getByRole('tab', { name: new RegExp(sessionTitle) });
     await expect(sessionTab).toBeVisible();
-    const sessionId = new URL(page.url()).pathname.match(/\/sessions\/([A-Za-z0-9_-]+)(?:\/|$)/)?.[1];
+    // The tab is focused before the router finishes navigating (saveCreate focuses the session, then awaits
+    // navigateByUrl), so the tab can be visible while the URL is still the chooser route. Wait for the route itself.
+    const sessionRoute = /\/sessions\/([A-Za-z0-9_-]+)(?:\/|$)/;
+    await expect.poll(() => new URL(page.url()).pathname.match(sessionRoute)?.[1], { timeout: 20_000 }).toBeTruthy();
+    const sessionId = new URL(page.url()).pathname.match(sessionRoute)?.[1];
     expect(sessionId).toBeTruthy();
     if (!sessionId) throw new Error('The created session route did not contain its session ID.');
 

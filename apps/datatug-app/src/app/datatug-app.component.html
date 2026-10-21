@@ -9,14 +9,12 @@
   @if (compactHeader()) {
     <ion-header class="compact-header">
       <ion-toolbar color="light">
-        @if (!homePanelHidden()) {
-          <ion-buttons slot="start">
-            <ion-menu-button
-              menuIcon="menu-outline"
-              class="app-level-menu-button"
-            ></ion-menu-button>
-          </ion-buttons>
-        }
+        <ion-buttons slot="start">
+          <ion-menu-button
+            menuIcon="menu-outline"
+            class="app-level-menu-button"
+          ></ion-menu-button>
+        </ion-buttons>
         <ion-title size="small">
           <a
             class="brand-home-link compact-brand"
@@ -38,13 +36,10 @@
       </ion-toolbar>
     </ion-header>
   }
-  <ion-split-pane
-    contentId="main-content"
-    [when]="paneWhen()"
-  >
+  <ion-split-pane contentId="main-content" [when]="paneWhen()">
     <ion-menu
-      [disabled]="checkout() || homePanelHidden()"
-      [style.display]="checkout() || homePanelHidden() ? 'none' : null"
+      [disabled]="checkout()"
+      [style.display]="checkout() ? 'none' : null"
       contentId="main-content"
       type="overlay"
       sneatResizableMenu

@@ -25,7 +25,8 @@ const emulator: IFirebaseEmulatorConfig = {
     : useSSL
       ? 'local-fb-auth.sneat.ws'
       : nonSecureEmulatorHost,
-  firestorePort: useSSL ? 443 : 8080,
+  // Keep the DataTug local stack separate from the shared DALgo emulator on 8080.
+  firestorePort: useSSL ? 443 : 8180,
   firestoreHost: useNgrok
     ? window.location.hostname
     : useSSL

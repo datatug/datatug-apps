@@ -5,7 +5,6 @@ import {
   IonIcon,
   IonItem,
   IonLabel,
-  IonList,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { sparklesOutline, terminalOutline } from 'ionicons/icons';
@@ -29,7 +28,7 @@ addIcons({
   selector: 'sneat-datatug-platform-block',
   templateUrl: './platform-block.component.html',
   styleUrl: './platform-block.component.scss',
-  imports: [IonCard, IonCardContent, IonIcon, IonItem, IonLabel, IonList],
+  imports: [IonCard, IonCardContent, IonIcon, IonItem, IonLabel],
   changeDetection: ChangeDetectionStrategy.OnPush,
 })
 export class PlatformBlockComponent {

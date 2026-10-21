@@ -16,9 +16,15 @@
 @for (page of projTopLevelPages; track page) {
   @if (
     !metadataOnly() ||
-    ['overview', 'queries', 'checks', 'detective', 'sessions'].includes(
-      page.path
-    )
+    [
+      'overview',
+      'quick-search',
+      'queries',
+      'checks',
+      'detective',
+      'sessions',
+      'boards',
+    ].includes(page.path)
   ) {
     <ion-menu-toggle autoHide="false">
       <ion-item

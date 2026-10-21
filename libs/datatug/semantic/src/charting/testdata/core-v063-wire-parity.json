@@ -1,0 +1,225 @@
+{
+  "source": "github.com/datatug/datatug-core v0.63.0 apicontract.TypedValue.Validate + Result.Validate + FingerprintRecordset",
+  "goVersion": "go1.27.2",
+  "cases": [
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:00:00Z",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"datetime\"}],\"rows\":[[{\"type\":\"datetime\",\"value\":\"2026-10-21T12:00:00Z\"}]]}",
+      "sha256": "a48b83c296e67b4ef0b2916b3f8152c6e3e94a37558220d722bdf74d9512b4b5"
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:00:00,5Z",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"datetime\"}],\"rows\":[[{\"type\":\"datetime\",\"value\":\"2026-10-21T12:00:00,5Z\"}]]}",
+      "sha256": "6ad2075e365a6667156a4e30a1aef7eb95bc37ba1253a899ae40db294d1cc9ef"
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T1:00:00Z",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"datetime\"}],\"rows\":[[{\"type\":\"datetime\",\"value\":\"2026-10-21T1:00:00Z\"}]]}",
+      "sha256": "947352c2488095926eba45367b89ed066e89e6848326b5b7c6d280785648181d"
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T0:00:00,1234567890123Z",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"datetime\"}],\"rows\":[[{\"type\":\"datetime\",\"value\":\"2026-10-21T0:00:00,1234567890123Z\"}]]}",
+      "sha256": "1deaa13b6a119aae4eaaa9050d7f86a8b7f619f12dfe1a1507cddee26fc3f392"
+    },
+    {
+      "type": "datetime",
+      "value": "0000-02-29T0:00:00Z",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"datetime\"}],\"rows\":[[{\"type\":\"datetime\",\"value\":\"0000-02-29T0:00:00Z\"}]]}",
+      "sha256": "ae58cc68f4a897e64b7063e2a021a9e7215ad5f8cad09d69a216dca436b91298"
+    },
+    {
+      "type": "datetime",
+      "value": "0099-12-31T23:59:59.999999999999Z",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"datetime\"}],\"rows\":[[{\"type\":\"datetime\",\"value\":\"0099-12-31T23:59:59.999999999999Z\"}]]}",
+      "sha256": "3c4f2b6212cf8894de6c696d0e6333da892593c0d231ead2b601ccdfd0193b92"
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T24:00:00Z",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:60:00Z",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:00:60Z",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-02-29T12:00:00Z",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:00:00.Z",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:00:00Zextra",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:00:00+00:00",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21T12:0:00Z",
+      "valid": false
+    },
+    {
+      "type": "datetime",
+      "value": "2026-10-21t12:00:00Z",
+      "valid": false
+    },
+    {
+      "type": "date",
+      "value": "0000-02-29",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"date\"}],\"rows\":[[{\"type\":\"date\",\"value\":\"0000-02-29\"}]]}",
+      "sha256": "4c2f6cf9885b2837d280f3a0ab47bf5572e669cb526448ce776b2cd59742019c"
+    },
+    {
+      "type": "date",
+      "value": "0001-01-01",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"date\"}],\"rows\":[[{\"type\":\"date\",\"value\":\"0001-01-01\"}]]}",
+      "sha256": "1a47dfcf4ba553a8b3d07568ddf2f68c394b50ef496bc9722c9dc1e69f6455df"
+    },
+    {
+      "type": "date",
+      "value": "0099-12-31",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"date\"}],\"rows\":[[{\"type\":\"date\",\"value\":\"0099-12-31\"}]]}",
+      "sha256": "aee919be2b6904609748babdb8d7be7071ac6f5587a44de98dd017bf26cb165a"
+    },
+    {
+      "type": "date",
+      "value": "1900-02-28",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"date\"}],\"rows\":[[{\"type\":\"date\",\"value\":\"1900-02-28\"}]]}",
+      "sha256": "12e4352116894a397eaecdefd840f26bb3bef560a86ce3090842f6063e8c2945"
+    },
+    {
+      "type": "date",
+      "value": "2000-02-29",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"date\"}],\"rows\":[[{\"type\":\"date\",\"value\":\"2000-02-29\"}]]}",
+      "sha256": "ea861211934f128b0d7c0b16a36673d09f378b50a22e668c650859299e9a67a5"
+    },
+    {
+      "type": "date",
+      "value": "1900-02-29",
+      "valid": false
+    },
+    {
+      "type": "date",
+      "value": "0001-02-29",
+      "valid": false
+    },
+    {
+      "type": "integer",
+      "value": "0",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"integer\"}],\"rows\":[[{\"type\":\"integer\",\"value\":\"0\"}]]}",
+      "sha256": "692002ef15fa03cb0a2534a392e8d0fe69535573b28b8b14947ee117ed9e0c1d"
+    },
+    {
+      "type": "integer",
+      "value": "-0",
+      "valid": false
+    },
+    {
+      "type": "integer",
+      "value": "-1",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"integer\"}],\"rows\":[[{\"type\":\"integer\",\"value\":\"-1\"}]]}",
+      "sha256": "9b28407187781b25d6dbd5b74fb05560c1d0e302d675068a9d40c6f9961b41bf"
+    },
+    {
+      "type": "integer",
+      "value": "9007199254740993",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"integer\"}],\"rows\":[[{\"type\":\"integer\",\"value\":\"9007199254740993\"}]]}",
+      "sha256": "c060eae868b35b54c56c2d09794b53b32acb02ba4fc9b4774dbbc203231f9ac8"
+    },
+    {
+      "type": "integer",
+      "value": "01",
+      "valid": false
+    },
+    {
+      "type": "integer",
+      "value": "+1",
+      "valid": false
+    },
+    {
+      "type": "decimal",
+      "value": "-0",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"decimal\"}],\"rows\":[[{\"type\":\"decimal\",\"value\":\"-0\"}]]}",
+      "sha256": "e1d784853f3b8515bb767c06b9ee0d3a78c2b8b7b5ecaf9eb308d7b44859c7fa"
+    },
+    {
+      "type": "decimal",
+      "value": "-0.0",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"decimal\"}],\"rows\":[[{\"type\":\"decimal\",\"value\":\"-0.0\"}]]}",
+      "sha256": "45cee9a5d577ce792770b52de524d7053c255dc25782d913abb73f86d2c39395"
+    },
+    {
+      "type": "decimal",
+      "value": "1.2300",
+      "valid": true,
+      "canonicalJSON": "{\"columns\":[{\"name\":\"value\",\"type\":\"decimal\"}],\"rows\":[[{\"type\":\"decimal\",\"value\":\"1.2300\"}]]}",
+      "sha256": "edcc9bf9c7b0fc3ad4b3be2e49433ee01a5c9fa5789b69ced019be8bccf5bfb9"
+    },
+    {
+      "type": "decimal",
+      "value": "01.0",
+      "valid": false
+    }
+  ],
+  "nilCases": [
+    {
+      "name": "nil-result-slices",
+      "wireJSON": "{\"recordset\":{\"columns\":null,\"rows\":null},\"limitations\":null,\"bindingsApplied\":null,\"provenance\":{\"source\":\"source\",\"mode\":\"live\",\"observedAt\":\"2026-10-21T12:00:00,5Z\",\"executionProfile\":\"opaque-privileged\"},\"truncated\":false}",
+      "valid": true,
+      "sha256": "5021a18642f0f17c1bfce9b758550e34b4cc89b286b179e6dd71a5a4d6194c95"
+    },
+    {
+      "name": "nil-zero-column-row",
+      "wireJSON": "{\"recordset\":{\"columns\":null,\"rows\":[null]},\"limitations\":null,\"bindingsApplied\":null,\"provenance\":{\"source\":\"source\",\"mode\":\"live\",\"observedAt\":\"2026-10-21T12:00:00,5Z\",\"executionProfile\":\"opaque-privileged\"},\"truncated\":false}",
+      "valid": true,
+      "sha256": "206f0c1217076546263bb7366f199e9831244ffa9befe04b1cd503a962c4b81a"
+    },
+    {
+      "name": "nil-hidden-columns",
+      "wireJSON": "{\"recordset\":{\"columns\":null,\"rows\":null},\"limitations\":[{\"policy\":\"visible-policy\",\"rowsFiltered\":false,\"hiddenColumns\":null}],\"bindingsApplied\":null,\"provenance\":{\"source\":\"source\",\"mode\":\"live\",\"observedAt\":\"2026-10-21T12:00:00,5Z\",\"executionProfile\":\"opaque-privileged\"},\"truncated\":false}",
+      "valid": true,
+      "sha256": "5021a18642f0f17c1bfce9b758550e34b4cc89b286b179e6dd71a5a4d6194c95"
+    },
+    {
+      "name": "invalid-nil-row-width",
+      "wireJSON": "{\"recordset\":{\"columns\":[{\"name\":\"value\",\"type\":\"string\"}],\"rows\":[null]},\"limitations\":null,\"bindingsApplied\":null,\"provenance\":{\"source\":\"source\",\"mode\":\"live\",\"observedAt\":\"2026-10-21T12:00:00,5Z\",\"executionProfile\":\"opaque-privileged\"},\"truncated\":false}",
+      "valid": false
+    }
+  ]
+}

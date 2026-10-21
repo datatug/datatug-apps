@@ -6,7 +6,7 @@
 //   { "format": "demodb-chunked-export/v1", "file": "<file>", "compression": "gzip",
 //     "bytes": <gzip bytes>, "sha256": "<sha256 of the joined gzip>",
 //     "uncompressedSha256": "<sha256>" | null,
-//     "parts": [{ "path": "<file>.gz.part-1", "bytes": N, "sha256": "..." }, ...] }
+//     "parts": [{ "path": "<file>.gz.<sha256[:16]>.part-1", "bytes": N, "sha256": "..." }, ...] }
 //
 // with part paths relative to the manifest.
 //

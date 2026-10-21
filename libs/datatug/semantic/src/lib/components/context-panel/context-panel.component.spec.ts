@@ -4,6 +4,7 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { of, throwError } from 'rxjs';
 import {
   ApplicableQueriesResponse,
+  Result,
   SemanticRelatedResponse,
 } from '../../../contract/types';
 import { AgentContextService } from '../../services/agent-context.service';
@@ -66,7 +67,7 @@ const APPLICABLE: ApplicableQueriesResponse = {
   ],
 };
 
-const RELATED_ROWS = {
+const RELATED_ROWS: Readonly<Record<string, Result>> = {
   invoices: {
     recordset: {
       columns: [{ name: 'InvoiceId', type: 'integer' }],

@@ -229,7 +229,7 @@ describe('SemanticApiService', () => {
     expect(result).toEqual(fixture);
   });
   it('captures result source evidence independently of later declaration changes and rejects unsafe responses', () => {
-    const request = { ...SCOPE, queryId: 'fixture', parameters: {}, mode: 'live' as const };
+    const request = { ...SCOPE, queryId: 'fixture', parameters: {}, bindingOrigins: [], mode: 'live' as const };
     const wire = { ...structuredClone(resultFixture), ...structuredClone(sourceRights.structured) };
     let result: RunQueryResponse | undefined;
     service.runQuery(request).subscribe((value) => { result = value; });

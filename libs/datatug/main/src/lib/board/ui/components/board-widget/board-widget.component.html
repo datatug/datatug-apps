@@ -1,3 +1,8 @@
+@if(retainedPending()) {
+  <p role="status">The previous retained run has no confirmed outcome and may already be attached. Retry the unchanged card, or review current board access before abandoning it.</p>
+  <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="running()">Review current board access</ion-button>
+  @if(retainedReviewed()){<ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="running()">Abandon original retry</ion-button>}
+}
 @let widget = widgetDef();
 @switch (widget?.name) {
   @case ('tabs') {
@@ -57,7 +62,32 @@
       @if (runError() || unsupportedReason(); as error) {
         <p role="alert">{{ error }}</p>
       }
-      @if (chartWidgetDef()?.chart?.type === 'bar-race') {
+      @if (evidenceKind()) {
+        <datatug-evidence-chart
+          [data]="preparedEvidence()"
+          [loading]="running() || preparingEvidence()"
+          [error]="evidenceError() || runError() || null"
+          (inspect)="inspectHeldEvidence($event)"
+        />
+        @if (inspectedEvidence(); as selection) {
+          <sneat-datatug-retained-evidence-viewer [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [selector]="selection.selector" [heldResult]="result()" />
+        }
+        <ion-button
+          [disabled]="
+            running() ||
+            definitionLoading() ||
+            !definition() ||
+            !!unsupportedReason()
+          "
+          (click)="run()"
+          >{{boardContext()?.evidenceSelection ? 'Run and attach chart' : 'Refresh chart'}}</ion-button
+        >
+        @if (queryUrlTree(); as tree) {
+          <ion-button fill="clear" [routerLink]="tree"
+            >Open saved query</ion-button
+          >
+        }
+      } @else if (chartWidgetDef()?.chart?.type === 'bar-race') {
         <div [hidden]="chartView() !== 'chart'">
           <datatug-bar-race-chart
             [views]="preparedRace().views ?? null"
@@ -244,7 +274,8 @@
           <button class="clear-country" type="button" (click)="clearCountry()">
             Clear country
           </button>
-        </div>
+          @if(heldSnapshot();as snapshot){<sneat-datatug-held-row-evidence [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [result]="snapshot.result" [identity]="snapshot.evidenceIdentity" />}
+    </div>
       }
       @if (presentation.result; as answer) {
         @if (
@@ -254,7 +285,10 @@
               answer.runtime === 'browser-public-api')) ||
           definition()?.federation
         ) {
-          <sneat-datatug-held-result-presentation [result]="answer" />
+          <sneat-datatug-held-result-presentation
+            [embedded]="true"
+            [result]="answer"
+          />
         } @else {
           @if (!answer.recordset.rows.length) {
             <p role="status">Query completed with no rows.</p>

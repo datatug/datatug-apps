@@ -1,0 +1,45 @@
+package main
+import (
+ "crypto/sha256"
+ "encoding/hex"
+ "encoding/json"
+ "os"
+ "strings"
+ "time"
+ "github.com/datatug/backend/facade4datatug"
+ "github.com/datatug/backend/models4datatug"
+ "github.com/datatug/datatug-core/pkg/apicontract"
+ "github.com/datatug/datatug-core/pkg/datatug"
+ "github.com/datatug/datatug-core/pkg/detective"
+ "github.com/datatug/datatug-core/pkg/incidents"
+ "github.com/datatug/datatug-core/pkg/sessioncontext"
+)
+func main(){
+ at:=time.Date(2026,10,21,0,0,0,0,time.UTC)
+ execution:=apicontract.ExecutionRef{StoreID:"firestore",ProjectID:"fixture-project",ExecutionID:"fixture-execution"}
+ result:=apicontract.Result{Recordset:apicontract.Recordset{Columns:[]apicontract.Column{{Name:"row_key",Type:"string"},{Name:"evidence_ref",Type:"string"},{Name:"order_id",Type:"integer"},{Name:"unattempted",Type:"datetime"}},Rows:[][]apicontract.TypedValue{{apicontract.NewStringValue("fixture-row"),apicontract.NewStringValue("fixture-observation"),apicontract.NewIntegerValue("11045"),apicontract.NewNullValue()}}},Limitations:[]apicontract.Limitation{},BindingsApplied:[]apicontract.Binding{},Provenance:apicontract.Provenance{Source:"datatug-shipping:///fixture-generation/1",QueryID:"shipping/receipt",Mode:"live",ObservedAt:at.Format(time.RFC3339),ExecutionProfile:"opaque-privileged"},Execution:&execution}
+ fingerprint,err:=apicontract.FingerprintRecordset(result.Recordset);must(err)
+ eventRef:=incidents.ExecutionRef(execution)
+ slot:=apicontract.RowEvidenceSlot{State:"available",Refs:[]incidents.ArtifactRef{{Kind:incidents.RefExecution,Execution:&eventRef}}}
+ result.RowEvidence=&apicontract.RowEvidence{Version:1,Execution:execution,RecordsetFingerprint:fingerprint,Scope:apicontract.RowEvidenceScope{StoreID:"firestore",SpaceID:"fixture-space",ProjectID:"fixture-project",Environment:"demo"},Source:apicontract.RowEvidenceSource{ID:"shipping-working-copy",Generation:"fixture-generation"},RowKeyColumn:"row_key",Rows:[]apicontract.RowEvidenceRow{{RowKey:apicontract.NewStringValue("fixture-row"),Slots:map[string]apicontract.RowEvidenceSlot{"evidence_ref":slot}}}}
+ must(result.Validate())
+ pin:=models4datatug.ShippingSourcePin{SpaceID:"fixture-space",ProjectID:"fixture-project",SourceID:"shipping-working-copy",Environment:"demo",BindingRevision:1,Revision:models4datatug.ShippingRevision{ShippingPointer:models4datatug.ShippingPointer{Generation:"fixture-generation",Revision:1,SHA256:strings.Repeat("a",64)},FixtureCommit:strings.Repeat("b",40),FixtureSHA256:strings.Repeat("c",64),SchemaSHA256:strings.Repeat("d",64),Configuration:17,BusinessClock:"2018-05-06T08:00:00Z",Bytes:100,Artifacts:[]models4datatug.ShippingArtifact{{ID:"logs/fixture.jsonl",SHA256:strings.Repeat("e",64),Bytes:40}},ActorID:"fixture-actor",AcceptedAt:at}}
+ scope:=sessioncontext.Scope{EnvironmentID:"demo",IdentityDomain:"fixture-shipping-domain"}
+ entries:=[]sessioncontext.EntryRef{{EntryID:"fixture-entry",RevisionID:"fixture-revision"}}
+ inputs:=map[string]apicontract.TypedValueOrSet{"order_id":apicontract.ScalarValue(apicontract.NewIntegerValue("11045"))}
+ manifest:=models4datatug.ShippingAppliedManifest{Version:1,Ref:"fixture-selected-manifest",AuditSHA256:strings.Repeat("f",64),ActorID:"fixture-actor",IncidentRef:"fixture-incidents/INC-1",Session:models4datatug.ShippingSelectedSessionAudit{ID:"fixture-session",DatabaseID:"fixture-db",ProjectID:"fixture-project",Owner:"fixture-actor",State:"active",Version:3,ContextSetID:"fixture-context",NativeFenceGeneration:0},ContextSet:models4datatug.ShippingSelectedContextAudit{ID:"fixture-context",SessionID:"fixture-session",Enabled:true,Slots:[]models4datatug.ShippingSelectedSlotAudit{{Scope:scope,BagID:"fixture-bag",BagVersion:2,Version:1,Entries:entries}}},Scope:scope,Bag:models4datatug.ShippingSelectedBagAudit{ID:"fixture-bag",SessionID:"fixture-session",Scope:scope,Version:2,ClearVersion:0,Entries:entries},Entries:entries,Inputs:inputs}
+ q:=datatug.QueryDefWithFolderPath{FolderPath:"shipping"};q.ID="receipt";q.Title="Fixture receipt";q.Type=datatug.QueryTypeSQL;q.ConnectionID="shipping-working-copy";q.Text="SELECT order_id FROM requests WHERE order_id=@order_id";q.Parameters=datatug.Parameters{{ID:"order_id",Type:"integer",IsRequired:true}}
+ saved,err:=json.Marshal(q);must(err)
+ nodeInputs:=map[string]detective.InputValue{"order_id":{Scalar:ptr(apicontract.NewIntegerValue("11045"))}}
+ open:=facade4datatug.ShippingEvidenceOpenResponse{Inputs:nodeInputs,Manifest:manifest,SavedQuery:saved,ActorID:"fixture-actor",Result:result,SourcePin:pin,AppliedManifestRef:manifest.Ref,QueryRevision:"q1-fixture"}
+ encoded,err:=json.Marshal(result);must(err);sum:=sha256.Sum256(encoded);fullFingerprint:=hex.EncodeToString(sum[:])
+ query:=facade4datatug.HostedQueryRunResponse{Result:result,SourcePin:&pin,AttachedIncidentRef:manifest.IncidentRef,AppliedManifestRef:manifest.Ref,QueryRevision:"q1-fixture",ResultFingerprint:fullFingerprint,Receipt:"operation-fixture"}
+ definition:=detective.Check{ID:"request-received",Title:"Fixture receipt Check",Version:1,Inputs:[]detective.Input{{Name:"order_id",Type:"integer",Cardinality:"scalar",Required:true}},Steps:[]detective.Step{{ID:"receipt",Kind:"query",QueryID:"shipping/receipt"}},UpdatedAt:at,UpdatedBy:"fixture-actor"}
+ run:=detective.CheckRun{ID:"fixture-run",Kind:"check",CheckID:definition.ID,Definition:definition,Environment:"demo",InputNames:[]string{"order_id"},ExecutionStatus:"completed",Outcome:"pass",Steps:[]detective.StepResult{{StepID:"receipt",Kind:"query",QueryID:"shipping/receipt",Execution:&execution,QueryRevision:"q1-fixture",ResultFingerprint:fullFingerprint,ExecutionStatus:"completed",Outcome:"pass",RowCount:1}},StartedAt:at,DurationMs:5,CheckInvocations:1,QueryExecutions:1,Actor:"fixture-actor"}
+ check:=facade4datatug.ShippingCheckRunOpenResponse{Run:run,SourcePin:pin,Manifest:manifest,Results:[]facade4datatug.ShippingCheckNodeResult{{Inputs:nodeInputs,SavedQuery:saved,QueryID:"shipping/receipt",QueryRevision:"q1-fixture",ResultFingerprint:fullFingerprint,Result:result}}}
+ selector:=apicontract.RowEvidenceSelector{Execution:execution,RecordsetFingerprint:fingerprint,Scope:result.RowEvidence.Scope,Source:result.RowEvidence.Source,RowKeyColumn:"row_key",RowKey:apicontract.NewStringValue("fixture-row"),SlotColumn:"evidence_ref"}
+ row:=open;row.Evidence=&slot
+ encoder:=json.NewEncoder(os.Stdout);encoder.SetIndent("","  ");must(encoder.Encode(map[string]any{"query":query,"execution":open,"check":check,"selector":selector,"row":row}))
+}
+func ptr(v apicontract.TypedValue)*apicontract.TypedValue{return &v}
+func must(err error){if err!=nil{panic(err)}}
