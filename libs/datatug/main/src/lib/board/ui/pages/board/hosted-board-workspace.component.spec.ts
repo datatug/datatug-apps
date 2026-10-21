@@ -1,3 +1,7 @@
+import { QueriesService } from '../../../../queries/queries.service';
+import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { QueryType } from '../../../../models/definition/query-def';
 import { Component, input, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import {
@@ -63,6 +67,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
   let saved: Board;
   let revision: string;
   let writes: BoardAssetWrite[];
+  const dispatch = vi.fn();
   beforeEach(() => {
     sessionStorage.clear();
     vi.clearAllMocks();
@@ -92,7 +97,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     });
   });
   afterEach(() => TestBed.resetTestingModule());
-  async function mount() {
+  async function mount(realRenderer = false) {
     const params = new BehaviorSubject(
       convertToParamMap({ board: isNew ? 'new' : 'saved' }),
     );
@@ -146,21 +151,60 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
               }),
           },
         },
+        {
+          provide: QueriesService,
+          useValue: {
+            getQuery: () =>
+              of({
+                id: 'receipt',
+                title: 'Receipt',
+                request: {
+                  queryType: QueryType.DTQL,
+                  text: 'from: {database: invoices-db, name: InvoiceDetail}',
+                },
+                parameters: [
+                  { id: 'order_id', type: 'integer', isRequired: true },
+                ],
+              }),
+          },
+        },
+        {
+          provide: QueryDispatchService,
+          useValue: {
+            execute: dispatch,
+            runtimeRevision: signal(0),
+            availableWorkingCopies: () => Promise.resolve([]),
+          },
+        },
+        {
+          provide: SneatAuthStateService,
+          useValue: {
+            authState: of({ status: 'authenticated', user: { uid: 'sarah' } }),
+          },
+        },
         provideRouter([]),
         {
           provide: ActivatedRoute,
           useValue: {
             paramMap: params,
-            snapshot: { paramMap: params.value, data: { createBoard: isNew } },
+            queryParamMap: of(convertToParamMap({ environment: 'demo' })),
+            snapshot: {
+              paramMap: params.value,
+              queryParamMap: convertToParamMap({ environment: 'demo' }),
+              data: { createBoard: isNew },
+            },
           },
         },
       ],
     })
       .overrideComponent(HostedBoardWorkspaceComponent, {
-        remove: { providers: [HostedBoardScope], imports: [BoardComponent] },
+        remove: {
+          providers: [HostedBoardScope],
+          imports: realRenderer ? [] : [BoardComponent],
+        },
         add: {
           providers: [{ provide: HostedBoardScope, useValue: scope }],
-          imports: [BoardStub],
+          imports: realRenderer ? [] : [BoardStub],
         },
       })
       .compileComponents();
@@ -240,6 +284,95 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
       expect.stringContaining('/board/board-'),
       { replaceUrl: true },
     );
+  });
+  it('cold-loads saved board defaults and sends viewer inputs through the canonical renderer without persisting runtime values', async () => {
+    isNew = false;
+    scope.canWrite.set(false);
+    saved = {
+      ...initial,
+      parameters: [{ id: 'order', type: 'integer', defaultValue: 7 }],
+      rows: [
+        {
+          cards: [
+            {
+              id: 'receipt',
+              title: 'Receipt',
+              widget: {
+                name: 'SQL',
+                data: {
+                  sql: {
+                    queryId: 'receipt',
+                    parameters: [{ id: 'order_id', boardParameterId: 'order' }],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      ],
+    };
+    dispatch.mockRejectedValue(new Error('Current source unavailable.'));
+    const f = await mount(true);
+    await vi.waitFor(() =>
+      expect(f.nativeElement.textContent).toContain('Run on board'),
+    );
+    const input = f.nativeElement.querySelector(
+      'section[aria-label="Board runtime parameters"] ion-input',
+    );
+    expect(input.value).toBe('7');
+    button(f, 'Run on board').click();
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(1));
+    expect(dispatch.mock.calls[0][0].parameters).toEqual({
+      order_id: { type: 'integer', value: '7' },
+    });
+    let rejectOldRun: ((reason: Error) => void) | undefined;
+    dispatch.mockImplementationOnce(
+      () =>
+        new Promise((_resolve, reject) => {
+          rejectOldRun = reject;
+        }),
+    );
+    input.dispatchEvent(
+      new CustomEvent('ionInput', {
+        detail: { value: '11062' },
+        bubbles: true,
+      }),
+    );
+    await f.whenStable();
+    button(f, 'Run on board').click();
+    await vi.waitFor(() => expect(dispatch).toHaveBeenCalledTimes(2));
+    expect(dispatch.mock.calls[1][0].parameters).toEqual({
+      order_id: { type: 'integer', value: '11062' },
+    });
+    input.dispatchEvent(
+      new CustomEvent('ionInput', {
+        detail: { value: '9007199254740993' },
+        bubbles: true,
+      }),
+    );
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain('supported integer range');
+    expect(f.componentInstance.boardContext().parameters).toEqual({});
+    expect(dispatch.mock.calls[1][0].signal.aborted).toBe(true);
+    button(f, 'Run on board').click();
+    await f.whenStable();
+    expect(dispatch).toHaveBeenCalledTimes(2);
+    expect(saved.parameters?.[0].defaultValue).toBe(7);
+    expect(sessionStorage.length).toBe(0);
+    scope.admitted.set(false);
+    scope.identity.set('maya/other/prod');
+    await f.whenStable();
+    expect(f.componentInstance.boardContext().parameters).toEqual({});
+    expect(
+      f.nativeElement.querySelector(
+        'section[aria-label="Board runtime parameters"]',
+      ),
+    ).toBeNull();
+    expect(f.componentInstance.parameterErrors()).toEqual({});
+    if (!rejectOldRun) throw new Error('Expected pending old run.');
+    rejectOldRun(new Error('Old scope failure'));
+    await f.whenStable();
+    expect(f.nativeElement.textContent).not.toContain('Old scope failure');
   });
   it('authors a native-demo DTQL saved query using the canonical SQL widget and excludes unsupported languages', async () => {
     const f = await mount();

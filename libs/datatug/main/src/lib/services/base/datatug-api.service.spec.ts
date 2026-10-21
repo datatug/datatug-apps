@@ -119,34 +119,44 @@ describe('DatatugApiService', () => {
     http.verify();
   });
 
-  it('retains real response headers and the authenticated 401 retry for asset detail', async () => {
-    const http = configure([
-      { provide: DatatugApiBaseUrl, useValue: 'https://datatug.test/v0/' },
-    ]);
-    const pending = firstValueFrom(
-      TestBed.inject(DatatugApiService).getResponse<{ id: string }>(
-        'datatug/boards/board',
-      ),
-    );
-    const first = http.expectOne(
-      'https://datatug.test/v0/datatug/boards/board',
-    );
-    expect(first.request.headers.get('Authorization')).toBe('Bearer token');
-    first.flush({}, { status: 401, statusText: 'Unauthorized' });
-    const retry = http.expectOne(
-      'https://datatug.test/v0/datatug/boards/board',
-    );
-    expect(retry.request.headers.get('Authorization')).toBe('Bearer token');
-    retry.flush(
-      { id: 'b' },
-      { headers: { ETag: '"rev"', 'X-Datatug-Asset-Revision': 'rev' } },
-    );
-    const result = await pending;
-    expect(result).toBeInstanceOf(HttpResponse);
-    expect(result.body).toEqual({ id: 'b' });
-    expect(result.headers.get('ETag')).toBe('"rev"');
-    http.verify();
-  });
+  it.each(['json', 'text'] as const)(
+    'retains real %s response headers and authenticated 401 retry for asset detail',
+    async (responseType) => {
+      const http = configure([
+        { provide: DatatugApiBaseUrl, useValue: 'https://datatug.test/v0/' },
+      ]);
+      const pending = firstValueFrom(
+        TestBed.inject(DatatugApiService).getResponse<{ id: string } | string>(
+          'datatug/boards/board',
+          undefined,
+          responseType,
+        ),
+      );
+      const first = http.expectOne(
+        'https://datatug.test/v0/datatug/boards/board',
+      );
+      expect(first.request.headers.get('Authorization')).toBe('Bearer token');
+      expect(first.request.responseType).toBe(responseType);
+      first.flush(responseType === 'text' ? '' : {}, {
+        status: 401,
+        statusText: 'Unauthorized',
+      });
+      const retry = http.expectOne(
+        'https://datatug.test/v0/datatug/boards/board',
+      );
+      expect(retry.request.headers.get('Authorization')).toBe('Bearer token');
+      retry.flush(responseType === 'text' ? '{"id":"b"}' : { id: 'b' }, {
+        headers: { ETag: '"rev"', 'X-Datatug-Asset-Revision': 'rev' },
+      });
+      const result = await pending;
+      expect(result).toBeInstanceOf(HttpResponse);
+      expect(result.body).toEqual(
+        responseType === 'text' ? '{"id":"b"}' : { id: 'b' },
+      );
+      expect(result.headers.get('ETag')).toBe('"rev"');
+      http.verify();
+    },
+  );
 
   it('calls the default Sneat API origin when no base URL is configured', () => {
     const http = configure();

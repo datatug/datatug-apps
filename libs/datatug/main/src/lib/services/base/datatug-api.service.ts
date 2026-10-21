@@ -76,10 +76,15 @@ export class DatatugApiService extends SneatApiService {
   /** Header-aware reads use the same authenticated/401-safe transport.
    * Sneat's runtime forwards observe, but its current public options type is body-only.
    */
-  getResponse<T>(endpoint: string, params?: HttpParams) {
-    const options = { observe: 'response' } as unknown as NonNullable<
-      Parameters<SneatApiService['get']>[2]
-    >;
+  getResponse<T>(
+    endpoint: string,
+    params?: HttpParams,
+    responseType: 'json' | 'text' = 'json',
+  ) {
+    const options = {
+      observe: 'response',
+      responseType,
+    } as unknown as NonNullable<Parameters<SneatApiService['get']>[2]>;
     return this.get<HttpResponse<T>>(endpoint, params, options);
   }
 

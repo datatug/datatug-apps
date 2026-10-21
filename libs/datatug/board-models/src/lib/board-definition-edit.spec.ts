@@ -1,5 +1,6 @@
 import {
   editBoardDefinition,
+  parseHostedBoardDefinition,
   validateHostedBoardDefinition,
 } from './board-definition-edit';
 import { Board } from './board';
@@ -95,7 +96,9 @@ describe('canonical durable board definition edits', () => {
     expect(next.rows?.flatMap((row) => row.cards ?? []).length).toBe(2);
   });
   it('refuses source text, unsupported graph fields and unlisted saved queries without loss', () => {
-    expect(() => validateHostedBoardDefinition({ id: 'missing-title' } as Board)).toThrow('incomplete');
+    expect(() =>
+      validateHostedBoardDefinition({ id: 'missing-title' } as Board),
+    ).toThrow('incomplete');
     const value = board();
     expect(() =>
       editBoardDefinition(
@@ -105,7 +108,9 @@ describe('canonical durable board definition edits', () => {
       ),
     ).toThrow('currently available');
     const raw = board();
-    const rawData = raw.rows?.[0].cards?.[1].widget?.data as { sql: object } | undefined;
+    const rawData = raw.rows?.[0].cards?.[1].widget?.data as
+      | { sql: object }
+      | undefined;
     if (!rawData) throw new Error('Expected saved-query fixture.');
     rawData.sql = {
       queryId: 'q',
@@ -146,6 +151,35 @@ describe('canonical durable board definition edits', () => {
         [],
       ),
     ).toThrow('parameter binding');
+  });
+  it('rejects unsafe literals before new saves and raw unsafe binding tokens before parsing', () => {
+    expect(() =>
+      editBoardDefinition(
+        board(),
+        {
+          type: 'bind-query',
+          cardId: 'query',
+          parameterId: 'order_id',
+          value: Number.MAX_SAFE_INTEGER + 1,
+        },
+        [],
+      ),
+    ).toThrow('numeric precision');
+    expect(() =>
+      parseHostedBoardDefinition(
+        '{"id":"b","title":"b","rows":[{"cards":[{"id":"c","title":"c","widget":{"name":"SQL","data":{"sql":{"queryId":"q","parameters":[{"id":"p","value":9007199254740993}]}}}}]}]}',
+      ),
+    ).toThrow('numeric precision');
+    expect(() =>
+      parseHostedBoardDefinition('{"id":"b","title":"unterminated'),
+    ).toThrow();
+    expect(() =>
+      parseHostedBoardDefinition(' '.repeat(256 * 1024 + 1)),
+    ).toThrow('read limit');
+    const result = parseHostedBoardDefinition(
+      '{"id":"b","title":"b","parameters":[{"id":"fraction","type":"number","defaultValue":1e-7}]}',
+    );
+    expect(result.parameters?.[0].defaultValue).toBe(1e-7);
   });
   it('changes query identity without carrying unrelated old bindings', () => {
     const next = editBoardDefinition(

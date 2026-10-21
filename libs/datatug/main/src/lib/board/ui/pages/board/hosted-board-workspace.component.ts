@@ -1,3 +1,8 @@
+import { parseBoardParameterValue } from '../../../core/board-parameter-value';
+import {
+  IParameterDef,
+  IParamWithDefAndValue,
+} from '../../../../models/definition/parameter';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   DestroyRef,
@@ -114,7 +119,42 @@ interface QueryFolder {
     @if (notice()) {
       <p role="status">{{ notice() }}</p>
     }
-    @if (draft(); as board) {
+    @if (scope.admitted() && parameters().length) {
+      <section aria-label="Board runtime parameters">
+        <p>
+          Parameter changes clear previous results. Run or refresh a card to use
+          the new values. These values are not saved with the board.
+        </p>
+        @for (parameter of parameters(); track parameter.def.id) {
+          <ion-item>
+            <ion-label>{{ parameter.def.title || parameter.def.id }}</ion-label>
+            <ion-input
+              [attr.aria-label]="'Board parameter ' + parameter.def.id"
+              [placeholder]="parameter.def.type"
+              [value]="parameterText(parameter)"
+              [attr.aria-invalid]="
+                parameterErrors()[parameter.def.id] ? 'true' : null
+              "
+              [attr.aria-describedby]="
+                parameterErrors()[parameter.def.id]
+                  ? 'hosted-board-parameter-error-' + parameter.def.id
+                  : null
+              "
+              (ionInput)="setParameterValue(parameter, $event.detail.value)"
+            />
+          </ion-item>
+          @if (parameterErrors()[parameter.def.id]; as error) {
+            <p
+              role="alert"
+              [id]="'hosted-board-parameter-error-' + parameter.def.id"
+            >
+              {{ error }}
+            </p>
+          }
+        }
+      </section>
+    }
+    @if (scope.admitted() ? draft() : undefined; as board) {
       @if (!scope.canWrite()) {
         <p role="status">You can view this board, but cannot save changes.</p>
       }
@@ -325,9 +365,19 @@ export class HostedBoardWorkspaceComponent {
   readonly cards = computed(
     () => this.draft()?.rows?.flatMap((row) => row.cards ?? []) ?? [],
   );
+  readonly parameters = signal<IParamWithDefAndValue[]>([]);
+  readonly parameterErrors = signal<Readonly<Record<string, string>>>({});
+  private readonly parameterValues = signal<IBoardContext['parameters']>({});
+  private readonly parameterIdentity = computed(() =>
+    JSON.stringify([
+      this.key(),
+      this.scope.admitted(),
+      this.draft()?.parameters,
+    ]),
+  );
   readonly boardContext = computed<IBoardContext>(() => ({
     mode: 'view',
-    parameters: {},
+    parameters: this.scope.admitted() ? this.parameterValues() : {},
     environment: this.scope.environment(),
     executionTarget: { kind: 'hosted-cloud' },
   }));
@@ -347,6 +397,27 @@ export class HostedBoardWorkspaceComponent {
     );
   };
   constructor() {
+    effect(() => {
+      this.parameterIdentity();
+      untracked(() => {
+        this.parameters.set(
+          (this.scope.admitted() ? (this.draft()?.parameters ?? []) : []).map(
+            (def) => ({
+              def: def as IParameterDef,
+              val: '',
+            }),
+          ),
+        );
+        this.parameterErrors.set({});
+        this.parameterValues.set({});
+        for (const parameter of this.parameters()) {
+          const value = (
+            parameter.def as IParameterDef & { defaultValue?: unknown }
+          ).defaultValue;
+          if (value !== undefined) this.setParameterValue(parameter, value);
+        }
+      });
+    });
     effect((onCleanup) => {
       const key = this.key();
       const admitted = this.scope.admitted();
@@ -372,6 +443,51 @@ export class HostedBoardWorkspaceComponent {
       onCleanup(() => {
         cancelled = true;
       });
+    });
+  }
+  parameterText(parameter: IParamWithDefAndValue): string {
+    return parameter.val == null ? '' : String(parameter.val);
+  }
+  setParameterValue(parameter: IParamWithDefAndValue, raw: unknown): void {
+    if (
+      !this.scope.admitted() ||
+      !this.parameters().some((current) => current.def === parameter.def)
+    )
+      return;
+    let value: IBoardContext['parameters'][string] | undefined;
+    let error: string | undefined;
+    try {
+      value = parseBoardParameterValue(parameter.def, raw);
+    } catch (reason) {
+      error =
+        reason instanceof Error
+          ? reason.message
+          : 'This parameter value is invalid.';
+    }
+    this.parameters.update((parameters) =>
+      parameters.map((current) =>
+        current.def === parameter.def
+          ? {
+              ...current,
+              val: ['string', 'number', 'boolean'].includes(typeof raw)
+                ? (raw as string | number | boolean)
+                : undefined,
+            }
+          : current,
+      ),
+    );
+    this.parameterErrors.update((errors) => {
+      const next = { ...errors };
+      if (error) next[parameter.def.id] = error;
+      else delete next[parameter.def.id];
+      return next;
+    });
+    // Publish a new context even on invalid/cleared input to cancel held runs.
+    this.parameterValues.update((values) => {
+      const next = { ...values };
+      if (value) next[parameter.def.id] = value;
+      else delete next[parameter.def.id];
+      return next;
     });
   }
   private active(key: string, generation: number) {

@@ -25,6 +25,38 @@ const parameters = (value: unknown): void => {
       'Unsupported hosted parameter definition; inline lookups are unavailable.',
     );
 };
+/** Admit raw numeric lexemes before JSON.parse can silently round a persisted definition. */
+export function parseHostedBoardDefinition(raw: string): Board {
+  if (new TextEncoder().encode(raw).length > 256 * 1024)
+    throw new Error('Board definition exceeds the read limit.');
+  for (let i = 0; i < raw.length; i++) {
+    if (raw[i] === '"') {
+      for (i++; i < raw.length; i++) {
+        if (raw[i] === '\\') i++;
+        else if (raw[i] === '"') break;
+      }
+    } else if (raw[i] === '-' || /[0-9]/.test(raw[i])) {
+      const token =
+        /^-?(?:0|[1-9][0-9]*)(?:\.[0-9]+)?(?:[eE][+-]?[0-9]+)?/.exec(
+          raw.slice(i),
+        )?.[0];
+      if (!token) continue; // JSON.parse below owns malformed JSON syntax.
+      const value = Number(token);
+      if (
+        !Number.isFinite(value) ||
+        (Number.isInteger(value) && !Number.isSafeInteger(value)) ||
+        JSON.stringify(value) !== token
+      )
+        throw new Error(
+          'This board contains unsupported numeric precision or number form. Use a compatible editor.',
+        );
+      i += token.length - 1;
+    }
+  }
+  const board = JSON.parse(raw) as Board;
+  validateHostedBoardDefinition(board);
+  return board;
+}
 /** Hosted definitions are the canonical Go board wire; never strip unsupported data. */
 export function validateHostedBoardDefinition(board: Board): void {
   if (
@@ -45,6 +77,22 @@ export function validateHostedBoardDefinition(board: Board): void {
   )
     throw new Error('Unsupported or incomplete board definition.');
   parameters(board.parameters);
+  let remaining = 131072;
+  const numbers = (value: unknown, depth = 0): void => {
+    if (--remaining < 0 || depth > 64)
+      throw new Error('Board definition exceeds validation limits.');
+    if (
+      typeof value === 'number' &&
+      (!Number.isFinite(value) ||
+        (Number.isInteger(value) && !Number.isSafeInteger(value)) ||
+        Object.is(value, -0))
+    )
+      throw new Error('Unsupported numeric precision in board definition.');
+    if (Array.isArray(value)) value.forEach((item) => numbers(item, depth + 1));
+    else if (record(value))
+      Object.values(value).forEach((item) => numbers(item, depth + 1));
+  };
+  numbers(board);
   validateBoardPresentation(board);
   const widget = (value: BoardWidget, depth: number): void => {
     if (

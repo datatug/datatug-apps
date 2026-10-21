@@ -1,6 +1,10 @@
 import { HttpParams, HttpResponse } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
-import { Board, validateHostedBoardDefinition } from '@datatug/board-models';
+import {
+  Board,
+  parseHostedBoardDefinition,
+  validateHostedBoardDefinition,
+} from '@datatug/board-models';
 import { defer, map, Observable } from 'rxjs';
 import { IProjectRef, isSharedProjectRef } from '../../core/project-context';
 import { DatatugApiService } from '../base/datatug-api.service';
@@ -9,7 +13,9 @@ export interface BoardAssetSnapshot {
   readonly board: Board;
   readonly revision: string;
 }
-export interface BoardAssetSaved extends BoardAssetSnapshot {
+export interface BoardSaveAck {
+  readonly boardId: string;
+  readonly revision: string;
   readonly receipt: string;
 }
 export interface BoardAssetWrite {
@@ -55,23 +61,26 @@ export class ProjectAssetsApiService {
     return defer(() => {
       if (!/^[A-Za-z0-9_-]{1,128}$/.test(id))
         throw new Error('Invalid board identity.');
-      return this.api.getResponse<Board>(
+      return this.api.getResponse<string>(
         'datatug/boards/board',
         new HttpParams({
           fromObject: { ...hostedAssetScope(ref, environment), id },
         }),
+        'text',
       );
     }).pipe(
       map((response) => {
-        if (!(response instanceof HttpResponse) || !response.body)
+        if (
+          !(response instanceof HttpResponse) ||
+          typeof response.body !== 'string'
+        )
           throw new Error('Board detail response is unavailable.');
         const revision = response.headers.get('X-Datatug-Asset-Revision');
         if (!revision || response.headers.get('ETag') !== `"${revision}"`)
           throw new Error('Reload this board to obtain its current revision.');
-        validateHostedBoardDefinition(response.body);
-        if (response.body.id !== id)
-          throw new Error('Board detail identity mismatch.');
-        return { board: response.body, revision };
+        const board = parseHostedBoardDefinition(response.body);
+        if (board.id !== id) throw new Error('Board detail identity mismatch.');
+        return { board, revision };
       }),
     );
   }
@@ -79,7 +88,7 @@ export class ProjectAssetsApiService {
     ref: IProjectRef,
     environment: string,
     write: BoardAssetWrite,
-  ): Observable<BoardAssetSaved> {
+  ): Observable<BoardSaveAck> {
     return defer(() => {
       validateHostedBoardDefinition(write.board);
       if (!write.operationId || !!write.ifNoneMatch === !!write.ifMatch)
@@ -89,7 +98,11 @@ export class ProjectAssetsApiService {
       const body = { ...hostedAssetScope(ref, environment), ...write };
       if (new TextEncoder().encode(JSON.stringify(body)).length > 256 * 1024)
         throw new Error('Board definition exceeds the save limit.');
-      return this.api.post<BoardAssetSaved>('datatug/boards/save_board', body, {
+      return this.api.post<{
+        board?: { id?: unknown };
+        revision?: unknown;
+        receipt?: unknown;
+      }>('datatug/boards/save_board', body, {
         retryUnauthorizedOnce: true,
       });
     }).pipe(
@@ -97,14 +110,18 @@ export class ProjectAssetsApiService {
         if (
           !saved ||
           saved.receipt !== write.operationId ||
+          typeof saved.revision !== 'string' ||
           !saved.revision ||
           saved.board?.id !== write.board.id
         )
           throw new Error(
             'Board save receipt could not be verified. Retry the original operation.',
           );
-        validateHostedBoardDefinition(saved.board);
-        return saved;
+        return {
+          boardId: write.board.id,
+          revision: saved.revision,
+          receipt: write.operationId,
+        };
       }),
     );
   }
