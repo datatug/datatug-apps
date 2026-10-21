@@ -48,7 +48,7 @@ const GITHUB_FAKE_DIR = process.env['DATATUG_E2E_GITHUB_FAKE'];
 
 const projectOverviewButton = (page: Page, name: string) =>
   activePage(page)
-    .getByRole('navigation', { name: 'Project overview sections' })
+    .getByRole('group', { name: 'Project overview sections' })
     .getByRole('button', { name, exact: true });
 
 test.skip(

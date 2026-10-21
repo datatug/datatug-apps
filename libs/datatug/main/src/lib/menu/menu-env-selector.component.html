@@ -1,6 +1,8 @@
-<ion-item class="ion-no-padding">
-  <ion-icon name="globe-outline" slot="start" aria-hidden="true" />
-  <ion-label>
+<ion-item class="menu-selector-item">
+  <span slot="start" class="menu-selector-icon" aria-hidden="true">
+    <ion-icon name="globe-outline" />
+  </span>
+  <ion-label class="menu-selector-row-label">
     @if (currentEnvId()) {
       Env
     } @else {
@@ -16,6 +18,7 @@
   </ion-label>
   @if (environments().length) {
     <ion-select
+      class="menu-selector-field"
       aria-label="Environment"
       [value]="currentEnvId()"
       interface="popover"
@@ -30,16 +33,10 @@
   }
   @if (!environments().length && currentEnvId()) {
     <!-- An agent that lists no environments still names the one in use. -->
-    <ion-note slot="end" data-testid="menu-env-current">{{
-      currentEnvId()
-    }}</ion-note>
+    <ion-note data-testid="menu-env-current">{{ currentEnvId() }}</ion-note>
   }
   @if (currentEnvId()) {
-    <ion-buttons
-      slot="end"
-      class="ion-no-margin ion-no-padding"
-      style="margin-right: -1em"
-    >
+    <ion-buttons slot="end" class="menu-env-clear">
       <ion-button
         color="medium"
         (click)="clearEnv()"
