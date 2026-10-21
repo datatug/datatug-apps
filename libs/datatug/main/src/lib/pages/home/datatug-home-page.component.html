@@ -68,6 +68,10 @@
     </ion-card-content>
   </ion-card>
 
+  @if (profile.homeIntroVideo; as video) {
+    <sneat-datatug-intro-video [video]="video" />
+  }
+
   <ion-grid class="ion-grid-layout home-cards-grid">
     <ion-row>
       <ion-col size="12" size-md="6" class="home-cards-col">
@@ -90,8 +94,8 @@
     <ion-card-content>
       <p>
         Sign in to set up a private project, then create an Incident first.
-        Start a separate Detective Case when you are ready to investigate.
-        No local agent or purchase is needed.
+        Start a separate Detective Case when you are ready to investigate. No
+        local agent or purchase is needed.
       </p>
       <sneat-datatug-detective-demo-starter destination="incidents" />
     </ion-card-content>
