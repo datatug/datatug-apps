@@ -1,3 +1,4 @@
+import { ProjectEnvironmentStateService } from './project-environment-state.service';
 import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { Injectable, inject } from '@angular/core';
 import {
@@ -76,6 +77,7 @@ function safeEnvironmentPresentation(
 @Injectable({ providedIn: 'root' })
 export class ProjectAssetsReadService {
   private readonly api = inject(ProjectQueryApiService);
+  private readonly environmentState = inject(ProjectEnvironmentStateService);
   private readonly hosted = inject(ProjectAssetsApiService);
   private readonly project = inject(ProjectService);
   private readonly github = inject(GithubProjectReaderService);
@@ -256,6 +258,12 @@ export class ProjectAssetsReadService {
   }
 
   environments(ref: IProjectRef): Observable<IEnvironmentFull[]> {
+    return this.environmentState
+      .view(ref, () => this.legacyEnvironments(ref))
+      .pipe(map((view) => view.items));
+  }
+
+  legacyEnvironments(ref: IProjectRef): Observable<IEnvironmentFull[]> {
     const invalid = this.invalidTransport(ref);
     if (invalid) return invalid;
     if (this.isUnsupported(ref))
@@ -266,9 +274,7 @@ export class ProjectAssetsReadService {
           ),
       );
     if (ref.projectApi === 'cloud')
-      return this.api
-        .environments<IEnvironmentFull[]>(ref)
-        .pipe(map((items) => resolveEnvironmentOrder(items).items));
+      return this.api.environments<IEnvironmentFull[]>(ref);
     if (ref.storeId === 'github' || ref.storeId === 'github.com') {
       return this.githubProject(ref).pipe(
         switchMap((project) =>
@@ -310,8 +316,6 @@ export class ProjectAssetsReadService {
               ).items,
           ),
         );
-    return this.api
-      .environments<IEnvironmentFull[]>(ref)
-      .pipe(map((items) => resolveEnvironmentOrder(items).items));
+    return this.api.environments<IEnvironmentFull[]>(ref);
   }
 }

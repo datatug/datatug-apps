@@ -1,5 +1,14 @@
 import { inject, Injectable } from '@angular/core';
-import { defer, map, Observable } from 'rxjs';
+import {
+  catchError,
+  defer,
+  map,
+  Observable,
+  of,
+  switchMap,
+  throwError,
+} from 'rxjs';
+import { IEnvironmentFull } from '../../models/definition/environments';
 import { IProjectRef } from '../../core/project-context';
 import {
   EnvironmentState,
@@ -41,6 +50,40 @@ export class ProjectEnvironmentStateService {
       }),
     );
   }
+  view(
+    ref: IProjectRef,
+    legacy: () => Observable<IEnvironmentFull[]>,
+  ): Observable<{
+    state?: EnvironmentState;
+    items: IEnvironmentFull[];
+    reason?: string;
+  }> {
+    return this.read(ref).pipe(
+      map((state) => ({ state, items: [...state.environments] })),
+      catchError((error) => {
+        const local =
+          !['github', 'github.com', 'firestore'].includes(ref.storeId) &&
+          ref.projectApi !== 'cloud' &&
+          ref.spaceID === undefined;
+        if (!local || error?.status !== 426) return throwError(() => error);
+        const unsupported = of(true);
+        return unsupported.pipe(
+          switchMap((old) =>
+            old
+              ? legacy().pipe(
+                  map((items) => ({
+                    items,
+                    reason:
+                      'Update the local DataTug agent to create environments or manage shared order.',
+                  })),
+                )
+              : throwError(() => error),
+          ),
+        );
+      }),
+    );
+  }
+
   mutation(state: EnvironmentState): EnvironmentMutation {
     return {
       scope: state.scope,

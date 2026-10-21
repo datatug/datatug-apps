@@ -1,5 +1,7 @@
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError } from 'rxjs';
+import { ProjectEnvironmentStateService } from './project-environment-state.service';
+import { map } from 'rxjs';
 import { ProjectService } from './project.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { ProjectAssetsReadService } from './project-assets-read.service';
@@ -43,6 +45,15 @@ describe('ProjectAssetsReadService', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectAssetsReadService,
+        {
+          provide: ProjectEnvironmentStateService,
+          useValue: {
+            view: (
+              _ref: unknown,
+              legacy: () => import('rxjs').Observable<unknown[]>,
+            ) => legacy().pipe(map((items) => ({ items }))),
+          },
+        },
         { provide: ProjectQueryApiService, useValue: api },
         { provide: ProjectService, useValue: full },
         { provide: GithubProjectReaderService, useValue: github },

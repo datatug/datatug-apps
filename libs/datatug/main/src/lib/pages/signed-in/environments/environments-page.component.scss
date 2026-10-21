@@ -25,3 +25,26 @@ ion-chip[color='danger'] {
     --color: #ffd8df;
   }
 }
+.page-note,
+.page-actions {
+  margin: 12px 16px;
+}
+ion-chip {
+  height: 28px;
+  margin-block: 4px;
+  font-size: 0.75rem;
+}
+ion-item {
+  --min-height: 48px;
+}
+@media (max-width: 420px) {
+  ion-item {
+    flex-wrap: wrap;
+  }
+  ion-chip {
+    margin-inline: 2px;
+  }
+  ion-buttons {
+    flex-wrap: wrap;
+  }
+}

@@ -1,14 +1,36 @@
 <ion-header>
   <ion-toolbar>
-    <ion-buttons slot="start">
-      <ion-menu-button />
-      <ion-back-button />
-    </ion-buttons>
+    <ion-buttons slot="start"
+      ><ion-menu-button /><ion-back-button
+    /></ion-buttons>
     <sneat-datatug-page-title pageTitle="Environments" />
+    <ion-buttons slot="end">
+      @if (
+        state()?.capabilities?.canWriteOrder &&
+        !editing() &&
+        !creating() &&
+        !unresolved
+      ) {
+        <ion-button (click)="manage()">Manage order</ion-button>
+      }
+      @if (
+        state()?.capabilities?.canCreateEnvironment &&
+        !creating() &&
+        !editing() &&
+        !unresolved
+      ) {
+        <ion-button (click)="add()">Add environment</ion-button>
+      }
+    </ion-buttons>
   </ion-toolbar>
 </ion-header>
-
 <ion-content color="light">
+  @if (reason()) {
+    <p class="page-note" role="status">{{ reason() }}</p>
+  }
+  @if (message()) {
+    <p class="page-note" role="status">{{ message() }}</p>
+  }
   <ion-card>
     <ion-list lines="full">
       @if (loadError()) {
@@ -18,48 +40,100 @@
           ></ion-item
         >
       } @else if (environments(); as items) {
-        @for (environment of items; track environment.id) {
-          <ion-item
-            button
-            detail
-            (click)="goEnvironment(environment)"
-            data-testid="environment-list-item"
-          >
-            <ion-icon
-              slot="start"
-              [icon]="presentation(environment).icon"
-              aria-hidden="true"
-            />
-            <ion-label class="ion-text-wrap"
-              ><h3
-                [class.environment-warning]="
-                  presentation(environment).tone === 'warning'
-                "
-                [class.environment-danger]="
-                  presentation(environment).tone === 'danger'
-                "
-              >
-                {{ presentation(environment).label }}
-              </h3>
-              @if (presentation(environment).label !== environment.id) {
-                <p>Environment ID: {{ environment.id }}</p>
+        <ion-reorder-group
+          [disabled]="!editing() || busy() || unresolved"
+          (ionItemReorder)="reorder($any($event))"
+        >
+          @for (
+            environment of editing() ? draft() : items;
+            track environment.id;
+            let index = $index
+          ) {
+            <ion-item
+              [button]="!editing()"
+              [detail]="!editing()"
+              (click)="goEnvironment(environment)"
+              data-testid="environment-list-item"
+            >
+              @if (editing()) {
+                <ion-reorder slot="start" />
               }
+              <ion-icon
+                slot="start"
+                [icon]="presentation(environment).icon"
+                aria-hidden="true"
+              />
+              <ion-label class="ion-text-wrap"
+                ><h3
+                  [class.environment-warning]="
+                    presentation(environment).tone === 'warning'
+                  "
+                  [class.environment-danger]="
+                    presentation(environment).tone === 'danger'
+                  "
+                >
+                  {{ presentation(environment).label }}
+                </h3></ion-label
+              >
               @if (presentation(environment).safetyLabel; as safety) {
-                <ion-chip [color]="presentation(environment).tone"
+                <ion-chip slot="end" [color]="presentation(environment).tone"
                   ><ion-icon
                     [icon]="warningIcon"
                     aria-hidden="true"
                   /><ion-label>{{ safety }}</ion-label></ion-chip
                 >
               }
-            </ion-label>
+              @if (editing()) {
+                <ion-buttons slot="end">
+                  <ion-button
+                    [disabled]="index === 0 || busy() || unresolved"
+                    [attr.aria-label]="
+                      'Move ' + presentation(environment).label + ' up'
+                    "
+                    (click)="move(index, -1); $event.stopPropagation()"
+                    ><ion-icon slot="icon-only" [icon]="upIcon"
+                  /></ion-button>
+                  <ion-button
+                    [disabled]="
+                      index === draft().length - 1 || busy() || unresolved
+                    "
+                    [attr.aria-label]="
+                      'Move ' + presentation(environment).label + ' down'
+                    "
+                    (click)="move(index, 1); $event.stopPropagation()"
+                    ><ion-icon slot="icon-only" [icon]="downIcon"
+                  /></ion-button>
+                </ion-buttons>
+              }
+            </ion-item>
+          } @empty {
+            <ion-item
+              ><ion-label
+                >No environments have been configured yet.</ion-label
+              ></ion-item
+            >
+          }
+        </ion-reorder-group>
+        @if (creating()) {
+          <ion-item>
+            <ion-input
+              #nameInput
+              label="Environment name"
+              labelPlacement="stacked"
+              [(ngModel)]="name"
+              [disabled]="busy() || unresolved"
+              (keyup.enter)="submit('create')"
+            />
+            <ion-buttons slot="end"
+              ><ion-button
+                (click)="submit('create')"
+                [disabled]="busy() || unresolved || !name.trim()"
+                >Add</ion-button
+              ><ion-button (click)="cancel()" [disabled]="busy()"
+                >Cancel</ion-button
+              ></ion-buttons
+            >
           </ion-item>
-        } @empty {
-          <ion-item
-            ><ion-label
-              >No environments have been configured yet.</ion-label
-            ></ion-item
-          >
         }
       } @else {
         <ion-item aria-label="Loading environments"
@@ -68,4 +142,31 @@
       }
     </ion-list>
   </ion-card>
+  @if (editing()) {
+    <div class="page-actions">
+      <ion-button (click)="submit('order')" [disabled]="busy() || unresolved">
+        @if (busy()) {
+          <ion-spinner slot="start" />
+        }
+        Save order</ion-button
+      ><ion-button fill="clear" (click)="cancel()" [disabled]="busy()"
+        >Cancel</ion-button
+      >
+    </div>
+  }
+  @if (rejected()) {
+    <div class="page-actions">
+      <ion-button (click)="reloadLatest()" [disabled]="busy()"
+        >Reload latest state</ion-button
+      >
+    </div>
+  } @else if (unresolved) {
+    <div class="page-actions">
+      <ion-button (click)="reconcile()" [disabled]="busy()"
+        >Reconcile</ion-button
+      ><ion-button fill="outline" (click)="retry()" [disabled]="busy()"
+        >Retry same operation</ion-button
+      >
+    </div>
+  }
 </ion-content>

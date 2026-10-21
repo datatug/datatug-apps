@@ -1,139 +1,156 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
-
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { EnvironmentsPageComponent } from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
-import { ProjectService } from '../../../services/project/project.service';
-import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
+import { ProjectEnvironmentStateService } from '../../../services/project/project-environment-state.service';
+import { EnvironmentState } from '../../../models/definition/environment-state';
 
-describe('EnvironmentsPage', () => {
-  let component: EnvironmentsPageComponent;
-  let fixture: ComponentFixture<EnvironmentsPageComponent>;
+const ref = { storeId: 'localhost:18989', projectId: 'demo' };
+const state: EnvironmentState = {
+  contract: 'environment-state/1',
+  scope: { ...ref, authorityId: 'agent' },
+  scopeBinding: 'a'.repeat(64),
+  environments: [{ id: 'prod' }, { id: 'local' }],
+  savedOrder: ['prod', 'local'],
+  order: ['prod', 'local'],
+  revision: 'r1',
+  needsRepair: false,
+  capabilities: {
+    canReadOrder: true,
+    canWriteOrder: true,
+    canCreateEnvironment: true,
+  },
+};
 
+describe('Environments management', () => {
+  const project = new BehaviorSubject({ ref });
+  const response = new Subject<{
+    state: EnvironmentState;
+    items: EnvironmentState['environments'];
+  }>();
+  const nav = { goEnvironment: vi.fn() };
+  const api = {
+    view: vi.fn(() => response),
+    mutation: vi.fn(() => ({
+      scope: state.scope,
+      ifRevision: 'r1',
+      operationId: 'op',
+    })),
+    save: vi.fn(),
+    create: vi.fn(),
+    read: vi.fn(),
+    status: vi.fn(),
+  };
   beforeEach(async () => {
-    Object.defineProperty(window, 'history', {
-      value: { ...window.history, state: { projSummary: undefined } },
-      writable: true,
-      configurable: true,
-    });
+    vi.clearAllMocks();
     await TestBed.configureTestingModule({
       imports: [EnvironmentsPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
         {
           provide: DatatugNavContextService,
+          useValue: { currentProject: project },
+        },
+        {
+          provide: SneatAuthStateService,
           useValue: {
-            currentProject: of(undefined),
-            currentEnv: of(undefined),
+            authState: of({ status: 'authenticated', user: { uid: 'u1' } }),
           },
         },
-        // `EnvironmentsPageComponent` fetches its environments list via
-        // `ProjectService.getFull()`, not `project?.environments` (Task 17
-        // item B.1, S121 — see the component's own doc comment on
-        // `environments`): `currentProject` above emits `undefined` in this
-        // describe block, so `loadEnvironments()` never actually runs, but
-        // the component now injects `ProjectService` unconditionally and
-        // `TestBed` needs a provider for it regardless.
         {
-          provide: ProjectService,
-          useValue: { getFull: vi.fn(() => of({ environments: [] })) },
+          provide: ProjectAssetsReadService,
+          useValue: { legacyEnvironments: vi.fn() },
         },
-        // GitHub-store branch (`loadEnvironments()`) reads through
-        // `EnvironmentService.listEnvironments()` instead — see this
-        // component's own doc comment. `currentProject` above emits
-        // `undefined`, so `loadEnvironments()` never actually runs here
-        // either, but `TestBed` needs a provider regardless (now
-        // unconditionally injected).
-        {
-          provide: EnvironmentService,
-          useValue: { listEnvironments: vi.fn(() => of([])) },
-        },
-      ],
-    })
-      .overrideComponent(EnvironmentsPageComponent, {
-        set: {
-          imports: [],
-          template: '',
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
-        },
-      })
-      .compileComponents();
-
-    fixture = TestBed.createComponent(EnvironmentsPageComponent);
-    component = fixture.componentInstance;
-  });
-
-  it('should create', () => {
-    expect(component).toBeTruthy();
-  });
-});
-
-describe('EnvironmentsPage metadata', () => {
-  it('renders late metadata, retains IDs in navigation, and cancels a replaced project', async () => {
-    const { BehaviorSubject, Subject } = await import('rxjs');
-    const project = { ref: { storeId: 'github.com', projectId: 'r@o@' } };
-    const currentProject = new BehaviorSubject<
-      import('../../../nav/nav-models').IProjectContext
-    >(project);
-    const first = new Subject<
-      import('../../../models/definition/environments').IEnvironmentFull[]
-    >();
-    const next = new Subject<
-      import('../../../models/definition/environments').IEnvironmentFull[]
-    >();
-    const goEnvironment = vi.fn();
-    const navToken = (await import('../../../services/nav/datatug-nav.service'))
-      .DatatugNavService;
-    const listEnvironments = vi
-      .fn()
-      .mockReturnValueOnce(first)
-      .mockReturnValueOnce(next);
-    await TestBed.configureTestingModule({
-      imports: [EnvironmentsPageComponent],
-      providers: [
-        { provide: DatatugNavContextService, useValue: { currentProject } },
-        { provide: ProjectService, useValue: {} },
-        { provide: EnvironmentService, useValue: { listEnvironments } },
+        { provide: ProjectEnvironmentStateService, useValue: api },
+        { provide: DatatugNavService, useValue: nav },
         { provide: ErrorLogger, useValue: { logError: vi.fn() } },
-        { provide: navToken, useValue: { goEnvironment } },
       ],
     })
       .overrideComponent(EnvironmentsPageComponent, {
         set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
+  });
+  it('repaints asynchronously and preserves canonical custom order with compact safety metadata', async () => {
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
     fixture.detectChanges();
-    const env = {
-      id: 'live-a',
-      title: 'live-a',
-      presentation: { label: 'Production', tone: 'danger' as const },
-    };
-    first.next([env]);
-    await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Production');
-    expect(fixture.nativeElement.textContent).toContain('High caution');
-    fixture.nativeElement
-      .querySelector('[data-testid="environment-list-item"]')
-      .click();
-    expect(goEnvironment).toHaveBeenCalledWith(project, env);
-    currentProject.next({
-      ref: { storeId: 'github.com', projectId: 'r@o@', branch: 'release' },
+    response.next({
+      state,
+      items: [
+        { id: 'prod', presentation: { label: 'Production', tone: 'danger' } },
+        { id: 'local' },
+      ],
     });
-    first.next([env]);
-    next.next([{ id: 'qa', title: 'Quality assurance' }]);
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Quality assurance');
-    expect(fixture.nativeElement.textContent).not.toContain('Production');
+    const rows = fixture.nativeElement.querySelectorAll(
+      '[data-testid="environment-list-item"]',
+    );
+    expect(rows[0].textContent).toContain('Production');
+    expect(rows[0].textContent).toContain('High caution');
+    expect(rows[0].getAttribute('color')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('ion-card h2')).toHaveLength(
+      0,
+    );
+    rows[0].click();
+    expect(nav.goEnvironment).toHaveBeenCalledWith(
+      { ref },
+      expect.objectContaining({ id: 'prod' }),
+    );
+  });
+  it('retains the exact operation after a lost save response and confirms canonical order before closing', () => {
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page = fixture.componentInstance as any;
+    response.next({ state, items: state.environments });
+    page.manage();
+    page.move(0, 1);
+    api.save.mockReturnValue(throwError(() => ({ status: 0 })));
+    api.read.mockReturnValue(throwError(() => ({ status: 503 })));
+    api.status.mockReturnValue(of({ operationId: 'op', status: 'pending' }));
+    page.submit('order');
+    expect(page.editing()).toBe(true);
+    const original = api.save.mock.calls[0][1];
+    api.save.mockReturnValue(of({ operationId: 'op' }));
+    api.read.mockReturnValue(
+      of({
+        ...state,
+        order: ['local', 'prod'],
+        environments: [{ id: 'local' }, { id: 'prod' }],
+      }),
+    );
+    api.status.mockReturnValue(
+      of({
+        operationId: 'op',
+        status: 'committed',
+        environmentOrder: ['local', 'prod'],
+      }),
+    );
+    page.retry();
+    expect(api.save.mock.calls[1][1]).toBe(original);
+    expect(page.editing()).toBe(false);
+    expect(page.message()).toBe('Order saved.');
+  });
+  it('does not allow mutations without the corresponding current capability', () => {
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page = fixture.componentInstance as any;
+    response.next({
+      state: {
+        ...state,
+        capabilities: {
+          canReadOrder: true,
+          canWriteOrder: false,
+          canCreateEnvironment: false,
+        },
+      },
+      items: state.environments,
+    });
+    page.name = 'New';
+    page.submit('create');
+    page.submit('order');
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.save).not.toHaveBeenCalled();
   });
 });

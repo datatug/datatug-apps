@@ -208,8 +208,14 @@ specific result; the UI never creates a replacement automatically.
 Canonical root is `spaces/{spaceID}/ext/datatug/projects/{projectId}`. Store
 `environmentOrder`, environment metadata generation and safe environment index
 on that record; environment records remain its `environments/{id}` children.
-Private receipts are scoped under
-`users/{verifiedActor}/ext/datatug/environmentOperations/{sha256(operationId)}`.
+Private receipts use the existing server-private root
+`datatugGithubQueryOperations/{sha256(JSON(["environment-operation/1", verifiedActor, operationId]))}`.
+The JSON tuple is encoded as an exact three-string array before hashing. The
+versioned environment domain separates these records from query-operation
+receipts. This root is denied to every browser SDK caller by the owning rules,
+including the operation actor; the authenticated Go status route remains the
+only receipt read path. A user-owned recursive path would expose private
+operation evidence through existing user-document read rules.
 Use one DALgo/Firestore transaction to read actor's current Space/project role,
 project paid-write admission, root/index, receipt and targeted environment,
 validate complete permutation/name, and atomically write record/index/revision
