@@ -218,7 +218,14 @@ describe('Ordinary Check retained evidence before a Case', () => {
         queryValidators: [],
         scenarios: [],
         environments: ['demo'],
-        capabilities: { localOnly, canRead: true, canRun: false, canWrite },
+        capabilities: {
+          localOnly,
+          canRead: true,
+          canRun: false,
+          canWrite,
+          maxRows: 500,
+          maxFanout: 100,
+        },
       } as DetectiveState);
       await fixture.whenStable();
       const action = () =>
@@ -250,6 +257,8 @@ describe('Ordinary Check retained evidence before a Case', () => {
           canRead: true,
           canRun: true,
           canWrite: false,
+          maxRows: 500,
+          maxFanout: 100,
         },
       } as DetectiveState);
       await fixture.whenStable();
@@ -270,7 +279,14 @@ describe('Ordinary Check retained evidence before a Case', () => {
         queryValidators: [],
         scenarios: [],
         environments: ['demo'],
-        capabilities: { localOnly, canRead: true, canRun: false, canWrite },
+        capabilities: {
+          localOnly,
+          canRead: true,
+          canRun: false,
+          canWrite,
+          maxRows: 500,
+          maxFanout: 100,
+        },
       } as DetectiveState);
       await fixture.whenStable();
       expect(
