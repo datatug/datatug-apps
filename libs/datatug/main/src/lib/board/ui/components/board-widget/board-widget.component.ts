@@ -349,7 +349,9 @@ export class BoardWidgetComponent {
     () => this.widgetDef()?.data as TabsWidgetDef | undefined,
   );
   readonly sqlWidgetDef = computed(() =>
-    this.widgetDef()?.name === 'SQL' ? this.widgetDef()?.data as SQLWidgetDef | undefined : undefined,
+    this.widgetDef()?.name === 'SQL'
+      ? (this.widgetDef()?.data as SQLWidgetDef | undefined)
+      : undefined,
   );
   readonly queryId = computed(() =>
     this.widgetDef()?.name === 'chart'
@@ -706,9 +708,12 @@ export class BoardWidgetComponent {
             currentWidget.name !== widgetName ||
             (widgetName === 'chart'
               ? JSON.stringify(currentWidget.data) !== chartDefinition
-              : (
-                  currentWidget.data as SQLWidgetDef | undefined
-                )?.sql?.queryId?.trim() !== queryId))
+              : JSON.stringify(
+                  (currentWidget.data as SQLWidgetDef | undefined)?.sql,
+                ) !==
+                JSON.stringify(
+                  (expectedWidget?.data as SQLWidgetDef | undefined)?.sql,
+                )))
       )
         throw new Error(
           'This board card changed. Reopen the board before running it.',
@@ -981,12 +986,15 @@ export class BoardWidgetComponent {
     const supplied = this.boardContext()?.parameters ?? {};
     const values: Record<string, TypedValue> = {};
     const chartSource = this.chartWidgetDef()?.sources?.[0];
-    const bindings = chartSource?.parameters;
+    const bindings =
+      chartSource?.parameters ?? this.sqlWidgetDef()?.sql?.parameters;
+    const boundParameters = !!chartSource || bindings !== undefined;
+    const bindingKind = chartSource ? 'chart' : 'saved-query widget';
     const boundValues = new Map<string, unknown>();
     if (bindings !== undefined) {
       if (!Array.isArray(bindings))
         throw new QueryDispatchError(
-          'This chart has malformed parameter bindings.',
+          `This ${bindingKind} has malformed parameter bindings.`,
         );
       for (const binding of bindings) {
         if (
@@ -1001,7 +1009,7 @@ export class BoardWidgetComponent {
           )
         )
           throw new QueryDispatchError(
-            'This chart has an unknown or duplicate parameter binding.',
+            `This ${bindingKind} has an unknown or duplicate parameter binding.`,
           );
         const hasValue = Object.prototype.hasOwnProperty.call(binding, 'value');
         const hasBoardParameter = Object.prototype.hasOwnProperty.call(
@@ -1010,7 +1018,7 @@ export class BoardWidgetComponent {
         );
         if (hasValue && hasBoardParameter)
           throw new QueryDispatchError(
-            'This chart parameter has conflicting bindings.',
+            `This ${bindingKind} parameter has conflicting bindings.`,
           );
         if (hasBoardParameter) {
           const id = binding.boardParameterId;
@@ -1021,13 +1029,13 @@ export class BoardWidgetComponent {
             supplied[id]?.value === undefined
           )
             throw new QueryDispatchError(
-              'This chart parameter references an unavailable board parameter.',
+              `This ${bindingKind} parameter references an unavailable board parameter.`,
             );
           boundValues.set(binding.id, supplied[id].value);
         } else if (hasValue) {
           if (binding.value === undefined)
             throw new QueryDispatchError(
-              'This chart parameter has no constant value.',
+              `This ${bindingKind} parameter has no constant value.`,
             );
           boundValues.set(binding.id, binding.value);
         } else {
@@ -1043,7 +1051,7 @@ export class BoardWidgetComponent {
     }
     for (const parameter of definition.parameters ?? []) {
       if (
-        chartSource &&
+        boundParameters &&
         ![
           'integer',
           'number',
@@ -1060,9 +1068,9 @@ export class BoardWidgetComponent {
         ].includes(parameter.type)
       )
         throw new QueryDispatchError(
-          `The chart parameter type for ${parameter.title ?? parameter.id} is unsupported.`,
+          `The ${bindingKind} parameter type for ${parameter.title ?? parameter.id} is unsupported.`,
         );
-      const raw = chartSource
+      const raw = boundParameters
         ? boundValues.has(parameter.id)
           ? boundValues.get(parameter.id)
           : (parameter as { defaultValue?: unknown }).defaultValue

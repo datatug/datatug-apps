@@ -70,3 +70,10 @@ export {
   validateBoardPresentation,
   validChartSpec,
 } from './lib/board-presentation';
+// Durable definition adapter for review: canonical Board wire and validation, no renderer.
+export {
+  validateHostedBoardDefinition,
+  parseHostedBoardDefinition,
+  editBoardDefinition,
+  BoardDefinitionEdit,
+} from './lib/board-definition-edit';

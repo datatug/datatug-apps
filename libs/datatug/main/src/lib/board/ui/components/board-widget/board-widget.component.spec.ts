@@ -1110,6 +1110,68 @@ describe('BoardWidgetComponent', () => {
     expect(run).not.toHaveBeenCalled();
   });
 
+  it('dispatches a native-demo DTQL saved query from the canonical SQL widget to the explicit hosted target', async () => {
+    const queryId = 'detective/invoice-detail';
+    const { board, readBoard } = configureShowcase({
+      name: 'SQL',
+      data: { sql: { queryId, parameters: [{ id: 'invoice_id', value: 7 }] } },
+    });
+    const ref = {
+      storeId: 'firestore',
+      spaceID: 'space',
+      projectId: 'training',
+    };
+    const definition = {
+      id: 'invoice-detail',
+      title: 'Invoice totals and customer',
+      request: {
+        queryType: QueryType.DTQL,
+        text: 'from: {database: invoices-db, name: InvoiceDetail}',
+      },
+      parameters: [{ id: 'invoice_id', type: 'integer', isRequired: true }],
+    };
+    getQuery.mockReturnValue(of(definition));
+    authState.next({ status: 'authenticated', user: { uid: 'sarah' } });
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardContext', {
+      environment: 'demo',
+      executionTarget: { kind: 'hosted-cloud' },
+    });
+    run.mockRejectedValue(
+      new QueryDispatchError('Current source unavailable.'),
+    );
+    fixture.detectChanges();
+    await fixture.whenStable();
+    await fixture.componentInstance.run();
+    expect(fixture.componentInstance.unsupportedReason()).toBeUndefined();
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({
+        projectRef: ref,
+        queryId,
+        definition,
+        environment: 'demo',
+        target: { kind: 'hosted-cloud' },
+        parameters: { invoice_id: { type: 'integer', value: '7' } },
+      }),
+      { maxRows: 1000 },
+    );
+    expect(fixture.componentInstance.runError()).toContain(
+      'Current source unavailable',
+    );
+    const changed = JSON.parse(JSON.stringify(board)) as typeof board;
+    changed.rows[0].cards[0].widget = {
+      name: 'SQL',
+      data: { sql: { queryId, parameters: [{ id: 'invoice_id', value: 8 }] } },
+    };
+    readBoard.mockReturnValue(of(changed));
+    run.mockClear();
+    await fixture.componentInstance.run();
+    expect(run).not.toHaveBeenCalled();
+    expect(fixture.componentInstance.runError()).toContain(
+      'board card changed',
+    );
+  });
+
   it('runs a saved server DTQL definition by default without choosing a working copy', async () => {
     configureShowcase();
     getQuery.mockReturnValue(of({ id: publicQueryId, title: 'Server countries',
