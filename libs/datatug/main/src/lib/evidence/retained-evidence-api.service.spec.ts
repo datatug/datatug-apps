@@ -24,6 +24,40 @@ const execution = {
   kind: 'execution' as const,
   execution: fixture.execution.result.execution,
 };
+const capabilities = {
+  schemaVersion: 1 as const,
+  actorId: 'current-reader',
+  databaseId: 'fixture-db',
+  projectId: 'fixture-project',
+  environments: [
+    { environmentId: 'demo', identityDomain: 'fixture-shipping-domain' },
+  ],
+  actions: [],
+};
+async function admit(http: HttpTestingController): Promise<void> {
+  let request: TestRequest | undefined;
+  await vi.waitFor(() => {
+    request = http.match((r) =>
+      r.url.endsWith('/session-context/capabilities'),
+    )[0];
+    expect(request).toBeDefined();
+  });
+  if (!request) throw new Error('Missing current namespace request');
+  request.flush(capabilities);
+  await Promise.resolve();
+}
+async function nextRequest(
+  http: HttpTestingController,
+  suffix: string,
+): Promise<TestRequest> {
+  let request: TestRequest | undefined;
+  await vi.waitFor(() => {
+    request = http.match((r) => r.url.endsWith(suffix))[0];
+    expect(request).toBeDefined();
+  });
+  if (!request) throw new Error(`Missing ${suffix} request`);
+  return request;
+}
 describe('Retained evidence real native HTTP reads', () => {
   beforeEach(() =>
     TestBed.configureTestingModule({
@@ -35,9 +69,8 @@ describe('Retained evidence real native HTTP reads', () => {
     const http = TestBed.inject(HttpTestingController),
       api = TestBed.inject(RetainedEvidenceApiService);
     const pending = api.read(scope, execution, new AbortController().signal);
-    const request = http.expectOne((r) =>
-      r.url.endsWith('/shipping/execution'),
-    );
+    await admit(http);
+    const request = await nextRequest(http, '/shipping/execution');
     expect(request.request.method).toBe('GET');
     expect(request.request.params.get('executionId')).toBe('fixture-execution');
     expect(
@@ -75,9 +108,8 @@ describe('Retained evidence real native HTTP reads', () => {
       },
       new AbortController().signal,
     );
-    const request = http.expectOne((r) =>
-      r.url.endsWith('/shipping/check-run'),
-    );
+    await admit(http);
+    const request = await nextRequest(http, '/shipping/check-run');
     expect(request.request.params.get('runId')).toBe('fixture-run');
     expect(request.request.params.has('executionId')).toBe(false);
     request.flush(fixture.check);
@@ -96,6 +128,7 @@ describe('Retained evidence real native HTTP reads', () => {
       selector,
       new AbortController().signal,
     );
+    await admit(http);
     const denied = expect(pending).rejects.toMatchObject({ status: 401 });
     // Hash verification is asynchronous and must complete before the native request exists.
     let request: TestRequest | undefined;
@@ -125,6 +158,7 @@ describe('Retained evidence real native HTTP reads', () => {
       fixture.selector as RowEvidenceSelector,
       new AbortController().signal,
     );
+    await admit(http);
     let request: TestRequest | undefined;
     await vi.waitFor(() => {
       request = http.match((r) => r.url.endsWith('/shipping/evidence/open'))[0];
@@ -145,16 +179,17 @@ describe('Retained evidence real native HTTP reads', () => {
       api = TestBed.inject(RetainedEvidenceApiService);
     const denied = api.read(scope, execution, new AbortController().signal),
       failure = expect(denied).rejects.toMatchObject({ status: 403 });
-    http
-      .expectOne((r) => r.url.endsWith('/shipping/execution'))
-      .flush({}, { status: 403, statusText: 'Forbidden' });
+    await admit(http);
+    (await nextRequest(http, '/shipping/execution')).flush(
+      {},
+      { status: 403, statusText: 'Forbidden' },
+    );
     await failure;
     const lifetime = new AbortController(),
       pending = api.read(scope, execution, lifetime.signal),
       cancelled = expect(pending).rejects.toThrow();
-    const request = http.expectOne((r) =>
-      r.url.endsWith('/shipping/execution'),
-    );
+    await admit(http);
+    const request = await nextRequest(http, '/shipping/execution');
     lifetime.abort();
     await cancelled;
     expect(request.cancelled).toBe(true);

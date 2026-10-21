@@ -42,6 +42,8 @@ export interface RetainedManifestView {
   readonly actorId: string;
   readonly incidentRef: string;
   readonly sessionId: string;
+  readonly databaseId: string;
+  readonly projectId: string;
   readonly bagId: string;
   readonly entryId: string;
   readonly revisionId: string;
@@ -49,6 +51,12 @@ export interface RetainedManifestView {
   readonly environment: string;
   readonly inputs: Readonly<Record<string, TypedValue>>;
   readonly auditSHA256: string;
+}
+export interface RetainedOpenScope extends RetainedEvidenceScope {
+  /** Current server-admitted private namespace. The hosted route project is
+   * public routing identity; databaseId is the mounted native store identity. */
+  readonly nativeDatabaseId: string;
+  readonly nativeProjectId: string;
 }
 export interface RetainedExecutionView {
   readonly result: Result;
@@ -68,7 +76,10 @@ export interface RetainedCheckView {
 }
 export function readSelectedManifest(
   value: unknown,
-  environment: string,
+  expected: Pick<
+    RetainedOpenScope,
+    'environment' | 'nativeDatabaseId' | 'nativeProjectId'
+  >,
 ): RetainedManifestView {
   const wire = obj(value, [
     'version',
@@ -87,7 +98,7 @@ export function readSelectedManifest(
   ]);
   if (wire['version'] !== 1) throw new Error('Unsupported selected manifest.');
   const scope = obj(wire['scope'], ['environmentId', 'identityDomain']);
-  if (scope['environmentId'] !== environment)
+  if (scope['environmentId'] !== expected.environment)
     throw new Error('Manifest environment mismatch.');
   const domain = txt(scope['identityDomain']);
   const session = obj(wire['session'], [
@@ -101,7 +112,12 @@ export function readSelectedManifest(
     'nativeFenceGeneration',
   ]);
   const actor = txt(wire['actorId']);
-  if (session['owner'] !== actor || session['state'] !== 'active')
+  if (
+    session['owner'] !== actor ||
+    session['state'] !== 'active' ||
+    session['databaseId'] !== expected.nativeDatabaseId ||
+    session['projectId'] !== expected.nativeProjectId
+  )
     throw new Error('Invalid selected Session audit.');
   for (const key of ['id', 'databaseId', 'projectId', 'contextSetId'])
     txt(session[key]);
@@ -163,11 +179,13 @@ export function readSelectedManifest(
     actorId: actor,
     incidentRef: txt(wire['incidentRef']),
     sessionId: txt(session['id']),
+    databaseId: txt(session['databaseId']),
+    projectId: txt(session['projectId']),
     bagId: txt(bag['id']),
     entryId: txt(entry['entryId']),
     revisionId: txt(entry['revisionId']),
     identityDomain: domain,
-    environment,
+    environment: expected.environment,
     inputs,
     auditSHA256: digest(wire['auditSHA256']),
   };
@@ -185,7 +203,7 @@ export function readSelectedInputs(
 }
 export async function readRetainedExecution(
   value: unknown,
-  scope: RetainedEvidenceScope,
+  scope: RetainedOpenScope,
   expected?: ExecutionRef,
 ): Promise<RetainedExecutionView> {
   const wire = obj(value, [
@@ -207,8 +225,10 @@ export async function readRetainedExecution(
     (expected && !sameExecution(result.execution, expected))
   )
     throw new Error('Retained execution scope mismatch.');
+  if (scope.nativeProjectId !== scope.projectRef.projectId)
+    throw new Error('Current retained namespace does not match the project.');
   const pin = readRetainedSourcePin(wire['sourcePin'], scope),
-    manifest = readSelectedManifest(wire['manifest'], scope.environment);
+    manifest = readSelectedManifest(wire['manifest'], scope);
   if (wire['actorId'] !== manifest.actorId)
     throw new Error(
       'Retained execution actor does not match its immutable manifest.',
@@ -360,7 +380,7 @@ function definition(value: unknown): void {
 }
 export async function readRetainedCheck(
   value: unknown,
-  scope: RetainedEvidenceScope,
+  scope: RetainedOpenScope,
   ref: Extract<ArtifactRef, { kind: 'check-run' }>['checkRun'],
 ): Promise<RetainedCheckView> {
   const wire = obj(value, ['run', 'sourcePin', 'manifest', 'results']);
@@ -497,8 +517,10 @@ export async function readRetainedCheck(
     }
   };
   steps(run['steps']);
+  if (scope.nativeProjectId !== scope.projectRef.projectId)
+    throw new Error('Current retained namespace does not match the project.');
   const pin = readRetainedSourcePin(wire['sourcePin'], scope),
-    manifest = readSelectedManifest(wire['manifest'], scope.environment),
+    manifest = readSelectedManifest(wire['manifest'], scope),
     results: RetainedExecutionView[] = [];
   if (run['actor'] !== manifest.actorId)
     throw new Error('Retained Check actor mismatch.');

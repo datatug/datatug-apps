@@ -1,3 +1,4 @@
+import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
 import { HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
 import { defer, map } from 'rxjs';
@@ -167,6 +168,7 @@ export function validateShippingIntent(
 @Injectable({ providedIn: 'root' })
 export class ShippingApiService {
   private readonly api = inject(DatatugApiService);
+  private readonly invalidation = inject(NativeSourceInvalidationService);
   publication(ref: IProjectRef, environment: string) {
     return defer(() =>
       this.api.get<ShippingPublicationState>(
@@ -203,6 +205,7 @@ export class ShippingApiService {
     );
   }
   publish(ref: IProjectRef, intent: ShippingPublicationIntent, actor: string) {
+    const capturedRef = structuredClone(ref);
     return defer(() => {
       validatePublicationIntent(ref, intent);
       if (!actor) throw new Error('Sign in to change query access.');
@@ -226,6 +229,13 @@ export class ShippingApiService {
           throw new Error(
             'Query-access acknowledgement is uncertain. Retry the original operation.',
           );
+        this.invalidation.invalidate({
+          projectRef: capturedRef,
+          actor,
+          sourceId: SHIPPING_SOURCE,
+          environment: value.environment,
+          action: 'publication',
+        });
         return value;
       }),
     );
@@ -255,6 +265,7 @@ export class ShippingApiService {
     );
   }
   action(ref: IProjectRef, intent: ShippingIntent, actor: string) {
+    const capturedRef = structuredClone(ref);
     return defer(() => {
       validateShippingIntent(ref, intent, actor);
       return this.api.post<ShippingAck>('datatug/shipping/action', intent, {
@@ -273,6 +284,12 @@ export class ShippingApiService {
           );
         shippingPointer(value.current);
         shippingPointer(value.receipt.revision);
+        this.invalidation.invalidate({
+          projectRef: capturedRef,
+          actor,
+          sourceId: SHIPPING_SOURCE,
+          action: value.receipt.action,
+        });
         return value;
       }),
     );

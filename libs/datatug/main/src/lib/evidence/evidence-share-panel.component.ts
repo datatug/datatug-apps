@@ -1,4 +1,8 @@
 import {
+  NativeSourceInvalidationService,
+  matchesNativeSourceInvalidation,
+} from './native-source-invalidation';
+import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -92,6 +96,22 @@ export class EvidenceSharePanelComponent {
   private readonly destroy = inject(DestroyRef);
   private lifetime = new AbortController();
   constructor() {
+    inject(NativeSourceInvalidationService)
+      .changes$.pipe(takeUntilDestroyed())
+      .subscribe((event) => {
+        if (
+          matchesNativeSourceInvalidation(
+            event,
+            this.page.ref(),
+            this.page.context()?.principal || '',
+            {
+              sourceId: 'shipping-working-copy',
+              environment: this.environment(),
+            },
+          )
+        )
+          this.clear();
+      });
     effect(() => {
       this.environment();
       this.caseId();

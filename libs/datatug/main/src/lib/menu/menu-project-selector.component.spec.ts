@@ -62,6 +62,10 @@ describe('MenuProjectSelectorComponent', () => {
     expect(fixture.componentInstance.projects()?.map(({ id }) => id)).toEqual([
       'repo',
     ]);
+    const select = fixture.nativeElement.querySelector('ion-select');
+    expect(select?.getAttribute('label')).toBe('Project');
+    expect(select?.getAttribute('labelplacement')).toBe('floating');
+    expect(select?.classList.contains('project-selector')).toBe(true);
 
     currentStoreId.next('firestore');
     await fixture.whenStable();
@@ -127,5 +131,79 @@ describe('MenuProjectSelectorComponent', () => {
         ref: { projectId: 'demo', storeId: 'firestore' },
       }),
     );
+  });
+
+  it('shows one wrapped read-only title and an accessible icon-only new-project action', async () => {
+    const currentStoreId = new BehaviorSubject<string | undefined>('firestore');
+    const currentProject = new BehaviorSubject({
+      ref: { storeId: 'firestore', projectId: 'detective-demo' },
+      summary: { title: 'Detective demo with a long project title' },
+    });
+    const navigateToNewProjectPage = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [MenuProjectSelectorComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        {
+          provide: NewProjectService,
+          useValue: { navigateToNewProjectPage },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentStoreId,
+            currentProject,
+            setCurrentProject: vi.fn(),
+          },
+        },
+        { provide: DatatugNavService, useValue: { goProject: vi.fn() } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(MenuProjectSelectorComponent);
+    fixture.componentRef.setInput('datatugUser', {
+      datatug: {
+        stores: {
+          firestore: {
+            type: 'firestore',
+            title: 'Cloud',
+            projects: {},
+          },
+        },
+      },
+    });
+    fixture.detectChanges();
+
+    const readonly = fixture.nativeElement.querySelector(
+      'ion-label.project-readonly',
+    );
+    expect(readonly?.querySelector('p')?.textContent).toBe('Project');
+    expect(readonly?.querySelector('h2')?.textContent).toContain(
+      'Detective demo with a long project title',
+    );
+    const button = fixture.nativeElement.querySelector(
+      'ion-button[aria-label="New project"]',
+    );
+    expect(button?.getAttribute('title')).toBe('New project');
+    expect(button?.textContent?.trim()).toBe('');
+    expect(button?.querySelector('ion-icon')?.getAttribute('slot')).toBe(
+      'icon-only',
+    );
+    button?.click();
+    expect(navigateToNewProjectPage).toHaveBeenCalledOnce();
+
+    fixture.componentInstance.projects.set(undefined);
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        'ion-button[aria-label="New project"]',
+      )?.disabled,
+    ).toBe(true);
   });
 });

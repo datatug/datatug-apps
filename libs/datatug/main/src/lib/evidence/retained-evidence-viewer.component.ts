@@ -123,7 +123,7 @@ export class RetainedEvidenceViewerComponent {
       this.held.set(undefined);
       this.loading.set(false);
       this.error.set(
-        'Signed-in project scope changed. Choose the retained evidence again.',
+        'Current execution context changed. Choose the retained evidence again.',
       );
     });
     effect((onCleanup) => {
@@ -142,6 +142,9 @@ export class RetainedEvidenceViewerComponent {
       onCleanup(() => controller.abort());
       let actor: string, signal: AbortSignal;
       try {
+        // Historical retained evidence is immutable. Keep only current
+        // actor/project lifecycle fences here; source publication and reset
+        // invalidate current held results, not an authorized cold-open.
         const current = this.native.capture(ref);
         actor = current.actor;
         signal = AbortSignal.any([controller.signal, current.signal]);

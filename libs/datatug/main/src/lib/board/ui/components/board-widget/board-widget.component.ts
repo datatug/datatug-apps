@@ -40,7 +40,10 @@ import {
 } from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
-import { equalProjectRef, isSharedProjectRef } from '../../../../core/project-context';
+import {
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../../../../core/project-context';
 import { projectPageHref } from '../../../../nav/project-page-href';
 import { QueryType } from '../../../../models/definition/query-def';
 import { IQueryDef } from '../../../../models/definition/query-def';
@@ -78,7 +81,10 @@ import {
 import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { isSavedPublicChartQueryId } from '../../../../queries/public-data/public-chart-query';
-import { BoardQueryResults } from '../../../core/board-query-results.service';
+import {
+  BoardQueryResults,
+  boardExecutionCacheKey,
+} from '../../../core/board-query-results.service';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -162,15 +168,48 @@ export class BoardWidgetComponent {
   readonly retainedPending = signal(false);
   readonly retainedReviewed = signal(false);
   async reviewRetainedRun(): Promise<void> {
-    const ref=this.projectRef(),id=this.boardId(),read=this.readBoardForRun();if(!ref||!id||!read||this.running())return;
-    const key=this.executionIdentity();this.retainedReviewed.set(false);
+    const ref = this.projectRef(),
+      id = this.boardId(),
+      read = this.readBoardForRun();
+    if (!ref || !id || !read || this.running()) return;
+    const key = this.executionIdentity();
+    this.retainedReviewed.set(false);
     try {
-      const lifetime=this.nativeRunLifetime.capture(ref,this.choices.actor());
-      await firstValueFrom(read(ref,id).pipe(takeUntil(fromEvent(lifetime.signal,'abort')),timeout(15000)));
-      if(!lifetime.signal.aborted&&key===this.executionIdentity()&&this.retainedPending())this.retainedReviewed.set(true);
-    } catch { this.runError.set('Current board rights could not be refreshed. Original run may already be attached.'); }
+      const lifetime = this.nativeRunLifetime.capture(
+        ref,
+        this.choices.actor(),
+        this.definition()?.connectionId === 'shipping-working-copy' ||
+          this.boardContext()?.evidenceSelection
+          ? {
+              sourceId: 'shipping-working-copy',
+              environment: this.boardContext()?.environment || '',
+            }
+          : undefined,
+      );
+      await firstValueFrom(
+        read(ref, id).pipe(
+          takeUntil(fromEvent(lifetime.signal, 'abort')),
+          timeout(15000),
+        ),
+      );
+      if (
+        !lifetime.signal.aborted &&
+        key === this.executionIdentity() &&
+        this.retainedPending()
+      )
+        this.retainedReviewed.set(true);
+    } catch {
+      this.runError.set(
+        'Current board rights could not be refreshed. Original run may already be attached.',
+      );
+    }
   }
-  abandonRetainedRun(): void { if(!this.retainedReviewed()||this.running())return;this.retainedIntent.abandonReviewed();this.retainedPending.set(false);this.retainedReviewed.set(false); }
+  abandonRetainedRun(): void {
+    if (!this.retainedReviewed() || this.running()) return;
+    this.retainedIntent.abandonReviewed();
+    this.retainedPending.set(false);
+    this.retainedReviewed.set(false);
+  }
 
   private readonly destroyRef = inject(DestroyRef);
   private activeRun?: AbortController;
@@ -486,8 +525,13 @@ export class BoardWidgetComponent {
 
   constructor() {
     this.nativeRunLifetime.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
-      this.activeRun?.abort();this.retainedIntent.clearHeld();this.retainedPending.set(false);this.retainedReviewed.set(false);
-      this.snapshotStore().set(undefined);this.inspectedEvidence.set(undefined);
+      this.activeRun?.abort();
+      this.heldQueries?.invalidate();
+      this.retainedIntent.clearHeld();
+      this.retainedPending.set(false);
+      this.retainedReviewed.set(false);
+      this.snapshotStore().set(undefined);
+      this.inspectedEvidence.set(undefined);
     });
     effect((onCleanup) => {
       const chart = this.chartWidgetDef()?.chart;
@@ -789,10 +833,29 @@ export class BoardWidgetComponent {
     this.runError.set(undefined);
     this.runFailure.set(undefined);
     try {
-      const originalNative = this.boardContext()?.executionTarget?.kind === 'hosted-cloud' && isSharedProjectRef(ref) ? this.nativeRunLifetime.capture(ref,actor) : undefined;
-      const readSignal=originalNative ? AbortSignal.any([controller.signal,originalNative.signal]) : controller.signal;
+      const originalNative =
+        this.boardContext()?.executionTarget?.kind === 'hosted-cloud' &&
+        isSharedProjectRef(ref)
+          ? this.nativeRunLifetime.capture(
+              ref,
+              actor,
+              this.definition()?.connectionId === 'shipping-working-copy' ||
+                this.boardContext()?.evidenceSelection
+                ? {
+                    sourceId: 'shipping-working-copy',
+                    environment: this.boardContext()?.environment || '',
+                  }
+                : undefined,
+            )
+          : undefined;
+      const readSignal = originalNative
+        ? AbortSignal.any([controller.signal, originalNative.signal])
+        : controller.signal;
       const board = await firstValueFrom(
-        readBoard(ref, boardId).pipe(takeUntil(fromEvent(readSignal,'abort')),timeout(15000)),
+        readBoard(ref, boardId).pipe(
+          takeUntil(fromEvent(readSignal, 'abort')),
+          timeout(15000),
+        ),
       );
       if (
         !this.stillCurrent(
@@ -907,26 +970,84 @@ export class BoardWidgetComponent {
           'This saved query changed. Reopen the board before running it.',
         );
       const selection = context?.evidenceSelection;
-      const hosted = context?.executionTarget?.kind === 'hosted-cloud' && isSharedProjectRef(ref);
-      const native = hosted ? this.nativeRunLifetime.capture(ref, actor) : undefined;
+      const hosted =
+        context?.executionTarget?.kind === 'hosted-cloud' &&
+        isSharedProjectRef(ref);
+      const native = hosted
+        ? this.nativeRunLifetime.capture(
+            ref,
+            actor,
+            selection || definition.connectionId === 'shipping-working-copy'
+              ? {
+                  sourceId: 'shipping-working-copy',
+                  environment: context?.environment || '',
+                }
+              : undefined,
+          )
+        : undefined;
       if (selection) {
-        if (!hosted || selection.environment !== context?.environment || selection.choice.evidence.context.scope.environmentId !== context?.environment) throw new Error('Choose applied context for this current hosted environment.');
+        if (
+          !hosted ||
+          selection.environment !== context?.environment ||
+          selection.choice.evidence.context.scope.environmentId !==
+            context?.environment
+        )
+          throw new Error(
+            'Choose applied context for this current hosted environment.',
+          );
         requireAppliedInputMatch(selection.choice, parameters);
       }
-      const intent = hosted ? await this.retainedIntent.prepare(JSON.stringify([actor,ref,boardId,cardId,path,definition,context]), {queryId,parameters,...(selection?{evidence:selection.choice.evidence}:{})}) : undefined;
-      if (controller.signal.aborted || native?.signal.aborted || identity !== this.executionIdentity()) return;
+      const intent = hosted
+        ? await this.retainedIntent.prepare(
+            JSON.stringify([
+              actor,
+              ref,
+              boardId,
+              cardId,
+              path,
+              definition,
+              context,
+            ]),
+            {
+              queryId,
+              parameters,
+              ...(selection ? { evidence: selection.choice.evidence } : {}),
+            },
+          )
+        : undefined;
+      if (
+        controller.signal.aborted ||
+        native?.signal.aborted ||
+        identity !== this.executionIdentity()
+      )
+        return;
       if (intent) this.retainedPending.set(true);
       const execute = async (signal: AbortSignal) => {
-        return this.dispatcher.executeHeld({
-          projectRef: ref, definition, queryId, environment: context?.environment,
-          ...(selectedRuntimeId !== 'snapshot' ? {runtimeSelectionId:selectedRuntimeId} : context?.executionTarget ? {target:context.executionTarget} : {}),
-          ...(context?.securityContextId ? {securityContextId:context.securityContextId} : {}),
-          ...(context?.runtimeBinding ? {runtimeBinding:context.runtimeBinding} : {}),
-          parameters, signal: native ? AbortSignal.any([signal,native.signal]) : signal,
-          ...(native ? {principal:native.actor} : {}),
-          ...(intent ? {operationId:intent.operationId} : {}),
-          ...(selection ? {evidence:selection.choice.evidence} : {}),
-        }, {maxRows:1000});
+        return this.dispatcher.executeHeld(
+          {
+            projectRef: ref,
+            definition,
+            queryId,
+            environment: context?.environment,
+            ...(selectedRuntimeId !== 'snapshot'
+              ? { runtimeSelectionId: selectedRuntimeId }
+              : context?.executionTarget
+                ? { target: context.executionTarget }
+                : {}),
+            ...(context?.securityContextId
+              ? { securityContextId: context.securityContextId }
+              : {}),
+            ...(context?.runtimeBinding
+              ? { runtimeBinding: context.runtimeBinding }
+              : {}),
+            parameters,
+            signal: native ? AbortSignal.any([signal, native.signal]) : signal,
+            ...(native ? { principal: native.actor } : {}),
+            ...(intent ? { operationId: intent.operationId } : {}),
+            ...(selection ? { evidence: selection.choice.evidence } : {}),
+          },
+          { maxRows: 1000 },
+        );
       };
       const scope = JSON.stringify({
         ref,
@@ -936,12 +1057,10 @@ export class BoardWidgetComponent {
         tutorial: this.sessionOnly(),
         revision: this.dispatcher.runtimeRevision(),
       });
-      const key = JSON.stringify({
-        queryId,
-        definition,
-        selectedRuntimeId,
-        parameters,
-      });
+      const key = boardExecutionCacheKey(
+        { queryId, definition, selectedRuntimeId, parameters },
+        intent?.operationId,
+      );
       const rawResult = this.heldQueries
         ? await this.heldQueries.readExecution(
             scope,
@@ -952,8 +1071,14 @@ export class BoardWidgetComponent {
           )
         : await execute(controller.signal);
       const result = this.chartResult(rawResult.result, definition);
-      const evidenceIdentity = rawResult.hostedResponse && native && context?.environment
-        ? heldEvidenceIdentity(rawResult.hostedResponse,{projectRef:ref,environment:context.environment,actor:native.actor}) : undefined;
+      const evidenceIdentity =
+        rawResult.hostedResponse && native && context?.environment
+          ? heldEvidenceIdentity(rawResult.hostedResponse, {
+              projectRef: ref,
+              environment: context.environment,
+              actor: native.actor,
+            })
+          : undefined;
       if (
         this.stillCurrent(
           generation,
@@ -969,16 +1094,20 @@ export class BoardWidgetComponent {
         this.snapshotStore().set({
           queryId,
           result,
-          ...(evidenceIdentity ? {evidenceIdentity} : {}),
+          ...(evidenceIdentity ? { evidenceIdentity } : {}),
           identity,
           previous: this.retainSnapshots(previous, identity),
         });
-        if(intent){this.retainedIntent.confirm();this.retainedPending.set(false);this.retainedReviewed.set(false);}
+        if (intent) {
+          this.retainedIntent.confirm();
+          this.retainedPending.set(false);
+          this.retainedReviewed.set(false);
+        }
         this.rememberChoice();
       }
     } catch (error) {
       this.retainedIntent.rejectConflict(error);
-      if(this.retainedIntent.hasPending)this.retainedPending.set(true);
+      if (this.retainedIntent.hasPending) this.retainedPending.set(true);
       if (
         this.stillCurrent(
           generation,
@@ -991,7 +1120,13 @@ export class BoardWidgetComponent {
           path,
         )
       ) {
-        if(error instanceof HttpErrorResponse && [401,403].includes(error.status)){this.snapshotStore().set(undefined);this.inspectedEvidence.set(undefined);}
+        if (
+          error instanceof HttpErrorResponse &&
+          [401, 403].includes(error.status)
+        ) {
+          this.snapshotStore().set(undefined);
+          this.inspectedEvidence.set(undefined);
+        }
         this.runFailure.set(error);
         this.runError.set(
           nativeQueryDiagnosticMessage(nativeQueryDiagnostic(error)) ??

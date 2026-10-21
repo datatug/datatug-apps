@@ -1,4 +1,8 @@
 import {
+  NativeSourceInvalidationService,
+  matchesNativeSourceInvalidation,
+} from './native-source-invalidation';
+import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
@@ -116,6 +120,22 @@ export class AppliedEvidenceSelectorComponent {
   private lifetime = new AbortController();
   private capabilities?: ContextCapabilities;
   constructor() {
+    inject(NativeSourceInvalidationService)
+      .changes$.pipe(takeUntilDestroyed())
+      .subscribe((event) => {
+        if (
+          matchesNativeSourceInvalidation(
+            event,
+            this.projectRef(),
+            this.actor(),
+            {
+              sourceId: 'shipping-working-copy',
+              environment: this.environment(),
+            },
+          )
+        )
+          this.clear();
+      });
     effect(() => {
       this.projectRef();
       this.actor();

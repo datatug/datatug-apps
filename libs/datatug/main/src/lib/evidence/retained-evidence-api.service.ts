@@ -11,6 +11,7 @@ import {
   readRetainedExecution,
   type RetainedCheckView,
   type RetainedExecutionView,
+  type RetainedOpenScope,
 } from './retained-open-contract';
 import { HttpParams } from '@angular/common/http';
 import { inject, Injectable } from '@angular/core';
@@ -21,6 +22,7 @@ import {
   SessionScope,
 } from '../session-context/session-context-contract';
 import { DatatugApiService } from '../services/base/datatug-api.service';
+import { SessionContextApiService } from '../session-context/session-context-api.service';
 export interface NativeEvidenceMapping {
   readonly scope: SessionScope;
   readonly subject: ContextSubject;
@@ -49,6 +51,27 @@ export function evidenceScopeParams(
 @Injectable({ providedIn: 'root' })
 export class RetainedEvidenceApiService {
   private readonly api = inject(DatatugApiService);
+  private readonly context = inject(SessionContextApiService);
+  private async admittedScope(
+    scope: RetainedEvidenceScope,
+    signal: AbortSignal,
+  ): Promise<RetainedOpenScope> {
+    const capabilities = await this.context.capabilities(
+      scope.projectRef,
+      signal,
+    );
+    signal.throwIfAborted();
+    if (
+      capabilities.actorId !== scope.actor ||
+      capabilities.projectId !== scope.projectRef.projectId
+    )
+      throw new Error('Current retained namespace does not match the project.');
+    return {
+      ...scope,
+      nativeDatabaseId: capabilities.databaseId,
+      nativeProjectId: capabilities.projectId,
+    };
+  }
   async read(
     scope: RetainedEvidenceScope,
     target: ArtifactRef,
@@ -83,6 +106,7 @@ export class RetainedEvidenceApiService {
       throw new Error(
         'This reference is a definition, not a supported retained run.',
       );
+    const admittedScope = await this.admittedScope(scope, signal);
     const request = defer(() => {
       signal.throwIfAborted();
       return this.api.get<unknown>(`datatug/shipping/${path}`, params);
@@ -93,8 +117,8 @@ export class RetainedEvidenceApiService {
     signal.throwIfAborted();
     const result =
       ref.kind === 'check-run'
-        ? await readRetainedCheck(wire, scope, ref.checkRun)
-        : await readRetainedExecution(wire, scope, ref.execution);
+        ? await readRetainedCheck(wire, admittedScope, ref.checkRun)
+        : await readRetainedExecution(wire, admittedScope, ref.execution);
     signal.throwIfAborted();
     return result;
   }
@@ -116,6 +140,7 @@ export class RetainedEvidenceApiService {
       captured.scope.environment !== scope.environment
     )
       throw new Error('This exact held row evidence is unavailable.');
+    const admittedScope = await this.admittedScope(scope, signal);
     const request = defer(() => {
       signal.throwIfAborted();
       return this.api.post<unknown>(
@@ -133,7 +158,11 @@ export class RetainedEvidenceApiService {
       request.pipe(takeUntil(fromEvent(signal, 'abort'))),
     );
     signal.throwIfAborted();
-    const result = await readRetainedExecution(wire, scope, captured.execution),
+    const result = await readRetainedExecution(
+        wire,
+        admittedScope,
+        captured.execution,
+      ),
       current = await resolveRowEvidence(result.result, captured);
     const response = wire as Record<string, unknown>;
     if (

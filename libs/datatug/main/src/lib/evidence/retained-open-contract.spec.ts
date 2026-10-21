@@ -12,6 +12,8 @@ const scope = {
   },
   environment: 'demo',
   actor: 'another-current-reader',
+  nativeDatabaseId: 'fixture-db',
+  nativeProjectId: 'fixture-project',
 };
 const ref = {
   storeId: 'firestore',
@@ -62,6 +64,8 @@ describe('Actual published Go retained response codecs', () => {
     'query-folder',
     'input',
     'row-hash',
+    'manifest-database',
+    'manifest-project',
   ] as const)(
     'rejects %s substitution rather than opening a current-definition fallback',
     async (change) => {
@@ -75,6 +79,10 @@ describe('Actual published Go retained response codecs', () => {
         value.sourcePin.revision.generation = 'reset-generation';
       else if (change === 'query-folder') value.savedQuery.folderPath = 'other';
       else if (change === 'input') value.inputs.order_id.value = '11062';
+      else if (change === 'manifest-database')
+        value.manifest.session.databaseId = 'other-database';
+      else if (change === 'manifest-project')
+        value.manifest.session.projectId = 'other-project';
       else value.result.rowEvidence.recordsetFingerprint = 'a'.repeat(64);
       await expect(readRetainedExecution(value, scope)).rejects.toThrow();
     },

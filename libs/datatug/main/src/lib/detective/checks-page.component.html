@@ -1,5 +1,5 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light">
     <ion-buttons slot="start"
       ><ion-menu-button /><ion-back-button [defaultHref]="checksUrl()"
     /></ion-buttons>
@@ -42,11 +42,27 @@
       @if (error()) {
         <p class="feedback error" role="alert">{{ error() }}</p>
       }
-              @if (retainedPending()) {
-                <p role="status">The previous retained run has no confirmed outcome. It may already have been delivered. Retry the unchanged request, or review current state before abandoning it.</p>
-                <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="busy()">Review current run state</ion-button>
-                @if (retainedReviewed()) { <ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="busy()">Abandon original retry and edit a new run</ion-button> }
-              }
+      @if (retainedPending()) {
+        <p role="status">
+          The previous retained run has no confirmed outcome. It may already
+          have been delivered. Retry the unchanged request, or review current
+          state before abandoning it.
+        </p>
+        <ion-button
+          fill="outline"
+          (click)="reviewRetainedRun()"
+          [disabled]="busy()"
+          >Review current run state</ion-button
+        >
+        @if (retainedReviewed()) {
+          <ion-button
+            color="warning"
+            (click)="abandonRetainedRun()"
+            [disabled]="busy()"
+            >Abandon original retry and edit a new run</ion-button
+          >
+        }
+      }
 
       @if (message()) {
         <p
@@ -1135,38 +1151,61 @@
         </ion-card>
       } @else if (checkId()) {
         @if (current(); as check) {
-          <ion-card
-            ><ion-card-content>
-              <div class="section-heading">
-                <div>
-                  <ion-button fill="clear" [routerLink]="pageRoute(checksUrl())"
-                    >← All Checks</ion-button
-                  >
-                  <h1>{{ check.title }}</h1>
-                  <p class="muted">
-                    {{ check.id }} · version {{ check.version }} · updated
-                    {{ check.updatedAt | date: 'medium' }}
-                  </p>
-                </div>
+          <ion-card class="check-detail-card check-detail-overview">
+            <ion-item
+              color="light"
+              lines="full"
+              class="detective-card-header check-detail-card-header"
+            >
+              <ion-icon
+                slot="start"
+                name="document-text-outline"
+                aria-hidden="true"
+              />
+              <ion-label class="ion-text-wrap">
+                <h1>{{ check.title }}</h1>
+                <p class="muted">
+                  {{ check.id }} · version {{ check.version }}
+                  @if (recordedUpdateAt(check.updatedAt); as updatedAt) {
+                    · updated {{ updatedAt | date: 'medium' }}
+                  } @else {
+                    · update time not recorded
+                  }
+                </p>
+              </ion-label>
+              <ion-buttons slot="end">
                 <ion-button
-                  fill="outline"
+                  class="check-detail-edit-action check-detail-compact-action"
+                  color="medium"
+                  aria-label="Edit Check"
+                  title="Edit Check"
                   [disabled]="!state()?.capabilities?.canWrite"
                   (click)="startEdit()"
-                  >Edit</ion-button
+                  ><ion-icon
+                    slot="start"
+                    name="create-outline"
+                    aria-hidden="true"
+                  />
+                  <span class="check-detail-compact-action-label"
+                    >Edit</span
+                  ></ion-button
                 >
-              </div>
-              <p>{{ check.description }}</p>
-              <h2>Definition</h2>
-              <ion-list>
+              </ion-buttons>
+            </ion-item>
+            <ion-card-content class="check-detail-card-content">
+              <p class="check-detail-lede">{{ check.description }}</p>
+              <h2 id="check-definition-title">Steps and validation rules</h2>
+              <ion-list class="check-detail-definition-list">
                 @for (step of check.steps; track step.id) {
-                  <ion-item
+                  <ion-item class="check-detail-step"
                     ><ion-label
                       ><h3>
                         {{ step.kind === 'check' ? 'Nested Check' : 'Query' }} ·
                         {{ step.checkId || step.queryId }}
                       </h3>
                       <p>
-                        {{ step.validators?.length || 0 }} Validators ·
+                        {{ step.validators?.length || 0 }} validation
+                        {{ step.validators?.length === 1 ? 'rule' : 'rules' }} ·
                         unavailable: {{ step.onUnavailable || 'block' }}
                       </p></ion-label
                     ></ion-item
@@ -1175,10 +1214,10 @@
                     validator of step.validators || [];
                     track validator.id
                   ) {
-                    <ion-item
+                    <ion-item class="check-detail-validator"
                       ><ion-label>
                         <h4>
-                          {{ validator.id }}
+                          Validation rule · {{ validator.id }}
                           @if (validator.validatorId) {
                             · published {{ validator.validatorId }}
                           }
@@ -1189,107 +1228,131 @@
                   }
                 }
               </ion-list>
-              <h2>Before you run</h2>
-              <p>
-                These are saved catalog dependencies. The server checks current
-                access and source admission when the run starts.
-              </p>
-              @if (inspection(); as dependencies) {
-                <p>
-                  {{ dependencies.checks.length }} nested Checks ·
-                  {{ dependencies.queryIds.length }} saved queries ·
-                  {{ dependencies.validators.length }} Validator uses.
-                </p>
-                @if (state()?.capabilities; as limits) {
+              <details class="check-detail-execution">
+                <summary>
+                  <span>Execution details</span>
+                  @if (inspection(); as dependencies) {
+                    <small>
+                      {{ dependencies.checks.length }} nested ·
+                      {{ dependencies.queryIds.length }} queries ·
+                      {{ dependencies.validators.length }} validators
+                    </small>
+                  }
+                </summary>
+                <div class="check-detail-execution-body">
                   <p>
-                    Store-advertised limits: {{ limits.maxRows }} rows · nested
-                    Check fanout {{ limits.maxFanout }}. The saved query and
-                    executor may impose tighter limits. Actual query and Check
-                    invocations are reported in the run receipt.
+                    These are saved catalog dependencies. The server checks
+                    current access and source admission when the run starts.
                   </p>
-                }
-                @if (observedSources().length && displayedRun(); as previous) {
-                  <p>
-                    Previous run in {{ previous.environment }} observed
-                    {{ observedSources().join(', ') }} at
-                    {{ previous.startedAt | date: 'medium' }}. The next run
-                    rechecks source admission.
-                  </p>
-                }
-                @if (dependencies.checks.length) {
-                  <h3>Nested Checks</h3>
-                  <ion-list>
-                    @for (
-                      dependency of dependencies.checks;
-                      track dependency.id
-                    ) {
-                      <ion-item
-                        ><ion-label
-                          ><a [routerLink]="pageRoute(checkUrl(dependency.id))">{{
-                            dependency.title
-                          }}</a>
-                          · {{ dependency.id }} · version
-                          {{ dependency.version }}</ion-label
-                        ></ion-item
-                      >
+                  @if (inspection(); as dependencies) {
+                    <p>
+                      {{ dependencies.checks.length }} nested Checks ·
+                      {{ dependencies.queryIds.length }} saved queries ·
+                      {{ dependencies.validators.length }} Validator uses.
+                    </p>
+                    @if (state()?.capabilities; as limits) {
+                      <p>
+                        Store-advertised limits: {{ limits.maxRows }} rows ·
+                        nested Check fanout {{ limits.maxFanout }}. The saved
+                        query and executor may impose tighter limits. Actual
+                        query and Check invocations are reported in the run
+                        receipt.
+                      </p>
                     }
-                  </ion-list>
-                }
-                @if (dependencies.queryIds.length) {
-                  <h3>Saved queries and declared sources</h3>
-                  <ion-list>
-                    @for (id of dependencies.queryIds; track id) {
-                      <ion-item
-                        ><ion-label>
-                          <h4>
-                            <a [routerLink]="queryUrl(id)">{{ id }}</a>
-                          </h4>
-                          @if (queryDetails()[id]; as query) {
-                            @if (query.federation; as federation) {
-                              <p>
-                                Declared origin: {{ federation.ovdbBaseUrl }}
-                              </p>
-                              <p>
-                                Tables:
-                                @for (
-                                  table of federation.tables;
-                                  track $index
-                                ) {
-                                  {{ table.database || 'default' }}/{{
-                                    table.name
-                                  }}
+                    @if (
+                      observedSources().length && displayedRun();
+                      as previous
+                    ) {
+                      <p>
+                        Previous run in {{ previous.environment }} observed
+                        {{ observedSources().join(', ') }} at
+                        {{ previous.startedAt | date: 'medium' }}. The next run
+                        rechecks source admission.
+                      </p>
+                    }
+                    @if (dependencies.checks.length) {
+                      <h3>Nested Checks</h3>
+                      <ion-list>
+                        @for (
+                          dependency of dependencies.checks;
+                          track dependency.id
+                        ) {
+                          <ion-item
+                            ><ion-label
+                              ><a
+                                [routerLink]="
+                                  pageRoute(checkUrl(dependency.id))
+                                "
+                                >{{ dependency.title }}</a
+                              >
+                              · {{ dependency.id }} · version
+                              {{ dependency.version }}</ion-label
+                            ></ion-item
+                          >
+                        }
+                      </ion-list>
+                    }
+                    @if (dependencies.queryIds.length) {
+                      <h3>Saved queries and declared sources</h3>
+                      <ion-list>
+                        @for (id of dependencies.queryIds; track id) {
+                          <ion-item
+                            ><ion-label>
+                              <h4>
+                                <a [routerLink]="queryUrl(id)">{{ id }}</a>
+                              </h4>
+                              @if (queryDetails()[id]; as query) {
+                                @if (query.federation; as federation) {
+                                  <p>
+                                    Declared origin:
+                                    {{ federation.ovdbBaseUrl }}
+                                  </p>
+                                  <p>
+                                    Tables:
+                                    @for (
+                                      table of federation.tables;
+                                      track $index
+                                    ) {
+                                      {{ table.database || 'default' }}/{{
+                                        table.name
+                                      }}
+                                    }
+                                  </p>
+                                  @if (federation.bounds; as bounds) {
+                                    <p>
+                                      Saved bounds:
+                                      {{ bounds.resultRows }} result rows ·
+                                      {{ bounds.bytes }} bytes ·
+                                      {{ bounds.timeoutMs }} ms.
+                                    </p>
+                                  }
+                                } @else {
+                                  <p>
+                                    No source declaration in this saved query.
+                                  </p>
                                 }
-                              </p>
-                              @if (federation.bounds; as bounds) {
+                              } @else if (queryDetailsLoading()) {
+                                <p>Loading saved query…</p>
+                              } @else {
                                 <p>
-                                  Saved bounds: {{ bounds.resultRows }} result
-                                  rows · {{ bounds.bytes }} bytes ·
-                                  {{ bounds.timeoutMs }} ms.
+                                  Saved query metadata unavailable; source is
+                                  resolved by the server at run time.
                                 </p>
                               }
-                            } @else {
-                              <p>No source declaration in this saved query.</p>
-                            }
-                          } @else if (queryDetailsLoading()) {
-                            <p>Loading saved query…</p>
-                          } @else {
-                            <p>
-                              Saved query metadata unavailable; source is
-                              resolved by the server at run time.
-                            </p>
-                          }
-                        </ion-label></ion-item
+                            </ion-label></ion-item
+                          >
+                        }
+                      </ion-list>
+                    }
+                    @if (dependencies.missing.length) {
+                      <ion-note color="danger"
+                        >Unresolved catalog references:
+                        {{ dependencies.missing.join(', ') }}</ion-note
                       >
                     }
-                  </ion-list>
-                }
-                @if (dependencies.missing.length) {
-                  <ion-note color="danger"
-                    >Unresolved catalog references:
-                    {{ dependencies.missing.join(', ') }}</ion-note
-                  >
-                }
-              }
+                  }
+                </div>
+              </details>
               @if (usedBy(); as consumers) {
                 @if (
                   consumers.checks.length ||
@@ -1300,7 +1363,9 @@
                   <p>
                     @for (parent of consumers.checks; track parent.id) {
                       Check
-                      <a [routerLink]="pageRoute(checkUrl(parent.id))">{{ parent.id }}</a>
+                      <a [routerLink]="pageRoute(checkUrl(parent.id))">{{
+                        parent.id
+                      }}</a>
                       ·
                     }
                     @for (
@@ -1324,131 +1389,259 @@
             </ion-card-content></ion-card
           >
 
-          <ion-card
-            ><ion-card-content>
-              @if (nativeSessionId() && scope.ref()) {
-                <sneat-session-detective-run [check]="check" [project]="scope.ref()!" [sessionId]="nativeSessionId()" [environment]="environment()" [caseId]="caseId()" />
-              } @else {
-              <h2>Run manually</h2>
-              <p>
-                Choose the logical environment explicitly. A shared physical
-                source does not determine QA or UAT.
-              </p>
-              @if (caseId()) {
-                <p>
-                  Run requested for Case
-                  <a [routerLink]="pageRoute(caseUrl())">{{ caseId() }}</a
-                  >.
-                </p>
-                @if (caseContext()) {
-                  @if (!caseCheckCompatible()) {
-                    <p role="alert">
-                      This Check does not declare every confirmed Case set or
-                      range with a matching type. Choose a compatible Check
-                      before running Case evidence.
-                    </p>
-                  }
+          <ion-card class="check-detail-card check-detail-run-card">
+            @if (nativeSessionId() && scope.ref()) {
+              <ion-item
+                color="light"
+                lines="full"
+                class="detective-card-header check-detail-card-header"
+              >
+                <ion-icon
+                  slot="start"
+                  name="play-outline"
+                  aria-hidden="true"
+                />
+                <ion-label><h2>Run with session</h2></ion-label>
+              </ion-item>
+            } @else {
+              <ion-item
+                color="light"
+                lines="full"
+                class="detective-card-header check-detail-card-header check-detail-run-header"
+              >
+                <ion-icon
+                  slot="start"
+                  name="play-outline"
+                  aria-hidden="true"
+                />
+                <ion-label><h2>Run manually</h2></ion-label>
+                <ion-buttons slot="end">
                   <ion-button
-                    fill="outline"
-                    size="small"
-                    [disabled]="!caseCheckCompatible()"
-                    (click)="useCaseContext()"
-                    >Copy matching Case inputs</ion-button
+                    class="check-detail-run-action"
+                    [class.check-detail-compact-action]="
+                      !busy() && !retainedPending() && !evidenceSelection()
+                    "
+                    color="primary"
+                    data-testid="run-check-action"
+                    [attr.aria-label]="
+                      busy()
+                        ? 'Running Check'
+                        : retainedPending()
+                          ? 'Retry original retained run'
+                          : evidenceSelection()
+                            ? 'Run Check and attach to Incident'
+                            : 'Run Check'
+                    "
+                    [attr.title]="
+                      busy()
+                        ? 'Running Check'
+                        : retainedPending()
+                          ? 'Retry original retained run'
+                          : evidenceSelection()
+                            ? 'Run Check and attach to Incident'
+                            : 'Run Check'
+                    "
+                    [disabled]="
+                      busy() ||
+                      !state()?.capabilities?.canRun ||
+                      !caseCheckCompatible()
+                    "
+                    (click)="run()"
+                    >@if (busy()) {
+                      <ion-spinner
+                        name="crescent"
+                        aria-hidden="true"
+                      />
+                      Running…
+                    } @else if (retainedPending()) {
+                      Retry original retained run
+                    } @else if (evidenceSelection()) {
+                      <ion-icon
+                        slot="start"
+                        name="play-outline"
+                        aria-hidden="true"
+                      />
+                      Run Check and attach to Incident
+                    } @else {
+                      <ion-icon
+                        slot="start"
+                        name="play-outline"
+                        aria-hidden="true"
+                      />
+                      <span class="check-detail-compact-action-label"
+                        >Run Check</span
+                      >
+                    }</ion-button
                   >
-                }
-              }
-              <div class="form-grid">
-                <ion-item
-                  ><ion-label position="stacked">Environment</ion-label
-                  ><ion-select
-                    aria-label="Environment"
-                    [disabled]="environmentsLoading() || !!environmentsError()"
-                    [value]="environment()"
-                    (ionChange)="changeRunEnvironment($event.detail.value || '')"
-                  >
-                    <ion-select-option value=""
-                      >Select environment</ion-select-option
-                    >
-                    @for (env of availableEnvironments(); track env.id) {
-                      <ion-select-option [value]="env.id">
-                        {{ env.title || env.id }}
-                      </ion-select-option>
+                </ion-buttons>
+              </ion-item>
+            }
+            <ion-card-content class="check-detail-card-content">
+              @if (nativeSessionId() && scope.ref()) {
+                <sneat-session-detective-run
+                  [check]="check"
+                  [project]="scope.ref()!"
+                  [sessionId]="nativeSessionId()"
+                  [environment]="environment()"
+                  [caseId]="caseId()"
+                />
+              } @else {
+                <p class="check-detail-intro">
+                  Choose the logical environment explicitly. A shared physical
+                  source does not determine QA or UAT.
+                </p>
+                @if (caseId()) {
+                  <p>
+                    Run requested for Case
+                    <a [routerLink]="pageRoute(caseUrl())">{{ caseId() }}</a
+                    >.
+                  </p>
+                  @if (caseContext()) {
+                    @if (!caseCheckCompatible()) {
+                      <p role="alert">
+                        This Check does not declare every confirmed Case set or
+                        range with a matching type. Choose a compatible Check
+                        before running Case evidence.
+                      </p>
                     }
-                  </ion-select></ion-item
-                >
-                @if (environmentsLoading()) {
-                  <p>Loading project environments…</p>
-                } @else if (environmentsError()) {
-                  <ion-note color="danger">{{ environmentsError() }}</ion-note>
-                } @else if (!availableEnvironments().length) {
-                  <ion-note
-                    >No environments are configured for this project.</ion-note
-                  >
+                    <ion-button
+                      fill="outline"
+                      size="small"
+                      [disabled]="!caseCheckCompatible()"
+                      (click)="useCaseContext()"
+                      >Copy matching Case inputs</ion-button
+                    >
+                  }
                 }
-                @for (input of check.inputs; track input.name) {
-                  <ion-item
-                    ><ion-label position="stacked"
-                      >{{ input.name }}
-                      <small
-                        >{{ input.type }} · {{ input.cardinality
-                        }}{{ input.required ? ' · required' : '' }}</small
-                      ></ion-label
-                    ><ion-textarea
-                      aria-label="Check input"
-                      [value]="runInputText()[input.name]?.value || ''"
-                      (ionInput)="
-                        setRunInput(
-                          input.name,
-                          'value',
-                          $event.detail.value || ''
-                        )
+                <div class="form-grid">
+                  <ion-item class="check-detail-run-field"
+                    ><ion-label>Environment</ion-label
+                    ><ion-select
+                      aria-label="Environment"
+                      [disabled]="
+                        environmentsLoading() || !!environmentsError()
                       "
-                      [placeholder]="
-                        input.cardinality === 'set'
-                          ? 'Comma or newline separated values'
-                          : 'Value'
+                      [value]="environment()"
+                      (ionChange)="
+                        changeRunEnvironment($event.detail.value || '')
                       "
-                    ></ion-textarea
-                  ></ion-item>
-                  @if (input.cardinality === 'range') {
-                    <ion-item
-                      ><ion-label position="stacked"
-                        >{{ input.name }} end</ion-label
-                      ><ion-input
-                        aria-label="Check input"
-                        [value]="runInputText()[input.name]?.end || ''"
+                    >
+                      <ion-select-option value=""
+                        >Select environment</ion-select-option
+                      >
+                      @for (env of availableEnvironments(); track env.id) {
+                        <ion-select-option [value]="env.id">
+                          {{ env.title || env.id }}
+                        </ion-select-option>
+                      }
+                    </ion-select></ion-item
+                  >
+                  @if (environmentsLoading()) {
+                    <p class="wide">Loading project environments…</p>
+                  } @else if (environmentsError()) {
+                    <ion-note class="wide" color="danger">{{
+                      environmentsError()
+                    }}</ion-note>
+                  } @else if (!availableEnvironments().length) {
+                    <ion-note class="wide"
+                      >No environments are configured for this
+                      project.</ion-note
+                    >
+                  }
+                  @for (input of check.inputs; track input.name) {
+                    <ion-item class="check-detail-run-field"
+                      ><ion-label
+                        class="ion-text-wrap check-detail-run-field-label"
+                        ><h3>{{ checkInputLabel(input.name) }}</h3>
+                        <p>
+                          {{ input.name }} · {{ input.type }} ·
+                          {{ input.cardinality
+                          }}{{ input.required ? ' · required' : '' }}
+                        </p></ion-label
+                      ><ion-textarea
+                        [attr.aria-label]="checkInputLabel(input.name)"
+                        [autoGrow]="true"
+                        [rows]="1"
+                        [value]="runInputText()[input.name]?.value || ''"
                         (ionInput)="
                           setRunInput(
                             input.name,
-                            'end',
+                            'value',
                             $event.detail.value || ''
                           )
                         "
-                    /></ion-item>
+                        [placeholder]="
+                          input.cardinality === 'set'
+                            ? 'Comma or newline separated values'
+                            : 'Value'
+                        "
+                      ></ion-textarea
+                    ></ion-item>
+                    @if (input.cardinality === 'range') {
+                      <ion-item class="check-detail-run-field"
+                        ><ion-label>{{ input.name }} end</ion-label
+                        ><ion-input
+                          [attr.aria-label]="
+                            checkInputLabel(input.name) + ' end'
+                          "
+                          [value]="runInputText()[input.name]?.end || ''"
+                          (ionInput)="
+                            setRunInput(
+                              input.name,
+                              'end',
+                              $event.detail.value || ''
+                            )
+                          "
+                      /></ion-item>
+                    }
                   }
-                }
-              </div>
-              <sneat-datatug-evidence-share-panel [environment]="environment()" [caseId]="caseId()" [disabled]="busy() || retainedPending()" (selected)="chooseEvidence($event)" />
-              <ion-button
-                [disabled]="
-                  busy() ||
-                  !state()?.capabilities?.canRun ||
-                  !caseCheckCompatible()
-                "
-                (click)="run()"
-                >{{ busy() ? 'Running…' : retainedPending() ? 'Retry original retained run' : evidenceSelection() ? 'Run Check and attach to Incident' : 'Run Check' }}</ion-button
-              >
-              }
-            </ion-card-content></ion-card
-          >
+                </div>
+                <sneat-datatug-evidence-share-panel
+                  [environment]="environment()"
+                  [caseId]="caseId()"
+                  [disabled]="busy() || retainedPending()"
+                  (selected)="chooseEvidence($event)"
+                />
+              }</ion-card-content
+          ></ion-card>
 
-          <ion-card
-            ><ion-card-content>
-              <h2>Run history</h2>
+          <ion-card class="check-detail-card check-detail-history-card">
+            <ion-item
+              color="light"
+              lines="full"
+              class="detective-card-header check-detail-card-header"
+            >
+              <ion-icon
+                slot="start"
+                name="list-outline"
+                aria-hidden="true"
+              />
+              <ion-label><h2>Run history</h2></ion-label>
+              @if (selectedRun(); as selected) {
+                <ion-note
+                  slot="end"
+                  class="check-detail-selected-outcome"
+                  [color]="
+                    selected.outcome === 'pass'
+                      ? 'success'
+                      : selected.outcome === 'fail'
+                        ? 'danger'
+                        : 'warning'
+                  "
+                  >Selected run · {{ selected.outcome }}</ion-note
+                >
+              }
+            </ion-item>
+            <ion-card-content class="check-detail-card-content">
               @if (history().length) {
                 <ion-list>
                   @for (run of history(); track run.id) {
-                    <ion-item button (click)="viewRun(run)"
+                    <ion-item
+                      button
+                      [class.check-detail-selected-run]="
+                        selectedRun()?.id === run.id
+                      "
+                      (click)="viewRun(run)"
                       ><ion-label
                         ><h3>
                           {{ run.startedAt | date: 'medium' }} ·

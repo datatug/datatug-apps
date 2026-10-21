@@ -3614,11 +3614,11 @@ select (
     vi.mocked(detective.action).mockReturnValue(of({}));
 
     component.runQuery();
-    await runFixture.whenStable();
-
-    expect(detective.runHostedQuery).toHaveBeenCalledExactlyOnceWith(
-      { kind: 'cloud', storage: 'firestore', spaceID: 'paid-space', project: 'paid-project', principal: 'sarah' },
-      definition.id, 'production', {}, expect.objectContaining({signal:expect.any(AbortSignal),operationId:expect.stringMatching(/^operation-/)}),
+    await vi.waitFor(() =>
+      expect(detective.runHostedQuery).toHaveBeenCalledExactlyOnceWith(
+        { kind: 'cloud', storage: 'firestore', spaceID: 'paid-space', project: 'paid-project', principal: 'sarah' },
+        definition.id, 'production', {}, expect.objectContaining({signal:expect.any(AbortSignal),operationId:expect.stringMatching(/^operation-/)}),
+      ),
     );
     await vi.waitFor(()=>expect({error:component.runError(),cell:component.runResult()?.recordset.rows[0][0]}).toEqual({error:undefined,cell:{ type: 'integer', value: '42' }}));
     expect(TestBed.inject(ProjectQueryApiService).connectionCatalog).not.toHaveBeenCalled();
