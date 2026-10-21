@@ -1,3 +1,6 @@
+import { IEnvironmentFull } from '../../models/definition/environments';
+import { ProjectEnvironmentStateService } from './project-environment-state.service';
+import { map as environmentMap, startWith as environmentStartWith } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, provideHttpClient } from '@angular/common/http';
 import {
@@ -13,8 +16,10 @@ import { ProjectService } from './project.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 import { IProjectRef, projectRefToString } from '../../core/project-context';
 import { IProjectSummary } from '../../models/definition/project';
-import { datatugApiRealProviders, expectDatatugApiRequest } from '../base/datatug-api.test-helpers';
-
+import {
+  datatugApiRealProviders,
+  expectDatatugApiRequest,
+} from '../base/datatug-api.test-helpers';
 
 describe('ProjectService', () => {
   let http: { get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn> };
@@ -26,6 +31,22 @@ describe('ProjectService', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectService,
+        {
+          provide: ProjectEnvironmentStateService,
+          useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
+          },
+        },
         { provide: HttpClient, useValue: http },
         {
           provide: ErrorLogger,
@@ -139,8 +160,12 @@ describe('ProjectService', () => {
         response$.complete();
 
         expect(http.get).toHaveBeenCalledTimes(1);
-        expect(received['first']).toEqual([summary]);
-        expect(received['second']).toEqual([summary]);
+        expect(received['first']).toEqual(firstCall === 'getSummary'
+          ? [{ ...summary, environments: undefined }]
+          : [{ ...summary, environments: undefined }, { ...summary, environments: [] }]);
+        expect(received['second']).toEqual(secondCall === 'getSummary'
+          ? [{ ...summary, environments: undefined }]
+          : [{ ...summary, environments: undefined }, { ...summary, environments: [] }]);
       },
     );
 
@@ -186,7 +211,7 @@ describe('ProjectService', () => {
 
     const summary = { id: 'X91FirPb', title: 'Project 1' } as IProjectSummary;
     summary$.next(summary);
-    expect(received).toEqual([summary]);
+    expect(received).toEqual([{ ...summary, environments: undefined }, { ...summary, environments: [] }]);
   });
 
   it('loads direct GitHub project summaries from the selected branch', () => {
@@ -277,6 +302,22 @@ describe('ProjectService local summary HTTP context', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectService,
+        {
+          provide: ProjectEnvironmentStateService,
+          useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
+          },
+        },
         provideHttpClient(),
         provideHttpClientTesting(),
         {
@@ -362,6 +403,22 @@ describe('ProjectService shared operation fence', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectService,
+        {
+          provide: ProjectEnvironmentStateService,
+          useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
+          },
+        },
         { provide: HttpClient, useValue: http },
         { provide: DatatugApiService, useValue: {} },
         { provide: ErrorLogger, useValue: {} },
@@ -393,6 +450,22 @@ describe('ProjectService DataTug API base URL', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectService,
+        {
+          provide: ProjectEnvironmentStateService,
+          useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
+          },
+        },
         ...datatugApiRealProviders(),
         {
           provide: ErrorLogger,
@@ -409,7 +482,10 @@ describe('ProjectService DataTug API base URL', () => {
       ],
     });
     TestBed.inject(ProjectService)
-      .createNewProject('firestore', { title: 'New project', userIDs: [] } as never)
+      .createNewProject('firestore', {
+        title: 'New project',
+        userIDs: [],
+      } as never)
       .subscribe();
     expectDatatugApiRequest('POST', 'datatug/projects/create_project');
   });

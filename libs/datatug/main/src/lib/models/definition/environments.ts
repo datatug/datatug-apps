@@ -19,6 +19,7 @@ export interface IEnvironmentBase {
   presentation?: IEnvironmentPresentation;
   id: string;
   title: string;
+  access?: string;
 }
 
 export interface IEnvironmentFull extends IEnvironmentBase {

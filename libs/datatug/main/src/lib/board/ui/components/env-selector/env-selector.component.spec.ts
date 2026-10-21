@@ -109,7 +109,7 @@ describe('EnvSelectorComponent renders the current project/env once they arrive 
     expect(fixture.nativeElement.textContent).toContain('currentEnvId:');
     expect(
       fixture.nativeElement.querySelectorAll('ion-segment-button').length,
-    ).toBe(1); // just the "Local" placeholder
+    ).toBe(0); // An unverified list must not invent a Local option
 
     const project: IProjectContext = {
       ref: { projectId: 'p1', storeId: 'firestore' },
@@ -134,5 +134,37 @@ describe('EnvSelectorComponent renders the current project/env once they arrive 
       fixture.nativeElement.querySelectorAll('ion-segment-button').length,
     ).toBe(2);
     expect(fixture.nativeElement.textContent).toContain('currentEnvId: prod');
+    currentProject$.next({ ...project, summary: { ...project.summary!, environments: undefined } });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.currentEnvId()).toBeUndefined();
+    expect(fixture.nativeElement.querySelectorAll('ion-segment-button').length).toBe(0);
+    currentProject$.next(project);
+    await fixture.whenStable();
+    expect(fixture.componentInstance.currentEnvId()).toBe('prod');
+
   });
+  it('clears stale project and account environments after rendering without manual change detection', async () => {
+    fixture.detectChanges();
+    currentProject$.next({ ref: { storeId: 'firestore', projectId: 'A' }, summary: {
+      id: 'A', title: 'A', access: 'private', environments: [{ id: 'secret-a', title: 'Secret A' }],
+    } });
+    currentEnv$.next({ id: 'secret-a' });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Secret A');
+    currentProject$.next({ ref: { storeId: 'firestore', projectId: 'B' }, summary: { id: 'B', title: 'B', access: 'private' } });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Secret A');
+    expect(fixture.componentInstance.environments()).toBeUndefined();
+    expect(fixture.componentInstance.currentEnvId()).toBeUndefined();
+    currentProject$.next({ ref: { storeId: 'firestore', projectId: 'B' }, summary: {
+      id: 'B', title: 'B', access: 'private', environments: [{ id: 'prod', title: 'Verified B' }],
+    } });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Verified B');
+    currentProject$.next(undefined);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('Verified B');
+    expect(fixture.componentInstance.environments()).toBeUndefined();
+  });
+
 });

@@ -32,14 +32,22 @@
   </section>
 }
 <ion-card>
-  @if (boarCardDef()?.title) {
-    <ion-item>
-      @if (boarCardDef()?.title) {
-        <ion-label>{{ boarCardDef()?.title }}</ion-label>
+  <ion-card-header>
+    <ion-toolbar color="light">
+      <ion-card-title>{{
+        boarCardDef()?.title || widget.displayTitle()
+      }}</ion-card-title>
+      @if (widget.hasHeaderActions()) {
+        <ion-buttons slot="end"
+          ><ng-container [ngTemplateOutlet]="widget.headerActions() || null"
+        /></ion-buttons>
       }
-    </ion-item>
-  }
+    </ion-toolbar>
+  </ion-card-header>
   <sneat-datatug-board-widget
+    #widget
+    [embedded]="true"
+    [cardTitle]="boarCardDef()?.title"
     [level]="0"
     [cardTab]="boardCardTab.currentTab"
     [widgetDef]="boarCardDef()?.widget"

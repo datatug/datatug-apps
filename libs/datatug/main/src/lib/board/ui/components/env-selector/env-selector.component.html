@@ -5,7 +5,7 @@
   class="ion-margin-start ion-margin-end"
 >
   @for (
-    env of environments() || [{ id: "local", title: "Local" }];
+    env of environments() || [];
     track env.id
   ) {
     <ion-segment-button [value]="env.id">

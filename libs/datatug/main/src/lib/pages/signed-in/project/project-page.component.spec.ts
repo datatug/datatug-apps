@@ -70,7 +70,8 @@ function baseProviders(
       provide: Router,
       useValue: {
         parseUrl: (url: string) => new DefaultUrlSerializer().parse(url),
-        serializeUrl: (url: unknown) => new DefaultUrlSerializer().serialize(url as never),
+        serializeUrl: (url: unknown) =>
+          new DefaultUrlSerializer().serialize(url as never),
         navigateByUrl: vi.fn(() => Promise.resolve(true)),
       },
     },
@@ -454,7 +455,7 @@ describe('ProjectPage rendering a local-agent store project', () => {
     },
   );
 
-  it('shows one set of five overview tabs and opens the selected content', async () => {
+  it('shows one set of four overview tabs and opens the selected content', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
     const buttons = Array.from(
@@ -463,7 +464,6 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(buttons.map((button) => button.textContent?.trim())).toEqual([
       'Boards',
       'Queries 0',
-      'Environments',
       'Entities',
       'Databases',
     ]);
@@ -510,8 +510,12 @@ describe('ProjectPage rendering a local-agent store project', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Create a private, writable clone',
     );
-    expect(fixture.nativeElement.textContent).not.toContain('Sign in to create');
-    expect(fixture.nativeElement.textContent).toContain('Set up private sandbox');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Sign in to create',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Set up private sandbox',
+    );
   });
 
   const expectSandboxSignInCopy = async (
@@ -622,9 +626,8 @@ describe('ProjectPage rendering a local-agent store project', () => {
     });
 
     for (const [tab, label] of [
-      [2, 'Environments'],
-      [3, 'Entities'],
-      [4, 'Databases'],
+      [2, 'Entities'],
+      [3, 'Databases'],
     ] as const) {
       (
         fixture.nativeElement.querySelectorAll('.overview-tabs button')[
@@ -745,7 +748,10 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
         imports: [ProjectPageComponent],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
         providers: [
-          ...baseProviders({ logError: vi.fn(), watchProjectSummary }, routeRef),
+          ...baseProviders(
+            { logError: vi.fn(), watchProjectSummary },
+            routeRef,
+          ),
           { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
           { provide: Firestore, useValue: {} },
           { provide: DatatugBoardService, useValue: {} },
@@ -761,8 +767,9 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
         .compileComponents();
       fixture = TestBed.createComponent(ProjectPageComponent);
       fixture.detectChanges();
-      expect(fixture.nativeElement.querySelector('h1.project-title')?.textContent)
-        .toContain('current-project');
+      expect(
+        fixture.nativeElement.querySelector('h1.project-title')?.textContent,
+      ).toContain('current-project');
 
       summary$.next({
         id: 'current-project',
@@ -772,8 +779,9 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
       await fixture.whenStable();
 
       expect(watchProjectSummary).toHaveBeenCalledWith(routeRef);
-      expect(fixture.nativeElement.querySelector('h1.project-title')?.textContent)
-        .toContain('Current route project');
+      expect(
+        fixture.nativeElement.querySelector('h1.project-title')?.textContent,
+      ).toContain('Current route project');
     } finally {
       fixture?.destroy();
       window.history.replaceState(savedState, '', savedUrl);
@@ -784,47 +792,52 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
     ['empty', () => of()],
     ['unavailable', () => of(undefined)],
     ['error', () => throwError(() => new Error('offline'))],
-  ])('shows the address identity when metadata is %s', async (_state, source) => {
-    const ref = {
-      storeId: 'github.com',
-      projectId: 'datatug-demo-project@datatug@demo-project-1',
-    };
-    await TestBed.configureTestingModule({
-      imports: [ProjectPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
-      providers: [
-        ...baseProviders(
-          { logError: vi.fn(), watchProjectSummary: vi.fn(source) },
-          ref,
-        ),
-        { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
-        { provide: Firestore, useValue: {} },
-        { provide: DatatugBoardService, useValue: {} },
-      ],
-    })
-      .overrideComponent(ProjectPageComponent, {
-        set: {
-          imports: [RouterLink],
-          schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
-        },
+  ])(
+    'shows the address identity when metadata is %s',
+    async (_state, source) => {
+      const ref = {
+        storeId: 'github.com',
+        projectId: 'datatug-demo-project@datatug@demo-project-1',
+      };
+      await TestBed.configureTestingModule({
+        imports: [ProjectPageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          ...baseProviders(
+            { logError: vi.fn(), watchProjectSummary: vi.fn(source) },
+            ref,
+          ),
+          { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
+          { provide: Firestore, useValue: {} },
+          { provide: DatatugBoardService, useValue: {} },
+        ],
       })
-      .compileComponents();
-    const fixture = TestBed.createComponent(ProjectPageComponent);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('h1.project-title')?.textContent)
-      .toContain('demo-project-1');
-    expect(fixture.nativeElement.textContent).not.toContain('Loading...');
-    if (_state === 'empty' || _state === 'unavailable') {
-      expect(fixture.nativeElement.textContent).toContain(
-        'Project details are unavailable',
-      );
-    } else {
-      expect(fixture.nativeElement.querySelector('[role="alert"]')?.textContent)
-        .toContain('Project details could not be loaded');
-    }
-  });
+        .overrideComponent(ProjectPageComponent, {
+          set: {
+            imports: [RouterLink],
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            providers: [],
+          },
+        })
+        .compileComponents();
+      const fixture = TestBed.createComponent(ProjectPageComponent);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(
+        fixture.nativeElement.querySelector('h1.project-title')?.textContent,
+      ).toContain('demo-project-1');
+      expect(fixture.nativeElement.textContent).not.toContain('Loading...');
+      if (_state === 'empty' || _state === 'unavailable') {
+        expect(fixture.nativeElement.textContent).toContain(
+          'Project details are unavailable',
+        );
+      } else {
+        expect(
+          fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
+        ).toContain('Project details could not be loaded');
+      }
+    },
+  );
 });
 
 describe('ProjectPage overview lists', () => {

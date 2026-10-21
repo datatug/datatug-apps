@@ -1,3 +1,5 @@
+import { IncidentEmptyStateComponent } from '../incidents/incident-empty-state.component';
+import { incidentStarterDraft } from '../incidents/incident-starter-draft';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
 import { MappedContextInputComponent, MappedInputChoice } from './mapped-context-input.component';
 import { SessionContextApiService } from '../session-context/session-context-api.service';
@@ -9,6 +11,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
@@ -53,6 +56,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    IncidentEmptyStateComponent,
     HostedIncidentConversationComponent,
     MappedContextInputComponent,
     IonBackButton,
@@ -80,6 +84,11 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
           <ion-back-button [defaultHref]="listHref()" />
         </ion-buttons>
         <ion-title>Incidents</ion-title>
+        @if (mode() === 'list' && canWrite() && incidents()?.length && !loading() && !loadError() && !scopeLoading() && !scopeError()) {
+          <ion-buttons slot="end">
+            <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">Create Incident</ion-button>
+          </ion-buttons>
+        }
       </ion-toolbar>
     </ion-header>
     <ion-content color="light">
@@ -106,13 +115,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
               </ion-select>
             </ion-item>
             @if (mode() === 'list') {
-              <h1>Incidents</h1>
-              <p>Saved incidents in this private project and environment.</p>
-              @if (canWrite()) {
-                <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">
-                  Create Incident
-                </ion-button>
-              } @else {
+              @if (!canWrite()) {
                 <p role="status">You can view Incidents in this project, but cannot create them.</p>
               }
               @if (loading()) {
@@ -131,12 +134,16 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                     }
                   </ion-list>
                 } @else {
-                  <p role="status">No Incidents yet. Create one to record the problem first.</p>
+                  <sneat-datatug-incident-empty-state [createLink]="newHref()" [queryParams]="environmentQuery()" [canCreate]="canWrite()" />
                 }
               }
             } @else if (mode() === 'new') {
-              <h1>New Incident</h1>
-              <p>Record the problem now. A Detective Case can be started later.</p>
+              <h1>{{ isTestDraft() ? 'Try a test incident' : 'New Incident' }}</h1>
+              @if (isTestDraft()) {
+                <p role="status">This is an editable example. Change the title and description below. Choosing Create incident saves a real incident in this private project and environment.</p>
+              } @else {
+                <p>Record the problem now. A Detective Case can be started later.</p>
+              }
               <ion-item>
                 <ion-label position="stacked">Title</ion-label>
                 <ion-input aria-label="Incident title" [value]="title()"
@@ -166,11 +173,11 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
               } @else {
               <ion-button (click)="create()" [disabled]="!canWrite() || busy() || !title().trim() || !environment()">
                 @if (busy()) { <ion-spinner slot="start" name="dots" /> }
-                Save Incident
+                Create incident
               </ion-button>
               }
-              <ion-button fill="clear" [routerLink]="listHref()"
-                [queryParams]="environmentQuery()">Cancel</ion-button>
+              <ion-button fill="clear" [routerLink]="listHref()" (click)="cancelDraft()"
+                [disabled]="busy()" [queryParams]="environmentQuery()">Cancel</ion-button>
             } @else {
               @if (loading()) {
                 <p role="status"><ion-spinner name="dots" /> Loading Incident…</p>
@@ -249,8 +256,29 @@ export class HostedIncidentsPageComponent {
     const ref = item && `${item.ref.storeId}/${item.ref.incidentId}`;
     return ref ? (this.state()?.cases || []).filter((entry) => entry.incidentRefs.includes(ref)) : [];
   });
+  protected readonly isTestDraft = computed(() => this.routeQuery().get('draft') === 'test');
   protected readonly title = signal('');
   protected readonly description = signal('');
+  private readonly seedTestDraft = effect(() => {
+    const isTest = this.isTestDraft();
+    if (isTest) untracked(() => this.seedEmptyTestDraft());
+  });
+  private seedEmptyTestDraft(): void {
+    if (this.isTestDraft() && !this.title() && !this.description()) {
+      this.title.set(incidentStarterDraft.title);
+      this.description.set(incidentStarterDraft.description);
+    }
+  }
+  protected cancelDraft(): void {
+    if (this.busy()) return;
+    this.title.set('');
+    this.description.set('');
+    this.orderId.set('');
+    this.clearMappedInputs();
+    this.pendingCreate = undefined;
+    this.savedIncident.set(undefined);
+    this.saveError.set('');
+  }
   protected readonly orderId = signal('');
   private readonly mutationLifetime = useNativeRunLifetime();
   private readonly contextApi = inject(SessionContextApiService);
@@ -402,13 +430,16 @@ export class HostedIncidentsPageComponent {
     this.environment.set(value);
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { environment: value },
+      queryParams: {
+        environment: value,
+        ...(this.mode() === 'new' && this.isTestDraft() ? { draft: 'test' } : {}),
+      },
       replaceUrl: true,
     });
   }
   protected retryLoad(): void { this.reloadKey.update((key) => key + 1); }
   protected reloadScope(): void { this.scopeKey.update((key) => key + 1); }
-  ionViewWillEnter(): void { this.reloadScope(); }
+  ionViewWillEnter(): void { this.seedEmptyTestDraft(); this.reloadScope(); }
 
   protected async create(): Promise<void> {
     const context = this.scope.context();

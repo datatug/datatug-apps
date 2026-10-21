@@ -1,6 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
+import { IProjectRef } from '../core/project-context';
 import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
@@ -17,8 +18,8 @@ describe('MenuEnvSelectorComponent', () => {
     const nextProjectEnvironments = new Subject<
       { id: string; title: string }[]
     >();
-    const listEnvironments = vi.fn((projectId: string) =>
-      projectId === 'old'
+    const listEnvironments = vi.fn((project: IProjectRef) =>
+      project.projectId === 'old'
         ? of([{ id: 'old-env', title: 'Old' }])
         : nextProjectEnvironments.asObservable(),
     );
@@ -107,7 +108,12 @@ describe('MenuEnvSelectorComponent', () => {
     }).compileComponents();
     const fixture = TestBed.createComponent(MenuEnvSelectorComponent);
     fixture.componentRef.setInput('project', {
-      ref: { projectId: 'demo', storeId: 'github.com' },
+      ref: {
+        projectId: 'demo',
+        storeId: 'github.com',
+        branch: 'review',
+        projectApi: 'cloud',
+      },
       summary: {
         id: 'demo',
         title: 'Demo',
@@ -118,10 +124,34 @@ describe('MenuEnvSelectorComponent', () => {
     fixture.componentRef.setInput('currentEnvId', 'local');
     fixture.detectChanges();
 
-    expect(listEnvironments).toHaveBeenCalledWith('demo');
+    expect(listEnvironments).toHaveBeenCalledWith({
+      projectId: 'demo',
+      storeId: 'github.com',
+      branch: 'review',
+      projectApi: 'cloud',
+    });
     expect(
       fixture.componentInstance.environments().map(({ id }) => id),
     ).toEqual(['local', 'prod']);
+    expect(
+      fixture.nativeElement.querySelector('.menu-env-heading a')?.textContent,
+    ).toContain('Environments');
+    expect(
+      fixture.nativeElement.querySelector('ion-badge')?.textContent,
+    ).toContain('2');
+    expect(fixture.nativeElement.querySelector('ion-select')).not.toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Clear environment"]'),
+    ).not.toBeNull();
+    fixture.componentRef.setInput('currentEnvId', undefined);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('ion-select')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelectorAll('.menu-env-choices ion-button'),
+    ).toHaveLength(2);
+    expect(
+      fixture.nativeElement.querySelector('[aria-label="Clear environment"]'),
+    ).toBeNull();
     fixture.componentInstance.switchEnv({
       detail: { value: 'prod' },
     } as CustomEvent);

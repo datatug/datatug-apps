@@ -1,5 +1,13 @@
+import { Component } from '@angular/core';
+import { TestBed } from '@angular/core/testing';
+import { RouterTestingHarness } from '@angular/router/testing';
 import { PRODUCT_PROFILES } from '@datatug/product-profiles';
-import { DefaultUrlSerializer, Route, UrlSegment } from '@angular/router';
+import {
+  DefaultUrlSerializer,
+  provideRouter,
+  Route,
+  UrlSegment,
+} from '@angular/router';
 import { datatugRoutes } from './datatug-routing.module';
 import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
 import {
@@ -52,6 +60,7 @@ describe('datatugRoutes', () => {
       'meanings/field',
       '',
       'overview',
+      'environments',
       'shipping',
       'boards/new',
       'board/:board',
@@ -76,7 +85,9 @@ describe('datatugRoutes', () => {
     const base = ['space', 'S1', 'store', 'firestore', 'project', 'P1'];
     expect(matches(base)).toBe(true);
     for (const path of ['', 'new-entity', 'entity', 'new-field', 'field']) {
-      expect(matches([...base, 'meanings', ...(path ? [path] : [])])).toBe(true);
+      expect(matches([...base, 'meanings', ...(path ? [path] : [])])).toBe(
+        true,
+      );
     }
     expect(matches([...base, 'meanings', 'unknown'])).toBe(false);
     expect(matches([...base, 'meanings', 'field', 'extra'])).toBe(false);
@@ -219,5 +230,76 @@ describe('datatugRoutes', () => {
         }
       }
     });
+  });
+});
+
+describe('shared project Environments deep links', () => {
+  @Component({ template: 'Environment route reached' })
+  class EnvironmentRouteProbe {}
+
+  const base =
+    '/space/3p39p/store/firestore/project/detective-demo-3226069691b6b181451c6a1c';
+  const projectRoute = () => {
+    const route = datatugRoutes.find(
+      (candidate) =>
+        candidate.path === 'space/:spaceId/store/:storeId/project/:projectId',
+    );
+    if (!route) throw new Error('Shared project route missing');
+    return route;
+  };
+
+  it('registers the existing Environments page as a leaf in the shared project', async () => {
+    const environment = projectRoute().children?.find(
+      (child) => child.path === 'environments',
+    );
+    expect(environment).toBeDefined();
+    expect(environment?.children).toBeUndefined();
+    expect(environment?.loadChildren).toBeUndefined();
+    const component = await environment?.loadComponent?.();
+    expect((component as { name?: string })?.name).toBe(
+      'EnvironmentsPageComponent',
+    );
+  });
+
+  beforeEach(() => {
+    const route = projectRoute();
+    // Keep the production parent matcher and actual child route shape. Only
+    // replace the DI-heavy leaf view; its real lazy loader is checked above.
+    const children = route.children
+      ?.filter((child) => child.path === 'environments')
+      .map((child) => ({
+        ...child,
+        loadComponent: undefined,
+        component: EnvironmentRouteProbe,
+      }));
+    TestBed.configureTestingModule({
+      providers: [provideRouter([{ ...route, children }])],
+    });
+  });
+
+  it('navigates the reported cold deep link through the production matcher', async () => {
+    const harness = await RouterTestingHarness.create();
+    await harness.navigateByUrl(base + '/environments', EnvironmentRouteProbe);
+    expect(harness.routeNativeElement?.textContent).toBe(
+      'Environment route reached',
+    );
+  });
+
+  it.each([
+    base + '/environments/unknown',
+    base + '/environments/new',
+    base + '/environments;unexpected=value',
+    base.replace('3p39p', 'bad.space') + '/environments',
+    base.replace('firestore', 'github.com') + '/environments',
+    base.replace('detective-demo-3226069691b6b181451c6a1c', 'bad.project') +
+      '/environments',
+    base.replace('3p39p', '3p39p;unexpected=value') + '/environments',
+    base + '/unknown',
+  ])('rejects unsupported or malformed deep link %s', async (url) => {
+    const harness = await RouterTestingHarness.create();
+    await expect(harness.navigateByUrl(url)).rejects.toThrow(
+      /Cannot match any routes/,
+    );
+    expect(harness.routeNativeElement).toBeNull();
   });
 });

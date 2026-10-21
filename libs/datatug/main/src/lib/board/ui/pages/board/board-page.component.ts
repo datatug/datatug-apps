@@ -1,3 +1,6 @@
+import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
+import type { ChartSourceEdit } from '@datatug/board-models';
+import { widgetAtTabPath } from '../../components/board-widget/nested-tab-path';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
   Component,
@@ -111,7 +114,7 @@ interface TutorialStatus {
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
-  imports: [
+  imports: [ChartSourceEditorComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
     // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
@@ -717,16 +720,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     );
   }
 
-  explainSourceLimit(index: number): void {
-    const target = this.element.nativeElement.querySelector<HTMLElement>(
-      `#source-composition-limit-${index}`,
-    );
-    this.tutorialAnnouncement.set(
-      target?.textContent?.trim() ?? 'Source composition is unavailable.',
-    );
-    target?.focus();
-  }
-
   editTutorial(action: BoardSessionAction): void {
     const session = this.tutorialSession;
     if (!session || !this.tutorialActive()) return;
@@ -825,6 +818,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       widgetPath: editor.path,
       spec,
     });
+  }
+
+  tutorialSourceQueries(editor: TutorialEditor) {
+    const card = this.boardDef()?.rows?.flatMap((row) => row.cards ?? []).find((item) => item.id === editor.cardId);
+    const widget = widgetAtTabPath(card?.widget, editor.path);
+    const sources = widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
+    return this.tutorialQueries().map((id) => ({ id, sourceId: sources.find((source) => source.queryId === id)?.id }));
+  }
+  editTutorialSource(editor: TutorialEditor, edit: ChartSourceEdit): void {
+    this.editTutorial({ ...edit, cardId: editor.cardId, widgetPath: editor.path });
   }
 
   removeTutorialSource(editor: TutorialEditor, sourceId: string): void {

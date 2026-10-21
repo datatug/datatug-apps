@@ -10,7 +10,9 @@
         "
       />
     </ion-buttons>
-    <ion-title><h1 class="project-title">{{ projectTitle() }}</h1></ion-title>
+    <ion-title
+      ><h1 class="project-title">{{ projectTitle() }}</h1></ion-title
+    >
   </ion-toolbar>
 </ion-header>
 
@@ -42,7 +44,8 @@
   }
   @if (metadataState() === 'unavailable' && !metadataReadError()) {
     <p class="project-metadata-unavailable" role="status">
-      Project details are unavailable. Showing the project identity from its address.
+      Project details are unavailable. Showing the project identity from its
+      address.
     </p>
   }
   @if (metadataReadError(); as error) {
@@ -55,7 +58,13 @@
 
   @if (!project()?.ref?.spaceID) {
     <section class="overview-environments" aria-label="Project environments">
-      <h2>Environments</h2>
+      <button
+        type="button"
+        class="environment-label"
+        (click)="goEnvironments()"
+      >
+        Environments:
+      </button>
       @if (projectItemsUnsupported()) {
         <p role="status">
           Environment shortcuts are unavailable for this project connection or
@@ -74,6 +83,12 @@
             <button
               type="button"
               class="environment-shortcut"
+              [class.environment-danger]="
+                environmentPresentation(environment).tone === 'danger'
+              "
+              [class.environment-warning]="
+                environmentPresentation(environment).tone === 'warning'
+              "
               (click)="goEnvironment(environment)"
               [attr.aria-label]="
                 'Open ' +
@@ -222,66 +237,6 @@
       <sneat-datatug-project-database-servers-preview
         [projectRef]="project()?.ref"
       />
-    }
-  } @else if (activeTab() === 'environments') {
-    @if (projectAssetsUnsupported()) {
-      <ion-card
-        ><ion-card-content role="status"
-          >Environments are unavailable for this project connection or
-          branch.</ion-card-content
-        ></ion-card
-      >
-    } @else {
-      <ion-card>
-        <ion-list>
-          @if (environmentError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                environmentErrorMessage() ||
-                  'Environments could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
-          } @else if (environments(); as items) {
-            @for (environment of items; track environment.id) {
-              <ion-item
-                button
-                detail
-                (click)="goEnvironment(environment)"
-                data-testid="overview-environment-item"
-              >
-                <ion-icon
-                  slot="start"
-                  [icon]="environmentPresentation(environment).icon"
-                  aria-hidden="true"
-                />
-                <ion-label
-                  ><h3>{{ environmentPresentation(environment).label }}</h3>
-                  @if (
-                    environmentPresentation(environment).label !==
-                    environment.id
-                  ) {
-                    <p>Environment ID: {{ environment.id }}</p>
-                  }
-                  @if (
-                    environmentPresentation(environment).safetyLabel;
-                    as safety
-                  ) {
-                    <p>{{ safety }}</p>
-                  }
-                </ion-label>
-              </ion-item>
-            } @empty {
-              <ion-item
-                ><ion-label
-                  >No environments have been configured yet.</ion-label
-                ></ion-item
-              >
-            }
-          } @else {
-            <ion-item><ion-label>Loading environments…</ion-label></ion-item>
-          }
-        </ion-list>
-      </ion-card>
     }
   } @else {
     @if (projectAssetsUnsupported()) {

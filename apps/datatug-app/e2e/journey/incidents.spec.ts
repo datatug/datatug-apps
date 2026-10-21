@@ -160,10 +160,10 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
         .securityContextId,
     );
     expect(initialSecurityContextId).toMatch(/^[a-f0-9]{32}$/);
-    await expect(activePage(page).getByText('No incidents yet.')).toBeVisible();
+    await expect(activePage(page).getByRole('heading', { name: 'Follow the evidence. Find the cause.' })).toBeVisible();
 
     await activePage(page)
-      .getByRole('link', { name: "Houston, we've got a problem" })
+      .getByRole('link', { name: 'Report an incident' })
       .click();
     await expect(page).toHaveURL(/\/incidents\/new\?/);
     await activePage(page)
@@ -193,7 +193,7 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     );
 
     await activePage(page)
-      .getByRole('button', { name: "Houston, we've got a problem" })
+      .getByRole('button', { name: 'Create incident' })
       .click();
 
     const staleResponse = await staleResponsePromise;
@@ -417,7 +417,7 @@ test.describe('Incidentius Task 4 — real context overlay decisions', () => {
       isIncidentCreateResponse(response, agentOrigin),
     );
     await activePage(page)
-      .getByRole('button', { name: "Houston, we've got a problem" })
+      .getByRole('button', { name: 'Create incident' })
       .click();
     const createResponse = await createResponsePromise;
     expect(createResponse.status()).toBe(201);

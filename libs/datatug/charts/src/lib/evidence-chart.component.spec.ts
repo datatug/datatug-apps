@@ -123,6 +123,74 @@ describe('shared three-kind evidence leaf', () => {
     );
     fixture.destroy();
   });
+  it('keeps embedded charts primary while retaining exact data and keyboard inspection in a collapsed disclosure', async () => {
+    TestBed.configureTestingModule({
+      imports: [EvidenceChartComponent],
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: PLATFORM_ID, useValue: 'server' },
+      ],
+    });
+    const fixture = TestBed.createComponent(EvidenceChartComponent);
+    fixture.componentRef.setInput('embedded', true);
+    fixture.componentRef.setInput('showHeader', false);
+    fixture.componentRef.setInput('heading', 'Actual card title');
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('header')).toBeNull();
+    expect(
+      fixture.nativeElement
+        .querySelector('[role="region"]')
+        .getAttribute('aria-label'),
+    ).toBe('Actual card title');
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="status"]'),
+    ).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Run this chart');
+    fixture.componentRef.setInput('loading', true);
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="status"]'),
+    ).toHaveLength(1);
+    expect(fixture.nativeElement.textContent).toContain('Loading chart');
+    fixture.componentRef.setInput('loading', false);
+    fixture.componentRef.setInput('data', {
+      ...prepared('timeline'),
+      limitations: [
+        { policy: 'restricted-source', rowsFiltered: true, hiddenColumns: [] },
+      ],
+    });
+    await fixture.whenStable();
+    const details = fixture.nativeElement.querySelector(
+      'details',
+    ) as HTMLDetailsElement;
+    expect(details.open).toBe(false);
+    const warning = fixture.nativeElement.querySelector('[role="note"]');
+    expect(warning.textContent).toContain('Source policy limitations apply');
+    expect(warning.closest('details')).toBeNull();
+    expect(details.textContent).toContain('generation g1');
+    expect(details.querySelector('table')?.textContent).toContain('NULL');
+    const emitted: EvidenceInspection[] = [];
+    fixture.componentInstance.inspect.subscribe((entry) => emitted.push(entry));
+    details.open = true;
+    (details.querySelector('button') as HTMLButtonElement).click();
+    expect(emitted).toEqual([inspection]);
+    fixture.componentRef.setInput('error', 'Connection is not ready');
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelectorAll('[role="alert"]'),
+    ).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('table')).toBeNull();
+    fixture.componentRef.setInput('embedded', false);
+    fixture.componentRef.setInput('showHeader', true);
+    fixture.componentRef.setInput('heading', undefined);
+    fixture.componentRef.setInput('error', null);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('h3').textContent).toContain(
+      'Observed milestones',
+    );
+    expect(fixture.nativeElement.querySelector('details').open).toBe(true);
+    fixture.destroy();
+  });
   it.each(['timeline', 'timing-bars', 'heatmap'] as const)(
     'renders actual %s SVG and disposes on input change/destroy',
     async (kind) => {

@@ -1,10 +1,4 @@
-import {
-  Component,
-  OnDestroy,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { race, Subject, of, Observable } from 'rxjs';
 import { catchError, shareReplay, takeUntil } from 'rxjs/operators';
@@ -130,8 +124,11 @@ export class ProjectPageComponent
 
   // readonly DbModel = ProjectItem.dbModel as const;
 
-  // Summary responses update this signal so the zoneless page refreshes its
-  // project identity and metadata as soon as they arrive.
+  protected goEnvironments(): void {
+    this.datatugNavService.goProject(this.project(), 'environments');
+  }
+
+  // Summary responses repaint the zoneless project identity and metadata.
   protected readonly project = signal<IProjectContext | undefined>(undefined);
   private readonly authState = toSignal(this.auth.authState, {
     initialValue: undefined,
@@ -211,12 +208,11 @@ export class ProjectPageComponent
   >('loading');
   protected readonly metadataReadError = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
-    'boards' | 'queries' | 'environments' | 'entities' | 'databases'
+    'boards' | 'queries' | 'entities' | 'databases'
   >('boards');
   protected readonly overviewTabs = [
     { id: 'boards', label: 'Boards' },
     { id: 'queries', label: 'Queries' },
-    { id: 'environments', label: 'Environments' },
     { id: 'entities', label: 'Entities' },
     { id: 'databases', label: 'Databases' },
   ] as const;
@@ -373,9 +369,7 @@ export class ProjectPageComponent
       }
       this.projectService
         .watchProjectSummary(ref)
-        .pipe(
-          takeUntil(cancel$),
-        )
+        .pipe(takeUntil(cancel$))
         .subscribe({
           next: (summary) => this.onProjectSummaryChanged(ref, summary),
           complete: () => {
@@ -437,7 +431,7 @@ export class ProjectPageComponent
   }
 
   protected selectTab(
-    tab: 'boards' | 'queries' | 'environments' | 'entities' | 'databases',
+    tab: 'boards' | 'queries' | 'entities' | 'databases',
   ): void {
     this.activeTab.set(tab);
   }
@@ -551,5 +545,4 @@ export class ProjectPageComponent
       projectContext: project,
     });
   }
-
 }

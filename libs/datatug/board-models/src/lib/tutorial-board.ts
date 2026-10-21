@@ -1,3 +1,4 @@
+import { editChartSources, seedChartSources } from './chart-source-edit';
 import {
   validChartSpec,
   validateChartDefinition,
@@ -12,6 +13,7 @@ import type { TabWidget, TabsWidgetDef } from './widget-tabs';
 export type BoardAction =
   | {
       readonly type: 'add-card';
+      readonly initialSourceIds?: readonly string[];
       readonly cardId: string;
       readonly toRow?: number;
       readonly toIndex?: number;
@@ -263,8 +265,11 @@ function validAction(value: unknown): value is BoardAction {
   if (value['type'] === 'add-card')
     return (
       keys.every((key) =>
-        ['type', 'cardId', 'toRow', 'toIndex'].includes(key),
+        ['type', 'cardId', 'toRow', 'toIndex', 'initialSourceIds'].includes(key),
       ) &&
+      (value['initialSourceIds'] === undefined ||
+        (Array.isArray(value['initialSourceIds']) && value['initialSourceIds'].length > 0 &&
+         value['initialSourceIds'].length <= 2 && value['initialSourceIds'].every(identifier))) &&
       (value['toRow'] === undefined || isPosition(value['toRow'])) &&
       (value['toIndex'] === undefined || isPosition(value['toIndex'])) &&
       (value['toRow'] !== undefined || value['toIndex'] === undefined)
@@ -317,7 +322,11 @@ function applyFrom(
     throw new Error('The working board already contains this card.');
   const currentCard =
     current && safeWorking.rows?.[current.row]?.cards?.[current.index];
-  const card = preserveEdits && currentCard ? currentCard : source.card;
+  let card = preserveEdits && currentCard ? currentCard : source.card;
+  if (action.type === 'add-card' && action.initialSourceIds) {
+    if (card.widget?.name !== 'chart') throw new Error('Select a canonical chart card.');
+    card = { ...card, widget: { name: 'chart', data: seedChartSources(card.widget.data as ChartWidgetDef, action.initialSourceIds) } };
+  }
   const targetRow = action.toRow ?? source.row;
   const withoutCard = current
     ? remove(safeWorking, action.cardId)
@@ -703,33 +712,8 @@ function applySessionAction(
       edited = { ...data, chart: action.spec };
     else if (action.type === 'set-view')
       edited = { ...data, defaultView: action.view };
-    else if (action.type === 'add-chart-source') {
-      if (
-        data.sources.some(
-          (source) =>
-            source.id === action.sourceId || source.queryId === action.queryId,
-        )
-      )
-        throw new Error(
-          'The chart already contains this source ID or saved query.',
-        );
-      edited = {
-        ...data,
-        sources: [
-          ...data.sources,
-          { id: action.sourceId, queryId: action.queryId },
-        ],
-      };
-    } else if (action.type === 'remove-chart-source') {
-      if (
-        data.sources.filter((source) => source.id === action.sourceId)
-          .length !== 1
-      )
-        throw new Error('The chart source no longer exists.');
-      edited = {
-        ...data,
-        sources: data.sources.filter((source) => source.id !== action.sourceId),
-      };
+    else if (action.type === 'add-chart-source' || action.type === 'remove-chart-source') {
+      edited = editChartSources(data, action, canonicalBoardQueryIds(canonical));
     } else throw new Error('Unsupported widget edit.');
     const result = { name: 'chart', data: edited };
     chartDefinition(result);
@@ -825,6 +809,8 @@ function encodeActions(
     if (action.type === 'remove-card') return [1, index, -1, -1];
     if (action.type === 'move-card')
       return [2, index, action.toRow, action.toIndex];
+    if (action.type === 'add-card' && action.initialSourceIds)
+      return [100, index, [], { initialSourceIds: [...action.initialSourceIds], ...(action.toRow !== undefined ? { toRow: action.toRow } : {}), ...(action.toIndex !== undefined ? { toIndex: action.toIndex } : {}) }];
     if (action.type === 'add-card')
       return [0, index, action.toRow ?? -1, action.toIndex ?? -1];
     const payload: Record<string, unknown> = { ...action };
@@ -897,6 +883,12 @@ function decodeSessionAction(
     !isRecord(value[3])
   )
     return undefined;
+  if (value[0] === 100) {
+    if (value[2].length) return undefined;
+    const action = { type: 'add-card', cardId: ids[value[1]], ...value[3] };
+    if (Object.keys(value[3]).some((key) => !['initialSourceIds', 'toRow', 'toIndex'].includes(key))) return undefined;
+    return validAction(action) ? action : undefined;
+  }
   const type = editKinds[value[0] - 3];
   const cardId = ids[value[1]];
   const settings = { ...value[3] };
@@ -1096,7 +1088,7 @@ export class TutorialBoardSession {
 
   private save(): void {
     const state: SavedSession = {
-      version: this.actions.some((action) => !validAction(action)) ? 3 : 2,
+      version: this.actions.some((action) => !validAction(action) || ('initialSourceIds' in action && !!action.initialSourceIds)) ? 3 : 2,
       revision: this.revision,
       actions: encodeActions(this.canonical, this.actions),
       cursor: this.cursor,
