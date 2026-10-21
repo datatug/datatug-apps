@@ -74,6 +74,11 @@ ion-split-pane {
 
 //@import '../../../styles/sneat';
 
+// Page headers use a neutral surface across routed pages and dialogs.
+ion-header > ion-toolbar {
+  --background: var(--ion-color-light);
+}
+
 // Section labels in lists use the same light background throughout DataTug.
 ion-item-divider,
 ion-list-header {

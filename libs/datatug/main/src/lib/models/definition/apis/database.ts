@@ -104,6 +104,8 @@ export interface IDatabaseSummary {
 export interface IServer {
   host: string;
   port?: number;
+  /** File or repository-backed endpoint identity used by host-less drivers. */
+  path?: string;
 }
 
 export interface IDbServer extends IServer {
