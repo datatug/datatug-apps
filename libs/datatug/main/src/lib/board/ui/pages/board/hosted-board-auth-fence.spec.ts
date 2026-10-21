@@ -94,6 +94,8 @@ describe('Hosted Board native mutation auth/scope fence', () => {
     await vi.waitFor(() =>
       expect(fixture.componentInstance.draft()?.title).toBe('Shipping'),
     );
+    fixture.componentInstance.beginEdit();
+    await fixture.whenStable();
     return { auth, project, params, query, bridge, http, fixture };
   }
   it.each(['actor', 'project', 'environment', 'board'] as const)(

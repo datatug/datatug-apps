@@ -159,13 +159,14 @@ const roles = {
       }
       label {
         display: flex;
-        flex-wrap: wrap;
-        align-items: center;
+        flex-direction: column;
+        align-items: stretch;
         gap: 0.5rem;
       }
       select {
-        max-width: 100%;
-        min-height: 2.5rem;
+        width: 100%;
+        padding: 10px;
+        min-height: 44px;
       }
       button {
         justify-self: start;

@@ -259,7 +259,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     if (scope.admitted())
       await vi.waitFor(() =>
         expect(
-          f.nativeElement.querySelector('ion-input'),
+          f.nativeElement.querySelector(
+            isNew ? '.board-editor ion-input' : 'sneat-datatug-board',
+          ),
           f.nativeElement.textContent,
         ).not.toBeNull(),
       );
@@ -270,7 +272,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     text: string,
   ) {
     f.nativeElement
-      .querySelector('ion-input')
+      .querySelector('.board-editor ion-input')
       .dispatchEvent(
         new CustomEvent('ionInput', { detail: { value: text }, bubbles: true }),
       );
@@ -330,7 +332,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     }
     button(f, 'Save board').click();
     await f.whenStable();
-    expect(writes).toHaveLength(1);
+    expect(writes, f.nativeElement.textContent).toHaveLength(1);
     const authored = writes[0].board;
     expect(authored.parameters).toEqual([
       { id: 'order_id', type: 'integer', isRequired: true },
@@ -355,10 +357,88 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     const cold = await mount();
     expect(cold.componentInstance.draft()).toEqual(authored);
     expect(
+      cold.nativeElement.querySelector(
+        'section[aria-label="Edit board definition"]',
+      ),
+    ).toBeNull();
+    button(cold, 'Edit board').click();
+    await cold.whenStable();
+    expect(
       cold.nativeElement.querySelectorAll('sneat-datatug-board-chart-editor')
         .length,
     ).toBe(3);
-    expect(writes).toHaveLength(1);
+    expect(writes, f.nativeElement.textContent).toHaveLength(1);
+  });
+  it('opens saved deep links in canonical view, explicitly edits and cancels the complete definition', async () => {
+    isNew = false;
+    const f = await mount();
+    expect(f.nativeElement.textContent).toContain(
+      'Canonical renderer Saved shipping',
+    );
+    expect(f.nativeElement.querySelector('.board-editor ion-input')).toBeNull();
+    button(f, 'Edit board').click();
+    await f.whenStable();
+    inputTitle(f, 'Unsaved title');
+    f.componentInstance.edit({ type: 'remove-card', cardId: 'receipt' });
+    f.componentInstance.edit({
+      type: 'set-parameter',
+      parameter: { id: 'unsaved', type: 'string', isRequired: true },
+    });
+    await f.whenStable();
+    button(f, 'Cancel').click();
+    await f.whenStable();
+    expect(f.componentInstance.draft()).toEqual(initial);
+    expect(f.nativeElement.querySelector('.board-editor ion-input')).toBeNull();
+    expect(api.saveBoard).not.toHaveBeenCalled();
+    expect(f.nativeElement.textContent).toContain(
+      'Canonical renderer Saved shipping',
+    );
+  });
+  it('stays editing after a failed save and keeps the original pending operation reachable without Cancel', async () => {
+    isNew = false;
+    api.saveBoard.mockReturnValueOnce(
+      throwError(() => new HttpErrorResponse({ status: 503 })),
+    );
+    const f = await mount();
+    button(f, 'Edit board').click();
+    await f.whenStable();
+    inputTitle(f, 'Pending title');
+    button(f, 'Save board').click();
+    await f.whenStable();
+    expect(f.componentInstance.editing()).toBe(true);
+    expect(f.nativeElement.textContent).toContain('Retry original save');
+    expect(
+      f.nativeElement.querySelector(
+        'section[aria-label="Edit board definition"]',
+      ),
+    ).not.toBeNull();
+    expect(
+      Array.from(f.nativeElement.querySelectorAll('ion-button')).some(
+        (b) => (b as HTMLElement).textContent?.trim() === 'Cancel',
+      ),
+    ).toBe(false);
+    f.componentInstance.cancelEdit();
+    expect(f.componentInstance.pending()).toBeDefined();
+    expect(f.componentInstance.draft()?.title).toBe('Pending title');
+  });
+  it('returns to saved view after acknowledgement, and hides edit for read-only access', async () => {
+    isNew = false;
+    const f = await mount();
+    button(f, 'Edit board').click();
+    await f.whenStable();
+    inputTitle(f, 'Acknowledged');
+    button(f, 'Save board').click();
+    await f.whenStable();
+    expect(f.componentInstance.editing()).toBe(false);
+    expect(f.nativeElement.querySelector('.board-editor ion-input')).toBeNull();
+    expect(f.nativeElement.textContent).toContain('Board saved.');
+    scope.canWrite.set(false);
+    await f.whenStable();
+    expect(
+      Array.from(f.nativeElement.querySelectorAll('ion-button')).some(
+        (b) => (b as HTMLElement).textContent?.trim() === 'Edit board',
+      ),
+    ).toBe(false);
   });
   it('creates from DOM saved-query controls, saves actual scoped conditions and cold-loads current detail', async () => {
     const f = await mount();
@@ -372,7 +452,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     await f.whenStable();
     button(f, 'Add query widget').click();
     await f.whenStable();
-    const currentQuery = f.nativeElement.querySelector('select[aria-label="Saved query for Assignment"]') as HTMLSelectElement;
+    const currentQuery = f.nativeElement.querySelector(
+      'select[aria-label="Saved query for Assignment"]',
+    ) as HTMLSelectElement;
     expect(currentQuery.value).toBe('assignment');
     expect(currentQuery.selectedOptions[0]?.value).toBe('assignment');
     const parameter = f.nativeElement.querySelector(
@@ -383,7 +465,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     await f.whenStable();
     button(f, 'Save board').click();
     await f.whenStable();
-    expect(writes).toHaveLength(1);
+    expect(writes, f.nativeElement.textContent).toHaveLength(1);
     expect(writes[0].ifNoneMatch).toBe(true);
     expect(writes[0].ifMatch).toBeUndefined();
     expect(
@@ -579,6 +661,8 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
       throwError(() => new HttpErrorResponse({ status: 409 })),
     );
     const f = await mount();
+    button(f, 'Edit board').click();
+    await f.whenStable();
     inputTitle(f, 'My draft');
     await f.whenStable();
     button(f, 'Save board').click();
