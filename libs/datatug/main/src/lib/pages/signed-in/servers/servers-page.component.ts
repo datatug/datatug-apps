@@ -173,12 +173,14 @@ export class ServersPageComponent implements OnDestroy {
       const sources = this.catalogSources();
       if (!sources) return undefined;
       const selected = this.selectedEnvironmentIds();
+      const environmentFilterAvailable = !this.environmentsError();
       const query = this.filterText().trim().toLocaleLowerCase();
       const groups = new Map<string, ProjectConnectionSource[]>();
       for (const source of sources) {
         const dataset = source.dataset?.trim();
         if (!dataset) continue;
         if (
+          environmentFilterAvailable &&
           source.environments?.length &&
           !source.environments.some((environment) => selected.has(environment))
         ) {
@@ -208,6 +210,7 @@ export class ServersPageComponent implements OnDestroy {
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
+  protected readonly environmentsError = signal<string | undefined>(undefined);
 
   // Which environment ids are currently checked — seeded to "every
   // environment" once `environments` arrives (loadEnvironments() below),
@@ -234,10 +237,11 @@ export class ServersPageComponent implements OnDestroy {
         return undefined;
       }
       const selected = this.selectedEnvironmentIds();
+      const environmentFilterAvailable = !this.environmentsError();
       const query = this.filterText().trim().toLocaleLowerCase();
       return servers
         .map((server) => {
-          if (!server.environments) {
+          if (!server.environments || !environmentFilterAvailable) {
             return server;
           }
           const environments = server.environments.filter((e) =>
@@ -354,6 +358,14 @@ export class ServersPageComponent implements OnDestroy {
     return dbServer.host?.trim() || dbServer.path?.trim() || '(no host)';
   }
 
+  protected serverIdentity(dbServer: IDbServer): string {
+    return serverKey(dbServer);
+  }
+
+  protected canOpenDbServer(dbServer: IDbServer): boolean {
+    return !dbServer.path?.trim();
+  }
+
   protected sourceFormat(source: ProjectConnectionSource): string {
     switch (source.storage) {
       case 'sqlite':
@@ -389,6 +401,11 @@ export class ServersPageComponent implements OnDestroy {
     if (target) this.loadCatalogSources(target, this.loadEpoch);
   }
 
+  protected retryEnvironments(): void {
+    const target = this.target();
+    if (target) this.loadEnvironments(target, this.loadEpoch);
+  }
+
   /**
    * S160 (NG04002, 100% reproducible on every store/project — founder
    * report, 2026-09-10): this used to build `['project', '.@' +
@@ -407,6 +424,9 @@ export class ServersPageComponent implements OnDestroy {
   goDbServer(dbServer: IProjDbServerSummary): void {
     const target = this.target();
     if (!target) {
+      return;
+    }
+    if (!this.canOpenDbServer(dbServer.dbServer)) {
       return;
     }
     const url = tryProjectUrl(target, [
@@ -532,6 +552,7 @@ export class ServersPageComponent implements OnDestroy {
   private loadEnvironments(target: IProjectRef, epoch: number): void {
     const request = ++this.environmentsRequest;
     this.environments.set(undefined);
+    this.environmentsError.set(undefined);
     const environments$ = isGithubStoreId(target.storeId)
       ? this.environmentService.listEnvironments(target.projectId)
       : this.projectService
@@ -547,7 +568,8 @@ export class ServersPageComponent implements OnDestroy {
       error: (err) => {
         if (epoch !== this.loadEpoch || request !== this.environmentsRequest)
           return;
-        this.environments.set([]);
+        this.environments.set(undefined);
+        this.environmentsError.set('Environments could not be loaded.');
         this.errorLogger.logError(err, 'Failed to load project environments');
       },
     });
@@ -592,11 +614,19 @@ export class ServersPageComponent implements OnDestroy {
     this.dbServers.set(undefined);
     this.dbServersError.set(undefined);
     this.environments.set(undefined);
+    this.environmentsError.set(undefined);
     this.selectedEnvironmentIds.set(new Set());
     this.catalogSources.set(undefined);
     this.catalogError.set(undefined);
   }
 }
 
-const serverId = (dbServer: IDbServer): string =>
-  [dbServer.driver, dbServer.host, '' + dbServer.port, dbServer.path].join('/');
+const serverId = (dbServer: IDbServer): string => serverKey(dbServer);
+
+const serverKey = (dbServer: IDbServer): string =>
+  [
+    dbServer.driver,
+    dbServer.host,
+    dbServer.port ?? '',
+    dbServer.path ?? '',
+  ].join('/');

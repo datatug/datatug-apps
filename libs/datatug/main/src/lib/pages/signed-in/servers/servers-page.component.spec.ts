@@ -238,6 +238,7 @@ describe('ServersPage source discovery lifecycle', () => {
       branch: 'one',
     };
     current$.next(first);
+    environmentsByRequest[0].error(new Error('stale environment failure'));
     current$.next({ ...first, branch: 'two' });
     current$.next(undefined);
 
@@ -258,6 +259,9 @@ describe('ServersPage source discovery lifecycle', () => {
       branch: 'two',
     });
     expect(fixture.nativeElement.textContent).not.toContain('late');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Environments could not be loaded.',
+    );
   });
 
   it('keeps catalog sources visible when configured-server discovery fails', async () => {
@@ -281,6 +285,41 @@ describe('ServersPage source discovery lifecycle', () => {
     expect(text).toContain('Database servers could not be loaded.');
     expect(text).toContain('chinook');
     expect(text).toContain('SQLite · Public API declared');
+  });
+
+  it('shows an environment-specific retry state without hiding scoped servers or catalog sources', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([
+      {
+        dbServer: {
+          driver: 'sqlite3',
+          host: '',
+          path: 'data/chinook.sqlite',
+        },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
+      },
+    ]);
+    environmentsByRequest[0].error(new Error('environment read unavailable'));
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-sqlite',
+          dataset: 'chinook',
+          storage: 'sqlite',
+          readiness: 'public-api',
+          environments: ['dev'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Environments could not be loaded.');
+    expect(text).not.toContain('No environments found');
+    expect(text).toContain('data/chinook.sqlite');
+    expect(text).toContain('File source');
+    expect(text).toContain('chinook');
   });
 
   it('does not call the unsupported catalog transport for a shared project', async () => {
@@ -912,5 +951,20 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
       }),
       'Failed to navigate to DB server page',
     );
+  });
+
+  it('does not invent a host-only detail route for a path-backed file source', async () => {
+    const { component, navigateForward, logError } = await setup({
+      storeId: 'localhost:8989',
+      projectId: 'demo',
+    });
+
+    component.goDbServer({
+      dbServer: { driver: 'sqlite3', host: '', path: 'data/chinook.sqlite' },
+      databasesCount: 1,
+    });
+
+    expect(navigateForward).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
   });
 });

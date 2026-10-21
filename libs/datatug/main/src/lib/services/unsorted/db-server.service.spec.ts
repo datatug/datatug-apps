@@ -5,10 +5,13 @@ import { firstValueFrom, of } from 'rxjs';
 import { DbServerService } from './db-server.service';
 import { ProjectContextService } from '../project/project-context.service';
 import { ProjectService } from '../project/project.service';
+import { GithubProjectReaderService } from '../repo/github/github-project-reader.service';
 
 describe('DbServerService', () => {
   let service: DbServerService;
   const getFull = vi.fn();
+  const listEnvironmentIds = vi.fn();
+  const getEnvironmentSummary = vi.fn();
 
   beforeEach(() => {
     TestBed.configureTestingModule({
@@ -23,6 +26,10 @@ describe('DbServerService', () => {
           useValue: { current: undefined, setCurrent: vi.fn() },
         },
         { provide: ProjectService, useValue: { getFull } },
+        {
+          provide: GithubProjectReaderService,
+          useValue: { listEnvironmentIds, getEnvironmentSummary },
+        },
       ],
     });
     service = TestBed.inject(DbServerService);
@@ -126,6 +133,61 @@ describe('DbServerService', () => {
       {
         dbServer: { driver: 'mysql', host: 'legacy', port: 3306 },
         databasesCount: 1,
+      },
+    ]);
+  });
+
+  it('preserves path and port when aggregating distinct GitHub environment endpoints', async () => {
+    listEnvironmentIds.mockReturnValue(of(['dev']));
+    getEnvironmentSummary.mockReturnValue(
+      of({
+        id: 'dev',
+        title: 'Development',
+        dbServers: [
+          {
+            id: 'sqlite-a',
+            driver: 'sqlite3',
+            host: '',
+            path: 'data/a',
+            catalogs: ['a'],
+          },
+          {
+            id: 'sqlite-b',
+            driver: 'sqlite3',
+            host: '',
+            path: 'data/b',
+            catalogs: ['b'],
+          },
+          {
+            id: 'postgres',
+            driver: 'postgres',
+            host: 'db.example',
+            port: 5433,
+            catalogs: ['orders'],
+          },
+        ],
+      }),
+    );
+
+    await expect(
+      firstValueFrom(
+        service.getDbServers({ storeId: 'github.com', projectId: 'o@r' }),
+      ),
+    ).resolves.toEqual([
+      {
+        dbServer: { driver: 'sqlite3', host: '', path: 'data/a' },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
+      },
+      {
+        dbServer: { driver: 'sqlite3', host: '', path: 'data/b' },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
+      },
+      {
+        dbServer: { driver: 'postgres', host: 'db.example', port: 5433 },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
       },
     ]);
   });

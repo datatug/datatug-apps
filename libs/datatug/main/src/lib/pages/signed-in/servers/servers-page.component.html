@@ -31,7 +31,15 @@
         </ion-buttons>
       }
     </ion-item-divider>
-    @if (environments(); as envs) {
+    @if (environmentsError()) {
+      <ion-item color="danger">
+        <ion-icon name="warning-outline" slot="start" />
+        <ion-label>{{ environmentsError() }}</ion-label>
+        <ion-button slot="end" fill="outline" (click)="retryEnvironments()"
+          >Retry</ion-button
+        >
+      </ion-item>
+    } @else if (environments(); as envs) {
       <div class="environment-options">
         @for (environment of envs; track environment.id) {
           <ion-item class="environment-option" lines="none">
@@ -165,14 +173,17 @@
             >
           </ion-item>
         } @else if (filteredDbServers(); as servers) {
-          @for (
-            dbServer of servers;
-            track dbServer.dbServer.driver +
-              ':' +
-              getDbServerId(dbServer.dbServer)
-          ) {
-            <ion-item tappable (click)="goDbServer(dbServer)">
+          @for (dbServer of servers; track serverIdentity(dbServer.dbServer)) {
+            <ion-item
+              [button]="canOpenDbServer(dbServer.dbServer)"
+              [detail]="canOpenDbServer(dbServer.dbServer)"
+              [attr.tappable]="canOpenDbServer(dbServer.dbServer) ? true : null"
+              (click)="goDbServer(dbServer)"
+            >
               <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
+              @if (!canOpenDbServer(dbServer.dbServer)) {
+                <ion-badge color="light">File source</ion-badge>
+              }
               <ion-badge color="medium">{{
                 dbServer.dbServer.driver
               }}</ion-badge>

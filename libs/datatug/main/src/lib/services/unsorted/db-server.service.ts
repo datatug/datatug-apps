@@ -207,6 +207,8 @@ export class DbServerService {
               dbServer: {
                 driver: s.driver,
                 host: s.host,
+                ...(s.port === undefined ? {} : { port: s.port }),
+                ...(s.path === undefined ? {} : { path: s.path }),
               },
               environments,
             });
