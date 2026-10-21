@@ -412,6 +412,7 @@ interface IGithubSession {
   epoch: number;
   mirrorUsed: boolean;
   tree?: IGithubRead<IGithubGitTreeEntry[]>;
+  completeTree?: IGithubRead<IGithubGitTreeEntry[]>;
   readonly files: Map<string, IGithubRead<string | undefined>>;
   readonly json: Map<string, Promise<unknown>>;
 }
@@ -650,6 +651,7 @@ export class GithubProjectReaderService {
     session.commit = Promise.resolve(commit);
     session.epoch++;
     session.mirrorUsed = false;
+    if (session.completeTree?.done) session.completeTree = undefined;
     if (session.tree?.done) {
       session.tree = undefined;
     }
@@ -699,19 +701,23 @@ export class GithubProjectReaderService {
   // Low-level: tree (directory listing) + raw file content
   // ---------------------------------------------------------------------
 
-  private getTree(projectId: string): Observable<IGithubGitTreeEntry[]> {
+  private getTree(
+    projectId: string,
+    requireComplete = false,
+  ): Observable<IGithubGitTreeEntry[]> {
     return defer(() => {
       const session = this.session(readableId(projectId));
-      let tree = session.tree;
+      const key = requireComplete ? 'completeTree' : 'tree';
+      let tree = session[key];
       if (!tree) {
         tree = startRead<IGithubGitTreeEntry[]>((read) =>
-          this.loadTree(session, read),
+          this.loadTree(session, read, requireComplete),
         );
         const started = tree;
-        session.tree = started;
+        session[key] = started;
         started.promise.catch(() => {
-          if (session.tree === started) {
-            session.tree = undefined;
+          if (session[key] === started) {
+            session[key] = undefined;
           }
         });
       }
@@ -767,16 +773,29 @@ export class GithubProjectReaderService {
   private loadTree(
     session: IGithubSession,
     read: IGithubRead<IGithubGitTreeEntry[]>,
+    requireComplete = false,
   ): Promise<IGithubGitTreeEntry[]> {
     return this.readAtCommit(session, read, (commit) =>
-      this.loadTreeAt(session, commit),
+      this.loadTreeAt(session, commit, requireComplete),
     );
   }
 
   private async loadTreeAt(
     session: IGithubSession,
     commit: IGithubResolvedCommit,
+    requireComplete = false,
   ): Promise<IGithubGitTreeEntry[] | typeof STALE> {
+    if (
+      requireComplete &&
+      (!commit.sha ||
+        !COMMIT_SHA.test(commit.sha) ||
+        commit.refused ||
+        ['missing', 'moved', 'unresolved'].includes(commit.state))
+    )
+      throw new Error('Complete project inventory unavailable');
+    const treeCachePath = requireComplete
+      ? '#complete-tree-v1'
+      : TREE_CACHE_PATH;
     if (commit.state === 'missing' || commit.state === 'moved') {
       return [];
     }
@@ -784,7 +803,7 @@ export class GithubProjectReaderService {
       ? `${session.org}/${session.repo}@${commit.sha}`
       : undefined;
     if (commitKey) {
-      const hit = await this.store.getFile(commitKey, TREE_CACHE_PATH);
+      const hit = await this.store.getFile(commitKey, treeCachePath);
       const kept = hit?.text ? readCachedTree(hit.text) : undefined;
       if (kept) {
         return kept;
@@ -799,12 +818,19 @@ export class GithubProjectReaderService {
     switch (out.kind) {
       case 'ok': {
         const response = JSON.parse(out.text) as IGithubGitTreeResponse;
+        if (
+          requireComplete &&
+          (response.truncated !== false ||
+            !Array.isArray(response.tree) ||
+            !response.tree.every(isTreeEntry))
+        )
+          throw new Error('Complete project inventory unavailable');
         const tree = (response.tree || []).map(({ path, type }) => ({
           path,
           type,
         }));
         if (commitKey) {
-          await this.store.putFile(commitKey, TREE_CACHE_PATH, {
+          await this.store.putFile(commitKey, treeCachePath, {
             text: JSON.stringify(tree),
             bytes: out.bytes,
           });
@@ -812,6 +838,8 @@ export class GithubProjectReaderService {
         return tree;
       }
       case 'missing': {
+        if (requireComplete)
+          throw new Error('Complete project inventory unavailable');
         // A remembered commit that the listing does not know may be gone: ask again which commit it is.
         const outcome = commit.remembered
           ? await this.doubt(session, commit)
@@ -830,6 +858,8 @@ export class GithubProjectReaderService {
         return [];
       }
       case 'moved':
+        if (requireComplete)
+          throw new Error('Complete project inventory unavailable');
         return [];
       case 'refused':
         throw new Error(GITHUB_RATE_LIMIT_MESSAGE);
@@ -857,11 +887,12 @@ export class GithubProjectReaderService {
   public listDirectory(
     projectId: string,
     relativePath: string,
+    options?: { readonly requireComplete?: boolean },
   ): Observable<IGithubDirEntry[]> {
     const { folder } = parseGithubProjectId(projectId);
     const base = [folder, relativePath].filter(Boolean).join('/');
     const prefix = base ? `${base}/` : '';
-    return this.getTree(projectId).pipe(
+    return this.getTree(projectId, options?.requireComplete).pipe(
       map((tree) => {
         const children = new Map<string, 'file' | 'dir'>();
         for (const entry of tree) {

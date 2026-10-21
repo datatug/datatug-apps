@@ -17,6 +17,7 @@ describe('Quick Search actual metadata snapshot', () => {
           {
             dbmodels: ['Chinook'],
             'dbmodels/Chinook': ['dbo'],
+            'dbmodels/Chinook/dbo': ['tables'],
             'dbmodels/Chinook/dbo/tables': ['Customers'],
             'dbmodels/Chinook/dbo/views': [],
           } as Record<string, string[]>
@@ -50,7 +51,12 @@ describe('Quick Search actual metadata snapshot', () => {
         { provide: ProjectQueryApiService, useValue: {} },
         {
           provide: GithubProjectReaderService,
-          useValue: { listDirectory: directory, getRawJson: raw },
+          useValue: {
+            readInfo: () => of({ commit: 'a'.repeat(40) }),
+            visitEpoch: () => '0.0',
+            listDirectory: directory,
+            getRawJson: raw,
+          },
         },
       ],
     });
