@@ -239,7 +239,8 @@ export class EnvironmentsPageComponent {
         Array.from(name).length > 200 ||
         Array.from(name).some(
           (character) =>
-            character.codePointAt(0)! < 32 || character.codePointAt(0) === 127,
+            (character.codePointAt(0) ?? 0) < 32 ||
+            character.codePointAt(0) === 127,
         ))
     ) {
       this.message.set(
