@@ -134,12 +134,18 @@ export class DbServerService {
     if (projectRef.branch || projectRef.projectApi)
       return this.queryApi
         .dbServers<
-          { tags?: string[]; server: IDbServer; databases?: unknown[] }[]
+          {
+            id?: string;
+            tags?: string[];
+            server: IDbServer;
+            databases?: unknown[];
+          }[]
         >(projectRef)
         .pipe(
           map((items) =>
             items.map((item) => ({
               dbServer: item.server,
+              ...(item.id ? { id: item.id } : {}),
               tags: item.tags,
               databasesCount: item.databases?.length ?? 0,
             })),
@@ -147,15 +153,115 @@ export class DbServerService {
         );
     return this.projectService.getFull(projectRef).pipe(
       map((p) => {
-        if (!Array.isArray(p?.dbServers))
+        if (
+          ![p?.dbDrivers, p?.dbServers, p?.environments].some(Array.isArray) &&
+          !p?.id
+        )
           throw new Error(
             'Database server catalog is unavailable for this project connection.',
           );
-        return p.dbServers.map((dbServerFull) => ({
-          dbServer: dbServerFull.dbServer ?? dbServerFull.server,
-          tags: dbServerFull.tags,
-          databasesCount: dbServerFull.databases?.length || 0,
-        }));
+        const byKey = new Map<
+          string,
+          {
+            dbServer: IDbServer;
+            declaredDatabasesCount: number;
+            tags?: string[];
+            id?: string;
+            environments: Map<string, number>;
+          }
+        >();
+        const addServer = (
+          dbServer: IDbServer,
+          declaredDatabasesCount: number,
+          tags?: string[],
+          id?: string,
+        ) => {
+          const key = serverKey(dbServer);
+          const existing = byKey.get(key);
+          if (existing) {
+            existing.declaredDatabasesCount = Math.max(
+              existing.declaredDatabasesCount,
+              declaredDatabasesCount,
+            );
+            if (id) existing.id = id;
+            if (tags)
+              existing.tags = [...new Set([...(existing.tags ?? []), ...tags])];
+            return existing;
+          }
+          const added = {
+            dbServer,
+            declaredDatabasesCount,
+            ...(tags ? { tags } : {}),
+            ...(id ? { id } : {}),
+            environments: new Map<string, number>(),
+          };
+          byKey.set(key, added);
+          return added;
+        };
+
+        for (const driver of p.dbDrivers ?? []) {
+          for (const server of driver.servers ?? []) {
+            addServer(
+              {
+                ...server.server,
+                driver: server.server.driver || driver.id,
+              },
+              server.catalogs?.length ?? 0,
+              server.tags,
+              server.id,
+            );
+          }
+        }
+        for (const legacy of p.dbServers ?? []) {
+          addServer(
+            legacy.dbServer ?? legacy.server,
+            legacy.databases?.length ?? 0,
+            legacy.tags,
+            legacy.id,
+          );
+        }
+        for (const environment of p.environments ?? []) {
+          for (const candidate of environment.dbServers ??
+            environment.dbServer ??
+            []) {
+            const entry = addServer(
+              {
+                driver: candidate.driver,
+                host: candidate.host ?? '',
+                ...(candidate.port === undefined
+                  ? {}
+                  : { port: candidate.port }),
+                ...(candidate.path === undefined
+                  ? {}
+                  : { path: candidate.path }),
+              },
+              0,
+            );
+            entry.environments.set(
+              environment.id,
+              (entry.environments.get(environment.id) ?? 0) +
+                (candidate.catalogs?.length ?? 0),
+            );
+          }
+        }
+
+        return [...byKey.values()].map((entry) => {
+          const environments = [...entry.environments].map(
+            ([envId, databasesCount]) => ({ envId, databasesCount }),
+          );
+          return {
+            dbServer: entry.dbServer,
+            ...(entry.tags ? { tags: entry.tags } : {}),
+            ...(entry.id ? { id: entry.id } : {}),
+            databasesCount: environments.length
+              ? environments.reduce(
+                  (sum, environment) => sum + environment.databasesCount,
+                  0,
+                )
+              : entry.declaredDatabasesCount,
+            ...(environments.length ? { environments } : {}),
+          };
+        });
       }),
     );
   }
@@ -194,7 +300,8 @@ export class DbServerService {
         >();
         for (const summary of summaries) {
           for (const s of summary.dbServers || []) {
-            const key = `${s.driver}:${s.host ?? ''}:${s.port ?? 0}`;
+            const key = serverKey(s);
+
             const environments = byKey.get(key)?.environments ?? [];
             environments.push({
               envId: summary.id,
@@ -204,7 +311,8 @@ export class DbServerService {
               dbServer: {
                 driver: s.driver,
                 host: s.host,
-                ...(s.port ? { port: s.port } : {}),
+                ...(s.port === undefined ? {} : { port: s.port }),
+                ...(s.path === undefined ? {} : { path: s.path }),
               },
               environments,
             });
@@ -229,20 +337,18 @@ export class DbServerService {
             (server.host !== undefined && typeof server.host !== 'string')
           )
             throw new Error('Invalid database server definition.');
-          const identity = `${server.driver}:${server.host ?? ''}:${server.port ?? 0}`;
+          const identity = serverKey(server);
           if (defined.has(identity))
             throw new Error('Duplicate database server definitions.');
           defined.add(identity);
-          const row = rows.find(
-            (row) =>
-              row.dbServer.driver === server.driver &&
-              (row.dbServer.host ?? '') === (server.host ?? '') &&
-              (row.dbServer.port ?? 0) === (server.port ?? 0),
-          );
-          if (row) row.tags = definition.tags;
-          else
+          const row = rows.find((row) => serverKey(row.dbServer) === identity);
+          if (row) {
+            row.tags = definition.tags;
+            row.id = definition.id;
+          } else
             rows.push({
               dbServer: { ...server, host: server.host ?? '' },
+              id: definition.id,
               tags: definition.tags,
               databasesCount: definition.databases?.length ?? 0,
             });
@@ -252,3 +358,8 @@ export class DbServerService {
     );
   }
 }
+
+const serverKey = (server: IDbServer): string =>
+  [server.driver, server.host ?? '', server.port ?? '', server.path ?? ''].join(
+    ':',
+  );

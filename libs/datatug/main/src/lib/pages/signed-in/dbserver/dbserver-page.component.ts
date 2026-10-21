@@ -3,7 +3,7 @@ import { IProjectRef } from '../../../core/project-context';
 import { getDbServerId } from '../../../models/definition/apis/database';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
@@ -25,7 +25,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { map, takeUntil } from 'rxjs/operators';
-import { combineLatest, Subject, Subscription } from 'rxjs';
+import { combineLatest, of, Subject, Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   DbServerService,
@@ -85,6 +85,10 @@ export class DbserverPageComponent implements OnDestroy {
   private readonly dbServerService = inject(DbServerService);
   private readonly projectContextService = inject(ProjectContextService);
 
+  private readonly requestedDefinitionId = signal<string | undefined>(
+    undefined,
+  );
+  readonly serverDefinitionId = signal<string | undefined>(undefined);
   readonly serverTags = signal<string[] | undefined>(undefined);
   readonly serverTagsLoading = signal(false);
   readonly serverTagsError = signal('');
@@ -143,9 +147,14 @@ export class DbserverPageComponent implements OnDestroy {
     // `combineLatest` removes the ordering dependency entirely: `loadData()`
     // now runs only once BOTH values are known, and reruns whenever either
     // changes afterwards.
-    combineLatest([dbServer$, this.projectContextService.current$])
+    combineLatest([
+      dbServer$,
+      this.route.queryParamMap ?? of(convertToParamMap({})),
+      this.projectContextService.current$,
+    ])
       .pipe(takeUntil(this.destroyed))
-      .subscribe(([dbServer, target]) => {
+      .subscribe(([dbServer, params, target]) => {
+        this.requestedDefinitionId.set(params.get('definitionId') ?? undefined);
         this.dbServer.set(dbServer);
         this.projectRef.set(target);
         this.loadServerTags();
@@ -165,6 +174,7 @@ export class DbserverPageComponent implements OnDestroy {
       server = this.dbServer();
     const generation = ++this.metadataReadGeneration;
     this.metadataSubscription?.unsubscribe();
+    this.serverDefinitionId.set(undefined);
     this.serverTags.set(undefined);
     this.serverTagsError.set('');
     this.serverTagsLoading.set(!!target && !!server);
@@ -186,14 +196,26 @@ export class DbserverPageComponent implements OnDestroy {
             fail();
             return;
           }
-          this.serverTags.set(
-            items.find(
-              (item) =>
-                item.dbServer.driver === server.driver &&
-                (item.dbServer.host ?? '') === (server.host ?? '') &&
-                (item.dbServer.port ?? 0) === (server.port ?? 0),
-            )?.tags ?? [],
+          const selectedId = this.requestedDefinitionId();
+          const matches = items.filter(
+            (item) =>
+              item.dbServer.driver === server.driver &&
+              (item.dbServer.host ?? '') === (server.host ?? '') &&
+              (item.dbServer.port ?? 0) === (server.port ?? 0) &&
+              (!selectedId || item.id === selectedId),
           );
+          if (matches.length > 1 || (selectedId && !matches.length)) {
+            fail();
+            return;
+          }
+          this.serverDefinitionId.set(
+            matches[0]?.id ??
+              server.driver +
+                ':' +
+                (server.host || '') +
+                (server.port ? ':' + server.port : ''),
+          );
+          this.serverTags.set(matches[0]?.tags ?? []);
           this.serverTagsLoading.set(false);
         },
         error: fail,

@@ -36,14 +36,22 @@ describe('datatugRoutes', () => {
     );
   });
 
-  it('admits Space overview, queries, Checks, Detective and session routes', () => {
+  it('admits Space overview, Meanings, queries, Checks, Detective and session routes', () => {
     const route = datatugRoutes.find(
       (candidate) =>
         candidate.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
     expect(route?.children?.map((child) => child.path)).toEqual([
+      'meanings',
+      'meanings/new-entity',
+      'meanings/entity',
+      'meanings/new-field',
+      'meanings/field',
       '',
       'overview',
+      'tags',
+      'tag',
+      'tag/:tag',
       'shipping',
       'boards/new',
       'board/:board',
@@ -67,6 +75,11 @@ describe('datatugRoutes', () => {
       );
     const base = ['space', 'S1', 'store', 'firestore', 'project', 'P1'];
     expect(matches(base)).toBe(true);
+    for (const path of ['', 'new-entity', 'entity', 'new-field', 'field']) {
+      expect(matches([...base, 'meanings', ...(path ? [path] : [])])).toBe(true);
+    }
+    expect(matches([...base, 'meanings', 'unknown'])).toBe(false);
+    expect(matches([...base, 'meanings', 'field', 'extra'])).toBe(false);
     expect(matches([...base, 'queries'])).toBe(true);
     expect(matches([...base, 'incidents'])).toBe(true);
     expect(matches([...base, 'incidents', 'new'])).toBe(true);

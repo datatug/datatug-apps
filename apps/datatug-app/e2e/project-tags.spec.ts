@@ -82,6 +82,8 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
       const body =
         request.method() === 'PUT' ? request.postDataJSON() : undefined;
       const kind = body?.kind || url.searchParams.get('kind');
+      if (kind === 'dbserver')
+        expect(body?.id ?? url.searchParams.get('id')).toBe('sqlite3:');
       if (body) {
         if (failSave) {
           failSave = false;
@@ -323,6 +325,18 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   await expect(
     activePage(page).getByText('No tags yet.', { exact: true }),
   ).toBeVisible();
+  await page.goto(`${base}/servers?tag=ops`);
+  const sources = activePage(page).locator(
+    'sneat-datatug-project-database-sources',
+  );
+  await expect(sources).toContainText('Local SQLite databases');
+  await expect(
+    sources.getByRole('link', { name: 'ops', exact: true }),
+  ).toHaveAttribute('href', /\/tag\/ops$/);
+  await activePage(page)
+    .getByRole('button', { name: 'Clear tags', exact: true })
+    .click();
+  await expect(page).not.toHaveURL(/tag=/);
   await page.goto(`${base}/servers/db/sqlite3/-`);
   await expect(
     activePage(page).getByRole('button', {
@@ -335,6 +349,14 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
     .click();
   await save();
   await page.reload();
+  await expect(
+    activePage(page).getByText('No tags yet.', { exact: true }),
+  ).toBeVisible();
+  await page.goto(`${base}/servers`);
+  await activePage(page)
+    .getByRole('button', { name: 'Configured server', exact: true })
+    .click();
+  await expect(page).toHaveURL(/servers\/db\/sqlite3\/-\?definitionId=sqlite3/);
   await expect(
     activePage(page).getByText('No tags yet.', { exact: true }),
   ).toBeVisible();

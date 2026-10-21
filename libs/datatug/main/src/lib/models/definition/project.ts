@@ -29,7 +29,18 @@ export interface IProjectFull extends IProjectBase {
   readonly boards?: readonly Board[];
   environments?: IEnvironmentFull[];
   dbModels?: IDbModelFull[];
-  dbServers: IProjDbServerFull[];
+  /** Legacy project-full response shape retained for older agents. */
+  dbServers?: IProjDbServerFull[];
+  /** Current datatug.Project wire shape returned by project_full. */
+  dbDrivers?: readonly {
+    readonly id: string;
+    readonly servers?: readonly {
+      readonly id?: string;
+      readonly server: import('./apis/database').IDbServer;
+      readonly tags?: string[];
+      readonly catalogs?: readonly unknown[];
+    }[];
+  }[];
 }
 
 export interface IProjectSummary extends IProjectBase {

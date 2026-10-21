@@ -80,7 +80,7 @@ it('counts nested items, updates asynchronously without manual detection, and ke
   await fixture.whenStable();
   expect(assets.boards).toHaveBeenCalledTimes(2);
 });
-it('cancels old server reads on project changes and clears stale rows when the next read fails', async () => {
+it('fences old server reads on project changes and clears stale rows when the next read fails', async () => {
   const current = new BehaviorSubject(ref),
     a = new Subject<unknown[]>(),
     b = new Subject<unknown[]>();
@@ -94,6 +94,10 @@ it('cancels old server reads on project changes and clears stale rows when the n
       },
       { provide: Router, useValue: { navigate: vi.fn() } },
       { provide: ProjectContextService, useValue: { current$: current } },
+      {
+        provide: ProjectQueryApiService,
+        useValue: { connectionCatalog: () => of({ connections: [] }) },
+      },
       { provide: DbServerService, useValue: { getDbServers } },
       {
         provide: ProjectService,
@@ -109,7 +113,7 @@ it('cancels old server reads on project changes and clears stale rows when the n
     set: {
       imports: [],
       template:
-        '{{ loadError() }} @for (server of filteredDbServers() || []; track server.dbServer.host) { <p>{{ server.dbServer.host }}</p> }',
+        '{{ dbServersError() }} @for (server of filteredDbServers() || []; track server.dbServer.host) { <p>{{ server.dbServer.host }}</p> }',
     },
   });
   const fixture = TestBed.createComponent(ServersPageComponent);

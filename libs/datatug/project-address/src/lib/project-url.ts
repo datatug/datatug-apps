@@ -78,6 +78,7 @@ function sharedQueryPage(rest: string): boolean {
     rest === '/tag' ||
     sharedTagDetail(rest) ||
     rest === '/shipping' ||
+    /^\/meanings(?:\/(?:new-entity|entity|new-field|field))?$/.test(rest) ||
     rest === '/boards' ||
     rest === '/boards/new' ||
     /^\/board\/[A-Za-z0-9_-]+$/.test(rest) ||

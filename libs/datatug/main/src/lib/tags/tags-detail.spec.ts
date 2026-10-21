@@ -182,7 +182,7 @@ it.each(['.', '..', 'a//b', 'team/', 'Ops / É?#', 'Case'])(
         address.searchParams.get('tag') ??
           decodeURIComponent(address.pathname.split('/').at(-1) ?? ''),
       ).toBe(tag);
-      expect(link.queryParams.projectApi).toBe(
+      expect(link.queryParams['projectApi']).toBe(
         target === ref ? 'local' : undefined,
       );
     }

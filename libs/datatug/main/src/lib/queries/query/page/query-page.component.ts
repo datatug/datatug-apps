@@ -1,4 +1,10 @@
 import { TagsEditorComponent } from '../../../tags/tags-editor.component';
+import {
+  prepareLocalMeaningSave,
+  type LocalMeaningSaveSnapshot,
+} from '../../semantic-project-reference';
+import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
+
 import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
 import { heldEvidenceIdentity } from '../../../evidence/retained-evidence-contract';
 import type { HeldEvidenceIdentity } from '@sneat/datatug-semantic';
@@ -14,12 +20,14 @@ import { isSavedPublicChartQueryId } from '../../public-data/public-chart-query'
 import { queryContextScope } from '../../../session-context/session-query-scope';
 import {
   savedMeaningChoices,
+  projectMeaningChoices,
   type SavedMeaningChoice,
 } from '../../semantic-meaning-reuse';
 import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
 import { SemanticMappingDialogComponent } from '../../semantic-mapping-dialog.component';
 import {
   validateSemanticModel,
+  detachProjectMeaningReferences,
   createSemanticModel,
   semanticQueryHash,
   semanticValidationState,
@@ -488,7 +496,10 @@ import {
   equalProjectRef,
   isSharedProjectRef,
 } from '../../../core/project-context';
-import { fromProjectQueryWire } from '../../project-query-contract';
+import {
+  fromProjectQueryWire,
+  toProjectQueryWire,
+} from '../../project-query-contract';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
   IQueryEditorState,
@@ -2552,6 +2563,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   readonly semanticStorage = signal('');
   readonly semanticSaveToProject = signal(false);
   readonly semanticSaveLabel = signal('Save meaning');
+  private readonly projectMeanings = inject(ProjectMeaningsService);
+  readonly semanticLocalSave = signal<LocalMeaningSaveSnapshot | undefined>(
+    undefined,
+  );
   readonly semanticSavedChoices = signal<readonly SavedMeaningChoice[]>([]);
   readonly semanticChoicesLoading = signal(false);
   readonly semanticChoicesMessage = signal('');
@@ -2639,9 +2654,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
     }
     let supported = false;
+    this.semanticLocalSave.set(undefined);
     if (
       !isDevicePersonalQuery(this.queryState.id ?? '') &&
-      (this.project.ref.projectApi || isSharedProjectRef(this.project.ref))
+      (this.project.ref.projectApi ||
+        isSharedProjectRef(this.project.ref) ||
+        !['github', 'github.com', 'firestore'].includes(
+          this.project.ref.storeId,
+        ))
     ) {
       try {
         const capabilities = await firstValueFrom(
@@ -2651,6 +2671,22 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           !!capabilities.querySave &&
           !!capabilities.semanticModel &&
           this.queryState.saveSupported !== false;
+        if (supported && !ref.projectApi && !isSharedProjectRef(ref)) {
+          const definition = this.queryDef();
+          if (!definition)
+            throw new Error(
+              'Load a saved query before linking project meanings.',
+            );
+          const snapshot = await prepareLocalMeaningSave(
+            this.queriesService,
+            this.projectMeanings,
+            ref,
+            queryId,
+            definition,
+          );
+          if (!active()) return;
+          this.semanticLocalSave.set(snapshot);
+        }
       } catch {
         supported = false;
       }
@@ -2660,10 +2696,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const personal = isDevicePersonalQuery(this.queryState.id ?? '');
     this.semanticStorage.set(
       personal
-        ? 'Saved on this device.'
+        ? 'Saved on this device as an independent definition snapshot.'
         : supported
           ? 'Saves meanings in this project.'
-          : 'Creates a personal copy saved on this device.',
+          : 'Creates an independent definition snapshot saved on this device.',
     );
     this.semanticSaveLabel.set(
       personal || supported ? 'Save meaning' : 'Save personal copy',
@@ -2672,9 +2708,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.semanticChoicesLoading.set(true);
     this.semanticChoicesMessage.set('');
     this.semanticDialog.set(fresh);
-    void this.queriesService.devicePersonal
-      .list(ref)
-      .then((items) => {
+    const projectChoices =
+      supported && !personal
+        ? firstValueFrom(
+            this.projectMeanings.catalog(this.semanticLocalSave()?.ref ?? ref),
+          ).then((catalog) => projectMeaningChoices(catalog, catalog.scope))
+        : Promise.resolve([]);
+    void Promise.allSettled([
+      this.queriesService.devicePersonal.list(ref),
+      projectChoices,
+    ])
+      .then(([device, projectChoices]) => {
         if (
           this.semanticDialog() !== fresh ||
           this.queryState.id !== queryId ||
@@ -2682,25 +2726,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         )
           return;
         const result = savedMeaningChoices(
-          items.map((item) => item.query),
+          device.status === 'fulfilled'
+            ? device.value.map((item) => item.query)
+            : [],
           queryId,
         );
-        this.semanticSavedChoices.set(result.choices);
+        this.semanticSavedChoices.set([
+          ...(projectChoices.status === 'fulfilled'
+            ? projectChoices.value
+            : []),
+          ...result.choices,
+        ]);
         this.semanticChoicesMessage.set(
-          result.skipped
+          result.skipped ||
+            device.status === 'rejected' ||
+            projectChoices.status === 'rejected'
             ? 'Some saved meanings could not be loaded. You can still create a property.'
             : '',
         );
-      })
-      .catch(() => {
-        if (
-          this.semanticDialog() === fresh &&
-          this.queryState.id === queryId &&
-          this.project?.ref === ref
-        )
-          this.semanticChoicesMessage.set(
-            'Saved meanings could not be loaded. You can still create a property.',
-          );
       })
       .finally(() => {
         if (this.semanticDialog() === fresh)
@@ -2731,7 +2774,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         request: this.queryState.request ?? definition.request,
         connectionId: this.queryState.connectionId ?? definition.connectionId,
         federation: this.queryState.federation ?? definition.federation,
-        semanticModel: bundle,
+        semanticModel:
+          this.semanticSaveToProject() && !isDevicePersonalQuery(definition.id)
+            ? bundle
+            : detachProjectMeaningReferences(bundle),
       };
       const supported = this.semanticSaveToProject();
       if (isDevicePersonalQuery(current.id) || supported) {
@@ -2739,12 +2785,42 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           ...this.queryState,
           def: current,
         });
-        await firstValueFrom(
-          this.queryEditorStateService.saveQuery(
-            { ...sourceState, def: current },
-            project.ref,
-          ),
-        );
+        const local = this.semanticLocalSave();
+        if (supported && local && !isDevicePersonalQuery(current.id)) {
+          const saved = await firstValueFrom(
+            this.queriesService.saveRevision(local.ref, {
+              operationId: crypto.randomUUID(),
+              branch: local.ref.branch,
+              ifMatch: local.revision,
+              ...(local.branchHead
+                ? { expectedBranchHead: local.branchHead }
+                : {}),
+              query: toProjectQueryWire(
+                { ...current, title: sourceState.title },
+                sourceState.id,
+              ),
+            }),
+          );
+          if (!active()) return;
+          if (!saved.revision || saved.query.id !== current.id)
+            throw new Error(
+              'The saved query revision could not be verified. Reload before retrying.',
+            );
+          this.queryEditorStateService.updateQueryState({
+            ...sourceState,
+            def: current,
+            revision: saved.revision,
+            branchHead: saved.branchHead,
+            isSaving: false,
+          });
+        } else {
+          await firstValueFrom(
+            this.queryEditorStateService.saveQuery(
+              { ...sourceState, def: current },
+              project.ref,
+            ),
+          );
+        }
         if (!active()) return;
       } else {
         const copy = {

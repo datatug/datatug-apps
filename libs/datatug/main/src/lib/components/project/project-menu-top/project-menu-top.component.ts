@@ -173,6 +173,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
         count: (proj) => proj?.entities?.length,
       },
       {
+        path: 'meanings',
+        title: 'Meanings',
+        icon: 'book-outline',
+      },
+      {
         path: 'environments',
         title: 'Environments',
         icon: 'earth-outline',
@@ -197,15 +202,6 @@ export class ProjectMenuTopComponent implements OnDestroy {
         // `project-menu.component.html`). The "+" here duplicated that button
         // and 404'd (NG04002) instead of working, so it is removed rather
         // than given a route to nowhere — see project-menu-top.component.spec.ts.
-      },
-      // Investigation Context (plan task 9, REQ:context-basket) — the former
-      // "Variables" empty-shell page now has a real screen
-      // (InvestigationContextPageComponent), so unlike its former siblings in
-      // emptyShellPages below, it is always in the menu.
-      {
-        path: 'variables',
-        title: 'Investigation Context',
-        icon: 'bookmarks-outline',
       },
       ...(ENABLE_EMPTY_SHELL_PAGES
         ? ProjectMenuTopComponent.emptyShellPages
@@ -328,6 +324,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'detective',
           'sessions',
           'boards',
+          'tags',
         ].includes(page))
     )
       return false;

@@ -1,20 +1,21 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { TagFilterState } from '../../../tags/tag-filter-state';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
 import { ErrorLogger, STORE_ID_GITHUB_COM } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { map, of, Subject } from 'rxjs';
 
 import { ServersPageComponent } from './servers-page.component';
+import { ProjectDatabaseSourcesComponent } from './project-database-sources.component';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { ProjectService } from '../../../services/project/project.service';
+import { ProjectQueryApiService } from '../../../services/project/project-query-api.service';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { IProjectRef } from '../../../core/project-context';
 import { IEnvironmentFull } from '../../../models/definition/environments';
-import {
-  DB_SERVER_ID_NO_HOST,
-  IProjDbServerSummary,
-} from '../../../models/definition/apis/database';
+import { IProjDbServerSummary } from '../../../models/definition/apis/database';
 
 // Every describe block below provides these two — `EnvironmentService` and
 // `ProjectService` — because the constructor unconditionally calls
@@ -29,6 +30,10 @@ const noopEnvironmentServiceProvider = {
 const noopProjectServiceProvider = {
   provide: ProjectService,
   useValue: { getFull: vi.fn(() => of({})) },
+};
+const noopProjectQueryApiProvider = {
+  provide: ProjectQueryApiService,
+  useValue: { connectionCatalog: vi.fn(() => of({ connections: [] })) },
 };
 
 describe('ServersPage', () => {
@@ -66,6 +71,7 @@ describe('ServersPage', () => {
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       .overrideComponent(ServersPageComponent, {
@@ -84,6 +90,626 @@ describe('ServersPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+});
+
+describe('ServersPage source discovery lifecycle', () => {
+  let fixture: ComponentFixture<ServersPageComponent>;
+  let current$: Subject<IProjectRef | undefined>;
+  let serversByRequest: Subject<IProjDbServerSummary[]>[];
+  let environmentsByRequest: Subject<IEnvironmentFull[]>[];
+  let catalogsByRequest: Subject<{ connections: readonly unknown[] }>[];
+  let connectionCatalog: ReturnType<typeof vi.fn>;
+  let logError: ReturnType<typeof vi.fn>;
+  let navigateForward: ReturnType<typeof vi.fn>;
+  const selectedTags = signal<string[]>([]);
+
+  beforeEach(async () => {
+    selectedTags.set([]);
+    current$ = new Subject<IProjectRef | undefined>();
+    serversByRequest = [];
+    environmentsByRequest = [];
+    catalogsByRequest = [];
+    logError = vi.fn();
+    navigateForward = vi.fn(() => Promise.resolve(true));
+    connectionCatalog = vi.fn(() => {
+      const result = new Subject<{ connections: readonly unknown[] }>();
+      catalogsByRequest.push(result);
+      return result;
+    });
+
+    await TestBed.configureTestingModule({
+      imports: [ServersPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        provideRouter([]),
+        {
+          provide: TagFilterState,
+          useValue: { selected: selectedTags, set: vi.fn() },
+        },
+        {
+          provide: ProjectContextService,
+          useValue: { current$: current$, current: undefined },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn() },
+        },
+        { provide: ModalController, useValue: { create: vi.fn() } },
+        { provide: NavController, useValue: { navigateForward } },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers: vi.fn(() => {
+              const result = new Subject<IProjDbServerSummary[]>();
+              serversByRequest.push(result);
+              return result;
+            }),
+            deleteDbServer: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: {
+            getFull: vi.fn(() => {
+              const result = new Subject<IEnvironmentFull[]>();
+              environmentsByRequest.push(result);
+              return result.pipe(map((environments) => ({ environments })));
+            }),
+          },
+        },
+        noopEnvironmentServiceProvider,
+        {
+          provide: ProjectQueryApiService,
+          useValue: { connectionCatalog },
+        },
+      ],
+    })
+      .overrideComponent(ServersPageComponent, {
+        set: {
+          imports: [ProjectDatabaseSourcesComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    fixture = TestBed.createComponent(ServersPageComponent);
+    fixture.detectChanges();
+  });
+
+  it('filters configured servers by exact tags while preserving unfiltered source discovery', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    environmentsByRequest[0].next([]);
+    catalogsByRequest[0].next({
+      connections: [{ id: 'declared', dataset: 'chinook' }],
+    });
+    serversByRequest[0].next([
+      {
+        dbServer: { driver: 'postgres', host: 'db.example' },
+        tags: ['Ops', 'Prod'],
+        databasesCount: 0,
+      },
+      {
+        dbServer: { driver: 'postgres', host: 'other.example' },
+        tags: ['ops'],
+        databasesCount: 0,
+      },
+      {
+        id: 'sqlite3:',
+        dbServer: { driver: 'sqlite3', host: '' },
+        tags: [],
+        databasesCount: 0,
+      },
+    ]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Local SQLite databases',
+    );
+    selectedTags.set(['Ops', 'Prod']);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('db.example');
+    expect(fixture.nativeElement.textContent).not.toContain('other.example');
+    expect(fixture.nativeElement.textContent).not.toContain('chinook');
+    const link = fixture.nativeElement.querySelector('a[href$="/tag/Ops"]');
+    expect(link).toBeTruthy();
+    expect(link.closest('ion-item').hasAttribute('href')).toBe(false);
+    selectedTags.set(['Missing']);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'No database sources match the current filters.',
+    );
+    selectedTags.set([]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+  });
+
+  it('shows six datasets while keeping their 18 declared formats and access requirements distinct', async () => {
+    current$.next({
+      storeId: 'http://agent',
+      projectId: 'demo',
+      projectApi: 'local',
+      branch: 'main',
+    });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([
+      { id: 'dev', title: 'DEV' },
+      { id: 'QA', title: 'QA' },
+      { id: 'UAT', title: 'UAT' },
+    ]);
+    const datasets = [
+      'chinook',
+      'northwind',
+      'pubs',
+      'sakila',
+      'adventureworks',
+      'employees',
+    ];
+    catalogsByRequest[0].next({
+      connections: datasets.flatMap((dataset) => [
+        {
+          id: `${dataset}-sqlite`,
+          dataset,
+          storage: 'sqlite',
+          readiness: 'public-api',
+          query: 'ovdb-read',
+          environments: ['dev'],
+          source: `https://demodb.dev/${dataset}`,
+        },
+        {
+          id: `${dataset}-postgresql`,
+          dataset,
+          storage: 'postgresql',
+          readiness: 'public-api',
+          query: 'ovdb-read',
+          environments: ['QA', 'UAT'],
+          source: `https://cloud.openvaultdb.com/${dataset}`,
+        },
+        {
+          id: `${dataset}-ingitdb`,
+          dataset,
+          storage: 'ingitdb',
+          readiness: 'hosted-repository',
+          query: 'local-checkout-required',
+          environments: ['dev'],
+          source: `https://github.com/demo-db/${dataset}`,
+        },
+      ]),
+    });
+    await fixture.whenStable();
+
+    expect(
+      fixture.nativeElement.querySelectorAll(
+        '[data-testid^="database-database:"]',
+      ),
+    ).toHaveLength(6);
+    expect(
+      fixture.nativeElement.querySelectorAll(
+        '[data-testid^="database-database:"] .database-instance-separated',
+      ),
+    ).toHaveLength(12);
+    expect(
+      [
+        ...fixture.nativeElement.querySelectorAll(
+          '[data-testid^="database-database:"]',
+        ),
+      ].every(
+        (item) =>
+          item.getAttribute('lines') === 'full' ||
+          (item as unknown as { lines: string }).lines === 'full',
+      ),
+    ).toBe(true);
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('SQLite');
+    expect(text).toContain('PostgreSQL');
+    expect(text).toContain('Public API declared');
+    expect(text).toContain('inGitDB');
+    expect(text).toContain(
+      'Hosted repository declared · local checkout required',
+    );
+    expect(text).not.toContain('connected');
+  });
+
+  it('normalizes ordinary registered catalogs, declared connections, and network inventory without granting declarations a browse action', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'ordinary' });
+    serversByRequest[0].next([
+      {
+        dbServer: { driver: 'postgres', host: 'db.internal', port: 5432 },
+        databasesCount: 1,
+      },
+    ]);
+    environmentsByRequest[0].next([
+      {
+        id: 'production',
+        title: 'Production',
+        dbServers: [
+          {
+            id: 'postgres',
+            driver: 'postgres',
+            host: 'db.internal',
+            port: 5432,
+            catalogs: ['accounting'],
+          },
+        ],
+      },
+    ]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'warehouse-mysql',
+          dataset: 'warehouse',
+          storage: 'mysql',
+          environments: ['production'],
+          source: 'https://data.example/warehouse',
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('accounting');
+    expect(text).toContain('warehouse-mysql');
+    expect(text).toContain('db.internal:5432');
+    expect(text).toContain('Total: 2 databases · 3 source instances');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('ion-badge')].map((badge) =>
+        badge.textContent?.trim(),
+      ),
+    ).toEqual(['2', '2 databases']);
+    expect(
+      fixture.nativeElement.querySelectorAll('.instance-action'),
+    ).toHaveLength(2);
+
+    fixture.nativeElement
+      .querySelector(
+        '[data-testid="database-database:accounting"] .instance-action',
+      )
+      .click();
+    expect(navigateForward).toHaveBeenCalledWith(
+      '/store/http-agent/project/ordinary/env/production/db/accounting',
+    );
+  });
+
+  it('shows a configured-project empty state after all independent reads succeed empty', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'empty' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([]);
+    catalogsByRequest[0].next({ connections: [] });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'No databases are configured in this project.',
+    );
+  });
+
+  it.each(['servers', 'environments', 'declarations'] as const)(
+    'does not claim the project is empty when only %s has resolved empty',
+    async (resolvedSource) => {
+      current$.next({ storeId: 'http://agent', projectId: 'pending' });
+      if (resolvedSource === 'servers') serversByRequest[0].next([]);
+      if (resolvedSource === 'environments') environmentsByRequest[0].next([]);
+      if (resolvedSource === 'declarations')
+        catalogsByRequest[0].next({ connections: [] });
+      await fixture.whenStable();
+
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('Loading database sources...');
+      expect(text).not.toContain('No databases are configured');
+    },
+  );
+
+  it('merges exact catalog and dataset identifiers, deduplicates full-scope instances, and preserves case and whitespace distinctions', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'identities' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([
+      {
+        id: 'prod',
+        title: 'Production',
+        dbServers: [
+          {
+            id: 'postgres',
+            driver: 'postgres',
+            host: 'db.internal',
+            catalogs: ['Reporting', 'Reporting', 'reporting', ' Reporting '],
+          },
+        ],
+      },
+    ]);
+    const declarations = [
+      {
+        id: 'reporting-api',
+        dataset: 'Reporting',
+        storage: 'postgresql',
+        source: 'https://one.example/reporting',
+        environments: ['prod'],
+      },
+      {
+        id: 'reporting-api',
+        dataset: 'Reporting',
+        storage: 'postgresql',
+        source: 'https://two.example/reporting',
+        environments: ['prod'],
+      },
+      {
+        id: 'reporting-api',
+        dataset: 'reporting',
+        storage: 'postgresql',
+        source: 'https://one.example/reporting',
+        environments: ['prod'],
+      },
+      {
+        id: 'reporting-api',
+        dataset: ' Reporting ',
+        storage: 'postgresql',
+        source: 'https://one.example/reporting',
+        environments: ['prod'],
+      },
+    ];
+    catalogsByRequest[0].next({
+      connections: [declarations[0], ...declarations, declarations[0]],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'Total: 3 databases · 7 source instances',
+    );
+    expect(
+      fixture.nativeElement.querySelectorAll(
+        '[data-testid="database-database:Reporting"] .database-instance',
+      ),
+    ).toHaveLength(3);
+    const firstKeys = [
+      ...fixture.nativeElement.querySelectorAll('[data-instance-key]'),
+    ].map((item) => item.getAttribute('data-instance-key'));
+
+    fixture.componentInstance['retryCatalogSources']();
+    catalogsByRequest[1].next({ connections: [...declarations].reverse() });
+    await fixture.whenStable();
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-instance-key]')].map(
+        (item) => item.getAttribute('data-instance-key'),
+      ),
+    ).toEqual(firstKeys);
+
+    fixture.nativeElement
+      .querySelector(
+        '[data-testid="database-database:Reporting"] .instance-action',
+      )
+      .click();
+    expect(navigateForward).toHaveBeenCalledWith(
+      '/store/http-agent/project/identities/env/prod/db/Reporting',
+    );
+  });
+
+  it('keys loads by the exact project ref, clears on no target, and ignores late responses', async () => {
+    const first = {
+      storeId: 'http://agent',
+      projectId: 'demo',
+      projectApi: 'local' as const,
+      branch: 'one',
+    };
+    current$.next(first);
+    environmentsByRequest[0].error(new Error('stale environment failure'));
+    current$.next({ ...first, branch: 'two' });
+    current$.next(undefined);
+
+    catalogsByRequest[1].next({
+      connections: [{ id: 'late', dataset: 'late', storage: 'sqlite' }],
+    });
+    serversByRequest[1].next([
+      {
+        dbServer: { driver: 'postgres', host: 'late' },
+        databasesCount: 1,
+      },
+    ]);
+    await fixture.whenStable();
+
+    expect(connectionCatalog).toHaveBeenCalledTimes(2);
+    expect(connectionCatalog.mock.calls[1][0]).toEqual({
+      ...first,
+      branch: 'two',
+    });
+    expect(fixture.nativeElement.textContent).not.toContain('late');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Environments could not be loaded.',
+    );
+  });
+
+  it('keeps catalog sources visible when configured-server discovery fails', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].error(new Error('server inventory unavailable'));
+    environmentsByRequest[0].next([{ id: 'dev', title: 'DEV' }]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-sqlite',
+          dataset: 'chinook',
+          storage: 'sqlite',
+          readiness: 'public-api',
+          environments: ['dev'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Database servers could not be loaded.');
+    expect(text).toContain('chinook');
+    expect(text).toContain('SQLite');
+    expect(text).toContain('Public API declared');
+  });
+
+  it('distinguishes a selected-environment mismatch from an empty catalog', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([{ id: 'local', title: 'LOCAL' }]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-postgresql',
+          dataset: 'chinook',
+          storage: 'postgresql',
+          environments: ['QA', 'UAT'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('No database sources match the current filters.');
+    expect(text).not.toContain('No databases are configured in this project.');
+  });
+
+  it('shows only the inline catalog error and does not emit a global error', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([{ id: 'local', title: 'LOCAL' }]);
+    catalogsByRequest[0].error(new Error('catalog unavailable'));
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain(
+      'Database connection declarations could not be loaded.',
+    );
+    expect(text).not.toContain('No databases are configured in this project.');
+    expect(text).not.toContain('No database sources match');
+    expect(logError).not.toHaveBeenCalled();
+    const retry = [
+      ...fixture.nativeElement.querySelectorAll('ion-button'),
+    ].find((button) => button.textContent?.includes('Retry declarations'));
+    expect(retry?.getAttribute('color')).toBe('light');
+    expect(retry?.textContent?.trim()).toBe('Retry declarations');
+  });
+
+  it('keeps registered catalogs visible when declared connections fail', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'ordinary' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([
+      {
+        id: 'local',
+        title: 'Local',
+        dbServers: [
+          {
+            id: 'sqlite',
+            driver: 'sqlite3',
+            host: '',
+            catalogs: ['inventory'],
+          },
+        ],
+      },
+    ]);
+    catalogsByRequest[0].error(new Error('declarations unavailable'));
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('inventory');
+    expect(text).toContain('Registered catalog');
+    expect(text).toContain(
+      'Database connection declarations could not be loaded.',
+    );
+  });
+
+  it('shows an environment-specific retry state without hiding scoped servers or catalog sources', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([
+      {
+        dbServer: {
+          driver: 'sqlite3',
+          host: '',
+          path: 'data/chinook.sqlite',
+        },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
+      },
+    ]);
+    environmentsByRequest[0].error(new Error('environment read unavailable'));
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-sqlite',
+          dataset: 'chinook',
+          storage: 'sqlite',
+          readiness: 'public-api',
+          environments: ['dev'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Environments could not be loaded.');
+    expect(text).not.toContain('No environments found');
+    expect(text).toContain('data/chinook.sqlite');
+    expect(text).toContain('File source');
+    expect(text).toContain('chinook');
+  });
+
+  it('keeps independent evidence visible while environments are initially pending and retrying, then applies the successful selection', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([
+      {
+        dbServer: {
+          driver: 'sqlite3',
+          host: '',
+          path: 'data/dev.sqlite',
+        },
+        databasesCount: 1,
+        environments: [{ envId: 'dev', databasesCount: 1 }],
+      },
+    ]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-sqlite',
+          dataset: 'chinook',
+          storage: 'sqlite',
+          readiness: 'public-api',
+          environments: ['dev'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Loading remaining database sources...',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'No databases are configured',
+    );
+
+    environmentsByRequest[0].error(new Error('environment read unavailable'));
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+
+    fixture.componentInstance['retryEnvironments']();
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Loading remaining database sources...',
+    );
+
+    environmentsByRequest[1].next([{ id: 'prod', title: 'PROD' }]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).not.toContain('data/dev.sqlite');
+    expect(fixture.nativeElement.textContent).not.toContain('chinook');
+  });
+
+  it('does not call the unsupported catalog transport for a shared project', async () => {
+    current$.next({
+      storeId: 'firestore',
+      projectId: 'demo',
+      spaceID: 'space',
+    });
+    await fixture.whenStable();
+
+    expect(connectionCatalog).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Database connection declarations are unavailable for shared projects.',
+    );
   });
 });
 
@@ -144,6 +770,7 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
         { provide: DbServerService, useValue: dbServerServiceMock },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       // Keep the real template so the Loading -> list transition is
@@ -156,7 +783,11 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
       // by board/ui/pages/boards/boards-page.component.spec.ts and
       // board/ui/pages/board/board-page.component.spec.ts.
       .overrideComponent(ServersPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        set: {
+          imports: [ProjectDatabaseSourcesComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
       })
       .compileComponents();
 
@@ -251,6 +882,7 @@ describe("ServersPage clears the delete button's disabled state once deletion co
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       // See the identical override + comment in the "Loading..." describe
@@ -260,7 +892,11 @@ describe("ServersPage clears the delete button's disabled state once deletion co
       // otherwise shadow the mocks above — see fix/zoneless-batch-a's
       // "stabilize entities/servers regression specs" commit).
       .overrideComponent(ServersPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        set: {
+          imports: [ProjectDatabaseSourcesComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
       })
       .compileComponents();
 
@@ -322,12 +958,11 @@ describe("ServersPage clears the delete button's disabled state once deletion co
  * badge next to sqlite3 - all this does not add up".
  *
  * The fixture below mirrors what `DbServerService`'s own
- * `getGithubDbServers()` (db-server.service.ts) actually aggregates from
- * that demo project's real `environments/*.env.json` files (verified live
- * via the GitHub API, 2026-09-10): one `sqlite3` server declared with no
- * `host` (sqlite3 is file-based, not network-addressed) across five
- * environments — `QA`, `UAT`, `dev`, `local`, `prod` — each contributing
- * exactly one catalog, for a `databasesCount` of 5. Built by hand here
+ * `DbServerService` actually aggregates from that demo project's real
+ * `environments/*.env.json` files: one `sqlite3` source declared with no
+ * `host` (sqlite3 is file-based, not network-addressed). Local contributes
+ * five catalog placements, dev one, and prod one; QA and UAT declare none.
+ * Built by hand here
  * (rather than driven through the real `GithubProjectReaderService`) so this
  * spec exercises `ServersPageComponent` in isolation, the same idiom every
  * other describe block in this file already uses.
@@ -344,19 +979,56 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     storeId: STORE_ID_GITHUB_COM,
     projectId: 'datatug-demo-projects@datatug@demo-project-1',
   };
-  const environmentIds = ['QA', 'UAT', 'dev', 'local', 'prod'];
-  const environments: IEnvironmentFull[] = environmentIds.map((id) => ({
-    id,
-    title: id,
-  }));
+  const environmentIds = ['local', 'dev', 'prod', 'QA', 'UAT'];
+  const environments: IEnvironmentFull[] = [
+    {
+      id: 'local',
+      title: 'local',
+      dbServers: [
+        {
+          id: 'sqlite-local',
+          driver: 'sqlite3',
+          host: '',
+          catalogs: ['chinook-local', 'orders', 'countries', 'chinook', 'geo'],
+        },
+      ],
+    },
+    {
+      id: 'dev',
+      title: 'dev',
+      dbServers: [
+        {
+          id: 'sqlite-dev',
+          driver: 'sqlite3',
+          host: '',
+          catalogs: ['chinook-local'],
+        },
+      ],
+    },
+    {
+      id: 'prod',
+      title: 'prod',
+      dbServers: [
+        {
+          id: 'sqlite-prod',
+          driver: 'sqlite3',
+          host: '',
+          catalogs: ['chinook-prod'],
+        },
+      ],
+    },
+    { id: 'QA', title: 'QA', dbServers: [] },
+    { id: 'UAT', title: 'UAT', dbServers: [] },
+  ];
   const dbServers: IProjDbServerSummary[] = [
     {
       dbServer: { driver: 'sqlite3', host: '' },
-      databasesCount: 5,
-      environments: environmentIds.map((envId) => ({
-        envId,
-        databasesCount: 1,
-      })),
+      databasesCount: 7,
+      environments: [
+        { envId: 'local', databasesCount: 5 },
+        { envId: 'dev', databasesCount: 1 },
+        { envId: 'prod', databasesCount: 1 },
+      ],
     },
   ];
 
@@ -407,21 +1079,15 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
       ?.textContent?.trim();
   }
 
-  // Scoped to `ion-item[tappable]` (the attribute the template's own DB
-  // server row carries, `deleteDbServer($event, dbServer)`'s sibling
-  // `<ion-item>`) rather than a generic `ion-list ion-item`, so these never
-  // accidentally match the list's own trailing "Total: ..." row once every
-  // server row has been filtered out (see the last test below).
-  function rowDatabasesBadgeText(): string | undefined {
-    return fixture.nativeElement
-      .querySelector('ion-item[tappable] ion-badge.ion-margin-start')
-      ?.textContent?.replace(/\s+/g, ' ')
-      .trim();
+  // Scoped to the source row so these never accidentally match the list's
+  // trailing "Total: ..." row once every server row has been filtered out.
+  function instanceCount(): number {
+    return fixture.nativeElement.querySelectorAll('.database-instance').length;
   }
 
-  function rowLabelText(): string | undefined {
+  function databaseLabelText(): string | undefined {
     const innerHtml = fixture.nativeElement.querySelector(
-      'ion-item[tappable] ion-label',
+      '[data-testid="database-database:chinook-local"] .database-name',
     )?.innerHTML;
     return innerHtml === undefined ? undefined : stripComments(innerHtml);
   }
@@ -463,33 +1129,43 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
           useValue: { listEnvironments: vi.fn(() => of(environments)) },
         },
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       // Same idiom as every other describe block in this file: keep the
       // real template, strip the component's own `imports:` so its real
       // FormsModule/Ionic directives never shadow the test-double services.
       .overrideComponent(ServersPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        set: {
+          imports: [ProjectDatabaseSourcesComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
       })
       .compileComponents();
 
     fixture = TestBed.createComponent(ServersPageComponent);
   });
 
-  it('badge and footer total both equal the one row shown — never the old hard-coded "2" — and the row is unambiguously labeled "5 databases", not a bare "5"', async () => {
+  it('counts six logical catalogs separately from their seven environment placements', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(dbTabBadgeText()).toBe('1');
-    expect(rowDatabasesBadgeText()).toBe('5 databases');
-    expect(html()).toContain('Total: 1 database servers');
+    expect(dbTabBadgeText()).toBe('6');
+    expect(instanceCount()).toBe(7);
+    expect(html()).toContain('Total: 6 databases');
   });
 
-  it('shows an explicit "(no host)" placeholder for the demo project\'s host-less sqlite3 row, never a blank label', async () => {
+  it('shows registered catalog names and their standard browse actions without a pseudo server row', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(rowLabelText()).toBe('(no host)');
+    expect(databaseLabelText()).toBe('chinook-local');
+    expect(html()).toContain('Registered catalog');
+    expect(html()).not.toContain('Local SQLite databases');
+    expect(
+      fixture.nativeElement.querySelectorAll('.instance-action'),
+    ).toHaveLength(7);
   });
 
   it("narrows the row's database count once the environment filter excludes some — but not all — of its contributing environments, keeping the badge/total in sync", async () => {
@@ -500,27 +1176,27 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(rowDatabasesBadgeText()).toBe('4 databases');
-    // The row itself still counts as one server — only its own database
-    // count narrowed, not the server list.
-    expect(dbTabBadgeText()).toBe('1');
-    expect(html()).toContain('Total: 1 database servers');
+    expect(instanceCount()).toBe(6);
+    expect(dbTabBadgeText()).toBe('5');
+    expect(html()).toContain('Total: 5 databases');
   });
 
   it('drops the row — and both the badge and the total fall to 0 — once every environment contributing to it is unchecked', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    for (const envId of environmentIds) {
-      uncheckEnvironment(envId);
-      fixture.detectChanges();
-    }
+    fixture.nativeElement
+      .querySelector('[data-testid="clear-environments"]')
+      .click();
+    fixture.detectChanges();
     await fixture.whenStable();
 
     expect(dbTabBadgeText()).toBe('0');
-    expect(html()).toContain('Total: 0 database servers');
+    expect(html()).toContain('Total: 0 databases');
     expect(
-      fixture.nativeElement.querySelector('ion-item[tappable]'),
+      fixture.nativeElement.querySelector(
+        '[data-testid^="database-database:"]',
+      ),
     ).toBeNull();
   });
 
@@ -534,17 +1210,17 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     };
 
     await type('  SQLITE3 ');
-    expect(rowLabelText()).toBe('(no host)');
-    expect(dbTabBadgeText()).toBe('1');
+    expect(databaseLabelText()).toBe('chinook-local');
+    expect(dbTabBadgeText()).toBe('6');
 
     await type('postgres');
-    expect(rowLabelText()).toBeUndefined();
+    expect(databaseLabelText()).toBeUndefined();
     expect(dbTabBadgeText()).toBe('0');
-    expect(html()).toContain('No matching database servers.');
+    expect(html()).toContain('No database sources match the current filters.');
 
     await type('');
-    expect(rowLabelText()).toBe('(no host)');
-    expect(dbTabBadgeText()).toBe('1');
+    expect(databaseLabelText()).toBe('chinook-local');
+    expect(dbTabBadgeText()).toBe('6');
   });
 
   it('clears and restores all environment selections from the header actions', async () => {
@@ -561,8 +1237,8 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
       .querySelector('[data-testid="select-all-environments"]')
       .click();
     fixture.detectChanges();
-    expect(dbTabBadgeText()).toBe('1');
-    expect(rowDatabasesBadgeText()).toBe('5 databases');
+    expect(dbTabBadgeText()).toBe('6');
+    expect(instanceCount()).toBe(7);
   });
 });
 
@@ -610,6 +1286,7 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       .overrideComponent(ServersPageComponent, {
@@ -649,28 +1326,10 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
       '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlserver/localhost%3A1433',
     ],
     [
-      "the GitHub demo project's host-less sqlite3 server (no host at all)",
-      oldDemo,
-      hostLess,
-      `/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
-    ],
-    [
-      'the project at the root of a GitHub repository',
-      { storeId: STORE_ID_GITHUB_COM, projectId: 'chinook-demo@datatug@' },
-      hostLess,
-      `/project/github.com/datatug/chinook-demo/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
-    ],
-    [
       'an agent project with a host and a port (unchanged)',
       { storeId: 'localhost:8989', projectId: 'datatug-demo-project' },
       withHostAndPort,
       '/store/localhost:8989/project/datatug-demo-project/servers/db/sqlserver/localhost%3A1433',
-    ],
-    [
-      'an agent project given as http-localhost:8989 (unchanged)',
-      { storeId: 'http-localhost:8989', projectId: 'p1' },
-      hostLess,
-      `/store/http-localhost:8989/project/p1/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
     ],
   ])('navigates for %s', async (_name, target, server, address) => {
     const { component, navigateForward, logError } = await setup(target);
@@ -697,5 +1356,29 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
       }),
       'Failed to navigate to DB server page',
     );
+  });
+
+  it('does not invent a host-only detail route for a path-backed file source', async () => {
+    const { component, navigateForward, logError } = await setup({
+      storeId: 'localhost:8989',
+      projectId: 'demo',
+    });
+
+    component.goDbServer({
+      dbServer: { driver: 'sqlite3', host: '', path: 'data/chinook.sqlite' },
+      databasesCount: 1,
+    });
+
+    expect(navigateForward).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a detail route for an environment-declared hostless source', async () => {
+    const { component, navigateForward, logError } = await setup(oldDemo);
+
+    component.goDbServer(hostLess);
+
+    expect(navigateForward).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
   });
 });

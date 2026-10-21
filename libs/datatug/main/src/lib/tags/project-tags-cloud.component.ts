@@ -334,12 +334,11 @@ export class ProjectTagsCloudComponent {
   itemHref(kind: Kind, item: CatalogItem) {
     const ref = this.projectRef();
     if (kind === 'servers' && item.dbServer)
-      return projectItemLink(ref, [
-        'servers',
-        'db',
-        item.dbServer.driver,
-        getDbServerId(item.dbServer),
-      ]);
+      return projectItemLink(
+        ref,
+        ['servers', 'db', item.dbServer.driver, getDbServerId(item.dbServer)],
+        item.id ? { definitionId: item.id } : {},
+      );
     return projectItemLink(
       ref,
       kind === 'boards'

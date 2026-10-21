@@ -22,12 +22,7 @@
         kind="dbserver"
         [initialTags]="tags"
         [driver]="server.driver"
-        [itemId]="
-          server.driver +
-          ':' +
-          (server.host || '') +
-          (server.port ? ':' + server.port : '')
-        "
+        [itemId]="serverDefinitionId() || ''"
       />
     } @else {
       <ion-card>

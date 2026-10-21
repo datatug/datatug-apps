@@ -1,3 +1,4 @@
+import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
@@ -63,6 +64,7 @@ const emptyShellProjectRoutes: Routes = [
 ];
 
 export const datatugProjectRoutes: Routes = [
+  ...projectMeaningsRoutes,
   {
     path: 'browser-db/:connectionId/table/:table',
     loadComponent: () =>

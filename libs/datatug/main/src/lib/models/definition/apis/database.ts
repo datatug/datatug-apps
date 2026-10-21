@@ -104,6 +104,8 @@ export interface IDatabaseSummary {
 export interface IServer {
   host: string;
   port?: number;
+  /** File or repository-backed endpoint identity used by host-less drivers. */
+  path?: string;
 }
 
 export interface IDbServer extends IServer {
@@ -118,6 +120,8 @@ export interface IProjDbServerEnvironmentUsage {
 }
 
 export interface IProjDbServerSummary {
+  /** Persisted definition identity, absent for inferred environment inventory. */
+  id?: string;
   tags?: string[];
   dbServer: IDbServer;
   databasesCount: number;
@@ -141,6 +145,7 @@ export interface IProjDbServerSummary {
 }
 
 export interface IProjDbServerFull extends IDbServer {
+  id?: string;
   tags?: string[];
   dbServer: IDbServer;
   server: IDbServer;
