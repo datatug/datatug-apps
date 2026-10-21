@@ -1,3 +1,8 @@
+@if(retainedPending()) {
+  <p role="status">The previous retained run has no confirmed outcome and may already be attached. Retry the unchanged card, or review current board access before abandoning it.</p>
+  <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="running()">Review current board access</ion-button>
+  @if(retainedReviewed()){<ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="running()">Abandon original retry</ion-button>}
+}
 @let widget = widgetDef();
 @switch (widget?.name) {
   @case ('tabs') {
@@ -64,11 +69,8 @@
           [error]="evidenceError() || runError() || null"
           (inspect)="inspectHeldEvidence($event)"
         />
-        @if (inspectedEvidence()) {
-          <p role="status">
-            Exact held evidence selected. Opening retained evidence is
-            unavailable on this server.
-          </p>
+        @if (inspectedEvidence(); as selection) {
+          <sneat-datatug-retained-evidence-viewer [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [selector]="selection.selector" [heldResult]="result()" />
         }
         <ion-button
           [disabled]="
@@ -78,7 +80,7 @@
             !!unsupportedReason()
           "
           (click)="run()"
-          >Refresh chart</ion-button
+          >{{boardContext()?.evidenceSelection ? 'Run and attach chart' : 'Refresh chart'}}</ion-button
         >
         @if (queryUrlTree(); as tree) {
           <ion-button fill="clear" [routerLink]="tree"
@@ -272,7 +274,8 @@
           <button class="clear-country" type="button" (click)="clearCountry()">
             Clear country
           </button>
-        </div>
+          @if(heldSnapshot();as snapshot){<sneat-datatug-held-row-evidence [projectRef]="projectRef()" [environment]="boardContext()?.environment || ''" [result]="snapshot.result" [identity]="snapshot.evidenceIdentity" />}
+    </div>
       }
       @if (presentation.result; as answer) {
         @if (

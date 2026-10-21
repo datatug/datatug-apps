@@ -1,3 +1,4 @@
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { DemoTableDraftService } from '../../demo-table-draft.service';
 import * as publicChartQueries from '../../public-data/public-chart-query';
 import { QueryRuntimeRegistry } from '../../query-runtime-registry.service';
@@ -131,7 +132,7 @@ const repositoryRoot = resolvePath(
 const resolve = (path: string): string => resolvePath(repositoryRoot, path);
 
 const detectiveClientStub = () => ({
-  state: vi.fn(() =>
+  state: vi.fn((): Observable<DetectiveState> =>
     of({
       checks: [],
       validators: [],
@@ -3539,7 +3540,7 @@ select (
           },
         };
       });
-    expect(component.canChoosePublicSqliteSource()).toBe(true);
+    expect(component.canChoosePublicSqliteSource()).toBe(false); // Native project runtime never advertises a public SQLite connection.
     component.queryTextChanged(
       new CustomEvent('ionInput', { detail: { value: 'SELECT 2' } }),
     );
@@ -3604,21 +3605,22 @@ select (
     const response = { result: {
       recordset: { columns: [{ name: 'CustomerId', type: 'integer' }], rows: [[{ type: 'integer', value: '42' }]] },
       limitations: [], bindingsApplied: [], truncated: false,
-      provenance: { source: 'paid hosted source', queryId: definition.id, mode: 'snapshot',
+      provenance: { source: 'paid hosted source', queryId: definition.id, mode: 'snapshot', snapshotId: 'paid-snapshot',
         observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
       execution: { storeId: 'firestore', projectId: 'paid-project', executionId: 'paid-exec-1' },
-    }, queryRevision: 'paid-revision-1', resultFingerprint: 'sha256-paid-1' };
+    }, queryRevision: 'paid-revision-1', resultFingerprint: 'a'.repeat(64) };
     const detective = TestBed.inject(DetectiveClientService);
     vi.mocked(detective.runHostedQuery).mockReturnValue(of(response as unknown as HostedQueryResponse));
+    vi.mocked(detective.action).mockReturnValue(of({}));
 
     component.runQuery();
-    await runFixture.whenStable();
-
-    expect(detective.runHostedQuery).toHaveBeenCalledExactlyOnceWith(
-      { kind: 'cloud', storage: 'firestore', spaceID: 'paid-space', project: 'paid-project' },
-      definition.id, 'production', {},
+    await vi.waitFor(() =>
+      expect(detective.runHostedQuery).toHaveBeenCalledExactlyOnceWith(
+        { kind: 'cloud', storage: 'firestore', spaceID: 'paid-space', project: 'paid-project', principal: 'sarah' },
+        definition.id, 'production', {}, expect.objectContaining({signal:expect.any(AbortSignal),operationId:expect.stringMatching(/^operation-/)}),
+      ),
     );
-    expect(component.runResult()?.recordset.rows[0][0]).toEqual({ type: 'integer', value: '42' });
+    await vi.waitFor(()=>expect({error:component.runError(),cell:component.runResult()?.recordset.rows[0][0]}).toEqual({error:undefined,cell:{ type: 'integer', value: '42' }}));
     expect(TestBed.inject(ProjectQueryApiService).connectionCatalog).not.toHaveBeenCalled();
     expect(TestBed.inject(GithubProjectReaderService).getRawJson).not.toHaveBeenCalled();
     expect(TestBed.inject(BrowserSqliteQueryService).execute).not.toHaveBeenCalled();
@@ -3737,13 +3739,26 @@ select (
     }));
   });
 
+  it('cold-loads a folder-qualified hosted SQL route with its explicitly admitted env and project runtime instead of a public SQLite source', async () => {
+    const ref:IProjectRef={storeId:'firestore',spaceID:'space',projectId:'training'};
+    const definition:IQueryDef={id:'shipping/events',title:'Processing events',connectionId:'shipping-working-copy',request:{queryType:QueryType.SQL,text:'SELECT event_id FROM processing_events'} as ISqlQueryRequest};
+    const nativeClient=detectiveClientStub();nativeClient.state.mockReturnValue(of({checks:[],validators:[],queryValidators:[],cases:[],runs:[],scenarios:[],runsHasMore:false,environments:['demo'],capabilities:{localOnly:false,canRead:true,canWrite:true,canRun:true,maxRows:1000,maxFanout:100}}));
+    const nativeProject=new BehaviorSubject<IProjectContext|undefined>(undefined),routeRef={...ref,spaceId:ref.spaceID};
+    component=await createComponent({},definition,'<p></p>',{project:nativeProject,routeId:definition.id,routeRef,urlParameters:{id:definition.id,env:'demo',runtime:'project',editor:'text'},detective:nativeClient,queries:{capabilities:vi.fn(()=>of({querySave:true}))}});
+    nativeProject.next({ref});
+    component.project={ref};component.queryDef.set(definition);component.queryState={...component.queryState,id:definition.id,def:definition,title:definition.title,request:definition.request,isNew:false};
+    expect(component.canChoosePublicSqliteSource()).toBe(false);expect(component.selectedWorkingCopy()).toBe('project');
+    await runFixture.whenStable();expect({environment:component.hostedEnvironment(),admitted:component.hostedDetectiveState()?.environments,calls:nativeClient.state.mock.calls.length}).toEqual({environment:'demo',admitted:['demo'],calls:expect.any(Number)});
+    component.runQuery();await vi.waitFor(()=>expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({queryId:'shipping/events',environment:'demo',target:{kind:'hosted-cloud'},principal:'sarah'})));
+  });
+
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
     const savedDefinition: IQueryDef = {
       ...queryDef,
       request: { queryType: QueryType.DTQL, text: 'from:\n  name: Invoice\n' } as ITextQueryRequest,
       parameters: [],
     };
-    component = await createComponent({}, savedDefinition);
+    component = await createComponent({}, savedDefinition, '<p></p>', {project:of({ref:{storeId:'firestore',spaceID:'space_1',projectId:'project_1'}}),queries:{capabilities:vi.fn(()=>of({querySave:true}))}});
     component.project = {
       ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
     };
@@ -3842,9 +3857,10 @@ select (
     );
     expect(component.isChanged).toBe(false);
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    await runFixture.whenStable();
+    await vi.waitFor(()=>expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       target: { kind: 'hosted-cloud' }, queryId: queryDef.id,
-    }));
+    })));
     await runFixture.whenStable();
     expect(validate).toHaveBeenCalledWith(
       expect.objectContaining({ project: 'project_1' }),
@@ -3854,6 +3870,7 @@ select (
         environment: 'demo',
         execution,
       },
+      undefined, {signal:expect.any(AbortSignal)},
     );
     expect(component.runResult()).toBe(result);
     expect(
@@ -6772,6 +6789,7 @@ select (
     template = '<ul aria-label="Access blockers">@for (blocker of accessBlockers(); track $index) {<li>{{ blocker }}</li>}</ul>',
     navigation?: {
       queryParams?: Observable<ReturnType<typeof convertToParamMap>>;
+      urlParameters?: Record<string,string>;
       paramMap?: Observable<ReturnType<typeof convertToParamMap>>;
       editor?: Observable<IQueryEditorState>;
       project: Observable<IProjectContext | undefined>;
@@ -6784,6 +6802,7 @@ select (
       routeRef?: IProjectRef;
       securityContextId?: string | null;
       realDispatch?: boolean;
+      detective?: ReturnType<typeof detectiveClientStub>;
     },
   ): Promise<QueryPageComponent> {
     Object.defineProperty(window, 'history', {
@@ -6804,6 +6823,7 @@ select (
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        {provide:SneatAuthStateService,useValue:{authState:of({status:'authenticated',user:{uid:'sarah'}})}},
         {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
@@ -6834,11 +6854,11 @@ select (
               navigation?.queryParams ??
               of(
                 convertToParamMap(
-                  navigation?.realEditor && !navigation.routeId
+                  navigation?.urlParameters ?? (navigation?.realEditor && !navigation.routeId
                     ? { id: 'q', projectApi: 'cloud', branch: 'work' }
                     : navigation?.urlQueryId
                       ? { id: navigation.urlQueryId }
-                      : {},
+                      : {}),
                 ),
               ),
             paramMap: navigation?.paramMap ?? of(convertToParamMap({
@@ -6854,11 +6874,11 @@ select (
                 },
               ),
               queryParamMap: convertToParamMap(
-                navigation?.realEditor && !navigation.routeId
+                navigation?.urlParameters ?? (navigation?.realEditor && !navigation.routeId
                   ? { id: 'q', projectApi: 'cloud', branch: 'work' }
                   : navigation?.urlQueryId
                     ? { id: navigation.urlQueryId }
-                    : {},
+                    : {}),
               ),
               params: {},
             },
@@ -6918,7 +6938,7 @@ select (
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
-        { provide: DetectiveClientService, useValue: detectiveClientStub() },
+        { provide: DetectiveClientService, useValue: navigation?.detective ?? detectiveClientStub() },
         ...(navigation?.realDispatch ? [
           { provide: HttpClient, useValue: { post: vi.fn() } },
           { provide: ProjectQueryApiService, useValue: { connectionCatalog: vi.fn() } },

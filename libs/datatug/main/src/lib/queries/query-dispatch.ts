@@ -1,3 +1,4 @@
+import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
 import type { IQueryDef } from '../models/definition/query-def';
 import type { ExecutionBindingOrigin, TypedValue } from '@sneat/datatug-semantic';
 import type { IProjectRef } from '../core/project-context';
@@ -20,6 +21,9 @@ export type QueryRuntimeTarget =
   | { readonly kind: 'browser-sqlite' };
 
 export interface QueryDispatchRequest {
+  readonly evidence?: AppliedEvidenceRequest;
+  readonly operationId?: string;
+  readonly principal?: string;
   readonly projectRef: IProjectRef;
   readonly definition: IQueryDef;
   /** Canonical path-qualified saved-query identity; never derive it from a basename. */

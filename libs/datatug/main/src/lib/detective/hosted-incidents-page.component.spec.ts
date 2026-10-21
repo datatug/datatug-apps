@@ -28,7 +28,7 @@ describe('HostedIncidentsPageComponent', () => {
 
   async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref) {
     const project = new BehaviorSubject({ ref: projectRef });
-    const authState = new BehaviorSubject({ user: { uid: 'sarah' } });
+    const authState = new BehaviorSubject({ status: 'authenticated', user: { uid: 'sarah' } });
     client.incidentEvents.mockReturnValue(of({ events: [], nextAfterSeq: 1, hasMore: false }));
     client.state.mockReturnValue(of({ environments: ['demo'], cases, capabilities: { canWrite } }));
     client.projectIncidents.mockReturnValue(of({ incidents: [incident] }));
@@ -110,6 +110,7 @@ describe('HostedIncidentsPageComponent', () => {
         context: { OrderID: { type: 'number', value: 11039 } },
       }),
       expect.stringMatching(/^operation-/),
+      expect.any(AbortSignal),
     );
     expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('caseId');
     expect(router.navigate).toHaveBeenCalledWith(

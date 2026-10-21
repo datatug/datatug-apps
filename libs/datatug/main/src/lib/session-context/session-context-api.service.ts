@@ -2,7 +2,7 @@ import { HttpClient, HttpErrorResponse, HttpParams } from '@angular/common/http'
 import { Injectable, inject } from '@angular/core';
 import { DatatugApiService } from '../services/base/datatug-api.service';
 import { formatGithubProjectApiKey, isValidGithubRef, readGithubProjectId } from '@datatug/project-address';
-import { firstValueFrom } from 'rxjs';
+import { defer, firstValueFrom, fromEvent, takeUntil } from 'rxjs';
 import { IProjectRef, isSharedProjectRef, isValidProjectRef } from '../core/project-context';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
@@ -66,63 +66,176 @@ export class SessionContextApiService {
     return branch;
   }
 
-  private get<T>(ref: IProjectRef, path: string, extra: Record<string, string> = {}): Promise<T> {
+  private get<T>(
+    ref: IProjectRef,
+    path: string,
+    extra: Record<string, string> = {},
+    signal?: AbortSignal,
+  ): Promise<T> {
     const get = (reference: Record<string, string>): Promise<T> => {
       const params = new HttpParams({ fromObject: { ...reference, ...extra } });
-      return firstValueFrom(['github', 'github.com', 'firestore'].includes(ref.storeId)
-        ? this.api.get<T>(`datatug/session-context/${path}`, params)
-        : this.http.get<T>(buildAgentUrl(ref.storeId, `/session-context/${path}`), { params }));
+      const request = defer(() => {
+        if (signal?.aborted) throw new Error('The context selection changed.');
+        return ['github', 'github.com', 'firestore'].includes(ref.storeId)
+          ? this.api.get<T>(`datatug/session-context/${path}`, params)
+          : this.http.get<T>(
+              buildAgentUrl(ref.storeId, `/session-context/${path}`),
+              { params },
+            );
+      });
+      return firstValueFrom(
+        signal ? request.pipe(takeUntil(fromEvent(signal, 'abort'))) : request,
+      );
     };
     const reference = this.reference(ref);
     return reference instanceof Promise ? reference.then(get) : get(reference);
   }
 
-  async capabilities(ref: IProjectRef): Promise<ContextCapabilities> {
-    const value = await this.get<ContextCapabilities>(ref, 'capabilities');
-    if (value?.schemaVersion !== 1 || !value.actorId || !value.databaseId || !value.projectId ||
-      !Array.isArray(value.environments) || !Array.isArray(value.actions) ||
-      value.environments.some((scope) => !scope.environmentId || !scope.identityDomain || (scope.nativeDetective !== undefined && typeof scope.nativeDetective !== 'boolean')) ||
-      (value.nativeDetective === true && (!validDetectiveOperationScope(value.operationScope) || value.operationScope.databaseId !== value.databaseId || value.operationScope.projectId !== value.projectId)))
+  async capabilities(
+    ref: IProjectRef,
+    signal?: AbortSignal,
+  ): Promise<ContextCapabilities> {
+    const value = await this.get<ContextCapabilities>(
+      ref,
+      'capabilities',
+      {},
+      signal,
+    );
+    if (
+      value?.schemaVersion !== 1 ||
+      !value.actorId ||
+      !value.databaseId ||
+      !value.projectId ||
+      !Array.isArray(value.environments) ||
+      !Array.isArray(value.actions) ||
+      value.environments.some(
+        (scope) => !scope.environmentId || !scope.identityDomain || (scope.nativeDetective !== undefined && typeof scope.nativeDetective !== 'boolean'),
+      ) ||
+      (value.nativeDetective === true &&
+        (!validDetectiveOperationScope(value.operationScope) ||
+          value.operationScope.databaseId !== value.databaseId ||
+          value.operationScope.projectId !== value.projectId))
+    )
       throw new Error('This server does not support session Context Bags.');
     return value;
   }
 
-  list(ref: IProjectRef, capabilities: ContextCapabilities, cursor?: string): Promise<ContextSessionPage> {
-    return this.get(ref, 'sessions', { databaseId: capabilities.databaseId, projectId: capabilities.projectId, limit: '50', ...(cursor ? { cursor } : {}) });
+  list(
+    ref: IProjectRef,
+    capabilities: ContextCapabilities,
+    cursor?: string,
+    signal?: AbortSignal,
+  ): Promise<ContextSessionPage> {
+    return this.get(
+      ref,
+      'sessions',
+      {
+        databaseId: capabilities.databaseId,
+        projectId: capabilities.projectId,
+        limit: '50',
+        ...(cursor ? { cursor } : {}),
+      },
+      signal,
+    );
   }
 
-  async read(ref: IProjectRef, capabilities: ContextCapabilities, sessionId: string): Promise<ContextSnapshot> {
+  async read(
+    ref: IProjectRef,
+    capabilities: ContextCapabilities,
+    sessionId: string,
+    signal?: AbortSignal,
+  ): Promise<ContextSnapshot> {
     if (!contextOpaqueId(sessionId)) throw new Error('Invalid session ID.');
-    const snapshot = readContextSnapshot(await this.get<ContextSnapshot>(ref, `sessions/${sessionId}`, {
-      databaseId: capabilities.databaseId, projectId: capabilities.projectId,
-    }));
-    if (snapshot.session.id !== sessionId || snapshot.session.databaseId !== capabilities.databaseId || snapshot.session.projectId !== capabilities.projectId)
-      throw new Error('The session does not belong to this operational database and project.');
+    const snapshot = readContextSnapshot(
+      await this.get<ContextSnapshot>(
+        ref,
+        `sessions/${sessionId}`,
+        {
+          databaseId: capabilities.databaseId,
+          projectId: capabilities.projectId,
+        },
+        signal,
+      ),
+    );
+    if (
+      snapshot.session.id !== sessionId ||
+      snapshot.session.databaseId !== capabilities.databaseId ||
+      snapshot.session.projectId !== capabilities.projectId
+    )
+      throw new Error(
+        'The session does not belong to this operational database and project.',
+      );
     return snapshot;
   }
 
-  async command(ref: IProjectRef, capabilities: ContextCapabilities, command: ContextCommand): Promise<ContextReceipt> {
+  async command(
+    ref: IProjectRef,
+    capabilities: ContextCapabilities,
+    command: ContextCommand,
+    signal?: AbortSignal,
+  ): Promise<ContextReceipt> {
     const reference = this.reference(ref);
-    const params = new HttpParams({ fromObject: {
-      ...(reference instanceof Promise ? await reference : reference), databaseId: capabilities.databaseId, projectId: capabilities.projectId,
-    } });
+    const params = new HttpParams({
+      fromObject: {
+        ...(reference instanceof Promise ? await reference : reference),
+        databaseId: capabilities.databaseId,
+        projectId: capabilities.projectId,
+      },
+    });
     // Capabilities enrich scopes with presentation/source metadata. Core's strict
     // mutation schema accepts only the two authoritative identity fields.
-    const wireScope = (scope: SessionScope): SessionScope => ({ environmentId: scope.environmentId, identityDomain: scope.identityDomain });
-    const commandBody = command.action === 'importLegacy'
-      ? { opId: command.opId, action: command.action, legacyImport: command.legacyImport ? { ...command.legacyImport, scope: wireScope(command.legacyImport.scope) } : undefined }
-      : { ...command, ...(command.scope ? { scope: wireScope(command.scope) } : {}) };
-    const body = { ...commandBody, databaseId: capabilities.databaseId, projectId: capabilities.projectId };
-    const result = ['github', 'github.com', 'firestore'].includes(ref.storeId)
-      ? await firstValueFrom(this.api.post<{ receipt: ContextReceipt }>(
-          'datatug/session-context/commands', body, { params }))
-      : await firstValueFrom(this.http.post<{ receipt: ContextReceipt }>(
-          buildAgentUrl(ref.storeId, '/session-context/commands'), body, { params }));
-    if (result?.receipt?.opId !== command.opId ||
+    const wireScope = (scope: SessionScope): SessionScope => ({
+      environmentId: scope.environmentId,
+      identityDomain: scope.identityDomain,
+    });
+    const commandBody =
+      command.action === 'importLegacy'
+        ? {
+            opId: command.opId,
+            action: command.action,
+            legacyImport: command.legacyImport
+              ? {
+                  ...command.legacyImport,
+                  scope: wireScope(command.legacyImport.scope),
+                }
+              : undefined,
+          }
+        : {
+            ...command,
+            ...(command.scope ? { scope: wireScope(command.scope) } : {}),
+          };
+    const body = {
+      ...commandBody,
+      databaseId: capabilities.databaseId,
+      projectId: capabilities.projectId,
+    };
+    const request = defer(() => {
+      if (signal?.aborted)
+        throw new Error('The session scope changed before dispatch.');
+      return ['github', 'github.com', 'firestore'].includes(ref.storeId)
+        ? this.api.post<{ receipt: ContextReceipt }>(
+            'datatug/session-context/commands',
+            body,
+            { params, retryUnauthorizedOnce: false },
+          )
+        : this.http.post<{ receipt: ContextReceipt }>(
+            buildAgentUrl(ref.storeId, '/session-context/commands'),
+            body,
+            { params },
+          );
+    });
+    const result = await firstValueFrom(
+      signal ? request.pipe(takeUntil(fromEvent(signal, 'abort'))) : request,
+    );
+    if (
+      result?.receipt?.opId !== command.opId ||
       (command.action === 'importLegacy'
         ? !contextOpaqueId(result.receipt.sessionId)
-        : result.receipt.sessionId !== command.sessionId))
-      throw new Error('The server did not confirm this operation. Retry with the same operation ID.');
+        : result.receipt.sessionId !== command.sessionId)
+    )
+      throw new Error(
+        'The server did not confirm this operation. Retry with the same operation ID.',
+      );
     return result.receipt;
   }
 

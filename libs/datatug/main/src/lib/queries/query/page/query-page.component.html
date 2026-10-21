@@ -477,6 +477,9 @@
     </ion-card>
   }
 
+  @if(isHostedProject && selectedWorkingCopy() === 'project' && isNativeSqlWorkspace()) {
+    <p class="ion-padding-horizontal">Hosted saved SQL query · source {{ queryDef()?.connectionId || 'not specified by this definition' }}. Current server admission controls execution.</p>
+  }
   @if (canChoosePublicSqliteSource() && !isTugqlAuthorJourney()) {
     <ion-card>
       <ion-card-header
@@ -1268,7 +1271,7 @@
             placeholder="Select environment"
             [value]="hostedEnvironment()"
             [disabled]="!hostedDetectiveState()?.capabilities?.canRun || running()"
-            (ionChange)="hostedEnvironment.set($event.detail.value || '')"
+            (ionChange)="changeHostedEnvironment($event.detail.value || '')"
           >
             @for (environment of hostedDetectiveState()?.environments || []; track environment) {
               <ion-select-option [value]="environment">{{ environment }}</ion-select-option>
@@ -1280,6 +1283,8 @@
         } @else if (hostedDetectiveState() && !hostedDetectiveState()?.capabilities?.canRun) {
           <p class="ion-padding-horizontal" role="status">Hosted execution is unavailable for this project.</p>
         }
+        <sneat-datatug-evidence-share-panel [environment]="hostedEnvironment()" [disabled]="running() || retainedQueryPending()" (selected)="chooseQueryEvidence($event)" />
+        @if (retainedQueryPending()) { <p role="status">The previous shared run has no confirmed outcome. It may already be attached. Retry the unchanged selection before starting another retained run.</p> <ion-button fill="outline" (click)="reviewRetainedQuery()" [disabled]="running()">Review current run state</ion-button> @if(retainedQueryReviewed()){ <ion-button color="warning" (click)="abandonRetainedQuery()" [disabled]="running()">Abandon original retry and edit a new run</ion-button> } }
         <p class="ion-padding-horizontal">Hosted runs execute the saved query revision. Save edits before running; select an admitted environment explicitly.</p>
       }
       @if (isAgentRunProject()) {
@@ -1878,6 +1883,7 @@
       />
     </div>
     @if (activeHostedExecution(); as hosted) {
+      <sneat-datatug-held-row-evidence [projectRef]="project?.ref" [environment]="hosted.environment" [result]="hosted.result" [identity]="hosted.evidenceIdentity" />
       <ion-card>
         <ion-card-header>
           <ion-card-title>Validation for these query rows</ion-card-title>

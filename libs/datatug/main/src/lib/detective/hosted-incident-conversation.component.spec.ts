@@ -1,7 +1,9 @@
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { provideRouter } from '@angular/router';
-import { of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { DetectiveClientService } from './detective-client.service';
 import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
 import { IncidentEvent } from '../incidents/models';
@@ -51,6 +53,8 @@ describe('HostedIncidentConversationComponent', () => {
       imports: [HostedIncidentConversationComponent],
       providers: [
         provideRouter([]),
+        { provide: SneatAuthStateService, useValue: { authState: new BehaviorSubject({status: 'authenticated', user: {uid: 'sarah'}}) } },
+        { provide: DatatugNavContextService, useValue: { currentProject: new BehaviorSubject({ref: {storeId: 'firestore', spaceID: 'space', projectId: 'training'}}) } },
         { provide: DetectiveClientService, useValue: client },
       ],
     }).compileComponents();
@@ -155,6 +159,7 @@ describe('HostedIncidentConversationComponent', () => {
         message: { body: 'Received, but no assignment.', assertion: 'claim' },
       },
       expect.stringMatching(/^operation-/),
+      expect.any(AbortSignal),
     );
     const first = client.incidentAction.mock.calls[0][2];
     expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('actor');
@@ -179,7 +184,7 @@ describe('HostedIncidentConversationComponent', () => {
     TestBed.resetTestingModule();
     const second = await mount();
     await page(second).send();
-    expect(client.incidentAction.mock.calls[1]).toEqual(original);
+    expect(client.incidentAction.mock.calls[1].slice(0, 3)).toEqual(original.slice(0, 3));
     await second.whenStable();
     expect(second.nativeElement.textContent).toContain('Message saved.');
   });
@@ -236,7 +241,7 @@ describe('HostedIncidentConversationComponent', () => {
       throwError(() => new HttpErrorResponse({ status: 403 })),
     );
     await page(next).send();
-    expect(client.incidentAction.mock.calls[1]).toEqual(original);
+    expect(client.incidentAction.mock.calls[1].slice(0, 3)).toEqual(original.slice(0, 3));
     await page(next).reviewPending();
     await next.whenStable();
     expect(next.nativeElement.textContent).toContain(
@@ -248,7 +253,7 @@ describe('HostedIncidentConversationComponent', () => {
       throwError(() => new HttpErrorResponse({ status: 403 })),
     );
     await page(next).send();
-    expect(client.incidentAction.mock.calls[2]).toEqual(original);
+    expect(client.incidentAction.mock.calls[2].slice(0, 3)).toEqual(original.slice(0, 3));
     await page(next).reviewPending();
     page(next).abandonPending();
     page(next).body.set('A consciously new follow-up');
@@ -306,7 +311,7 @@ describe('HostedIncidentConversationComponent', () => {
       }),
     );
     await page(second).send();
-    expect(client.incidentAction.mock.calls[1]).toEqual(original);
+    expect(client.incidentAction.mock.calls[1].slice(0, 3)).toEqual(original.slice(0, 3));
     expect(
       updates.some((value) => value.lastSeq === 2 || value.status === 'open'),
     ).toBe(false);
@@ -505,7 +510,7 @@ describe('HostedIncidentConversationComponent', () => {
     expect(links[0].getAttribute('href')).toContain('env=demo');
     expect(links[1].getAttribute('href')).toContain('/checks/assignment');
     expect(f.nativeElement.textContent).toContain(
-      'Query execution: execution-1 · No supported evidence view',
+      'Query execution: execution-1 · Open actual retained run',
     );
   });
 

@@ -116,6 +116,10 @@ export class SessionWorkspaceShellComponent {
   canDismissContextBag(): boolean { return !this.mappedFieldPickerOpen(); }
   readonly showInitialLoading = computed(() => this.workspace.loading() && !this.workspace.capabilities());
   readonly showInitialLoadError = computed(() => !!this.workspace.error() && !this.workspace.capabilities());
+  readonly invoiceOverviewAvailable = computed(() => {
+    const scope = this.workspace.selectedBag()?.scope;
+    return !!scope && this.workspace.capabilities()?.subjects?.some(item => sameContextScope(item.scope, scope) && item.subject.conceptId === 'invoice' && item.subject.fieldId === 'InvoiceId' && item.type === 'integer' && item.shape === 'scalar') === true;
+  });
   readonly availableSubjects = computed(() => {
     const scope = this.workspace.selectedBag()?.scope;
     return scope ? this.workspace.capabilities()?.subjects?.filter((item) => contextScopeKey(item.scope) === contextScopeKey(scope)) ?? [] : [];
@@ -218,9 +222,10 @@ export class SessionWorkspaceShellComponent {
       }
     }
   }
-  async openWorkspacePage(page: 'invoice-overview' | 'invoice-explorer' | 'composer' | 'checks' | 'detective'): Promise<void> {
+  async openWorkspacePage(page: 'overview' | 'invoice-overview' | 'invoice-explorer' | 'composer' | 'checks' | 'detective'): Promise<void> {
     const id = this.workspace.focusedSessionId();
     const project = this.project();
+    if (page === 'invoice-overview' && !this.invoiceOverviewAvailable()) { this.formError.set('Invoice overview requires an admitted integer invoice input for the selected Bag scope.'); return; }
     if (!id || !project || !(await this.workspace.flushDraft())) return;
     const tree = this.router.parseUrl(projectPageHref(project, ['sessions', id, page]));
     tree.queryParams = { ...this.route.snapshot.queryParams };

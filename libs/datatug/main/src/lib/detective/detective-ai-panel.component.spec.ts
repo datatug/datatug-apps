@@ -112,6 +112,34 @@ describe('DetectiveAiPanelComponent', () => {
     }).compileComponents();
   });
 
+  it('uses an explanatory card header and an accessible disclosure without requesting proposals while collapsed', () => {
+    const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
+    fixture.detectChanges();
+    const header = fixture.nativeElement.querySelector(
+      'ion-item.detective-ai-card-header',
+    );
+    expect(header?.getAttribute('color')).toBe('light');
+    expect(header?.querySelector('h2')?.textContent).toContain(
+      'AI investigation proposals',
+    );
+    expect(header?.querySelector('ion-icon')?.getAttribute('name')).toBe(
+      'sparkles-outline',
+    );
+    const action = header?.querySelector('ion-button');
+    expect(action?.getAttribute('aria-expanded')).toBe('false');
+    expect(action?.getAttribute('aria-label')).toBe(
+      'Open AI investigation proposals',
+    );
+    const content = fixture.nativeElement.querySelector(
+      'ion-card-content.detective-ai-proposals-content',
+    );
+    expect(action?.getAttribute('aria-controls')).toBe(content?.id);
+    expect(fixture.nativeElement.textContent).toContain(
+      'Review every suggestion before applying it.',
+    );
+    expect(client.aiProposals).not.toHaveBeenCalled();
+  });
+
   it('requires generation, human context review, and a separate confirmation', async () => {
     const fixture = TestBed.createComponent(DetectiveAiPanelComponent);
     fixture.componentRef.setInput('context', {

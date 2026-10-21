@@ -86,17 +86,19 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
     } else if (endpoint === 'incident_action' && body?.['type'] === 'create') {
       expect(body['caseId']).toBeUndefined();
       expect(body['context']).toEqual({ OrderID: { type: 'number', value: 11039 } });
+      expect(body['operationId']).toEqual(expect.stringMatching(/^operation-/));
       savedIncident = {
         ref: incidentRef, uid: 'INC-1', title: 'Order 11039 is missing',
         description: 'Customer reported a missing order.', status: 'open',
         canonicalContext: { facts: [] }, lastSeq: 1,
       };
-      await route.fulfill({ status: 200, json: { incident: savedIncident, receipt: 'created' } });
+      await route.fulfill({ status: 200, json: { incident: savedIncident, receipt: body['operationId'] } });
     } else if (endpoint === 'incident_action' && body?.['type'] === 'start-case') {
       expect(body['incidentRef']).toBe(`${incidentRef.storeId}/${incidentRef.incidentId}`);
+      expect(body['operationId']).toEqual(expect.stringMatching(/^operation-/));
       const draft = body['case'] as Record<string, unknown>;
       linkedCase = { ...draft, version: 1, incidentRefs: [`${incidentRef.storeId}/${incidentRef.incidentId}`] };
-      await route.fulfill({ status: 200, json: { incident: savedIncident, case: linkedCase, receipt: 'started' } });
+      await route.fulfill({ status: 200, json: { incident: savedIncident, case: linkedCase, receipt: body['operationId'] } });
     } else if (endpoint === 'case_events') {
       await route.fulfill({ status: 200, json: { caseId: linkedCase?.['id'], events: [], hasMore: false } });
     } else {
