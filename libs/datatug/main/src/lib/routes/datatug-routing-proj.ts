@@ -29,13 +29,6 @@ const emptyShellProjectRoutes: Routes = [
       ),
   },
   {
-    path: 'tags',
-    loadComponent: () =>
-      import('../pages/signed-in/tags/tags-page.component').then(
-        (m) => m.TagsPageComponent,
-      ),
-  },
-  {
     path: 'dbmodel/:' + routingParamDbModelId,
     loadComponent: () =>
       import('../pages/signed-in/db-schema/db-model-page.component').then(
@@ -70,6 +63,29 @@ const emptyShellProjectRoutes: Routes = [
 ];
 
 export const datatugProjectRoutes: Routes = [
+  {
+    path: 'quick-search',
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'tags',
+    data: { discovery: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'search-schema/:dbModelId',
+    data: { schemaDetail: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
   {
     path: 'browser-db/:connectionId/table/:table',
     loadComponent: () =>
@@ -353,6 +369,9 @@ export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter(
     [
       'chat',
       'overview',
+      'quick-search',
+      'tags',
+      'search-schema/:dbModelId',
       'board/:board',
       'boards',
       'entities',

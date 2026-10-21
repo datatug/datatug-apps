@@ -15,6 +15,9 @@
 </ion-header>
 
 <ion-content color="light">
+  <ion-item [routerLink]="quickSearchHref()" detail="true">
+    <ion-label>Quick Search</ion-label>
+  </ion-item>
   @if (shippingHref(); as href) {
     <ion-item [routerLink]="href" detail="true"
       ><ion-label>Shipping training workspace</ion-label></ion-item

@@ -61,6 +61,9 @@ function sharedQueryPage(rest: string): boolean {
   return (
     rest === '' ||
     rest === '/overview' ||
+    rest === '/quick-search' ||
+    rest === '/tags' ||
+    /^\/search-schema\/[A-Za-z0-9_-]+$/.test(rest) ||
     rest === '/queries' ||
     rest === '/shipping' ||
     rest === '/boards' ||

@@ -161,6 +161,10 @@ export class ProjectPageComponent
       project.brief?.access ? `Access: ${project.brief.access}` : undefined,
     ].filter((value): value is string => !!value);
   });
+  protected readonly quickSearchHref = computed(() =>
+    this.router.parseUrl(projectPageHref(this.project()?.ref, ['quick-search'])),
+  );
+
   protected readonly publicDataHref = computed(() => {
     const ref = this.project()?.ref;
     return ref && !ref.spaceID

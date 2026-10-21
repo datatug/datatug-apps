@@ -145,6 +145,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       icon: 'home-outline',
     },
     ...ProjectMenuTopComponent.sortProjectPages([
+      { path: 'quick-search', title: 'Quick Search', icon: 'search-outline' },
       {
         path: 'sessions',
         title: 'Sessions',
@@ -328,6 +329,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       (this.metadataOnly() &&
         ![
           'overview',
+          'quick-search',
           'queries',
           'checks',
           'detective',

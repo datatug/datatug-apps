@@ -24,6 +24,7 @@ type NavigationOptions = NonNullable<
 >;
 
 export type ProjectTopLevelPage =
+  | 'quick-search'
   | 'sessions'
   | 'chat'
   | 'checks'
