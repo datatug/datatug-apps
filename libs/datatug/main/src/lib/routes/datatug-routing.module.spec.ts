@@ -42,6 +42,9 @@ describe('datatugRoutes', () => {
         candidate.path === 'space/:spaceId/store/:storeId/project/:projectId',
     );
     expect(route?.children?.map((child) => child.path)).toEqual([
+      'quick-search',
+      'tags',
+      'search-schema/:dbModelId',
       '',
       'overview',
       'shipping',
@@ -68,6 +71,11 @@ describe('datatugRoutes', () => {
     const base = ['space', 'S1', 'store', 'firestore', 'project', 'P1'];
     expect(matches(base)).toBe(true);
     expect(matches([...base, 'queries'])).toBe(true);
+    expect(matches([...base, 'quick-search'])).toBe(true);
+    expect(matches([...base, 'tags'])).toBe(true);
+    expect(matches([...base, 'search-schema', 'chinook'])).toBe(true);
+    expect(matches([...base, 'search-schema', 'bad.id'])).toBe(false);
+    expect(matches([...base, 'search-schema', 'chinook', 'extra'])).toBe(false);
     expect(matches([...base, 'incidents'])).toBe(true);
     expect(matches([...base, 'incidents', 'new'])).toBe(true);
     expect(
