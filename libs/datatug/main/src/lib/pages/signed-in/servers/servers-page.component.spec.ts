@@ -100,12 +100,14 @@ describe('ServersPage source discovery lifecycle', () => {
   let environmentsByRequest: Subject<IEnvironmentFull[]>[];
   let catalogsByRequest: Subject<{ connections: readonly unknown[] }>[];
   let connectionCatalog: ReturnType<typeof vi.fn>;
+  let logError: ReturnType<typeof vi.fn>;
 
   beforeEach(async () => {
     current$ = new Subject<IProjectRef | undefined>();
     serversByRequest = [];
     environmentsByRequest = [];
     catalogsByRequest = [];
+    logError = vi.fn();
     connectionCatalog = vi.fn(() => {
       const result = new Subject<{ connections: readonly unknown[] }>();
       catalogsByRequest.push(result);
@@ -122,7 +124,7 @@ describe('ServersPage source discovery lifecycle', () => {
         },
         {
           provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn() },
+          useValue: { logError, logErrorHandler: vi.fn() },
         },
         { provide: ModalController, useValue: { create: vi.fn() } },
         { provide: NavController, useValue: { navigateForward: vi.fn() } },
@@ -285,6 +287,22 @@ describe('ServersPage source discovery lifecycle', () => {
     expect(text).toContain('Database servers could not be loaded.');
     expect(text).toContain('chinook');
     expect(text).toContain('SQLite · Public API declared');
+  });
+
+  it('shows only the inline catalog error and does not emit a global error', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([{ id: 'local', title: 'LOCAL' }]);
+    catalogsByRequest[0].error(new Error('catalog unavailable'));
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain(
+      'The project connection catalog could not be loaded.',
+    );
+    expect(text).not.toContain('No sample database sources are declared.');
+    expect(text).not.toContain('No sample database sources match');
+    expect(logError).not.toHaveBeenCalled();
   });
 
   it('shows an environment-specific retry state without hiding scoped servers or catalog sources', async () => {

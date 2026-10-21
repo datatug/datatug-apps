@@ -82,6 +82,14 @@
           <strong>Sample database sources</strong>
           <p>Declared in this project's connection catalog</p>
         </ion-label>
+        @if (!catalogError() && visibleDatasetSources(); as datasets) {
+          <ion-badge slot="end" color="medium">
+            {{ datasets.length }}
+            {{ datasets.length === 1 ? 'dataset' : 'datasets' }}
+          </ion-badge>
+        }
+      </ion-item-divider>
+      <ion-list>
         @if (catalogError()) {
           <ion-item color="danger">
             <ion-icon name="warning-outline" slot="start" />
@@ -94,14 +102,6 @@
             >
           </ion-item>
         } @else if (visibleDatasetSources(); as datasets) {
-          <ion-badge slot="end" color="medium">
-            {{ datasets.length }}
-            {{ datasets.length === 1 ? 'dataset' : 'datasets' }}
-          </ion-badge>
-        }
-      </ion-item-divider>
-      <ion-list>
-        @if (visibleDatasetSources(); as datasets) {
           @for (dataset of datasets; track dataset.dataset) {
             <ion-item [attr.data-testid]="'catalog-dataset-' + dataset.dataset">
               <ion-icon name="server-outline" slot="start" color="primary" />

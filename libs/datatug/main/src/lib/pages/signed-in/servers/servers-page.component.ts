@@ -595,16 +595,12 @@ export class ServersPageComponent implements OnDestroy {
             return;
           this.catalogSources.set(catalog?.connections ?? []);
         },
-        error: (err) => {
+        error: () => {
           if (epoch !== this.loadEpoch || request !== this.catalogRequest)
             return;
           this.catalogSources.set([]);
           this.catalogError.set(
             'The project connection catalog could not be loaded.',
-          );
-          this.errorLogger.logError(
-            err,
-            'Failed to load project connection catalog',
           );
         },
       });

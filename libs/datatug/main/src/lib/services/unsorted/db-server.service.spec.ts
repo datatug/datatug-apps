@@ -192,6 +192,60 @@ describe('DbServerService', () => {
     ]);
   });
 
+  it('discovers the environment-only server declarations used by the demo project', async () => {
+    // Mirrors demo-project-1/environments/*/*.env.json: the project has no
+    // dbDrivers directory, so project_full returns an empty driver list while
+    // the database declarations live entirely in the five environments.
+    getFull.mockReturnValue(
+      of({
+        dbDrivers: [],
+        environments: [
+          {
+            id: 'local',
+            dbServers: [
+              {
+                driver: 'sqlite3',
+                catalogs: [
+                  'chinook-local',
+                  'orders',
+                  'countries',
+                  'chinook',
+                  'geo',
+                ],
+              },
+            ],
+          },
+          {
+            id: 'dev',
+            dbServers: [{ driver: 'sqlite3', catalogs: ['chinook-local'] }],
+          },
+          {
+            id: 'prod',
+            dbServers: [{ driver: 'sqlite3', catalogs: ['chinook-prod'] }],
+          },
+          { id: 'QA', dbServers: [] },
+          { id: 'UAT', dbServers: [] },
+        ],
+      }),
+    );
+
+    await expect(
+      firstValueFrom(
+        service.getDbServers({ storeId: 'http://agent', projectId: 'demo' }),
+      ),
+    ).resolves.toEqual([
+      {
+        dbServer: { driver: 'sqlite3', host: '' },
+        databasesCount: 7,
+        environments: [
+          { envId: 'local', databasesCount: 5 },
+          { envId: 'dev', databasesCount: 1 },
+          { envId: 'prod', databasesCount: 1 },
+        ],
+      },
+    ]);
+  });
+
   it.each([{ dbDrivers: [] }, { dbServers: [] }, {}, { dbDrivers: null }])(
     'returns an empty list for an empty or omitted server declaration: %o',
     async (response) => {
