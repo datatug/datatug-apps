@@ -2,7 +2,7 @@ import type { Page } from '@playwright/test';
 import { expect, test } from './helpers/demodb-guard';
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { installFakeGithub } from './helpers/fake-github';
@@ -425,9 +425,19 @@ test.describe('GitHub-store project — every side-menu page loads without error
     ).toBeVisible({
       timeout: 15_000,
     });
-    await expect(activePage(page).getByText('sqlite3')).toBeVisible({
-      timeout: 15_000,
-    });
+    const chinookSource = activePage(page).getByTestId(
+      'database-database:chinook',
+    );
+    await expect(chinookSource).toContainText('sqlite3', { timeout: 15_000 });
+    await chinookSource
+      .getByRole('button', { name: 'Registered catalog', exact: true })
+      .click();
+    await expect(page).toHaveURL(`${PAGES_URL}/env/local/db/chinook`);
+    await expect(
+      page
+        .locator('sneat-datatug-env-db sneat-datatug-page-title')
+        .filter({ hasText: 'chinook (local)' }),
+    ).toBeVisible();
 
     // --- Queries (side-menu click) ------------------------------------------
     await page
@@ -848,11 +858,8 @@ test.describe('GitHub-store project — every side-menu page loads without error
    * HOST segment, always `NaN`, instead of `v[1]`, the port segment) so a
    * server's own Port row can actually render.
    *
-   * The GitHub demo project's one aggregated DB server (sqlite3) declares no
-   * `host` at all — a route segment can never be empty, so `getDbServerId()`
-   * emits the placeholder `'-'` for it (`database.ts`); `getDbServerFromId()`
-   * maps that back to an empty host. This test exercises exactly that
-   * host-less row — the only DB server this demo project actually has.
+   * Exercise an explicitly hosted project server: hostless SQLite catalog
+   * declarations now navigate to catalogs through the generic source list.
    */
   test('clicking a DB server row on the Servers page opens its detail page, not NG04002 (S160)', async ({
     page,
@@ -865,103 +872,140 @@ test.describe('GitHub-store project — every side-menu page loads without error
       }
     });
 
-    await page.goto(PROJECT_URL);
-    await page
-      .locator('sneat-datatug-project-menu-top ion-item', {
-        hasText: 'Servers',
-      })
-      .click();
-    await expect(
-      activePage(page).locator('ion-title', { hasText: 'Servers' }),
-    ).toBeVisible({
-      timeout: 15_000,
-    });
+    const scratch = mkdtempSync(join(tmpdir(), 'datatug-hosted-server-'));
+    try {
+      const project = join(scratch, 'demo-project-1');
+      const environment = join(project, 'environments/local');
+      mkdirSync(environment, { recursive: true });
+      writeFileSync(
+        join(project, 'datatug-project.json'),
+        JSON.stringify({
+          id: 'datatug-demo-project',
+          title: 'DataTug Demo: DemoDB datasets',
+          environments: [{ id: 'local' }],
+        }),
+      );
+      writeFileSync(
+        join(environment, 'local.env.json'),
+        JSON.stringify({
+          id: 'local',
+          dbServers: [
+            {
+              driver: 'postgres',
+              host: 'db.example.test',
+              catalogs: ['ledger'],
+            },
+          ],
+        }),
+      );
+      execFileSync('git', ['init', '--quiet', scratch]);
+      execFileSync('git', ['-C', scratch, 'add', '.']);
+      execFileSync('git', [
+        '-C',
+        scratch,
+        '-c',
+        'user.name=E2E',
+        '-c',
+        'user.email=e2e@example.test',
+        'commit',
+        '--quiet',
+        '-m',
+        'Configure hosted database server fixture',
+      ]);
+      await installFakeGithub(page, [
+        { fullName: 'datatug/datatug-demo-project', dir: scratch },
+      ]);
+      await page.goto(PROJECT_URL);
+      await page
+        .locator('sneat-datatug-project-menu-top ion-item', {
+          hasText: 'Servers',
+        })
+        .click();
+      await expect(
+        activePage(page).locator('ion-title', { hasText: 'Servers' }),
+      ).toBeVisible({
+        timeout: 15_000,
+      });
 
-    // The demo project's one DB server row — no host (sqlite3 is
-    // file-based), driver badge "sqlite3" (see the "servers all render
-    // their real content" test above for the same row). Clicking the row's
-    // own label, not the row itself: `ion-item`'s bounding-box center can
-    // land on the trailing delete button on a narrow viewport, and
-    // `deleteDbServer()`'s own `event.stopPropagation()` would swallow the
-    // click before it ever reaches `goDbServer()`.
-    await activePage(page)
-      .locator('ion-item[tappable]', { hasText: 'sqlite3' })
-      .locator('ion-label')
-      .click();
+      // This configured host is an actionable inventory instance; file-only and
+      // hostless catalog declarations deliberately have no server-detail action.
+      await activePage(page)
+        .getByRole('button', { name: 'Configured server', exact: true })
+        .click();
+      await expect(page).toHaveURL(
+        `${PAGES_URL}/servers/db/postgres/db.example.test`,
+      );
 
-    // The real route, at the project's short address (G-A1c): `…/-/servers/db/:dbDriver/:dbServerId` —
-    // `'-'` is the host-less placeholder id.
-    await expect(page).toHaveURL(
-      new RegExp(`${PAGES_URL.replace(/[.]/g, '\\.')}/servers/db/sqlite3/-$`),
-    );
+      // Scoped to `sneat-datatug-dbserver` (`DbserverPageComponent`'s own
+      // selector) rather than `activePage(page)`: during Ionic's page-
+      // transition animation both the leaving `sneat-datatug-servers` page and
+      // the entering `sneat-datatug-dbserver` page briefly carry `.ion-page`
+      // without `.ion-page-hidden` at the same time (confirmed live — the
+      // same class of timing issue `active-page.ts`'s own doc comment already
+      // describes for `sneat-datatug-boards`), which trips
+      // `activePage(page).locator('sneat-datatug-page-title')`'s strict-mode
+      // check (2 matches: the Servers page's own title AND this one). Only
+      // one `sneat-datatug-dbserver` element ever exists in this test's own
+      // navigation (one click, one destination), so this tag alone is
+      // unambiguous regardless of transition timing.
+      const dbServerPage = page.locator('sneat-datatug-dbserver');
+      await expect(dbServerPage).toBeVisible({ timeout: 15_000 });
 
-    // Scoped to `sneat-datatug-dbserver` (`DbserverPageComponent`'s own
-    // selector) rather than `activePage(page)`: during Ionic's page-
-    // transition animation both the leaving `sneat-datatug-servers` page and
-    // the entering `sneat-datatug-dbserver` page briefly carry `.ion-page`
-    // without `.ion-page-hidden` at the same time (confirmed live — the
-    // same class of timing issue `active-page.ts`'s own doc comment already
-    // describes for `sneat-datatug-boards`), which trips
-    // `activePage(page).locator('sneat-datatug-page-title')`'s strict-mode
-    // check (2 matches: the Servers page's own title AND this one). Only
-    // one `sneat-datatug-dbserver` element ever exists in this test's own
-    // navigation (one click, one destination), so this tag alone is
-    // unambiguous regardless of transition timing.
-    const dbServerPage = page.locator('sneat-datatug-dbserver');
-    await expect(dbServerPage).toBeVisible({ timeout: 15_000 });
+      // `sneat-datatug-page-title`'s "{Page title} @ {Project title}" format
+      // (see the S158 test above) — proves the route actually activated
+      // `DbserverPageComponent` inside the real project context, not just
+      // that *something* rendered where the Servers list used to be.
+      const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
+      await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
+      await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
 
-    // `sneat-datatug-page-title`'s "{Page title} @ {Project title}" format
-    // (see the S158 test above) — proves the route actually activated
-    // `DbserverPageComponent` inside the real project context, not just
-    // that *something* rendered where the Servers list used to be.
-    const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
-    await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
-    await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
+      // The rest of the detail page's own structure — Host/Environments/
+      // Databases cards (dbserver-page.component.html) — renders even though
+      // this demo project has no host to show.
+      await expect(
+        dbServerPage.locator('ion-label', { hasText: 'Host' }),
+      ).toBeVisible();
+      await expect(
+        dbServerPage.locator('ion-item-divider', { hasText: 'Environments' }),
+      ).toBeVisible();
+      await expect(
+        dbServerPage.locator('ion-item-divider', { hasText: 'Databases' }),
+      ).toBeVisible();
 
-    // The rest of the detail page's own structure — Host/Environments/
-    // Databases cards (dbserver-page.component.html) — renders even though
-    // this demo project has no host to show.
-    await expect(
-      dbServerPage.locator('ion-label', { hasText: 'Host' }),
-    ).toBeVisible();
-    await expect(
-      dbServerPage.locator('ion-item-divider', { hasText: 'Environments' }),
-    ).toBeVisible();
-    await expect(
-      dbServerPage.locator('ion-item-divider', { hasText: 'Databases' }),
-    ).toBeVisible();
+      // S161 — this SPA nav (Servers list -> click Configured server) used to
+      // leave BOTH the Environments and Databases > Known cards on
+      // "Loading..." forever: `DbserverPageComponent`'s constructor ran
+      // `route.paramMap` and `projectContextService.current$` as two
+      // independent subscriptions, and `loadData()` (triggered off `current$`
+      // alone) read `this.dbServer()`'s value at that instant — when
+      // `current$` (already resolved for this in-app nav, a project the user
+      // is already browsing) fired before `paramMap` had produced the
+      // `dbServerId`/`dbDriver` params, `dbServer` was still `undefined`, so
+      // `loadSummary()`/`loadCatalogs()`'s own `if (!dbServer) return;` guard
+      // exited silently — no HTTP call, no error, nothing ever reran
+      // `loadData()` once the params did arrive
+      // (`dbserver-page.component.spec.ts`'s own S161 describe block proves
+      // the mechanism at the unit level). Fixed by combining both streams so
+      // `loadData()` only runs once both are known. `GITHUB_DBSERVER_DETAIL_MESSAGE`
+      // (`db-server.service.ts`) now renders in both cards instead.
+      await expect(dbServerPage.getByText('Loading...')).toHaveCount(0, {
+        timeout: 10_000,
+      });
+      const readOnlyNotices = dbServerPage.getByText(
+        /live database details need a DataTug agent/,
+      );
+      await expect(readOnlyNotices.first()).toBeVisible({ timeout: 10_000 });
+      // Rendered once in the Environments card and once in the Databases >
+      // Known tab (both loaders hit the identical GitHub-store guard).
+      await expect(readOnlyNotices).toHaveCount(2);
 
-    // S161 — this SPA nav (Servers list -> click the sqlite3 row) used to
-    // leave BOTH the Environments and Databases > Known cards on
-    // "Loading..." forever: `DbserverPageComponent`'s constructor ran
-    // `route.paramMap` and `projectContextService.current$` as two
-    // independent subscriptions, and `loadData()` (triggered off `current$`
-    // alone) read `this.dbServer()`'s value at that instant — when
-    // `current$` (already resolved for this in-app nav, a project the user
-    // is already browsing) fired before `paramMap` had produced the
-    // `dbServerId`/`dbDriver` params, `dbServer` was still `undefined`, so
-    // `loadSummary()`/`loadCatalogs()`'s own `if (!dbServer) return;` guard
-    // exited silently — no HTTP call, no error, nothing ever reran
-    // `loadData()` once the params did arrive
-    // (`dbserver-page.component.spec.ts`'s own S161 describe block proves
-    // the mechanism at the unit level). Fixed by combining both streams so
-    // `loadData()` only runs once both are known. `GITHUB_DBSERVER_DETAIL_MESSAGE`
-    // (`db-server.service.ts`) now renders in both cards instead.
-    await expect(dbServerPage.getByText('Loading...')).toHaveCount(0, {
-      timeout: 10_000,
-    });
-    const readOnlyNotices = dbServerPage.getByText(
-      /live database details need a DataTug agent/,
-    );
-    await expect(readOnlyNotices.first()).toBeVisible({ timeout: 10_000 });
-    // Rendered once in the Environments card and once in the Databases >
-    // Known tab (both loaders hit the identical GitHub-store guard).
-    await expect(readOnlyNotices).toHaveCount(2);
-
-    expect(errors).toEqual([]);
-    expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual(
-      [],
-    );
+      expect(errors).toEqual([]);
+      expect(consoleErrors.filter((text) => text.includes('NG04002'))).toEqual(
+        [],
+      );
+    } finally {
+      rmSync(scratch, { recursive: true, force: true });
+    }
   });
 });
 
