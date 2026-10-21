@@ -516,7 +516,7 @@ export class QuickSearchPageComponent {
     projectPageHref(this.project(), ['overview']),
   );
   private generation = 0;
-  private authKey?: string;
+  private readonly authKey = signal<string | undefined>(undefined);
   private request?: Subscription;
   constructor() {
     addIcons({
@@ -533,8 +533,8 @@ export class QuickSearchPageComponent {
     });
     this.auth.authState.pipe(takeUntilDestroyed()).subscribe((auth) => {
       const key = JSON.stringify([auth.status, auth.user?.uid]);
-      if (key === this.authKey) return;
-      this.authKey = key;
+      if (key === this.authKey()) return;
+      this.authKey.set(key);
       this.invalidateSearch();
       this.status.set(undefined);
       this.snapshot.set(undefined);
