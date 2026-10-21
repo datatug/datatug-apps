@@ -43,6 +43,55 @@ export interface ShippingAck {
   };
   current: ShippingPointer;
 }
+export type ShippingPublicationState =
+  | { exists: false }
+  | { exists: true; publication: { revision: number; enabled: boolean } };
+export interface ShippingPublicationIntent {
+  spaceID: string;
+  projectId: string;
+  sourceId: typeof SHIPPING_SOURCE;
+  environment: string;
+  operationId: string;
+  expectedRevision: number;
+  enabled: boolean;
+}
+export function publicationEnvironment(value: string): string {
+  if (typeof value !== 'string' || !/^[A-Za-z0-9_-]{1,128}$/.test(value))
+    throw new Error('Choose an admitted environment.');
+  return value;
+}
+export function validatePublicationIntent(
+  ref: IProjectRef,
+  value: ShippingPublicationIntent,
+): void {
+  const scope = shippingScope(ref);
+  if (
+    !value ||
+    Object.keys(value).some(
+      (key) =>
+        ![
+          'spaceID',
+          'projectId',
+          'sourceId',
+          'environment',
+          'operationId',
+          'expectedRevision',
+          'enabled',
+        ].includes(key),
+    ) ||
+    value.spaceID !== scope.spaceID ||
+    value.projectId !== scope.project ||
+    value.sourceId !== SHIPPING_SOURCE ||
+    typeof value.operationId !== 'string' ||
+    !/^[A-Za-z0-9_-]{1,128}$/.test(value.operationId) ||
+    !Number.isSafeInteger(value.expectedRevision) ||
+    value.expectedRevision < 0 ||
+    value.expectedRevision >= 32 ||
+    typeof value.enabled !== 'boolean'
+  )
+    throw new Error('Invalid query-access operation.');
+  publicationEnvironment(value.environment);
+}
 export function shippingScope(ref: IProjectRef) {
   if (
     !isSharedProjectRef(ref) ||
@@ -118,6 +167,69 @@ export function validateShippingIntent(
 @Injectable({ providedIn: 'root' })
 export class ShippingApiService {
   private readonly api = inject(DatatugApiService);
+  publication(ref: IProjectRef, environment: string) {
+    return defer(() =>
+      this.api.get<ShippingPublicationState>(
+        'datatug/shipping/publication',
+        new HttpParams({
+          fromObject: {
+            ...shippingScope(ref),
+            environment: publicationEnvironment(environment),
+          },
+        }),
+      ),
+    ).pipe(
+      map((value) => {
+        if (
+          !value ||
+          typeof value.exists !== 'boolean' ||
+          Object.keys(value).some(
+            (key) => !['exists', 'publication'].includes(key),
+          ) ||
+          (!value.exists && 'publication' in value) ||
+          (value.exists &&
+            (!value.publication ||
+              Object.keys(value.publication).some(
+                (key) => !['revision', 'enabled'].includes(key),
+              ) ||
+              !Number.isSafeInteger(value.publication.revision) ||
+              value.publication.revision < 1 ||
+              value.publication.revision > 32 ||
+              typeof value.publication.enabled !== 'boolean'))
+        )
+          throw new Error('Current query access could not be verified.');
+        return value;
+      }),
+    );
+  }
+  publish(ref: IProjectRef, intent: ShippingPublicationIntent, actor: string) {
+    return defer(() => {
+      validatePublicationIntent(ref, intent);
+      if (!actor) throw new Error('Sign in to change query access.');
+      return this.api.post<{
+        environment: string;
+        revision: number;
+        enabled: boolean;
+        actorId: string;
+      }>('datatug/shipping/publication', intent, {
+        retryUnauthorizedOnce: false,
+      });
+    }).pipe(
+      map((value) => {
+        if (
+          !value ||
+          value.environment !== intent.environment ||
+          value.enabled !== intent.enabled ||
+          value.actorId !== actor ||
+          value.revision !== intent.expectedRevision + 1
+        )
+          throw new Error(
+            'Query-access acknowledgement is uncertain. Retry the original operation.',
+          );
+        return value;
+      }),
+    );
+  }
   revision(ref: IProjectRef) {
     return defer(() =>
       this.api.get<ShippingRevision>(

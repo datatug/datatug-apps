@@ -130,6 +130,20 @@ describe('native Check input preview', () => {
     expect(new URL(href, document.location.origin).origin).toBe(document.location.origin);
   });
 
+  it('omits explicit unsupported shipping dispatch while preserving omitted invoice global fallback', async () => {
+    const capabilities = signal<ContextCapabilities>({...caps, environments:[scope,{environmentId:'demo',identityDomain:'shipping-domain',title:'Shipping orders',nativeDetective:false}]});
+    TestBed.configureTestingModule({imports:[SessionDetectiveRunComponent],providers:[provideRouter([]),
+      {provide:SessionWorkspaceService,useValue:{capabilities,snapshotFor:()=>snapshot(),draft:()=>({attachments:[]}),canExecuteFor:()=>true}},
+      {provide:SessionContextApiService,useValue:{}},{provide:NATIVE_OPERATION_STORE,useValue:{read:async()=>undefined}}]});
+    const fixture=TestBed.createComponent(SessionDetectiveRunComponent);
+    fixture.componentRef.setInput('project',project);fixture.componentRef.setInput('sessionId','s1');fixture.componentRef.setInput('environment','demo');fixture.componentRef.setInput('check',{id:'invoice-check',title:'Invoice',version:1,inputs:[],steps:[]});
+    fixture.detectChanges();await fixture.whenStable();
+    const options=fixture.nativeElement.querySelectorAll('ion-select[aria-label="Source identity domain"] ion-select-option') as NodeListOf<HTMLElement>;
+    const values=[...options].map(item=>(item as HTMLElement & {value:string}).value);
+    expect(values).toContain(contextScopeKey(scope));expect(values).not.toContain(contextScopeKey({environmentId:'demo',identityDomain:'shipping-domain'}));
+    capabilities.set({...capabilities(),nativeDetective:false});await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('not enabled by this server');
+  });
   it('does not select a first domain and sends only explicit exact revision mappings', async () => {
     const current = signal(snapshot());
     const nativeDetective = vi.fn(async (_project, _caps, request) => ({

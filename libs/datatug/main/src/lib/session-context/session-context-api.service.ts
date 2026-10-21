@@ -81,7 +81,7 @@ export class SessionContextApiService {
     const value = await this.get<ContextCapabilities>(ref, 'capabilities');
     if (value?.schemaVersion !== 1 || !value.actorId || !value.databaseId || !value.projectId ||
       !Array.isArray(value.environments) || !Array.isArray(value.actions) ||
-      value.environments.some((scope) => !scope.environmentId || !scope.identityDomain) ||
+      value.environments.some((scope) => !scope.environmentId || !scope.identityDomain || (scope.nativeDetective !== undefined && typeof scope.nativeDetective !== 'boolean')) ||
       (value.nativeDetective === true && (!validDetectiveOperationScope(value.operationScope) || value.operationScope.databaseId !== value.databaseId || value.operationScope.projectId !== value.projectId)))
       throw new Error('This server does not support session Context Bags.');
     return value;
