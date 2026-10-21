@@ -158,6 +158,21 @@ describe('ProjectPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+  it('submits the overview query to Quick Search while preserving project qualifiers',()=>{
+    const page=component as unknown as {setProjRef(ref: {storeId:string;projectId:string;projectApi:'cloud';branch:string}):void};
+    page.setProjRef({storeId:'github.com',projectId:'repo@owner@',projectApi:'cloud',branch:'main'});
+    component.quickSearchQuery.set(' Customers ');
+    const event=new Event('submit',{cancelable:true});component.submitQuickSearch(event);
+    expect(event.defaultPrevented).toBe(true);
+    const router=TestBed.inject(Router),navigate=vi.mocked(router.navigateByUrl);
+    expect(navigate).toHaveBeenCalledOnce();
+    expect(router.serializeUrl(navigate.mock.calls[0][0] as never)).toBe('/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customers');
+  });
+  it('does not navigate with an empty overview query',()=>{
+    component.quickSearchQuery.set('  ');component.submitQuickSearch(new Event('submit'));
+    expect(TestBed.inject(Router).navigateByUrl).not.toHaveBeenCalled();
+  });
+
 
   it('offers the private sandbox route only for the canonical DemoDB project', () => {
     const page = component as unknown as {
