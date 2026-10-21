@@ -246,6 +246,13 @@ export class ChecksPageComponent {
 
   protected readonly state = signal<DetectiveState | undefined>(undefined);
   protected readonly loading = signal(false);
+  protected readonly runCapabilityHint = computed(() => {
+    const capabilities = this.state()?.capabilities;
+    if (this.loading() || !capabilities || capabilities.canRun) return '';
+    return capabilities.localOnly
+      ? 'Check execution is disabled on the connected local agent.'
+      : 'Check execution is unavailable for this project on the connected service.';
+  });
   protected readonly busy = signal(false);
   protected readonly error = signal('');
   protected readonly message = signal('');
