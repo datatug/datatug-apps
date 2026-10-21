@@ -397,7 +397,7 @@ assert asynchronous repaint without a manual detectChanges rescue.
 **Id:** task-1
 **Verifies:** shared-project-environment-order#ac:default-and-reconciliation
 **Depends-On:** —
-**Status:** planning
+**Status:** in_progress
 
 Publish additive Core DTO/order/presentation-safe contracts, optional ProjectFile field, scalar comparator and shared golden fixtures. Preserve unknown project/environment metadata and update every reconstruction/summary serialization path; prove full qualifier isolation and complete-permutation validation.
 
