@@ -399,12 +399,22 @@ export class ProjectQueryApiService {
     );
   }
 
+  environmentReference(ref: IProjectRef): IProjectRef {
+    const wire = this.reference(ref);
+    return {
+      storeId: wire.storage,
+      projectId: wire.project,
+      ...(ref.spaceID !== undefined ? { spaceID: ref.spaceID } : {}),
+      ...(ref.projectApi !== undefined ? { projectApi: ref.projectApi } : {}),
+      ...(ref.branch !== undefined ? { branch: ref.branch } : {}),
+    };
+  }
+
   environmentState<T>(ref: IProjectRef): Observable<T> {
-    return this.get<T>(
-      ref,
-      'environments/state',
-      ref.branch ? { branch: ref.branch } : undefined,
-    );
+    return this.get<T>(ref, 'environments/state', {
+      ...(ref.branch !== undefined ? { branch: ref.branch } : {}),
+      ...(ref.projectApi !== undefined ? { projectApi: ref.projectApi } : {}),
+    });
   }
 
   environmentOperation<T>(

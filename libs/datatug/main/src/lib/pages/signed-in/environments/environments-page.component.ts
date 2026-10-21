@@ -142,6 +142,7 @@ export class EnvironmentsPageComponent {
           this.state.set(undefined);
           this.environments.set(undefined);
           this.loadError.set(false);
+          this.reason.set('');
           this.editing.set(false);
           this.creating.set(false);
           this.busy.set(false);

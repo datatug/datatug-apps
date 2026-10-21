@@ -27,14 +27,15 @@ export class ProjectEnvironmentStateService {
     return this.api.environmentState<EnvironmentState>(ref).pipe(
       map((state) => {
         const scope = state?.scope;
+        const requested = this.api.environmentReference(ref);
         if (
           state?.contract !== 'environment-state/1' ||
           !scope ||
-          scope.storeId !== ref.storeId ||
-          scope.projectId !== ref.projectId ||
-          scope.branch !== ref.branch ||
-          scope.spaceID !== ref.spaceID ||
-          scope.projectApi !== ref.projectApi ||
+          scope.storeId !== requested.storeId ||
+          scope.projectId !== requested.projectId ||
+          scope.branch !== requested.branch ||
+          scope.spaceID !== requested.spaceID ||
+          scope.projectApi !== requested.projectApi ||
           !scope.authorityId ||
           !state.revision ||
           !/^[a-f0-9]{64}$/.test(state.scopeBinding)
