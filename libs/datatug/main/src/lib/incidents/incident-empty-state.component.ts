@@ -56,7 +56,7 @@ addIcons({ addOutline, flaskOutline });
         src="/assets/illustrations/incidentius-harbor-800.webp"
         alt="" loading="lazy" decoding="async"
         width="800"
-        height="600"
+        height="450"
       />
     </section>
     <ol class="investigation-steps" aria-label="How an investigation starts">

@@ -27,11 +27,11 @@ describe('HostedIncidentsPageComponent', () => {
   let routeParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let queryParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
 
-  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref, draft = '', initialIncidents = [incident]) {
+  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref, draft = '', initialIncidents = [incident], initialEnvironments = ['demo']) {
     const project = new BehaviorSubject({ ref: projectRef });
     const authState = new BehaviorSubject({ status: 'authenticated', user: { uid: 'sarah' } });
     client.incidentEvents.mockReturnValue(of({ events: [], nextAfterSeq: 1, hasMore: false }));
-    client.state.mockReturnValue(of({ environments: ['demo'], cases, capabilities: { canWrite } }));
+    client.state.mockReturnValue(of({ environments: initialEnvironments, cases, capabilities: { canWrite } }));
     client.projectIncidents.mockReturnValue(of({ incidents: initialIncidents }));
     client.projectIncident.mockReturnValue(of({ incident }));
     const data = { incidentMode: mode };
@@ -100,6 +100,35 @@ describe('HostedIncidentsPageComponent', () => {
     expect(client.incidentAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cloud' }), expect.objectContaining({ title: '[Test] Edited title', description: 'Edited observation', environment: 'demo' }), expect.any(String), expect.any(AbortSignal));
     expect(router.navigate).toHaveBeenCalledWith([expect.stringContaining('/incidents/detective-incidents-9c561d36/INC-1')], { queryParams: { environment: 'demo' }, replaceUrl: true });
   });
+  it('keeps the test-draft marker, explanation and edits when selecting another environment', async () => {
+    const fixture = await mount('new', [], 'demo', true, ref, 'test', [], ['demo', 'staging']);
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void; (): string };
+      description: { set(value: string): void; (): string };
+      environment(): string;
+      selectEnvironment(value: string): void;
+    };
+    page.title.set('[Test] My edited delivery report');
+    page.description.set('An edited observation to keep while changing environment.');
+    page.selectEnvironment('staging');
+    expect(router.navigate).toHaveBeenCalledWith([], {
+      relativeTo: TestBed.inject(ActivatedRoute),
+      queryParams: { environment: 'staging', draft: 'test' },
+      replaceUrl: true,
+    });
+    // Deliver the query emitted by real Router navigation, so the explanation
+    // is checked after the route and environment state have both updated.
+    queryParams$.next(convertToParamMap(router.navigate.mock.calls.at(-1)?.[1]?.queryParams));
+    await fixture.whenStable();
+    expect(page.environment()).toBe('staging');
+    expect(page.title()).toBe('[Test] My edited delivery report');
+    expect(page.description()).toBe('An edited observation to keep while changing environment.');
+    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
+    expect(fixture.nativeElement.textContent).toContain('This is an editable example.');
+    expect(fixture.nativeElement.textContent).toContain('Choosing Create incident saves a real incident');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
   it('clears canceled sample text and preserves an unsaved hosted draft on query changes', async () => {
     const fixture = await mount('new', [], 'demo', true, ref, 'test');
     const page = fixture.componentInstance as unknown as {

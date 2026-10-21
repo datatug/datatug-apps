@@ -430,7 +430,10 @@ export class HostedIncidentsPageComponent {
     this.environment.set(value);
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { environment: value },
+      queryParams: {
+        environment: value,
+        ...(this.mode() === 'new' && this.isTestDraft() ? { draft: 'test' } : {}),
+      },
       replaceUrl: true,
     });
   }
