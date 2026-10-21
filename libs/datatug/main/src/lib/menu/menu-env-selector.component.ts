@@ -3,6 +3,7 @@ import {
   DestroyRef,
   OnChanges,
   SimpleChanges,
+  computed,
   inject,
   input,
   signal,
@@ -15,12 +16,12 @@ import {
   IonButtons,
   IonIcon,
   IonItem,
-  IonLabel,
   IonNote,
   IonSelect,
   IonSelectOption,
-  IonText,
 } from '@ionic/angular';
+import { RouterLink } from '@angular/router';
+import { projectPageHref } from '../nav/project-page-href';
 import { IProjectContext } from '../nav/nav-models';
 import { IProjEnv } from '../models/definition/project';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
@@ -38,10 +39,9 @@ import { catchError, map, switchMap } from 'rxjs/operators';
     IonButtons,
     IonButton,
     IonIcon,
-    IonLabel,
     IonNote,
     IonBadge,
-    IonText,
+    RouterLink,
     IonSelect,
     IonSelectOption,
   ],
@@ -59,6 +59,9 @@ export class MenuEnvSelectorComponent implements OnChanges {
   readonly project = input<IProjectContext>();
   readonly currentEnvId = input<string>();
   readonly environments = signal<IProjEnv[]>([]);
+  readonly environmentsHref = computed(() =>
+    projectPageHref(this.project()?.ref, 'environments'),
+  );
   private readonly projectChanges = new Subject<IProjectContext | undefined>();
 
   constructor() {
@@ -105,8 +108,11 @@ export class MenuEnvSelectorComponent implements OnChanges {
   }
 
   switchEnv(event: CustomEvent): void {
+    this.selectEnv(event.detail.value as string);
+  }
+
+  selectEnv(envId: string): void {
     try {
-      const envId = event.detail.value as string;
       if (
         envId !== this.currentEnvId() &&
         this.environments().some((env) => env.id === envId)

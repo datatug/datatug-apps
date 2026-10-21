@@ -1,3 +1,5 @@
+import type { SemanticMeaningScope } from '../../queries/semantic-mapping';
+import type { ProjectMeaningAck, ProjectMeaningsCatalog, ProjectMeaningWrite } from '../../meanings/project-meanings-contract';
 import type { GithubProjectCopySource } from '../../project/new-project/github-project-copy-source';
 import { projectApiQuery } from '../../nav/project-api-routing';
 import { type IProjectSummary } from '../../models/definition/project';
@@ -435,6 +437,26 @@ export class ProjectQueryApiService {
       'queries/all_queries',
       ref.branch ? { branch: ref.branch } : undefined,
     );
+  }
+
+  meaningScope(ref: IProjectRef): SemanticMeaningScope {
+    const scope = this.reference(ref);
+    const github = ['github', 'github.com'].includes(ref.storeId) ? readGithubProjectId(ref.projectId) : undefined;
+    const branch = ref.branch || (github?.ok ? github.id.ref : undefined);
+    return {...scope, storage: scope.storage as SemanticMeaningScope['storage'], ...(branch ? {branch} : {})};
+  }
+
+  meaningsCatalog(ref: IProjectRef): Observable<ProjectMeaningsCatalog> {
+    return this.get(ref, 'meanings/catalog', ref.branch ? { branch: ref.branch } : undefined);
+  }
+
+  changeMeaning(ref: IProjectRef, write: ProjectMeaningWrite): Observable<ProjectMeaningAck> {
+    return defer(() => {
+      const body = { ...this.reference(ref), ...(ref.branch ? {branch: ref.branch} : {}), ...write };
+      return ['github.com', 'github', 'firestore'].includes(ref.storeId)
+        ? this.api.post<ProjectMeaningAck>('datatug/meanings/change', body, { retryUnauthorizedOnce: false })
+        : this.http.post<ProjectMeaningAck>(buildAgentUrl(ref.storeId, '/meanings/change'), body);
+    });
   }
 
   capabilities(ref: IProjectRef): Observable<ProjectQueryCapabilities> {

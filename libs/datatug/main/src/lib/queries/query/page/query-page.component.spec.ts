@@ -1,3 +1,4 @@
+import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DemoTableDraftService } from '../../demo-table-draft.service';
 import * as publicChartQueries from '../../public-data/public-chart-query';
@@ -313,6 +314,7 @@ describe('copied browser table query entry', () => {
     const dispatch = queryDispatchTestStub();
     dispatchStart.mockClear();
     await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
       { provide: ErrorLogger, useValue: logger },
       { provide: RandomIdService, useValue: { newRandomId } },
       { provide: ActivatedRoute, useValue: route }, { provide: Router, useValue: router },
@@ -457,6 +459,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     const catalog = vi.fn(() => of({ connections: [declaration] }));
     let ids = 0;
     await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
       { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
       { provide: RandomIdService, useValue: { newRandomId: () => `handoff-${++ids}` } },
       { provide: ActivatedRoute, useValue: route },
@@ -663,6 +666,7 @@ describe('SqlEditorPage', () => {
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
         {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
@@ -1050,6 +1054,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
         imports: [QueryPageComponent],
         schemas: [CUSTOM_ELEMENTS_SCHEMA],
         providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
           {
             provide: GitHubProjectActivityService,
             useValue: githubProjectActivityStub(),
@@ -6823,6 +6828,7 @@ select (
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
         {provide:SneatAuthStateService,useValue:{authState:of({status:'authenticated',user:{uid:'sarah'}})}},
         {
           provide: GitHubProjectActivityService,
@@ -11060,6 +11066,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
         {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
@@ -11264,6 +11271,7 @@ describe('QueryPageComponent dependency injection', () => {
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
         {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
@@ -11330,6 +11338,7 @@ describe('QueryPageComponent dependency injection', () => {
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
         {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
@@ -11500,6 +11509,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        { provide: ProjectMeaningsService, useValue: {} },
         {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),

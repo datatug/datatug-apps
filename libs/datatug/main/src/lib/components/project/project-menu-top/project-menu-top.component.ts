@@ -178,12 +178,12 @@ export class ProjectMenuTopComponent implements OnDestroy {
         count: (proj) => proj?.entities?.length,
       },
       {
-        path: 'environments',
-        title: 'Environments',
-        icon: 'earth-outline',
-        count: (proj) => proj?.environments?.length,
+        path: 'meanings',
+        title: 'Meanings',
+        icon: 'book-outline',
       },
       {
+
         path: 'servers',
         title: 'Servers',
         icon: 'server-outline',

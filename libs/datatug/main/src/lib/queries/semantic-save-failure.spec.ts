@@ -45,6 +45,7 @@ describe('mapping failed-save boundary', () => {
     const pending = new Subject<never>();
     const harness = {
       semanticMappingLifetime: 0,
+    semanticLocalSave: signal(undefined),
       runResult: () => undefined,
       selectedSource: () => undefined,
       project: {

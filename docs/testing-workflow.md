@@ -35,3 +35,9 @@ import and comparison baseline still use their declared public URLs, served
 from the same checked-in bundled bytes only in focused browser journeys.
 Other live dataset checks and demo checkouts remain independent of this
 browser catalog pin.
+
+## Project Meanings acceptance
+
+Run `DATATUG_BIN=/absolute/path/to/current/datatug wb run -- pnpm nx run datatug-app:e2e-meanings` with a CLI that supports the Meanings catalog/change endpoints and canonical query references. The app build may require `GH_TOKEN` for its verified release dependency; keep the token in the environment. This focused lane owns an isolated browser, app server, temporary Git project, agent port and foreground CLI child, and removes them on teardown. It does not use the older CLI pinned by the general browser suite.
+
+The journey creates an entity and field through the UI, cold-reloads both, checks the list-to-field deep link, saves an exact canonical reference through the real query API, checks the disabled Delete action and provider rejection, removes the query reference, then deletes the field and entity through the UI. It records screenshots of the list, persisted field, protected field and empty catalog. The reference setup exercises the real persistence API; the semantic picker is covered separately by focused unit tests.
