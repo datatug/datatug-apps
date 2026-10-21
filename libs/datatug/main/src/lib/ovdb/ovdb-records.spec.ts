@@ -12,7 +12,7 @@ import {
   type OvdbConnection,
   type OvdbDescriptor,
 } from './ovdb-connection';
-import { deleteOvdbRecord, describeOvdbError, listOvdbRows, resetOvdbDatabase, updateOvdbRecord } from './ovdb-records';
+import { getOvdbRecord, createOvdbRecord, ovdbCreateKeyField, deleteOvdbRecord, describeOvdbError, listOvdbRows, resetOvdbDatabase, updateOvdbRecord } from './ovdb-records';
 
 const entry = demoSqliteCatalog.chinook;
 
@@ -95,6 +95,30 @@ describe('capability gating', () => {
 });
 
 describe('OVDB record operations', () => {
+  it('creates without overwriting, marks modified, and resets to the pristine data', async () => {
+    const { connection, database, modified } = await localConnection();
+    const row = await createOvdbRecord(connection, 'Artist', { ArtistId: 4, Name: null });
+    expect(row).toEqual({ key: 'Artist/4', data: { ArtistId: 4, Name: null } });
+    expect((await listOvdbRows(connection, 'Artist')).at(-1)).toEqual(row);
+    expect(await getOvdbRecord(connection, 'Artist', 4)).toEqual(row);
+    expect(modified.value).toBe(true);
+    await expect(createOvdbRecord(connection, 'Artist', { ArtistId: 4, Name: 'duplicate' })).rejects.toBeDefined();
+    expect(database.tables['Artist'].at(-1)?.['Name']).toBeNull();
+    await resetOvdbDatabase(connection);
+    expect(database.tables['Artist']).toHaveLength(3);
+    expect(modified.value).toBe(false);
+  });
+
+  it('gates creation on a writable descriptor and supported typed single key', async () => {
+    const { descriptor, connection, requests } = await localConnection();
+    expect(ovdbCreateKeyField(descriptor, 'Artist')).toBe('ArtistId');
+    expect(ovdbCreateKeyField(descriptor, 'PlaylistTrack')).toBeUndefined();
+    expect(ovdbCreateKeyField(neonLikeDescriptor, 'artist')).toBeUndefined();
+    const before = requests.length;
+    await expect(createOvdbRecord(connection, 'Artist', { ArtistId: '' })).rejects.toThrow('record key');
+    expect(requests).toHaveLength(before);
+  });
+
   it('lists rows through POST /query', async () => {
     const { connection, requests } = await localConnection();
     const rows = await listOvdbRows(connection, 'Artist', 2);

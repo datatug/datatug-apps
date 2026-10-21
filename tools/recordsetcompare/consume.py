@@ -314,7 +314,14 @@ def _download_archive(lock: dict[str, Any], directory: Path, asset: dict[str, An
                 location = error.headers.get("Location") if error.headers else None
                 error.close()
                 if status not in {301, 302, 303, 307, 308}:
-                    raise VerificationError(f"GitHub release asset request failed with HTTP {status}") from None
+                    hint = (
+                        ". No GH_TOKEN or GITHUB_TOKEN environment credential is configured; "
+                        "export one with release read access when the asset requires authentication. "
+                        "This HTTP downloader does not inherit gh's stored login."
+                        if status == 404 and not token and urlsplit(current_url).hostname == ASSET_API_HOST
+                        else ""
+                    )
+                    raise VerificationError(f"GitHub release asset request failed with HTTP {status}{hint}") from None
                 if redirect_count >= MAX_DOWNLOAD_REDIRECTS:
                     raise VerificationError("GitHub release asset exceeded the redirect limit") from None
                 current_url = _validated_asset_redirect(current_url, location)

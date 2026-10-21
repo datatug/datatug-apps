@@ -9,527 +9,576 @@
 </ion-header>
 
 <ion-content>
-  <ion-grid>
-    <ion-row>
-      <ion-col size="12" class="ion-padding-start">
-        <h1 tabindex="-1" data-board-page-heading>
-          {{ projBoard()?.title || 'Board' }}
-        </h1>
-        @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
-          <ion-button fill="outline" (click)="toggleFavorite()">
-            {{
-              choicesForBoard().favorite
-                ? 'Remove from favorites'
-                : 'Add to favorites'
-            }}
-          </ion-button>
-          <p>Favorites are saved in this browser.</p>
-          @if (favoriteError()) {
-            <p role="alert">{{ favoriteError() }}</p>
-          }
-        } @else if (boardDef() && !tutorialActive()) {
-          <p>Favorites are unavailable for local agent projects.</p>
-        }
-      </ion-col>
-    </ion-row>
-  </ion-grid>
-
-  @if (unsupportedProject()) {
-    <p class="ion-padding" role="status">
-      Board details are unavailable for this shared Space project.
-    </p>
-  } @else if (loading()) {
-    <p class="ion-padding" role="status">Loading board…</p>
-  } @else if (loadError()) {
-    <p class="ion-padding" role="alert">{{ loadError() }}</p>
-  }
-
-  @if (tutorialAvailable() && !tutorialActive()) {
-    <section class="tutorial-entry" aria-label="Build this board step by step">
-      <div>
-        <strong>Explore how this dashboard is built</strong>
-        <p>
-          The completed saved board is ready to explore. You can also build a
-          working copy in this browser session.
-        </p>
-      </div>
-      <button type="button" (click)="buildStepByStep()">
-        Build Step by Step
-      </button>
-    </section>
-  }
-
-  @if (tutorialActive()) {
-    <section class="tutorial-panel" aria-labelledby="tutorial-heading">
-      <div class="tutorial-heading">
-        <div>
-          <p class="tutorial-eyebrow">Session-only working copy</p>
-          <h2 id="tutorial-heading" tabindex="-1" data-tutorial-route-heading>
-            Build this dashboard
-          </h2>
-          <p>
-            Your changes stay in this browser session. The saved board remains
-            complete.
-          </p>
-        </div>
-        <button type="button" (click)="showFullBoard()">
-          Show Full Dashboard
-        </button>
-      </div>
-      @if (tutorialLoading()) {
-        <p role="status">Opening your working copy…</p>
-      } @else if (tutorialError()) {
-        <p role="alert">{{ tutorialError() }}</p>
-      } @else if (tutorialBoard()) {
-        <p class="tutorial-progress">
-          {{ visibleTutorialCards().length }} of
-          {{ visibleTutorialCards().length + hiddenTutorialCards().length }}
-          cards in your board.
-          {{ tutorialProgressCue() }}
-        </p>
-        <p
-          class="tutorial-announcement"
-          role="status"
-          aria-live="polite"
-          aria-atomic="true"
-        >
-          {{ tutorialAnnouncement() }}
-        </p>
-        @if (tutorialGuide(); as guide) {
-          <section class="tutorial-step" aria-label="Current tutorial step">
-            <p class="tutorial-eyebrow">
-              Step {{ guide.index + 1 }} of {{ tutorialStepCount() }}
-            </p>
-            <h3 tabindex="-1" data-tutorial-guide-focus>
-              {{ guide.step.title }}
-            </h3>
-            <p>{{ guide.step.detail }}</p>
-            @if (guide.step.limitation) {
-              <p role="status">{{ guide.step.limitation }}</p>
+  @if (hostedProject()) {
+    <sneat-datatug-hosted-board-workspace />
+  } @else {
+    <ion-grid>
+      <ion-row>
+        <ion-col size="12" class="ion-padding-start">
+          <h1 tabindex="-1" data-board-page-heading>
+            {{ projBoard()?.title || 'Board' }}
+          </h1>
+          <div class="board-header-actions">
+            @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
+              <ion-button fill="outline" (click)="toggleFavorite()">
+                {{
+                  choicesForBoard().favorite
+                    ? 'Remove from favorites'
+                    : 'Add to favorites'
+                }}
+              </ion-button>
             }
-          </section>
-        }
-        @if (!visibleTutorialCards().length && nextCardPreview(); as nextCard) {
-          <section
-            class="tutorial-canvas"
-            aria-label="Your empty tutorial canvas"
-          >
-            <span class="tutorial-canvas-icon" aria-hidden="true">▥</span>
-            <h3 tabindex="-1" data-tutorial-empty-focus>
-              Your canvas starts here
-            </h3>
-            <p>
-              Next: <strong>{{ nextCard.title || nextCard.id }}</strong>
-            </p>
-            <p>
-              Reveal the saved card, inspect its source rows, then return to the
-              chart. Every change stays in this browser session.
-            </p>
-            <p>Saved query choices: {{ tutorialQueries().join(' · ') }}</p>
-            <button
-              type="button"
-              (click)="addNextTutorialCard()"
-              [disabled]="!tutorialStatus()?.canNext"
-            >
-              Add the first card
-            </button>
-          </section>
-        }
-        <div class="tutorial-controls" role="group" aria-label="Tutorial steps">
-          @if (tutorialStatus()?.control === 'guided') {
-            <button
-              type="button"
-              (click)="previousTutorialStep()"
-              [disabled]="!tutorialStatus()?.canPrevious"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              (click)="addNextTutorialCard()"
-              [disabled]="!tutorialStatus()?.canNext"
-            >
-              Next Step
-            </button>
-            <button type="button" (click)="takeTutorialControl()">
-              Take Control
-            </button>
-          } @else {
-            <p>
-              Resume keeps your edits and continues the remaining guide actions.
-              Restart clears this working copy.
-            </p>
-            <button type="button" (click)="resumeTutorial()">
-              Resume Guide
-            </button>
-          }
-          <button type="button" (click)="restartTutorial()">Restart</button>
-        </div>
-        @if (tutorialStatus()?.control === 'free') {
-          <div class="tutorial-free" aria-label="Edit this working copy">
-            <div>
-              <h3>Available cards</h3>
-              @for (card of hiddenTutorialCards(); track card.id) {
-                <div class="tutorial-card-action">
-                  <span>{{ card.title || card.id }}</span>
-                  <button
-                    type="button"
-                    (click)="addTutorialCard(card)"
-                    [attr.aria-label]="'Add ' + (card.title || card.id)"
-                  >
-                    Add
-                  </button>
-                </div>
-              } @empty {
-                <p>All saved cards are on your board.</p>
-              }
-            </div>
-            <div>
-              <h3>Cards on your board</h3>
-              @for (item of visibleTutorialCards(); track item.card.id) {
-                <div class="tutorial-card-action">
-                  <span>{{ item.card.title || item.card.id }}</span>
-                  <div class="tutorial-card-buttons">
-                    <button
-                      type="button"
-                      (click)="
-                        moveTutorialCard(
-                          item.card,
-                          item.rowIndex,
-                          item.index - 1
-                        )
-                      "
-                      [disabled]="item.index === 0"
-                      [attr.aria-label]="
-                        'Move ' + (item.card.title || item.card.id) + ' up'
-                      "
-                    >
-                      ↑
-                    </button>
-                    <button
-                      type="button"
-                      (click)="
-                        moveTutorialCard(
-                          item.card,
-                          item.rowIndex,
-                          item.index + 1
-                        )
-                      "
-                      [disabled]="item.index === item.rowLength - 1"
-                      [attr.aria-label]="
-                        'Move ' + (item.card.title || item.card.id) + ' down'
-                      "
-                    >
-                      ↓
-                    </button>
-                    <button
-                      type="button"
-                      (click)="removeTutorialCard(item.card)"
-                      [attr.aria-label]="
-                        'Remove ' + (item.card.title || item.card.id)
-                      "
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              } @empty {
-                <p>No cards in the working copy yet.</p>
-              }
-            </div>
+            @if (tutorialAvailable() && !tutorialActive()) {
+              <button
+                type="button"
+                class="tutorial-start"
+                (click)="buildStepByStep()"
+              >
+                Build Step by Step
+              </button>
+              <details class="tutorial-about">
+                <summary>How this dashboard is built</summary>
+                <strong>Explore how this dashboard is built</strong>
+                <p>
+                  The completed saved board is ready to explore. You can also
+                  build a working copy in this browser session.
+                </p>
+              </details>
+            }
           </div>
-          @if (authoringError()) {
-            <p role="alert">{{ authoringError() }}</p>
+          @if (boardDef() && !tutorialActive() && canSaveFavorite()) {
+            <p>Favorites are saved in this browser.</p>
+            @if (favoriteError()) {
+              <p role="alert">{{ favoriteError() }}</p>
+            }
+          } @else if (boardDef() && !tutorialActive()) {
+            <p>Favorites are unavailable for local agent projects.</p>
           }
-          <section
-            class="tutorial-editors"
-            aria-label="Edit widgets in this session"
+        </ion-col>
+      </ion-row>
+    </ion-grid>
+
+    @if (unsupportedProject()) {
+      <p class="ion-padding" role="status">
+        Board details are unavailable for this shared Space project.
+      </p>
+    } @else if (loading()) {
+      <p class="ion-padding" role="status">Loading board…</p>
+    } @else if (loadError()) {
+      <p class="ion-padding" role="alert">{{ loadError() }}</p>
+    }
+
+    @if (tutorialActive()) {
+      <section class="tutorial-panel" aria-labelledby="tutorial-heading">
+        <div class="tutorial-heading">
+          <div>
+            <p class="tutorial-eyebrow">Session-only working copy</p>
+            <h2 id="tutorial-heading" tabindex="-1" data-tutorial-route-heading>
+              Build this dashboard
+            </h2>
+            <p>
+              Your changes stay in this browser session. The saved board remains
+              complete.
+            </p>
+          </div>
+          <button type="button" (click)="showFullBoard()">
+            Show Full Dashboard
+          </button>
+        </div>
+        @if (tutorialLoading()) {
+          <p role="status">Opening your working copy…</p>
+        } @else if (tutorialError()) {
+          <p role="alert">{{ tutorialError() }}</p>
+        } @else if (tutorialBoard()) {
+          <p class="tutorial-progress">
+            {{ visibleTutorialCards().length }} of
+            {{ visibleTutorialCards().length + hiddenTutorialCards().length }}
+            cards in your board.
+            {{ tutorialProgressCue() }}
+          </p>
+          <p
+            class="tutorial-announcement"
+            role="status"
+            aria-live="polite"
+            aria-atomic="true"
           >
-            <h3 tabindex="-1" data-tutorial-authoring-focus>
-              Edit widgets in this session
-            </h3>
-            @for (
-              editor of tutorialEditors();
-              track editor.key;
-              let editorIndex = $index
-            ) {
-              <fieldset>
-                <legend>{{ editor.title }}</legend>
-                @if (editor.tabs; as tabs) {
-                  @for (tab of tabs; track tab.key; let index = $index) {
-                    <div class="tutorial-tab-editor">
-                      <strong>{{ tab.title }}</strong>
-                      <div class="tutorial-card-buttons">
-                        <button
-                          type="button"
-                          (click)="tabAction(editor, 'select-tab', tab.key)"
-                          [attr.aria-label]="'Select ' + tab.title"
-                        >
-                          Select tab
-                        </button>
-                        <button
-                          type="button"
-                          (click)="
-                            tabAction(editor, 'reorder-tab', tab.key, index - 1)
-                          "
-                          [disabled]="index === 0"
-                          [attr.aria-label]="'Move ' + tab.title + ' earlier'"
-                        >
-                          ↑
-                        </button>
-                        <button
-                          type="button"
-                          (click)="
-                            tabAction(editor, 'reorder-tab', tab.key, index + 1)
-                          "
-                          [disabled]="index === tabs.length - 1"
-                          [attr.aria-label]="'Move ' + tab.title + ' later'"
-                        >
-                          ↓
-                        </button>
-                        <button
-                          type="button"
-                          (click)="tabAction(editor, 'remove-tab', tab.key)"
-                          [attr.aria-label]="'Remove ' + tab.title"
-                        >
-                          Remove tab
-                        </button>
-                      </div>
-                      @if (tab.queryId) {
-                        <label
-                          >Saved query for {{ tab.title }}
-                          <select
-                            [value]="tab.queryId"
-                            (change)="
-                              tabAction(
-                                editor,
-                                'set-tab-query',
-                                tab.key,
-                                $any($event.target).value
-                              )
-                            "
-                          >
-                            @for (queryId of tutorialQueries(); track queryId) {
-                              <option [value]="queryId">{{ queryId }}</option>
-                            }
-                          </select>
-                        </label>
-                      }
-                    </div>
-                  }
-                  <div class="tutorial-add-tab">
-                    <label
-                      >New tab title
-                      <input
-                        #newTabTitle
-                        maxlength="160"
-                        placeholder="My query tab"
-                    /></label>
-                    <label
-                      >Saved query
-                      <select #newTabQuery>
-                        @for (queryId of tutorialQueries(); track queryId) {
-                          <option [value]="queryId">{{ queryId }}</option>
-                        }
-                      </select></label
-                    >
+            {{ tutorialAnnouncement() }}
+          </p>
+          @if (tutorialGuide(); as guide) {
+            <section class="tutorial-step" aria-label="Current tutorial step">
+              <p class="tutorial-eyebrow">
+                Step {{ guide.index + 1 }} of {{ tutorialStepCount() }}
+              </p>
+              <h3 tabindex="-1" data-tutorial-guide-focus>
+                {{ guide.step.title }}
+              </h3>
+              <p>{{ guide.step.detail }}</p>
+              @if (guide.step.limitation) {
+                <p role="status">{{ guide.step.limitation }}</p>
+              }
+            </section>
+          }
+          @if (
+            !visibleTutorialCards().length && nextCardPreview();
+            as nextCard
+          ) {
+            <section
+              class="tutorial-canvas"
+              aria-label="Your empty tutorial canvas"
+            >
+              <span class="tutorial-canvas-icon" aria-hidden="true">▥</span>
+              <h3 tabindex="-1" data-tutorial-empty-focus>
+                Your canvas starts here
+              </h3>
+              <p>
+                Next: <strong>{{ nextCard.title || nextCard.id }}</strong>
+              </p>
+              <p>
+                Reveal the saved card, inspect its source rows, then return to
+                the chart. Every change stays in this browser session.
+              </p>
+              <p>Saved query choices: {{ tutorialQueries().join(' · ') }}</p>
+              <button
+                type="button"
+                (click)="addNextTutorialCard()"
+                [disabled]="!tutorialStatus()?.canNext"
+              >
+                Add the first card
+              </button>
+            </section>
+          }
+          <div
+            class="tutorial-controls"
+            role="group"
+            aria-label="Tutorial steps"
+          >
+            @if (tutorialStatus()?.control === 'guided') {
+              <button
+                type="button"
+                (click)="previousTutorialStep()"
+                [disabled]="!tutorialStatus()?.canPrevious"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                (click)="addNextTutorialCard()"
+                [disabled]="!tutorialStatus()?.canNext"
+              >
+                Next Step
+              </button>
+              <button type="button" (click)="takeTutorialControl()">
+                Take Control
+              </button>
+            } @else {
+              <p>
+                Resume keeps your edits and continues the remaining guide
+                actions. Restart clears this working copy.
+              </p>
+              <button type="button" (click)="resumeTutorial()">
+                Resume Guide
+              </button>
+            }
+            <button type="button" (click)="restartTutorial()">Restart</button>
+          </div>
+          @if (tutorialStatus()?.control === 'free') {
+            <div class="tutorial-free" aria-label="Edit this working copy">
+              <div>
+                <h3>Available cards</h3>
+                @for (card of hiddenTutorialCards(); track card.id) {
+                  <div class="tutorial-card-action">
+                    <span>{{ card.title || card.id }}</span>
                     <button
                       type="button"
-                      (click)="
-                        addTutorialTab(
-                          editor,
-                          newTabTitle.value,
-                          newTabQuery.value
-                        )
-                      "
+                      (click)="addTutorialCard(card)"
+                      [attr.aria-label]="'Add ' + (card.title || card.id)"
                     >
-                      Add tab
+                      Add
                     </button>
                   </div>
+                } @empty {
+                  <p>All saved cards are on your board.</p>
                 }
-                @if (editor.chart; as chart) {
-                  <label
-                    >Result view
-                    <select
-                      [value]="chart.defaultView ?? 'chart'"
-                      (change)="
-                        setTutorialView(editor, $any($event.target).value)
-                      "
-                    >
-                      <option value="chart">Chart</option>
-                      <option value="grid">Source rows</option>
-                    </select></label
-                  >
-                  @if (chart.chart.type === 'bar-race') {
-                    <label
-                      >Top countries
-                      <input
-                        type="number"
-                        min="1"
-                        max="100"
-                        [value]="chart.chart.topN"
-                        (change)="
-                          setTutorialChart(
-                            editor,
-                            'topN',
-                            $any($event.target).value
+              </div>
+              <div>
+                <h3>Cards on your board</h3>
+                @for (item of visibleTutorialCards(); track item.card.id) {
+                  <div class="tutorial-card-action">
+                    <span>{{ item.card.title || item.card.id }}</span>
+                    <div class="tutorial-card-buttons">
+                      <button
+                        type="button"
+                        (click)="
+                          moveTutorialCard(
+                            item.card,
+                            item.rowIndex,
+                            item.index - 1
                           )
                         "
-                    /></label>
-                    <label
-                      >Count mode
-                      <select
-                        [value]="chart.chart.mode"
-                        (change)="
-                          setTutorialChart(
+                        [disabled]="item.index === 0"
+                        [attr.aria-label]="
+                          'Move ' + (item.card.title || item.card.id) + ' up'
+                        "
+                      >
+                        ↑
+                      </button>
+                      <button
+                        type="button"
+                        (click)="
+                          moveTutorialCard(
+                            item.card,
+                            item.rowIndex,
+                            item.index + 1
+                          )
+                        "
+                        [disabled]="item.index === item.rowLength - 1"
+                        [attr.aria-label]="
+                          'Move ' + (item.card.title || item.card.id) + ' down'
+                        "
+                      >
+                        ↓
+                      </button>
+                      <button
+                        type="button"
+                        (click)="removeTutorialCard(item.card)"
+                        [attr.aria-label]="
+                          'Remove ' + (item.card.title || item.card.id)
+                        "
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  </div>
+                } @empty {
+                  <p>No cards in the working copy yet.</p>
+                }
+              </div>
+            </div>
+            @if (authoringError()) {
+              <p role="alert">{{ authoringError() }}</p>
+            }
+            <section
+              class="tutorial-editors"
+              aria-label="Edit widgets in this session"
+            >
+              <h3 tabindex="-1" data-tutorial-authoring-focus>
+                Edit widgets in this session
+              </h3>
+              @for (
+                editor of tutorialEditors();
+                track editor.key;
+                let editorIndex = $index
+              ) {
+                <fieldset>
+                  <legend>{{ editor.title }}</legend>
+                  @if (editor.tabs; as tabs) {
+                    @for (tab of tabs; track tab.key; let index = $index) {
+                      <div class="tutorial-tab-editor">
+                        <strong>{{ tab.title }}</strong>
+                        <div class="tutorial-card-buttons">
+                          <button
+                            type="button"
+                            (click)="tabAction(editor, 'select-tab', tab.key)"
+                            [attr.aria-label]="'Select ' + tab.title"
+                          >
+                            Select tab
+                          </button>
+                          <button
+                            type="button"
+                            (click)="
+                              tabAction(
+                                editor,
+                                'reorder-tab',
+                                tab.key,
+                                index - 1
+                              )
+                            "
+                            [disabled]="index === 0"
+                            [attr.aria-label]="'Move ' + tab.title + ' earlier'"
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            (click)="
+                              tabAction(
+                                editor,
+                                'reorder-tab',
+                                tab.key,
+                                index + 1
+                              )
+                            "
+                            [disabled]="index === tabs.length - 1"
+                            [attr.aria-label]="'Move ' + tab.title + ' later'"
+                          >
+                            ↓
+                          </button>
+                          <button
+                            type="button"
+                            (click)="tabAction(editor, 'remove-tab', tab.key)"
+                            [attr.aria-label]="'Remove ' + tab.title"
+                          >
+                            Remove tab
+                          </button>
+                        </div>
+                        @if (tab.queryId) {
+                          <label
+                            >Saved query for {{ tab.title }}
+                            <select
+                              [value]="tab.queryId"
+                              (change)="
+                                tabAction(
+                                  editor,
+                                  'set-tab-query',
+                                  tab.key,
+                                  $any($event.target).value
+                                )
+                              "
+                            >
+                              @for (
+                                queryId of tutorialQueries();
+                                track queryId
+                              ) {
+                                <option [value]="queryId">{{ queryId }}</option>
+                              }
+                            </select>
+                          </label>
+                        }
+                      </div>
+                    }
+                    <div class="tutorial-add-tab">
+                      <label
+                        >New tab title
+                        <input
+                          #newTabTitle
+                          maxlength="160"
+                          placeholder="My query tab"
+                      /></label>
+                      <label
+                        >Saved query
+                        <select #newTabQuery>
+                          @for (queryId of tutorialQueries(); track queryId) {
+                            <option [value]="queryId">{{ queryId }}</option>
+                          }
+                        </select></label
+                      >
+                      <button
+                        type="button"
+                        (click)="
+                          addTutorialTab(
                             editor,
-                            'mode',
-                            $any($event.target).value
+                            newTabTitle.value,
+                            newTabQuery.value
                           )
                         "
                       >
-                        <option value="period">Monthly</option>
-                        <option value="cumulative">Cumulative</option>
+                        Add tab
+                      </button>
+                    </div>
+                  }
+                  @if (editor.chart; as chart) {
+                    <label
+                      >Result view
+                      <select
+                        [value]="chart.defaultView ?? 'chart'"
+                        (change)="
+                          setTutorialView(editor, $any($event.target).value)
+                        "
+                      >
+                        <option value="chart">Chart</option>
+                        <option value="grid">Source rows</option>
                       </select></label
                     >
-                  } @else {
-                    <label
-                      >Category column
-                      <input
-                        [value]="chart.chart.categoryColumn"
-                        (change)="
-                          setTutorialChart(
-                            editor,
-                            'categoryColumn',
-                            $any($event.target).value
-                          )
-                        "
-                    /></label>
-                    <label
-                      >Measure column
-                      <input
-                        [value]="chart.chart.valueColumn"
-                        (change)="
-                          setTutorialChart(
-                            editor,
-                            'valueColumn',
-                            $any($event.target).value
-                          )
-                        "
-                    /></label>
-                  }
-                  <h4>Independent source bindings</h4>
-                  @for (source of chart.sources; track source.id) {
-                    <p>
-                      <strong>{{ source.id }}</strong> · {{ source.queryId }}
-                    </p>
-                    @for (
-                      binding of source.parameters ?? [];
-                      track binding.id
-                    ) {
+                    @if (chart.chart.type === 'bar-race') {
+                      <label
+                        >Top countries
+                        <input
+                          type="number"
+                          min="1"
+                          max="100"
+                          [value]="chart.chart.topN"
+                          (change)="
+                            setTutorialChart(
+                              editor,
+                              'topN',
+                              $any($event.target).value
+                            )
+                          "
+                      /></label>
+                      <label
+                        >Count mode
+                        <select
+                          [value]="chart.chart.mode"
+                          (change)="
+                            setTutorialChart(
+                              editor,
+                              'mode',
+                              $any($event.target).value
+                            )
+                          "
+                        >
+                          <option value="period">Monthly</option>
+                          <option value="cumulative">Cumulative</option>
+                        </select></label
+                      >
+                    } @else {
+                      <label
+                        >Category column
+                        <input
+                          [value]="chart.chart.categoryColumn"
+                          (change)="
+                            setTutorialChart(
+                              editor,
+                              'categoryColumn',
+                              $any($event.target).value
+                            )
+                          "
+                      /></label>
+                      @if (chart.chart.series; as series) {
+                        @for (item of series; track item.id) {
+                          <label
+                            >{{ item.title }} measure column
+                            <input
+                              [value]="item.valueColumn"
+                              (change)="
+                                setTutorialSeriesColumn(
+                                  editor,
+                                  item.id,
+                                  $any($event.target).value
+                                )
+                              "
+                            />
+                          </label>
+                        }
+                      } @else {
+                        <label
+                          >Measure column
+                          <input
+                            [value]="chart.chart.valueColumn"
+                            (change)="
+                              setTutorialChart(
+                                editor,
+                                'valueColumn',
+                                $any($event.target).value
+                              )
+                            "
+                        /></label>
+                      }
+                    }
+                    <h4>Independent source bindings</h4>
+                    @for (source of chart.sources; track source.id) {
                       <p>
-                        {{ binding.id }} ←
-                        {{
-                          binding.boardParameterId || 'saved constant/default'
-                        }}
+                        <strong>{{ source.id }}</strong> · {{ source.queryId }}
                       </p>
+                      @for (
+                        binding of source.parameters ?? [];
+                        track binding.id
+                      ) {
+                        <p>
+                          {{ binding.id }} ←
+                          {{
+                            binding.boardParameterId || 'saved constant/default'
+                          }}
+                        </p>
+                      }
+                      <button
+                        type="button"
+                        [disabled]="chart.sources.length === 1"
+                        (click)="removeTutorialSource(editor, source.id)"
+                      >
+                        Remove source {{ source.id }}
+                      </button>
                     }
                     <button
                       type="button"
-                      [disabled]="chart.sources.length === 1"
-                      (click)="removeTutorialSource(editor, source.id)"
+                      aria-disabled="true"
+                      (click)="explainSourceLimit(editorIndex)"
+                      [attr.aria-describedby]="
+                        'source-composition-limit-' + editorIndex
+                      "
                     >
-                      Remove source {{ source.id }}
+                      Add another source (unavailable)
                     </button>
+                    <p
+                      [id]="'source-composition-limit-' + editorIndex"
+                      tabindex="-1"
+                    >
+                      A second source is unavailable until separate execution
+                      and composition are supported. Use a separate saved-query
+                      tab for independent inspection; missing provider rights
+                      keep a source chart-ineligible.
+                    </p>
                   }
-                  <button
-                    type="button"
-                    aria-disabled="true"
-                    (click)="explainSourceLimit(editorIndex)"
-                    [attr.aria-describedby]="
-                      'source-composition-limit-' + editorIndex
-                    "
-                  >
-                    Add another source (unavailable)
-                  </button>
-                  <p
-                    [id]="'source-composition-limit-' + editorIndex"
-                    tabindex="-1"
-                  >
-                    A second source is unavailable until separate execution and
-                    composition are supported. Use a separate saved-query tab
-                    for independent inspection; missing provider rights keep a
-                    source chart-ineligible.
-                  </p>
-                }
-              </fieldset>
-            }
-          </section>
+                </fieldset>
+              }
+            </section>
+          }
         }
-      }
-    </section>
-  }
+      </section>
+    }
 
-  @if (boardDef() && parameters()?.length) {
-    <ion-card>
-      @if (lookupUnavailable()) {
-        <p class="ion-padding" role="status">
-          Lookup is unavailable for this project connection or branch. Enter
-          parameter values manually.
-        </p>
-      }
-      <p class="ion-padding">
-        Parameter changes clear previous results. Run or refresh a card to use
-        the new values.
-      </p>
-      @for (p of parameters(); track p.def.id) {
-        <ion-item [title]="'@' + p.def.id">
-          <ion-label color="medium">{{ p.def.title || p.def.id }}</ion-label>
-          <ion-input
-            [placeholder]="p.def.type"
-            [value]="parameterText(p)"
-            [attr.aria-invalid]="parameterErrors()[p.def.id] ? 'true' : null"
-            [attr.aria-describedby]="
-              parameterErrors()[p.def.id]
-                ? 'board-parameter-error-' + p.def.id
-                : null
-            "
-            (ionInput)="setParameterValue(p, $event.detail.value)"
-          />
-          <ion-buttons slot="end">
-            @if (p.def.lookup && !lookupUnavailable()) {
-              <ion-button
-                color="medium"
-                [title]="p.def.lookup.sql"
-                (click)="lookup(p)"
-              >
-                <ion-icon name="list-outline" />
-              </ion-button>
-            }
-          </ion-buttons>
-        </ion-item>
-        @if (parameterErrors()[p.def.id]; as error) {
-          <p
-            role="alert"
-            class="ion-padding-horizontal"
-            [id]="'board-parameter-error-' + p.def.id"
-          >
-            {{ error }}
+    @if (boardDef() && parameters()?.length) {
+      <ion-card>
+        @if (lookupUnavailable()) {
+          <p class="ion-padding" role="status">
+            Lookup is unavailable for this project connection or branch. Enter
+            parameter values manually.
           </p>
         }
-      }
-    </ion-card>
-  }
+        <p class="ion-padding">
+          Parameter changes clear previous results. Run or refresh a card to use
+          the new values.
+        </p>
+        @for (p of parameters(); track p.def.id) {
+          <ion-item [title]="'@' + p.def.id">
+            <ion-label color="medium">{{ p.def.title || p.def.id }}</ion-label>
+            <ion-input
+              [placeholder]="p.def.type"
+              [value]="parameterText(p)"
+              [attr.aria-invalid]="parameterErrors()[p.def.id] ? 'true' : null"
+              [attr.aria-describedby]="
+                parameterErrors()[p.def.id]
+                  ? 'board-parameter-error-' + p.def.id
+                  : null
+              "
+              (ionInput)="setParameterValue(p, $event.detail.value)"
+            />
+            <ion-buttons slot="end">
+              @if (p.def.lookup && !lookupUnavailable()) {
+                <ion-button
+                  color="medium"
+                  [title]="p.def.lookup.sql"
+                  (click)="lookup(p)"
+                >
+                  <ion-icon name="list-outline" />
+                </ion-button>
+              }
+            </ion-buttons>
+          </ion-item>
+          @if (parameterErrors()[p.def.id]; as error) {
+            <p
+              role="alert"
+              class="ion-padding-horizontal"
+              [id]="'board-parameter-error-' + p.def.id"
+            >
+              {{ error }}
+            </p>
+          }
+        }
+      </ion-card>
+    }
 
-  @if (
-    displayBoard() && (!tutorialActive() || visibleTutorialCards().length);
-    as board
-  ) {
-    <sneat-datatug-board
-      [boardDef]="displayBoard()"
-      [boardContext]="boardContext()"
-      [projectRef]="projectRef()"
-      [readBoardForRun]="readBoardForRun"
-    />
+    @if (
+      displayBoard() && (!tutorialActive() || visibleTutorialCards().length);
+      as board
+    ) {
+      <sneat-datatug-board
+        [boardDef]="displayBoard()"
+        [selectionReset]="presentationReset()"
+        [boardContext]="boardContext()"
+        [projectRef]="projectRef()"
+        [readBoardForRun]="readBoardForRun"
+      />
+    }
   }
 </ion-content>

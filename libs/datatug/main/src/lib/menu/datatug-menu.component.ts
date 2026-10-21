@@ -73,15 +73,9 @@ export class DatatugMenuComponent implements OnDestroy {
   protected readonly datatugUserState = signal<IDatatugUserState | undefined>(
     undefined,
   );
-  // Signed-out home: the app header owns "Sign in", so the panel card is
-  // hidden while auth is still settling too (avoids a flash-then-hide).
-  protected readonly showAuthCard = computed(
-    () =>
-      !this.isLoginPage() &&
-      !(
-        this.isHomePage() && this.datatugUserState()?.status !== 'authenticated'
-      ),
-  );
+  // The side panel keeps its auth controls on Home in every auth state; only
+  // the login page suppresses them to avoid duplicating the login form.
+  protected readonly showAuthCard = computed(() => !this.isLoginPage());
 
   public table?: IEnvDbTableContext;
   private readonly destroyed = new Subject<void>();

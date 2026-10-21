@@ -1,3 +1,4 @@
+import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
 import { SNEAT_AUTH_GUARDS } from '@sneat/auth-core';
@@ -10,6 +11,7 @@ import { githubProjectRoutes } from './github-project-routes';
 import { isSharedProjectRef } from '../core/project-context';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { admitSessionWorkspace } from '../session-context/session-route.guard';
+import { hostedCloudLogsAccessGuard } from '../pages/my/cloud-logs/hosted-cloud-logs-access.service';
 import {
   profileHomeRedirectGuard,
   profileStartPageGuard,
@@ -110,6 +112,21 @@ export const datatugRoutes: Routes = [
       ),
   },
   {
+    path: 'my/cloud-logs/recovery',
+    loadComponent: () =>
+      import('../pages/my/cloud-logs/cloud-logs-auth-recovery-page.component').then(
+        (m) => m.CloudLogsAuthRecoveryPageComponent,
+      ),
+  },
+  {
+    path: 'my/cloud-logs',
+    canActivate: [hostedCloudLogsAccessGuard],
+    loadComponent: () =>
+      import('../pages/my/cloud-logs/cloud-logs-page.component').then(
+        (m) => m.CloudLogsPageComponent,
+      ),
+  },
+  {
     // Read-only "explore my raw data" transparency viewer, rooted at
     // `/spaces/{spaceId}` (see space-explorer-page.component.ts). The
     // spaceId is a route param for this first slice — a "my spaces" list
@@ -139,7 +156,7 @@ export const datatugRoutes: Routes = [
     pathMatch: 'full',
     redirectTo: '/',
   },
-  // Space-owned projects expose only their saved-query journey.
+  // Space-owned projects include private hosted Incidents.
   {
     path: 'space/:spaceId/store/:storeId/project/:projectId',
     canMatch: [
@@ -152,12 +169,19 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'queries', 'checks', 'detective'].includes(
+            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'meanings'].includes(
               segments[6].path,
             )) ||
+          (segments.length === 8 && segments[6].path === 'meanings' && ['new-entity', 'entity', 'new-field', 'field'].includes(segments[7].path)) ||
+          (segments.length === 8 && segments[6].path === 'boards' && segments[7].path === 'new') ||
+          (segments.length === 8 && segments[6].path === 'board' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
-            ['checks', 'detective'].includes(segments[6].path) &&
+            ['checks', 'detective', 'incidents', 'search-schema'].includes(segments[6].path) &&
             /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
+          (segments.length === 9 &&
+            segments[6].path === 'incidents' &&
+            /^[A-Za-z0-9_-]+$/.test(segments[7].path) &&
+            /^[A-Za-z0-9_-]+$/.test(segments[8].path)) ||
           (segments.length === 9 &&
             segments[6].path === 'detective' &&
             segments[7].path === 'scenario' &&
@@ -171,6 +195,10 @@ export const datatugRoutes: Routes = [
                 (segments.length === 10 && ['query', 'checks', 'detective'].includes(segments[8].path) && /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[9].path))))))),
     ],
     children: [
+      {path: 'quick-search', loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
+      {path: 'tags', data: {discovery: true}, loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
+      {path: 'search-schema/:dbModelId', data: {schemaDetail: true}, loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
+      ...projectMeaningsRoutes,
       ...['', 'overview'].map((path) => ({
         path,
         loadComponent: () =>
@@ -178,6 +206,23 @@ export const datatugRoutes: Routes = [
             (m) => m.ProjectPageComponent,
           ),
       })),
+      {
+        path: 'shipping',
+        loadComponent: () => import('../shipping/shipping-workspace.component').then((m) => m.ShippingWorkspaceComponent),
+      },
+      {
+        path: 'boards/new', data: { createBoard: true },
+        loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
+      },
+      {
+        path: 'board/:board',
+        loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
+      },
+      { path: 'board', pathMatch: 'full', redirectTo: 'boards' },
+      {
+        path: 'boards',
+        loadComponent: () => import('../board/ui/pages/boards/boards-page.component').then((m) => m.BoardsPageComponent),
+      },
       {
         path: 'sessions', providers: [SessionWorkspaceService],
         loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),
@@ -194,6 +239,15 @@ export const datatugRoutes: Routes = [
           { path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) },
           { path: 'query', children: [{ path: ':queryId', loadComponent: () => import('../queries/query/page/query-page.component').then((m) => m.QueryPageComponent) }] },
         ] }],
+      },
+      {
+        path: 'incidents',
+        ...SNEAT_AUTH_GUARDS,
+        children: [
+          { path: '', pathMatch: 'full', data: { incidentMode: 'list' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+          { path: 'new', data: { incidentMode: 'new' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+          { path: ':incidentStoreId/:incidentId', data: { incidentMode: 'detail' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+        ],
       },
       {
         path: 'queries',

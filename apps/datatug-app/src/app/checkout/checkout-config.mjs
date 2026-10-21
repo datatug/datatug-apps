@@ -115,12 +115,28 @@ export function pricingReturnUrl(period, mode) {
 
 export const TEST_CHECKOUT_ORIGIN =
   'https://datatug-checkout-test-354fvnqbaa-ey.a.run.app';
-export function checkoutRail(search, returning, normalApiBaseUrl) {
+// The datatug-cloud-preview bare origin (no `/v0/`) that the Business project
+// preview serve configuration sends DataTug API calls to. It is not checkout:
+// business-checkout-config.ts never trusts it, so checkout stays on
+// TEST_CHECKOUT_ORIGIN. Verify after the service is created.
+// europe-west1 (Belgium), where datatug-cloud deploys it. TEST_CHECKOUT_ORIGIN
+// above stays on europe-west3: datatug-checkout-test is hand-deployed and is not
+// recreated in Belgium.
+export const TEST_PREVIEW_PROJECT_ORIGIN =
+  'https://datatug-cloud-preview-354fvnqbaa-ew.a.run.app';
+// `forceTest` is true only in the Business project preview build
+// (DATATUG_CHECKOUT_FORCE_TEST). Every rail then selects TEST, whatever the
+// query string says, and a LIVE return is refused rather than rebound to TEST.
+export function checkoutRail(search, returning, normalApiBaseUrl, forceTest) {
   const chosen = returning
     ? returnSelection(search)
     : checkoutSelection(search);
   const choice = checkoutChoice(search, returning);
   if (!chosen || !choice) return null;
+  if (forceTest) {
+    if (returning && chosen.mode !== 'test') return null;
+    return { chosen, mode: 'test', apiOrigin: TEST_CHECKOUT_ORIGIN };
+  }
   if (choice.test)
     return { chosen, mode: 'test', apiOrigin: TEST_CHECKOUT_ORIGIN };
   if (returning && chosen.mode !== 'live') return null;

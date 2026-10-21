@@ -1,3 +1,4 @@
+import { incidentEventSummary } from '../../../incidents/incident-event-summary';
 import { Component, input } from '@angular/core';
 import { RouterLink, type Params } from '@angular/router';
 import {
@@ -54,16 +55,6 @@ export class IncidentReadPanelsComponent {
   }
 
   protected eventSummary(item: IncidentStreamItem): string {
-    const event = item.event;
-    if (
-      event.type === 'note.added' &&
-      event.payload &&
-      typeof event.payload === 'object' &&
-      'body' in event.payload &&
-      typeof event.payload.body === 'string'
-    ) {
-      return event.payload.body;
-    }
-    return event.type;
+    return incidentEventSummary(item.event);
   }
 }

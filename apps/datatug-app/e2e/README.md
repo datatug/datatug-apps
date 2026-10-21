@@ -1,5 +1,103 @@
 # datatug-app e2e
 
+## Lane matrix: which lanes run when, and which touch live hosts
+
+CI is `.github/workflows/ci.yml`. A lane that needs a live third-party host never runs on pull requests, merge groups
+or pushes (the live PostgreSQL test has its own workflow, `e2e-postgres-ovdb.yml`). Rule of the repo: no live request from a per-PR path (on 2026-10-16 about 25,500 CI requests for one
+`chinook.demodb.dev` file got the whole demodb.dev zone rate limited with HTTP 429).
+
+| Lane (job) | pull_request / merge_group / push | In `deploy-gate` | Live hosts |
+| --- | --- | --- | --- |
+| `build`, `test` | yes | yes | none |
+| `e2e-checkout` | yes, `nx affected` | yes | none |
+| `e2e-cloud-logs` | yes | yes | none |
+| `e2e-app`, `e2e-query-mobile` | yes, `nx affected` | yes | none: the app's own chinook.sqlite download is served from local fixtures; fake GitHub |
+| `e2e-demo-sqlite` (3 browsers) | yes, `nx affected` | yes | none: pinned files from local fixtures |
+| `e2e-demo-handoff` | yes, `nx affected` | yes | none (local build, third parties stubbed) |
+| `journey e2e (real datatug-cli agent)` | yes, always | yes | none to demodb.dev (GitHub release + raw.githubusercontent only) |
+| `agent-links` | only when `DATATUG_LINKS_CLI_REF` is set | yes (may be `skipped`) | none |
+| `demo-sqlite-adventureworks.yml` (own workflow, Chromium: only when demo SQLite code, catalog, guard or fixtures changed, on `pull_request` and push to `main`; or manual; never scheduled) | path-filtered | no | none: gzip parts from the `demo-db/adventureworks` GitHub repo |
+| `e2e-postgres-ovdb.yml` (own workflow: manual or path-filtered push to main, never a PR) | no | no | `cloud.openvaultdb.com` |
+| `demodb-live-smoke.yml` (manual `workflow_dispatch`) | no | no | `*.demodb.dev`, Chromium only |
+
+`deploy-gate` requires exact `success` for its lanes (only `agent-links` may be `skipped`), so a lane that is
+`skipped` because `nx affected` found nothing still reports `success` (the job runs, its step is a no-op). A job that is
+skipped by an `if:` does not gate anything even if it is a required check; that is why the live-host lanes are kept
+out of `needs`.
+
+### Keeping every lane off DemoDB and the public OpenVaultDB API: five layers
+
+All lanes that run on a pull request, merge group or push (above, plus the manual dispatch of `agent-links`) are covered by:
+
+1. **The guard** (`helpers/demodb-guard.ts`). Specs and fixtures import `test` from it; it wraps the worker's `browser`, so
+   every context (`newContext`, `newPage`, the `context` fixture, contexts a spec creates by hand) gets a route for
+   `demodb.dev` and every sub-domain. It answers from fixtures, refuses what has none, and counts every request. A request
+   that still reaches the network (a response from a real server address, or a failed name lookup / connection) is counted
+   as *escaped* and fails the test; one that a spec's own route fulfils from bundled bytes does not leave the machine and is not.
+   `chat-phase4.spec.ts` is a deliberate exception (Chromium aborts its `/favicon.ico` navigation while a route is
+   installed), and the real-agent lanes (`journey`, `session-continuity`, `agent-links`) use the guard *passively*: they count
+   requests and detect escapes on every context but install no route, because interception of every request slowed those
+   long flows into their test timeouts on CI runners; for them layers 2 and 3 do the blocking and layer 4 the proof.
+2. **Chromium resolves every `*.demodb.dev` name to nothing** (`helpers/demodb-config.ts`, `--host-resolver-rules`; not in
+   live mode).
+3. **CI maps the DemoDB names to `0.0.0.0` in `/etc/hosts`** (`.github/actions/block-demodb`, host list from the catalog,
+   `scripts/demodb-hosts.mjs`) and proves it with a failing `curl`. That covers Firefox, WebKit, Node's `request`, and
+   the `datatug` CLI processes. Fixtures are answered by the route before any name lookup, so the block does not break them.
+4. **The dev server's public OVDB proxy** (`tools/public-ovdb-proxy.cjs`) forwards the app's calls to `https://ovdb.demodb.dev` and
+   `https://cloud.openvaultdb.com` from Node, where layers 1-3 cannot see them. Lanes that start the dev server give it
+   `DATATUG_PUBLIC_OVDB_UPSTREAM=refuse` (`demodbServerEnv`): it answers 403 + `x-datatug-ovdb-refused` and the guard counts the
+   refusal as an escape. `demodb-guard-selftest.spec.ts` holds a negative control for it. A dev server that is already running
+   (`reuseExistingServer` outside CI) keeps its own environment: stop it before a local `nx e2e`. The block action and the
+   Chromium rule also cover `openvaultdb.com`, `www.` and `cloud.`; the live PostgreSQL workflow uses neither.
+5. **The report.** Every Playwright run prints a `DemoDB request report` (per host: asked, fixture, memory, LIVE, refused,
+   ESCAPED), appends it to `$GITHUB_STEP_SUMMARY` (Nx truncates long job logs; the summary does not), writes `coverage/demodb-request-report-<job>-<pid>.md` (one file per Playwright run) and prints all of them in a late CI step, and fails the run when
+   anything escaped or a live budget was exceeded. The `journey`, `session-continuity`, `agent-links`, `checkout`, `hand-off`
+   and `cloud-logs` configs report too.
+
+### DemoDB fixtures
+
+`helpers/demodb-guard.ts` answers every `*.demodb.dev` request locally. The 5 pinned SQLite files and the comparison
+candidate come from `tmp/demodb-fixtures` (`DEMODB_FIXTURE_DIR`), filled by Playwright's globalSetup running
+`node scripts/fetch-demodb-fixtures.mjs`: they are taken from the public `demo-db/<dataset>` GitHub repositories at a pinned
+commit and accepted only when size and SHA-256 equal the pin. A valid file is never requested again, so a warm cache makes
+0 requests and a cold one 1 per file, none of them to demodb.dev. The script writes `.complete` only when every file is
+valid, and CI saves its cache only then. `corpus.json` and the six dataset home pages are committed in
+`e2e/fixtures/demodb/` (built from `demo-db/websites`, provenance and SHA-256 in `provenance.json`; refresh them by building
+the websites repo and copying the outputs). The `journey` lane downloads nothing (`--project=journey` skips the fixtures).
+
+* **Not served, refused:** the OVDB API on `ovdb.demodb.dev`; and, unless the run asked for them, the chunked AdventureWorks
+  download (`*.parts.json` manifest and gzip parts). Only the AdventureWorks lane asks: `DEMODB_FIXTURE_ADVENTUREWORKS=only` (set by
+  `playwright.demo-sqlite-adventureworks.config.ts`; `=1` adds it to the default set) makes `fetch-demodb-fixtures.mjs` download the two
+  provider gzip parts (`artifacts/adventureworks.sqlite.gz.part-000N` of `demo-db/adventureworks` at a pinned commit, 35.4 MB, 2 requests
+  to raw.githubusercontent.com), check every part and the joined gzip against `corpus.json`, gunzip the result and check the unpacked file
+  against the catalog pin (126,820,352 bytes, SHA-256), and write a `demodb-chunked-export/v1` manifest named like the live one
+  (`adventureworks.sqlite.gz.<sha256[:16]>.part-<n>`, as `demo-db/websites` `scripts/build-hosts.mjs` does). The guard serves both.
+* **AdventureWorks journey** (`demo-sqlite-adventureworks.spec.ts`, Chromium only, workflow `demo-sqlite-adventureworks.yml`):
+  fixture integrity -> confirmation before the large download -> download (manifest + each part once) -> stored OPFS file hashed in the
+  page -> table list = registry -> read a table -> edit (capability gated) -> reload keeps it -> Reset Database (confirmation, downloads
+  again: single-copy) -> original value back, also after a reload. It is heavy (126.8 MB unpacked, downloaded twice), so it runs on its
+  own and only for changes that can affect it (see the path filter in the workflow) and by hand; never on a schedule. The evidence of a
+  run (timings, bytes, row counts, requests, screenshots, trace) is attached to the test and uploaded as the artifact
+  `demo-sqlite-adventureworks-e2e-report`. Run it locally with `GH_TOKEN=... pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks`
+  (the build needs a token for the private Core artifact check). The older opt-in journeys behind `DATATUG_E2E_ADVENTUREWORKS=1`
+  (`demo-sqlite.spec.ts`, `demo-sqlite-datasets.spec.ts`) remain for a manual run in live mode.
+* **Newly live-only checks** (the 28 skipped demo-sqlite tests in CI are WebKit/OPFS, the opt-in AdventureWorks journeys, and
+  these 21 that probe the live site rather than the app): "every complete-database download DemoDB advertises answers"
+  for each of the 6 datasets and the AdventureWorks manifest check, in 3 browsers. They run in the manual smoke only.
+* `DEMODB_E2E_MODE=live` (only the manual `DemoDB live smoke` workflow): real hosts, each URL at most once per run
+  (repeats come from a file memo shared by all workers), at most `DEMODB_E2E_MAX_LIVE_REQUESTS` (15) per test and
+  `DEMODB_E2E_MAX_RUN_LIVE_REQUESTS` (120) per run. The budgets are enforced before a request is sent (a 503 retry by the
+  app spends budget), Playwright retries 0, `maxFailures` 1.
+* A rate-limit answer (HTTP 429, or a Cloudflare block page: 403/503/52x with `cf-mitigated`, or an error 1015/1020/1027
+  page) trips a breaker kept in a file, so every worker of the run, also one started after a failure, refuses every
+  further request. `e2e-postgres-ovdb.yml` (nx target `e2e-demo-postgresql`) has retries 0, `maxFailures` 1 and a per-test budget of 40 requests to
+  `cloud.openvaultdb.com` (`DEMODB_E2E_MAX_OVDB_REQUESTS`), refused once spent. `helpers/demodb-guard-state.unit.ts` and
+  `helpers/demodb-guard-logic.unit.ts` test the state and the request logic (run in the `test` job together with
+  `scripts/mutate-demodb-guard.mjs`, which breaks the budget, count-before-send, breaker and 52x rules one at a time and
+  requires the tests to fail).
+* `scripts/check-demo-sqlite-catalog.mjs --online` and `check-demo-postgresql-catalog.mjs --online` are manual only and are
+  in no CI path.
+
 ## Subscription checkout
 
 `checkout-journey.spec.ts` runs the real Sneat sign-in/sign-up components against
@@ -70,21 +168,24 @@ two-fixture comparison. It uses the iPhone 13 browser profile and also checks
 Safari testing is a separate check. The default CI projects remain unchanged.
 
 ```sh
-# Use a clean checkout of the maintained demo project and an unused local port.
+# Use a clean checkout of demo revision 7c67575a8313d67ecae364c1dd7164ee85c48ae0
+# (the CI browser catalog pin) and an unused local port.
 DATATUG_E2E_GITHUB_FAKE=/path/to/datatug-demo-project DATATUG_E2E_PORT=4200 \
   pnpm nx run datatug-app:e2e-query-mobile
 ```
 
 Install Playwright's WebKit browser before running the profile locally.
 The GitHub reader is served from the local demo checkout; query execution and
-comparison use the real pinned SQLite workers and Core bridge. Reports are
+comparison use the real SQLite workers and Core bridge. The exact Chinook
+browser URL is fulfilled from the hash-checked, admitted
+[local fixture](fixtures/chinook.FIXTURE.md), so public download rate limits do
+not turn these application checks into source availability checks. The live
+DemoDB browser checks retain their public-source coverage. Reports are
 written under `coverage/apps/datatug-query-mobile/`.
 
-The existing `e2e` job always installs Chromium and adds WebKit to that same
-install command when `datatug-app` is affected. It runs this target as a
-required step after the default affected Chromium suite. The hand-off check
-stays in the `e2e` job; the existing real-agent journey remains in its separate
-job with its current gate.
+The Chromium app and Query mobile WebKit suites run in separate CI jobs after
+build. Both remain in the required `e2e` aggregate. The real-agent journey
+remains in its separate job with its current gate.
 
 Two kinds of e2e live here.
 
@@ -134,6 +235,26 @@ Without `DATATUG_BIN` or `DATATUG_CLI_DIR` every test is skipped. CI runs it in 
 repository variable `DATATUG_LINKS_CLI_REF` names a datatug release that has those routes. It refuses to run when
 another DataTug API already listens on port 8989 (the daemon would adopt it). The https-to-loopback path of the
 hosted UI is not exercised here; that is the reach script of the plan.
+
+`result-editor.spec.ts` covers the Table view of a stored query result, which is the query editor
+(`/project/<p>/query?result=<id>`): the saved rows in the shared results grid, the "Saved result from" strip, the
+Prompt section, the other result views and Back. Its checks of the query text and the prompt need a CLI with the
+editor-ready result members and `query results annotate` (datatug-cli #431, after v0.100.1); against an older binary
+they are skipped and the strip's "older DataTug" message is asserted instead.
+
+`results-grid.spec.ts` covers the community toolbar of the shared results grid on a stored result opened in the
+editor: the column chooser (hide, order, pin, show all, reset), the layout and density remembered across a refresh
+(localStorage keys of ids only, never a value), Autosize, row checkboxes with "CSV selected" and "Copy selected", the
+keyboard and a 360 px wide screen. Its first test (the grid's columns in the table's order, with no `$key`) needs
+**datatug 0.102.1 or later** (datatug-cli #435) and is skipped against an older binary (the fixture reads `datatug
+version`). The numeric right-alignment test needs the column type metadata and is likewise skipped
+below **0.102.1** (`COLUMN_TYPES_CLI`). For CI to run them, set the repository variable `DATATUG_LINKS_CLI_REF` to `v0.102.1` or later.
+
+Running the suite on a computer that already has a real daemon on port 8989: the fixture's daemon would adopt it
+(see above). Run the binary through a wrapper that may not connect to that port, so the throwaway daemon picks
+another one and the real one is never contacted, e.g. on macOS
+`exec sandbox-exec -p '(version 1)(allow default)(deny network-outbound (remote ip "localhost:8989"))' /path/to/datatug "$@"`
+as `DATATUG_BIN`.
 
 ## Running the journey suite
 
@@ -291,3 +412,37 @@ TEST payment suite must use a separate explicit opt-in. An existing paid return
 may be checked read-only by supplying `DATATUG_CHECKOUT_TEST_RETURN_SESSION`.
 No configured credentials or executed authenticated provider result are implied
 by adding this fixture/workflow.
+
+## Business project preview (live, opt-in)
+
+`business-project-preview.spec.ts` signs the designated TEST Business buyer in to
+the `business-preview` build on `http://localhost:18782` and opens the pinned
+Business project against the deployed datatug-cloud-preview (Stripe TEST keys
+only). It asserts that the project API calls (`project_summary`, `all_queries`
+and every other allow-listed route) go to the preview origin and return 2xx, and
+that a saved query of the project renders. It never enters a card, saves a
+query, or reaches a checkout or Stripe host, and keeps traces, video and
+screenshots off, and refuses to run with `--trace on`, `--reporter html`,
+video/screenshot flags or any non-empty `DEBUG` variable (including `DEBUG=*`). Every non-GET DataTug API call, and any
+DataTug API call outside the preview origin, is aborted and fails the test. It is not part of the default CI run
+(`playwright.config.ts` ignores it); `playwright.business-preview.config.ts`
+runs it.
+
+The buyer comes only from the environment. Without the first two variables every
+case is skipped and no dev server is started.
+
+| Variable | Meaning |
+| --- | --- |
+| `DATATUG_BUSINESS_PREVIEW_BUYER_EMAIL` | the TEST buyer's email |
+| `DATATUG_BUSINESS_PREVIEW_BUYER_PASSWORD` | the TEST buyer's password |
+| `DATATUG_BUSINESS_PREVIEW_BUYER_UID` | optional: the signed-in uid must equal it |
+| `DATATUG_BUSINESS_PREVIEW_PROJECT` | optional: `<repository>@<owner>@<folder>`, default is the preview's pinned project |
+
+```sh
+DATATUG_BUSINESS_PREVIEW_BUYER_EMAIL=... DATATUG_BUSINESS_PREVIEW_BUYER_PASSWORD=... \
+  pnpm nx run datatug-app:e2e-business-preview
+```
+
+The target serves `datatug-app:serve:business-preview` itself and refuses an
+occupied port 18782 (free it first). The port and the host name `localhost` matter:
+datatug-cloud-preview admits only the origin `http://localhost:18782`.

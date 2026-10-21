@@ -45,8 +45,24 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (demoDraftRecovery(); as message) {
+    <ion-card data-testid="browser-query-recovery" color="warning">
+      <ion-card-content>
+        <p role="alert">{{ message }}</p>
+        <ion-button fill="clear" (click)="openDemoDatabases()">Open demo databases</ion-button>
+      </ion-card-content>
+    </ion-card>
+  }
   @if (project?.ref; as projectRef) {
     <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
+  }
+  @if (savedResultBanner(); as savedResult) {
+    <sneat-datatug-saved-result-banner
+      [state]="savedResult"
+      [storeId]="savedResultStoreId()"
+      [resultId]="savedResultId()"
+      (checkAgain)="reloadSavedResult()"
+    />
   }
   <ng-template #personalQueries>
       @if (semanticPersonalCopies().length) {
@@ -461,6 +477,9 @@
     </ion-card>
   }
 
+  @if(isHostedProject && selectedWorkingCopy() === 'project' && isNativeSqlWorkspace()) {
+    <p class="ion-padding-horizontal">Hosted saved SQL query · source {{ queryDef()?.connectionId || 'not specified by this definition' }}. Current server admission controls execution.</p>
+  }
   @if (canChoosePublicSqliteSource() && !isTugqlAuthorJourney()) {
     <ion-card>
       <ion-card-header
@@ -897,7 +916,7 @@
             <ion-label class="ion-text-wrap"><ion-card-title data-workspace-heading>{{ queryPageTitle() }}</ion-card-title>
               <p>{{ isNativeSqlWorkspace() ? 'Native SQL query' : isNativeDtqlWorkspace() ? 'Saved DTQL query' : 'TugQL query' }}</p></ion-label>
               <ion-button slot="end" data-testid="workspace-run" aria-label="Run query" size="default" color="primary" fill="solid"
-                [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+                [disabled]="running() || demoDraftLoading() || !!demoDraftRecovery() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
                 (click)="runQuery()">
                 @if (running()) { <ion-spinner name="dots" slot="start" /> }
                 Run
@@ -1252,7 +1271,7 @@
             placeholder="Select environment"
             [value]="hostedEnvironment()"
             [disabled]="!hostedDetectiveState()?.capabilities?.canRun || running()"
-            (ionChange)="hostedEnvironment.set($event.detail.value || '')"
+            (ionChange)="changeHostedEnvironment($event.detail.value || '')"
           >
             @for (environment of hostedDetectiveState()?.environments || []; track environment) {
               <ion-select-option [value]="environment">{{ environment }}</ion-select-option>
@@ -1264,6 +1283,8 @@
         } @else if (hostedDetectiveState() && !hostedDetectiveState()?.capabilities?.canRun) {
           <p class="ion-padding-horizontal" role="status">Hosted execution is unavailable for this project.</p>
         }
+        <sneat-datatug-evidence-share-panel [environment]="hostedEnvironment()" [disabled]="running() || retainedQueryPending()" (selected)="chooseQueryEvidence($event)" />
+        @if (retainedQueryPending()) { <p role="status">The previous shared run has no confirmed outcome. It may already be attached. Retry the unchanged selection before starting another retained run.</p> <ion-button fill="outline" (click)="reviewRetainedQuery()" [disabled]="running()">Review current run state</ion-button> @if(retainedQueryReviewed()){ <ion-button color="warning" (click)="abandonRetainedQuery()" [disabled]="running()">Abandon original retry and edit a new run</ion-button> } }
         <p class="ion-padding-horizontal">Hosted runs execute the saved query revision. Save edits before running; select an admitted environment explicitly.</p>
       }
       @if (isAgentRunProject()) {
@@ -1293,15 +1314,23 @@
   <ng-template #executionRuntime>
       @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
         <p class="ion-padding-horizontal">
-          Selected source: {{ connectionId }}. The selected runtime is checked against this connection before Run.
+          @if (usesFixedPublicQuerySource()) {
+            Selected source: {{ connectionId }}. This query uses the fixed public Northwind OVDB API.
+            Project environment is not used for execution. Run validates the saved definition and publisher evidence.
+          } @else {
+            Selected source: {{ connectionId }}. The selected runtime is checked against this connection before Run.
+          }
         </p>
         @if (!isTugqlAuthorJourney()) {
           <ion-item lines="none">
             <ion-label>Execution runtime</ion-label>
             <select aria-label="Execution runtime" [value]="selectedWorkingCopy()" (change)="selectWorkingCopy($any($event.target).value)">
-              <option value="project">Project runtime</option>
+              <option value="project" [selected]="selectedWorkingCopy() === 'project'">Project runtime</option>
+              @if (unavailableWorkingCopy()) {
+                <option [value]="selectedWorkingCopy()" [selected]="true">Selected working copy unavailable</option>
+              }
               @for (runtime of workingCopyOptions(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId">{{ runtime.title }} · working copy</option>
+                <option [value]="runtime.selectionId" [selected]="runtime.selectionId === selectedWorkingCopy()">{{ runtime.title }} · working copy</option>
               }
             </select>
           </ion-item>
@@ -1318,7 +1347,7 @@
       <ng-container *ngTemplateOutlet="executionRuntime" />
       <ion-item lines="none"><ion-buttons>
         <ion-button fill="solid" color="primary"
-          [disabled]="running() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
+          [disabled]="running() || demoDraftLoading() || !!demoDraftRecovery() || unavailableWorkingCopy() || !queryId || !project || hasBlockedBindings() || (isHostedProject && (!hostedDetectiveState()?.capabilities?.canRun || !hostedEnvironment() || queryState.isNew || queryState.isSaving || isChanged)) || (!queryDef()?.connectionId && availableTargets().length > 0 && !selectedSource())"
           (click)="runQuery()">
           @if (running()) { <ion-spinner name="dots" slot="start" /> }
           Run query
@@ -1372,7 +1401,7 @@
       }
     </ul>
   }
-  @if (runError(); as error) {
+  @if (!demoDraftRecovery() && runError(); as error) {
     <ion-card color="danger">
       <ion-card-content>
         {{ error }}
@@ -1764,6 +1793,16 @@
           </ion-buttons>
         </ion-item>
       }
+      @if (isTextQueryWorkspace() && displayedRecordset() && !resultChartVisible()) {
+        <div class="author-current-row-toggle">
+          <button
+            type="button"
+            data-testid="author-current-row-toggle"
+            [attr.aria-expanded]="currentRowPaneOpen()"
+            (click)="toggleCurrentRowPane()"
+          >{{ currentRowPaneOpen() ? '▾ Current row' : '▸ Current row' }}</button>
+        </div>
+      }
       @if (
         !resultChartVisible() && (resultTotalRows() > resultPageSize ||
         resultHasMore() ||
@@ -1798,16 +1837,17 @@
         class="result-author-data"
         [class.result-author-data-enabled]="isTextQueryWorkspace()"
         [class.result-chart-hidden]="resultChartVisible()"
+        [class.result-author-data-collapsed]="isTextQueryWorkspace() && !currentRowPaneOpen()"
       >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTextQueryWorkspace()">
-        <ag-grid-angular *datatugAgGridReady
-          class="ag-theme-quartz"
-          style="height: 100%; width: 100%"
+        <sneat-datatug-results-grid
           [columnDefs]="resultGridColumnDefs()"
           [headerHeight]="64"
           [rowData]="resultGridRows()"
-          [defaultColDef]="resultGridDefaultColDef"
-          [rowSelection]="isTextQueryWorkspace() ? authorResultRowSelection : undefined"
+          [snapshotKey]="authorResultSnapshotKey()"
+          [analyticsScope]="resultGridAnalyticsScope()"
+          exportName="query-result"
+          [stateKey]="resultGridStateKey()"
           [rowClassRules]="isTextQueryWorkspace() ? authorResultRowClassRules : undefined"
           [loading]="resultPageLoading()"
           [overlayNoRowsTemplate]="resultGridNoRowsTemplate"
@@ -1817,6 +1857,7 @@
         />
       </div>
       @if (isTextQueryWorkspace() && displayedRecordset(); as currentRecordset) {
+        @if (currentRowPaneOpen()) {
         <sneat-author-current-row
           [columns]="currentRecordset.columns"
           [row]="currentAuthorResultRow()?.row"
@@ -1828,11 +1869,12 @@
           (useAsFilter)="useAuthorResultValueAsFilter($event)"
           (copyRequested)="clearAuthorRowFilterStatus()"
         />
+        }
       }
       </div>
     </div>
-    @if (resultChartOptions().reason; as chartUnavailableReason) {
-      <p class="ion-padding-horizontal" role="status">Chart unavailable: {{ chartUnavailableReason }}</p>
+    @if (resultChartUnavailableText(); as chartUnavailable) {
+      <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }
     <div class="ion-padding-horizontal">
       <sneat-datatug-source-rights-notice
@@ -1841,6 +1883,7 @@
       />
     </div>
     @if (activeHostedExecution(); as hosted) {
+      <sneat-datatug-held-row-evidence [projectRef]="project?.ref" [environment]="hosted.environment" [result]="hosted.result" [identity]="hosted.evidenceIdentity" />
       <ion-card>
         <ion-card-header>
           <ion-card-title>Validation for these query rows</ion-card-title>

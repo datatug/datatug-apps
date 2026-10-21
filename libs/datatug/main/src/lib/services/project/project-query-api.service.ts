@@ -1,8 +1,11 @@
+import type { SemanticMeaningScope } from '../../queries/semantic-mapping';
+import type { ProjectMeaningAck, ProjectMeaningsCatalog, ProjectMeaningWrite } from '../../meanings/project-meanings-contract';
+import type { GithubProjectCopySource } from '../../project/new-project/github-project-copy-source';
 import { projectApiQuery } from '../../nav/project-api-routing';
 import { type IProjectSummary } from '../../models/definition/project';
 import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import {
   formatGithubProjectApiKey,
   readGithubProjectId,
@@ -104,7 +107,8 @@ export interface CreateGithubProject {
     readonly branch: string;
     readonly expectedBranchHead: string;
   };
-  readonly template: typeof DATATUG_DEMO_PROJECT_TEMPLATE;
+  readonly template?: typeof DATATUG_DEMO_PROJECT_TEMPLATE;
+  readonly source?: GithubProjectCopySource;
 }
 
 export interface CreatedGithubProject {
@@ -146,6 +150,7 @@ export interface PendingGithubProjectSetup {
   readonly branch: string;
   readonly ciEnabled: boolean;
   readonly expectedHead: string;
+  readonly source?: GithubProjectCopySource;
   readonly templateID: string;
   readonly templateCommit: string;
   readonly billingIntent: ProjectBillingIntent;
@@ -176,7 +181,7 @@ export class ProjectQueryApiService {
   readonly authorityDenied = this.deniedReads.asObservable();
   private readonly githubReauthorization = new Subject<GithubReauthorizationRequest>();
   readonly githubReauthorizationRequired = this.githubReauthorization.asObservable();
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   private readonly http = inject(HttpClient);
   private readonly storeApi = inject(StoreApiService);
 
@@ -385,6 +390,26 @@ export class ProjectQueryApiService {
       'queries/all_queries',
       ref.branch ? { branch: ref.branch } : undefined,
     );
+  }
+
+  meaningScope(ref: IProjectRef): SemanticMeaningScope {
+    const scope = this.reference(ref);
+    const github = ['github', 'github.com'].includes(ref.storeId) ? readGithubProjectId(ref.projectId) : undefined;
+    const branch = ref.branch || (github?.ok ? github.id.ref : undefined);
+    return {...scope, storage: scope.storage as SemanticMeaningScope['storage'], ...(branch ? {branch} : {})};
+  }
+
+  meaningsCatalog(ref: IProjectRef): Observable<ProjectMeaningsCatalog> {
+    return this.get(ref, 'meanings/catalog', ref.branch ? { branch: ref.branch } : undefined);
+  }
+
+  changeMeaning(ref: IProjectRef, write: ProjectMeaningWrite): Observable<ProjectMeaningAck> {
+    return defer(() => {
+      const body = { ...this.reference(ref), ...(ref.branch ? {branch: ref.branch} : {}), ...write };
+      return ['github.com', 'github', 'firestore'].includes(ref.storeId)
+        ? this.api.post<ProjectMeaningAck>('datatug/meanings/change', body, { retryUnauthorizedOnce: false })
+        : this.http.post<ProjectMeaningAck>(buildAgentUrl(ref.storeId, '/meanings/change'), body);
+    });
   }
 
   capabilities(ref: IProjectRef): Observable<ProjectQueryCapabilities> {

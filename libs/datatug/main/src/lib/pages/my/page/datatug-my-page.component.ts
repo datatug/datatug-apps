@@ -19,6 +19,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { HostedCloudLogsAccessService } from '../cloud-logs/hosted-cloud-logs-access.service';
 
 @Component({
   selector: 'sneat-datatug-my',
@@ -44,8 +45,35 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
   ],
 })
 export class DatatugMyPageComponent {
+  readonly hostedCloudLogsAccess = inject(HostedCloudLogsAccessService);
+  readonly enableHostedCloudLogs = computed(
+    () => this.hostedCloudLogsAccess.state().status === 'allowed',
+  );
   private readonly router = inject(Router);
   private readonly query = toSignal(inject(ActivatedRoute).queryParamMap);
+  readonly cloudLogsAccessMessage = computed(() => {
+    if (this.hostedCloudLogsAccess.state().status === 'allowed') return '';
+    switch (this.query()?.get('cloudLogsAccess')) {
+      case 'denied':
+        return 'Your account does not have access to hosted Google Cloud Logs.';
+      case 'disabled':
+        return 'Hosted Google Cloud Logs is not available in this build.';
+      case 'signed-out':
+        return 'Sign in again to check access to hosted Google Cloud Logs.';
+      case 'auth-unavailable':
+        return 'We could not verify your sign-in. Reload to retry or sign in again.';
+      default:
+        return '';
+    }
+  });
+
+  retryHostedCloudLogsAccess(): void {
+    this.hostedCloudLogsAccess.retry();
+  }
+
+  retryAuthenticationCheck(): void {
+    window.location.reload();
+  }
   protected readonly subscriptionQuery = computed(() =>
     this.query()?.get('checkout') === 'test' ? { checkout: 'test' } : {},
   );

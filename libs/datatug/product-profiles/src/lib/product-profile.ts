@@ -1,15 +1,10 @@
 // The declarative product-profile table (spec/features/product-profiles/README.md
 // REQ:profile-table, REQ:profile-config-is-declarative, in datatug/datatug).
 //
-// One build of `apps/datatug-app` serves several product shells — today `datatug`
-// and `incidentius`; `dashboardius` is a planned third profile (see the hub
-// Feature's roadmap) that this table is deliberately shaped to add as a pure data
-// change: a new `ProductProfileId` union member plus a new `PRODUCT_PROFILES` entry,
-// never a new branch in shared component code (REQ:profile-config-is-declarative:
-// "A component MAY read a profile token ... but MUST NOT branch on the profile
-// identity to change behaviour"). This scaffold slice builds only `datatug` and
-// `incidentius` — no Dashboardius profile is registered here, and the
-// three-profile AC (`AC:one-build-serves-both-profiles`) is not claimed.
+// One application build serves datatug, incidentius and dashboardius through
+// this declarative table. Shared components do not branch on profile identity.
+// Dashboardius has no hostname mapping or deployment claim; configuration/local
+// selection uses the same canonical board pages and current authorization.
 
 /**
  * Every product-profile id this build knows about. Extending this union (e.g.
@@ -18,7 +13,7 @@
  * most, registering that profile's home route; no existing profile's behaviour
  * changes.
  */
-export type ProductProfileId = 'datatug' | 'incidentius';
+export type ProductProfileId = 'datatug' | 'incidentius' | 'dashboardius';
 
 /**
  * One product profile's declarative presentation data. A profile changes what a
@@ -134,6 +129,15 @@ export const PRODUCT_PROFILES: Readonly<
     showIncidentsMenuItem: true,
     showPoweredByDalgo: true,
     hostnames: ['datatug.app'],
+  }),
+  dashboardius: Object.freeze({
+    id: 'dashboardius',
+    brandName: 'Dashboardius',
+    homePath: 'home',
+    entryPointLabel: 'Open a dashboard project',
+    showIncidentsMenuItem: true,
+    showPoweredByDalgo: true,
+    hostnames: [],
   }),
   incidentius: Object.freeze({
     id: 'incidentius',

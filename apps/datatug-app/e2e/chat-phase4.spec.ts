@@ -1,3 +1,5 @@
+// Deliberately NOT importing `test` from ./helpers/demodb-guard: this spec navigates to /favicon.ico, and with the guard's
+// request interception installed Chromium aborts that navigation (ERR_ABORTED). It never talks to demodb.dev.
 import { expect, test } from '@playwright/test';
 
 test('Bookmarks migrate, preserve scoped snapshots, and support cross-session follow-ups', async ({ page }) => {
@@ -79,10 +81,16 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
   expect(upgraded).toEqual({ version: 2, bookmarkStore: true, legacy: { path: 'legacy-session', data: { scope: 'legacy' } } });
 
   const recordBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'Show 10 customers' });
+  const tagButton = recordBookmark.getByRole('button', { name: 'Tag', exact: true });
+  await expect(tagButton).toBeEnabled();
   page.once('dialog', (dialog) => dialog.accept(' ROCK '));
-  await recordBookmark.getByRole('button', { name: 'Tag' }).click();
+  await tagButton.click();
+  await expect(recordBookmark.getByRole('button', { name: 'rock ×', exact: true })).toBeVisible();
+  await expect(tagButton).toBeEnabled();
   page.once('dialog', (dialog) => dialog.accept(' LIVE '));
-  await recordBookmark.getByRole('button', { name: 'Tag' }).click();
+  await tagButton.click();
+  await expect(recordBookmark.getByRole('button', { name: 'live ×', exact: true })).toBeVisible();
+  await expect(tagButton).toBeEnabled();
   await workspace.getByLabel('Filter bookmark tags').fill('rock');
   await expect(workspace.locator('.bookmark-item')).toHaveCount(1);
   await workspace.getByLabel('Filter bookmark tags').fill('ROCK,live');
@@ -96,7 +104,10 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
 
   await page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="CustomerId"]').click();
   await workspace.getByRole('button', { name: 'Bookmark selection' }).click();
+  await expect(workspace.getByRole('tab', { name: /Bookmarks/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(workspace.locator('.bookmark-item')).toHaveCount(2);
   await workspace.locator('ion-segment-button[value="selected"]').click();
+  await expect(workspace.getByRole('tab', { name: 'Selected', exact: true })).toHaveAttribute('aria-selected', 'true');
   await workspace.getByRole('button', { name: 'Bookmark view' }).click();
   await expect(workspace.locator('.bookmark-item')).toHaveCount(3);
   const masked = await page.evaluate(async () => {

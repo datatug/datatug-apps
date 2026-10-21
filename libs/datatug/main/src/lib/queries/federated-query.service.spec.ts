@@ -1,5 +1,9 @@
+import { NativeQueryFailure } from './native-query-failure';
+import { TestBed } from '@angular/core/testing';
+import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
 import 'fake-indexeddb/auto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PUBLIC_OVDB_LOOPBACK_MODE } from './public-ovdb-dev-transport';
 import { FederatedQueryService } from './federated-query.service';
 import { QueryType, type IQueryDef } from '../models/definition/query-def';
 import { graphFixturePlan } from './public-data/native-graph.spec-helper';
@@ -67,6 +71,7 @@ describe('federated query worker boundary', () => {
       service: FederatedQueryService,
       extras?: Parameters<FederatedQueryService['run']>[5],
     ) => {
+      const previousWorker = FakeWorker.last;
       const run = service.run(
         definition,
         undefined,
@@ -75,9 +80,34 @@ describe('federated query worker boundary', () => {
         undefined,
         extras,
       );
-      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      await vi.waitFor(() => {
+        expect(FakeWorker.last).not.toBe(previousWorker);
+        expect(FakeWorker.last?.posted.length).toBe(1);
+      });
       return { run, worker: FakeWorker.last as FakeWorker };
     };
+
+    it('passes only app-owned dev mode and preserves progress, source and finished callbacks', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const progress = vi.fn(), source = vi.fn(), finished = vi.fn();
+      TestBed.configureTestingModule({ providers: [
+        { provide: PUBLIC_OVDB_DEV_TRANSPORT, useValue: PUBLIC_OVDB_LOOPBACK_MODE },
+      ] });
+      const service = TestBed.inject(FederatedQueryService);
+      const run = service.run(definition, progress, '', 'full', finished, { onSourceLoaded: source });
+      await vi.waitFor(() => expect(FakeWorker.last?.posted.length).toBe(1));
+      const worker = currentWorker();
+      expect(worker.posted[0]).toMatchObject({ devTransport: PUBLIC_OVDB_LOOPBACK_MODE, token: '' });
+      const event = { stage: 'loading', rowsLoaded: 3, rowsProcessed: 0 };
+      worker.send({ type: 'progress', progress: event });
+      worker.send({ type: 'source', event: sourceEvent });
+      worker.send({ type: 'finished', totalRows: 3 });
+      worker.send({ type: 'result', result: { ...result, totalRows: 3 } });
+      await run;
+      expect(progress).toHaveBeenCalledWith(event);
+      expect(source).toHaveBeenCalledWith(sourceEvent);
+      expect(finished).toHaveBeenCalledWith(3);
+    });
 
     it('hands each finished source to the run, and ignores the message when no one listens', async () => {
       vi.stubGlobal('Worker', FakeWorker);
@@ -116,6 +146,29 @@ describe('federated query worker boundary', () => {
       active.worker.send(message);
       await expect(active.run).rejects.toThrow('unexpected or invalid protocol message');
       expect(active.worker.posted).toContainEqual({ type: 'close' });
+    });
+
+    it('reconstructs only the finite worker diagnostic, never its arbitrary message or raw cause', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      const active = await started(new FederatedQueryService());
+      const diagnostic = { stage: 'capability_discovery', reason: 'http_status', status: 403 };
+      active.worker.send({ type: 'error', diagnostic, message: 'secret URL SQL token', cause: new Error('private') });
+      const failure = await active.run.catch(error => error);
+      expect(failure).toBeInstanceOf(NativeQueryFailure);
+      expect(failure.diagnostic).toEqual(diagnostic);
+      expect(failure.cause).toEqual(diagnostic);
+      expect(failure.message).toContain('HTTP 403');
+      expect(failure.message).not.toMatch(/secret|SQL|token|private/);
+      expect(active.worker.posted).toContainEqual({ type: 'close' });
+    });
+
+    it('rejects malformed worker diagnostics without falling back to their arbitrary message', async () => {
+      vi.stubGlobal('Worker', FakeWorker);
+      for (const diagnostic of [undefined, null, { stage: 'secret URL', reason: 'network' }, { stage: 'query_execution', reason: 'http_status', status: 999 }]) {
+        const active = await started(new FederatedQueryService());
+        active.worker.send({ type: 'error', diagnostic, message: 'secret SQL auth' });
+        await expect(active.run).rejects.toThrow('invalid diagnostic');
+      }
     });
 
     it('sends the static source to the worker only when one is given', async () => {
@@ -229,7 +282,7 @@ describe('federated query worker boundary', () => {
       const bounded = {
         ...definition,
         federation: {
-          ovdbBaseUrl: 'https://demodb.dev/ovdb',
+          ovdbBaseUrl: 'https://ovdb.demodb.dev',
           tables: [],
           bounds: {
             userRows: 100,

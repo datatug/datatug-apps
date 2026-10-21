@@ -285,6 +285,11 @@ describe('classifyOpenError', () => {
       message: expect.stringContaining('could not be stored'),
     });
     expect(classifyOpenError(new LocalDemoDbOpenError('locked', 'held'), entry).kind).toBe('locked-retry');
+    expect(classifyOpenError(new LocalDemoDbOpenError('rate-limited', 'HTTP 429'), entry)).toMatchObject({
+      kind: 'failed',
+      storage: false,
+      message: expect.stringContaining('HTTP 429'),
+    });
   });
 
   it('does not read a message for quota: a plain error that mentions quota is an ordinary failure', () => {

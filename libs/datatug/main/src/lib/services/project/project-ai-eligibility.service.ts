@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { HttpParams } from '@angular/common/http';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { IProjectRef, isSharedProjectRef } from '../../core/project-context';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { Observable, map } from 'rxjs';
@@ -31,7 +31,7 @@ function eligibility(value: unknown): ProjectAIEligibility {
 /** Reads sponsor entitlement for one shared project; the result is never cached. */
 @Injectable({ providedIn: 'root' })
 export class ProjectAIEligibilityService {
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   private readonly projectQueries = inject(ProjectQueryApiService);
 
   read(ref: IProjectRef): Observable<ProjectAIEligibility> {

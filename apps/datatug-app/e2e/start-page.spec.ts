@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import type { Page } from '@playwright/test';
 
 // The start page has an address of its own, `/home`. A full page load of `/`
@@ -55,7 +55,7 @@ test('in-app navigation to / ends on /home', async ({ page }) => {
   await page.goto('/login');
   await expect(page.getByText('Login @ DataTug.app')).toBeVisible();
 
-  await page.getByRole('link', { name: 'DataTug.app home' }).click();
+  await page.locator('sneat-login ion-header ion-back-button').click();
 
   await expect(page).toHaveURL('/home');
   await expect(startPageHeading(page)).toBeVisible();

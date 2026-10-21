@@ -1,9 +1,37 @@
-<ion-card>
-  <ion-card-content>
-    <h2>AI investigation proposals</h2>
-    <ion-button fill="outline" size="small" (click)="toggleOpen()">{{
-      open() ? 'Hide AI proposals' : 'Open AI proposals'
-    }}</ion-button>
+<ion-card class="detective-ai-card">
+  <ion-item
+    color="light"
+    lines="full"
+    class="detective-card-header detective-ai-card-header"
+  >
+    <ion-icon slot="start" name="sparkles-outline" aria-hidden="true" />
+    <ion-label><h2>AI investigation proposals</h2></ion-label>
+    <ion-buttons slot="end">
+      <ion-button
+        fill="clear"
+        size="small"
+        [attr.aria-controls]="contentId"
+        [attr.aria-expanded]="open()"
+        [attr.aria-label]="
+          open()
+            ? 'Hide AI investigation proposals'
+            : 'Open AI investigation proposals'
+        "
+        [attr.title]="
+          open()
+            ? 'Hide AI investigation proposals'
+            : 'Open AI investigation proposals'
+        "
+        (click)="toggleOpen()"
+        >{{ open() ? 'Hide' : 'Open' }}</ion-button
+      >
+    </ion-buttons>
+  </ion-item>
+  <ion-card-content class="detective-ai-proposals-content" [id]="contentId">
+    <p>
+      Turn investigation notes into draft queries, checks and next steps. Review
+      every suggestion before applying it.
+    </p>
     @if (open()) {
       <p>
         Send only text you are permitted to share with the configured project AI

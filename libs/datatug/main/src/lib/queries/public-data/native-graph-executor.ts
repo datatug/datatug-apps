@@ -645,9 +645,10 @@ export interface GraphCoverage {
 }
 const typed = (value: unknown): TypedValue => {
   if (value instanceof JsonNumberToken) {
-    if (/^-?(?:0|[1-9][0-9]*)$/.test(value.token))
+    if (/^(?:0|-?[1-9][0-9]*)$/.test(value.token))
       return { type: 'integer', value: value.token };
-    if (/^-?(?:0|[1-9][0-9]*)\.[0-9]+$/.test(value.token))
+    // Core integers exclude negative zero; decimals retain this exact wire token.
+    if (value.token === '-0' || /^-?(?:0|[1-9][0-9]*)\.[0-9]+$/.test(value.token))
       return { type: 'decimal', value: value.token };
     return { type: 'string', value: 'JSON numeric token: ' + value.token };
   }
@@ -2049,7 +2050,8 @@ export function nativeGraphRunResponse(
   output: NativeGraphResult,
   queryId: string,
   source: string,
-): RunQueryResponse & {
+): Omit<RunQueryResponse, 'provenance'> & {
+  readonly provenance: Omit<RunQueryResponse['provenance'], 'executionProfile'>;
   readonly relatedRecordsets: readonly GraphRelatedRecordset[];
   readonly nativeGraph: Pick<
     NativeGraphResult,
@@ -2110,7 +2112,6 @@ export function nativeGraphResponseEnvelope(
       queryId,
       mode: 'live' as const,
       observedAt: new Date().toISOString(),
-      executionProfile: 'protected' as const,
     },
   };
 }

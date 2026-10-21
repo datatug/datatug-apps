@@ -112,16 +112,21 @@ describe('ProjectContextMenuComponent', () => {
     },
   );
 
-  it('REQ:context-basket — links to the Investigation Context screen (the former "Variables" empty-shell entry), unconditionally', () => {
-    const entry = component.projTopLevelPages.find(
-      (page) => page.path === 'variables',
-    );
-    expect(entry).toMatchObject({
-      path: 'variables',
-      title: 'Investigation Context',
-    });
+  it('keeps Investigation Context out of the project menu while preserving its deep-link route', () => {
+    expect(
+      component.projTopLevelPages.some((page) => page.path === 'variables'),
+    ).toBe(false);
+    expect(
+      datatugProjectRoutes.some((route) => route.path === 'variables'),
+    ).toBe(true);
   });
 
+  it('places Meanings alphabetically after the fixed Overview entry', () => {
+    const titles = component.projTopLevelPages.map(page => page.title);
+    expect(titles[0]).toBe('Overview');
+    expect(titles.slice(1)).toEqual(titles.slice(1).toSorted((a,b) => a.localeCompare(b)));
+    expect(component.projTopLevelPages.find(page => page.path === 'meanings')?.title).toBe('Meanings');
+  });
   it('keeps the Sandbox route for deep links without duplicating it in the project menu', () => {
     expect(
       component.projTopLevelPages.some(
@@ -295,13 +300,16 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
     expect(tree?.toString()).not.toContain('%3F');
   });
 
-  it('uses the project-qualified preview only for the canonical public demo', () => {
+  it('keeps canonical demo and private hosted Incident links project-qualified', () => {
     const fixture = render(PRODUCT_PROFILES.datatug);
     project$.next({ ref: DEMO_PROJECT_REF });
     expect(fixture.componentInstance.isDemoProject()).toBe(true);
     expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
       projectPageHref(DEMO_PROJECT_REF, 'incidents'),
     );
+    const privateRef = { storeId: 'firestore', spaceID: 'private-space', projectId: 'private-project' };
+    project$.next({ ref: privateRef });
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(projectPageHref(privateRef, 'incidents'));
     project$.next({
       ref: { storeId: 'localhost:8989', projectId: 'shop' },
     });

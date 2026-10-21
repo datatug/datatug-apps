@@ -50,6 +50,7 @@ export async function readOvdbOrdinaryResult(
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
+  let reachedEnd = false;
   try {
     for (;;) {
       signal?.throwIfAborted();
@@ -67,7 +68,7 @@ export async function readOvdbOrdinaryResult(
             .finally(() => signal?.removeEventListener('abort', abort));
         },
       );
-      if (part.done) break;
+      if (part.done) { reachedEnd = true; break; }
       bytes += part.value.byteLength;
       if (bytes > maximumBytes)
         throw new Error(
@@ -76,7 +77,8 @@ export async function readOvdbOrdinaryResult(
       chunks.push(part.value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   signal?.throwIfAborted();
   const body = new Uint8Array(bytes);
@@ -93,6 +95,8 @@ export async function readOvdbOrdinaryResult(
   const document = decoded as Record<string, unknown>;
   if (
     (document['complete'] !== undefined && document['complete'] !== true) ||
+    (document['hasMore'] !== undefined && document['hasMore'] !== false) ||
+    (document['truncated'] !== undefined && document['truncated'] !== false) ||
     !Array.isArray(document['records']) ||
     document['records'].length > maximumRows ||
     !Array.isArray(document['columns']) ||
@@ -105,6 +109,11 @@ export async function readOvdbOrdinaryResult(
     Array.isArray(document['execution'])
   )
     throw new Error('OVDB returned an invalid ordinary query result.');
+  const execution = document['execution'] as Record<string, unknown>;
+  if (execution['rowsReturned'] !== undefined &&
+    (!Number.isSafeInteger(execution['rowsReturned']) ||
+      execution['rowsReturned'] !== document['records'].length))
+    throw new Error('OVDB ordinary query result row count does not match its execution evidence.');
   const columns = document['columns'] as string[];
   const records: OvdbStreamRecord[] = [];
   for (const entry of document['records']) {

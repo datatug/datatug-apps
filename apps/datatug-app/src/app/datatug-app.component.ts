@@ -132,22 +132,17 @@ export class DatatugAppComponent {
     return path === `/${this.profile.homePath}`;
   });
 
-  // Founder, 2026-10-14: "We do not need empty side panel on homepage".
-  // The home panel would hold only the signed-out auth card (the store
-  // selector, Incidents and version blocks were retired from it — UX brief
-  // §2), so while signed out there is nothing worth showing: hide the whole
-  // panel at every width — the split pane collapses, the overlay menu is
-  // disabled, and the compact header drops its menu button. Once a user is
-  // signed in the panel returns with the real user row.
+  // Home has no side-panel content for either auth state. Keep the overlay
+  // menu available from the Home header, while the split pane remains
+  // collapsed so Home never displays the panel by default.
   protected readonly homePanelHidden = computed(
     () =>
       this.profile.minimalSignedOutHome === true &&
       this.appHomePath() &&
-      !this.checkoutAuth() &&
-      this.authStatus() !== 'authenticated',
+      !this.checkoutAuth(),
   );
 
-  // Auth pages keep their own `auth-brand` strip, and the checkout shell
+  // Auth pages provide navigation in their own page headers. The checkout shell
   // (`checkout()` disables the menu by design) must not show a menu-button
   // that can never open — the compact header only earns its place when the
   // menu is genuinely reachable-but-hidden. Elsewhere on narrow layouts it
@@ -156,8 +151,8 @@ export class DatatugAppComponent {
     () => this.menuHidden() && !this.checkoutAuth() && !this.checkout(),
   );
 
-  // Split-pane visibility: hidden for the checkout shell (existing rule)
-  // and for the signed-out home page (see `homePanelHidden`).
+  // Split-pane visibility: hidden for the checkout shell and Home, where the
+  // menu remains available as an overlay from the page header.
   protected readonly paneWhen = computed(() =>
     this.checkout() || this.homePanelHidden()
       ? false

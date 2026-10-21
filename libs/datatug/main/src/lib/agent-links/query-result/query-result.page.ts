@@ -9,11 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  ActivatedRoute,
-  ActivatedRouteSnapshot,
-  Router,
-} from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
@@ -37,12 +33,14 @@ import {
   SemanticApiService,
   tryDecodeErrorEnvelope,
 } from '@sneat/datatug-semantic';
-import { AgGridReadyDirective } from '@datatug/ag-grid';
-import { AgGridAngular } from 'ag-grid-angular';
+import type { ColDef, RowClickedEvent } from 'ag-grid-community';
+import { ResultsGridComponent } from '../../components/results-grid/results-grid.component';
 import {
-  ColDef,
-  RowClickedEvent,
-} from 'ag-grid-community';
+  GridRow,
+  gridCell,
+  resultColumnDef,
+} from '../../components/results-grid/results-grid-columns';
+import { gridStateKey } from '../../components/results-grid/results-grid-state';
 import {
   Subject,
   Subscription,
@@ -61,7 +59,12 @@ import { AuthorCurrentRowComponent } from '../../queries/query/page/author-curre
 import { parseDatatugStoreRef } from '../../nav/nav-models';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../services/project/project.service';
-import { linkBackHref } from '../link-route';
+import {
+  isLoopbackStore,
+  linkBackHref,
+  projectPageCommands,
+  routeParam,
+} from '../link-route';
 import { agentBaseUrl } from '../../services/repo/agent-url';
 import {
   AgentLinkApiService,
@@ -71,6 +74,7 @@ import {
 import { LinkProblemComponent } from '../link-problem/link-problem.component';
 import {
   RERUN_LIMIT,
+  RESULT_QUERY_PARAM,
   ROW_QUERY_PARAM,
   RESULT_VIEWS,
   ResultMeta,
@@ -78,8 +82,8 @@ import {
   ResultView,
   StoredResult,
   VIEW_QUERY_PARAM,
-  cellText,
   decodeRecordset,
+  pkFirstOrder,
   rerunBlocker,
   rerunRequest,
   resultDbIds,
@@ -88,7 +92,6 @@ import {
   validResultId,
 } from './query-result';
 import { ResultListsComponent } from './result-lists.component';
-
 
 type ResultState =
   | { readonly kind: 'loading' }
@@ -107,26 +110,10 @@ type RerunState =
     }
   | { readonly kind: 'error'; readonly text: string };
 
-type GridRow = Record<string, string>;
+export { isLoopbackStore };
 
-/** A parameter of the route or of one of its ancestors (the store id is a parameter of `store/:storeId`). */
-function routeParam(
-  route: ActivatedRouteSnapshot,
-  key: string,
-): string | undefined {
-  for (const r of [...(route.pathFromRoot ?? []), route].reverse()) {
-    const value = r.paramMap?.get(key);
-    if (value) return value;
-  }
-  return undefined;
-}
-
-/** Whether the store is a local agent (`http-127.0.0.1:<port>`, `localhost:<port>`, `[::1]`). */
-export function isLoopbackStore(storeId: string): boolean {
-  return /^(?:https?-)?(?:127\.0\.0\.1|localhost|\[::1\])(?::\d{1,5})?$/.test(
-    storeId,
-  );
-}
+/** How long a link to the Table view waits for the agent to name the result's project before it draws the table. */
+const EDITOR_LOOKUP_WAIT_MS = 3000;
 
 const VIEW_LABELS: Record<ResultView, string> = {
   table: 'Table',
@@ -185,8 +172,7 @@ export function rerunErrorText(err: unknown): string {
     IonSegment,
     IonSegmentButton,
     IonLabel,
-    AgGridAngular,
-    AgGridReadyDirective,
+    ResultsGridComponent,
     AuthorCurrentRowComponent,
     LinkProblemComponent,
     ResultListsComponent,
@@ -220,6 +206,22 @@ export class QueryResultPageComponent {
   private readonly reload$ = new Subject<void>();
   private projectSubscription?: Subscription;
   private rerunSubscription?: Subscription;
+  /** The router commands of the query editor of the result's project, once the agent is known to have the project. */
+  private editorCommands?: string[];
+  /** The address asks for the Table view by name (`?view=table`), the card's "Open in DataTug" target. */
+  private tableRequested = false;
+  private holdTimer?: ReturnType<typeof setTimeout>;
+  private handoffGeneration = 0;
+  private lookupPending = false;
+  private tableFallback = false;
+  private navigationPending = false;
+  /**
+   * True while a link that asks for the Table view (`?view=table`) waits for the agent to say whether it knows the
+   * result's project: the page is then replaced by the query editor, so drawing the read-only grid first would draw
+   * it, destroy it a moment later and lose whatever the person did to it (a selection, a resized column, a sort).
+   * The grid is drawn at once when the lookup fails, says no, or takes longer than `EDITOR_LOOKUP_WAIT_MS`.
+   */
+  readonly openingEditor = signal(false);
 
   readonly views = RESULT_VIEWS;
   readonly viewLabels = VIEW_LABELS;
@@ -251,26 +253,35 @@ export class QueryResultPageComponent {
       ? v
       : undefined;
   });
-  readonly gridColumns = computed<ColDef<GridRow>[]>(() =>
-    (this.recordset()?.columns ?? []).map((c, i) => ({
-      colId: `c${i}`,
-      field: `c${i}`,
-      headerName: c.name,
-      sortable: false,
-      minWidth: 120,
-    })),
-  );
+  readonly gridColumns = computed<ColDef<GridRow>[]>(() => {
+    const columns = this.recordset()?.columns ?? [];
+    const meta = this.result()?.meta;
+    // Primary-key columns are identifiers whatever their name: their digits are never grouped.
+    const keyNames = new Set(
+      (meta?.columns ?? []).filter((c) => (c.pk ?? 0) > 0).map((c) => c.name),
+    );
+    const defs = columns.map((c, i) =>
+      resultColumnDef({ ...c, primaryKey: keyNames.has(c.name) }, `c${i}`),
+    );
+    // The columns as the recordset gives them; the primary key first only when the saved metadata names it.
+    const order = meta ? pkFirstOrder(meta, columns) : undefined;
+    return order ? order.map((i) => defs[i]) : defs;
+  });
+  /** Where the grid remembers its layout: ids only (the project and the stored result), never a value. */
+  readonly gridStateKey = computed(() => {
+    const meta = this.result()?.meta;
+    const ids = meta ? resultDbIds(meta) : undefined;
+    return gridStateKey({
+      project: ids?.project,
+      context: meta?.id,
+      kind: 'result',
+    });
+  });
   readonly gridRows = computed<GridRow[]>(() =>
     (this.recordset()?.rows ?? []).map((row) =>
-      Object.fromEntries(row.map((cell, i) => [`c${i}`, cellText(cell)])),
+      Object.fromEntries(row.map((cell, i) => [`c${i}`, gridCell(cell)])),
     ),
   );
-  readonly gridDefaultColDef: ColDef<GridRow> = {
-    initialFlex: 1,
-    resizable: true,
-  };
-  readonly gridNoRows =
-    '<span class="ag-overlay-no-rows-center">No rows.</span>';
   readonly totalRows = computed(() => this.recordset()?.rows.length ?? 0);
   readonly currentRow = computed(() => this.recordset()?.rows[this.row() - 1]);
   /** Whether the shown rows are all there are: false when the saved result or the fresh run was cut short. */
@@ -284,6 +295,11 @@ export class QueryResultPageComponent {
     combineLatest([this.route.paramMap, this.reload$])
       .pipe(
         switchMap(() => {
+          // Invalidate the old result before the next asynchronous result read starts.
+          this.projectSubscription?.unsubscribe();
+          this.lookupPending = false;
+          this.editorCommands = undefined;
+          this.resetEditorHandoff();
           const snapshot = this.route.snapshot;
           const storeId = routeParam(snapshot, routingParamStoreId) ?? '';
           const id = routeParam(snapshot, routingParamResultId);
@@ -323,12 +339,89 @@ export class QueryResultPageComponent {
           state.kind === 'loaded' ? state.result.meta : undefined,
         );
       });
-    this.destroyRef.onDestroy(() => this.projectSubscription?.unsubscribe());
+    this.destroyRef.onDestroy(() => {
+      this.projectSubscription?.unsubscribe();
+      this.handoffGeneration++;
+      clearTimeout(this.holdTimer);
+    });
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((q) => {
-      this.view.set(resultView(q.get(VIEW_QUERY_PARAM)));
+      const view = resultView(q.get(VIEW_QUERY_PARAM));
+      const tableRequested = q.get(VIEW_QUERY_PARAM) === 'table';
+      if (view !== this.view() || tableRequested !== this.tableRequested) {
+        this.resetEditorHandoff();
+      }
+      this.view.set(view);
       this.row.set(resultRow(q.get(ROW_QUERY_PARAM)));
+      this.tableRequested = tableRequested;
+      if (this.tableRequested && this.lookupPending) this.holdForProject();
+      this.openEditorForTable();
     });
     this.reload$.next();
+  }
+
+  /**
+   * The Table view of a stored result is the query editor: when the address names it (`?view=table`) and the agent
+   * knows the project of the result, the page is replaced (no history entry, so Back goes where it went before) by
+   * the editor of that project, opened from this result. The other views stay on this page, and a result whose
+   * project the agent does not know keeps its read-only table here.
+   */
+  private openEditorForTable(): void {
+    const commands = this.editorCommands;
+    const id = routeParam(this.route.snapshot, routingParamResultId);
+    if (
+      !this.tableRequested ||
+      this.tableFallback ||
+      this.navigationPending ||
+      !commands ||
+      !validResultId(id)
+    )
+      return;
+    const generation = this.handoffGeneration;
+    // The lookup deadline must never expose an interactive grid under an in-flight navigation.
+    clearTimeout(this.holdTimer);
+    this.navigationPending = true;
+    this.openingEditor.set(true);
+    void this.router
+      .navigate(commands, {
+        queryParams: { [RESULT_QUERY_PARAM]: id },
+        replaceUrl: true,
+      })
+      .then(
+        (done) => {
+          if (generation === this.handoffGeneration && !done)
+            this.releaseTable();
+        },
+        () => {
+          if (generation === this.handoffGeneration) this.releaseTable();
+        },
+      );
+  }
+
+  /** A result/view change permits a new handoff and fences callbacks of the previous one. */
+  private resetEditorHandoff(): void {
+    this.handoffGeneration++;
+    clearTimeout(this.holdTimer);
+    this.navigationPending = false;
+    this.tableFallback = false;
+    this.openingEditor.set(false);
+  }
+
+  private holdForProject(): void {
+    if (this.tableFallback || this.navigationPending || this.openingEditor())
+      return;
+    const generation = this.handoffGeneration;
+    this.openingEditor.set(true);
+    this.holdTimer = setTimeout(() => {
+      if (generation === this.handoffGeneration) this.releaseTable();
+    }, EDITOR_LOOKUP_WAIT_MS);
+  }
+
+  /** Once visible, the table stays interactive until an explicit view/result change. */
+  private releaseTable(): void {
+    clearTimeout(this.holdTimer);
+    this.tableFallback = true;
+    this.navigationPending = false;
+    this.openingEditor.set(false);
   }
 
   /** Reads the result again (Check again). */
@@ -339,7 +432,14 @@ export class QueryResultPageComponent {
   /** Switches the view; the address follows (it holds the view name only). */
   selectView(value: unknown): void {
     const view = resultView(typeof value === 'string' ? value : '');
+    // Invalidate a pending handoff immediately, before the router emits the new view.
+    if (view !== this.view()) this.resetEditorHandoff();
     this.view.set(view);
+    this.tableRequested = view === 'table';
+    if (this.tableRequested && !this.tableFallback) {
+      if (this.lookupPending) this.holdForProject();
+      else if (this.editorCommands) this.openingEditor.set(true);
+    }
     this.navigate({ [VIEW_QUERY_PARAM]: view });
   }
 
@@ -352,8 +452,11 @@ export class QueryResultPageComponent {
     this.navigate({ [ROW_QUERY_PARAM]: String(row) });
   }
 
+  /** Opens the clicked row in the Record view. The position is the row's place in the saved rows, not on screen: the grid may be sorted or filtered. */
   gridRowClicked(event: RowClickedEvent<GridRow>): void {
-    if (typeof event.rowIndex === 'number') this.selectRow(event.rowIndex + 1);
+    if (event.node?.group || event.node?.footer) return;
+    const at = event.data ? this.gridRows().indexOf(event.data) : -1;
+    if (at >= 0) this.selectRow(at + 1);
   }
 
   /**
@@ -404,6 +507,7 @@ export class QueryResultPageComponent {
    */
   private selectProject(meta: ResultMeta | undefined): void {
     this.projectSubscription?.unsubscribe();
+    this.editorCommands = undefined;
     const url = this.router.url;
     const ids = meta ? resultDbIds(meta) : undefined;
     const storeId = this.storeId();
@@ -413,24 +517,37 @@ export class QueryResultPageComponent {
       return;
     }
     const ref = { projectId: ids.project, storeId };
+    this.lookupPending = true;
+    if (this.tableRequested) this.holdForProject();
     this.projectSubscription = this.projectService
       .getSummary(ref)
       .pipe(take(1))
       .subscribe({
         next: (summary) => {
+          this.lookupPending = false;
           if (!summary) {
+            this.releaseTable();
             this.navContext.selectResultProject(url);
             return;
           }
           this.backHref.set(linkBackHref(storeId, ids.project));
-          const known = summary.environments?.some((e) => e.id === ids.env);
+          // An agent that lists no environments in the summary cannot say the result's one is missing.
+          const envs = summary.environments;
+          const known =
+            envs === undefined || envs.some((e) => e.id === ids.env);
           this.navContext.selectResultProject(
             url,
             { ref, store: { ref: parseDatatugStoreRef(storeId) } },
             known ? ids.env : undefined,
           );
+          this.editorCommands = projectPageCommands(ref, ['query']);
+          this.openEditorForTable();
         },
-        error: () => this.navContext.selectResultProject(url),
+        error: () => {
+          this.lookupPending = false;
+          this.releaseTable();
+          this.navContext.selectResultProject(url);
+        },
       });
   }
 

@@ -1,5 +1,5 @@
 import { Injectable, inject } from '@angular/core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../../base/datatug-api.service';
 
 export interface ConnectedGithubRepository {
   readonly id: number;
@@ -28,7 +28,7 @@ export interface GitHubOAuthCompleteResult {
 /** GitHub App credentials remain server-side. Every operation uses the Firebase auth bridge. */
 @Injectable({ providedIn: 'root' })
 export class GithubConnectionService {
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
   start() {
     return this.api.post<{ authorizationURL: string }>(
       'datatug/github/authorization/start',

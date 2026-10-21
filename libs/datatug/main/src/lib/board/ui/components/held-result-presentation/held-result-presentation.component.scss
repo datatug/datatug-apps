@@ -262,7 +262,8 @@ tbody th button {
   color: #145750;
   font-weight: 650;
 }
-.source-details dl {
+.source-details dl,
+.inspection dl {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
   gap: 0.6rem 1rem;
@@ -276,9 +277,6 @@ tbody th button {
 }
 .inspection dl {
   margin: 0.5rem 0 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-  gap: 0.6rem 1rem;
 }
 .inspection dt {
   color: #43536a;
@@ -323,4 +321,94 @@ select:focus-visible {
     animation: none !important;
     transition: none !important;
   }
+}
+
+.series-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  padding: 0;
+  list-style: none;
+}
+.series-legend li {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+.series-legend li span {
+  width: 0.9rem;
+  height: 0.9rem;
+  border-radius: 2px;
+}
+.grouped-bars {
+  list-style: none;
+  padding: 0.25rem;
+  display: grid;
+  gap: 0.75rem;
+}
+.grouped-bars button {
+  width: 100%;
+  text-align: left;
+  background: var(--ion-background-color, #fff);
+  color: var(--ion-text-color, #17243b);
+  border: 1px solid #ced9e7;
+  border-radius: 0.6rem;
+  padding: 0.65rem;
+  cursor: pointer;
+}
+.grouped-bars button:focus-visible {
+  outline: 3px solid #1764c0;
+  outline-offset: 2px;
+}
+.grouped-bars button[aria-pressed='true'] {
+  border-color: #1764c0;
+  box-shadow: 0 0 0 2px #1764c0;
+}
+.grouped-measure {
+  display: grid;
+  grid-template-columns: minmax(5.5rem, auto) minmax(2rem, 1fr) 2rem;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.35rem;
+}
+.grouped-measure .bar-track {
+  position: relative;
+  height: 0.8rem;
+  background: #edf1f6;
+}
+.grouped-measure .bar-fill {
+  position: absolute;
+  min-width: 0;
+}
+.exact-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.series-title {
+  font-size: 0.8rem;
+}
+.grouped-measure .zero-line {
+  position: absolute;
+  height: 100%;
+  border-left: 1px solid #6f8098;
+  z-index: 1;
+}
+
+.result.embedded {
+  border: 0;
+  border-radius: 0;
+}
+.embedded .summary {
+  padding: 0;
+  justify-content: flex-start;
+}
+.embedded .summary p {
+  margin-block: 0.5rem;
+}
+.embedded .view-switch {
+  margin: 0.25rem 0 0.5rem;
+}
+.inspect-category {
+  min-height: 2.75rem;
+  margin-block: 0.25rem;
 }

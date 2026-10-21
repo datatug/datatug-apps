@@ -1,0 +1,40 @@
+{
+  "format": "datatug-browser-sqlite-source-rights/v1",
+  "sourceRights": [
+    {
+      "sourceId": "ovdb:https%3A%2F%2Fgithub.com%2Fdemo-db%2Fnorthwind/northwind",
+      "source": {
+        "serverId": "https://github.com/demo-db/northwind",
+        "databaseId": "northwind"
+      },
+      "declaration": {
+        "spdx": "MIT",
+        "url": "https://github.com/demo-db/northwind/blob/de7f81c591abccc30fb9a0a58f44be9fd7265cd6/data-source/LICENSE.md"
+      },
+      "declarationScope": "database",
+      "declaredAt": {
+        "serverId": "https://github.com/demo-db/northwind",
+        "databaseId": "northwind"
+      },
+      "evidenceOrigin": "publisher-verified",
+      "pins": [
+        {
+          "role": "provider",
+          "repository": "https://github.com/demo-db/northwind",
+          "revision": "76fe0a1ccc82b6c0c5a035d76c9df7522713d618",
+          "path": "artifacts/northwind.sqlite",
+          "sha256": "279b34136771aee75d802094b3329515a2b01da65d2a20a4a9e3b58c29b4fd20",
+          "bytes": 602112
+        }
+      ],
+      "attribution": {
+        "text": "Northwind source data derived from jpwhite3/northwind-SQLite3, copyright (c) 2016 JP White; preserve the bundled MIT notice.",
+        "url": "https://github.com/demo-db/northwind"
+      },
+      "transformations": []
+    }
+  ],
+  "usedSourceIds": [
+    "ovdb:https%3A%2F%2Fgithub.com%2Fdemo-db%2Fnorthwind/northwind"
+  ]
+}

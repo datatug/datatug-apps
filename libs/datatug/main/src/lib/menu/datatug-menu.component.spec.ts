@@ -220,12 +220,22 @@ describe('DatatugMenuComponent', () => {
       ).toBeNull();
     });
 
-    it('shows the auth card on /home only once a user is actually signed in', () => {
+    it('keeps the auth card on /home while signed out, pending, and signed in', () => {
       const fixture = createComponent('/home');
       fixture.detectChanges();
       expect(
         fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
-      ).toBeNull();
+      ).toBeTruthy();
+      userState$.next({ status: 'notAuthenticated' });
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
+      ).toBeTruthy();
+      userState$.next({ status: 'authenticating' });
+      fixture.detectChanges();
+      expect(
+        fixture.nativeElement.querySelector('sneat-datatug-auth-menu-item'),
+      ).toBeTruthy();
       userState$.next({
         status: 'authenticated',
         record: { id: 'u1' },

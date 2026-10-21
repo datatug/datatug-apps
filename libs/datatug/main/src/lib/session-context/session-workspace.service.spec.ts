@@ -162,6 +162,22 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     expect(reopened.draft().composer).toBe('Typed before the project-ref key update');
   });
 
+  it.each(['actor', 'project', 'destroy'] as const)('synchronously cancels the actual command lifetime on %s change', async (change) => {
+    let heldSignal: AbortSignal | undefined;
+    const held = deferred<ContextReceipt>();
+    api.command.mockImplementationOnce((_project, _caps, _command, signal: AbortSignal) => { heldSignal = signal; return held.promise; });
+    service.stageEnabled(false);
+    const applying = service.apply();
+    await vi.waitFor(() => expect(heldSignal).toBeDefined());
+    expect(heldSignal?.aborted).toBe(false);
+    if (change === 'actor') service.setActor('maya');
+    else if (change === 'project') void service.openProject({ ...project, projectId: 'other' });
+    else TestBed.resetTestingModule();
+    expect(heldSignal?.aborted).toBe(true);
+    held.reject(new Error('Cancelled native token wait'));
+    await applying;
+  });
+
   it('retries the literal predeployment pending command with its original operation ID', async () => {
     const legacyKey = '["datatug-session-pending/1","local-principal","shop@http-localhost:8989","ops"]';
     const command: ContextCommand = {
@@ -175,7 +191,7 @@ describe('SessionWorkspaceService authority and draft boundaries', () => {
     expect(reopened.canRetry()).toBe(true);
     await reopened.retry();
 
-    expect(api.command).toHaveBeenCalledWith(project, capabilities, command);
+    expect(api.command).toHaveBeenCalledWith(project, capabilities, command, expect.any(AbortSignal));
     expect(api.command.mock.calls.at(-1)?.[2].opId).toBe('operation_from_before_project_ref_update');
     expect(pending.has(legacyKey)).toBe(false);
   });

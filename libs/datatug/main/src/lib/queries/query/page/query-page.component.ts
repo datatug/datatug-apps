@@ -1,8 +1,36 @@
+import {
+  prepareLocalMeaningSave,
+  type LocalMeaningSaveSnapshot,
+} from '../../semantic-project-reference';
+import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
+import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
+import { heldEvidenceIdentity } from '../../../evidence/retained-evidence-contract';
+import type { HeldEvidenceIdentity } from '@sneat/datatug-semantic';
+import {
+  EvidenceSharePanelComponent,
+  EvidenceShareSelection,
+} from '../../../evidence/evidence-share-panel.component';
+import { requireAppliedInputMatch } from '../../../evidence/applied-evidence';
+import { RetainedRunIntent } from '../../../evidence/run-intent';
+import { useNativeRunLifetime } from '../../../evidence/native-run-lifetime';
+import { DemoTableDraftService } from '../../demo-table-draft.service';
+import { isSavedPublicChartQueryId } from '../../public-data/public-chart-query';
 import { queryContextScope } from '../../../session-context/session-query-scope';
-import { savedMeaningChoices, type SavedMeaningChoice } from '../../semantic-meaning-reuse';
+import {
+  savedMeaningChoices,
+  projectMeaningChoices,
+  type SavedMeaningChoice,
+} from '../../semantic-meaning-reuse';
 import { SemanticColumnHeaderComponent } from '../../semantic-column-header.component';
 import { SemanticMappingDialogComponent } from '../../semantic-mapping-dialog.component';
-import { validateSemanticModel, createSemanticModel, semanticQueryHash, semanticValidationState, type SemanticModel } from '../../semantic-mapping';
+import {
+  validateSemanticModel,
+  detachProjectMeaningReferences,
+  createSemanticModel,
+  semanticQueryHash,
+  semanticValidationState,
+  type SemanticModel,
+} from '../../semantic-mapping';
 import { isDevicePersonalQuery } from '../../device-personal-queries';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -32,7 +60,10 @@ import {
 import { parseDocument as parseYamlDocument } from 'yaml';
 import { NgTemplateOutlet } from '@angular/common';
 import { HeldResultPresentationComponent } from '../../../board/ui/components/held-result-presentation/held-result-presentation.component';
-import { prepareQueryResultChart, queryResultChartOptions } from './query-result-chart';
+import {
+  prepareQueryResultChart,
+  queryResultChartOptions,
+} from './query-result-chart';
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { IEnvironmentFull } from '../../../models/definition/environments';
@@ -63,11 +94,42 @@ import {
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
+import { Title } from '@angular/platform-browser';
 import { ActivatedRoute, Params, Router, NavigationEnd } from '@angular/router';
-import { AgGridReadyDirective } from '@datatug/ag-grid';
-import { AgGridAngular } from 'ag-grid-angular';
+import { ResultsGridComponent } from '../../../components/results-grid/results-grid.component';
+import {
+  AgentLinkApiService,
+  LinkProblemError,
+} from '../../../agent-links/agent-link-api.service';
+import { isLoopbackStore, routeParam } from '../../../agent-links/link-route';
+import {
+  RESULT_QUERY_PARAM,
+  ResultMeta,
+  StoredResult,
+  pkFirstOrder,
+  validResultId,
+} from '../../../agent-links/query-result/query-result';
+import {
+  ResultEditorMode,
+  ResultEditorPlan,
+  resultEditorPlan,
+} from '../../../agent-links/query-result/result-editor';
+import {
+  SavedResultBannerComponent,
+  SavedResultBannerState,
+} from '../../../agent-links/query-result/saved-result-banner.component';
+import { routingParamStoreId } from '../../../core/datatug-routing-params';
+import {
+  isInternalKeyColumn,
+  resultColumnDef,
+} from '../../../components/results-grid/results-grid-columns';
+import { gridStateKey } from '../../../components/results-grid/results-grid-state';
 import { addIcons } from 'ionicons';
-import { copyOutline, informationCircleOutline, shieldCheckmarkOutline } from 'ionicons/icons';
+import {
+  copyOutline,
+  informationCircleOutline,
+  shieldCheckmarkOutline,
+} from 'ionicons/icons';
 import {
   type ColDef,
   type CellFocusedEvent,
@@ -91,21 +153,30 @@ const isGithubStoreId = (storeId?: string): boolean =>
 const isBrowserSqlProject = (ref?: IProjectRef): boolean =>
   !!ref && (isGithubStoreId(ref.storeId) || isSharedProjectRef(ref));
 
-type WorkspaceTab = 'compose' | 'tugql' | 'preview' | 'sql' | 'dtql' | 'parameters' | 'sources' | 'related';
+type WorkspaceTab =
+  | 'compose'
+  | 'tugql'
+  | 'preview'
+  | 'sql'
+  | 'dtql'
+  | 'parameters'
+  | 'sources'
+  | 'related';
 
 const hasQueryActivity = (ref?: IProjectRef): boolean =>
   !!ref &&
   ((isGithubStoreId(ref.storeId) && ref.projectApi === 'cloud') ||
     isSharedProjectRef(ref));
 
-
 interface QueryResultGridRow {
-  readonly [columnId: string]: string;
+  /** A cell is display text, or `null` for a database NULL (the grid draws it as a dimmed `null`). */
+  readonly [columnId: string]: string | null;
 }
 
 type HostedRowStatus = 'pass' | 'fail' | 'unknown';
 
 interface HostedQueryExecution {
+  readonly evidenceIdentity?: HeldEvidenceIdentity;
   readonly result: FederatedQueryResult;
   readonly generation: number;
   readonly projectKey: string;
@@ -215,14 +286,24 @@ interface CommittedQueryDefinition {
  * JSON query document. TugQL diagnostics are never evidence of a format switch. */
 const isLegacyDtqlSource = (source: string): boolean => {
   const normalized = source.replace(/^\uFEFF/u, '');
-  const firstLine = normalized.split(/\r?\n/u)
-    .find((line) => line.trim() && !line.trimStart().startsWith('#') &&
-      !/^(?:---|\.\.\.)(?:\s|$)/u.test(line.trimStart()) &&
-      !/^%(?:YAML|TAG)\b/u.test(line.trimStart()))
-    ?.trimStart() ?? '';
+  const firstLine =
+    normalized
+      .split(/\r?\n/u)
+      .find(
+        (line) =>
+          line.trim() &&
+          !line.trimStart().startsWith('#') &&
+          !/^(?:---|\.\.\.)(?:\s|$)/u.test(line.trimStart()) &&
+          !/^%(?:YAML|TAG)\b/u.test(line.trimStart()),
+      )
+      ?.trimStart() ?? '';
   // All root keys accepted by @dalgo/core's DTQL document model. A known
   // mapping key keeps an incomplete YAML draft in its original editor.
-  if (/^(?:from|where|orderBy|limit|offset|columns|groupBy|having|money):(?:\s|$)/u.test(firstLine))
+  if (
+    /^(?:from|where|orderBy|limit|offset|columns|groupBy|having|money):(?:\s|$)/u.test(
+      firstLine,
+    )
+  )
     return true;
   try {
     // The actual YAML reader also accepts JSON and flow mappings. This only
@@ -234,8 +315,12 @@ const isLegacyDtqlSource = (source: string): boolean => {
     });
     if (parsed.errors.length) return false;
     const document: unknown = parsed.toJS();
-    return !!document && typeof document === 'object' && !Array.isArray(document) &&
-      Object.hasOwn(document, 'from');
+    return (
+      !!document &&
+      typeof document === 'object' &&
+      !Array.isArray(document) &&
+      Object.hasOwn(document, 'from')
+    );
   } catch {
     return false;
   }
@@ -335,7 +420,16 @@ const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
   diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil, filter, take } from 'rxjs/operators';
-import { firstValueFrom, map, Subject } from 'rxjs';
+import {
+  defer,
+  firstValueFrom,
+  fromEvent,
+  map,
+  merge,
+  Subject,
+  Subscription,
+  timeout,
+} from 'rxjs';
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -400,7 +494,10 @@ import {
   equalProjectRef,
   isSharedProjectRef,
 } from '../../../core/project-context';
-import { fromProjectQueryWire } from '../../project-query-contract';
+import {
+  fromProjectQueryWire,
+  toProjectQueryWire,
+} from '../../project-query-contract';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import {
   IQueryEditorState,
@@ -413,7 +510,10 @@ import {
   IEnvDbServer,
   IEnvironmentSummary,
 } from '../../../models/definition/environments';
-import { IParameter, IParameterDef } from '../../../models/definition/parameter';
+import {
+  IParameter,
+  IParameterDef,
+} from '../../../models/definition/parameter';
 import {
   IQueryDef,
   ISqlQueryRequest,
@@ -457,7 +557,10 @@ import { QueryDispatchService } from '../../query-dispatch.service';
 import type { QueryExecutionSession } from '../../query-dispatch';
 import type { QueryRuntimeOption } from '../../query-runtime-registry.service';
 import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
-import { SessionResultCacheService, tryWriteSessionResultCache } from '../../../session-context/session-result-cache.service';
+import {
+  SessionResultCacheService,
+  tryWriteSessionResultCache,
+} from '../../../session-context/session-result-cache.service';
 import { sessionResultFingerprint } from '../../../session-context/session-result-fingerprint';
 import type { ContextDefinitionDocument } from '../../../session-context/session-context-contract';
 import {
@@ -703,6 +806,8 @@ let queryParameterEditorId = 0;
   imports: [
     SemanticMappingDialogComponent,
     GitHubReauthorizationBannerComponent,
+    EvidenceSharePanelComponent,
+    HeldRowEvidenceComponent,
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
     AuthorCodeEditorComponent,
@@ -740,8 +845,8 @@ let queryParameterEditorId = 0;
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
-    AgGridAngular,
-    AgGridReadyDirective,
+    ResultsGridComponent,
+    SavedResultBannerComponent,
     HeldResultPresentationComponent,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
@@ -784,11 +889,16 @@ let queryParameterEditorId = 0;
 })
 export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly parameterDetailsPrefix = `query-parameter-details-${++queryParameterEditorId}`;
-  private readonly sessionWorkspace = inject(SessionWorkspaceService, { optional: true });
-  private readonly route = inject(ActivatedRoute);
-  private readonly contextSessionId = toSignal(this.route.paramMap.pipe(map((params) => params.get('sessionId') ?? '')), {
-    initialValue: this.route.snapshot.paramMap.get('sessionId') ?? '',
+  private readonly sessionWorkspace = inject(SessionWorkspaceService, {
+    optional: true,
   });
+  private readonly route = inject(ActivatedRoute);
+  private readonly contextSessionId = toSignal(
+    this.route.paramMap.pipe(map((params) => params.get('sessionId') ?? '')),
+    {
+      initialValue: this.route.snapshot.paramMap.get('sessionId') ?? '',
+    },
+  );
   private readonly sessionPinning = signal(false);
   private readonly sessionRecordedRun = signal<string | undefined>(undefined);
   private readonly sessionRecordedInput = signal('');
@@ -801,6 +911,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly randomIdService = inject(RandomIdService);
   private readonly datatugNavContextService = inject(DatatugNavContextService);
+  private readonly documentTitle = inject(Title);
   private readonly githubProjectActivity = inject(GitHubProjectActivityService);
   private readonly router = inject(Router);
   private readonly queryContextSqlService = inject(QueryContextSqlService);
@@ -810,56 +921,428 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly agentRunEnvironmentsError = signal('');
   public readonly agentSelectedEnvironment = signal('');
   private readonly federatedQuery = inject(FederatedQueryService);
+  private demoDraftAttempt?: string;
+  private demoDraftEntry?: {
+    token: string;
+    identityKey: string;
+    queryId: string;
+  };
+  private demoDraftPendingScope?: string;
+  private demoDraftGeneration = 0;
+  private readonly demoDraftCancelled = new Subject<void>();
+  readonly demoDraftLoading = signal(false);
+  readonly demoDraftRecovery = signal<string | undefined>(undefined);
+
+  openDemoDatabases(): void {
+    void this.router
+      .navigate(['/demo/sqlite'])
+      .catch(this.errorLogger.logErrorHandler('Failed to open demo databases'));
+  }
+
+  private invalidateDemoTableDraft(): void {
+    if (
+      !this.demoDraftAttempt ||
+      this.demoDraftAttempt !==
+        this.route.snapshot.queryParamMap.get('demoDraft')
+    )
+      return;
+    ++this.demoDraftGeneration;
+    this.demoDraftCancelled.next();
+    this.demoDraftPendingScope = undefined;
+    this.demoDraftLoading.set(false);
+    this.demoDraftRecovery.set(
+      'This browser query is no longer available in this account or project. Return to your browser database and choose Query this table again.',
+    );
+  }
+
+  private async restoreDemoTableDraft(): Promise<void> {
+    const params = this.route.snapshot.queryParamMap;
+    const token = params?.get('demoDraft');
+    const ref = this.project?.ref;
+    const id = this.queryId;
+    const runtime = params?.get('runtime');
+    const environment = params?.get('env');
+    if (!token) {
+      ++this.demoDraftGeneration;
+      this.demoDraftCancelled.next();
+      this.demoDraftAttempt = undefined;
+      this.demoDraftPendingScope = undefined;
+      this.demoDraftRecovery.set(undefined);
+      this.demoDraftLoading.set(false);
+      return;
+    }
+    if (!ref || !id) return;
+    // Project context can arrive before route initialization. Never start an
+    // unsaved table handoff against the editor selected by the previous page.
+    const address =
+      params.get('id') || this.route.snapshot.paramMap.get('queryId');
+    if (
+      !address &&
+      (this.demoDraftEntry?.token !== token ||
+        this.demoDraftEntry.queryId !== id)
+    )
+      return;
+    const scope = JSON.stringify([
+      id,
+      ref.storeId,
+      ref.projectId,
+      ref.projectApi,
+      ref.branch,
+      ref.spaceID,
+      runtime,
+      environment,
+      address,
+    ]);
+    // A consumed token no longer needs reading. A pending read, however, must
+    // be retried through the same scoped draft validator when its URL changes.
+    if (
+      this.demoDraftAttempt === token &&
+      (this.demoDraftPendingScope === undefined ||
+        this.demoDraftPendingScope === scope)
+    )
+      return;
+    this.demoDraftAttempt = token;
+    this.demoDraftCancelled.next();
+    const generation = ++this.demoDraftGeneration;
+    const isCurrent = () =>
+      generation === this.demoDraftGeneration &&
+      this.demoDraftAttempt === token &&
+      equalProjectRef(ref, this.project?.ref) &&
+      this.queryId === id &&
+      this.route.snapshot.queryParamMap.get('demoDraft') === token &&
+      this.route.snapshot.queryParamMap.get('runtime') === runtime &&
+      this.route.snapshot.queryParamMap.get('env') === environment &&
+      !this.route.snapshot.queryParamMap.get('id') &&
+      !this.route.snapshot.paramMap.get('queryId');
+    if (address) {
+      this.demoDraftAttempt = undefined;
+      this.demoDraftPendingScope = undefined;
+      this.demoDraftLoading.set(false);
+      this.demoDraftRecovery.set(
+        'A table draft cannot replace an existing saved query. Return to your browser database and choose Query this table again.',
+      );
+      this.runError.set(
+        'A table draft cannot replace an existing saved query. Return to your browser database.',
+      );
+      return;
+    }
+    this.demoDraftPendingScope = scope;
+    this.demoDraftLoading.set(true);
+    this.demoDraftRecovery.set(undefined);
+    try {
+      this.runError.set(undefined);
+      const definition = await firstValueFrom(
+        defer(async () => {
+          const actor = (
+            await firstValueFrom(
+              this.queriesService
+                .authentication()
+                .pipe(
+                  take(1),
+                  takeUntil(merge(this.destroyed, this.demoDraftCancelled)),
+                ),
+            )
+          ).user?.uid;
+          if (!actor)
+            throw new Error(
+              'Sign in to the account that opened this edited browser database.',
+            );
+          if (!isCurrent())
+            throw new Error('The browser query context changed.');
+          const draft = await this.injector
+            .get(DemoTableDraftService)
+            .read(token, ref, runtime, environment, actor);
+          if (!isCurrent())
+            throw new Error('The browser query context changed.');
+          if (
+            (
+              await firstValueFrom(
+                this.queriesService
+                  .authentication()
+                  .pipe(
+                    take(1),
+                    takeUntil(merge(this.destroyed, this.demoDraftCancelled)),
+                  ),
+              )
+            ).user?.uid !== actor
+          )
+            throw new Error(
+              'Sign in to the account that opened this edited browser database.',
+            );
+          return draft;
+        }).pipe(
+          timeout({ first: 30_000 }),
+          takeUntil(merge(this.destroyed, this.demoDraftCancelled)),
+        ),
+      );
+      if (!isCurrent()) return;
+      const current = this.queryEditorStateService.getQueryState(id);
+      if (
+        current?.request &&
+        'text' in current.request &&
+        (current.request as ITextQueryRequest).text.trim()
+      )
+        throw new Error(
+          'This query already has an unsaved draft. Open Query this table in a new query to keep your edits.',
+        );
+      this.queryEditorStateService.updateQueryState({
+        ...current,
+        id,
+        isNew: true,
+        isLoading: false,
+        queryType: QueryType.DTQL,
+        def: { ...definition, id },
+        request: definition.request,
+        connectionId: definition.connectionId,
+      });
+      this.injector.get(DemoTableDraftService).consume(token);
+      this.demoDraftPendingScope = undefined;
+    } catch (error) {
+      if (isCurrent()) {
+        this.demoDraftCancelled.next();
+        this.demoDraftAttempt = undefined;
+        this.demoDraftPendingScope = undefined;
+        this.runError.set(
+          error instanceof Error
+            ? error.message
+            : 'The browser table draft is unavailable. Return to your browser database.',
+        );
+        this.demoDraftRecovery.set(
+          'This browser query could not be restored. Return to your browser database and choose Query this table again.',
+        );
+      }
+    } finally {
+      if (generation === this.demoDraftGeneration)
+        this.demoDraftLoading.set(false);
+    }
+  }
   private readonly queryDispatch = inject(QueryDispatchService);
   private activeDispatchSession?: QueryExecutionSession;
-  public readonly workingCopyOptions = signal<readonly QueryRuntimeOption[]>([]);
+  public readonly workingCopyOptions = signal<readonly QueryRuntimeOption[]>(
+    [],
+  );
   public readonly selectedWorkingCopy = signal('project');
+  public usesFixedPublicQuerySource(): boolean {
+    // Editor state may arrive before the navigation project's first emission.
+    const storeId =
+      this.project?.ref.storeId ??
+      this.route.snapshot.paramMap.get('storeId') ??
+      undefined;
+    return (
+      this.selectedWorkingCopy() === 'project' &&
+      isGithubStoreId(storeId) &&
+      isSavedPublicChartQueryId(this.queryId ?? '')
+    );
+  }
   public readonly workingCopyLoading = signal(false);
   public readonly workingCopyError = signal<string | undefined>(undefined);
+  public readonly unavailableWorkingCopy = signal(false);
+  private readonly entryRuntimeHint = signal<
+    | {
+        selectionId: string;
+        queryId?: string;
+        resultId?: string;
+        environment?: string;
+      }
+    | undefined
+  >(undefined);
+  private readonly entryContextRevision = signal(0);
+  private entryRouteKey = '';
+  private entryLoadKey = '';
   private workingCopyScope = '';
   private workingCopyLoad = 0;
   private workingCopyRevision = -1;
 
   private currentWorkingCopyScope(): string {
-    return JSON.stringify({ project: this.project?.ref, connection: this.queryDef()?.connectionId, environment: this.envId });
+    return JSON.stringify({
+      project: this.project?.ref,
+      queryId: this.queryId,
+      connection: this.queryDef()?.connectionId,
+      environment: this.envId,
+      principal: this.agentContext.securityContextId(),
+    });
   }
 
   private currentBrowserDispatchScope(): string {
-    return JSON.stringify({ project: this.project?.ref, environment: this.envId });
+    return JSON.stringify({
+      project: this.project?.ref,
+      environment: this.envId,
+    });
   }
 
   public async loadWorkingCopies(): Promise<void> {
     const definition = this.queryDef();
     const ref = this.project?.ref;
-    if (!ref || !definition?.connectionId || this.isTugqlAuthorJourney()) return;
+    if (!ref || !definition?.connectionId || this.isTugqlAuthorJourney())
+      return;
     const scope = this.currentWorkingCopyScope();
+    const routeKey = this.entryRouteKey;
     const load = ++this.workingCopyLoad;
     this.workingCopyLoading.set(true);
     this.workingCopyError.set(undefined);
     try {
-      const options = await this.queryDispatch.availableWorkingCopies({ projectRef: ref, definition, environment: this.envId });
-      if (load !== this.workingCopyLoad || scope !== this.currentWorkingCopyScope()) return;
+      const options = await this.queryDispatch.availableWorkingCopies({
+        projectRef: ref,
+        definition,
+        environment: this.envId,
+      });
+      if (
+        load !== this.workingCopyLoad ||
+        scope !== this.currentWorkingCopyScope() ||
+        routeKey !== this.entryRouteKey
+      )
+        return;
       this.workingCopyOptions.set(options);
       this.workingCopyScope = scope;
       this.workingCopyRevision = this.queryDispatch.runtimeRevision();
-      if (!options.some((option) => option.selectionId === this.selectedWorkingCopy())) this.selectWorkingCopy('project');
+      const hint = this.entryRuntimeHint();
+      if (
+        hint?.queryId &&
+        hint.queryId === this.queryId &&
+        (!hint.environment || hint.environment === this.envId)
+      ) {
+        this.entryRuntimeHint.set(undefined);
+        this.selectedWorkingCopy.set(hint.selectionId);
+      }
+      const unavailable =
+        this.selectedWorkingCopy() !== 'project' &&
+        !options.some(
+          (option) => option.selectionId === this.selectedWorkingCopy(),
+        );
+      this.unavailableWorkingCopy.set(unavailable);
+      if (unavailable)
+        this.workingCopyError.set(
+          'The selected working copy is unavailable. Choose a current runtime explicitly.',
+        );
     } catch (error) {
-      if (load === this.workingCopyLoad) this.workingCopyError.set(error instanceof Error ? error.message : 'Working copies could not be checked.');
+      if (load === this.workingCopyLoad && routeKey === this.entryRouteKey) {
+        this.unavailableWorkingCopy.set(
+          this.selectedWorkingCopy() !== 'project',
+        );
+        this.workingCopyError.set(
+          error instanceof Error
+            ? error.message
+            : 'Working copies could not be checked.',
+        );
+      }
     } finally {
       if (load === this.workingCopyLoad) this.workingCopyLoading.set(false);
     }
   }
 
   public selectWorkingCopy(selectionId: string): void {
-    if (selectionId === this.selectedWorkingCopy()) return;
+    this.entryRuntimeHint.set(undefined);
+    this.unavailableWorkingCopy.set(false);
+    this.workingCopyError.set(undefined);
+    if (!this.changeWorkingCopySelection(selectionId)) return;
+    if (this.isCurrentRoute()) {
+      void this.router.navigate([], {
+        relativeTo: this.route,
+        replaceUrl: true,
+        queryParams: { runtime: selectionId },
+        queryParamsHandling: 'merge',
+      });
+    }
+  }
+
+  private changeWorkingCopySelection(selectionId: string): boolean {
+    if (selectionId === this.selectedWorkingCopy()) return false;
     this.invalidateFederatedRun();
     this.stopFederatedRun();
     this.setDisplayedResult(undefined);
     this.selectedWorkingCopy.set(selectionId);
+    return true;
+  }
+
+  private scheduleEntryRuntimeLoad(): void {
+    if (
+      this.selectedWorkingCopy() !== 'project' &&
+      this.workingCopyScope &&
+      this.workingCopyScope !== this.currentWorkingCopyScope()
+    ) {
+      ++this.workingCopyLoad;
+      this.workingCopyScope = '';
+      this.workingCopyOptions.set([]);
+      this.unavailableWorkingCopy.set(true);
+      this.workingCopyError.set(
+        'The selected working copy is unavailable in this context. Choose a current runtime explicitly.',
+      );
+    }
+    this.entryContextRevision.update((revision) => revision + 1);
   }
   private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly detectiveClient = inject(DetectiveClientService);
+  private readonly retainedScope = useNativeRunLifetime();
+  private readonly retainedQueryIntent = new RetainedRunIntent();
+  public readonly retainedQueryPending = signal(false);
+  public readonly queryEvidenceSelection = signal<
+    EvidenceShareSelection | undefined
+  >(undefined);
+  public chooseQueryEvidence(
+    selection: EvidenceShareSelection | undefined,
+  ): void {
+    if (!this.retainedQueryPending())
+      this.queryEvidenceSelection.set(selection);
+  }
+  public readonly retainedQueryReviewed = signal(false);
+  public async reviewRetainedQuery(): Promise<void> {
+    const ref = this.project?.ref;
+    if (!ref?.spaceID || !this.retainedQueryPending() || this.running()) return;
+    try {
+      const native = this.retainedScope.capture(
+        ref,
+        undefined,
+        this.queryDef()?.connectionId === 'shipping-working-copy'
+          ? {
+              sourceId: 'shipping-working-copy',
+              environment: this.hostedEnvironment(),
+            }
+          : undefined,
+      );
+      const state = await firstValueFrom(
+        this.detectiveClient
+          .state({
+            kind: 'cloud',
+            storage: 'firestore',
+            spaceID: ref.spaceID,
+            project: ref.projectId,
+            principal: native.actor,
+          })
+          .pipe(takeUntil(fromEvent(native.signal, 'abort'))),
+      );
+      if (native.signal.aborted || this.project?.ref !== ref) return;
+      this.hostedDetectiveState.set(state);
+      this.retainedQueryReviewed.set(true);
+    } catch (error) {
+      this.runError.set(detectiveErrorMessage(error, true));
+    }
+  }
+  public abandonRetainedQuery(): void {
+    if (!this.retainedQueryReviewed() || this.running()) return;
+    this.retainedQueryIntent.abandonReviewed();
+    this.retainedQueryPending.set(false);
+    this.retainedQueryReviewed.set(false);
+    this.queryEvidenceSelection.set(undefined);
+    this.runError.set(
+      'Original retry abandoned after review. The previous run may already be attached; inspect Incident history before starting another.',
+    );
+  }
+  private admitExplicitHostedEnvironment(state: DetectiveState): void {
+    const selected = this.route.snapshot.queryParamMap?.get('env');
+    if (
+      !this.hostedEnvironment() &&
+      selected &&
+      state.environments?.includes(selected)
+    )
+      this.hostedEnvironment.set(selected);
+  }
+  public changeHostedEnvironment(value: string): void {
+    if (this.retainedQueryPending()) return;
+    this.retainedScope.invalidate();
+    this.hostedEnvironment.set(value);
+  }
+
   public readonly hostedDetectiveState = signal<DetectiveState | undefined>(
     undefined,
   );
@@ -929,7 +1412,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.workspaceTabResizeObserver?.disconnect();
     this.workspaceTabBar = ref;
     if (!ref || typeof ResizeObserver === 'undefined') return;
-    this.workspaceTabResizeObserver = new ResizeObserver(() => this.scheduleWorkspaceTabReveal());
+    this.workspaceTabResizeObserver = new ResizeObserver(() =>
+      this.scheduleWorkspaceTabReveal(),
+    );
     this.workspaceTabResizeObserver.observe(ref.nativeElement);
   }
 
@@ -956,18 +1441,41 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly loadedTextRepresentation = signal<
     { readonly scope: string; readonly kind: 'tugql' | 'dtql' } | undefined
   >(undefined);
-  public readonly isNativeDtqlWorkspace = computed(() =>
-    this.queryDef()?.request.queryType === QueryType.DTQL &&
-    this.loadedTextRepresentation()?.kind === 'dtql',
+  public readonly isNativeDtqlWorkspace = computed(
+    () =>
+      this.queryDef()?.request.queryType === QueryType.DTQL &&
+      this.loadedTextRepresentation()?.kind === 'dtql',
   );
   public readonly isTextQueryWorkspace = computed(() => {
     const type = this.queryDef()?.request.queryType;
-    return type === QueryType.SQL || type === QueryType.DTQL || type === QueryType.TugQL;
+    return (
+      type === QueryType.SQL ||
+      type === QueryType.DTQL ||
+      type === QueryType.TugQL
+    );
   });
-  public readonly isNativeSqlWorkspace = computed(() =>
-    this.queryDef()?.request.queryType === QueryType.SQL,
+  /** More columns than this and the Current row pane starts closed, so the grid has the width. */
+  public readonly currentRowOpenMaxColumns = 6;
+  /** The person's choice to open or close the Current row pane; undefined until they choose. */
+  private readonly currentRowPaneChoice = signal<boolean | undefined>(
+    undefined,
   );
-  public readonly sqlTugqlTransfer = computed(() => transferSqlToTugql(this.queryDef()));
+  public readonly currentRowPaneOpen = computed(
+    () =>
+      this.currentRowPaneChoice() ??
+      (this.displayedRecordset()?.columns.filter(
+        (c) => !isInternalKeyColumn(c.name),
+      ).length ?? 0) <= this.currentRowOpenMaxColumns,
+  );
+  public toggleCurrentRowPane(): void {
+    this.currentRowPaneChoice.set(!this.currentRowPaneOpen());
+  }
+  public readonly isNativeSqlWorkspace = computed(
+    () => this.queryDef()?.request.queryType === QueryType.SQL,
+  );
+  public readonly sqlTugqlTransfer = computed(() =>
+    transferSqlToTugql(this.queryDef()),
+  );
   private readonly authorFormatUndo = signal<AuthorFormatUndo | undefined>(
     undefined,
   );
@@ -1346,14 +1854,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? 'Related source count unavailable'
       : `${count} available related source${count === 1 ? '' : 's'}`;
   }
-  public readonly activeAuthorContextTab = computed(
-    () => {
-      const tab = this.workspaceTab();
-      return tab === 'parameters' || tab === 'sources' || tab === 'related'
-        ? tab
-        : undefined;
-    },
-  );
+  public readonly activeAuthorContextTab = computed(() => {
+    const tab = this.workspaceTab();
+    return tab === 'parameters' || tab === 'sources' || tab === 'related'
+      ? tab
+      : undefined;
+  });
   public readonly authorResultSnapshotKey = computed(() => {
     const result = this.runResult();
     const recordset = this.displayedRecordset();
@@ -1622,10 +2128,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private hasCurrentDetectiveState(): boolean {
     const ref = this.project?.ref;
     const context = ref ? this.detectiveContext(ref) : undefined;
-    return !!ref &&
+    return (
+      !!ref &&
       !!context &&
-      this.hostedDetectiveLoadedScope() ===
-        this.detectiveScopeKey(ref, context);
+      this.hostedDetectiveLoadedScope() === this.detectiveScopeKey(ref, context)
+    );
   }
 
   public get queryValidatorsHref(): string | undefined {
@@ -1635,15 +2142,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       isDevicePersonalQuery(queryId) ||
       this.queryState.isNew ||
       !this.project?.ref
-    ) return undefined;
+    )
+      return undefined;
     const href = projectPageHref(this.project.ref, 'checks');
     return `${href}${href.includes('?') ? '&' : '?'}query=${encodeURIComponent(queryId)}`;
   }
 
   public queryFolderPath = '';
+  private readonly backTarget = signal(0);
 
   /** Where the back button goes with no history: the project's queries, in the folder of this query. */
   public get queriesBackHref(): string {
+    // Read so the template binding is re-evaluated when the project or the folder is known later than the first render.
+    this.backTarget();
     const href = projectPageHref(this.project?.ref, 'queries');
     return `${href}${href.includes('?') ? '&' : '?'}folder=${encodeURIComponent(this.queryFolderPath)}`;
   }
@@ -1660,8 +2171,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly userBindingValues = signal<ReadonlyMap<string, TypedValue>>(
     new Map(),
   );
-  private readonly nativeParameterDrafts = signal<ReadonlyMap<string, string>>(new Map());
-  private readonly nativeParameterErrors = signal<ReadonlyMap<string, string>>(new Map());
+  private readonly nativeParameterDrafts = signal<ReadonlyMap<string, string>>(
+    new Map(),
+  );
+  private readonly nativeParameterErrors = signal<ReadonlyMap<string, string>>(
+    new Map(),
+  );
   private readonly selectedContextFactKeys = signal<
     ReadonlyMap<string, string>
   >(new Map());
@@ -1700,8 +2215,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** `true` when at least one parameter is ambiguous, conflicted or a missing
    * required value — Run must be disabled and the reason shown (REQ:no-hidden-filters,
    * AC:typed-context-isolation "conflict blocks an unconfirmed run"). */
-  public readonly hasBlockedBindings = computed(() =>
-    hasBlockingBindings(this.bindings()) || this.nativeParameterErrors().size > 0,
+  public readonly hasBlockedBindings = computed(
+    () =>
+      hasBlockingBindings(this.bindings()) ||
+      this.nativeParameterErrors().size > 0,
   );
   public readonly running = signal(false);
   public readonly federatedProgress = signal<
@@ -1746,7 +2263,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const recordset = this.displayedRecordset();
     return result && recordset
       ? queryResultChartOptions(result, recordset, this.resultTotalRows())
-      : { categories: [], measures: [], reason: 'Run a query to choose chart columns.' };
+      : {
+          categories: [],
+          measures: [],
+          reason: 'Run a query to choose chart columns.',
+        };
   });
   public readonly resultChartFields = computed(() => ({
     categoryColumn: this.resultChartCategory(),
@@ -1756,18 +2277,37 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly resultChartReason = computed(() => {
     const options = this.resultChartOptions();
     if (options.reason) return options.reason;
-    if (!options.categories.includes(this.resultChartCategory()) ||
-        !options.measures.includes(this.resultChartMeasure()))
+    if (
+      !options.categories.includes(this.resultChartCategory()) ||
+      !options.measures.includes(this.resultChartMeasure())
+    )
       return 'Choose a category and count column to chart this result.';
     const result = this.runResult();
     const recordset = this.displayedRecordset();
     if (!result || !recordset) return 'Run a query to choose chart columns.';
-    const prepared = prepareQueryResultChart(result, recordset, this.resultChartFields());
+    const prepared = prepareQueryResultChart(
+      result,
+      recordset,
+      this.resultChartFields(),
+    );
     return prepared.ok ? '' : prepared.message;
   });
-  public readonly resultChartVisible = computed(() =>
-    this.resultChartView() === 'chart' && !this.resultChartReason(),
+  public readonly resultChartVisible = computed(
+    () => this.resultChartView() === 'chart' && !this.resultChartReason(),
   );
+  /**
+   * What the Results panel says when no chart can be drawn. The saved rows of a stored result are a snapshot read
+   * from a file, with no source usage rights to chart by, so they say when charts become available instead of a
+   * rights error.
+   */
+  public readonly resultChartUnavailableText = computed(() => {
+    const reason = this.resultChartOptions().reason;
+    if (!reason) return '';
+    return this.runResult()?.provenance.mode === 'snapshot' &&
+      this.savedResultBanner()?.kind === 'shown'
+      ? 'Full-result chart preview is available after running the query.'
+      : `Full-result chart preview unavailable: ${reason} Loaded rows remain available in the grid.`;
+  });
   public readonly resultChartHeld = computed(() => {
     const result = this.runResult();
     const recordset = this.displayedRecordset();
@@ -2020,119 +2560,368 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   readonly semanticStorage = signal('');
   readonly semanticSaveToProject = signal(false);
   readonly semanticSaveLabel = signal('Save meaning');
+  private readonly projectMeanings = inject(ProjectMeaningsService);
+  readonly semanticLocalSave = signal<LocalMeaningSaveSnapshot | undefined>(
+    undefined,
+  );
   readonly semanticSavedChoices = signal<readonly SavedMeaningChoice[]>([]);
   readonly semanticChoicesLoading = signal(false);
   readonly semanticChoicesMessage = signal('');
-  readonly semanticExecutedDefinition = signal<IQueryDef | undefined>(undefined);
+  readonly semanticExecutedDefinition = signal<IQueryDef | undefined>(
+    undefined,
+  );
   readonly semanticCurrentHash = signal('');
-  private static pendingSemanticCopy?: { id: string; result: FederatedQueryResult; definition: IQueryDef; environment?: string; selectedSource?: string };
-  readonly semanticBasis = signal<SemanticModel['basis'] | undefined>(undefined);
+  private static pendingSemanticCopy?: {
+    id: string;
+    result: FederatedQueryResult;
+    definition: IQueryDef;
+    environment?: string;
+    selectedSource?: string;
+  };
+  readonly semanticBasis = signal<SemanticModel['basis'] | undefined>(
+    undefined,
+  );
   readonly semanticPersonalCopies = signal<IQueryDef[]>([]);
   private readonly semanticNav = inject(DatatugNavService);
   private semanticBasisGeneration = 0;
   private semanticMappingLifetime = 0;
-  readonly semanticValidation = computed(() => semanticValidationState(
-    this.queryDef()?.semanticModel, this.semanticBasis(), this.semanticCurrentHash(), this.displayedResultIsPreviousRun(),
-  ));
-  readonly semanticNeedsReview = computed(() => this.semanticValidation() === 'review');
+  readonly semanticValidation = computed(() =>
+    semanticValidationState(
+      this.queryDef()?.semanticModel,
+      this.semanticBasis(),
+      this.semanticCurrentHash(),
+      this.displayedResultIsPreviousRun(),
+    ),
+  );
+  readonly semanticNeedsReview = computed(
+    () => this.semanticValidation() === 'review',
+  );
   semanticColumnLabel(index: number): string {
-    const bundle = this.semanticSaving() ? this.semanticBeforeSave() : this.queryDef()?.semanticModel;
-    const binding = bundle?.bindings.find(item => item.columnIndex === index);
-    const property = bundle?.meaning.concepts.find(item => item.id === binding?.concept);
-    const entity = bundle?.meaning.concepts.find(item => item.id === property?.of);
-    return property ? [entity?.labels.en, property.labels.en, binding?.role].filter(Boolean).join(' · ') : '';
+    const bundle = this.semanticSaving()
+      ? this.semanticBeforeSave()
+      : this.queryDef()?.semanticModel;
+    const binding = bundle?.bindings.find((item) => item.columnIndex === index);
+    const property = bundle?.meaning.concepts.find(
+      (item) => item.id === binding?.concept,
+    );
+    const entity = bundle?.meaning.concepts.find(
+      (item) => item.id === property?.of,
+    );
+    return property
+      ? [entity?.labels.en, property.labels.en, binding?.role]
+          .filter(Boolean)
+          .join(' · ')
+      : '';
   }
   async openColumnMeaning(index: number): Promise<void> {
     if (!this.project) return;
     const basis = this.semanticBasis();
-    if (!basis || !this.semanticCurrentHash()) { this.semanticNotice.set('Checking the current query output. Try again in a moment.'); return; }
-    const lifetime = ++this.semanticMappingLifetime, project = this.project, queryId = this.queryState.id ?? '', ref = project.ref;
-    const active = () => lifetime === this.semanticMappingLifetime && this.project?.ref === ref && this.queryState.id === queryId;
-    if (this.displayedResultIsPreviousRun() || this.semanticCurrentHash() !== basis.queryHash) { this.semanticNotice.set('Run the updated query before mapping its columns. Existing meanings need review.'); return; }
+    if (!basis || !this.semanticCurrentHash()) {
+      this.semanticNotice.set(
+        'Checking the current query output. Try again in a moment.',
+      );
+      return;
+    }
+    const lifetime = ++this.semanticMappingLifetime,
+      project = this.project,
+      queryId = this.queryState.id ?? '',
+      ref = project.ref;
+    const active = () =>
+      lifetime === this.semanticMappingLifetime &&
+      this.project?.ref === ref &&
+      this.queryState.id === queryId;
+    if (
+      this.displayedResultIsPreviousRun() ||
+      this.semanticCurrentHash() !== basis.queryHash
+    ) {
+      this.semanticNotice.set(
+        'Run the updated query before mapping its columns. Existing meanings need review.',
+      );
+      return;
+    }
     this.semanticNotice.set('');
-    this.semanticError.set(''); this.semanticColumn.set(index);
+    this.semanticError.set('');
+    this.semanticColumn.set(index);
     const current = this.queryDef()?.semanticModel;
     const fresh = createSemanticModel(basis);
     if (current) {
       fresh.meaning = structuredClone(current.meaning);
-      fresh.bindings = current.bindings.filter(binding => binding.columnIndex < fresh.basis.columns.length);
+      fresh.bindings = current.bindings.filter(
+        (binding) => binding.columnIndex < fresh.basis.columns.length,
+      );
     }
     let supported = false;
-    if (!isDevicePersonalQuery(this.queryState.id ?? '') && (this.project.ref.projectApi || isSharedProjectRef(this.project.ref))) {
-      try { const capabilities = await firstValueFrom(this.queriesService.capabilities(this.project.ref)); supported = !!capabilities.querySave && !!capabilities.semanticModel && this.queryState.saveSupported !== false; } catch { supported = false; }
+    this.semanticLocalSave.set(undefined);
+    if (
+      !isDevicePersonalQuery(this.queryState.id ?? '') &&
+      (this.project.ref.projectApi ||
+        isSharedProjectRef(this.project.ref) ||
+        !['github', 'github.com', 'firestore'].includes(
+          this.project.ref.storeId,
+        ))
+    ) {
+      try {
+        const capabilities = await firstValueFrom(
+          this.queriesService.capabilities(this.project.ref),
+        );
+        supported =
+          !!capabilities.querySave &&
+          !!capabilities.semanticModel &&
+          this.queryState.saveSupported !== false;
+        if (supported && !ref.projectApi && !isSharedProjectRef(ref)) {
+          const definition = this.queryDef();
+          if (!definition)
+            throw new Error(
+              'Load a saved query before linking project meanings.',
+            );
+          const snapshot = await prepareLocalMeaningSave(
+            this.queriesService,
+            this.projectMeanings,
+            ref,
+            queryId,
+            definition,
+          );
+          if (!active()) return;
+          this.semanticLocalSave.set(snapshot);
+        }
+      } catch {
+        supported = false;
+      }
     }
     if (!active()) return;
     this.semanticSaveToProject.set(supported);
     const personal = isDevicePersonalQuery(this.queryState.id ?? '');
-    this.semanticStorage.set(personal ? 'Saved on this device.' : supported ? 'Saves meanings in this project.' : 'Creates a personal copy saved on this device.');
-    this.semanticSaveLabel.set(personal || supported ? 'Save meaning' : 'Save personal copy');
+    this.semanticStorage.set(
+      personal
+        ? 'Saved on this device as an independent definition snapshot.'
+        : supported
+          ? 'Saves meanings in this project.'
+          : 'Creates an independent definition snapshot saved on this device.',
+    );
+    this.semanticSaveLabel.set(
+      personal || supported ? 'Save meaning' : 'Save personal copy',
+    );
     this.semanticSavedChoices.set([]);
     this.semanticChoicesLoading.set(true);
     this.semanticChoicesMessage.set('');
     this.semanticDialog.set(fresh);
-    void this.queriesService.devicePersonal.list(ref).then(items => {
-      if (this.semanticDialog() !== fresh || this.queryState.id !== queryId || this.project?.ref !== ref) return;
-      const result = savedMeaningChoices(items.map(item => item.query), queryId);
-      this.semanticSavedChoices.set(result.choices);
-      this.semanticChoicesMessage.set(result.skipped ? 'Some saved meanings could not be loaded. You can still create a property.' : '');
-    }).catch(() => {
-      if (this.semanticDialog() === fresh && this.queryState.id === queryId && this.project?.ref === ref)
-        this.semanticChoicesMessage.set('Saved meanings could not be loaded. You can still create a property.');
-    }).finally(() => { if (this.semanticDialog() === fresh) this.semanticChoicesLoading.set(false); });
+    const projectChoices =
+      supported && !personal
+        ? firstValueFrom(
+            this.projectMeanings.catalog(this.semanticLocalSave()?.ref ?? ref),
+          ).then((catalog) => projectMeaningChoices(catalog, catalog.scope))
+        : Promise.resolve([]);
+    void Promise.allSettled([
+      this.queriesService.devicePersonal.list(ref),
+      projectChoices,
+    ])
+      .then(([device, projectChoices]) => {
+        if (
+          this.semanticDialog() !== fresh ||
+          this.queryState.id !== queryId ||
+          this.project?.ref !== ref
+        )
+          return;
+        const result = savedMeaningChoices(
+          device.status === 'fulfilled'
+            ? device.value.map((item) => item.query)
+            : [],
+          queryId,
+        );
+        this.semanticSavedChoices.set([
+          ...(projectChoices.status === 'fulfilled'
+            ? projectChoices.value
+            : []),
+          ...result.choices,
+        ]);
+        this.semanticChoicesMessage.set(
+          result.skipped ||
+            device.status === 'rejected' ||
+            projectChoices.status === 'rejected'
+            ? 'Some saved meanings could not be loaded. You can still create a property.'
+            : '',
+        );
+      })
+      .finally(() => {
+        if (this.semanticDialog() === fresh)
+          this.semanticChoicesLoading.set(false);
+      });
   }
   async saveColumnMeaning(bundle: SemanticModel): Promise<void> {
-    const project = this.project, definition = this.queryDef();
+    const project = this.project,
+      definition = this.queryDef();
     if (!project || !definition || this.semanticSaving()) return;
-    const sourceState = this.queryState, originalDefinition = sourceState.def;
-    const sourceResult = this.runResult(), environment = this.envId, selectedSource = this.selectedSource();
+    const sourceState = this.queryState,
+      originalDefinition = sourceState.def;
+    const sourceResult = this.runResult(),
+      environment = this.envId,
+      selectedSource = this.selectedSource();
     const lifetime = ++this.semanticMappingLifetime;
-    const active = () => lifetime === this.semanticMappingLifetime && this.project?.ref === project.ref && this.queryState.id === sourceState.id;
+    const active = () =>
+      lifetime === this.semanticMappingLifetime &&
+      this.project?.ref === project.ref &&
+      this.queryState.id === sourceState.id;
     this.semanticBeforeSave.set(originalDefinition?.semanticModel);
-    this.semanticSaving.set(true); this.semanticError.set('');
+    this.semanticSaving.set(true);
+    this.semanticError.set('');
     try {
       validateSemanticModel(bundle);
-      const current = { ...definition, request: this.queryState.request ?? definition.request, connectionId: this.queryState.connectionId ?? definition.connectionId, federation: this.queryState.federation ?? definition.federation, semanticModel: bundle };
+      const current = {
+        ...definition,
+        request: this.queryState.request ?? definition.request,
+        connectionId: this.queryState.connectionId ?? definition.connectionId,
+        federation: this.queryState.federation ?? definition.federation,
+        semanticModel:
+          this.semanticSaveToProject() && !isDevicePersonalQuery(definition.id)
+            ? bundle
+            : detachProjectMeaningReferences(bundle),
+      };
       const supported = this.semanticSaveToProject();
       if (isDevicePersonalQuery(current.id) || supported) {
-        this.queryEditorStateService.updateQueryState({ ...this.queryState, def: current });
-        await firstValueFrom(this.queryEditorStateService.saveQuery({ ...sourceState, def: current }, project.ref));
+        this.queryEditorStateService.updateQueryState({
+          ...this.queryState,
+          def: current,
+        });
+        const local = this.semanticLocalSave();
+        if (supported && local && !isDevicePersonalQuery(current.id)) {
+          const saved = await firstValueFrom(
+            this.queriesService.saveRevision(local.ref, {
+              operationId: crypto.randomUUID(),
+              branch: local.ref.branch,
+              ifMatch: local.revision,
+              ...(local.branchHead
+                ? { expectedBranchHead: local.branchHead }
+                : {}),
+              query: toProjectQueryWire(
+                { ...current, title: sourceState.title },
+                sourceState.id,
+              ),
+            }),
+          );
+          if (!active()) return;
+          if (!saved.revision || saved.query.id !== current.id)
+            throw new Error(
+              'The saved query revision could not be verified. Reload before retrying.',
+            );
+          this.queryEditorStateService.updateQueryState({
+            ...sourceState,
+            def: current,
+            revision: saved.revision,
+            branchHead: saved.branchHead,
+            isSaving: false,
+          });
+        } else {
+          await firstValueFrom(
+            this.queryEditorStateService.saveQuery(
+              { ...sourceState, def: current },
+              project.ref,
+            ),
+          );
+        }
         if (!active()) return;
       } else {
-        const copy = { ...current, id: `device-personal-${crypto.randomUUID()}`, title: `${current.title || 'Query'} · Personal` };
-        await firstValueFrom(this.queriesService.createQuery(project.ref, copy));
+        const copy = {
+          ...current,
+          id: `device-personal-${crypto.randomUUID()}`,
+          title: `${current.title || 'Query'} · Personal`,
+        };
+        await firstValueFrom(
+          this.queriesService.createQuery(project.ref, copy),
+        );
         if (!active()) return;
         const result = sourceResult;
-        if (result) QueryPageComponent.pendingSemanticCopy = { id: copy.id, result, definition: copy, environment, selectedSource };
-        this.queryEditorStateService.newQuery({ ...sourceState, id: copy.id, title: copy.title, def: copy, request: copy.request, isNew: false, isSaving: false });
+        if (result)
+          QueryPageComponent.pendingSemanticCopy = {
+            id: copy.id,
+            result,
+            definition: copy,
+            environment,
+            selectedSource,
+          };
+        this.queryEditorStateService.newQuery({
+          ...sourceState,
+          id: copy.id,
+          title: copy.title,
+          def: copy,
+          request: copy.request,
+          isNew: false,
+          isSaving: false,
+        });
         this.semanticSaving.set(false);
         this.semanticDialog.set(undefined);
-        this.router.events.pipe(filter(event => event instanceof NavigationEnd), take(1)).subscribe(() => {
-          if (result && this.queryState.id === copy.id) {
-            QueryPageComponent.pendingSemanticCopy = undefined;
-            this.setDisplayedResult(result);
-            this.commitSuccessfulResult(result, copy, undefined, false);
-          }
-        });
+        this.router.events
+          .pipe(
+            filter((event) => event instanceof NavigationEnd),
+            take(1),
+          )
+          .subscribe(() => {
+            if (result && this.queryState.id === copy.id) {
+              QueryPageComponent.pendingSemanticCopy = undefined;
+              this.setDisplayedResult(result);
+              this.commitSuccessfulResult(result, copy, undefined, false);
+            }
+          });
         this.semanticNav.goQuery(project, copy, 'edit');
       }
       if (!active()) return;
       this.semanticSaving.set(false);
       this.semanticDialog.set(undefined);
-      void this.queriesService.devicePersonal.list(project.ref).then(items => { if (this.project?.ref === project.ref) this.semanticPersonalCopies.set(items.map(item => item.query)); }).catch(() => undefined);
+      void this.queriesService.devicePersonal
+        .list(project.ref)
+        .then((items) => {
+          if (this.project?.ref === project.ref)
+            this.semanticPersonalCopies.set(items.map((item) => item.query));
+        })
+        .catch(() => undefined);
     } catch (error) {
       if (!active()) return;
-      if (originalDefinition) this.queryEditorStateService.updateQueryState({ ...sourceState, def: originalDefinition, isSaving: false });
-      this.semanticError.set(error instanceof Error ? error.message : 'Meaning could not be saved. Your draft is retained.');
+      if (originalDefinition)
+        this.queryEditorStateService.updateQueryState({
+          ...sourceState,
+          def: originalDefinition,
+          isSaving: false,
+        });
+      this.semanticError.set(
+        error instanceof Error
+          ? error.message
+          : 'Meaning could not be saved. Your draft is retained.',
+      );
+    } finally {
+      if (active()) this.semanticSaving.set(false);
     }
-    finally { if (active()) this.semanticSaving.set(false); }
   }
   openSemanticPersonalCopy(id: string): void {
-    const query = this.semanticPersonalCopies().find(item => item.id === id);
-    if (query && this.project) this.semanticNav.goQuery(this.project, query, 'edit');
+    const query = this.semanticPersonalCopies().find((item) => item.id === id);
+    if (query && this.project)
+      this.semanticNav.goQuery(this.project, query, 'edit');
+  }
+  /**
+   * Where the result grid remembers its layout (column order, widths, visibility, pinning, sort, density): ids only,
+   * never a row value, a filter or the query text. A stored result is its own context; otherwise the saved query, else
+   * the data source.
+   */
+  public resultGridStateKey(): string | undefined {
+    const project = this.project?.ref.projectId;
+    const resultId = this.savedResultId();
+    if (resultId)
+      return gridStateKey({ project, context: resultId, kind: 'result' });
+    if (this.queryId)
+      return gridStateKey({ project, context: this.queryId, kind: 'query' });
+    return gridStateKey({
+      project,
+      context: this.selectedSource(),
+      kind: 'source',
+    });
   }
   public readonly resultGridColumnDefs = computed<ColDef<QueryResultGridRow>[]>(
     () => {
       const result = this.runResult();
+      // Primary-key columns of a stored result are identifiers whatever their name: their digits are never grouped.
+      const keyNames = new Set(
+        (this.savedResultMeta()?.columns ?? [])
+          .filter((c) => (c.pk ?? 0) > 0)
+          .map((c) => c.name),
+      );
       const receipt = result?.publicSqliteReceipt;
       const canOfferLookup =
         !!result &&
@@ -2142,61 +2931,67 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         !this.publicSqliteRunIsStale(result);
       const columns = (this.displayedRecordset()?.columns ?? []).map<
         ColDef<QueryResultGridRow>
-      >(
-        (column, index) => {
-          const columnId = `result_${index}`;
-          const canLookupCustomer =
-            hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
-            canOfferLookup;
-          return {
-            colId: columnId,
-            field: columnId,
-            headerName: column.name,
-            headerComponent: SemanticColumnHeaderComponent,
-            headerComponentParams: {
-              meaningLabel: this.semanticColumnLabel(index),
-              checking: this.semanticValidation() === 'checking',
-              needsReview:
-                !!this.queryDef()?.semanticModel?.bindings.some(
-                  (binding) => binding.columnIndex === index,
-                ) && this.semanticNeedsReview(),
-              openMeaning: () => { void this.openColumnMeaning(index); },
+      >((column, index) => {
+        const columnId = `result_${index}`;
+        const canLookupCustomer =
+          hasVerifiedCustomerIdLineage(receipt, index, column.name) &&
+          canOfferLookup;
+        return {
+          ...resultColumnDef(
+            { ...column, primaryKey: keyNames.has(column.name) },
+            columnId,
+          ),
+          headerComponent: SemanticColumnHeaderComponent,
+          headerComponentParams: {
+            meaningLabel: this.semanticColumnLabel(index),
+            checking: this.semanticValidation() === 'checking',
+            needsReview:
+              !!this.queryDef()?.semanticModel?.bindings.some(
+                (binding) => binding.columnIndex === index,
+              ) && this.semanticNeedsReview(),
+            openMeaning: () => {
+              void this.openColumnMeaning(index);
             },
-            sortable: false,
-            minWidth: 120,
-            ...(canLookupCustomer ||
-            (index === 0 && this.isTugqlAuthorJourney())
-              ? {
-                  cellRenderer: (
-                    params: ICellRendererParams<QueryResultGridRow, string>,
-                  ) =>
-                    this.renderInspectedResultCell(
-                      params,
-                      canLookupCustomer ? receipt : undefined,
-                      this.currentQueryIdentity(),
-                      index,
-                      column.name,
-                    ),
-                  suppressKeyboardEvent: (
-                    params: SuppressKeyboardEventParams<
-                      QueryResultGridRow,
-                      string
-                    >,
-                  ) => this.suppressCustomerLookupKeyboardEvent(params),
-                }
-              : {}),
-          };
-        },
-      );
+          },
+          ...(canLookupCustomer || (index === 0 && this.isTugqlAuthorJourney())
+            ? {
+                cellRenderer: (
+                  params: ICellRendererParams<QueryResultGridRow, string>,
+                ) =>
+                  this.renderInspectedResultCell(
+                    params,
+                    canLookupCustomer ? receipt : undefined,
+                    this.currentQueryIdentity(),
+                    index,
+                    column.name,
+                  ),
+                suppressKeyboardEvent: (
+                  params: SuppressKeyboardEventParams<
+                    QueryResultGridRow,
+                    string
+                  >,
+                ) => this.suppressCustomerLookupKeyboardEvent(params),
+              }
+            : {}),
+        };
+      });
+      // The columns as the recordset gives them. The saved rows of a stored result put the primary key first when the
+      // saved metadata names it.
+      const meta = this.savedResultMeta();
+      const keyFirst =
+        meta && result?.provenance.mode === 'snapshot'
+          ? pkFirstOrder(meta, this.displayedRecordset()?.columns ?? [])
+          : undefined;
+      const ordered = keyFirst ? keyFirst.map((i) => columns[i]) : columns;
       if (this.activeHostedExecution()?.run?.executionStatus === 'completed')
-        columns.unshift({
+        ordered.unshift({
           colId: 'validation_status',
           field: 'validation_status',
           headerName: 'Validation',
           sortable: true,
           minWidth: 135,
         });
-      return columns;
+      return ordered;
     },
   );
   private readonly resultGridRowSnapshots = new WeakMap<
@@ -2260,7 +3055,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     if (!this.isTugqlAuthorJourney()) {
-      status('Use as filter requires verified InvoiceId lineage from a supported TugQL run. Edit the original source to filter this query.');
+      status(
+        'Use as filter requires verified InvoiceId lineage from a supported TugQL run. Edit the original source to filter this query.',
+      );
       return;
     }
     const receipt = selected.result.publicSqliteReceipt;
@@ -2337,12 +3134,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.authorRowDetailsOpen.set(false);
     }
   }
-  public readonly authorResultRowSelection = {
-    mode: 'singleRow' as const,
-    enableClickSelection: true,
-    checkboxes: false,
-    headerCheckbox: false,
-  };
   public readonly authorRowDetailsOpen = signal(false);
   private authorRowDetailsShowEditorAfterDismiss = false;
   private authorRowDetailsFocusGeneration = 0;
@@ -2447,6 +3238,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     cell.append(marker, content);
     return cell;
   }
+  public readonly resultGridAnalyticsScope = computed(
+    () =>
+      `Analytics use ${this.resultGridRows().length} loaded ${this.resultGridRows().length === 1 ? 'row' : 'rows'} on page ${this.resultPageIndex() + 1}` +
+      (this.resultHasMore() ||
+      (this.resultPageIndex() + 1) * this.resultPageSize <
+        this.resultTotalRows()
+        ? ' (more rows available)'
+        : '') +
+      '; grouping and charts do not load other pages',
+  );
   public readonly resultGridRows = computed<QueryResultGridRow[]>(() => {
     const result = this.runResult();
     const recordset = this.displayedRecordset();
@@ -2465,7 +3266,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const projected = Object.fromEntries(
         row.map((cell, columnIndex) => [
           `result_${columnIndex}`,
-          displayQueryResultValue(cell),
+          cell.type === 'null' ? null : displayQueryResultValue(cell),
         ]),
       );
       if (status) projected['validation_status'] = status;
@@ -2482,10 +3283,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return [projected];
     });
   });
-  public readonly resultGridDefaultColDef: ColDef<QueryResultGridRow> = {
-    initialFlex: 1,
-    resizable: true,
-  };
   public readonly resultGridNoRowsTemplate =
     '<span class="ag-overlay-no-rows-center">No rows.</span>';
 
@@ -2515,12 +3312,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     columnName: string,
   ): HTMLElement {
     const value = document.createElement('span');
-    value.textContent = params.value ?? '';
+    value.textContent = params.valueFormatted ?? params.value ?? '';
+    // The row on screen (sorting and filtering move it) and the row of the result it shows are different things:
+    // the lookup reads the result's own row, found through the snapshot of the grid row.
     const rowIndex = params.node.rowIndex;
+    const snapshot =
+      params.data && this.resultGridRowSnapshots.get(params.data);
+    const dataIndex =
+      snapshot && snapshot.rows === this.visibleResultRows()
+        ? snapshot.rows.indexOf(snapshot.row)
+        : -1;
     const result = this.runResult();
     const current =
       !!result &&
       rowIndex !== null &&
+      dataIndex >= 0 &&
       this.relatedResultSet() === 'affiliations' &&
       !this.selectedHistoricalResult() &&
       !this.displayedResultIsPreviousRun() &&
@@ -2529,9 +3335,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       receipt,
       columnIndex,
       columnName,
-      rowIndex === null
+      dataIndex < 0
         ? undefined
-        : this.visibleResultRows()[rowIndex]?.[columnIndex],
+        : this.visibleResultRows()[dataIndex]?.[columnIndex],
       current,
     );
     if (!customerId) return value;
@@ -2564,11 +3370,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
     button.addEventListener('click', (event) => {
       event.stopPropagation();
-      if (rowIndex !== null && receipt?.executionId) {
+      if (dataIndex >= 0 && receipt?.executionId) {
         this.openAuthorCustomerLookup(
           columnIndex,
           columnName,
-          rowIndex,
+          dataIndex,
           receipt.executionId,
           customerId,
           queryIdentity,
@@ -2641,15 +3447,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * state" section. */
   public readonly queryDef = signal<IQueryDef | undefined>(undefined);
   /** Semantic equality avoids marking an unchanged definition as an edit. */
-  private readonly identityDefinition = computed(() => {
-    const definition = this.queryDef();
-    if (!definition) return undefined;
-    const executionDefinition = { ...definition };
-    delete executionDefinition.semanticModel;
-    return executionDefinition;
-  }, {
-    equal: (left, right) => JSON.stringify(left) === JSON.stringify(right),
-  });
+  private readonly identityDefinition = computed(
+    () => {
+      const definition = this.queryDef();
+      if (!definition) return undefined;
+      const executionDefinition = { ...definition };
+      delete executionDefinition.semanticModel;
+      return executionDefinition;
+    },
+    {
+      equal: (left, right) => JSON.stringify(left) === JSON.stringify(right),
+    },
+  );
   /** Receipts identify a draft without copying request or credential bytes. */
   private readonly queryIdentityToken = computed(() => {
     this.identityDefinition();
@@ -2675,6 +3484,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public canChoosePublicSqliteSource(): boolean {
     return (
+      (!this.isHostedProject || this.selectedWorkingCopy() !== 'project') &&
       isBrowserSqlProject(this.project?.ref) &&
       this.queryDef()?.request.queryType === QueryType.SQL
     );
@@ -2691,9 +3501,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public querySaveState(): string {
+    if (this.demoDraftRecovery()) return 'Unavailable';
+    if (this.demoDraftLoading()) return 'Loading';
     if (!this.queryDef()) return 'Loading';
     if (this.queryState.isSaving) return 'Saving';
-    if (isDevicePersonalQuery(this.queryState.id ?? '')) return this.isChanged ? 'Unsaved · On this device' : 'Saved on this device';
+    if (isDevicePersonalQuery(this.queryState.id ?? ''))
+      return this.isChanged
+        ? 'Unsaved · On this device'
+        : 'Saved on this device';
     if (this.queryState.saveSupported === false || !this.canSaveQuery())
       return this.isChanged ? 'Unsaved · Read-only' : 'Read-only';
     return this.isChanged ? 'Unsaved' : 'Saved';
@@ -2873,7 +3688,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public async runComparisonBoth(): Promise<void> {
-    if (this.contextSessionId()) { this.runError.set('Session comparison needs separately pinned side inputs. Use the supported single-query session path.'); return; }
+    if (this.contextSessionId()) {
+      this.runError.set(
+        'Session comparison needs separately pinned side inputs. Use the supported single-query session path.',
+      );
+      return;
+    }
     if (!this.comparisonBlocker().startsWith('Ready')) return;
     const project = this.project?.ref;
     const definition = this.queryDef();
@@ -3328,18 +4148,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private revealWorkspaceTab(tab: WorkspaceTab): void {
     const segment = this.workspaceTabBar?.nativeElement;
-    if (!segment?.isConnected || segment.getBoundingClientRect().width === 0) return;
-    const button = segment.querySelector<HTMLElement>(`ion-segment-button[value="${tab}"]`);
+    if (!segment?.isConnected || segment.getBoundingClientRect().width === 0)
+      return;
+    const button = segment.querySelector<HTMLElement>(
+      `ion-segment-button[value="${tab}"]`,
+    );
     if (!button || segment.scrollWidth <= segment.clientWidth) return;
     const viewport = segment.getBoundingClientRect();
     const selected = button.getBoundingClientRect();
-    const delta = selected.left < viewport.left
-      ? selected.left - viewport.left
-      : selected.right > viewport.right
-        ? selected.right - viewport.right
-        : 0;
+    const delta =
+      selected.left < viewport.left
+        ? selected.left - viewport.left
+        : selected.right > viewport.right
+          ? selected.right - viewport.right
+          : 0;
     if (Math.abs(delta) > 1)
-      segment.scrollTo({ left: segment.scrollLeft + delta, behavior: 'instant' });
+      segment.scrollTo({
+        left: segment.scrollLeft + delta,
+        behavior: 'instant',
+      });
   }
 
   private scheduleWorkspaceTabReveal(): void {
@@ -3362,15 +4189,21 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private selectWorkspaceTab(tab: WorkspaceTab): void {
     const previous = this.workspaceTab();
-    if ((previous === 'sources' || previous === 'related') &&
-      tab !== 'sources' && tab !== 'related')
+    if (
+      (previous === 'sources' || previous === 'related') &&
+      tab !== 'sources' &&
+      tab !== 'related'
+    )
       this.authorSourcesToggled(false);
     this.workspaceTab.set(tab);
     this.changeDetector.markForCheck();
-    afterNextRender(() => {
-      if (this.workspaceTab() !== tab) return;
-      this.revealWorkspaceTab(tab);
-    }, { injector: this.injector });
+    afterNextRender(
+      () => {
+        if (this.workspaceTab() !== tab) return;
+        this.revealWorkspaceTab(tab);
+      },
+      { injector: this.injector },
+    );
   }
 
   public setAuthorMode(mode: 'compose' | 'code' | 'preview'): void {
@@ -3386,7 +4219,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public setWorkspaceTab(value: unknown): void {
     if (value === 'compose' || value === 'tugql' || value === 'preview') {
-      if (this.isTugqlAuthorJourney()) this.setAuthorMode(value === 'tugql' ? 'code' : value);
+      if (this.isTugqlAuthorJourney())
+        this.setAuthorMode(value === 'tugql' ? 'code' : value);
       else this.selectWorkspaceTab(value);
       return;
     }
@@ -3410,10 +4244,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public authorResultSelectionChanged(
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
+    // The grid's checkboxes select rows for export and copy. The Current row is the focused or clicked row, never
+    // the checked ones, so a selection change only keeps the api.
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
-    const row = event.selectedNodes?.find((node) => node.isSelected())?.data;
-    this.setAuthorResultRow(row);
   }
 
   public authorResultCellFocused(
@@ -3422,19 +4256,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!this.isTextQueryWorkspace() || event.rowIndex === null) return;
     this.authorResultGridApi = event.api;
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
-    const row = node?.data;
-    const snapshot = row && this.resultGridRowSnapshots.get(row);
-    if (
-      snapshot &&
-      snapshot.result === this.runResult() &&
-      snapshot.rows === this.visibleResultRows() &&
-      snapshot.recordset === this.displayedRecordset() &&
-      snapshot.resultSetId === this.relatedResultSet() &&
-      snapshot.resultPageIndex === this.resultPageIndex() &&
-      snapshot.resultGeneration === this.displayedResultGeneration()
-    )
-      node?.setSelected?.(true, true);
-    this.setAuthorResultRow(row);
+    if (node?.group || node?.footer) return;
+    this.setAuthorResultRow(node?.data);
   }
 
   public authorResultRowClicked(
@@ -3442,6 +4265,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   ): void {
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
+    if (event.node?.group || event.node?.footer) return;
     this.setAuthorResultRow(event.data);
   }
 
@@ -4402,7 +5226,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       // A target change starts in the conservative editor until its definition
       // has arrived and the visual profile can be checked.
       this.authorMode.set('code');
-      this.selectWorkspaceTab(definition?.request.queryType === QueryType.SQL ? 'sql' : this.isNativeDtqlWorkspace() ? 'dtql' : 'tugql');
+      this.selectWorkspaceTab(
+        definition?.request.queryType === QueryType.SQL
+          ? 'sql'
+          : this.isNativeDtqlWorkspace()
+            ? 'dtql'
+            : 'tugql',
+      );
     }
     if (
       resolveDefault &&
@@ -4411,7 +5241,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       !this.authorModeExplicit
     ) {
       this.authorMode.set('code');
-      this.selectWorkspaceTab(definition.request.queryType === QueryType.SQL ? 'sql' : this.isNativeDtqlWorkspace() ? 'dtql' : 'tugql');
+      this.selectWorkspaceTab(
+        definition.request.queryType === QueryType.SQL
+          ? 'sql'
+          : this.isNativeDtqlWorkspace()
+            ? 'dtql'
+            : 'tugql',
+      );
       this.authorModeDefaultResolved = true;
     }
   }
@@ -5014,6 +5850,257 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly availableTargets = signal<readonly CandidateTarget[]>([]);
   public readonly selectedSource = signal<string | undefined>(undefined);
 
+  // ---- Opened from a stored query result: `store/:storeId/project/:projectId/query?result=<id>` ----
+
+  /** What the strip above the editor says about the saved result the editor was opened from. */
+  public readonly savedResultBanner = signal<
+    SavedResultBannerState | undefined
+  >(undefined);
+  public readonly savedResultStoreId = signal('');
+  public readonly savedResultId = signal('');
+  private openedResultKey = '';
+  /** The environment the opened result ran in, kept selected while the saved result is open. */
+  private resultEnvId?: string;
+  private resultTargetAdded = false;
+  /** The saved metadata of the opened result: names its primary key, to put the key columns first in the grid. */
+  private readonly savedResultMeta = signal<ResultMeta | undefined>(undefined);
+  /** The document title before the saved result set its own, and the one it set. */
+  private titleBeforeResult?: string;
+  private resultTitle?: string;
+  /** The query the result opened: the new draft's id, or the saved query's. */
+  private resultQueryId?: string;
+  private resultMode?: ResultEditorMode;
+  private pendingResultDisplay?: {
+    readonly queryId: string;
+    readonly plan: ResultEditorPlan;
+  };
+  private resultSubscription?: Subscription;
+  /**
+   * The saved rows of the stored result while they are what the grid shows. A cold load resolves the project and the
+   * security context after the result was read, and each of those clears the displayed result (a scope change); the
+   * saved rows do not depend on that scope, so {@link invalidateHistoryScope} puts them back until another result is
+   * shown (a run, a history entry) or another query is opened.
+   */
+  private savedRowsShown?: FederatedQueryResult;
+
+  /** Reads the stored result again (Check again on the banner). */
+  public reloadSavedResult(): void {
+    const id = this.savedResultId();
+    this.openedResultKey = '';
+    if (id) this.openFromResult(id);
+  }
+
+  /**
+   * Opens the editor from a result stored by the local agent: reads it once (`GET results/<id>`, loopback agents only,
+   * through the same service and session as the result page), fills the editor from its query, selects its database
+   * and environment, and shows its saved rows without running anything. The id is never logged.
+   */
+  private openFromResult(resultId: string): void {
+    const storeId =
+      routeParam(this.route.snapshot, routingParamStoreId) ??
+      this.project?.ref.storeId ??
+      '';
+    const key = `${storeId}\n${resultId}`;
+    if (key === this.openedResultKey) return;
+    this.openedResultKey = key;
+    this.resultSubscription?.unsubscribe();
+    this.pendingResultDisplay = undefined;
+    this.savedResultStoreId.set(storeId);
+    this.savedResultId.set(resultId);
+    if (!isLoopbackStore(storeId)) {
+      // Results live on this computer only: no other address is ever asked for one.
+      this.savedResultBanner.set({
+        kind: 'problem',
+        problem: 'agent-unreachable',
+      });
+      return;
+    }
+    if (!validResultId(resultId)) {
+      this.savedResultBanner.set({
+        kind: 'problem',
+        problem: 'result-not-found',
+      });
+      return;
+    }
+    this.savedResultBanner.set({ kind: 'loading' });
+    this.resultSubscription = this.injector
+      .get(AgentLinkApiService)
+      .storedResult(storeId, resultId)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (result) => {
+          if (this.openedResultKey === key && this.savedResultId() === resultId)
+            this.applyStoredResult(result, resultId);
+        },
+        error: (err: unknown) =>
+          this.savedResultBanner.set({
+            kind: 'problem',
+            problem:
+              err instanceof LinkProblemError ? err.problem : 'read-failed',
+          }),
+      });
+  }
+
+  private applyStoredResult(result: StoredResult, resultId: string): void {
+    try {
+      let plan = resultEditorPlan(result, this.randomIdService.newRandomId());
+      const here = this.project?.ref.projectId;
+      if (plan.ids && here && plan.ids.project !== here) {
+        // An address that names another project than the result's: its query and database are not this project's.
+        plan = {
+          ...plan,
+          mode: 'rows-only',
+          definition: undefined,
+          savedQueryId: undefined,
+          ids: undefined,
+          parameters: [],
+          notice:
+            'This result was saved for another project than this one, so the editor has no query for it. The saved rows are shown below.',
+        };
+      }
+      const env = plan.ids?.env;
+      const knownEnvs = this.project?.summary?.environments;
+      const envUnknown =
+        !!env && !!knownEnvs && !knownEnvs.some((e) => e.id === env);
+      if (envUnknown) {
+        plan = {
+          ...plan,
+          notice: [
+            plan.notice,
+            `Environment ${env} of this result is not in this project, so no environment is selected.`,
+          ]
+            .filter(Boolean)
+            .join(' '),
+        };
+      }
+      // Before the rows: a change of environment clears a displayed result.
+      this.resultEnvId = env && !envUnknown ? env : undefined;
+      if (this.resultEnvId)
+        this.datatugNavContextService.setCurrentEnvironment(this.resultEnvId);
+      this.selectedSource.set(plan.ids?.source);
+      // The database that ran the query is shown in the editor's Target field, as for any query with a chosen source.
+      if (this.resultTargetAdded) {
+        this.resultTargetAdded = false;
+        this.availableTargets.set([]);
+      }
+      if (plan.ids && !this.availableTargets().length) {
+        this.availableTargets.set([
+          { source: plan.ids.source, label: plan.ids.source },
+        ]);
+        this.resultTargetAdded = true;
+      }
+      this.savedResultMeta.set(result.meta);
+      this.resultMode = plan.mode;
+      this.resultQueryId = plan.definition?.id ?? plan.savedQueryId;
+      // A result-only URL has no query identity until this read completes.
+      // Bind its opaque runtime hint only to the query this result opens.
+      const hint = this.entryRuntimeHint();
+      if (hint?.resultId === resultId && !hint.queryId && this.resultQueryId)
+        this.entryRuntimeHint.set({ ...hint, queryId: this.resultQueryId });
+      this.savedResultBanner.set({
+        kind: 'shown',
+        mode: plan.mode,
+        savedAt: plan.savedAt,
+        rowsKept: plan.rowsKept,
+        hasMore: plan.hasMore,
+        ...(plan.notice ? { notice: plan.notice } : {}),
+        ...(plan.ids
+          ? { database: `${plan.ids.source} · environment ${plan.ids.env}` }
+          : {}),
+        summary: plan.summary,
+        skippedParameters: plan.parameters
+          .filter((p) => !p.value)
+          .map((p) => p.id),
+        ...(result.prompt ? { prompt: result.prompt } : {}),
+      });
+      this.updateResultTitle();
+      const definition = plan.definition;
+      if (plan.mode === 'draft' && definition) {
+        this.queryEditorStateService.newQuery({
+          id: definition.id,
+          title: definition.title,
+          queryType: definition.request.queryType,
+          request: definition.request,
+          def: definition,
+          isNew: true,
+        });
+        this.showSavedRows(plan.displayed);
+        this.bindResultParameters(
+          plan,
+          new Set(plan.parameters.map((p) => p.id)),
+        );
+      } else if (plan.mode === 'saved' && plan.savedQueryId) {
+        // The saved query opens by id as it does from the queries list; its rows follow once it is loaded.
+        this.pendingResultDisplay = { queryId: plan.savedQueryId, plan };
+        this.queryEditorStateService.openQuery(plan.savedQueryId);
+      } else {
+        this.showSavedRows(plan.displayed);
+      }
+    } catch (e) {
+      this.errorLogger.logError(
+        e,
+        'Failed to open the saved result in the editor',
+      );
+      this.savedResultBanner.set({ kind: 'problem', problem: 'read-failed' });
+    }
+  }
+
+  private showSavedRows(rows: FederatedQueryResult): void {
+    this.showAttemptResult(rows);
+    this.savedRowsShown = rows;
+  }
+
+  private bindResultParameters(
+    plan: ResultEditorPlan,
+    declared: ReadonlySet<string>,
+  ): void {
+    for (const p of plan.parameters) {
+      if (p.value && declared.has(p.id)) this.editBinding(p.id, p.value);
+    }
+  }
+
+  private closeSavedResult(): void {
+    this.resultSubscription?.unsubscribe();
+    this.pendingResultDisplay = undefined;
+    this.openedResultKey = '';
+    this.savedResultId.set('');
+    this.savedResultStoreId.set('');
+    this.resultQueryId = undefined;
+    this.resultMode = undefined;
+    this.savedRowsShown = undefined;
+    this.resultEnvId = undefined;
+    if (this.resultTargetAdded) {
+      this.resultTargetAdded = false;
+      this.availableTargets.set([]);
+    }
+    this.savedResultMeta.set(undefined);
+    this.savedResultBanner.set(undefined);
+    this.restoreTitle();
+  }
+
+  /** "Query from result · <project>" while the editor shows a stored result; the app's own title otherwise. */
+  private updateResultTitle(): void {
+    if (this.savedResultBanner()?.kind !== 'shown') return;
+    const project = this.project;
+    const name =
+      project?.brief?.title ||
+      project?.summary?.title ||
+      project?.ref.projectId;
+    const title = name ? `Query from result · ${name}` : 'Query from result';
+    if (this.resultTitle === undefined)
+      this.titleBeforeResult = this.documentTitle.getTitle();
+    this.resultTitle = title;
+    this.documentTitle.setTitle(title);
+  }
+
+  private restoreTitle(): void {
+    if (this.resultTitle === undefined) return;
+    if (this.documentTitle.getTitle() === this.resultTitle)
+      this.documentTitle.setTitle(this.titleBeforeResult ?? 'DataTug.app');
+    this.resultTitle = undefined;
+    this.titleBeforeResult = undefined;
+  }
+
   /** api-contract.md "Bounded lookups and HTTP" — a live run failed with
    * `SOURCE_UNAVAILABLE`; the user must explicitly choose a labeled snapshot (never a
    * silent fallback) via {@link runSnapshot}. */
@@ -5035,33 +6122,118 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    this.retainedScope.changes$
+      .pipe(takeUntil(this.destroyed))
+      .subscribe(() => {
+        this.retainedQueryIntent.clearHeld();
+        this.retainedQueryPending.set(false);
+        this.retainedQueryReviewed.set(false);
+        this.queryEvidenceSelection.set(undefined);
+        this.hostedExecution.set(undefined);
+        this.invalidateFederatedRun();
+        this.stopFederatedRun();
+        this.setDisplayedResult(undefined);
+        this.committedRun.set(undefined);
+      });
     effect(() => {
-      const revision = this.queryDispatch.runtimeRevision();
+      this.agentContext.securityContextId();
+      untracked(() => this.scheduleEntryRuntimeLoad());
+    });
+    effect(() => {
+      const hint = this.entryRuntimeHint();
+      // A stored result can reveal its saved query only after the result has
+      // loaded. Its URL has no query id, but an opaque runtime selection still
+      // needs the same current-catalog validation before Run is available.
+      const needsValidation =
+        this.selectedWorkingCopy() !== 'project' &&
+        this.unavailableWorkingCopy();
+      const definition = this.queryDef();
+      this.entryContextRevision();
+      if (
+        (!hint && !needsValidation) ||
+        hint?.selectionId === 'project' ||
+        !definition?.connectionId ||
+        !this.project?.ref ||
+        (hint && (!hint.queryId || this.queryId !== hint.queryId)) ||
+        (hint?.environment && this.envId !== hint.environment) ||
+        this.isTugqlAuthorJourney()
+      )
+        return;
+      const key = `${this.entryRouteKey}:${this.currentWorkingCopyScope()}`;
+      if (this.entryLoadKey === key) return;
+      this.entryLoadKey = key;
       untracked(() => {
-        if (!this.workingCopyScope || revision === this.workingCopyRevision) return;
-        const selected = this.selectedWorkingCopy() !== 'project';
-        this.workingCopyRevision = revision;
-        ++this.workingCopyLoad;
-        this.workingCopyLoading.set(false);
-        if (selected) this.selectWorkingCopy('project');
-        this.workingCopyOptions.set([]);
-        if (selected)
-          this.workingCopyError.set('The open working copy changed. Find current working copies before running again.');
         void this.loadWorkingCopies();
       });
     });
     effect(() => {
-      const definition = this.queryDef(), recordset = this.displayedRecordset(), resultSet = this.relatedResultSet(), executed = this.semanticExecutedDefinition();
+      const revision = this.queryDispatch.runtimeRevision();
+      untracked(() => {
+        if (!this.workingCopyScope || revision === this.workingCopyRevision)
+          return;
+        const selected = this.selectedWorkingCopy() !== 'project';
+        this.workingCopyRevision = revision;
+        ++this.workingCopyLoad;
+        this.workingCopyLoading.set(false);
+        if (selected) {
+          this.unavailableWorkingCopy.set(true);
+          this.workingCopyError.set(
+            'The selected working copy changed. Choose a current runtime explicitly.',
+          );
+        }
+        this.workingCopyOptions.set([]);
+        void this.loadWorkingCopies();
+      });
+    });
+    effect(() => {
+      const definition = this.queryDef(),
+        recordset = this.displayedRecordset(),
+        resultSet = this.relatedResultSet(),
+        executed = this.semanticExecutedDefinition();
       const generation = ++this.semanticBasisGeneration;
       this.semanticBasis.set(undefined);
       this.semanticCurrentHash.set('');
       if (!definition) return;
       const project = this.project;
-      if (project) void this.queriesService.devicePersonal.list(project.ref).then(items => { if (generation === this.semanticBasisGeneration) this.semanticPersonalCopies.set(items.map(item => item.query)); }).catch(() => undefined);
-      void semanticQueryHash(definition.request.queryType, (definition.request as ISqlQueryRequest).text ?? '', definition.connectionId ?? '', definition.federation ?? null).then(hash => { if (generation === this.semanticBasisGeneration) this.semanticCurrentHash.set(hash); });
+      if (project)
+        void this.queriesService.devicePersonal
+          .list(project.ref)
+          .then((items) => {
+            if (generation === this.semanticBasisGeneration)
+              this.semanticPersonalCopies.set(items.map((item) => item.query));
+          })
+          .catch(() => undefined);
+      void semanticQueryHash(
+        definition.request.queryType,
+        (definition.request as ISqlQueryRequest).text ?? '',
+        definition.connectionId ?? '',
+        definition.federation ?? null,
+      ).then((hash) => {
+        if (generation === this.semanticBasisGeneration)
+          this.semanticCurrentHash.set(hash);
+      });
       if (!recordset || !executed) return;
-      void semanticQueryHash(executed.request.queryType, (executed.request as ISqlQueryRequest).text ?? '', executed.connectionId ?? '', executed.federation ?? null).then(queryHash => {
-        if (generation === this.semanticBasisGeneration) this.semanticBasis.set({ queryHash, resultIndex: resultSet === 'affiliations' ? 0 : 1 + (this.runResult()?.relatedRecordsets?.findIndex(item => item.id === resultSet) ?? 0), columns: recordset.columns.map(column => ({ name: column.name, dataType: column.type ?? 'unknown' })) });
+      void semanticQueryHash(
+        executed.request.queryType,
+        (executed.request as ISqlQueryRequest).text ?? '',
+        executed.connectionId ?? '',
+        executed.federation ?? null,
+      ).then((queryHash) => {
+        if (generation === this.semanticBasisGeneration)
+          this.semanticBasis.set({
+            queryHash,
+            resultIndex:
+              resultSet === 'affiliations'
+                ? 0
+                : 1 +
+                  (this.runResult()?.relatedRecordsets?.findIndex(
+                    (item) => item.id === resultSet,
+                  ) ?? 0),
+            columns: recordset.columns.map((column) => ({
+              name: column.name,
+              dataType: column.type ?? 'unknown',
+            })),
+          });
       });
     });
     addIcons({ copyOutline, informationCircleOutline, shieldCheckmarkOutline });
@@ -5160,6 +6332,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               equalProjectRef(this.project?.ref, ref)
             ) {
               this.hostedDetectiveState.set(state);
+              this.admitExplicitHostedEnvironment(state);
               this.hostedDetectiveLoadedScope.set(requestKey);
             }
           },
@@ -5177,8 +6350,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
     effect(() => {
       const runId = this.sessionRecordedRun();
-      const running = this.running(), pinning = this.sessionPinning(), error = this.runError();
-      if (runId && !running && !pinning) untracked(() => { void this.finishSessionQuery('failed', error ? 'source-query-failed' : 'client-run-interrupted'); });
+      const running = this.running(),
+        pinning = this.sessionPinning(),
+        error = this.runError();
+      if (runId && !running && !pinning)
+        untracked(() => {
+          void this.finishSessionQuery(
+            'failed',
+            error ? 'source-query-failed' : 'client-run-interrupted',
+          );
+        });
     });
     effect(() => {
       const selected = this.selectedAuthorResultRow();
@@ -5256,7 +6437,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.envId = semanticCopy.environment;
         this.selectedSource.set(semanticCopy.selectedSource);
         this.setDisplayedResult(semanticCopy.result);
-        this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition, undefined, false);
+        this.commitSuccessfulResult(
+          semanticCopy.result,
+          semanticCopy.definition,
+          undefined,
+          false,
+        );
       }
     } catch (e) {
       this.errorLogger.logError(e, 'Failed to process ionViewDidEnter event');
@@ -5273,6 +6459,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       this.editorState = editorState;
       if (!editorState?.currentQueryId) {
+        this.invalidateDemoTableDraft();
         this.loadedTextRepresentation.set(undefined);
         this.queryPageTitle.set('Query');
         this.customerInvoiceExample.set(false);
@@ -5366,8 +6553,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 : queryState.def.connectionId,
           }
         : undefined;
-      const representationScope = JSON.stringify([this.project?.ref, queryState.id]);
-      if (effectiveDefinition && this.loadedTextRepresentation()?.scope !== representationScope) {
+      const representationScope = JSON.stringify([
+        this.project?.ref,
+        queryState.id,
+      ]);
+      if (
+        effectiveDefinition &&
+        this.loadedTextRepresentation()?.scope !== representationScope
+      ) {
         this.nativeParameterDrafts.set(new Map());
         this.nativeParameterErrors.set(new Map());
         this.userBindingValues.set(new Map());
@@ -5375,15 +6568,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.selectedContextFactKeys.set(new Map());
         this.confirmedConflicts.set(new Map());
         this.bindingSnapshotKey = '';
-        const original = (queryState.def?.request as ITextQueryRequest | undefined)?.text ?? '';
-        const legacyDtql = effectiveDefinition.request.queryType === QueryType.DTQL &&
+        const original =
+          (queryState.def?.request as ITextQueryRequest | undefined)?.text ??
+          '';
+        const legacyDtql =
+          effectiveDefinition.request.queryType === QueryType.DTQL &&
           isLegacyDtqlSource(original);
         this.loadedTextRepresentation.set({
           scope: representationScope,
           kind: legacyDtql ? 'dtql' : 'tugql',
         });
-        this.selectWorkspaceTab(effectiveDefinition.request.queryType === QueryType.SQL
-          ? 'sql' : legacyDtql ? 'dtql' : 'tugql');
+        this.selectWorkspaceTab(
+          effectiveDefinition.request.queryType === QueryType.SQL
+            ? 'sql'
+            : legacyDtql
+              ? 'dtql'
+              : 'tugql',
+        );
       }
       const nextPlanIdentity = graphStableIdentity(
         effectiveDefinition?.federation?.nativeGraph,
@@ -5457,24 +6658,66 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           federatedVisibleMode(effectiveDefinition).defaultMode,
         );
       this.queryDef.set(effectiveDefinition);
+      this.scheduleEntryRuntimeLoad();
       this.changeDetector.markForCheck();
       if (effectiveDefinition?.federation?.nativeGraph)
         void this.refreshLocalHistory();
-      if (this.queryState.environments && !this.queryState.activeEnv) {
-        this.setActiveEnv(this.queryState.environments[0].id);
+      const hasBoundSqlConnection =
+        effectiveDefinition?.request.queryType === QueryType.SQL &&
+        !!effectiveDefinition.connectionId;
+      if (
+        this.queryState.environments &&
+        !this.queryState.activeEnv &&
+        !this.queryState.isLoading &&
+        !hasBoundSqlConnection
+      ) {
+        if (this.usesFixedPublicQuerySource()) {
+          // Keep caller/navigation context, but never invent a project
+          // environment for the fixed publisher endpoint.
+          const environment =
+            this.route.snapshot.queryParamMap.get('env') ?? this.envId;
+          if (environment) this.setActiveEnv(environment);
+        } else {
+          this.setActiveEnv(this.queryState.environments[0].id);
+        }
       }
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
         this.envId = queryState?.activeEnv.id;
         this.datatugNavContextService.setCurrentEnvironment(this.envId);
+        this.scheduleEntryRuntimeLoad();
       }
       this.syncScopeAndBindings();
       const semanticCopy = QueryPageComponent.pendingSemanticCopy;
-      if (semanticCopy && semanticCopy.id === queryState.id && this.route.snapshot.queryParamMap.get('id') === semanticCopy.id) {
+      if (
+        semanticCopy &&
+        semanticCopy.id === queryState.id &&
+        this.route.snapshot.queryParamMap.get('id') === semanticCopy.id
+      ) {
         QueryPageComponent.pendingSemanticCopy = undefined;
         this.envId = semanticCopy.environment;
         this.selectedSource.set(semanticCopy.selectedSource);
         this.setDisplayedResult(semanticCopy.result);
-        this.commitSuccessfulResult(semanticCopy.result, semanticCopy.definition, undefined, false);
+        this.commitSuccessfulResult(
+          semanticCopy.result,
+          semanticCopy.definition,
+          undefined,
+          false,
+        );
+      }
+      const pendingResult = this.pendingResultDisplay;
+      if (
+        pendingResult &&
+        queryState.id === pendingResult.queryId &&
+        queryState.def &&
+        !queryState.isLoading
+      ) {
+        // A saved query opened from a stored result: its rows are shown once the query itself is loaded.
+        this.pendingResultDisplay = undefined;
+        this.showSavedRows(pendingResult.plan.displayed);
+        this.bindResultParameters(
+          pendingResult.plan,
+          new Set((queryState.def.parameters ?? []).map((p) => p.id)),
+        );
       }
     } catch (e) {
       this.errorLogger.logError(
@@ -5485,6 +6728,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    ++this.demoDraftGeneration;
+    this.demoDraftCancelled.next();
+    this.demoDraftCancelled.complete();
+    this.resultSubscription?.unsubscribe();
+    this.restoreTitle();
     this.workspaceTabResizeObserver?.disconnect();
     if (this.workspaceTabRevealFrame !== undefined)
       cancelAnimationFrame(this.workspaceTabRevealFrame);
@@ -5519,7 +6767,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   private trackQueryState(): void {
     this.queryEditorStateService.queryEditorState
-      .pipe(distinctUntilChanged())
+      .pipe(distinctUntilChanged(), takeUntil(this.destroyed))
       .subscribe({
         next: this.onQueryEditorStateChanged,
         error: this.errorLogger.logErrorHandler(
@@ -5534,6 +6782,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       .subscribe((currentEnv) => {
         try {
           if (!currentEnv) {
+            this.keepResultEnvironment();
             return;
           }
           const { id } = currentEnv;
@@ -5546,6 +6795,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             this.setDisplayedResult(undefined);
           }
           this.envId = id;
+          this.scheduleEntryRuntimeLoad();
           this.agentSelectedEnvironment.set(id);
 
           let activeEnv = this.queryState.environments?.find(
@@ -5575,6 +6825,20 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           );
         }
       });
+  }
+
+  /**
+   * An address with no environment (`…/query?result=<id>`) clears the environment a moment after the result selected
+   * it, when the page is opened in a tab that chose none. While the saved result is open the environment it ran in
+   * stays selected (a different environment the person picks is kept; only a cleared one is put back).
+   */
+  private keepResultEnvironment(): void {
+    const env = this.resultEnvId;
+    if (!env || this.savedResultBanner()?.kind !== 'shown') return;
+    queueMicrotask(() => {
+      if (this.resultEnvId === env)
+        this.datatugNavContextService.setCurrentEnvironment(env);
+    });
   }
 
   private updateQueryState(queryState: IQueryState): void {
@@ -5608,6 +6872,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.comparisonProjectAccess() === currentProject.summary?.access
         ) {
           this.restoreNavigationDraft(currentProject.ref);
+          void this.restoreDemoTableDraft();
           return;
         }
         if (
@@ -5617,6 +6882,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.invalidateHistoryScope();
         const previousRef = this.project?.ref;
         this.project = currentProject;
+        this.backTarget.update((n) => n + 1);
+        this.updateResultTitle();
         this.refreshHostedProject(currentProject.ref, previousRef);
         this.comparisonAccessProjectRef = currentProject.ref;
         this.comparisonProjectAccess.set(currentProject.summary?.access);
@@ -5652,10 +6919,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               this.errorLogger.logError(
                 error,
                 'Failed to resolve GitHub Business query activity context',
+                { show: false, feedback: false },
               ),
           });
         }
         this.restoreNavigationDraft(currentProject.ref);
+        void this.restoreDemoTableDraft();
         if (
           (currentProject.ref.projectApi ||
             isSharedProjectRef(currentProject.ref)) &&
@@ -5829,11 +7098,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private trackQueryParams(): void {
-    this.route.queryParamMap.subscribe({
+    this.route.queryParamMap.pipe(takeUntil(this.destroyed)).subscribe({
       next: (queryParams) => {
+        // Names only: a value may be a stored result's id.
         console.log(
           'QueryPageComponent.trackQueryParams(): queryParams:',
-          queryParams,
+          queryParams.keys,
         );
 
         // `id` BEFORE `env` (S155 fix — was the other way round): on a
@@ -5856,22 +7126,145 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // by the time `env` was applied).
         const routeId = this.route.snapshot.paramMap.get('queryId');
         const parameterId = queryParams.get('id');
+        const resultId = queryParams.get(RESULT_QUERY_PARAM);
         if (routeId && parameterId && routeId !== parameterId) {
           this.customerInvoiceExample.set(false);
           this.runError.set('Query URL and query ID disagree.');
           return;
         }
-        let queryId = routeId || parameterId;
-        const isNew = !queryId;
-        if (isNew) {
+        // `?result=` keeps an unsaved draft out of the address. Reuse the
+        // editor identity obtained from that result on later URL emissions;
+        // a new random id here would make a runtime/env normalization look
+        // like a different query and discard the restored draft.
+        const addressQueryId = routeId || parameterId;
+        let queryId =
+          addressQueryId ||
+          (resultId && this.resultQueryId ? this.resultQueryId : undefined);
+        const runtime = queryParams.get('runtime');
+        const requestedEnv = queryParams.get('env') ?? undefined;
+        const demoDraft = queryParams.get('demoDraft');
+        const projectRoute = {
+          storeId: this.route.snapshot.paramMap.get('storeId'),
+          projectId: this.route.snapshot.paramMap.get('projectId'),
+          branch: queryParams.get('branch'),
+          projectApi: queryParams.get('projectApi'),
+        };
+        const routeKey = JSON.stringify({
+          queryId: addressQueryId,
+          resultId,
+          demoDraft,
+          runtime,
+          requestedEnv,
+          ...projectRoute,
+        });
+        // A table entry is an unsaved editor, not a saved-query address. Keep
+        // one identity across editor/env URL normalization while its scoped
+        // draft is authenticated and resolved asynchronously.
+        if (demoDraft && !addressQueryId && !resultId) {
+          const identityKey = JSON.stringify({ demoDraft, ...projectRoute });
+          if (this.demoDraftEntry?.identityKey !== identityKey) {
+            this.demoDraftEntry = {
+              token: demoDraft,
+              identityKey,
+              queryId: this.randomIdService.newRandomId(),
+            };
+          }
+          queryId = this.demoDraftEntry.queryId;
+        }
+        const previousRoute = this.entryRouteKey
+          ? (JSON.parse(this.entryRouteKey) as {
+              queryId?: string;
+              resultId?: string | null;
+              demoDraft?: string | null;
+              runtime?: string | null;
+            })
+          : undefined;
+        const entryChanged = routeKey !== this.entryRouteKey;
+        const newSelection =
+          !previousRoute ||
+          previousRoute.queryId !== addressQueryId ||
+          previousRoute.resultId !== resultId ||
+          previousRoute.demoDraft !== demoDraft ||
+          (previousRoute.runtime !== runtime &&
+            runtime !== this.selectedWorkingCopy());
+        if (entryChanged) {
+          if (previousRoute && previousRoute.resultId !== resultId) {
+            // A and B can share a query and runtime while having distinct
+            // result addresses. A's run must not replace B's saved rows.
+            ++this.semanticRunLifetime;
+            this.invalidateFederatedRun();
+            this.stopFederatedRun();
+            this.savedRowsShown = undefined;
+            this.setDisplayedResult(undefined);
+            this.committedRun.set(undefined);
+            this.resultPageRows.set([]);
+            this.runError.set(undefined);
+          }
+          this.entryRouteKey = routeKey;
+          this.entryLoadKey = '';
+          ++this.workingCopyLoad;
+          if (newSelection) {
+            this.workingCopyScope = '';
+            this.workingCopyOptions.set([]);
+            this.workingCopyError.set(undefined);
+            this.unavailableWorkingCopy.set(!!runtime && runtime !== 'project');
+            this.changeWorkingCopySelection(runtime || 'project');
+            this.entryRuntimeHint.set(
+              runtime && runtime !== 'project'
+                ? {
+                    selectionId: runtime,
+                    queryId: addressQueryId || (resultId ? undefined : queryId),
+                    resultId: resultId || undefined,
+                    environment: requestedEnv,
+                  }
+                : undefined,
+            );
+          }
+        }
+        const isNew = !addressQueryId;
+        if (!queryId) {
           queryId = this.randomIdService.newRandomId();
         }
+        if (demoDraft && !addressQueryId && !resultId) {
+          if (!this.queryEditorStateService.getQueryState(queryId)) {
+            this.queryEditorStateService.newQuery({
+              id: queryId,
+              isNew: true,
+              isLoading: false,
+              queryType: QueryType.SQL,
+              request: {
+                queryType: QueryType.SQL,
+                text: '',
+              } as ISqlQueryRequest,
+              // Seed this before the synchronous editor emission can normalize
+              // the URL; the draft service still validates the declared env.
+              ...(requestedEnv ? { activeEnv: { id: requestedEnv } } : {}),
+            });
+          } else if (this.queryId !== queryId) {
+            this.queryEditorStateService.setCurrentQuery(queryId);
+          }
+        }
         this.setQueryId(queryId, isNew);
+        if (entryChanged && newSelection && runtime && queryId) {
+          const cached = this.queryEditorStateService.getQueryState(queryId);
+          if (cached?.def && !cached.isLoading && !cached.isNew)
+            this.queryEditorStateService.reloadQuery(queryId);
+        }
         this.initializeCustomerInvoiceExample();
 
         const envId = queryParams.get('env');
         if (envId) {
           this.setActiveEnv(envId);
+        }
+        this.scheduleEntryRuntimeLoad();
+        void this.restoreDemoTableDraft();
+        if (resultId) {
+          this.openFromResult(resultId);
+        } else if (
+          this.savedResultId() &&
+          (!parameterId || parameterId !== this.resultQueryId)
+        ) {
+          this.closeSavedResult();
         }
       },
     });
@@ -5909,6 +7302,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             equalProjectRef(this.project?.ref, ref)
           ) {
             this.hostedDetectiveState.set(state);
+            this.admitExplicitHostedEnvironment(state);
             this.hostedDetectiveLoadedScope.set(requestKey);
           }
         },
@@ -5943,6 +7337,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.project = sameResolvedProject
       ? prevProject
       : newProjectContextFromRef(ref);
+    this.scheduleEntryRuntimeLoad();
+    this.backTarget.update((n) => n + 1);
     this.refreshHostedProject(ref, prevProject?.ref);
     // A genuinely new route ref arrives before its summary and has no admission.
     // Preserve a summary only when it already belongs to this exact full ref.
@@ -5992,11 +7388,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     if (!id) {
       this.queryFolderPath = '';
+      this.backTarget.update((n) => n + 1);
       return;
     }
     const i = id.lastIndexOf('/');
     if (i >= 0) {
       this.queryFolderPath = id.substring(0, i);
+      this.backTarget.update((n) => n + 1);
     }
     if (!isNew && this.navigationDraft?.query.id !== id) {
       this.queryEditorStateService.openQuery(id);
@@ -6143,10 +7541,30 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   updateUrl(): void {
     if (!this.authorViewActive || !this.isCurrentRoute()) return;
     // TODO: make sure not clashes with SqlQueryEditComponent
+    // A draft opened from a stored result has no saved id to put in the address: `result` reopens it after a refresh.
+    // Once the draft is saved it has an id of its own and `result` is dropped.
+    const fromResult =
+      this.resultQueryId !== undefined && this.resultQueryId === this.queryId;
+    // A result with no query to edit leaves the editor with no query of its own either.
+    const unsavedResultDraft =
+      (fromResult && this.queryState.isNew === true) ||
+      this.resultMode === 'rows-only';
+    const savedResultDraft =
+      fromResult &&
+      this.resultMode === 'draft' &&
+      this.queryState.isNew !== true;
+    const unsavedTableDraft =
+      this.queryState.isNew === true &&
+      this.demoDraftEntry?.queryId === this.queryId &&
+      this.demoDraftEntry?.token ===
+        this.route.snapshot.queryParamMap.get('demoDraft') &&
+      !this.route.snapshot.queryParamMap.get('id') &&
+      !this.route.snapshot.paramMap.get('queryId');
     const queryParams: Params = {
-      id: this.queryId,
+      id: unsavedResultDraft || unsavedTableDraft ? undefined : this.queryId,
       editor: this.editorTab,
       env: this.queryState.activeEnv?.id,
+      ...(savedResultDraft ? { [RESULT_QUERY_PARAM]: undefined } : {}),
     };
     this.router
       .navigate([], {
@@ -6164,7 +7582,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Ionic gives routed pages a proxy, so ownership follows its active snapshot. */
   private isCurrentRoute(): boolean {
     if (this.router.currentNavigation?.()) return false;
-    const pending: ActivatedRoute[] = [this.router.routerState.root];
+    const root = this.router.routerState?.root;
+    if (!root) return false;
+    const pending: ActivatedRoute[] = [root];
     while (pending.length) {
       const route = pending.pop();
       if (!route) continue;
@@ -6294,28 +7714,46 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    */
   private updateBindings(explicitlyResolvedParameterId?: string): void {
     const parameterDefs = this.queryState.def?.parameters || [];
-    const parameters: BindingParameterRef[] = parameterDefs
-      .map((p) => ({ id: p.id, meta: p.meta, required: p.isRequired }));
+    const parameters: BindingParameterRef[] = parameterDefs.map((p) => ({
+      id: p.id,
+      meta: p.meta,
+      required: p.isRequired,
+    }));
     if (!parameters.length) {
-      this.bindings.set([]);
+      if (this.isHostedProject && this.bindings().length)
+        this.retainedScope.invalidate();
+      setIfChanged(this.bindings, [], bindingsEqual);
       this.clearedParamIds.set(new Set());
       this.confirmedConflicts.set(new Map());
       return;
     }
     const selectionFacts = this.buildSelectionFacts(parameters);
     const sessionId = this.contextSessionId();
-    const sessionScope = this.sessionWorkspace && sessionId ? queryContextScope(this.sessionWorkspace.capabilities(), this.envId ?? '', this.queryDef()) : undefined;
-    const contextFacts = this.sessionWorkspace && sessionId
-      ? sessionScope ? this.sessionWorkspace.appliedFactsFor(sessionId, sessionScope) : []
-      : this.investigationContext
-      .items()
-      .filter((item) => item.enabled && isFactSelectedForBinding(item));
+    const sessionScope =
+      this.sessionWorkspace && sessionId
+        ? queryContextScope(
+            this.sessionWorkspace.capabilities(),
+            this.envId ?? '',
+            this.queryDef(),
+          )
+        : undefined;
+    const contextFacts =
+      this.sessionWorkspace && sessionId
+        ? sessionScope
+          ? this.sessionWorkspace.appliedFactsFor(sessionId, sessionScope)
+          : []
+        : this.investigationContext
+            .items()
+            .filter((item) => item.enabled && isFactSelectedForBinding(item));
     const activeContextScope = this.investigationContext.scope();
-    const contextScopeKey = this.sessionWorkspace && sessionId
-      ? sessionScope ? this.sessionWorkspace.bindingScopeKey(sessionId, sessionScope) : undefined
-      : activeContextScope
-      ? scopeKey(activeContextScope)
-      : undefined;
+    const contextScopeKey =
+      this.sessionWorkspace && sessionId
+        ? sessionScope
+          ? this.sessionWorkspace.bindingScopeKey(sessionId, sessionScope)
+          : undefined
+        : activeContextScope
+          ? scopeKey(activeContextScope)
+          : undefined;
     const clearedParamIds = this.clearedParamIds();
 
     // First pass with no confirmations, to discover the CURRENT conflict pair (if
@@ -6440,6 +7878,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     // own signal graph and never lets Angular's change-detection loop reach a fixed
     // point (observed directly: a real infinite `detectChangesInViewWhileDirty` loop in
     // this component's own tests once `investigationContext.items()` started changing).
+    if (this.isHostedProject && !bindingsEqual(this.bindings(), resolved))
+      this.retainedScope.invalidate();
     setIfChanged(this.bindings, resolved, bindingsEqual);
 
     // Dropping a parameter (e.g. switching to a query with different params)
@@ -6499,6 +7939,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** REQ:no-hidden-filters — the user clears (or, by not clearing, implicitly
    * confirms) every auto-bound parameter before it's ever sent on a run. */
   public clearBinding(parameterId: string): void {
+    if (this.isHostedProject && this.retainedQueryPending()) {
+      this.runError.set(
+        'Review the previous run before changing its frozen inputs.',
+      );
+      return;
+    }
     this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
     this.selectedContextFactKeys.set(
@@ -6515,6 +7961,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * highest precedence and become the accepted snapshot immediately; a preceding
    * promotion must never make a fresh user choice look like a context rebind. */
   public editBinding(parameterId: string, value: TypedValue): void {
+    if (this.isHostedProject && this.retainedQueryPending()) {
+      this.runError.set(
+        'Review the previous run before changing its frozen inputs.',
+      );
+      return;
+    }
     this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(
       new Set([...this.clearedParamIds()].filter((id) => id !== parameterId)),
@@ -6535,29 +7987,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public nativeParameterValue(parameterId: string): string {
     const draft = this.nativeParameterDrafts().get(parameterId);
     if (draft !== undefined) return draft;
-    const value = this.bindings().find((binding) => binding.parameterId === parameterId)?.value;
+    const value = this.bindings().find(
+      (binding) => binding.parameterId === parameterId,
+    )?.value;
     return value === undefined ? '' : String(value.value);
   }
 
-  public nativeParameterBinding(parameterId: string): ResolvedBinding | undefined {
-    return this.bindings().find((binding) => binding.parameterId === parameterId);
+  public nativeParameterBinding(
+    parameterId: string,
+  ): ResolvedBinding | undefined {
+    return this.bindings().find(
+      (binding) => binding.parameterId === parameterId,
+    );
   }
 
   public nativeParameterError(parameterId: string): string | undefined {
     return this.nativeParameterErrors().get(parameterId);
   }
 
-  public nativeParameterInputKind(parameter: IParameterDef): 'text' | 'decimal' | 'numeric' {
-    return parameter.type === 'integer' ? 'numeric' :
-      ['number', 'float', 'decimal', 'money'].includes(parameter.type) ? 'decimal' : 'text';
+  public nativeParameterInputKind(
+    parameter: IParameterDef,
+  ): 'text' | 'decimal' | 'numeric' {
+    return parameter.type === 'integer'
+      ? 'numeric'
+      : ['number', 'float', 'decimal', 'money'].includes(parameter.type)
+        ? 'decimal'
+        : 'text';
   }
 
   public nativeParameterHint(parameter: IParameterDef): string {
-    const parts = [parameter.type, parameter.isRequired ? 'Required' : 'Optional'];
+    const parts = [
+      parameter.type,
+      parameter.isRequired ? 'Required' : 'Optional',
+    ];
     const binding = this.nativeParameterBinding(parameter.id);
-    if (binding?.value !== undefined && binding.origin && binding.origin !== 'user') {
+    if (
+      binding?.value !== undefined &&
+      binding.origin &&
+      binding.origin !== 'user'
+    ) {
       parts.push(`from ${binding.origin}`);
-      if (binding.origin === 'context' && binding.role) parts.push(binding.role);
+      if (binding.origin === 'context' && binding.role)
+        parts.push(binding.role);
     }
     return parts.join(' · ');
   }
@@ -6567,36 +8038,97 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public clearNativeParameter(parameterId: string): void {
-    this.nativeParameterDrafts.set(new Map(this.nativeParameterDrafts()).set(parameterId, ''));
-    this.nativeParameterErrors.set(new Map([...this.nativeParameterErrors()].filter(([id]) => id !== parameterId)));
+    if (this.isHostedProject && this.retainedQueryPending()) {
+      this.runError.set(
+        'Review the previous run before changing its frozen inputs.',
+      );
+      return;
+    }
+    this.nativeParameterDrafts.set(
+      new Map(this.nativeParameterDrafts()).set(parameterId, ''),
+    );
+    this.nativeParameterErrors.set(
+      new Map(
+        [...this.nativeParameterErrors()].filter(([id]) => id !== parameterId),
+      ),
+    );
     this.clearBinding(parameterId);
   }
 
-  public setNativeParameterInput(parameter: IParameterDef, input: string | null | undefined): void {
+  public setNativeParameterInput(
+    parameter: IParameterDef,
+    input: string | null | undefined,
+  ): void {
+    if (this.isHostedProject && this.retainedQueryPending()) {
+      this.runError.set(
+        'Review the previous run before changing its frozen inputs.',
+      );
+      return;
+    }
     const raw = input ?? '';
-    this.nativeParameterDrafts.set(new Map(this.nativeParameterDrafts()).set(parameter.id, raw));
+    this.nativeParameterDrafts.set(
+      new Map(this.nativeParameterDrafts()).set(parameter.id, raw),
+    );
     if (!raw.length) {
       this.clearNativeParameter(parameter.id);
       return;
     }
-    const kind = parameter.type === 'integer' ? 'integer' :
-      parameter.type === 'decimal' || parameter.type === 'money' ? 'decimal' :
-      parameter.type === 'number' || parameter.type === 'float' ? 'number' :
-      parameter.type === 'boolean' || parameter.type === 'bit' ? 'boolean' :
-      parameter.type === 'date' ? 'date' :
-      parameter.type === 'datetime' ? 'datetime' :
-      ['string', 'text', 'UUID', 'GUID'].includes(parameter.type) ? 'string' : undefined;
+    const kind =
+      parameter.type === 'integer'
+        ? 'integer'
+        : parameter.type === 'decimal' || parameter.type === 'money'
+          ? 'decimal'
+          : parameter.type === 'number' || parameter.type === 'float'
+            ? 'number'
+            : parameter.type === 'boolean' || parameter.type === 'bit'
+              ? 'boolean'
+              : parameter.type === 'date'
+                ? 'date'
+                : parameter.type === 'datetime'
+                  ? 'datetime'
+                  : ['string', 'text', 'UUID', 'GUID'].includes(parameter.type)
+                    ? 'string'
+                    : undefined;
     try {
-      if (!kind || parameter.isMultiValue) throw new Error('This parameter type needs a supported editor.');
-      const candidate = { type: kind, value: kind === 'number' ? Number(raw) : kind === 'boolean' ? raw === 'true' ? true : raw === 'false' ? false : raw : raw };
+      if (!kind || parameter.isMultiValue)
+        throw new Error('This parameter type needs a supported editor.');
+      const candidate = {
+        type: kind,
+        value:
+          kind === 'number'
+            ? Number(raw)
+            : kind === 'boolean'
+              ? raw === 'true'
+                ? true
+                : raw === 'false'
+                  ? false
+                  : raw
+              : raw,
+      };
       const value = decodeTypedValue(candidate);
-      if (value.type === 'integer' && !Number.isSafeInteger(Number(value.value)))
-        throw new Error('This integer cannot be represented losslessly by SQL.');
-      this.nativeParameterErrors.set(new Map([...this.nativeParameterErrors()].filter(([id]) => id !== parameter.id)));
+      if (
+        value.type === 'integer' &&
+        !Number.isSafeInteger(Number(value.value))
+      )
+        throw new Error(
+          'This integer cannot be represented losslessly by SQL.',
+        );
+      this.nativeParameterErrors.set(
+        new Map(
+          [...this.nativeParameterErrors()].filter(
+            ([id]) => id !== parameter.id,
+          ),
+        ),
+      );
       this.editBinding(parameter.id, value);
     } catch {
       this.clearBinding(parameter.id);
-      this.nativeParameterErrors.set(new Map(this.nativeParameterErrors()).set(parameter.id, `Enter a valid ${parameter.type} value before running.`));
+      this.nativeParameterErrors.set(
+        new Map(this.nativeParameterErrors()).set(
+          parameter.id,
+          `Enter a valid ${parameter.type} value before running.`,
+        ),
+      );
     }
   }
 
@@ -6788,6 +8320,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   private showAttemptResult(result: FederatedQueryResult): void {
+    if (result !== this.savedRowsShown) this.savedRowsShown = undefined;
     this.selectedHistoricalResult.set(undefined);
     this.historicalDefinition.set(undefined);
     this.relatedResultSet.set('affiliations');
@@ -6881,7 +8414,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     recordSessionOutcome = true,
   ): void {
     if (!this.hasCompleteResult(result)) {
-      if (recordSessionOutcome) void this.finishSessionQuery('failed', 'incomplete-result');
+      if (recordSessionOutcome)
+        void this.finishSessionQuery('failed', 'incomplete-result');
       return;
     }
     this.semanticExecutedDefinition.set(definition);
@@ -6938,12 +8472,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * project/environment/securityContextId Scope and, per api-contract.md, the exact
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
-  private runHostedSavedQuery(
+  private async runHostedSavedQuery(
     ref: IProjectRef,
     queryId: string,
     definition: IQueryDef | undefined,
     runRequestedAt: number,
-  ): void {
+  ): Promise<void> {
     if (this.running()) return;
     if (
       !ref.spaceID ||
@@ -6994,21 +8528,70 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         binding.value as TypedValue,
       ]),
     );
+    const selection = this.queryEvidenceSelection();
+    let native: { actor: string; signal: AbortSignal };
+    let intent: { operationId: string; payload: unknown } | undefined;
+    try {
+      native = this.retainedScope.capture(
+        ref,
+        undefined,
+        selection || definition.connectionId === 'shipping-working-copy'
+          ? { sourceId: 'shipping-working-copy', environment }
+          : undefined,
+      );
+      if (selection) {
+        if (
+          selection.environment !== environment ||
+          selection.choice.evidence.context.scope.environmentId !== environment
+        )
+          throw new Error(
+            'Choose applied context for this current environment.',
+          );
+        requireAppliedInputMatch(selection.choice, inputs);
+      }
+      intent = await this.retainedQueryIntent.prepare(
+        JSON.stringify([native.actor, ref, queryId, definition, environment]),
+        {
+          inputs,
+          ...(selection ? { evidence: selection.choice.evidence } : {}),
+        },
+      );
+      if (
+        native.signal.aborted ||
+        this.project?.ref !== ref ||
+        this.queryId !== queryId ||
+        this.hostedEnvironment() !== environment ||
+        this.queryDef() !== definition
+      )
+        return;
+    } catch (error) {
+      if (this.retainedQueryIntent.hasPending)
+        this.retainedQueryPending.set(true);
+      this.runError.set(
+        error instanceof Error
+          ? error.message
+          : 'Current run scope is unavailable.',
+      );
+      return;
+    }
     const context = {
       kind: 'cloud' as const,
       storage: 'firestore' as const,
       spaceID: ref.spaceID,
       project: ref.projectId,
+      principal: native.actor,
     };
     const projectKey = JSON.stringify(ref);
     const definitionKey = JSON.stringify(definition);
     const lifetime = ++this.federatedRunLifetime;
     const current = (): boolean =>
+      !native.signal.aborted &&
       lifetime === this.federatedRunLifetime &&
       JSON.stringify(this.project?.ref) === projectKey &&
       this.queryId === queryId &&
       this.hostedEnvironment() === environment &&
       JSON.stringify(this.queryDef()) === definitionKey;
+    this.retainedQueryPending.set(true);
     this.hostedExecution.set(undefined);
     this.hostedSelectedRow.set(undefined);
     this.hostedStatusFilter.set('all');
@@ -7023,46 +8606,68 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       environment,
       target: { kind: 'hosted-cloud' },
       hostedInputs: inputs,
+      principal: native.actor,
+      signal: native.signal,
+      operationId: intent.operationId,
+      ...(selection ? { evidence: selection.choice.evidence } : {}),
     });
     this.activeDispatchSession = session;
-    void (session.hostedResponse ?? Promise.reject(new Error('Hosted execution session has no response.')))
+    void (
+      session.hostedResponse ??
+      Promise.reject(new Error('Hosted execution session has no response.'))
+    )
       .then((response: HostedQueryResponse) => {
+        if (!current()) return;
+        this.retainedQueryIntent.confirm();
+        this.retainedQueryPending.set(false);
+        this.retainedQueryReviewed.set(false);
+        const execution = response.result.execution;
+        if (
+          !execution ||
+          execution.storeId !== ref.storeId ||
+          execution.projectId !== ref.projectId
+        ) {
+          this.runError.set(
+            'The hosted query returned no matching retained execution receipt.',
+          );
+          this.running.set(false);
+          return;
+        }
+        const result: FederatedQueryResult = response.result;
+        this.showAttemptResult(result);
+        const timing: QueryRunTiming = {
+          allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+          noRecords: result.recordset.rows.length === 0,
+        };
+        this.queryRunTiming.set(timing);
+        this.commitSuccessfulResult(result, definition, timing);
+        const evidenceIdentity = heldEvidenceIdentity(response, {
+          projectRef: ref,
+          environment,
+          actor: native.actor,
+        });
+        const executed: HostedQueryExecution = {
+          ...(evidenceIdentity ? { evidenceIdentity } : {}),
+          result,
+          generation: this.displayedResultGeneration(),
+          projectKey,
+          queryId,
+          environment,
+          execution,
+          queryRevision: response.queryRevision,
+          resultFingerprint: response.resultFingerprint,
+        };
+        this.hostedExecution.set(executed);
+        if (selection) {
+          this.running.set(false);
+          return;
+        }
+        const validateReceipt = (attempt: number): void => {
           if (!current()) return;
-          const execution = response.result.execution;
-          if (
-            !execution ||
-            execution.storeId !== ref.storeId ||
-            execution.projectId !== ref.projectId
-          ) {
-            this.runError.set(
-              'The hosted query returned no matching retained execution receipt.',
-            );
-            this.running.set(false);
-            return;
-          }
-          const result: FederatedQueryResult = response.result;
-          this.showAttemptResult(result);
-          const timing: QueryRunTiming = {
-            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
-            noRecords: result.recordset.rows.length === 0,
-          };
-          this.queryRunTiming.set(timing);
-          this.commitSuccessfulResult(result, definition, timing);
-          const executed: HostedQueryExecution = {
-            result,
-            generation: this.displayedResultGeneration(),
-            projectKey,
-            queryId,
-            environment,
-            execution,
-            queryRevision: response.queryRevision,
-            resultFingerprint: response.resultFingerprint,
-          };
-          this.hostedExecution.set(executed);
-          const validateReceipt = (attempt: number): void => {
-            if (!current()) return;
-            this.detectiveClient
-              .action(context, {
+          this.detectiveClient
+            .action(
+              context,
+              {
                 type: 'run-query-validators',
                 queryId,
                 environment,
@@ -7070,89 +8675,104 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 ...(this.hostedScenarioTarget()
                   ? { caseId: this.hostedScenarioTarget()?.caseId }
                   : {}),
-              })
-              .pipe(takeUntil(this.destroyed))
-              .subscribe({
-                next: (validated) => {
-                  if (!current()) return;
-                  const run = validated.run;
-                  if (run?.executionStatus === 'pending') {
-                    this.hostedExecution.set({
-                      ...executed,
-                      run,
-                      validationPending: true,
-                    });
-                    this.running.set(false);
-                    if (attempt < 20)
-                      setTimeout(() => validateReceipt(attempt + 1), 1500);
-                    else
-                      this.hostedExecution.set({
-                        ...executed,
-                        run,
-                        validationError:
-                          'Validation is still pending. Refresh run history to inspect its final outcome.',
-                      });
-                    return;
-                  }
-                  if (
-                    !run ||
-                    run.kind !== 'query-validators' ||
-                    run.queryId !== queryId ||
-                    run.environment !== environment ||
-                    run.steps[0]?.queryId !== queryId ||
-                    !sameExecution(execution, run.steps[0]?.execution)
-                  ) {
-                    this.hostedExecution.set({
-                      ...executed,
-                      validationError:
-                        'Validation did not return a run linked to these exact query rows.',
-                    });
-                  } else {
-                    this.hostedExecution.set({
-                      ...executed,
-                      run,
-                      caseLinkNotice: caseRunLinkMessage(
-                        this.hostedScenarioTarget()?.caseId,
-                        run.id,
-                        validated.caseLinkStatus,
-                        run.executionStatus,
-                      ),
-                    });
-                  }
-                  this.running.set(false);
-                },
-                error: (error: unknown) => {
-                  if (!current()) return;
-                  if (
-                    error instanceof HttpErrorResponse &&
-                    error.status === 409 &&
-                    attempt < 20
-                  ) {
-                    this.hostedExecution.set({
-                      ...executed,
-                      validationPending: true,
-                    });
-                    this.running.set(false);
-                    setTimeout(() => validateReceipt(attempt + 1), 1500);
-                    return;
-                  }
+              },
+              undefined,
+              { signal: native.signal },
+            )
+            .pipe(takeUntil(this.destroyed))
+            .subscribe({
+              next: (validated) => {
+                if (!current()) return;
+                const run = validated.run;
+                if (run?.executionStatus === 'pending') {
                   this.hostedExecution.set({
                     ...executed,
-                    validationError: detectiveErrorMessage(error, true),
+                    run,
+                    validationPending: true,
                   });
                   this.running.set(false);
-                },
-              });
-          };
-          validateReceipt(0);
-        })
+                  if (attempt < 20)
+                    setTimeout(() => validateReceipt(attempt + 1), 1500);
+                  else
+                    this.hostedExecution.set({
+                      ...executed,
+                      run,
+                      validationError:
+                        'Validation is still pending. Refresh run history to inspect its final outcome.',
+                    });
+                  return;
+                }
+                if (
+                  !run ||
+                  run.kind !== 'query-validators' ||
+                  run.queryId !== queryId ||
+                  run.environment !== environment ||
+                  run.steps[0]?.queryId !== queryId ||
+                  !sameExecution(execution, run.steps[0]?.execution)
+                ) {
+                  this.hostedExecution.set({
+                    ...executed,
+                    validationError:
+                      'Validation did not return a run linked to these exact query rows.',
+                  });
+                } else {
+                  this.hostedExecution.set({
+                    ...executed,
+                    run,
+                    caseLinkNotice: caseRunLinkMessage(
+                      this.hostedScenarioTarget()?.caseId,
+                      run.id,
+                      validated.caseLinkStatus,
+                      run.executionStatus,
+                    ),
+                  });
+                }
+                this.running.set(false);
+              },
+              error: (error: unknown) => {
+                if (!current()) return;
+                if (
+                  error instanceof HttpErrorResponse &&
+                  error.status === 409 &&
+                  attempt < 20
+                ) {
+                  this.hostedExecution.set({
+                    ...executed,
+                    validationPending: true,
+                  });
+                  this.running.set(false);
+                  setTimeout(() => validateReceipt(attempt + 1), 1500);
+                  return;
+                }
+                this.hostedExecution.set({
+                  ...executed,
+                  validationError: detectiveErrorMessage(error, true),
+                });
+                this.running.set(false);
+              },
+            });
+        };
+        validateReceipt(0);
+      })
       .catch((error: unknown) => {
-          if (!current()) return;
-          this.runError.set(detectiveErrorMessage(error, true));
-          this.running.set(false);
-        })
+        this.retainedQueryIntent.rejectConflict(error);
+        if (
+          error instanceof HttpErrorResponse &&
+          [401, 403].includes(error.status)
+        ) {
+          this.hostedExecution.set(undefined);
+          this.setDisplayedResult(undefined);
+          this.committedRun.set(undefined);
+          this.queryEvidenceSelection.set(undefined);
+          this.hostedDetectiveState.set(undefined);
+        }
+        if (!current()) return;
+        this.runError.set(detectiveErrorMessage(error, true));
+        this.running.set(false);
+      })
       .finally(() => {
-        if (this.activeDispatchSession === session) this.activeDispatchSession = undefined;
+        if (this.activeDispatchSession === session)
+          this.activeDispatchSession = undefined;
         void session.dispose();
       });
   }
@@ -7261,7 +8881,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public runQuery(): void {
     if (this.sessionWorkspace && this.contextSessionId()) {
-      if (!this.sessionPinning() && !this.running() && !this.sessionRecordedRun()) void this.runSessionQuery();
+      if (
+        !this.sessionPinning() &&
+        !this.running() &&
+        !this.sessionRecordedRun()
+      )
+        void this.runSessionQuery();
       return;
     }
     this.runQueryWithPinnedInput();
@@ -7271,98 +8896,237 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const workspace = this.sessionWorkspace;
     const definition = this.queryDef();
     const sessionId = this.contextSessionId();
-    if (!workspace || !definition || !sessionId || !workspace.canExecuteFor(sessionId)) {
-      this.runError.set('Resume this session before running a query.'); return;
+    if (
+      !workspace ||
+      !definition ||
+      !sessionId ||
+      !workspace.canExecuteFor(sessionId)
+    ) {
+      this.runError.set('Resume this session before running a query.');
+      return;
     }
-    const queryScope = queryContextScope(workspace.capabilities(), this.envId ?? '', definition);
+    const queryScope = queryContextScope(
+      workspace.capabilities(),
+      this.envId ?? '',
+      definition,
+    );
     const scopes = queryScope ? [queryScope] : [];
-    if (scopes.length !== 1) { this.runError.set('This query has no unique admitted source identity in this environment. Review the source mapping before running.'); return; }
+    if (scopes.length !== 1) {
+      this.runError.set(
+        'This query has no unique admitted source identity in this environment. Review the source mapping before running.',
+      );
+      return;
+    }
     const request = definition.request as ITextQueryRequest;
-    if (![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(request.queryType) || typeof request.text !== 'string') {
-      this.runError.set('This session adapter can record SQL and TugQL executions. This request type has no supported private definition snapshot yet.'); return;
+    if (
+      ![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(
+        request.queryType,
+      ) ||
+      typeof request.text !== 'string'
+    ) {
+      this.runError.set(
+        'This session adapter can record SQL and TugQL executions. This request type has no supported private definition snapshot yet.',
+      );
+      return;
     }
     if (this.rebindSuggestions().length || this.hasBlockedBindings()) {
-      this.runError.set('Review and accept the current context bindings before creating a saved session run.'); return;
+      this.runError.set(
+        'Review and accept the current context bindings before creating a saved session run.',
+      );
+      return;
     }
     this.sessionCompletionGeneration++;
     const latestFacts = workspace.appliedFactsFor(sessionId, scopes[0]);
     const bindings = this.effectiveBindings();
-    if (bindings.some((binding) => binding.origin === 'context' && !latestFacts.some((fact) => fact.id === binding.factId && fact.value && binding.value && typedValuesEqual(fact.value, binding.value)))) {
-      this.runError.set('These frozen bindings differ from the current applied manifest. Review the new context before running.'); return;
+    if (
+      bindings.some(
+        (binding) =>
+          binding.origin === 'context' &&
+          !latestFacts.some(
+            (fact) =>
+              fact.id === binding.factId &&
+              fact.value &&
+              binding.value &&
+              typedValuesEqual(fact.value, binding.value),
+          ),
+      )
+    ) {
+      this.runError.set(
+        'These frozen bindings differ from the current applied manifest. Review the new context before running.',
+      );
+      return;
     }
-    const resolvedParameters: Record<string, TypedValue> = Object.fromEntries(bindings.flatMap((binding) =>
-      binding.value ? [[binding.parameterId, binding.value] as const] : []));
+    const resolvedParameters: Record<string, TypedValue> = Object.fromEntries(
+      bindings.flatMap((binding) =>
+        binding.value ? [[binding.parameterId, binding.value] as const] : [],
+      ),
+    );
     if (this.isTugqlAuthorJourney() && this.authorHasCustomerIdParameter()) {
-      if (!this.authorCustomerIdValid()) { this.runError.set('Enter a whole-number CustomerId before running.'); return; }
-      resolvedParameters['CustomerId'] = { type: 'integer', value: this.authorCustomerId() };
+      if (!this.authorCustomerIdValid()) {
+        this.runError.set('Enter a whole-number CustomerId before running.');
+        return;
+      }
+      resolvedParameters['CustomerId'] = {
+        type: 'integer',
+        value: this.authorCustomerId(),
+      };
     }
-    const document: ContextDefinitionDocument = { schemaVersion: 1, kind: 'query', queries: [{ id: definition.id ?? this.queryId ?? 'query', queryType: request.queryType as 'SQL' | 'DTQL' | 'TugQL', text: request.text,
-      ...(definition.connectionId ? { connectionId: definition.connectionId } : {}), parameters: (definition.parameters ?? []).map(({ id, type, isRequired }) => ({ id, type, ...(isRequired !== undefined ? { isRequired } : {}) })),
-    }] };
+    const document: ContextDefinitionDocument = {
+      schemaVersion: 1,
+      kind: 'query',
+      queries: [
+        {
+          id: definition.id ?? this.queryId ?? 'query',
+          queryType: request.queryType as 'SQL' | 'DTQL' | 'TugQL',
+          text: request.text,
+          ...(definition.connectionId
+            ? { connectionId: definition.connectionId }
+            : {}),
+          parameters: (definition.parameters ?? []).map(
+            ({ id, type, isRequired }) => ({
+              id,
+              type,
+              ...(isRequired !== undefined ? { isRequired } : {}),
+            }),
+          ),
+        },
+      ],
+    };
     const encoded = JSON.stringify(document);
     const contextSetId = workspace.snapshotFor(sessionId)?.contextSet.id;
     const admittedCapabilities = workspace.capabilities();
-    const projectRef = this.project?.ref ? structuredClone(this.project.ref) : undefined;
-    const executionIdentity = (): string => JSON.stringify({
-      sessionId: this.contextSessionId(), queryId: this.queryId, project: this.project?.ref,
-      environmentId: this.envId, scopes: workspace.capabilities()?.environments.filter((scope) => scope.environmentId === this.envId),
-      contextSetId: workspace.snapshotFor(sessionId)?.contextSet.id, definition: this.queryDef(),
-      bindings: this.effectiveBindings(), source: this.selectedSource(),
-      securityContextId: this.agentContext.securityContextId(), authorCustomerId: this.authorCustomerId(),
-      authorCustomerIdValid: this.authorCustomerIdValid(), authorCustomerIdOrigin: this.authorCustomerIdOrigin(),
-      authorDraftRevision: this.authorDraftRevision(), authorBindingRevision: this.authorBindingRevision(),
-      authorPlan: this.authorPlan(), actorId: workspace.capabilities()?.actorId,
-      databaseId: workspace.capabilities()?.databaseId, projectId: workspace.capabilities()?.projectId,
-    });
+    const projectRef = this.project?.ref
+      ? structuredClone(this.project.ref)
+      : undefined;
+    const executionIdentity = (): string =>
+      JSON.stringify({
+        sessionId: this.contextSessionId(),
+        queryId: this.queryId,
+        project: this.project?.ref,
+        environmentId: this.envId,
+        scopes: workspace
+          .capabilities()
+          ?.environments.filter((scope) => scope.environmentId === this.envId),
+        contextSetId: workspace.snapshotFor(sessionId)?.contextSet.id,
+        definition: this.queryDef(),
+        bindings: this.effectiveBindings(),
+        source: this.selectedSource(),
+        securityContextId: this.agentContext.securityContextId(),
+        authorCustomerId: this.authorCustomerId(),
+        authorCustomerIdValid: this.authorCustomerIdValid(),
+        authorCustomerIdOrigin: this.authorCustomerIdOrigin(),
+        authorDraftRevision: this.authorDraftRevision(),
+        authorBindingRevision: this.authorBindingRevision(),
+        authorPlan: this.authorPlan(),
+        actorId: workspace.capabilities()?.actorId,
+        databaseId: workspace.capabilities()?.databaseId,
+        projectId: workspace.capabilities()?.projectId,
+      });
     const capturedExecutionIdentity = executionIdentity();
     const queryId = definition.id ?? this.queryId ?? 'query';
     const scope = structuredClone(scopes[0]);
     const pinnedParameters = structuredClone(resolvedParameters);
     const pinnedDocument = structuredClone(document);
-    const samePlan = (): boolean => executionIdentity() === capturedExecutionIdentity &&
-      workspace.canExecuteFor(sessionId) && !!admittedCapabilities &&
+    const samePlan = (): boolean =>
+      executionIdentity() === capturedExecutionIdentity &&
+      workspace.canExecuteFor(sessionId) &&
+      !!admittedCapabilities &&
       admittedCapabilities.actorId === workspace.capabilities()?.actorId &&
-      admittedCapabilities.databaseId === workspace.capabilities()?.databaseId &&
+      admittedCapabilities.databaseId ===
+        workspace.capabilities()?.databaseId &&
       admittedCapabilities.projectId === workspace.capabilities()?.projectId &&
       JSON.stringify(projectRef) === JSON.stringify(this.project?.ref);
     this.sessionPinning.set(true);
     try {
-      const digest = [...new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(encoded)))].map((value) => value.toString(16).padStart(2, '0')).join('');
-      if (!samePlan()) throw new Error('The query definition, context or scope changed before pinning. Review it and run again.');
-      const pinned = await workspace.pinInput(sessionId, scope, 'query', queryId, `sha256:${digest}`, undefined, pinnedParameters, pinnedDocument);
-      if (!pinned) throw new Error(workspace.error() || 'The query input could not be confirmed.');
+      const digest = [
+        ...new Uint8Array(
+          await crypto.subtle.digest(
+            'SHA-256',
+            new TextEncoder().encode(encoded),
+          ),
+        ),
+      ]
+        .map((value) => value.toString(16).padStart(2, '0'))
+        .join('');
+      if (!samePlan())
+        throw new Error(
+          'The query definition, context or scope changed before pinning. Review it and run again.',
+        );
+      const pinned = await workspace.pinInput(
+        sessionId,
+        scope,
+        'query',
+        queryId,
+        `sha256:${digest}`,
+        undefined,
+        pinnedParameters,
+        pinnedDocument,
+      );
+      if (!pinned)
+        throw new Error(
+          workspace.error() || 'The query input could not be confirmed.',
+        );
       if (pinned.run.executionAuthority !== 'client') {
-        this.runError.set('The server accepted this query run. The browser will not dispatch it; check saved session history for the outcome.');
+        this.runError.set(
+          'The server accepted this query run. The browser will not dispatch it; check saved session history for the outcome.',
+        );
         return;
       }
       this.sessionRecordedSessionId.set(sessionId);
       this.sessionRecordedRun.set(pinned.runId);
       this.sessionRecordedInput.set(pinned.input.id);
-      if (!samePlan() || workspace.snapshotFor(sessionId)?.contextSet.id !== contextSetId)
-        throw new Error('The query definition, parameters, source, scope or session changed after input pinning. Dispatch was stopped; the run outcome still needs confirmation. Review it before starting a new run.');
+      if (
+        !samePlan() ||
+        workspace.snapshotFor(sessionId)?.contextSet.id !== contextSetId
+      )
+        throw new Error(
+          'The query definition, parameters, source, scope or session changed after input pinning. Dispatch was stopped; the run outcome still needs confirmation. Review it before starting a new run.',
+        );
       this.runQueryWithPinnedInput();
     } catch (error) {
-      if (samePlan()) this.runError.set(error instanceof Error ? error.message : 'The session query could not start.');
-      await this.finishSessionQuery('failed', 'client-dispatch-rejected', sessionId);
-    } finally { this.sessionPinning.set(false); }
+      if (samePlan())
+        this.runError.set(
+          error instanceof Error
+            ? error.message
+            : 'The session query could not start.',
+        );
+      await this.finishSessionQuery(
+        'failed',
+        'client-dispatch-rejected',
+        sessionId,
+      );
+    } finally {
+      this.sessionPinning.set(false);
+    }
   }
 
-  private async finishSessionQuery(state: 'completed' | 'failed', errorCode?: string, capturedSessionId = this.sessionRecordedSessionId() || this.contextSessionId()): Promise<void> {
+  private async finishSessionQuery(
+    state: 'completed' | 'failed',
+    errorCode?: string,
+    capturedSessionId = this.sessionRecordedSessionId() ||
+      this.contextSessionId(),
+  ): Promise<void> {
     const runId = this.sessionRecordedRun();
     if (!runId || !this.sessionWorkspace || !capturedSessionId) return;
     const completionGeneration = ++this.sessionCompletionGeneration;
     const workspace = this.sessionWorkspace;
     const inputId = this.sessionRecordedInput();
     const currentResult = state === 'completed' ? this.runResult() : undefined;
-    const result = currentResult === undefined ? undefined : structuredClone(currentResult);
+    const result =
+      currentResult === undefined ? undefined : structuredClone(currentResult);
     const capabilities = workspace.capabilities();
-    const projectRef = this.project?.ref ? structuredClone(this.project.ref) : undefined;
+    const projectRef = this.project?.ref
+      ? structuredClone(this.project.ref)
+      : undefined;
     const samePrincipal = (): boolean =>
       workspace.capabilities()?.actorId === capabilities?.actorId &&
       workspace.capabilities()?.databaseId === capabilities?.databaseId &&
       workspace.capabilities()?.projectId === capabilities?.projectId &&
       JSON.stringify(this.project?.ref) === JSON.stringify(projectRef);
-    const mayUpdateView = (): boolean => samePrincipal() && completionGeneration === this.sessionCompletionGeneration && this.contextSessionId() === capturedSessionId;
+    const mayUpdateView = (): boolean =>
+      samePrincipal() &&
+      completionGeneration === this.sessionCompletionGeneration &&
+      this.contextSessionId() === capturedSessionId;
     // Clear the old run synchronously. Async fingerprint/cache work from this
     // run must not overwrite the state of a newer run or session.
     this.sessionRecordedRun.set(undefined);
@@ -7373,30 +9137,68 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     let resultRef: string | undefined;
     if (state === 'completed') {
       if (!result || !inputId) {
-        finalState = 'failed'; finalErrorCode = 'CLIENT_RESULT_MISSING';
+        finalState = 'failed';
+        finalErrorCode = 'CLIENT_RESULT_MISSING';
       } else {
         try {
           resultRef = await sessionResultFingerprint(result);
           if (!samePrincipal()) return;
-          const cacheKey = workspace.deviceViewKey(capturedSessionId, `query-result-${resultRef}`, {
-            actorId: capabilities?.actorId, databaseId: capabilities?.databaseId, project: projectRef,
-          });
-          const saved = await tryWriteSessionResultCache(this.sessionResultCache, cacheKey, { runId, inputId, result });
-          if (!saved && mayUpdateView()) this.runError.set('The query result is available in this tab, but its display cache could not be saved. The source will not be rerun.');
+          const cacheKey = workspace.deviceViewKey(
+            capturedSessionId,
+            `query-result-${resultRef}`,
+            {
+              actorId: capabilities?.actorId,
+              databaseId: capabilities?.databaseId,
+              project: projectRef,
+            },
+          );
+          const saved = await tryWriteSessionResultCache(
+            this.sessionResultCache,
+            cacheKey,
+            { runId, inputId, result },
+          );
+          if (!saved && mayUpdateView())
+            this.runError.set(
+              'The query result is available in this tab, but its display cache could not be saved. The source will not be rerun.',
+            );
         } catch {
-          if (!resultRef) { finalState = 'failed'; finalErrorCode = 'CLIENT_RESULT_FINGERPRINT_FAILED'; }
+          if (!resultRef) {
+            finalState = 'failed';
+            finalErrorCode = 'CLIENT_RESULT_FINGERPRINT_FAILED';
+          }
         }
       }
     }
     if (!samePrincipal()) return;
-    const confirmed = await workspace.reportClientRun(capturedSessionId, runId, 'query', [{ id: 'query', state: finalState,
-      ...(finalState === 'completed' && resultRef ? { resultRef } : {}), ...(finalState === 'failed' ? { errorCode: finalErrorCode ?? 'CLIENT_EXECUTION_FAILED' } : {}) }]);
-    if (!confirmed && mayUpdateView()) this.runError.set('The query finished; its session outcome is unconfirmed. Retry the retained operation.');
+    const confirmed = await workspace.reportClientRun(
+      capturedSessionId,
+      runId,
+      'query',
+      [
+        {
+          id: 'query',
+          state: finalState,
+          ...(finalState === 'completed' && resultRef ? { resultRef } : {}),
+          ...(finalState === 'failed'
+            ? { errorCode: finalErrorCode ?? 'CLIENT_EXECUTION_FAILED' }
+            : {}),
+        },
+      ],
+    );
+    if (!confirmed && mayUpdateView())
+      this.runError.set(
+        'The query finished; its session outcome is unconfirmed. Retry the retained operation.',
+      );
   }
 
   private runQueryWithPinnedInput(): void {
+    if (this.demoDraftRecovery() || this.demoDraftLoading()) return;
     const sessionId = this.contextSessionId();
-    if (this.sessionWorkspace && sessionId && !this.sessionWorkspace.canExecuteFor(sessionId)) {
+    if (
+      this.sessionWorkspace &&
+      sessionId &&
+      !this.sessionWorkspace.canExecuteFor(sessionId)
+    ) {
       this.runError.set('Resume this session before running a query.');
       return;
     }
@@ -7415,13 +9217,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.authorRunParameterAttempt.set(undefined);
     if (this.nativeParameterErrors().size) {
-      this.runError.set('Correct or clear invalid parameter values before Run.');
+      this.runError.set(
+        'Correct or clear invalid parameter values before Run.',
+      );
       return;
     }
     // The bounded TugQL runner validates its own CustomerId input below;
     // generic saved-query bindings are not the inputs sent to that worker.
     if (!this.isTugqlAuthorJourney() && this.hasBlockedBindings()) {
-      this.runError.set('Resolve every ambiguous, conflicting or required parameter before Run.');
+      this.runError.set(
+        'Resolve every ambiguous, conflicting or required parameter before Run.',
+      );
       return;
     }
     const runRequestedAt = monotonicTime();
@@ -7432,6 +9238,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const definition = this.queryDef();
+    if (this.unavailableWorkingCopy()) {
+      this.runError.set(
+        'The selected working copy is unavailable. Choose a current runtime explicitly.',
+      );
+      return;
+    }
     if (
       definition?.publicData &&
       this.publicDataRevisionChanges().length &&
@@ -7448,8 +9260,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     this.historySelection++;
     this.queryRunTiming.set(undefined);
-    if (projectRef && this.isHostedProject && this.selectedWorkingCopy() === 'project') {
-      this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
+    if (
+      projectRef &&
+      this.isHostedProject &&
+      this.selectedWorkingCopy() === 'project'
+    ) {
+      void this.runHostedSavedQuery(
+        projectRef,
+        queryId,
+        definition,
+        runRequestedAt,
+      );
       return;
     }
     if (
@@ -7539,19 +9360,43 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         });
       return;
     }
-    if (this.selectedWorkingCopy() !== 'project' && definition && !this.isTugqlAuthorJourney()) {
+    const publicSavedQuery = this.usesFixedPublicQuerySource();
+    if (
+      (this.selectedWorkingCopy() !== 'project' || publicSavedQuery) &&
+      definition &&
+      !this.isTugqlAuthorJourney()
+    ) {
       const selectionId = this.selectedWorkingCopy();
-      if (this.workingCopyScope !== this.currentWorkingCopyScope() ||
-        !this.workingCopyOptions().some((option) => option.selectionId === selectionId)) {
-        this.runError.set('Refresh the open working copies and choose the runtime for this saved query.');
+      if (
+        !publicSavedQuery &&
+        (this.workingCopyScope !== this.currentWorkingCopyScope() ||
+          !this.workingCopyOptions().some(
+            (option) => option.selectionId === selectionId,
+          ))
+      ) {
+        this.runError.set(
+          'Refresh the open working copies and choose the runtime for this saved query.',
+        );
         return;
       }
-      if (![QueryType.DTQL, QueryType.TugQL].includes(definition.request.queryType)) {
-        this.runError.set('This working copy accepts structured queries. Choose the project runtime for raw SQL.');
+      if (
+        !publicSavedQuery &&
+        ![QueryType.DTQL, QueryType.TugQL].includes(
+          definition.request.queryType,
+        )
+      ) {
+        this.runError.set(
+          'This working copy accepts structured queries. Choose the project runtime for raw SQL.',
+        );
         return;
       }
-      if (this.effectiveBindings().length || definition.parameters?.length) {
-        this.runError.set('This working-copy runtime cannot bind query parameters yet. Choose another runtime.');
+      if (
+        !publicSavedQuery &&
+        (this.effectiveBindings().length || definition.parameters?.length)
+      ) {
+        this.runError.set(
+          'This working-copy runtime cannot bind query parameters yet. Choose another runtime.',
+        );
         return;
       }
       if (this.running()) return;
@@ -7562,34 +9407,50 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const revision = this.queryDispatch.runtimeRevision();
       const lifetime = ++this.federatedRunLifetime;
       const current = (): boolean =>
-        lifetime === this.federatedRunLifetime && this.historyScope() === scope &&
+        lifetime === this.federatedRunLifetime &&
+        this.historyScope() === scope &&
         this.currentBrowserDispatchScope() === dispatchScope &&
-        this.selectedWorkingCopy() === selectionId && this.queryDispatch.runtimeRevision() === revision &&
+        this.selectedWorkingCopy() === selectionId &&
+        this.queryDispatch.runtimeRevision() === revision &&
         JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition);
       this.running.set(true);
       this.runError.set(undefined);
       const session = this.queryDispatch.start({
-        projectRef, definition: executedDefinition, queryId,
-        environment: this.envId, runtimeSelectionId: selectionId,
+        projectRef,
+        definition: executedDefinition,
+        queryId,
+        environment: this.envId,
+        // Project runtime must reach the existing exact publisher admission.
+        ...(!publicSavedQuery ? { runtimeSelectionId: selectionId } : {}),
       });
       void this.activeDispatchSession?.cancel().catch(() => undefined);
       this.activeDispatchSession = session;
-      void session.result.then((result) => {
-        if (!current()) return;
-        this.showAttemptResult(result);
-        const timing: QueryRunTiming = {
-          allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
-          noRecords: result.recordset.rows.length === 0,
-        };
-        this.queryRunTiming.set(timing);
-        if (!result.truncated && !result.hasMore) this.commitSuccessfulResult(result, executedDefinition, timing);
-      }).catch((error: unknown) => {
-        if (current()) this.runError.set(error instanceof Error ? error.message : 'The working-copy query failed.');
-      }).finally(() => {
-        if (this.activeDispatchSession === session) this.activeDispatchSession = undefined;
-        void session.dispose();
-        if (lifetime === this.federatedRunLifetime) this.running.set(false);
-      });
+      void session.result
+        .then((result) => {
+          if (!current()) return;
+          this.showAttemptResult(result);
+          const timing: QueryRunTiming = {
+            allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
+            noRecords: result.recordset.rows.length === 0,
+          };
+          this.queryRunTiming.set(timing);
+          if (!result.truncated && !result.hasMore)
+            this.commitSuccessfulResult(result, executedDefinition, timing);
+        })
+        .catch((error: unknown) => {
+          if (current())
+            this.runError.set(
+              error instanceof Error
+                ? error.message
+                : 'The working-copy query failed.',
+            );
+        })
+        .finally(() => {
+          if (this.activeDispatchSession === session)
+            this.activeDispatchSession = undefined;
+          void session.dispose();
+          if (lifetime === this.federatedRunLifetime) this.running.set(false);
+        });
       return;
     }
     if (
@@ -7600,30 +9461,53 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       if (this.running()) return;
       const declared = definition.parameters ?? [];
       const effective = this.effectiveBindings();
-      const exactBindings = declared.map((parameter) =>
-        effective.find((binding) => binding.parameterId === parameter.id)?.value,
+      const exactBindings = declared.map(
+        (parameter) =>
+          effective.find((binding) => binding.parameterId === parameter.id)
+            ?.value,
       );
       const declaredIds = new Set(declared.map((parameter) => parameter.id));
-      if (declared.some((parameter, index) => parameter.isRequired !== false && exactBindings[index] === undefined) ||
-        effective.some((binding) => !declaredIds.has(binding.parameterId))) {
-        this.runError.set('This browser SQLite source needs values for its required declared parameters.');
+      if (
+        declared.some(
+          (parameter, index) =>
+            parameter.isRequired !== false &&
+            exactBindings[index] === undefined,
+        ) ||
+        effective.some((binding) => !declaredIds.has(binding.parameterId))
+      ) {
+        this.runError.set(
+          'This browser SQLite source needs values for its required declared parameters.',
+        );
         return;
       }
       const parameterValues: Record<string, TypedValue> = Object.fromEntries(
-        declared.flatMap((parameter, index) => exactBindings[index] === undefined
-          ? [] : [[parameter.id, structuredClone(exactBindings[index] as TypedValue)]]),
+        declared.flatMap((parameter, index) =>
+          exactBindings[index] === undefined
+            ? []
+            : [
+                [
+                  parameter.id,
+                  structuredClone(exactBindings[index] as TypedValue),
+                ],
+              ],
+        ),
       );
       // The browser worker reports the executed rows, but its generic SQL envelope
       // does not echo bindings. Retain the exact validated inputs dispatched with
       // this request as client-reported facts for the result header and prior run.
       const dispatched: Binding[] = [];
       for (const parameter of declared) {
-        const binding = effective.find((candidate) => candidate.parameterId === parameter.id);
+        const binding = effective.find(
+          (candidate) => candidate.parameterId === parameter.id,
+        );
         if (!binding) continue;
         dispatched.push({
           parameterId: parameter.id,
           value: parameterValues[parameter.id],
-          origin: binding.origin === 'user' ? 'manual' : (binding.origin ?? 'default'),
+          origin:
+            binding.origin === 'user'
+              ? 'manual'
+              : (binding.origin ?? 'default'),
           originEvidence: 'client-reported' as const,
           ...(binding.factId ? { factId: binding.factId } : {}),
         });
@@ -7638,7 +9522,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         lifetime === this.federatedRunLifetime &&
         this.historyScope() === runScope &&
         this.currentBrowserDispatchScope() === dispatchScope &&
-        JSON.stringify(this.queryDef()) === JSON.stringify(executedDefinition) &&
+        JSON.stringify(this.queryDef()) ===
+          JSON.stringify(executedDefinition) &&
         JSON.stringify(this.effectiveBindings()) === executedBindings;
       this.running.set(true);
       this.runError.set(undefined);
@@ -7666,15 +9551,26 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           const displayedResult = dispatchedBindings.length
             ? { ...result, bindingsApplied: dispatchedBindings }
             : result;
-          this.lastRunBindingRoles.set(new Map(effective.flatMap((binding) =>
-            binding.role ? [[binding.parameterId, binding.role] as const] : [])));
+          this.lastRunBindingRoles.set(
+            new Map(
+              effective.flatMap((binding) =>
+                binding.role
+                  ? [[binding.parameterId, binding.role] as const]
+                  : [],
+              ),
+            ),
+          );
           this.showAttemptResult(displayedResult);
           const timing: QueryRunTiming = {
             allResultsLoadedMs: Math.max(0, monotonicTime() - runRequestedAt),
             noRecords: result.recordset.rows.length === 0,
           };
           this.queryRunTiming.set(timing);
-          this.commitSuccessfulResult(displayedResult, executedDefinition, timing);
+          this.commitSuccessfulResult(
+            displayedResult,
+            executedDefinition,
+            timing,
+          );
         })
         .catch((error: unknown) => {
           if (current()) {
@@ -7744,14 +9640,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               publishedGeneration,
             );
           },
-          extras: runMode === 'full'
-            ? {
-                onFirstRecord: (at) => {
-                  if (current() && firstRecordAt === undefined)
-                    firstRecordAt = at;
-                },
-              }
-            : {},
+          extras:
+            runMode === 'full'
+              ? {
+                  onFirstRecord: (at) => {
+                    if (current() && firstRecordAt === undefined)
+                      firstRecordAt = at;
+                  },
+                }
+              : {},
         },
       });
       void this.activeDispatchSession?.cancel().catch(() => undefined);
@@ -7795,11 +9692,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 timing,
               );
             if (completedResult.localResult && this.project?.ref) {
-              void Promise.resolve(session.associateLocalResult?.(
-                this.project.ref,
-                queryId,
-                completedResult.localResult,
-              ))
+              void Promise.resolve(
+                session.associateLocalResult?.(
+                  this.project.ref,
+                  queryId,
+                  completedResult.localResult,
+                ),
+              )
                 .then(() =>
                   current() ? this.refreshLocalHistory() : undefined,
                 )
@@ -7964,9 +9863,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.resultPageLoading.set(true);
     try {
       const historicalRef = this.selectedHistoricalResult();
-      const rows = historicalRef || result?.localResult
-        ? await this.federatedQuery.getPage(next, set, historicalRef ?? result?.localResult)
-        : await this.activeDispatchSession?.getPage?.(next, set);
+      const rows =
+        historicalRef || result?.localResult
+          ? await this.federatedQuery.getPage(
+              next,
+              set,
+              historicalRef ?? result?.localResult,
+            )
+          : await this.activeDispatchSession?.getPage?.(next, set);
       if (!rows) throw new Error('The result pages are unavailable.');
       const current = this.runResult();
       if (
@@ -8123,6 +10027,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.localResults.set([]);
     this.resultPageIndex.set(0);
     this.relatedResultSet.set('affiliations');
+    const saved = this.savedRowsShown;
+    if (saved && !this.running()) this.showSavedRows(saved);
   }
 
   /** Selecting history is a local read. It never invokes metadata, a Worker or a provider. */
@@ -8210,7 +10116,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * a request with no known snapshot id is refused rather than sent with an empty one
    * (the server's own `req.Validate()` would reject that anyway). */
   public runSnapshot(): void {
-    if (this.contextSessionId()) { this.runError.set('Recorded-source replay needs its own session input pin. Use Run for the supported live query path.'); return; }
+    if (this.contextSessionId()) {
+      this.runError.set(
+        'Recorded-source replay needs its own session input pin. Use Run for the supported live query path.',
+      );
+      return;
+    }
     const snapshot = this.availableSnapshot();
     if (!this.lastRequest || !this.lastRequestScope || !snapshot) {
       return;
@@ -8245,6 +10156,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.errorLogger.logError(
             error,
             'Failed to record GitHub Business query activity',
+            { show: false, feedback: false },
           ),
       });
   }
@@ -8278,6 +10190,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           this.errorLogger.logError(
             error,
             'Failed to record GitHub Business query edit activity',
+            { show: false, feedback: false },
           ),
       });
   }
@@ -8322,7 +10235,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
     void this.activeDispatchSession?.cancel().catch(() => undefined);
     this.activeDispatchSession = session;
-    void session.result.then((response) => {
+    void session.result
+      .then((response) => {
         // Task 15 item 4 — discard a late response for a scope the user has since left
         // (project/environment/principal switch mid-flight): api-contract.md "late
         // responses from another scope are discarded".
@@ -8353,10 +10267,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.queryRunTiming.set(timing);
         this.commitSuccessfulResult(response, executedDefinition, timing);
         this.running.set(false);
-      }).catch((err: unknown) => {
+      })
+      .catch((err: unknown) => {
         if (current()) this.handleRunError(err, request, requestScope);
-      }).finally(() => {
-        if (this.activeDispatchSession === session) this.activeDispatchSession = undefined;
+      })
+      .finally(() => {
+        if (this.activeDispatchSession === session)
+          this.activeDispatchSession = undefined;
         void session.dispose();
         if (current()) this.running.set(false);
       });

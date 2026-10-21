@@ -31,9 +31,19 @@ import {
 } from '../../../nav/nav-models';
 import { LoadingItemsComponent } from '../loading-items-component';
 import { addIcons } from 'ionicons';
-import { cloudOutline, chevronForward } from 'ionicons/icons';
+import {
+  chevronForward,
+  cloudOutline,
+  logoGithub,
+  terminalOutline,
+} from 'ionicons/icons';
 
-addIcons({ 'cloud-outline': cloudOutline, 'chevron-forward': chevronForward });
+addIcons({
+  'chevron-forward': chevronForward,
+  'cloud-outline': cloudOutline,
+  'logo-github': logoGithub,
+  'terminal-outline': terminalOutline,
+});
 
 @Component({
   selector: 'sneat-datatug-my-stores',
@@ -62,6 +72,26 @@ export class MyStoresComponent implements OnDestroy {
   public readonly stores = signal<IDatatugStoreBriefWithId[] | undefined>(
     undefined,
   );
+
+  public readonly storageOptions = [
+    {
+      type: 'firestore' as DatatugProjStoreType,
+      title: 'DataTug Cloud',
+      description: 'Fastest setup, with live updates from Cloud storage.',
+    },
+    {
+      type: 'github' as DatatugProjStoreType,
+      title: 'GitHub',
+      description:
+        'Keep control in your repository, with version history and branches.',
+    },
+    {
+      type: 'agent' as DatatugProjStoreType,
+      title: 'Local / DataTug CLI',
+      description:
+        'Work locally for fast access and offline use where supported.',
+    },
+  ] as const;
 
   private readonly destroyed = new Subject<void>();
 
@@ -100,6 +130,13 @@ export class MyStoresComponent implements OnDestroy {
       default:
         return 'terminal-outline';
     }
+  }
+
+  storeDescription(storeType: DatatugProjStoreType): string {
+    return (
+      this.storageOptions.find((option) => option.type === storeType)
+        ?.description || 'Connect projects to your data and query history.'
+    );
   }
 
   goStore(brief: IDatatugStoreBriefWithId): void {

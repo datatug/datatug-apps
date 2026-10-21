@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
 
 const project =
@@ -139,7 +139,7 @@ for (const width of [1440, 900, 390]) {
     ).toBeVisible();
     await incident
       .getByRole('button', {
-        name: /Sign in to start Detective demo|Open private Detective demo/,
+        name: /Sign in to set up a private Incidents project|Set up private project for Incidents/,
       })
       .scrollIntoViewIfNeeded();
     await expect(incident).toContainText('web UI link');

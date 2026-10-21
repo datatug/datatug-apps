@@ -1,0 +1,907 @@
+{
+  "check": {
+    "run": {
+      "id": "fixture-run",
+      "kind": "check",
+      "checkId": "request-received",
+      "definition": {
+        "id": "request-received",
+        "title": "Fixture receipt Check",
+        "version": 1,
+        "inputs": [
+          {
+            "name": "order_id",
+            "type": "integer",
+            "cardinality": "scalar",
+            "required": true
+          }
+        ],
+        "steps": [
+          {
+            "id": "receipt",
+            "kind": "query",
+            "queryId": "shipping/receipt"
+          }
+        ],
+        "updatedAt": "2026-10-21T00:00:00Z",
+        "updatedBy": "fixture-actor"
+      },
+      "dependencies": null,
+      "publishedValidators": null,
+      "queryValidators": null,
+      "environment": "demo",
+      "inputNames": [
+        "order_id"
+      ],
+      "executionStatus": "completed",
+      "outcome": "pass",
+      "steps": [
+        {
+          "stepId": "receipt",
+          "kind": "query",
+          "queryId": "shipping/receipt",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "fixture-project",
+            "executionId": "fixture-execution"
+          },
+          "queryRevision": "q1-fixture",
+          "resultFingerprint": "f9b0358effd854a11b5acc99ae06f070a334d22f44a3330768e397ef60e63293",
+          "executionStatus": "completed",
+          "outcome": "pass",
+          "rowCount": 1
+        }
+      ],
+      "startedAt": "2026-10-21T00:00:00Z",
+      "durationMs": 5,
+      "checkInvocations": 1,
+      "queryExecutions": 1,
+      "actor": "fixture-actor"
+    },
+    "sourcePin": {
+      "spaceID": "fixture-space",
+      "projectId": "fixture-project",
+      "sourceId": "shipping-working-copy",
+      "environment": "demo",
+      "bindingRevision": 1,
+      "revision": {
+        "generation": "fixture-generation",
+        "revision": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fixtureCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "fixtureSHA256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "schemaSHA256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "configuration": 17,
+        "businessClock": "2018-05-06T08:00:00Z",
+        "bytes": 100,
+        "artifacts": [
+          {
+            "id": "logs/fixture.jsonl",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "bytes": 40
+          }
+        ],
+        "actorId": "fixture-actor",
+        "acceptedAt": "2026-10-21T00:00:00Z"
+      }
+    },
+    "manifest": {
+      "auditSHA256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "version": 1,
+      "ref": "fixture-selected-manifest",
+      "actorId": "fixture-actor",
+      "incidentRef": "fixture-incidents/INC-1",
+      "session": {
+        "id": "fixture-session",
+        "databaseId": "fixture-db",
+        "projectId": "fixture-project",
+        "owner": "fixture-actor",
+        "state": "active",
+        "version": 3,
+        "contextSetId": "fixture-context",
+        "nativeFenceGeneration": 0
+      },
+      "contextSet": {
+        "id": "fixture-context",
+        "sessionId": "fixture-session",
+        "enabled": true,
+        "slots": [
+          {
+            "scope": {
+              "environmentId": "demo",
+              "identityDomain": "fixture-shipping-domain"
+            },
+            "bagId": "fixture-bag",
+            "bagVersion": 2,
+            "version": 1,
+            "entries": [
+              {
+                "entryId": "fixture-entry",
+                "revisionId": "fixture-revision"
+              }
+            ]
+          }
+        ]
+      },
+      "scope": {
+        "environmentId": "demo",
+        "identityDomain": "fixture-shipping-domain"
+      },
+      "bag": {
+        "id": "fixture-bag",
+        "sessionId": "fixture-session",
+        "scope": {
+          "environmentId": "demo",
+          "identityDomain": "fixture-shipping-domain"
+        },
+        "version": 2,
+        "clearVersion": 0,
+        "entries": [
+          {
+            "entryId": "fixture-entry",
+            "revisionId": "fixture-revision"
+          }
+        ]
+      },
+      "entries": [
+        {
+          "entryId": "fixture-entry",
+          "revisionId": "fixture-revision"
+        }
+      ],
+      "inputs": {
+        "order_id": {
+          "type": "integer",
+          "value": "11045"
+        }
+      }
+    },
+    "results": [
+      {
+        "inputs": {
+          "order_id": {
+            "type": "integer",
+            "value": "11045"
+          }
+        },
+        "savedQuery": {
+          "folderPath": "shipping",
+          "id": "receipt",
+          "title": "Fixture receipt",
+          "type": "SQL",
+          "text": "SELECT order_id FROM requests WHERE order_id=@order_id",
+          "parameters": [
+            {
+              "id": "order_id",
+              "type": "integer",
+              "isRequired": true
+            }
+          ],
+          "connectionId": "shipping-working-copy"
+        },
+        "queryId": "shipping/receipt",
+        "queryRevision": "q1-fixture",
+        "resultFingerprint": "f9b0358effd854a11b5acc99ae06f070a334d22f44a3330768e397ef60e63293",
+        "result": {
+          "rowEvidence": {
+            "version": 1,
+            "execution": {
+              "storeId": "firestore",
+              "projectId": "fixture-project",
+              "executionId": "fixture-execution"
+            },
+            "recordsetFingerprint": "a2ecad6e27fb02d98c39dd79f0abdb0ba563c9a4f6dfe584e3598978311bb1a9",
+            "scope": {
+              "storeId": "firestore",
+              "spaceID": "fixture-space",
+              "projectId": "fixture-project",
+              "environment": "demo"
+            },
+            "source": {
+              "id": "shipping-working-copy",
+              "generation": "fixture-generation"
+            },
+            "rowKeyColumn": "row_key",
+            "rows": [
+              {
+                "rowKey": {
+                  "type": "string",
+                  "value": "fixture-row"
+                },
+                "slots": {
+                  "evidence_ref": {
+                    "state": "available",
+                    "refs": [
+                      {
+                        "kind": "execution",
+                        "execution": {
+                          "storeId": "firestore",
+                          "projectId": "fixture-project",
+                          "executionId": "fixture-execution"
+                        }
+                      }
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          "recordset": {
+            "columns": [
+              {
+                "name": "row_key",
+                "type": "string"
+              },
+              {
+                "name": "evidence_ref",
+                "type": "string"
+              },
+              {
+                "name": "order_id",
+                "type": "integer"
+              },
+              {
+                "name": "unattempted",
+                "type": "datetime"
+              }
+            ],
+            "rows": [
+              [
+                {
+                  "type": "string",
+                  "value": "fixture-row"
+                },
+                {
+                  "type": "string",
+                  "value": "fixture-observation"
+                },
+                {
+                  "type": "integer",
+                  "value": "11045"
+                },
+                {
+                  "type": "null",
+                  "value": null
+                }
+              ]
+            ]
+          },
+          "limitations": [],
+          "bindingsApplied": [],
+          "provenance": {
+            "source": "datatug-shipping:///fixture-generation/1",
+            "queryId": "shipping/receipt",
+            "mode": "live",
+            "observedAt": "2026-10-21T00:00:00Z",
+            "executionProfile": "opaque-privileged"
+          },
+          "truncated": false,
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "fixture-project",
+            "executionId": "fixture-execution"
+          }
+        }
+      }
+    ]
+  },
+  "execution": {
+    "inputs": {
+      "order_id": {
+        "type": "integer",
+        "value": "11045"
+      }
+    },
+    "manifest": {
+      "auditSHA256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "version": 1,
+      "ref": "fixture-selected-manifest",
+      "actorId": "fixture-actor",
+      "incidentRef": "fixture-incidents/INC-1",
+      "session": {
+        "id": "fixture-session",
+        "databaseId": "fixture-db",
+        "projectId": "fixture-project",
+        "owner": "fixture-actor",
+        "state": "active",
+        "version": 3,
+        "contextSetId": "fixture-context",
+        "nativeFenceGeneration": 0
+      },
+      "contextSet": {
+        "id": "fixture-context",
+        "sessionId": "fixture-session",
+        "enabled": true,
+        "slots": [
+          {
+            "scope": {
+              "environmentId": "demo",
+              "identityDomain": "fixture-shipping-domain"
+            },
+            "bagId": "fixture-bag",
+            "bagVersion": 2,
+            "version": 1,
+            "entries": [
+              {
+                "entryId": "fixture-entry",
+                "revisionId": "fixture-revision"
+              }
+            ]
+          }
+        ]
+      },
+      "scope": {
+        "environmentId": "demo",
+        "identityDomain": "fixture-shipping-domain"
+      },
+      "bag": {
+        "id": "fixture-bag",
+        "sessionId": "fixture-session",
+        "scope": {
+          "environmentId": "demo",
+          "identityDomain": "fixture-shipping-domain"
+        },
+        "version": 2,
+        "clearVersion": 0,
+        "entries": [
+          {
+            "entryId": "fixture-entry",
+            "revisionId": "fixture-revision"
+          }
+        ]
+      },
+      "entries": [
+        {
+          "entryId": "fixture-entry",
+          "revisionId": "fixture-revision"
+        }
+      ],
+      "inputs": {
+        "order_id": {
+          "type": "integer",
+          "value": "11045"
+        }
+      }
+    },
+    "savedQuery": {
+      "folderPath": "shipping",
+      "id": "receipt",
+      "title": "Fixture receipt",
+      "type": "SQL",
+      "text": "SELECT order_id FROM requests WHERE order_id=@order_id",
+      "parameters": [
+        {
+          "id": "order_id",
+          "type": "integer",
+          "isRequired": true
+        }
+      ],
+      "connectionId": "shipping-working-copy"
+    },
+    "actorId": "fixture-actor",
+    "result": {
+      "rowEvidence": {
+        "version": 1,
+        "execution": {
+          "storeId": "firestore",
+          "projectId": "fixture-project",
+          "executionId": "fixture-execution"
+        },
+        "recordsetFingerprint": "a2ecad6e27fb02d98c39dd79f0abdb0ba563c9a4f6dfe584e3598978311bb1a9",
+        "scope": {
+          "storeId": "firestore",
+          "spaceID": "fixture-space",
+          "projectId": "fixture-project",
+          "environment": "demo"
+        },
+        "source": {
+          "id": "shipping-working-copy",
+          "generation": "fixture-generation"
+        },
+        "rowKeyColumn": "row_key",
+        "rows": [
+          {
+            "rowKey": {
+              "type": "string",
+              "value": "fixture-row"
+            },
+            "slots": {
+              "evidence_ref": {
+                "state": "available",
+                "refs": [
+                  {
+                    "kind": "execution",
+                    "execution": {
+                      "storeId": "firestore",
+                      "projectId": "fixture-project",
+                      "executionId": "fixture-execution"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "recordset": {
+        "columns": [
+          {
+            "name": "row_key",
+            "type": "string"
+          },
+          {
+            "name": "evidence_ref",
+            "type": "string"
+          },
+          {
+            "name": "order_id",
+            "type": "integer"
+          },
+          {
+            "name": "unattempted",
+            "type": "datetime"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "type": "string",
+              "value": "fixture-row"
+            },
+            {
+              "type": "string",
+              "value": "fixture-observation"
+            },
+            {
+              "type": "integer",
+              "value": "11045"
+            },
+            {
+              "type": "null",
+              "value": null
+            }
+          ]
+        ]
+      },
+      "limitations": [],
+      "bindingsApplied": [],
+      "provenance": {
+        "source": "datatug-shipping:///fixture-generation/1",
+        "queryId": "shipping/receipt",
+        "mode": "live",
+        "observedAt": "2026-10-21T00:00:00Z",
+        "executionProfile": "opaque-privileged"
+      },
+      "truncated": false,
+      "execution": {
+        "storeId": "firestore",
+        "projectId": "fixture-project",
+        "executionId": "fixture-execution"
+      }
+    },
+    "sourcePin": {
+      "spaceID": "fixture-space",
+      "projectId": "fixture-project",
+      "sourceId": "shipping-working-copy",
+      "environment": "demo",
+      "bindingRevision": 1,
+      "revision": {
+        "generation": "fixture-generation",
+        "revision": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fixtureCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "fixtureSHA256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "schemaSHA256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "configuration": 17,
+        "businessClock": "2018-05-06T08:00:00Z",
+        "bytes": 100,
+        "artifacts": [
+          {
+            "id": "logs/fixture.jsonl",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "bytes": 40
+          }
+        ],
+        "actorId": "fixture-actor",
+        "acceptedAt": "2026-10-21T00:00:00Z"
+      }
+    },
+    "appliedManifestRef": "fixture-selected-manifest",
+    "queryRevision": "q1-fixture"
+  },
+  "query": {
+    "sourcePin": {
+      "spaceID": "fixture-space",
+      "projectId": "fixture-project",
+      "sourceId": "shipping-working-copy",
+      "environment": "demo",
+      "bindingRevision": 1,
+      "revision": {
+        "generation": "fixture-generation",
+        "revision": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fixtureCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "fixtureSHA256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "schemaSHA256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "configuration": 17,
+        "businessClock": "2018-05-06T08:00:00Z",
+        "bytes": 100,
+        "artifacts": [
+          {
+            "id": "logs/fixture.jsonl",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "bytes": 40
+          }
+        ],
+        "actorId": "fixture-actor",
+        "acceptedAt": "2026-10-21T00:00:00Z"
+      }
+    },
+    "attachedIncidentRef": "fixture-incidents/INC-1",
+    "appliedManifestRef": "fixture-selected-manifest",
+    "result": {
+      "rowEvidence": {
+        "version": 1,
+        "execution": {
+          "storeId": "firestore",
+          "projectId": "fixture-project",
+          "executionId": "fixture-execution"
+        },
+        "recordsetFingerprint": "a2ecad6e27fb02d98c39dd79f0abdb0ba563c9a4f6dfe584e3598978311bb1a9",
+        "scope": {
+          "storeId": "firestore",
+          "spaceID": "fixture-space",
+          "projectId": "fixture-project",
+          "environment": "demo"
+        },
+        "source": {
+          "id": "shipping-working-copy",
+          "generation": "fixture-generation"
+        },
+        "rowKeyColumn": "row_key",
+        "rows": [
+          {
+            "rowKey": {
+              "type": "string",
+              "value": "fixture-row"
+            },
+            "slots": {
+              "evidence_ref": {
+                "state": "available",
+                "refs": [
+                  {
+                    "kind": "execution",
+                    "execution": {
+                      "storeId": "firestore",
+                      "projectId": "fixture-project",
+                      "executionId": "fixture-execution"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "recordset": {
+        "columns": [
+          {
+            "name": "row_key",
+            "type": "string"
+          },
+          {
+            "name": "evidence_ref",
+            "type": "string"
+          },
+          {
+            "name": "order_id",
+            "type": "integer"
+          },
+          {
+            "name": "unattempted",
+            "type": "datetime"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "type": "string",
+              "value": "fixture-row"
+            },
+            {
+              "type": "string",
+              "value": "fixture-observation"
+            },
+            {
+              "type": "integer",
+              "value": "11045"
+            },
+            {
+              "type": "null",
+              "value": null
+            }
+          ]
+        ]
+      },
+      "limitations": [],
+      "bindingsApplied": [],
+      "provenance": {
+        "source": "datatug-shipping:///fixture-generation/1",
+        "queryId": "shipping/receipt",
+        "mode": "live",
+        "observedAt": "2026-10-21T00:00:00Z",
+        "executionProfile": "opaque-privileged"
+      },
+      "truncated": false,
+      "execution": {
+        "storeId": "firestore",
+        "projectId": "fixture-project",
+        "executionId": "fixture-execution"
+      }
+    },
+    "queryRevision": "q1-fixture",
+    "resultFingerprint": "f9b0358effd854a11b5acc99ae06f070a334d22f44a3330768e397ef60e63293",
+    "receipt": "operation-fixture"
+  },
+  "row": {
+    "inputs": {
+      "order_id": {
+        "type": "integer",
+        "value": "11045"
+      }
+    },
+    "manifest": {
+      "auditSHA256": "ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+      "version": 1,
+      "ref": "fixture-selected-manifest",
+      "actorId": "fixture-actor",
+      "incidentRef": "fixture-incidents/INC-1",
+      "session": {
+        "id": "fixture-session",
+        "databaseId": "fixture-db",
+        "projectId": "fixture-project",
+        "owner": "fixture-actor",
+        "state": "active",
+        "version": 3,
+        "contextSetId": "fixture-context",
+        "nativeFenceGeneration": 0
+      },
+      "contextSet": {
+        "id": "fixture-context",
+        "sessionId": "fixture-session",
+        "enabled": true,
+        "slots": [
+          {
+            "scope": {
+              "environmentId": "demo",
+              "identityDomain": "fixture-shipping-domain"
+            },
+            "bagId": "fixture-bag",
+            "bagVersion": 2,
+            "version": 1,
+            "entries": [
+              {
+                "entryId": "fixture-entry",
+                "revisionId": "fixture-revision"
+              }
+            ]
+          }
+        ]
+      },
+      "scope": {
+        "environmentId": "demo",
+        "identityDomain": "fixture-shipping-domain"
+      },
+      "bag": {
+        "id": "fixture-bag",
+        "sessionId": "fixture-session",
+        "scope": {
+          "environmentId": "demo",
+          "identityDomain": "fixture-shipping-domain"
+        },
+        "version": 2,
+        "clearVersion": 0,
+        "entries": [
+          {
+            "entryId": "fixture-entry",
+            "revisionId": "fixture-revision"
+          }
+        ]
+      },
+      "entries": [
+        {
+          "entryId": "fixture-entry",
+          "revisionId": "fixture-revision"
+        }
+      ],
+      "inputs": {
+        "order_id": {
+          "type": "integer",
+          "value": "11045"
+        }
+      }
+    },
+    "savedQuery": {
+      "folderPath": "shipping",
+      "id": "receipt",
+      "title": "Fixture receipt",
+      "type": "SQL",
+      "text": "SELECT order_id FROM requests WHERE order_id=@order_id",
+      "parameters": [
+        {
+          "id": "order_id",
+          "type": "integer",
+          "isRequired": true
+        }
+      ],
+      "connectionId": "shipping-working-copy"
+    },
+    "actorId": "fixture-actor",
+    "result": {
+      "rowEvidence": {
+        "version": 1,
+        "execution": {
+          "storeId": "firestore",
+          "projectId": "fixture-project",
+          "executionId": "fixture-execution"
+        },
+        "recordsetFingerprint": "a2ecad6e27fb02d98c39dd79f0abdb0ba563c9a4f6dfe584e3598978311bb1a9",
+        "scope": {
+          "storeId": "firestore",
+          "spaceID": "fixture-space",
+          "projectId": "fixture-project",
+          "environment": "demo"
+        },
+        "source": {
+          "id": "shipping-working-copy",
+          "generation": "fixture-generation"
+        },
+        "rowKeyColumn": "row_key",
+        "rows": [
+          {
+            "rowKey": {
+              "type": "string",
+              "value": "fixture-row"
+            },
+            "slots": {
+              "evidence_ref": {
+                "state": "available",
+                "refs": [
+                  {
+                    "kind": "execution",
+                    "execution": {
+                      "storeId": "firestore",
+                      "projectId": "fixture-project",
+                      "executionId": "fixture-execution"
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      "recordset": {
+        "columns": [
+          {
+            "name": "row_key",
+            "type": "string"
+          },
+          {
+            "name": "evidence_ref",
+            "type": "string"
+          },
+          {
+            "name": "order_id",
+            "type": "integer"
+          },
+          {
+            "name": "unattempted",
+            "type": "datetime"
+          }
+        ],
+        "rows": [
+          [
+            {
+              "type": "string",
+              "value": "fixture-row"
+            },
+            {
+              "type": "string",
+              "value": "fixture-observation"
+            },
+            {
+              "type": "integer",
+              "value": "11045"
+            },
+            {
+              "type": "null",
+              "value": null
+            }
+          ]
+        ]
+      },
+      "limitations": [],
+      "bindingsApplied": [],
+      "provenance": {
+        "source": "datatug-shipping:///fixture-generation/1",
+        "queryId": "shipping/receipt",
+        "mode": "live",
+        "observedAt": "2026-10-21T00:00:00Z",
+        "executionProfile": "opaque-privileged"
+      },
+      "truncated": false,
+      "execution": {
+        "storeId": "firestore",
+        "projectId": "fixture-project",
+        "executionId": "fixture-execution"
+      }
+    },
+    "sourcePin": {
+      "spaceID": "fixture-space",
+      "projectId": "fixture-project",
+      "sourceId": "shipping-working-copy",
+      "environment": "demo",
+      "bindingRevision": 1,
+      "revision": {
+        "generation": "fixture-generation",
+        "revision": 1,
+        "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "fixtureCommit": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "fixtureSHA256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+        "schemaSHA256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+        "configuration": 17,
+        "businessClock": "2018-05-06T08:00:00Z",
+        "bytes": 100,
+        "artifacts": [
+          {
+            "id": "logs/fixture.jsonl",
+            "sha256": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+            "bytes": 40
+          }
+        ],
+        "actorId": "fixture-actor",
+        "acceptedAt": "2026-10-21T00:00:00Z"
+      }
+    },
+    "appliedManifestRef": "fixture-selected-manifest",
+    "queryRevision": "q1-fixture",
+    "evidence": {
+      "state": "available",
+      "refs": [
+        {
+          "kind": "execution",
+          "execution": {
+            "storeId": "firestore",
+            "projectId": "fixture-project",
+            "executionId": "fixture-execution"
+          }
+        }
+      ]
+    }
+  },
+  "selector": {
+    "execution": {
+      "storeId": "firestore",
+      "projectId": "fixture-project",
+      "executionId": "fixture-execution"
+    },
+    "recordsetFingerprint": "a2ecad6e27fb02d98c39dd79f0abdb0ba563c9a4f6dfe584e3598978311bb1a9",
+    "scope": {
+      "storeId": "firestore",
+      "spaceID": "fixture-space",
+      "projectId": "fixture-project",
+      "environment": "demo"
+    },
+    "source": {
+      "id": "shipping-working-copy",
+      "generation": "fixture-generation"
+    },
+    "rowKeyColumn": "row_key",
+    "rowKey": {
+      "type": "string",
+      "value": "fixture-row"
+    },
+    "slotColumn": "evidence_ref"
+  }
+}

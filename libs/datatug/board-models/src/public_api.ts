@@ -34,7 +34,10 @@ export {
   ChartSourceBinding,
   ChartSourceTransform,
   ChartSpec,
+  EvidenceBoardChartSpec,
   BarChartSpec,
+  MultiSeriesBarChartSpec,
+  ChartSeries,
   BarRaceChartSpec,
   ChartType,
   ChartDefaultView,
@@ -62,3 +65,16 @@ export {
   BoardParameterDef,
   BoardParameterFieldRef,
 } from './lib/widget-parameter';
+
+// Whole-board new-field validation for raw GitHub and tutorial reads.
+export {
+  validateBoardPresentation,
+  validChartSpec,
+} from './lib/board-presentation';
+// Durable definition adapter for review: canonical Board wire and validation, no renderer.
+export {
+  validateHostedBoardDefinition,
+  parseHostedBoardDefinition,
+  editBoardDefinition,
+  BoardDefinitionEdit,
+} from './lib/board-definition-edit';

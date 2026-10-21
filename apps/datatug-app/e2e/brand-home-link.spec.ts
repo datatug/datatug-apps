@@ -1,23 +1,21 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
-// Founder request (2026-09-11): "On every page DataTug.app in header should
-// lead to main page/screen". The brand title lives in the app shell's side
-// menu header (apps/datatug-app/src/app/datatug-app.component.html), which
-// is present on every page, so a non-home page (here: /login, which needs no
-// running agent) is enough to prove the link works from "somewhere else".
-test('brand "DataTug.app" link in the header navigates to the home screen', async ({
-  page,
-}) => {
+test('the cold login header returns to the home screen', async ({ page }) => {
   await page.goto('/login');
   await expect(page.getByText('Login @ DataTug.app')).toBeVisible();
-
-  await page.getByRole('link', { name: 'DataTug.app home' }).click();
-
-  // The link points at `/`, which each product profile resolves to its own
-  // home inside the app: `/home` under the datatug profile.
+  await expect(page.locator('.auth-brand')).toHaveCount(0);
+  const back = page.locator('sneat-login ion-header ion-back-button');
+  await expect(back).toBeVisible();
+  await back.click();
   await expect(page).toHaveURL('/home');
-  await expect(
-    page.getByTestId('home-hero').getByRole('heading', { level: 1 }),
-  ).toBeVisible();
+  await expect(page.locator('sneat-datatug-home')).toBeVisible();
+});
+
+test('the login header returns to the preceding app screen', async ({ page }) => {
+  await page.goto('/home?from=login-navigation-test');
+  await page.getByRole('link', { name: 'Sign in', exact: true }).click();
+  await expect(page).toHaveURL(/\/login/);
+  await page.locator('sneat-login ion-header ion-back-button').click();
+  await expect(page).toHaveURL('/home?from=login-navigation-test');
   await expect(page.locator('sneat-datatug-home')).toBeVisible();
 });

@@ -4,7 +4,7 @@
       <ion-menu-button />
       <ion-back-button defaultHref="/" />
     </ion-buttons>
-    @if (storeId === "firestore") {
+    @if (storeId() === 'firestore') {
       <ion-title>DataTug Projects Cloud Store</ion-title>
     } @else {
       <ion-title>DataTug projects &#64; {{ storeDisplayId }}</ion-title>
@@ -13,20 +13,20 @@
 </ion-header>
 
 <ion-content>
-  @if (error) {
-    <sneat-datatug-error-card [error]="error" />
+  @if (error()) {
+    <sneat-datatug-error-card [error]="error()" />
   } @else {
     <ion-card>
+      <ion-item-divider>
+        <ion-label>Projects</ion-label>
+        <ion-buttons slot="end">
+          <ion-button title="New project" (click)="create()">
+            <ion-icon name="add" slot="start" color="primary" />
+            <ion-label>Add</ion-label>
+          </ion-button>
+        </ion-buttons>
+      </ion-item-divider>
       <ion-list>
-        <ion-item-divider>
-          <ion-label>Projects</ion-label>
-          <ion-buttons slot="end">
-            <ion-button title="New project" (click)="create()">
-              <ion-icon name="add" slot="start" color="primary" />
-              <ion-label>Add</ion-label>
-            </ion-button>
-          </ion-buttons>
-        </ion-item-divider>
         @if (isGithubStore) {
           <ion-item>
             <ion-label color="medium">
@@ -37,21 +37,21 @@
           </ion-item>
         }
         @switch (projectsAuthStatus) {
-          @case ("authenticating") {
+          @case ('authenticating') {
             <ion-item>
               <ion-label color="medium">Authenticating...</ion-label>
             </ion-item>
           }
-          @case ("notAuthenticated") {
+          @case ('notAuthenticated') {
             <ion-item>
               <ion-label color="medium"
                 >Please sign in to see projects
               </ion-label>
             </ion-item>
           }
-          @case ("authenticated") {
-            @if (projects) {
-              @for (project of projects; track project.id) {
+          @case ('authenticated') {
+            @if (projects()) {
+              @for (project of projects(); track project.id) {
                 <ion-item
                   tappable
                   (click)="goProject(project, $event)"
@@ -67,13 +67,13 @@
                 </ion-item>
               }
             } @else {
-              @if (isLoading) {
+              @if (isLoading()) {
                 <ion-item>
                   <ion-icon name="hourglass-outline" slot="start" />
                   <ion-label color="medium">Loading...</ion-label>
                 </ion-item>
               }
-              @if (agentState?.isNotAvailable) {
+              @if (agentState()?.isNotAvailable) {
                 <ion-item>
                   <ion-label color="medium"
                     >Repository is not available
@@ -127,7 +127,7 @@
         </ion-card-content>
       </ion-card>
     }
-    @if (agentState?.isNotAvailable) {
+    @if (agentState()?.isNotAvailable) {
       <ion-card>
         <ion-card-header>
           <ion-card-title color="warning"

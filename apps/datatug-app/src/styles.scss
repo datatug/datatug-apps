@@ -26,6 +26,12 @@
 @import '@ionic/angular/css/text-transformation.css';
 @import '@ionic/angular/css/flex-utils.css';
 
+// Firebase Auth adds this passive text warning above the emulator UI.
+// Keep it visible without blocking the controls underneath it.
+p.firebase-emulator-warning {
+  pointer-events: none;
+}
+
 :root {
   --ion-background-color: #ffffff;
   --ion-background-color-rgb: 255, 255, 255;
@@ -67,6 +73,18 @@ ion-split-pane {
 @import '../../../node_modules/tabulator-tables/dist/css/tabulator.min.css';
 
 //@import '../../../styles/sneat';
+
+// Page headers use a neutral surface across routed pages and dialogs.
+ion-header > ion-toolbar {
+  --background: var(--ion-color-light);
+}
+
+// Section labels in lists use the same light background throughout DataTug.
+ion-item-divider,
+ion-list-header {
+  --background: var(--ion-color-light);
+  background: var(--ion-color-light);
+}
 
 ion-item ion-buttons[slot='end'] {
   margin-right: -1em; // TODO: Replace this dirty workaround with proper fix
@@ -152,6 +170,13 @@ ion-popover.datatug-dialog {
   --width: min(90vw, calc(100vw - 2rem));
   --max-width: calc(100vw - 2rem);
   --max-height: calc(100dvh - 2rem);
+}
+
+// Project names are user data and can be long; make the selector popover wide
+// enough for them and use Ionic's rich-option layout so labels wrap in full.
+ion-popover.menu-project-options {
+  --width: min(24rem, calc(100vw - 2rem));
+  --max-width: calc(100vw - 2rem);
 }
 
 // Keep the new-project form actions visible while Ionic scrolls long content.
@@ -470,6 +495,24 @@ ion-item > ion-label:not([slot]):has(+ *) {
 
 ion-select {
   max-width: 100% !important; // https://forum.ionicframework.com/t/ion-option-in-ion-select-doesnt-use-full-width/148256
+}
+
+// Ionic's md-mode `ion-list` carries 8px of top/bottom padding (`.list-md`),
+// and its `ion-card .list-md` rule zeroes only the margins — not that padding.
+// A list that is a card's first child therefore painted a strip of card
+// background above its first row (the white band above gray card headers).
+// Header rows now sit directly under `ion-card`; this keeps any remaining card
+// row lists flush too, including ones whose header row is a divider.
+ion-card > ion-list:is(.list-md, .list-ios) {
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+// Project overview cards keep dividers between rows, never beneath their final row.
+sneat-datatug-project ion-card > ion-item:last-child,
+sneat-datatug-project ion-card > ion-list > ion-item:last-child {
+  --border-width: 0;
+  --inner-border-width: 0;
 }
 
 // REQ:semantic-markers-in-grid — env-db-table.page.ts embeds this exact markup (icon

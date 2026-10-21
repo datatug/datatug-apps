@@ -146,3 +146,44 @@ export function invoiceCustomerResult(
     },
   };
 }
+
+/** The prompt of the fixtures: markup on purpose, to show it is only ever drawn as text. */
+export const PROMPT_TEXT = 'show the invoices <b id="x">of customer 2</b> & their names';
+/** The query text of the fixtures. */
+export const DTQL_TEXT = 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n';
+
+/**
+ * The answer of an agent with the editor-ready members (datatug-cli#431): `query.text`, `language`, `dbRef` and
+ * `params` in both `meta.query` and the top-level `query`, and the prompt as `meta.prompt` and top-level `prompt`.
+ */
+export function editorReadyResult(
+  options: {
+    query?: Record<string, unknown>;
+    prompt?: { text: string; truncated?: boolean } | null;
+    unavailable?: Record<string, unknown>;
+    meta?: Record<string, unknown>;
+  } = {},
+): Record<string, unknown> {
+  const query = {
+    kind: 'dtql',
+    dtql: DTQL_TEXT,
+    policy: 'discovered',
+    text: DTQL_TEXT,
+    language: 'dtql',
+    dbRef: 'datatug://demo/chinook?env=local',
+    params: [
+      { name: 'CustomerId', value: { type: 'integer', value: '2' } },
+      { name: 'Countries', value: { type: 'set', values: [{ type: 'string', value: 'FR' }] } },
+    ],
+    ...options.query,
+  };
+  const prompt =
+    options.prompt === null
+      ? undefined
+      : { text: PROMPT_TEXT, truncated: false, at: '2026-10-16T08:00:01Z', ...options.prompt };
+  const base = invoiceCustomerResult({
+    query,
+    meta: { ...(prompt ? { prompt } : {}), ...(options.unavailable ? { unavailable: options.unavailable } : {}), ...options.meta },
+  });
+  return { ...base, query, ...(prompt ? { prompt: prompt.text } : {}) };
+}

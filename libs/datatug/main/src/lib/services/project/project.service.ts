@@ -3,7 +3,8 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { of, switchMap, startWith } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, Injector, inject } from '@angular/core';
-import { ISneatApiService, SneatApiService } from '@sneat/api';
+import { ISneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
 import {
   GITLAB_REPO_PREFIX,
@@ -54,7 +55,7 @@ export class ProjectService {
   // store type the factory resolves is `firestore`, which is the same root
   // singleton this injection returns, so this is behaviour-preserving. Same
   // pattern as `EnvironmentService` / `SchemaService`.
-  private readonly sneatApiService: ISneatApiService = inject(SneatApiService);
+  private readonly sneatApiService: ISneatApiService = inject(DatatugApiService);
   private readonly datatugStoreServiceFactory = inject(
     DatatugStoreServiceFactory,
   );

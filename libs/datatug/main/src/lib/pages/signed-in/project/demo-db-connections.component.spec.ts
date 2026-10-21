@@ -9,7 +9,7 @@ const canonical = { storeId: 'github.com', projectId: 'datatug-demo-project@data
 const datasets = ['chinook', 'northwind', 'pubs', 'sakila', 'adventureworks', 'employees'];
 const entries = datasets.flatMap((dataset) => [
   { id: `${dataset}-sqlite`, dataset, storage: 'sqlite', tags: [dataset, 'sqlite'], environments: ['dev'],
-    readiness: 'public-api', source: `https://demodb.dev/ovdb/v1/databases/${dataset}`, query: 'ovdb-read' },
+    readiness: 'public-api', source: `https://ovdb.demodb.dev/v1/databases/${dataset}`, query: 'ovdb-read' },
   { id: `${dataset}-postgresql`, dataset, storage: 'postgresql', tags: [dataset, 'postgresql'], environments: ['QA', 'UAT'],
     readiness: 'hosted-api-pending', source: `https://demodb.dev/${dataset}/`, query: 'setup-required' },
   { id: `${dataset}-ingitdb`, dataset, storage: 'ingitdb', tags: [dataset, 'ingitdb'], environments: ['dev'],
@@ -71,6 +71,23 @@ describe('shared project database connections', () => {
       expect(row.innerHTML).toContain('inGitDB');
       expect(row.innerHTML).toContain('BigQuery');
     }
+  });
+
+  it('still accepts a published catalogue whose SQLite sources name the legacy OVDB base', async () => {
+    const legacy = entries.map((entry) => entry.storage === 'sqlite'
+      ? { ...entry, source: `https://demodb.dev/ovdb/v1/databases/${entry.dataset}` }
+      : entry);
+    const getRawJson = vi.fn(() => of({ format: 'datatug-demo-connections/v1', connections: legacy,
+      bigQueryEditions, bigQueryPlans: plans }));
+    await TestBed.configureTestingModule({
+      imports: [DemoDbConnectionsComponent],
+      providers: [provideRouter([]), { provide: GithubProjectReaderService, useValue: { getRawJson } }],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(DemoDbConnectionsComponent);
+    fixture.componentRef.setInput('projectRef', canonical);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance['catalog']()).toBeTruthy();
   });
 
   it('deep-links only the ready Chinook PostgreSQL edition to its saved cross-storage query', async () => {

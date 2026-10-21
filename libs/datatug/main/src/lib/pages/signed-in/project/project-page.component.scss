@@ -1,3 +1,42 @@
+.overview-quick-search {
+  margin: 16px;
+  label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  div {
+    display: flex;
+    gap: 8px;
+  }
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--ion-color-medium);
+    border-radius: 6px;
+    background: var(--ion-background-color);
+    color: var(--ion-text-color);
+    font: inherit;
+  }
+  button {
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--ion-color-primary);
+    color: var(--ion-color-primary-contrast);
+    font: inherit;
+  }
+  button:disabled {
+    opacity: 0.5;
+  }
+  input:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--ion-color-primary);
+    outline-offset: 2px;
+  }
+}
+
 .overview-environments {
   margin: 16px;
 
@@ -34,20 +73,24 @@
 }
 
 .overview-tabs {
-  display: flex;
-  gap: 4px;
-  margin: 0 16px 12px;
-  overflow-x: auto;
+  display: grid;
+  grid-template-columns: 1fr 1.35fr 1.3fr 1fr 1.2fr;
+  gap: 0;
+  margin: 0 8px 12px;
   border-bottom: 1px solid var(--ion-color-light-shade);
 
   button {
-    flex: 0 0 auto;
-    padding: 12px;
+    min-width: 0;
+    min-height: 44px;
+    padding: 8px 2px;
     border: 0;
     border-bottom: 2px solid transparent;
     background: transparent;
     color: var(--ion-color-medium-shade);
     cursor: pointer;
+    font-size: 0.8125rem;
+    line-height: 1.15;
+    white-space: nowrap;
   }
 
   button.active {
@@ -61,25 +104,44 @@
   }
 }
 
-@media (min-width: 992px) {
-  .project-context-card {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    margin: 8px 16px;
-    border-bottom: 1px solid var(--ion-color-light-shade);
-    border-radius: 0;
-    box-shadow: none;
-    background: transparent;
-
-    ion-item {
-      --background: transparent;
-      min-width: 0;
-      flex: 1 1 330px;
-    }
-
-    ion-item + ion-item {
-      flex: 0 1 230px;
-    }
+@media (max-width: 379px) {
+  .overview-tabs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
+}
+
+.project-title {
+  overflow-wrap: anywhere;
+  margin: 0;
+  font-size: clamp(1rem, 4vw, 1.3rem);
+  font-weight: 600;
+  white-space: normal;
+}
+
+.project-context-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin: 8px 16px 12px;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.85rem;
+}
+
+.project-metadata-unavailable,
+.project-metadata-error {
+  margin: 8px 16px 12px;
+}
+
+.project-metadata-error {
+  color: var(--ion-color-danger);
+}
+
+.overview-tab-count {
+  margin: 0 0 0 6px;
+  min-height: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  vertical-align: middle;
+  pointer-events: none;
 }

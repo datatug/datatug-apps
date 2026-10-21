@@ -1,3 +1,8 @@
+import { TitleCasePipe } from '@angular/common';
+import { DemoProjectContinuationService, validContinuationToken } from './demo-project-continuation.service';
+import { findDemoSqliteDataset } from '../../queries/demo-sqlite-catalog';
+import { projectPageHref } from '../../nav/project-page-href';
+import { readGithubProjectCopySource, type GithubProjectCopySource } from './github-project-copy-source';
 import {
   Component,
   Injector,
@@ -63,6 +68,10 @@ import {
 } from './business-github-continuation';
 
 interface NewProjectDraft {
+  readonly demoContinuation?: string;
+  readonly billingIntent?: ProjectBillingIntent;
+  readonly source?: GithubProjectCopySource;
+  readonly returnUrl?: string;
   readonly actorID?: string;
   readonly githubActorID?: string;
   readonly store: 'cloud' | 'github';
@@ -125,8 +134,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private readonly destroyRef = inject(DestroyRef);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly demoContinuations = inject(DemoProjectContinuationService);
+  private demoContinuation?: string;
   private readonly nav = inject(DatatugNavService);
   readonly store = signal<'cloud' | 'github'>('cloud');
+  readonly copySource = signal<GithubProjectCopySource | undefined>(undefined);
+  private readonly invalidCopySource = signal(false);
+  private readonly requestedCopySource = signal<GithubProjectCopySource | undefined>(undefined);
   readonly title = signal('');
   readonly githubFolder = signal('datatug');
   readonly spaceID = signal('');
@@ -190,6 +204,21 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private returnUrl = '/';
   @ViewChild(IonInput, { static: false }) titleInput?: IonInput;
 
+  private applyRequestedCopySource(): void {
+    const source = this.requestedCopySource();
+    if (source && !this.isCreateRetryLocked() && !this.isSetupLocked()) {
+      this.copySource.set(source);
+      this.store.set('github');
+    }
+  }
+
+  protected copyDestinationSummary(): string {
+    const resolved = this.resolvedCreateRequest()?.github;
+    const repository = resolved ?? this.githubRepos().find((repo) => repo.id === this.selectedRepo()) ?? parseGithubRepositoryURL(this.githubRepositoryURL());
+    if (!repository) return 'Choose a repository below';
+    return `${repository.owner}/${repository.name}/${resolved?.folder ?? this.githubFolder()} · ${resolved?.branch ?? (this.branch() || 'repository default branch')}`;
+  }
+
   createSpace(): void {
     const title = this.spaceTitle().trim();
     const actor = this.userID();
@@ -225,7 +254,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           }
           this.spaces.update((spaces) => [
             ...spaces.filter((value) => value.id !== space.id),
-            { id: space.id, title: space.dbo?.title || title },
+            { id: space.id, title: space.dbo?.title?.trim() || title },
           ]);
           this.spaceID.set(space.id);
           this.spaceTitle.set('');
@@ -251,6 +280,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         ? 'space_business'
         : 'personal_pro',
     );
+    const titleCase = new TitleCasePipe();
     this.userService.userState
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((state) => {
@@ -258,7 +288,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         this.spaces.set(
           Object.entries(state.record?.spaces ?? {}).map(([id, space]) => ({
             id,
-            title: space.title,
+            title: space.title?.trim() || titleCase.transform(space.type)?.trim() || id,
           })),
         );
         const savedSpaceID =
@@ -273,6 +303,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
           !this.spaces().some((space) => space.id === this.spaceID())
         )
           this.spaceID.set('');
+        if (this.demoContinuation && !this.spaceID() && !savedSpaceID && this.spaces().length === 1) this.spaceID.set(this.spaces()[0].id);
         const uid = state.user?.uid;
         if (uid !== this.userID()) {
           const previousUserID = this.userID();
@@ -282,6 +313,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
             // A different account must not inherit another user's draft.
             clearNewProjectDraft();
             this.restoredDraft.set(undefined);
+            this.billingIntent.set(this.route.snapshot.queryParamMap.get('billingIntent') === 'space_business' ? 'space_business' : 'personal_pro');
             this.title.set('');
             this.githubFolder.set('datatug');
             this.spaceTitle.set('');
@@ -328,11 +360,33 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   }
   ngOnInit(): void {
     const draft = readNewProjectDraft();
+    this.returnUrl = safeNewProjectReturnUrl(
+      this.route.snapshot.queryParamMap.get('returnUrl') ?? draft?.returnUrl,
+    );
     const storeParam = this.route.snapshot.queryParamMap.get('store');
     if (storeParam !== null) {
       this.store.set(storeParam === 'github' ? 'github' : 'cloud');
     }
     this.restoreDraftForCurrentActor(draft);
+    const continuationParam = this.route.snapshot.queryParamMap.get('demoContinuation') ?? this.restoredDraft()?.demoContinuation;
+    this.demoContinuation = validContinuationToken(continuationParam) ? continuationParam : undefined;
+    const continuation = this.demoContinuations.read(this.demoContinuation);
+    if (continuation && !this.spaceID() && !this.restoredDraft()?.spaceID && this.spaces().length === 1) this.spaceID.set(this.spaces()[0].id);
+    if (continuation && !this.restoredDraft() && !this.pendingDraft()) {
+      this.title.set(`${findDemoSqliteDataset(continuation.dataset)?.title ?? continuation.dataset} project`);
+      this.githubFolder.set(`${continuation.dataset}-datatug`);
+    }
+    const sourceParam = this.route.snapshot.queryParamMap.get('source');
+    if (sourceParam) {
+      try {
+        const source = readGithubProjectCopySource(JSON.parse(sourceParam));
+        if (!source) throw new Error();
+        // A saved uncertain operation must be recovered before switching sources.
+        this.requestedCopySource.set(source);
+        this.applyRequestedCopySource();
+        this.store.set('github');
+      } catch { this.invalidCopySource.set(true); this.formError.set('The source project link is invalid. Return to the demo and try again.'); }
+    }
     const oauthResult = this.route.snapshot.queryParamMap.get('oauthResult');
     if (oauthResult === 'actor-changed') {
       this.oauthResumePending.set(false);
@@ -345,9 +399,6 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.formError.set('GitHub authorization was canceled or did not grant the required repository and workflow access. Review the repository and try again.');
       this.saveDraft();
     }
-    this.returnUrl = safeNewProjectReturnUrl(
-      this.route.snapshot.queryParamMap.get('returnUrl'),
-    );
     if (this.store() === 'github' && this.userID()) this.loadGithubRepos();
     if (oauthResult === 'success') this.resumeOAuthDraftIfReady();
     if (
@@ -554,6 +605,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.saveDraft();
   }
   create(): void {
+    if (this.invalidCopySource()) {
+      this.formError.set('The source project link is invalid. Return to the demo and try again.');
+      return;
+    }
     if (this.isCreating() || this.isSetupLocked()) return;
     if (this.createNeedsSameOperationRetry() && this.createConflictNeedsStatusCheck()) {
       this.refreshSetupStatus();
@@ -635,7 +690,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         name: address.name,
         folder: folder.folder,
       },
-      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+      ...(this.copySource() ? { source: this.copySource() } : { template: DATATUG_DEMO_PROJECT_TEMPLATE }),
       ciEnabled: this.ciEnabled(),
     };
     const currentBranch = this.branch();
@@ -947,7 +1002,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private replayPendingCreate(setup: PendingGithubProjectSetup): void {
     const actor = this.userID();
     if (!actor || this.isRefreshingPendingSetup(setup)) return;
-    if (setup.templateID !== DATATUG_DEMO_PROJECT_TEMPLATE.id || setup.templateCommit !== DATATUG_DEMO_PROJECT_TEMPLATE.commit) {
+    if (!setup.source && (setup.templateID !== DATATUG_DEMO_PROJECT_TEMPLATE.id || setup.templateCommit !== DATATUG_DEMO_PROJECT_TEMPLATE.commit)) {
       this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'This setup uses a different project template version. Refresh the pending setup list before retrying.' }));
       return;
     }
@@ -968,7 +1023,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
         branch: setup.branch,
         expectedBranchHead: setup.expectedHead,
       },
-      template: DATATUG_DEMO_PROJECT_TEMPLATE,
+      ...(setup.source ? { source: setup.source } : { template: DATATUG_DEMO_PROJECT_TEMPLATE }),
     };
     this.pendingGithubSetupRefreshes.update((set) => new Set([...set, setup.operationID]));
     this.pendingGithubSetupErrors.update((errors) => {
@@ -1006,7 +1061,13 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.pendingGithubSetupErrors.update((errors) => ({ ...errors, [setup.operationID]: 'The setup is ready, but its repository branch could not be restored.' }));
       return;
     }
+    this.demoContinuation = this.userID() ? this.demoContinuations.find(this.userID() as string, setup.operationID, setup.source) : undefined;
+    if (setup.source?.owner === 'datatug' && setup.source.name === 'datatug-demo-project' && !this.demoContinuation) {
+      this.pendingGithubSetupErrors.update(errors => ({ ...errors, [setup.operationID]: 'Project files are ready, but the edited browser continuation is unavailable in this tab. Return to the demo to keep exploring; a lost memory-only database cannot be recovered automatically.' }));
+      return;
+    }
     this.pendingGithubSetups.update((items) => items.filter((item) => item.operationID !== setup.operationID));
+    if (this.demoContinuation) { this.copySource.set(setup.source); this.operationID.set(setup.operationID); }
     this.dismissAndGo({ storeId: 'github.com', projectId, projectApi: 'cloud', branch });
   }
 
@@ -1034,6 +1095,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
 
   protected retryClosedSetup(): void {
     if (this.setupStatus() !== 'closed_unmerged' || this.isCreating()) return;
+    if (this.demoContinuation && this.userID() && this.operationID()) this.demoContinuations.restart(this.demoContinuation, this.userID() as string, this.operationID() as string);
     this.operationID.set(undefined);
     this.operationPayload.set(undefined);
     this.operationBranch.set(undefined);
@@ -1211,6 +1273,21 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.formError.set(failure.message);
   }
   private dismissAndGo(ref: IProjectContext['ref']): void {
+    const source = this.copySource();
+    const actor = this.userID();
+    const operation = this.operationID();
+    const token = this.demoContinuation ?? (actor && operation ? this.demoContinuations.find(actor, operation, source) : undefined);
+    if (token && source && actor) {
+      const continuation = this.demoContinuations.bind(token, actor, source, operation, ref);
+      if (!continuation) {
+        this.formError.set('The project is ready, but its edited database continuation belongs to another setup. Return to the demo to keep exploring.');
+        return;
+      }
+      const destination = this.router.parseUrl(projectPageHref(ref, ['browser-db', 'demo']));
+      destination.queryParams = { projectApi: ref.projectApi, branch: ref.branch, demoContinuation: token };
+      void this.router.navigateByUrl(destination, { replaceUrl: true });
+      return;
+    }
     this.nav.goProject(
       {
         ref,
@@ -1240,9 +1317,26 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
     this.signInMessage.set(message);
   }
 
+  billingIntentChanged(value: unknown): void {
+    if (value !== 'personal_pro' && value !== 'space_business') return;
+    if (this.isSetupLocked() || this.isCreating() || this.isCreateRetryLocked()) return;
+    this.billingIntent.set(value);
+    this.saveDraft();
+  }
+
   private saveDraft(): boolean {
     try {
+      if (this.demoContinuation && this.userID() && this.copySource()) {
+        if (!this.demoContinuations.bind(this.demoContinuation, this.userID() as string, this.copySource() as GithubProjectCopySource, this.operationID())) {
+          this.formError.set('This edited database continuation belongs to another account or setup. Return to the demo to start a new copy.');
+          return false;
+        }
+      }
       const draft: NewProjectDraft = {
+        demoContinuation: this.demoContinuation,
+        billingIntent: this.billingIntent(),
+        source: this.copySource(),
+        returnUrl: this.returnUrl,
         actorID: this.userID(),
         githubActorID: this.restoredDraft()?.githubActorID,
         store: this.store(),
@@ -1344,6 +1438,10 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
   private applyDraft(draft: NewProjectDraft): void {
     const storeParam = this.route.snapshot.queryParamMap.get('store');
     if (storeParam === null) this.store.set(draft.store);
+    this.copySource.set(draft.source);
+    this.demoContinuation = draft.demoContinuation;
+    if (!this.route.snapshot.queryParamMap.get('billingIntent'))
+      this.billingIntent.set(draft.billingIntent ?? 'personal_pro');
     this.title.set(draft.title);
     this.githubFolder.set(draft.githubFolder);
     this.githubRepositoryURL.set(draft.githubRepositoryURL ?? '');
@@ -1382,6 +1480,7 @@ export class NewProjectFormComponent implements ViewDidEnter, OnInit {
       this.spaces().some((space) => space.id === draft.spaceID)
     )
       this.spaceID.set(draft.spaceID ?? '');
+    this.applyRequestedCopySource();
   }
 }
 
@@ -1393,6 +1492,10 @@ function readNewProjectDraft(): NewProjectDraft | undefined {
     if (!value || typeof value !== 'object') return undefined;
     const draft = value as Partial<NewProjectDraft>;
     return {
+      demoContinuation: validContinuationToken(draft.demoContinuation) ? draft.demoContinuation : undefined,
+      billingIntent: draft.billingIntent === 'space_business' ? 'space_business' : 'personal_pro',
+      source: readGithubProjectCopySource(draft.source),
+      returnUrl: safeNewProjectReturnUrl(draft.returnUrl),
       actorID:
         typeof draft.actorID === 'string'
           ? draft.actorID.slice(0, 128)
@@ -1495,8 +1598,8 @@ function isPendingGithubProjectSetup(value: unknown): value is PendingGithubProj
     typeof setup.branch === 'string' && setup.branch.length > 0 && setup.branch.length <= 255 && !Array.from(setup.branch).some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) === 127) &&
     typeof setup.ciEnabled === 'boolean' &&
     typeof setup.expectedHead === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.expectedHead) &&
-    typeof setup.templateID === 'string' && setup.templateID.length <= 100 &&
-    typeof setup.templateCommit === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.templateCommit) &&
+    (setup.source !== undefined ? !!readGithubProjectCopySource(setup.source) : (typeof setup.templateID === 'string' && setup.templateID.length <= 100 &&
+    typeof setup.templateCommit === 'string' && /^[0-9a-f]{7,64}$/i.test(setup.templateCommit))) &&
     (setup.billingIntent === 'personal_pro' || setup.billingIntent === 'space_business') &&
     (setup.setupPR === undefined || isSafeFullSetupPR(setup.setupPR))
   );
@@ -1528,6 +1631,7 @@ function samePendingSetupBinding(
     left.branch === right.branch &&
     left.ciEnabled === right.ciEnabled &&
     left.expectedHead === right.expectedHead &&
+    JSON.stringify(left.source) === JSON.stringify(right.source) &&
     left.templateID === right.templateID &&
     left.templateCommit === right.templateCommit &&
     left.billingIntent === right.billingIntent;
@@ -1556,6 +1660,7 @@ function isCreateGithubProject(value: unknown): value is CreateGithubProject {
   if (!value || typeof value !== 'object') return false;
   const request = value as Partial<CreateGithubProject>;
   return (
+    (request.source === undefined || !!readGithubProjectCopySource(request.source)) &&
     typeof request.operationID === 'string' &&
     /^[0-9a-f-]{36}$/i.test(request.operationID) &&
     typeof request.title === 'string' &&
@@ -1601,6 +1706,11 @@ function githubProjectCreateFailure(error: unknown): {
     case 'reauthorization_required':
       return {
         message: 'Reconnect GitHub, then try creating the project again.',
+        retrySameOperation: false,
+      };
+    case 'source_too_large':
+      return {
+        message: 'This private project is too large to copy through GitHub setup. Clone the repository with Git and use the DataTug CLI.',
         retrySameOperation: false,
       };
     case 'workflow_conflict':

@@ -113,3 +113,107 @@ describe('PostHog on the pages a card link opens', () => {
   });
 
 });
+
+const SEARCH_PRIVACY_PAGES = [
+  '/store/private-agent/project/private-project/quick-search',
+  '/space/private-space/store/firestore/project/private-project/tags',
+  '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model',
+];
+describe('Quick Search project metadata privacy', () => {
+  it.each(SEARCH_PRIVACY_PAGES)(
+    '%s suppresses capture/replay and removes URLs and result DOM',
+    (path) => {
+      const query =
+        '?q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
+      const config = start(path + query);
+      expect(config.autocapture).toBe(false);
+      expect(config.disable_session_recording).toBe(true);
+      const out = config.before_send({
+        event: '$pageview',
+        properties: {
+          $current_url: 'https://datatug.app' + path + query,
+          $pathname: path,
+          $referrer: 'https://datatug.app' + path + query,
+          $el_text: 'private-result',
+          $elements: [{ text: 'private-result' }],
+          $elements_chain: 'private-result',
+        },
+      });
+      const serialized = JSON.stringify(out);
+      for (const secret of [
+        'private-agent',
+        'private-project',
+        'private-space',
+        'private-owner',
+        'private-repo',
+        'private-ref',
+        'private-folder',
+        'private-model',
+        'private-query',
+        'private-tag',
+        'private-schema',
+        'private-table',
+        'private-column',
+        'private-result',
+      ])
+        expect(serialized).not.toContain(secret);
+      expect(
+        config.before_send({
+          event: '$autocapture',
+          properties: { $el_text: 'private-result' },
+        }),
+      ).toBeNull();
+      expect(
+        config.before_send({
+          event: '$snapshot',
+          properties: { $snapshot_data: 'private-result' },
+        }),
+      ).toBeNull();
+    },
+  );
+  it('turns capture and recording off when navigation enters Quick Search', () => {
+    start('/');
+    applyPosthogRoutePrivacy(SEARCH_PRIVACY_PAGES[0]);
+    expect(sdk.stopSessionRecording).toHaveBeenCalledOnce();
+    expect(sdk.set_config).toHaveBeenLastCalledWith({
+      autocapture: false,
+      disable_session_recording: true,
+    });
+  });
+});
+
+describe('queued Quick Search PostHog events after leaving the page',()=>{
+  it.each(SEARCH_PRIVACY_PAGES)('retains origin privacy for %s on Home',path=>{
+    const config=start(path+'?q=private-query');
+    history.replaceState(null,'','/home');applyPosthogRoutePrivacy('/home');
+    const properties={$current_url:'https://datatug.app'+path+'?q=private-query&name=private-tag',$el_text:'private-result',$elements:[{text:'private-result'}],$elements_chain:'private-result'};
+    const result=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-query','private-tag','private-project','private-owner','private-result'])expect(JSON.stringify(result)).not.toContain(secret);
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties:{...properties,$snapshot_data:'private-result'}})).toBeNull();
+    expect(config.before_send({event:'public_event',properties:{$current_url:'https://datatug.app/home',label:'public-label'}})).toEqual({event:'public_event',properties:{$current_url:'https://datatug.app/home',label:'public-label'}});
+  });
+});
+
+describe('queued authenticated metadata preview privacy',()=>{
+  it('drops queued DOM capture and scrubs private preview scope after navigation to Home',()=>{
+    const config=start('/home');
+    const properties={$current_url:'https://api.sneat.cloud/v0/datatug/project/quick-search/preview?storage=github.com&project=private-repo%40private-owner%40private-folder&branch=private-ref',$el_text:'private-table',$elements:[{text:'private-column'}],$elements_chain:'private-result'};
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties:{...properties,$snapshot_data:'private-result'}})).toBeNull();
+    const out=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-repo','private-owner','private-folder','private-ref','private-table','private-column','private-result']) expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});
+
+describe('queued Check metadata query-mode privacy',()=>{
+  it('scrubs private check identity and DOM metadata after navigation away',()=>{
+    const path='/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/quick-search?detailKind=check&objectId=private-check';
+    const config=start(path);history.replaceState(null,'','/home');applyPosthogRoutePrivacy('/home');
+    const properties={$current_url:'https://datatug.app'+path,$el_text:'private-title',$elements:[{text:'private-tag'}]};
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties})).toBeNull();
+    const out=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-owner','private-repo','private-ref','private-folder','private-check','private-title','private-tag'])expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});

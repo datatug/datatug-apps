@@ -1,3 +1,4 @@
+import { parseProjectUrl } from '@datatug/project-address';
 import { loopbackAgentOrigin } from '../agent-access/agent-link-code';
 
 /**
@@ -12,11 +13,58 @@ const LINK_ROUTE =
   /^\/store\/[^/]+\/project\/[^/]+\/env\/[^/]+\/db\/[^/]+\/(?:table|view)\/[^/?#]+(?:\/(?:records|record))?\/?$/;
 /** `/store/<agent>/result/<id>`: a query result stored by `datatug query run --result-id`. */
 const RESULT_ROUTE = /^\/store\/[^/]+\/result\/[^/?#]+\/?$/;
+/**
+ * `/store/<agent>/project/<p>/query`: the query editor, which a stored result opens through `?result=<id>`. Its query
+ * string (the result id, a saved query id, the environment) is never sent to telemetry.
+ */
+const RESULT_EDITOR_ROUTE = /^\/store\/[^/]+\/project\/[^/]+\/query\/?$/;
 
-/** Whether pathname (no query or fragment) is a table, view, records, record or query result page. */
+/** Only real project search/discovery routes carry this privacy boundary. */
+function quickSearchPage(
+  pathname: string,
+): 'quick-search' | 'tags' | 'search-schema' | undefined {
+  const project = parseProjectUrl(pathname.split(/[?#]/)[0]);
+  if (!project.ok) return undefined;
+  const rest = project.rest.replace(/^\/sessions\/[A-Za-z0-9_-]{1,128}/, '');
+  const match = /^\/(quick-search|tags|search-schema\/[^/]+)\/?$/.exec(rest);
+  return match
+    ? match[1].startsWith('search-schema/')
+      ? 'search-schema'
+      : (match[1] as 'quick-search' | 'tags')
+    : undefined;
+}
+
+/** Lifecycle/search requests carry scope identifiers even after the page is left. */
+const QUICK_SEARCH_API_ROUTE =
+  /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|preview|enable|refresh|search|disable)\/?$/;
+const SEARCH_ORIGIN_URLS =
+  /https?:\/\/[^\s"'<>`]+|\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+/g;
+
+/** A queued SDK payload retains its originating URLs; never rely only on current location. */
+export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
+  if (depth >= 10) return false;
+  if (typeof value === 'string')
+    return (value.match(SEARCH_ORIGIN_URLS) || []).some((address) => {
+      const path = address
+        .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '')
+        .split(/[?#]/)[0];
+      return !!quickSearchPage(path) || QUICK_SEARCH_API_ROUTE.test(path);
+    });
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value).some((item) =>
+    hasQuickSearchOrigin(item, depth + 1),
+  );
+}
+
+/** Whether pathname (no query or fragment) is a table, view, records, record, query result or result editor page. */
 export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
-  return LINK_ROUTE.test(path) || RESULT_ROUTE.test(path);
+  return (
+    !!quickSearchPage(path) ||
+    LINK_ROUTE.test(path) ||
+    RESULT_ROUTE.test(path) ||
+    RESULT_EDITOR_ROUTE.test(path)
+  );
 }
 
 /** What a result id is replaced with in telemetry. */
@@ -25,12 +73,34 @@ export const RESULT_ID_PLACEHOLDER = ':resultId';
 const RESULT_ID_IN_PATH =
   /(\/store\/[^/\s"'<>`?#]+\/result\/|\/datatug\/results\/)[^/\s"'<>`?#]+/g;
 
-/** Text with every result id of a result page's path or of the agent's `results/<id>` route replaced. */
+/** What the project id of the query editor's path is replaced with in telemetry. */
+export const PROJECT_ID_PLACEHOLDER = ':projectId';
+/** The project id of the result editor's path (`/store/<agent>/project/<p>/query`, with no deeper segment). */
+const PROJECT_ID_IN_EDITOR_PATH =
+  /(\/store\/[^/\s"'<>`?#]+\/project\/)[^/\s"'<>`?#]+(\/query)(?=[?#\s"'<>`]|\/?$)/g;
+
+/** The `result=<id>` query parameter of the query editor's address. */
+const RESULT_ID_IN_QUERY = /([?&]result=)[^&#\s"'<>`]+/g;
+
+/**
+ * Text with every result id of a result page's path, of the agent's `results/<id>` route, or of the editor's `result`
+ * query parameter replaced, and the project id of the editor's own path.
+ */
 export function redactResultIds(text: string): string {
-  return text.replace(
-    RESULT_ID_IN_PATH,
-    (_all, prefix: string) => prefix + RESULT_ID_PLACEHOLDER,
-  );
+  return text
+    .replace(
+      RESULT_ID_IN_PATH,
+      (_all, prefix: string) => prefix + RESULT_ID_PLACEHOLDER,
+    )
+    .replace(
+      RESULT_ID_IN_QUERY,
+      (_all, prefix: string) => prefix + RESULT_ID_PLACEHOLDER,
+    )
+    .replace(
+      PROJECT_ID_IN_EDITOR_PATH,
+      (_all, prefix: string, tail: string) =>
+        prefix + PROJECT_ID_PLACEHOLDER + tail,
+    );
 }
 
 /** Whether the current page is a table, view, records or record page. */
@@ -45,14 +115,30 @@ export function onLinkRoute(): boolean {
 export function scrubUrl(url: string, dropQuery: boolean): string {
   const noFragment = url.split('#')[0];
   const path = noFragment.replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
-  if (dropQuery || loopbackAgentOrigin(noFragment) || isLinkRoute(path)) {
+  const searchPage = quickSearchPage(path);
+  if (searchPage) {
+    const origin = /^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i.exec(noFragment)?.[0] || '';
+    return (
+      origin +
+      '/project/:projectId/' +
+      searchPage +
+      (searchPage === 'search-schema' ? '/:dbModelId' : '')
+    );
+  }
+  if (
+    QUICK_SEARCH_API_ROUTE.test(path.split('?')[0]) ||
+    dropQuery ||
+    loopbackAgentOrigin(noFragment) ||
+    isLinkRoute(path)
+  ) {
     return redactResultIds(noFragment.split('?')[0]);
   }
   return redactResultIds(noFragment);
 }
 
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
-const RELATIVE_LINK_PATH = /(^|[\s"'(=:])(\/store\/[^\s"'<>`]+)/g;
+const RELATIVE_LINK_PATH =
+  /(^|[\s"'(=:])(\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+)/g;
 const LINK_FRAGMENT_PARTS = /#(?:[^\s"'<>`#]*&)?(?:code|pk)=[^\s"'<>`]*/g;
 
 /**

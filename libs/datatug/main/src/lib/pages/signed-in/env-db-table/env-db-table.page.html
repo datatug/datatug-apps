@@ -18,7 +18,7 @@
     </ion-buttons>
     <sneat-datatug-page-title
       [pageTitle]="
-        'Table: ' + (table?.schema ? table?.schema + '.' : '') + (table?.name || '')
+        'Table: ' + (table?.schema ? table.schema + '.' : '') + (table?.name || '')
       "
     />
   </ion-toolbar>
@@ -158,17 +158,17 @@
   </ion-card>
   } } @if (tab === 'references') {
   <ion-card>
+    <ion-item-divider>
+      <ion-label> Tables</ion-label>
+      <ion-badge
+        slot="end"
+        class="ion-margin-end"
+        color="light"
+        style="color: gray"
+        >3
+      </ion-badge>
+    </ion-item-divider>
     <ion-list>
-      <ion-item-divider>
-        <ion-label> Tables</ion-label>
-        <ion-badge
-          slot="end"
-          class="ion-margin-end"
-          color="light"
-          style="color: gray"
-          >3
-        </ion-badge>
-      </ion-item-divider>
       <ion-item>
         <ion-label>SomeTable</ion-label>
       </ion-item>

@@ -1,3 +1,7 @@
+import { readRetainedQueryResponse } from '../evidence/retained-evidence-contract';
+import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
+import { createPublicOvdbDevFetch } from './public-ovdb-dev-transport';
+import { executeSavedPublicChartQuery, isSavedPublicChartQueryId } from './public-data/public-chart-query';
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { type RunQueryRequest, type RunQueryResponse, decodeSourceRightsEvidence } from '@sneat/datatug-semantic';
@@ -41,17 +45,19 @@ async function boundedOvdbResponse(response: Response, signal: AbortSignal): Pro
   if (!reader) return response;
   const chunks: Uint8Array[] = [];
   let size = 0;
+  let reachedEnd = false;
   try {
     while (true) {
       if (signal.aborted) throw abortError();
       const { done, value } = await awaitWithAbort(reader.read(), signal);
-      if (done) break;
+      if (done) { reachedEnd = true; break; }
       size += value.byteLength;
       if (size > OVDB_RESPONSE_BYTES) throw new QueryDispatchError('The OVDB response exceeds the 2 MiB browser limit. Narrow the query.');
       chunks.push(value);
     }
   } finally {
-    void reader.cancel().catch(() => undefined);
+    if (reachedEnd) reader.releaseLock();
+    else void reader.cancel().catch(() => undefined).finally(() => reader.releaseLock());
   }
   const body = new Uint8Array(new ArrayBuffer(size));
   let offset = 0;
@@ -72,6 +78,7 @@ function abortError(): Error {
 
 @Injectable({ providedIn: 'root' })
 export class QueryDispatchService {
+  private readonly devTransport = inject(PUBLIC_OVDB_DEV_TRANSPORT, { optional: true });
   private readonly projectApi = inject(ProjectQueryApiService);
   private readonly github = inject(GithubProjectReaderService);
   private readonly http = inject(HttpClient);
@@ -100,10 +107,12 @@ export class QueryDispatchService {
     const matches = catalog?.connections?.filter((item) => item.id === connectionId) ?? [];
     if (matches.length !== 1) throw new QueryDispatchError('The saved query connection is missing or ambiguous in this project.');
     const declaration = matches[0];
-    if (!request.environment && (declaration.environment !== undefined || declaration.environments !== undefined))
+    const environment = request.environment ?? (declaration.storage === 'sqlite' && declaration.browserFixture &&
+      request.definition.request.queryType === QueryType.SQL && declaration.environments?.length === 1 ? declaration.environments[0] : undefined);
+    if (!environment && (declaration.environment !== undefined || declaration.environments !== undefined))
       throw new QueryDispatchError('Select an environment for this saved connection before running the query.');
-    if (declaration.environment !== undefined && declaration.environment !== request.environment ||
-      declaration.environments !== undefined && (!request.environment || !declaration.environments.includes(request.environment)))
+    if (declaration.environment !== undefined && declaration.environment !== environment ||
+      declaration.environments !== undefined && (!environment || !declaration.environments.includes(environment)))
       throw new QueryDispatchError('The selected connection is unavailable in this environment.');
     return declaration;
   }
@@ -118,25 +127,54 @@ export class QueryDispatchService {
       : captured.runtimeBinding;
     if (captured.runtimeSelectionId && !binding)
       throw new QueryDispatchError('The selected working copy is closed or no longer matches this project connection.');
-    const boundRequest = binding ? { ...captured, runtimeBinding: binding } : captured;
+    const environment = captured.environment ?? (connection?.storage === 'sqlite' && connection.browserFixture &&
+      captured.definition.request.queryType === QueryType.SQL && connection.environments?.length === 1 ? connection.environments[0] : undefined);
+    const boundRequest = { ...captured, ...(environment ? { environment } : {}), ...(binding ? { runtimeBinding: binding } : {}) };
     return { request: boundRequest, plan: resolveQueryDispatchPlan(boundRequest, connection ? { connections: [connection] } : undefined) };
   }
 
-  async execute(request: QueryDispatchRequest): Promise<FederatedQueryResult> {
+  async execute(request: QueryDispatchRequest, options?: { readonly maxRows: number }): Promise<FederatedQueryResult> {
+    return (await this.executeHeld(request, options)).result;
+  }
+
+  async executeHeld(request: QueryDispatchRequest, options?: { readonly maxRows: number }): Promise<{ readonly result: FederatedQueryResult; readonly hostedResponse?: HostedQueryResponse }> {
     const session = this.start(request);
-    try { return await session.result; }
-    finally { await session.dispose(); }
+    try {
+      const [result, hostedResponse] = await Promise.all([session.result, session.hostedResponse]);
+      const paired = (value: FederatedQueryResult) => ({result:value,...(hostedResponse?{hostedResponse}:{})});
+      if (!options) return paired(result);
+      const total = result.totalRows ?? result.recordset.rows.length;
+      if (!Number.isSafeInteger(options.maxRows) || options.maxRows < 1 || options.maxRows > 1000 ||
+        !Number.isSafeInteger(total) || total < result.recordset.rows.length || total > options.maxRows)
+        throw new QueryDispatchError(`This board accepts at most ${options.maxRows} result rows. Narrow the saved query.`);
+      if (result.hasMore || result.truncated)
+        throw new QueryDispatchError('This board requires a complete saved query result. Narrow the query.');
+      if (total === result.recordset.rows.length) return paired(result);
+      if (!session.getPage) throw new QueryDispatchError('This runtime cannot read the complete result.');
+      const rows: (typeof result.recordset.rows)[number][] = [];
+      for (let index = 0; rows.length < total; index++) {
+        request.signal?.throwIfAborted();
+        const page = await session.getPage(index);
+        if (!page.length || rows.length + page.length > total)
+          throw new QueryDispatchError('The saved query result pages are incomplete.');
+        rows.push(...page);
+      }
+      request.signal?.throwIfAborted();
+      return paired({ ...result, recordset: { ...result.recordset, rows } });
+    } finally { await session.dispose(); }
   }
 
   start(request: QueryDispatchRequest): QueryExecutionSession {
     const controller = new AbortController();
     let federation: FederatedQueryService | undefined;
     let terminal = false;
+    let completedSuccessfully = false;
     let terminalPromise: Promise<void> | undefined;
-    const endSession = (): Promise<void> => {
+    const endSession = (cancel = true): Promise<void> => {
       if (terminalPromise) return terminalPromise;
       terminal = true;
-      controller.abort();
+      // Successful delivery is complete: normal disposal must not cancel its fetch.
+      if (cancel || !completedSuccessfully) controller.abort();
       request.signal?.removeEventListener('abort', relayAbort);
       terminalPromise = Promise.resolve().then(async () => {
         try { await federation?.dispose(); } catch { /* Session teardown is best effort. */ }
@@ -160,13 +198,17 @@ export class QueryDispatchService {
     } else {
       result = this.runOwned(ownedRequest, (service) => { federation = service; });
     }
+    result = result.then((value) => {
+      completedSuccessfully = true;
+      return value;
+    });
     void result.catch(() => undefined);
     if (hostedResponse) void hostedResponse.catch(() => undefined);
     const session: QueryExecutionSession = {
       result,
       ...(hostedResponse ? { hostedResponse } : {}),
-      cancel: endSession,
-      dispose: endSession,
+      cancel: () => endSession(),
+      dispose: () => endSession(false),
       getPage: async (index, resultSet, localResult) => {
         const service = await this.federationForResult(result, () => federation);
         return service.getPage(index, resultSet, localResult);
@@ -187,10 +229,18 @@ export class QueryDispatchService {
     request: QueryDispatchRequest,
     onFederation: (service: FederatedQueryService) => void,
   ): Promise<FederatedQueryResult> {
+    // Existing publisher admission validates exact saved text, source and full rows.
+    if (request.queryId && isSavedPublicChartQueryId(request.queryId) &&
+      !request.target && !request.runtimeBinding && !request.runtimeSelectionId) {
+      const captured = captureQueryDispatchRequest(request);
+      return executeSavedPublicChartQuery(request.queryId, captured.definition, { signal: captured.signal,
+        ...(this.devTransport ? { fetch: createPublicOvdbDevFetch(this.devTransport) } : {}),
+      });
+    }
     const { request: captured, plan } = await this.plan(request);
     if (captured.signal?.aborted) throw abortError();
     if (plan.target.kind === 'ovdb-federation') {
-      const service = new FederatedQueryService();
+      const service = new FederatedQueryService(this.devTransport);
       onFederation(service);
       if (captured.signal?.aborted) { await service.dispose(); throw abortError(); }
       const options = captured.federationRun;
@@ -291,12 +341,13 @@ export class QueryDispatchService {
       storage: 'firestore' as const,
       spaceID: request.projectRef.spaceID,
       project: request.projectRef.projectId,
+      principal: request.principal,
     };
     if (request.hostedInputs && request.parameters && JSON.stringify(request.hostedInputs) !== JSON.stringify(request.parameters))
       throw new QueryDispatchError('Hosted inputs differ from the displayed parameter bindings.');
     const source = this.detectiveClient.runHostedQuery(context, request.queryId, request.environment, {
       ...(request.hostedInputs ?? request.parameters ?? {}),
-    });
+    }, { evidence: request.evidence, operationId: request.operationId, signal: request.signal });
     try {
       const response = await firstValueFrom((request.signal
         ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
@@ -306,7 +357,9 @@ export class QueryDispatchService {
         response.result.execution.projectId !== request.projectRef.projectId ||
         response.result.provenance.queryId !== request.queryId)
         throw new QueryDispatchError('The hosted query returned no matching retained execution receipt.');
-      return response;
+      const admitted = await readRetainedQueryResponse(response, { projectRef: request.projectRef, environment: request.environment, actor: request.principal || '' }, request.queryId, request.evidence);
+      if (request.signal?.aborted) throw abortError();
+      return admitted;
     } catch (error) {
       if (request.signal?.aborted) throw abortError();
       throw error;

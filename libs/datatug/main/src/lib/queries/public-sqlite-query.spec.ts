@@ -50,11 +50,11 @@ const catalog = {
       dataset: 'chinook',
       storage: 'sqlite',
       readiness: 'public-api',
-      source: 'https://demodb.dev/ovdb/v1/databases/chinook',
+      source: 'https://ovdb.demodb.dev/v1/databases/chinook',
       fixtureSha256:
         '7651ba378ac2fcd0dfc3c66fb101f7a7eed3ba39a612ec642b96e20702061f15',
       browserFixture: {
-        url: 'https://chinook.demodb.dev/data/chinook.sqlite',
+        url: '/assets/showcase/chinook.sqlite',
         bytes: 1007616,
       },
     },
@@ -66,6 +66,47 @@ describe('public browser SQLite admission', () => {
     expect(() =>
       admitPublicSqliteSource(catalog, 'chinook-sqlite'),
     ).not.toThrow();
+    // Older published project revisions resolve to the identical verified bytes.
+    expect(() =>
+      admitPublicSqliteSource(
+        {
+          ...catalog,
+          connections: [
+            {
+              ...catalog.connections[0],
+              browserFixture: {
+                ...catalog.connections[0].browserFixture,
+                url: 'https://chinook.demodb.dev/data/chinook.sqlite',
+              },
+            },
+          ],
+        },
+        'chinook-sqlite',
+      ),
+    ).not.toThrow();
+    for (const url of [
+      '/assets/showcase/chinook.sqlite?changed=1',
+      '/assets/showcase/../showcase/chinook.sqlite',
+      '/assets/other.sqlite',
+    ]) {
+      expect(() =>
+        admitPublicSqliteSource(
+          {
+            ...catalog,
+            connections: [
+              {
+                ...catalog.connections[0],
+                browserFixture: {
+                  ...catalog.connections[0].browserFixture,
+                  url,
+                },
+              },
+            ],
+          },
+          'chinook-sqlite',
+        ),
+      ).toThrow(/no admitted/);
+    }
     expect(() => admitPublicSqliteSource(catalog, 'other')).toThrow();
     expect(() =>
       admitPublicSqliteSource(
@@ -654,7 +695,7 @@ it('fetches only the pinned public fixture without credentials and refuses chang
   try {
     await expect(readPinnedFixture()).rejects.toThrow('hash differs');
     expect(fetchMock).toHaveBeenCalledWith(
-      'https://chinook.demodb.dev/data/chinook.sqlite',
+      '/assets/showcase/chinook.sqlite',
       {
         redirect: 'error',
         credentials: 'omit',

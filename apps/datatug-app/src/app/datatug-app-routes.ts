@@ -368,6 +368,12 @@ export const routes: Routes = [
       import('@sneat/datatug-main').then((m) => m.loadDemoOvdbPage()),
   },
   {
+    path: 'demo/logs',
+    canMatch: [checkoutOrRoot],
+    loadComponent: () =>
+      import('@sneat/datatug-main').then((m) => m.loadDemoLogsPage()),
+  },
+  {
     matcher: legacyChinookDemoMatcher,
     canMatch: [redirectLegacyChinookDemo],
     loadComponent: demoHoldingPage,
@@ -436,5 +442,16 @@ export const routes: Routes = [
         },
       ];
     },
+  },
+  // The shared Sneat login page (@sneat/auth-ui) sends a signed-in user on to the space that is saved for them:
+  // `/space/<type>/<id>` (a Sneat family or company space), a route of sneat.app that DataTug does not have. Its
+  // "Continue" button and every fresh sign-in ended in `NG04002: Cannot match any routes. URL Segment:
+  // 'space/family/<id>'` and the crash dialog. DataTug has no space home: that address is the root, which the
+  // product profile sends on to its own home (`/home`, or `/incidents` at app.incidentius.com). Exact match only:
+  // `space/:spaceId/store/...` (a space-owned project) and `space/<type>/<id>/settings/sso` are different routes.
+  {
+    path: 'space/:spaceType/:spaceId',
+    pathMatch: 'full',
+    redirectTo: '/',
   },
 ];

@@ -1,9 +1,18 @@
+import { Provider } from '@angular/core';
+import {
+  PUBLIC_OVDB_DEV_TRANSPORT,
+  PUBLIC_OVDB_LOOPBACK_MODE,
+} from '@sneat/datatug-semantic';
 import { IEnvironmentConfig, IFirebaseEmulatorConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
 export const datatugBusinessCheckoutApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveApiOrigin: string | null = null;
 export const datatugBusinessCheckoutLiveEnabled = false;
+
+// No analytics in a development or end-to-end build.
+export const datatugGoogleAnalyticsMeasurementId: string | undefined =
+  undefined;
 
 const useNgrok = window.location.hostname.includes('.ngrok.');
 const useSSL = useNgrok || window.location.hostname == 'local-app.sneat.ws';
@@ -16,7 +25,8 @@ const emulator: IFirebaseEmulatorConfig = {
     : useSSL
       ? 'local-fb-auth.sneat.ws'
       : nonSecureEmulatorHost,
-  firestorePort: useSSL ? 443 : 8080,
+  // Keep the DataTug local stack separate from the shared DALgo emulator on 8080.
+  firestorePort: useSSL ? 443 : 8180,
   firestoreHost: useNgrok
     ? window.location.hostname
     : useSSL
@@ -24,7 +34,10 @@ const emulator: IFirebaseEmulatorConfig = {
       : nonSecureEmulatorHost,
 };
 
-export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
+export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
+  hostedCloudLogsEnabled: boolean;
+} = {
+  hostedCloudLogsEnabled: true,
   production: false,
   useNgrok,
   agents: {},
@@ -47,3 +60,9 @@ export const datatugAppEnvironmentConfig: IEnvironmentConfig = {
 export const datatugDemoConfig: DatatugDemoConfig = {
   enabled: true,
 };
+
+// No DataTug API override: DataTug calls use SneatApiBaseUrl, as before.
+// The Business project preview build replaces this file (environment.business-preview.ts).
+export const datatugEnvironmentProviders: Provider[] = [
+  { provide: PUBLIC_OVDB_DEV_TRANSPORT, useValue: PUBLIC_OVDB_LOOPBACK_MODE },
+];

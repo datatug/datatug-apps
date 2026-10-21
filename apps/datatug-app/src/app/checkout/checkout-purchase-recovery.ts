@@ -10,12 +10,14 @@ import {
 import { appCheckoutAuth } from './checkout-auth';
 import { checkoutApi } from './checkout-api.mjs';
 import { checkoutRail } from './checkout-config.mjs';
+import { DATATUG_CHECKOUT_FORCE_TEST } from './checkout-force-test';
 
 export function purchaseRecoveryPort(
   authState: SneatAuthStateService,
   users: SneatUserService,
   router: Router,
   normalOrigin: string,
+  forceTest: boolean,
 ): SubscriptionRecoveryPort {
   const auth = appCheckoutAuth(
     authState,
@@ -32,6 +34,7 @@ export function purchaseRecoveryPort(
         `plan=pro&period=monthly${mode === 'test' ? '&checkout=test' : ''}`,
         false,
         normalOrigin,
+        forceTest,
       );
       if (!rail || rail.mode !== mode) throw new Error('Invalid recovery rail');
       const page = (await checkoutApi(rail, auth).purchases(after)) as {
@@ -111,6 +114,12 @@ export function provideCheckoutPurchaseRecovery(): Provider {
   return {
     provide: SUBSCRIPTION_RECOVERY,
     useFactory: purchaseRecoveryPort,
-    deps: [SneatAuthStateService, SneatUserService, Router, SneatApiBaseUrl],
+    deps: [
+      SneatAuthStateService,
+      SneatUserService,
+      Router,
+      SneatApiBaseUrl,
+      DATATUG_CHECKOUT_FORCE_TEST,
+    ],
   };
 }

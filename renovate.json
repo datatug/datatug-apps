@@ -2,5 +2,27 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "rebaseWhen": "conflicted",
+  "platformAutomerge": true,
+  "packageRules": [
+    {
+      "description": "Non-major updates land on their own: Renovate enables GitHub auto-merge, so a green PR joins the main merge queue without a human. The queue tests it on top of the latest main, so the branch is never rebased just to stay current (rebaseWhen: conflicted). A merge deploys to production, so a release must be 3 days old first: most broken releases are yanked or patched by then.",
+      "matchUpdateTypes": [
+        "minor",
+        "patch",
+        "pin",
+        "digest"
+      ],
+      "minimumReleaseAge": "3 days",
+      "automerge": true
+    },
+    {
+      "description": "pnpm-workspace.yaml defaults minimumReleaseAge to 1 day (1440 min) and pnpm install fails on younger @sneat/* versions; wait 2 days so Renovate never proposes a version pnpm will reject.",
+      "matchPackageNames": [
+        "@sneat/**"
+      ],
+      "minimumReleaseAge": "2 days"
+    }
   ]
 }

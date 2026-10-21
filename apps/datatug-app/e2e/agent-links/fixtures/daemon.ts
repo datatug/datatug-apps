@@ -1,4 +1,4 @@
-import { test as base, expect } from '@playwright/test';
+import { test as base, expect } from '../../helpers/demodb-guard';
 import { spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as os from 'node:os';
@@ -43,15 +43,36 @@ export interface LinkDaemon {
   readonly port: number;
   /** A fresh link (with a fresh one-time code) as a path for `page.goto`, minted by `datatug daemon url`. */
   link(req: LinkRequest): string;
+  /** The version of the datatug binary, e.g. `0.102.1`; empty when `datatug version` did not print one. */
+  readonly cliVersion: string;
+  /** Whether the binary is at least `min` (a `major.minor.patch` string); false when its version is unknown. */
+  cliAtLeast(min: string): boolean;
   /** Whether the binary stores query results (`query run --result-id`, `daemon url --result`). */
   readonly supportsResults: boolean;
   /** Stores a query result under `id` with `datatug query run <args> --result-id <id>` (no row reaches stdout). */
   writeResult(id: string, args: readonly string[]): void;
+  /** Whether the binary records a prompt on a stored result (the `annotate` verb of `results`, datatug-cli#431). */
+  readonly supportsPrompt: boolean;
+  /** Records `text` as the prompt of the stored result `id` (the text goes in on stdin, never in an argument). */
+  annotate(id: string, text: string): void;
   /** A fresh link to a stored result, minted by `datatug daemon url --result`. */
   resultLink(id: string, view?: string, row?: number): string;
   /** Stops the daemon (for the agent-unreachable state); `start()` starts it again. */
   stop(): void;
   start(): void;
+}
+
+/** Whether the version `version` (`1.2.3`, a `v` prefix and a suffix are ignored) is at least `min`. */
+export function versionAtLeast(version: string, min: string): boolean {
+  const parse = (v: string) =>
+    (/(\d+)\.(\d+)\.(\d+)/.exec(v) ?? []).slice(1).map(Number);
+  const a = parse(version);
+  const b = parse(min);
+  if (a.length !== 3 || b.length !== 3) return false;
+  for (let i = 0; i < 3; i++) {
+    if (a[i] !== b[i]) return a[i] > b[i];
+  }
+  return true;
 }
 
 type Resolved<T> = { ok: true; value: T } | { ok: false; skipReason: string };
@@ -103,6 +124,9 @@ function resolveBinary(): Resolved<string> {
 const chinook = path.join(os.homedir(), 'datatug', 'dbs', 'chinook-local.sqlite');
 
 export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
+  // This lane only talks to a local agent: count and detect DemoDB requests but install no route, for the tests of THIS fixture
+  // only (see `demodbPassive` in helpers/demodb-guard.ts).
+  demodbPassive: [true, { option: true }] as never,
   linkDaemon: [
     // eslint-disable-next-line no-empty-pattern
     async ({}, use, workerInfo) => {
@@ -157,9 +181,25 @@ export const test = base.extend<object, { linkDaemon: LinkDaemon }>({
       };
       const port = start();
       const help = spawnSync(bin.value, ['daemon', 'url', '--help'], { env, cwd, encoding: 'utf8' });
+      const storeHelp = spawnSync(bin.value, ['query', 'results', '--help'], { env, cwd, encoding: 'utf8' });
+      // `datatug version` prints `datatug 0.102.1 (<commit>) <date>`.
+      const versionOut = spawnSync(bin.value, ['version'], { env, cwd, encoding: 'utf8' });
+      const cliVersion = /(\d+\.\d+\.\d+)/.exec(versionOut.stdout)?.[1] ?? '';
       const daemon: LinkDaemon = {
         port,
+        cliVersion,
+        cliAtLeast: (min) => versionAtLeast(cliVersion, min),
         supportsResults: `${help.stdout}${help.stderr}`.includes('--result'),
+        supportsPrompt: `${storeHelp.stdout}${storeHelp.stderr}`.includes('annotate'),
+        annotate: (id, text) => {
+          const r = spawnSync(
+            bin.value,
+            ['query', 'results', 'annotate', '--id', id, '--prompt-stdin'],
+            { env, cwd, input: text, encoding: 'utf8' },
+          );
+          // Neither the text nor the CLI's output is put in the message.
+          if (r.status !== 0) throw new Error(`annotating a result exited ${r.status}`);
+        },
         writeResult: (id, args) => {
           const out = run(['query', 'run', ...args, '--result-id', id, '--format', 'json']);
           expect(out['resultFiles']).toBeDefined();

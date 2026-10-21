@@ -5,6 +5,23 @@
   "sourceRoot": "apps/datatug-app/src",
   "prefix": "sneat",
   "targets": {
+    "e2e-meanings": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-meanings-e2e"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.meanings.config.ts --forbid-only"
+      }
+    },
+    "typecheck-showcase-e2e": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit --project apps/datatug-app/tsconfig.showcase-e2e.json"
+      },
+      "cache": false,
+      "inputs": ["default"],
+      "outputs": []
+    },
     "stamp-build-info": {
       "executor": "nx:run-commands",
       "options": {
@@ -167,6 +184,26 @@
               "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
             }
           ]
+        },
+        "business-preview": {
+          "optimization": false,
+          "extractLicenses": false,
+          "sourceMap": true,
+          "namedChunks": true,
+          "fileReplacements": [
+            {
+              "replace": "apps/datatug-app/src/environments/environment.ts",
+              "with": "apps/datatug-app/src/environments/environment.business-preview.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/build-info.ts",
+              "with": "apps/datatug-app/src/build-info.generated.ts"
+            },
+            {
+              "replace": "apps/datatug-app/src/ag-grid-license.ts",
+              "with": "apps/datatug-app/src/ag-grid-license.generated.ts"
+            }
+          ]
         }
       },
       "defaultConfiguration": "production"
@@ -183,10 +220,18 @@
           "buildTarget": "datatug-app:build:production"
         },
         "development": {
-          "buildTarget": "datatug-app:build:development"
+          "buildTarget": "datatug-app:build:development",
+          "host": "127.0.0.1",
+          "allowedHosts": ["datatug.localhost"],
+          "proxyConfig": "tools/public-ovdb-proxy.cjs"
         },
         "sso-e2e": {
           "buildTarget": "datatug-app:build:sso-e2e"
+        },
+        "business-preview": {
+          "buildTarget": "datatug-app:build:business-preview",
+          "port": 18782,
+          "proxyConfig": "tools/public-ovdb-proxy.cjs"
         }
       },
       "defaultConfiguration": "development",
@@ -255,6 +300,14 @@
         "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite.config.ts --forbid-only"
       }
     },
+    "e2e-demo-sqlite-adventureworks": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite-adventureworks.config.ts --forbid-only"
+      }
+    },
     "e2e-demo-postgresql": {
       "executor": "nx:run-commands",
       "cache": false,
@@ -286,12 +339,36 @@
         "command": "playwright test -c apps/datatug-app/playwright.context-bag-provider.config.ts --forbid-only"
       }
     },
+    "e2e-business-preview": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-business-preview"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.business-preview.config.ts --forbid-only"
+      }
+    },
     "e2e-checkout": {
       "executor": "nx:run-commands",
       "cache": false,
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-checkout"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.checkout.config.ts --forbid-only"
+      }
+    },
+    "e2e-cloud-logs": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-cloud-logs"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.cloud-logs.config.ts --forbid-only"
+      }
+    },
+    "e2e-hosted-incidents": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-hosted-incidents"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.hosted-incidents.config.ts --forbid-only"
       }
     }
   }

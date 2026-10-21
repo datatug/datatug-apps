@@ -1,4 +1,5 @@
-import { expect, test, type Locator } from '@playwright/test';
+import { type Locator } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 
 async function scrollGridToLastRow(grid: Locator): Promise<void> {
   await grid.evaluate((host: HTMLElement) => {
@@ -228,13 +229,22 @@ test('composer can add a provider and restore it after reload', async ({ page })
   await page.reload();
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
   await page.setViewportSize({ width: 390, height: 800 });
-  const input = await page.locator('ion-footer ion-input').boundingBox();
-  const dropdown = await page.locator('ion-footer ion-select').boundingBox();
-  const send = await page.locator('ion-footer ion-button').boundingBox();
-  if (!input || !dropdown || !send) throw new Error('The composer controls must be visible.');
-  expect(dropdown.x).toBeGreaterThan(input.x + input.width);
-  expect(send.x).toBeGreaterThan(dropdown.x + dropdown.width);
-  expect(send.x + send.width).toBeLessThanOrEqual(390);
+  await expect.poll(() => page.locator('ion-footer').evaluate((footer) => {
+    const controls = ['ion-input', 'ion-select', 'ion-button'].map((selector) => {
+      const element = footer.querySelector(selector);
+      if (!element) return null;
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      return { rect, visible: rect.width > 0 && rect.height > 0 && style.visibility !== 'hidden' && style.display !== 'none' };
+    });
+    const [input, dropdown, send] = controls;
+    return {
+      visible: controls.every((control) => control?.visible === true),
+      inputBeforeProvider: !!input && !!dropdown && input.rect.right < dropdown.rect.left,
+      providerBeforeSend: !!dropdown && !!send && dropdown.rect.right < send.rect.left,
+      sendWithinViewport: !!send && send.rect.right <= 390,
+    };
+  })).toEqual({ visible: true, inputBeforeProvider: true, providerBeforeSend: true, sendWithinViewport: true });
   const stored = await page.evaluate(() => ({
     providers: JSON.parse(localStorage.getItem('datatug.chat.providers.v1') || '[]') as { id: string; name: string }[],
     selected: localStorage.getItem('datatug.chat.selected-provider.v1'),

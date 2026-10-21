@@ -70,20 +70,26 @@ describe('HomePage', () => {
 describe('HomePage header & footer (UX brief §1/§2/§14)', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('signed out (no home panel): header carries brand AND motto', () => {
-    // The panel is hidden while signed out on home (founder 2026-10-14: "no
-    // empty side panel"), so the header owns the brand it used to live in.
-    const fixture = configure('notAuthenticated');
-    const title = fixture.nativeElement.querySelector('ion-title');
-    expect(title.innerHTML).toContain('DataTug.app');
-    expect(title.innerHTML).toContain(PRODUCT_PROFILES.datatug.motto);
-  });
+  it.each(['notAuthenticated', 'authenticated'] as const)(
+    '%s: Home header carries brand, motto, and menu affordance',
+    (status) => {
+      const fixture = configure(status);
+      const title = fixture.nativeElement.querySelector('ion-title');
+      expect(title.innerHTML).toContain('DataTug.app');
+      expect(title.innerHTML).toContain(PRODUCT_PROFILES.datatug.motto);
+      expect(
+        fixture.nativeElement.querySelector('[data-testid="home-menu-button"]'),
+      ).toBeTruthy();
+    },
+  );
 
-  it('signed in (panel visible): header shows the motto only, never the brand', () => {
-    const fixture = configure('authenticated');
+  it('keeps the existing authenticated header for profiles without the DataTug Home menu', () => {
+    const fixture = configure('authenticated', PRODUCT_PROFILES.incidentius);
     const title = fixture.nativeElement.querySelector('ion-title');
-    expect(title.innerHTML).toContain(PRODUCT_PROFILES.datatug.motto);
-    expect(title.innerHTML).not.toContain('DataTug.app');
+    expect(title.innerHTML).not.toContain('Incidentius');
+    expect(
+      fixture.nativeElement.querySelector('[data-testid="home-menu-button"]'),
+    ).toBeNull();
   });
 
   it('renders Sign in in the app header when not authenticated', () => {
@@ -100,15 +106,19 @@ describe('HomePage header & footer (UX brief §1/§2/§14)', () => {
     ).toBeNull();
   });
 
-  it('main-content footer carries the single app-version block, with the DALgo attribution as a standalone line after it', () => {
+  it('places the profile-conditional DALgo badge beside the app-version row', () => {
     const fixture = configure(undefined);
     const footer = fixture.nativeElement.querySelector('.home-footer');
     const version = footer.querySelector('sneat-app-version');
     const credit = footer.querySelector('[data-testid="powered-by-dalgo"]');
     expect(version).toBeTruthy();
     expect(credit).toBeTruthy();
-    // "Powered by DALgo" is outside the version block, its own line (brief §14).
+    expect(version.parentElement).toBe(footer);
+    expect(credit.closest('.home-footer')).toBe(footer);
+    expect(credit.classList.contains('powered-by-badge')).toBe(true);
+    expect(footer.classList.contains('home-footer')).toBe(true);
     expect(credit.closest('sneat-app-version')).toBeNull();
+    expect(credit.closest('ion-item')).toBeNull();
     expect(credit.closest('ion-card')).toBeNull();
   });
 
@@ -130,7 +140,7 @@ describe('HomePage header & footer (UX brief §1/§2/§14)', () => {
 describe('HomePage composition', () => {
   afterEach(() => TestBed.resetTestingModule());
 
-  it('uses a compact value proposition and the standard full-width card header', () => {
+  it('pairs the home value proposition with the hero image without a redundant card header', () => {
     const fixture = configure('notAuthenticated');
     const hero = fixture.nativeElement.querySelector(
       '[data-testid="home-hero"]',
@@ -141,17 +151,18 @@ describe('HomePage composition', () => {
     expect(hero.querySelector('.hero-copy')?.textContent).toContain(
       'connected data, and saved queries together',
     );
-    expect(
-      hero.querySelector('ion-list[lines="full"] ion-item[color="light"]'),
-    ).toBeTruthy();
+    expect(hero.querySelector('ion-item[color="light"]')).toBeNull();
+    const image = hero.querySelector('img.hero-visual');
+    expect(image?.getAttribute('src')).toBe('assets/home/hero-data-panorama.webp');
+    expect(image?.getAttribute('alt')).toContain('tugboat');
+    expect(hero.querySelector('ion-list')).toBeNull();
   });
-
-  it('keeps the Detective promotion honest about its private demo flow', () => {
+  it('offers a private Incident-first entry without claiming the public demo is writable', () => {
     const fixture = configure('notAuthenticated');
     const headings = Array.from(
       fixture.nativeElement.querySelectorAll('h2') as NodeListOf<Element>,
     ).map((heading) => heading.textContent?.trim());
-    expect(headings).toContain('Start a private Detective demo');
+    expect(headings).toContain('Record an Incident in a private project');
     expect(fixture.nativeElement.textContent).not.toContain(
       'Try Detective with real checks',
     );

@@ -1,3 +1,20 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { HeldRowEvidenceComponent } from '../../../../evidence/held-row-evidence.component';
+import { RetainedEvidenceViewerComponent } from '../../../../evidence/retained-evidence-viewer.component';
+import { heldEvidenceIdentity } from '../../../../evidence/retained-evidence-contract';
+import { requireAppliedInputMatch } from '../../../../evidence/applied-evidence';
+import { useNativeRunLifetime } from '../../../../evidence/native-run-lifetime';
+import { RetainedRunIntent } from '../../../../evidence/run-intent';
+import {
+  nativeQueryDiagnostic,
+  nativeQueryDiagnosticMessage,
+} from '../../../../queries/native-query-failure';
+import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
+import {
+  admitComparisonChart,
+  filterHeldOrders,
+} from './held-presentation-admission';
+import { prepareGroupedBars } from '../held-result-presentation/grouped-bars';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -6,50 +23,68 @@ import {
   effect,
   inject,
   input,
+  output,
   WritableSignal,
   untracked,
 } from '@angular/core';
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { IonButton } from '@ionic/angular';
 import {
   BoardWidget,
   ChartWidgetDef,
+  ChartSpec,
   SQLWidgetDef,
   TabsWidgetDef,
 } from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
-import { equalProjectRef } from '../../../../core/project-context';
+import {
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../../../../core/project-context';
 import { projectPageHref } from '../../../../nav/project-page-href';
 import { QueryType } from '../../../../models/definition/query-def';
 import { IQueryDef } from '../../../../models/definition/query-def';
-import { firstValueFrom, timeout } from 'rxjs';
+import { firstValueFrom, fromEvent, takeUntil, timeout } from 'rxjs';
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
 import { QueryDispatchError } from '../../../../queries/query-dispatch';
 import type { QueryRuntimeOption } from '../../../../queries/query-runtime-registry.service';
 import {
+  chartEvidenceError,
+  decodeResult,
+  prepareEvidenceChart,
+  type PreparedEvidenceChart,
+  type HeldEvidenceIdentity,
+  type EvidenceInspection,
   prepareBarRace,
+  prepareOrdersMonthlyTrend,
   transformOrdersMonthlyCountryCount,
   SourceRightsNoticeComponent,
   type BrowserPublicApiChartRecordset,
+  type BrowserSqliteChartRecordset,
+  type ServerChartRecordset,
   type TypedValue,
 } from '@sneat/datatug-semantic';
-import { BarRaceChartComponent, type BarRaceChartViews } from '@datatug/charts';
+import {
+  EvidenceChartComponent,
+  BarRaceChartComponent,
+  OrdersMonthlyTrendComponent,
+  type BarRaceChartViews,
+} from '@datatug/charts';
 import {
   HeldResultPresentationComponent,
   type CategoryBarFields,
 } from '../held-result-presentation/held-result-presentation.component';
-import {
-  executeSavedPublicChartQuery,
-  isSavedPublicChartQueryId,
-  executeSavedPublicInspectQuery,
-  isSavedPublicInspectQueryId,
-} from '../../../../queries/public-data/public-chart-query';
 import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
+import { isSavedPublicChartQueryId } from '../../../../queries/public-data/public-chart-query';
+import {
+  BoardQueryResults,
+  boardExecutionCacheKey,
+} from '../../../core/board-query-results.service';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -61,9 +96,15 @@ import { MAX_NESTED_TAB_DEPTH, widgetAtTabPath } from './nested-tab-path';
 
 export interface BoardResultSnapshot {
   readonly queryId: string;
-  readonly result: FederatedQueryResult | BrowserPublicApiChartRecordset;
+  readonly result:
+    | FederatedQueryResult
+    | BrowserPublicApiChartRecordset
+    | BrowserSqliteChartRecordset
+    | ServerChartRecordset;
   readonly identity?: string;
   readonly previous?: BoardResultSnapshot;
+  /** Authenticated retained provider identity; never derived from sidecar or UI. */
+  readonly evidenceIdentity?: HeldEvidenceIdentity;
 }
 
 @Component({
@@ -72,15 +113,45 @@ export interface BoardResultSnapshot {
   styleUrl: './board-widget.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RetainedEvidenceViewerComponent,
+    HeldRowEvidenceComponent,
+    EvidenceChartComponent,
     TabsWidgetComponent,
     RouterLink,
     IonButton,
+    EvidenceChartComponent,
     BarRaceChartComponent,
+    OrdersMonthlyTrendComponent,
     HeldResultPresentationComponent,
     SourceRightsNoticeComponent,
   ],
 })
 export class BoardWidgetComponent {
+  readonly presentationSelection = inject(BoardPresentationSelection, {
+    optional: true,
+  });
+  readonly selectedCountry = computed(() =>
+    this.presentationSelection?.value(this.chartWidgetDef()?.chart.selectionId),
+  );
+  readonly filteredPresentation = computed(() => {
+    const filter = this.sqlWidgetDef()?.sql.presentationFilter;
+    return filterHeldOrders(
+      this.result(),
+      this.queryId() ?? '',
+      filter,
+      this.presentationSelection?.value(filter?.selectionId),
+    );
+  });
+  clearCountry(): void {
+    this.presentationSelection?.clear(
+      this.sqlWidgetDef()?.sql.presentationFilter?.selectionId ??
+        this.chartWidgetDef()?.chart.selectionId,
+    );
+  }
+  selectCountry(country: string): void {
+    const id = this.chartWidgetDef()?.chart.selectionId;
+    if (id) this.presentationSelection?.select(id, country);
+  }
   private readonly tutorialRuntime = inject(TutorialBoardRuntime, {
     optional: true,
   });
@@ -91,6 +162,55 @@ export class BoardWidgetComponent {
   });
   private readonly queries = inject(QueriesService);
   private readonly dispatcher = inject(QueryDispatchService);
+  private readonly heldQueries = inject(BoardQueryResults, { optional: true });
+  private readonly nativeRunLifetime = useNativeRunLifetime();
+  private readonly retainedIntent = new RetainedRunIntent();
+  readonly retainedPending = signal(false);
+  readonly retainedReviewed = signal(false);
+  async reviewRetainedRun(): Promise<void> {
+    const ref = this.projectRef(),
+      id = this.boardId(),
+      read = this.readBoardForRun();
+    if (!ref || !id || !read || this.running()) return;
+    const key = this.executionIdentity();
+    this.retainedReviewed.set(false);
+    try {
+      const lifetime = this.nativeRunLifetime.capture(
+        ref,
+        this.choices.actor(),
+        this.definition()?.connectionId === 'shipping-working-copy' ||
+          this.boardContext()?.evidenceSelection
+          ? {
+              sourceId: 'shipping-working-copy',
+              environment: this.boardContext()?.environment || '',
+            }
+          : undefined,
+      );
+      await firstValueFrom(
+        read(ref, id).pipe(
+          takeUntil(fromEvent(lifetime.signal, 'abort')),
+          timeout(15000),
+        ),
+      );
+      if (
+        !lifetime.signal.aborted &&
+        key === this.executionIdentity() &&
+        this.retainedPending()
+      )
+        this.retainedReviewed.set(true);
+    } catch {
+      this.runError.set(
+        'Current board rights could not be refreshed. Original run may already be attached.',
+      );
+    }
+  }
+  abandonRetainedRun(): void {
+    if (!this.retainedReviewed() || this.running()) return;
+    this.retainedIntent.abandonReviewed();
+    this.retainedPending.set(false);
+    this.retainedReviewed.set(false);
+  }
+
   private readonly destroyRef = inject(DestroyRef);
   private activeRun?: AbortController;
   private activeIdentity?: string;
@@ -128,7 +248,7 @@ export class BoardWidgetComponent {
       revision: this.dispatcher.runtimeRevision(),
     }),
   );
-  readonly result = computed(() => {
+  readonly heldSnapshot = computed(() => {
     const identity = this.executionIdentity();
     for (
       let snapshot = this.snapshotStore()();
@@ -136,10 +256,48 @@ export class BoardWidgetComponent {
       snapshot = snapshot.previous
     ) {
       if (snapshot.queryId === this.queryId() && snapshot.identity === identity)
-        return snapshot.result;
+        return snapshot;
     }
     return undefined;
   });
+  readonly result = computed(() => this.heldSnapshot()?.result);
+  readonly evidenceKind = computed(() =>
+    ['timeline', 'timing-bars', 'heatmap'].includes(
+      this.chartWidgetDef()?.chart.type ?? '',
+    ),
+  );
+  private readonly preparedEvidenceIdentity = signal('');
+  private readonly preparedEvidenceInputs = signal<
+    { snapshot: BoardResultSnapshot; chart: ChartSpec } | undefined
+  >(undefined);
+  private readonly heldPreparedEvidence = signal<PreparedEvidenceChart | null>(
+    null,
+  );
+  readonly preparedEvidence = computed(() =>
+    this.preparedEvidenceIdentity() === this.executionIdentity() &&
+    this.preparedEvidenceInputs()?.snapshot === this.heldSnapshot() &&
+    this.preparedEvidenceInputs()?.chart === this.chartWidgetDef()?.chart
+      ? this.heldPreparedEvidence()
+      : null,
+  );
+  readonly evidenceError = signal<string | null>(null);
+  readonly preparingEvidence = signal(false);
+  readonly inspectedEvidence = signal<EvidenceInspection | undefined>(
+    undefined,
+  );
+  readonly inspectEvidence = output<EvidenceInspection>();
+  inspectHeldEvidence(value: EvidenceInspection): void {
+    if (
+      !this.preparedEvidence() ||
+      !this.result() ||
+      this.preparedEvidenceIdentity() !== this.executionIdentity() ||
+      this.running() ||
+      this.preparingEvidence()
+    )
+      return;
+    this.inspectedEvidence.set(value);
+    this.inspectEvidence.emit(value);
+  }
   readonly showcase = computed(() => {
     const ref = this.projectRef();
     if (
@@ -157,16 +315,13 @@ export class BoardWidgetComponent {
       return false;
     }
   });
-  readonly publicQuery = computed(() => {
-    const id = this.queryId();
+  readonly browserSnapshot = computed(() => {
+    const result = this.result();
     return (
-      this.showcase() &&
-      !!id &&
-      (isSavedPublicChartQueryId(id) ||
-        (this.widgetDef()?.name === 'SQL' && isSavedPublicInspectQueryId(id)))
+      !!result && 'runtime' in result && result.runtime === 'browser-sqlite'
     );
   });
-  readonly chartView = signal<'chart' | 'grid'>('chart');
+  readonly chartView = signal<'chart' | 'grid' | 'trend'>('chart');
   readonly chartWidgetDef = computed(() =>
     this.widgetDef()?.name === 'chart'
       ? (this.widgetDef()?.data as ChartWidgetDef)
@@ -190,21 +345,56 @@ export class BoardWidgetComponent {
       ? {
           categoryColumn: widget.chart.categoryColumn,
           measureColumn: widget.chart.valueColumn,
+          series: widget.chart.series,
           title: widget.title ?? 'Query results',
           unit: widget.chart.unit,
         }
       : null;
   });
+  private readonly raceDefinition = computed(
+    () => {
+      const widget = this.chartWidgetDef();
+      return widget?.chart.type === 'bar-race'
+        ? { chart: widget.chart, transform: widget.sources[0]?.transform }
+        : undefined;
+    },
+    { equal: (left, right) => JSON.stringify(left) === JSON.stringify(right) },
+  );
+  readonly monthlyTrend = computed(() => {
+    const race = this.raceDefinition(),
+      result = this.result();
+    if (!race?.transform)
+      return {
+        error: 'Monthly trend requires the declared raw Orders transform.',
+      };
+    if (!result) return {};
+    if (
+      !('runtime' in result) ||
+      !['browser-public-api', 'browser-sqlite', 'server'].includes(
+        result.runtime,
+      )
+    )
+      return {
+        error: 'Monthly trend requires a complete admitted Orders result.',
+      };
+    const trend = prepareOrdersMonthlyTrend(result, race.transform);
+    return trend.ok ? { data: trend.data } : { error: trend.message };
+  });
   readonly preparedRace = computed<{
     views?: BarRaceChartViews;
     error?: string;
   }>(() => {
-    const widget = this.chartWidgetDef();
+    const race = this.raceDefinition();
     const result = this.result();
-    if (widget?.chart?.type !== 'bar-race' || !result) return {};
-    if (!('runtime' in result) || result.runtime !== 'browser-public-api')
+    if (!race || !result) return {};
+    if (
+      !('runtime' in result) ||
+      !['browser-public-api', 'browser-sqlite', 'server'].includes(
+        result.runtime,
+      )
+    )
       return { error: 'This race requires an admitted public chart result.' };
-    const transform = widget.sources[0]?.transform;
+    const transform = race.transform;
     const transformed = transform
       ? transformOrdersMonthlyCountryCount(result, transform)
       : undefined;
@@ -212,12 +402,12 @@ export class BoardWidgetComponent {
     const source = transformed?.ok ? transformed.data.recordset : result;
     const spec = {
       kind: 'bar-race' as const,
-      periodColumn: widget.chart.periodColumn,
-      categoryColumn: widget.chart.categoryColumn,
-      measureColumn: widget.chart.valueColumn,
-      unit: widget.chart.unit,
-      onDuplicate: widget.chart.onDuplicate,
-      topN: widget.chart.topN,
+      periodColumn: race.chart.periodColumn,
+      categoryColumn: race.chart.categoryColumn,
+      measureColumn: race.chart.valueColumn,
+      unit: race.chart.unit,
+      onDuplicate: race.chart.onDuplicate,
+      topN: race.chart.topN,
     };
     const period = prepareBarRace(source, { ...spec, mode: 'period' });
     const cumulative = prepareBarRace(source, { ...spec, mode: 'cumulative' });
@@ -236,6 +426,8 @@ export class BoardWidgetComponent {
     return result && !('runtime' in result) ? result : undefined;
   });
   readonly runError = signal<string | undefined>(undefined);
+  /** Retained locally for inspection/tests; never rendered or sent to logging. */
+  readonly runFailure = signal<unknown>(undefined);
   readonly choiceError = signal<string | undefined>(undefined);
   readonly unsupportedReason = signal<string | undefined>(undefined);
   readonly definitionLoading = signal(false);
@@ -272,8 +464,10 @@ export class BoardWidgetComponent {
   readonly tabsWidgetDef = computed(
     () => this.widgetDef()?.data as TabsWidgetDef | undefined,
   );
-  readonly sqlWidgetDef = computed(
-    () => this.widgetDef()?.data as SQLWidgetDef | undefined,
+  readonly sqlWidgetDef = computed(() =>
+    this.widgetDef()?.name === 'SQL'
+      ? (this.widgetDef()?.data as SQLWidgetDef | undefined)
+      : undefined,
   );
   readonly queryId = computed(() =>
     this.widgetDef()?.name === 'chart'
@@ -299,11 +493,107 @@ export class BoardWidgetComponent {
     return { ...ref, projectId: githubProjectAddressForRef(ref) };
   }
 
+  private readonly initialPresentationView = computed(
+    () => {
+      const active =
+        !!this.sessionOnly() &&
+        !!this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId());
+      return {
+        scope: JSON.stringify([
+          this.projectRef(),
+          this.boardId(),
+          this.cardId(),
+          this.widgetPath(),
+          active,
+        ]),
+        view:
+          (active
+            ? this.tutorialRuntime?.presentationView(
+                this.cardId(),
+                this.widgetPath(),
+              )
+            : undefined) ??
+          this.chartWidgetDef()?.defaultView ??
+          'chart',
+      };
+    },
+    {
+      equal: (left, right) =>
+        left.scope === right.scope && left.view === right.view,
+    },
+  );
+
   constructor() {
-    effect(() =>
-      this.chartView.set(this.chartWidgetDef()?.defaultView ?? 'chart'),
-    );
+    this.nativeRunLifetime.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.activeRun?.abort();
+      this.heldQueries?.invalidate();
+      this.retainedIntent.clearHeld();
+      this.retainedPending.set(false);
+      this.retainedReviewed.set(false);
+      this.snapshotStore().set(undefined);
+      this.inspectedEvidence.set(undefined);
+    });
+    effect((onCleanup) => {
+      const chart = this.chartWidgetDef()?.chart;
+      const held = this.heldSnapshot();
+      const currentIdentity = this.executionIdentity();
+      const result = this.result();
+      const running = this.running();
+      this.heldPreparedEvidence.set(null);
+      this.preparedEvidenceIdentity.set('');
+      this.preparedEvidenceInputs.set(undefined);
+      this.inspectedEvidence.set(undefined);
+      this.evidenceError.set(null);
+      this.preparingEvidence.set(false);
+      if (!chart || !this.evidenceKind() || !result || running) return;
+      const identity = held?.evidenceIdentity;
+      if (!identity || !held) {
+        this.evidenceError.set(
+          'Retained source identity is unavailable for this result. The server must provide admitted execution evidence.',
+        );
+        return;
+      }
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+      this.preparingEvidence.set(true);
+      try {
+        const core = decodeResult(result);
+        void prepareEvidenceChart(chart, core, identity)
+          .then(
+            (data) => {
+              if (!cancelled) {
+                this.heldPreparedEvidence.set(data);
+                this.preparedEvidenceIdentity.set(currentIdentity);
+                this.preparedEvidenceInputs.set({ snapshot: held, chart });
+              }
+            },
+            (error: unknown) => {
+              if (!cancelled)
+                this.evidenceError.set(
+                  error instanceof Error
+                    ? error.message
+                    : 'Held evidence is unavailable.',
+                );
+            },
+          )
+          .finally(() => {
+            if (!cancelled) this.preparingEvidence.set(false);
+          });
+      } catch (error) {
+        this.evidenceError.set(
+          error instanceof Error
+            ? error.message
+            : 'Held evidence is unavailable.',
+        );
+        this.preparingEvidence.set(false);
+      }
+    });
+    effect(() => this.chartView.set(this.initialPresentationView().view));
     this.destroyRef.onDestroy(() => {
+      const id = this.chartWidgetDef()?.chart.selectionId;
+      if (id) this.presentationSelection?.clear(id);
       this.destroyed = true;
       this.generation++;
       this.activeRun?.abort();
@@ -327,6 +617,7 @@ export class BoardWidgetComponent {
       this.workingCopies.set([]);
       if (!this.resultSnapshot()) this.ownSnapshot.set(undefined);
       this.runError.set(undefined);
+      this.runFailure.set(undefined);
       this.choiceError.set(undefined);
       this.running.set(false);
       this.unsupportedReason.set(undefined);
@@ -412,7 +703,7 @@ export class BoardWidgetComponent {
         );
         queueMicrotask(() => {
           if (!this.destroyed && this.executionIdentity() === identity)
-            void this.run();
+            void this.run(true);
         });
       });
     });
@@ -456,12 +747,16 @@ export class BoardWidgetComponent {
       )
     )
       return 'This widget uses a query language this board cannot run.';
-    if (definition.federation)
-      return 'This saved query needs its admitted federation session. Open it to run the full query.';
     return undefined;
   }
 
   projectRuntimeLabel(): string {
+    if (
+      (this.definition()?.federation ||
+        isSavedPublicChartQueryId(this.queryId() ?? '')) &&
+      this.selectedRuntimeId() === 'snapshot'
+    )
+      return 'Read-only OVDB server';
     switch (this.boardContext()?.executionTarget?.kind) {
       case 'local-agent':
         return 'Local agent';
@@ -472,9 +767,7 @@ export class BoardWidgetComponent {
       case 'ovdb-connection':
         return 'OVDB connection';
       default:
-        return this.publicQuery()
-          ? 'Verified public API'
-          : 'Published browser snapshot';
+        return 'Published browser snapshot';
     }
   }
 
@@ -482,10 +775,11 @@ export class BoardWidgetComponent {
     if (selectionId === this.selectedRuntimeId()) return;
     this.activeRun?.abort();
     this.runError.set(undefined);
+    this.runFailure.set(undefined);
     this.selectedRuntimeId.set(selectionId);
   }
 
-  async run(): Promise<void> {
+  async run(reuse = false): Promise<void> {
     const ref = this.projectRef();
     const boardId = this.boardId();
     const cardId = this.cardId();
@@ -505,7 +799,8 @@ export class BoardWidgetComponent {
     )
       return;
     if (
-      !this.publicQuery() &&
+      !this.definition()?.federation &&
+      !isSavedPublicChartQueryId(queryId) &&
       this.definition()?.request.queryType !== QueryType.SQL &&
       this.selectedRuntimeId() === 'snapshot' &&
       (!this.boardContext()?.executionTarget ||
@@ -536,9 +831,31 @@ export class BoardWidgetComponent {
     const widgetName = this.widgetDef()?.name;
     const chartDefinition = JSON.stringify(this.chartWidgetDef());
     this.runError.set(undefined);
+    this.runFailure.set(undefined);
     try {
+      const originalNative =
+        this.boardContext()?.executionTarget?.kind === 'hosted-cloud' &&
+        isSharedProjectRef(ref)
+          ? this.nativeRunLifetime.capture(
+              ref,
+              actor,
+              this.definition()?.connectionId === 'shipping-working-copy' ||
+                this.boardContext()?.evidenceSelection
+                ? {
+                    sourceId: 'shipping-working-copy',
+                    environment: this.boardContext()?.environment || '',
+                  }
+                : undefined,
+            )
+          : undefined;
+      const readSignal = originalNative
+        ? AbortSignal.any([controller.signal, originalNative.signal])
+        : controller.signal;
       const board = await firstValueFrom(
-        readBoard(ref, boardId).pipe(timeout(15000)),
+        readBoard(ref, boardId).pipe(
+          takeUntil(fromEvent(readSignal, 'abort')),
+          timeout(15000),
+        ),
       );
       if (
         !this.stillCurrent(
@@ -594,9 +911,12 @@ export class BoardWidgetComponent {
             currentWidget.name !== widgetName ||
             (widgetName === 'chart'
               ? JSON.stringify(currentWidget.data) !== chartDefinition
-              : (
-                  currentWidget.data as SQLWidgetDef | undefined
-                )?.sql?.queryId?.trim() !== queryId))
+              : JSON.stringify(
+                  (currentWidget.data as SQLWidgetDef | undefined)?.sql,
+                ) !==
+                JSON.stringify(
+                  (expectedWidget?.data as SQLWidgetDef | undefined)?.sql,
+                )))
       )
         throw new Error(
           'This board card changed. Reopen the board before running it.',
@@ -635,17 +955,6 @@ export class BoardWidgetComponent {
         return;
       const context = this.boardContext();
       const parameters = this.typedParameters(definition);
-      if (
-        this.publicQuery() &&
-        this.selectedRuntimeId() === 'snapshot' &&
-        (!context?.executionTarget ||
-          context.executionTarget.kind === 'browser-sqlite') &&
-        !context?.runtimeBinding &&
-        Object.keys(parameters).length
-      )
-        throw new QueryDispatchError(
-          'This pinned public query does not support chart parameter bindings. Open the saved query to choose a parameterized runtime.',
-        );
       const selectedRuntimeId = this.selectedRuntimeId();
       if (
         selectedRuntimeId !== 'snapshot' &&
@@ -660,48 +969,116 @@ export class BoardWidgetComponent {
         throw new Error(
           'This saved query changed. Reopen the board before running it.',
         );
-      if (
-        this.publicQuery() &&
-        selectedRuntimeId === 'snapshot' &&
-        (context?.runtimeBinding ||
-          (context?.executionTarget &&
-            context.executionTarget.kind !== 'browser-sqlite'))
-      )
-        throw new QueryDispatchError(
-          'This saved public source requires the public API runtime. Choose the public board runtime to run it.',
-        );
-      const result =
-        this.publicQuery() &&
-        selectedRuntimeId === 'snapshot' &&
-        (!context?.executionTarget ||
-          context.executionTarget.kind === 'browser-sqlite') &&
-        !context?.runtimeBinding
-          ? isSavedPublicInspectQueryId(queryId)
-            ? await executeSavedPublicInspectQuery(queryId, definition, {
-                signal: controller.signal,
-              })
-            : await executeSavedPublicChartQuery(queryId, definition, {
-                signal: controller.signal,
-              })
-          : await this.dispatcher.execute({
-              projectRef: ref,
+      const selection = context?.evidenceSelection;
+      const hosted =
+        context?.executionTarget?.kind === 'hosted-cloud' &&
+        isSharedProjectRef(ref);
+      const native = hosted
+        ? this.nativeRunLifetime.capture(
+            ref,
+            actor,
+            selection || definition.connectionId === 'shipping-working-copy'
+              ? {
+                  sourceId: 'shipping-working-copy',
+                  environment: context?.environment || '',
+                }
+              : undefined,
+          )
+        : undefined;
+      if (selection) {
+        if (
+          !hosted ||
+          selection.environment !== context?.environment ||
+          selection.choice.evidence.context.scope.environmentId !==
+            context?.environment
+        )
+          throw new Error(
+            'Choose applied context for this current hosted environment.',
+          );
+        requireAppliedInputMatch(selection.choice, parameters);
+      }
+      const intent = hosted
+        ? await this.retainedIntent.prepare(
+            JSON.stringify([
+              actor,
+              ref,
+              boardId,
+              cardId,
+              path,
               definition,
+              context,
+            ]),
+            {
               queryId,
-              environment: context?.environment,
-              ...(selectedRuntimeId !== 'snapshot'
-                ? { runtimeSelectionId: selectedRuntimeId }
-                : context?.executionTarget
-                  ? { target: context.executionTarget }
-                  : {}),
-              ...(context?.securityContextId
-                ? { securityContextId: context.securityContextId }
-                : {}),
-              ...(context?.runtimeBinding
-                ? { runtimeBinding: context.runtimeBinding }
-                : {}),
               parameters,
-              signal: controller.signal,
-            });
+              ...(selection ? { evidence: selection.choice.evidence } : {}),
+            },
+          )
+        : undefined;
+      if (
+        controller.signal.aborted ||
+        native?.signal.aborted ||
+        identity !== this.executionIdentity()
+      )
+        return;
+      if (intent) this.retainedPending.set(true);
+      const execute = async (signal: AbortSignal) => {
+        return this.dispatcher.executeHeld(
+          {
+            projectRef: ref,
+            definition,
+            queryId,
+            environment: context?.environment,
+            ...(selectedRuntimeId !== 'snapshot'
+              ? { runtimeSelectionId: selectedRuntimeId }
+              : context?.executionTarget
+                ? { target: context.executionTarget }
+                : {}),
+            ...(context?.securityContextId
+              ? { securityContextId: context.securityContextId }
+              : {}),
+            ...(context?.runtimeBinding
+              ? { runtimeBinding: context.runtimeBinding }
+              : {}),
+            parameters,
+            signal: native ? AbortSignal.any([signal, native.signal]) : signal,
+            ...(native ? { principal: native.actor } : {}),
+            ...(intent ? { operationId: intent.operationId } : {}),
+            ...(selection ? { evidence: selection.choice.evidence } : {}),
+          },
+          { maxRows: 1000 },
+        );
+      };
+      const scope = JSON.stringify({
+        ref,
+        boardId,
+        context,
+        actor,
+        tutorial: this.sessionOnly(),
+        revision: this.dispatcher.runtimeRevision(),
+      });
+      const key = boardExecutionCacheKey(
+        { queryId, definition, selectedRuntimeId, parameters },
+        intent?.operationId,
+      );
+      const rawResult = this.heldQueries
+        ? await this.heldQueries.readExecution(
+            scope,
+            key,
+            controller.signal,
+            reuse,
+            execute,
+          )
+        : await execute(controller.signal);
+      const result = this.chartResult(rawResult.result, definition);
+      const evidenceIdentity =
+        rawResult.hostedResponse && native && context?.environment
+          ? heldEvidenceIdentity(rawResult.hostedResponse, {
+              projectRef: ref,
+              environment: context.environment,
+              actor: native.actor,
+            })
+          : undefined;
       if (
         this.stillCurrent(
           generation,
@@ -717,12 +1094,20 @@ export class BoardWidgetComponent {
         this.snapshotStore().set({
           queryId,
           result,
+          ...(evidenceIdentity ? { evidenceIdentity } : {}),
           identity,
           previous: this.retainSnapshots(previous, identity),
         });
+        if (intent) {
+          this.retainedIntent.confirm();
+          this.retainedPending.set(false);
+          this.retainedReviewed.set(false);
+        }
         this.rememberChoice();
       }
     } catch (error) {
+      this.retainedIntent.rejectConflict(error);
+      if (this.retainedIntent.hasPending) this.retainedPending.set(true);
       if (
         this.stillCurrent(
           generation,
@@ -734,9 +1119,18 @@ export class BoardWidgetComponent {
           readBoard,
           path,
         )
-      )
+      ) {
+        if (
+          error instanceof HttpErrorResponse &&
+          [401, 403].includes(error.status)
+        ) {
+          this.snapshotStore().set(undefined);
+          this.inspectedEvidence.set(undefined);
+        }
+        this.runFailure.set(error);
         this.runError.set(
-          qualifiedLocalReadVersionGuidance(error) ??
+          nativeQueryDiagnosticMessage(nativeQueryDiagnostic(error)) ??
+            qualifiedLocalReadVersionGuidance(error) ??
             (error instanceof QueryDispatchError ||
             (error instanceof Error &&
               (error.message.startsWith('This board card changed.') ||
@@ -748,6 +1142,7 @@ export class BoardWidgetComponent {
               ? error.message
               : 'The saved query could not run. Try again or open the saved query to inspect it.'),
         );
+      }
     } finally {
       if (this.activeRun === controller) this.activeRun = undefined;
       if (
@@ -766,20 +1161,81 @@ export class BoardWidgetComponent {
     }
   }
 
-  setChartView(view: 'chart' | 'grid'): void {
-    const cardId = this.cardId();
+  /** Only the validated complete ordinary server path can supply chart evidence. */
+  private chartResult(
+    result: FederatedQueryResult,
+    definition: IQueryDef,
+  ): BoardResultSnapshot['result'] {
+    const chart = this.chartWidgetDef()?.chart;
+    const tables = definition.federation?.tables;
+    if (chart?.series) {
+      if (
+        'runtime' in result &&
+        (result.runtime === 'browser-public-api' ||
+          result.runtime === 'browser-sqlite' ||
+          result.runtime === 'server')
+      ) {
+        const admitted = result as
+          | BrowserPublicApiChartRecordset
+          | BrowserSqliteChartRecordset
+          | ServerChartRecordset;
+        if (
+          !admitted.complete ||
+          admitted.hasMore ||
+          admitted.truncated ||
+          chartEvidenceError(admitted)
+        )
+          throw new Error(
+            'This chart source needs a complete admitted result.',
+          );
+      } else if (tables?.length === 1) {
+        if (
+          !result.nativeDirect ||
+          !result.ordinaryComplete ||
+          result.totalRows !== result.recordset.rows.length ||
+          result.hasMore ||
+          result.truncated ||
+          !result.provenance.executionProfile ||
+          result.ordinarySources?.length !== 1 ||
+          result.ordinarySources[0].database !== tables[0].database ||
+          result.ordinarySources[0].collection !== tables[0].name
+        )
+          throw new Error(
+            'This chart source needs a complete admitted single-source result.',
+          );
+      } else admitComparisonChart(result, definition);
+      prepareGroupedBars(result, chart.categoryColumn, chart.series);
+    }
     if (
-      cardId &&
-      this.sessionOnly() &&
-      this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId())
-    ) {
-      this.tutorialRuntime.dispatch({
-        type: 'set-view',
-        cardId,
-        widgetPath: this.widgetPath(),
-        view,
-      });
-    } else this.chartView.set(view);
+      !result.nativeDirect ||
+      !result.ordinaryComplete ||
+      tables?.length !== 1 ||
+      result.totalRows !== result.recordset.rows.length ||
+      result.hasMore ||
+      result.truncated ||
+      !result.provenance.executionProfile ||
+      result.ordinarySources?.length !== 1 ||
+      result.ordinarySources[0].database !== tables[0].database ||
+      result.ordinarySources[0].collection !== tables[0].name
+    )
+      return result;
+    return {
+      ...result,
+      runtime: 'server',
+      complete: true,
+      hasMore: false,
+      provenance: {
+        ...result.provenance,
+        executionProfile: result.provenance.executionProfile,
+        collection: tables[0].name,
+      },
+    };
+  }
+
+  setChartView(view: 'chart' | 'grid' | 'trend'): void {
+    // Manual view choices are ephemeral even in a tutorial. Guide actions own replay.
+    if (view === 'trend' && !this.raceDefinition()?.transform) return;
+    this.chartView.set(view);
   }
 
   /** At most one held result per identity, with a small card-local history. */
@@ -811,12 +1267,15 @@ export class BoardWidgetComponent {
     const supplied = this.boardContext()?.parameters ?? {};
     const values: Record<string, TypedValue> = {};
     const chartSource = this.chartWidgetDef()?.sources?.[0];
-    const bindings = chartSource?.parameters;
+    const bindings =
+      chartSource?.parameters ?? this.sqlWidgetDef()?.sql?.parameters;
+    const boundParameters = !!chartSource || bindings !== undefined;
+    const bindingKind = chartSource ? 'chart' : 'saved-query widget';
     const boundValues = new Map<string, unknown>();
     if (bindings !== undefined) {
       if (!Array.isArray(bindings))
         throw new QueryDispatchError(
-          'This chart has malformed parameter bindings.',
+          `This ${bindingKind} has malformed parameter bindings.`,
         );
       for (const binding of bindings) {
         if (
@@ -831,7 +1290,7 @@ export class BoardWidgetComponent {
           )
         )
           throw new QueryDispatchError(
-            'This chart has an unknown or duplicate parameter binding.',
+            `This ${bindingKind} has an unknown or duplicate parameter binding.`,
           );
         const hasValue = Object.prototype.hasOwnProperty.call(binding, 'value');
         const hasBoardParameter = Object.prototype.hasOwnProperty.call(
@@ -840,7 +1299,7 @@ export class BoardWidgetComponent {
         );
         if (hasValue && hasBoardParameter)
           throw new QueryDispatchError(
-            'This chart parameter has conflicting bindings.',
+            `This ${bindingKind} parameter has conflicting bindings.`,
           );
         if (hasBoardParameter) {
           const id = binding.boardParameterId;
@@ -851,13 +1310,13 @@ export class BoardWidgetComponent {
             supplied[id]?.value === undefined
           )
             throw new QueryDispatchError(
-              'This chart parameter references an unavailable board parameter.',
+              `This ${bindingKind} parameter references an unavailable board parameter.`,
             );
           boundValues.set(binding.id, supplied[id].value);
         } else if (hasValue) {
           if (binding.value === undefined)
             throw new QueryDispatchError(
-              'This chart parameter has no constant value.',
+              `This ${bindingKind} parameter has no constant value.`,
             );
           boundValues.set(binding.id, binding.value);
         } else {
@@ -873,7 +1332,7 @@ export class BoardWidgetComponent {
     }
     for (const parameter of definition.parameters ?? []) {
       if (
-        chartSource &&
+        boundParameters &&
         ![
           'integer',
           'number',
@@ -890,9 +1349,9 @@ export class BoardWidgetComponent {
         ].includes(parameter.type)
       )
         throw new QueryDispatchError(
-          `The chart parameter type for ${parameter.title ?? parameter.id} is unsupported.`,
+          `The ${bindingKind} parameter type for ${parameter.title ?? parameter.id} is unsupported.`,
         );
-      const raw = chartSource
+      const raw = boundParameters
         ? boundValues.has(parameter.id)
           ? boundValues.get(parameter.id)
           : (parameter as { defaultValue?: unknown }).defaultValue
@@ -990,6 +1449,10 @@ export class BoardWidgetComponent {
       ...tree.queryParams,
       id,
       ...(environment ? { env: environment } : {}),
+      runtime:
+        this.selectedRuntimeId() === 'snapshot'
+          ? 'project'
+          : this.selectedRuntimeId(),
     };
     return tree;
   });

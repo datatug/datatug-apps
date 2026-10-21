@@ -1,36 +1,34 @@
 import {
   Component,
   OnDestroy,
-  ViewChild,
   computed,
   inject,
   signal,
 } from '@angular/core';
-import { FormsModule } from '@angular/forms';
-import { race, Subject, of } from 'rxjs';
-import { catchError, skip, takeUntil } from 'rxjs/operators';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { race, Subject, of, Observable } from 'rxjs';
+import { catchError, shareReplay, takeUntil } from 'rxjs/operators';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import {
   IonBackButton,
   IonButton,
   IonButtons,
   IonCard,
   IonCardContent,
+  IonChip,
   IonCardHeader,
   IonCardTitle,
   IonContent,
   IonHeader,
-  IonInput,
   IonIcon,
   IonItem,
   IonLabel,
   IonList,
   IonMenuButton,
   IonSkeletonText,
-  IonSelect,
-  IonSelectOption,
   IonTitle,
   IonToolbar,
   NavController,
@@ -38,8 +36,11 @@ import {
   ViewWillEnter,
 } from '@ionic/angular';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
-import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
-import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import {
+  IProjectRef,
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../../../core/project-context';
 import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { environmentPresentation } from '../../../models/definition/environment-presentation';
@@ -60,11 +61,7 @@ import {
   tryProjectUrl,
 } from '../../../nav/nav-models';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
-import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
-import {
-  DatatugNavService,
-  ProjectTopLevelPage,
-} from '../../../services/nav/datatug-nav.service';
+import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { ProjectService } from '../../../services/project/project.service';
@@ -72,19 +69,20 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
-import { SchemaService } from '../../../services/unsorted/schema.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
-import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
+import { QueriesService } from '../../../queries/queries.service';
+import type { IQueryFolder } from '../../../models/definition/query-def';
+import { ProjectQueriesPreviewComponent, countProjectQueries } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
+import { readGithubProjectId } from '@datatug/project-address';
 
 @Component({
   selector: 'sneat-datatug-project',
   templateUrl: './project-page.component.html',
   styleUrls: ['./project-page.component.scss'],
   imports: [
-    FormsModule,
     RouterLink,
     DatatugCoreModule,
     DatatugServicesNavModule,
@@ -104,15 +102,13 @@ import { GitHubReauthorizationBannerComponent } from '../../../project/new-proje
     IonContent,
     IonCard,
     IonCardContent,
+  IonChip,
     IonCardHeader,
     IonCardTitle,
     IonButton,
     IonItem,
     IonLabel,
-    IonInput,
     IonIcon,
-    IonSelect,
-    IonSelectOption,
     IonList,
     IonSkeletonText,
   ],
@@ -120,36 +116,77 @@ import { GitHubReauthorizationBannerComponent } from '../../../project/new-proje
 export class ProjectPageComponent
   implements OnDestroy, ViewWillEnter, ViewDidLeave
 {
-  // Tags is an empty-shell page — see ENABLE_EMPTY_SHELL_PAGES. Read from
-  // the template to hide the "Go to..." menu option for it.
-  protected readonly enableEmptyShellPages = ENABLE_EMPTY_SHELL_PAGES;
-
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly datatugNavService = inject(DatatugNavService);
-  private readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly projectService = inject(ProjectService);
-  private readonly schemaService = inject(SchemaService);
+  private readonly auth = inject(SneatAuthStateService);
   private readonly projectAssets = inject(ProjectAssetsReadService);
+  private readonly queriesService = inject(QueriesService);
+  protected readonly queryCount = signal<number | undefined>(undefined);
+  protected readonly querySource = signal<Observable<IQueryFolder | null | undefined> | undefined>(undefined);
   private readonly navController = inject(NavController);
 
   // readonly DbModel = ProjectItem.dbModel as const;
 
-  // A signal, not a plain field: this app is zoneless
-  // (provideZonelessChangeDetection(), main.ts) — a plain field mutated from
-  // an RxJS `.subscribe()` callback (setProjRef()/onProjectSummaryChanged()
-  // below, driven by ProjectService.watchProjectSummary()'s HTTP response)
-  // never triggers change detection on its own. Confirmed live (S126,
-  // journey e2e J1/Epilogue A title-load flake): the console showed
-  // `onProjectSummaryChanged()` receiving the correct title and assigning it
-  // to this field, yet the Title `ion-input`'s committed value stayed
-  // "Loading..." until the e2e's own 15s timeout — the same class of gap
-  // already fixed elsewhere in this codebase for the identical reason
-  // (env-db-table.page.ts's own `grid`/`semanticColumns` signals;
-  // queries-tab.component.ts's `markForCheck()` for the narrower
-  // no-template-rewrite case). A signal write notifies change detection
-  // directly, per this repo's own zoneless convention (AGENTS.md).
+  // Summary responses update this signal so the zoneless page refreshes its
+  // project identity and metadata as soon as they arrive.
   protected readonly project = signal<IProjectContext | undefined>(undefined);
+  private readonly authState = toSignal(this.auth.authState, {
+    initialValue: undefined,
+  });
+  protected readonly signedIn = computed(() => {
+    const state = this.authState();
+    return (
+      state?.status === 'authenticated' &&
+      !!state.user?.uid &&
+      state.user.isAnonymous !== true
+    );
+  });
+  protected readonly projectTitle = computed(() => {
+    const project = this.project();
+    if (project?.brief?.title) return project.brief.title;
+    const ref = project?.ref;
+    if (!ref) return 'Project';
+    if (ref.storeId === 'github.com' || ref.storeId === 'github') {
+      const address = readGithubProjectId(ref.projectId);
+      if (address.ok) return address.id.folder || address.id.repo;
+    }
+    return ref.projectId;
+  });
+  protected readonly projectMetadata = computed(() => {
+    const project = this.project();
+    if (!project) return [] as string[];
+    const { ref } = project;
+    return [
+      ref.storeId !== 'firestore'
+        ? `Store: ${this.storeDisplayLabel(ref.storeId)}`
+        : undefined,
+      ref.branch ? `Branch: ${ref.branch}` : undefined,
+      ref.spaceID ? `Space: ${ref.spaceID}` : undefined,
+      project.brief?.access ? `Access: ${project.brief.access}` : undefined,
+    ].filter((value): value is string => !!value);
+  });
+  readonly quickSearchQuery = signal('');
+  updateQuickSearch(event: Event): void {
+    if (event.target instanceof HTMLInputElement) this.quickSearchQuery.set(event.target.value);
+  }
+  submitQuickSearch(event: Event): void {
+    event.preventDefault();
+    const ref=this.project()?.ref,q=this.quickSearchQuery().trim();
+    if (!ref || !q) return;
+    const destination=this.router.parseUrl(projectPageHref(ref,['quick-search']));
+    destination.queryParams={...destination.queryParams,q};
+    void this.router.navigateByUrl(destination).catch(() => this.errorLogger.logError('Could not open Quick Search'));
+  }
+
+  protected readonly publicDataHref = computed(() => {
+    const ref = this.project()?.ref;
+    return ref && !ref.spaceID
+      ? this.router.parseUrl(projectPageHref(ref, 'public-data'))
+      : undefined;
+  });
   protected readonly projectItemsUnsupported = computed(() => {
     const ref = this.project()?.ref;
     return !!(ref?.spaceID || ref?.projectApi || ref?.branch);
@@ -199,6 +236,15 @@ export class ProjectPageComponent
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
+  protected readonly shippingHref = computed(() => {
+    const ref = this.project()?.ref;
+    return ref &&
+      isSharedProjectRef(ref) &&
+      ref.branch === undefined &&
+      ref.projectApi === undefined
+      ? projectPageHref(ref, 'shipping')
+      : undefined;
+  });
   protected readonly sandboxHref = computed(() => {
     const ref = this.project()?.ref;
     return isCanonicalDemoDbProject(ref)
@@ -208,7 +254,6 @@ export class ProjectPageComponent
   private readonly scopeChanged = new Subject<void>();
 
   protected destroyed = new Subject<boolean>();
-  @ViewChild(IonInput, { static: false }) addInput?: IonInput;
 
   protected isActiveView = false;
 
@@ -232,6 +277,7 @@ export class ProjectPageComponent
   private setProjRef = (ref: IProjectRef) => {
     try {
       this.scopeChanged.next();
+      if (!equalProjectRef(this.project()?.ref, ref)) this.quickSearchQuery.set('');
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },
@@ -239,6 +285,8 @@ export class ProjectPageComponent
       this.metadataState.set('loading');
       this.metadataReadError.set(undefined);
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
+      this.queryCount.set(undefined);
+      this.querySource.set(undefined);
       this.environments.set(undefined);
       this.entities.set(undefined);
       this.boards.set(undefined);
@@ -253,6 +301,12 @@ export class ProjectPageComponent
       // excluded because that API does not expose these asset collections.
       const cancel$ = race([this.scopeChanged, this.destroyed]);
       if (!ref.spaceID) {
+        const queries$ = this.queriesService.getQueriesFolder(ref, '~', 'shared').pipe(shareReplay({ bufferSize: 1, refCount: true }));
+        this.querySource.set(queries$);
+        queries$.pipe(takeUntil(cancel$)).subscribe({
+          next: folder => this.queryCount.set(countProjectQueries(folder)),
+          error: () => this.queryCount.set(undefined),
+        });
         const environments$ = this.projectAssets.environments(ref);
         environments$
           .pipe(
@@ -321,20 +375,23 @@ export class ProjectPageComponent
         .watchProjectSummary(ref)
         .pipe(
           takeUntil(cancel$),
-          takeUntil(
-            race([
-              this.projectTracker.projectRef.pipe(skip(1)),
-              this.destroyed,
-            ]),
-          ),
         )
         .subscribe({
           next: (summary) => this.onProjectSummaryChanged(ref, summary),
+          complete: () => {
+            if (
+              equalProjectRef(this.project()?.ref, ref) &&
+              this.metadataState() === 'loading'
+            ) {
+              this.onProjectSummaryChanged(ref, undefined);
+            }
+          },
           error: (error) => {
             if (!equalProjectRef(this.project()?.ref, ref)) return;
             this.onProjectSummaryChanged(ref, undefined);
             this.metadataReadError.set(
-              qualifiedLocalReadVersionGuidance(error),
+              qualifiedLocalReadVersionGuidance(error) ??
+                'Project details could not be loaded. Check access and refresh to try again.',
             );
             this.errorLogger.logError(
               error,
@@ -495,8 +552,4 @@ export class ProjectPageComponent
     });
   }
 
-  goTo(event: CustomEvent): void {
-    const page = event.detail.value as ProjectTopLevelPage;
-    this.datatugNavService.goProject(this.project(), page);
-  }
 }

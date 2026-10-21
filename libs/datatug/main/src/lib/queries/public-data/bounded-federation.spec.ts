@@ -15,7 +15,7 @@ import {
   validNativeRorUrl,
 } from './public-data-scenario';
 
-const base = 'https://demodb.dev/ovdb';
+const base = 'https://ovdb.demodb.dev';
 export const fixtureBounds = (): BoundedFederation => ({
   userRows: 1000,
   userOffset: 0,

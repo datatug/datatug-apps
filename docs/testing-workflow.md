@@ -6,8 +6,38 @@ When changing visible copy or selectors, search all browser and unit specs for t
 
 Run lint through the owning Nx project target, such as `pnpm nx lint datatug-main` for library UI and `pnpm nx lint datatug-app` for app/E2E code. A direct ESLint command from the workspace root does not load every project's Angular rules and cannot substitute for these checks. For a file-only command, explicitly select that project's ESLint configuration.
 
-For a group of related changes, keep them on one integration branch and PR. Run the required build, test, E2E, and CLI journey checks once against the final combined head before landing. If the head changes after that run, rerun the affected required checks against the new head.
+For a group of related changes, keep them on one integration branch and PR. Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
 
-Full E2E is expensive and belongs at the integration gate. Focused tests still run during development. Do not disable required checks or skip the coverage gate to reduce runtime.
+There is no scheduled (nightly) CI run. Push, PR, and merge-group CI runs the offline browser and real-agent lanes and their deploy gate requires them together with build and unit tests; the one live-API test is `e2e-postgres-ovdb.yml` (below). Focused tests still run during development. Do not skip the required build, test, or coverage gates.
 
-CI runs the Chromium app suite and Query mobile WebKit suite in separate jobs after build. Keep both in the required `e2e` aggregate so either failure blocks landing. A head change requires a fresh aggregate verdict for that exact commit.
+## SpecScore status-only CI path
+
+CI starts with a dependency-free classifier and its fixture tests. It permits the cheap path only when the entire exact Git tree difference consists of status fields in existing SpecScore Idea, Feature, or Plan Markdown files and the corresponding status cells in their indexes. The classifier compares every other byte, rejects additions, deletions, renames, mode changes, binaries, and unknown revisions, and runs `specscore spec lint` before any application job can report success.
+
+For pull requests and merge groups, classification covers the complete base-to-head change, including earlier commits. For a push to `main`, it starts at the previous successfully verified **push** CI commit, with green `build`, `test`, and `deploy-gate`; a failed code commit between that baseline and a later metadata edit therefore requires the full path. Manual or unknown CI contexts take the full path. Source, dependencies, configuration, workflows, and semantic spec prose always take the full path.
+
+The existing `build`, `test`, and `deploy-gate` checks remain present on push, pull request, and merge group runs. On verified status-only changes, `build` and `test` report that application work is not applicable after cheap validation succeeds; `deploy-gate` still requires both successful jobs. A failed preflight fails those jobs and the deploy gate. Normal application changes run the usual lint, test, coverage, and build checks. Browser and real-agent jobs keep their existing names and run on every pull request, merge group and push; `deploy-gate` fails if any gating lane fails or is skipped.
+
+Deployment uses a separate comparison against the last **actual successful application deploy** receipt, uploaded only after the reusable deploy job succeeds. The gate finds the stable receipt artifact by exact name, validates its run, attempt, head and successful jobs, and checks every later deploy run including failed or rerun attempts. An unreceipted later publication cannot authorize a skip. It skips a deployment only if the whole deploy-to-tip difference is verified status-only. Missing, expired, or unverifiable receipts and ambiguous later runs take the normal deployment path, even if the current CI run used its metadata-only path. The lookup is bounded at 500 artifacts/runs and 10 later-run job audits; exceeding either limit also takes the normal deployment path. The existing exact-head, current-main-tip, green-CI, and manual override rules still apply.
+
+Pull requests, merge groups and pushes run the offline browser and real-agent lanes (Chromium app, Query mobile WebKit, checkout, demo SQLite, demo hand-off, `journey`, card links) and `deploy-gate` requires them; none of them sends a request to demodb.dev (pinned files come from local fixtures, see `apps/datatug-app/e2e/README.md`). The read-only PostgreSQL-through-OpenVaultDB test (`cloud.openvaultdb.com`) is not part of `ci.yml`: it has its own workflow, `.github/workflows/e2e-postgres-ovdb.yml`, run manually (`workflow_dispatch`) or on a push to `main` that touches the OVDB/PostgreSQL code, its spec or its config (path-filtered), never on a pull request. Runs are serialized and never cancelled mid-run, Playwright retries 0, each test has a request budget (`DEMODB_E2E_MAX_OVDB_REQUESTS`, 40) and the first HTTP 429 or Cloudflare block page (such as error 1027) stops the run. It is not a required check and not in `deploy-gate`, so it never blocks landing or deployment; a failure is that workflow's own red run. Run focused browser and CLI journeys for the behavior changed by a branch against its final head.
+
+The AdventureWorks in-browser journey (download through the chunked gzip parts, verify, open, read, edit, reload, Reset) is its own workflow, `.github/workflows/demo-sqlite-adventureworks.yml`, in Chromium only, because the file is 126.8 MB unpacked and is downloaded twice. It runs on a pull request and on a push to `main` only when demo SQLite code, its catalog, the DemoDB guard or fixtures, the lane itself or the dependencies changed, and by hand; never on a schedule, and it is not part of `deploy-gate`. It sends no request to a DemoDB host: the gzip parts come from the `demo-db/adventureworks` GitHub repository (`apps/datatug-app/e2e/README.md`, "DemoDB fixtures"). When you change demo SQLite code, run `pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks` locally.
+
+The Chromium app and Query mobile WebKit jobs use the validated demo catalog revision
+`7c67575a8313d67ecae364c1dd7164ee85c48ae0` (it carries required creation dates on all 59 query definitions and the server-comparison query the showcase specs read), and the demo
+SQLite job uses `7c67575a8313d67ecae364c1dd7164ee85c48ae0`, through the fake GitHub
+reader. The app job verifies GitHub's API, tree and raw source at its commit. The demo SQLite job includes the edited-copy Board to Query acceptance
+in its existing three-browser suite. The demo catalog admits the relative
+bundled Chinook asset and rights sidecar; the app serves those exact checked
+bytes and the real SQLite worker executes them. The standalone `/demo/sqlite`
+import and comparison baseline still use their declared public URLs, served
+from the same checked-in bundled bytes only in focused browser journeys.
+Other live dataset checks and demo checkouts remain independent of this
+browser catalog pin.
+
+## Project Meanings acceptance
+
+Run `DATATUG_BIN=/absolute/path/to/current/datatug wb run -- pnpm nx run datatug-app:e2e-meanings` with a CLI that supports the Meanings catalog/change endpoints and canonical query references. The app build may require `GH_TOKEN` for its verified release dependency; keep the token in the environment. This focused lane owns an isolated browser, app server, temporary Git project, agent port and foreground CLI child, and removes them on teardown. It does not use the older CLI pinned by the general browser suite.
+
+The journey creates an entity and field through the UI, cold-reloads both, checks the list-to-field deep link, saves an exact canonical reference through the real query API, checks the disabled Delete action and provider rejection, removes the query reference, then deletes the field and entity through the UI. It records screenshots of the list, persisted field, protected field and empty catalog. The reference setup exercises the real persistence API; the semantic picker is covered separately by focused unit tests.

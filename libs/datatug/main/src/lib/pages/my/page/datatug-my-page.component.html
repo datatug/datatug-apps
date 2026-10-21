@@ -15,8 +15,49 @@
       routerLink="/subscriptions"
       [queryParams]="subscriptionQuery()"
       ><ion-label>Subscriptions</ion-label></ion-item
-    ></ion-list
-  >
+    >
+    @if (enableHostedCloudLogs()) {
+      <ion-item button detail routerLink="/my/cloud-logs"
+        ><ion-label>Google Cloud log connections</ion-label></ion-item
+      >
+    }
+    @if (hostedCloudLogsAccess.state().status === 'checking') {
+      <ion-note role="status" aria-live="polite"
+        >Checking access to hosted Google Cloud Logs…</ion-note
+      >
+    }
+    @if (hostedCloudLogsAccess.state().status === 'error') {
+      <ion-note role="alert"
+        >Could not verify access to hosted Google Cloud Logs. Retry the check or
+        try again later.</ion-note
+      >
+      <ion-button fill="clear" (click)="retryHostedCloudLogsAccess()"
+        >Retry access check</ion-button
+      >
+    }
+    @if (hostedCloudLogsAccess.state().status === 'denied') {
+      <ion-button fill="clear" (click)="retryHostedCloudLogsAccess()"
+        >Check access again</ion-button
+      >
+    }
+    @if (hostedCloudLogsAccess.state().status === 'auth-error') {
+      <ion-note role="alert"
+        >We could not verify your sign-in. Reload to retry or sign in
+        again.</ion-note
+      >
+      <ion-button fill="clear" (click)="retryAuthenticationCheck()"
+        >Reload sign-in check</ion-button
+      >
+      <ion-item button detail routerLink="/login"
+        ><ion-label>Go to sign-in</ion-label></ion-item
+      >
+    }
+    @if (cloudLogsAccessMessage()) {
+      <ion-note role="status" aria-live="polite">{{
+        cloudLogsAccessMessage()
+      }}</ion-note>
+    }
+  </ion-list>
   <sneat-subscription-recovery title="Finish DataTug Business setup" />
   <ion-list>
     <ion-list-header>

@@ -13,7 +13,9 @@
 </ion-header>
 
 <ion-content color="light">
-  @if (unsupportedProject()) {
+  @if (hostedProject()) {
+    <sneat-datatug-hosted-board-list />
+  } @else if (unsupportedProject()) {
     <p class="ion-padding" role="status">
       Boards are unavailable for this project connection or branch.
     </p>

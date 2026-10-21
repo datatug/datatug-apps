@@ -42,6 +42,9 @@ We build with our own tooling:
 
 This workspace uses **pnpm**. Prefix Nx commands with the package manager so the workspace-local CLI is used.
 
+For the complete local UI and backend stack (Firebase emulators, Sneat API,
+DataTug agent, and this app), see [Running DataTug locally](docs/RUN-LOCAL.md).
+
 ```bash
 # Install dependencies
 pnpm install
@@ -87,9 +90,15 @@ pnpm nx graph
 
 ## Coding conventions
 
+### Ionic UI
+
+Follow the [web UI bible for the Sneat platform](https://github.com/sneat-co/sneat-specs/blob/main/standards/frontend-ux/README.md)
+and its [Ionic component reference](https://github.com/sneat-co/sneat-specs/tree/main/standards/frontend-ux/components)
+for shared UI patterns and per-component rules.
+
 ### Change detection & state (zoneless-ready)
 
-The app is **not yet fully zoneless** — Zone.js is still shipped (`apps/datatug-app/project.json` → `polyfills: ["zone.js"]`) because Ionic does not yet support zoneless change detection. We will drop Zone.js once Ionic supports it.
+The app uses Angular zoneless change detection (`provideZonelessChangeDetection()` in `apps/datatug-app/src/main.ts`), with no Zone.js polyfill. Follow the signal and change-detection guidance in `AGENTS.md`.
 
 **All new code must follow the zoneless approach:**
 

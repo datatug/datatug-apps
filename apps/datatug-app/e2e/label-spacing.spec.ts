@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
 import { activePage } from './journey/helpers/active-page';
 
@@ -26,10 +26,10 @@ import { activePage } from './journey/helpers/active-page';
  * literal `0` before the fix (`apps/datatug-app/src/styles.scss`'s new
  * `ion-item > ion-label:not([slot]):has(+ *)` rule).
  *
- * These two rows are the ones this suite can reach through real app
- * navigation, covering the two value shapes the fix's own selector has to
- * handle (a form control, and a plain slot-less value element). A third
- * reported instance — the dbserver page's "Host"/"Port" rows
+ * The old project Store input row was removed when project identity moved
+ * into the page heading and compact metadata. This suite now measures the
+ * remaining inline label/value pattern on an entity field. A third reported
+ * instance — the dbserver page's "Host"/"Port" rows
  * (`pages/signed-in/dbserver/dbserver-page.component.html`) — carries the
  * identical markup shape and was confirmed fixed by the same rule via a
  * live, temporary, reverted-before-commit measurement (see this task's PR
@@ -96,26 +96,6 @@ function measureLabelValueGap(
 }
 
 test.describe('ion-item label spacing (S159)', () => {
-  test('project page: the Store label has a visible gap from its value', async ({
-    page,
-  }: {
-    page: Page;
-  }) => {
-    await page.goto(PROJECT_URL);
-    // Scoped to `ion-input`, not just text "Store": `sneat-datatug-project-menu-top`
-    // (the persistent side menu, outside `<ion-router-outlet>` — see
-    // `activePage()`'s own doc comment) renders its OWN "Store" row (an
-    // `ion-select`, the store switcher) — a second, independent instance of
-    // this exact bug, but not the one under test here.
-    const storeItem = activePage(page)
-      .locator('ion-item')
-      .filter({ hasText: 'Store' })
-      .filter({ has: page.locator('ion-input') });
-    await expect(storeItem).toBeVisible({ timeout: 20_000 });
-    const gap = await measureLabelValueGap(storeItem, 'ion-input');
-    expect(gap).toBeGreaterThanOrEqual(MIN_GAP_PX);
-  });
-
   test('entity page: a field label has a visible gap from its type badge', async ({
     page,
   }: {
@@ -130,8 +110,7 @@ test.describe('ion-item label spacing (S159)', () => {
     // `<ion-item><ion-label>{{field.id}}…</ion-label><ion-badge
     // color="light">{{field.type}}</ion-badge><ion-buttons
     // slot="end">…</ion-buttons></ion-item>` — same bare-label-then-value
-    // shape as the Store row, a different value kind (a plain, slot-less
-    // `<ion-badge>`, not a form control).
+    // inline label/value shape, with a plain, slot-less `<ion-badge>` value.
     const idFieldItem = activePage(page)
       .locator('ion-item')
       .filter({ has: page.locator('ion-badge', { hasText: 'integer' }) })

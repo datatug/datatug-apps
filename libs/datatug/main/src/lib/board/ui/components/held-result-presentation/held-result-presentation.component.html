@@ -1,4 +1,19 @@
-<section class="result" aria-label="Data visualization and result rows">
+<section
+  class="result"
+  [class.embedded]="embedded"
+  aria-label="Data visualization and result rows"
+>
+  @if (grouped && fields?.series; as series) {
+    <sneat-datatug-held-result-controls
+      [series]="series"
+      [categoryLabel]="fields.categoryColumn || 'Category'"
+      [order]="groupedOrder()"
+      [differenceAvailable]="differenceAvailable()"
+      [selectedCategory]="selectionEnabled ? selectedCategory : null"
+      (orderChanged)="setGroupedOrder($event)"
+      (cleared)="selectionCleared.emit()"
+    />
+  }
   @if (loading) {
     <p class="state" role="status">Loading result…</p>
   } @else if (error) {
@@ -7,10 +22,12 @@
     <p class="state" role="status">Run this card to see its results.</p>
   } @else {
     <header class="summary">
-      <div>
-        <span class="eyebrow">Result explorer</span>
-        <h2>{{ fields?.title || 'Query results' }}</h2>
-      </div>
+      @if (!embedded) {
+        <div>
+          <span class="eyebrow">Result explorer</span>
+          <h2>{{ fields?.title || 'Query results' }}</h2>
+        </div>
+      }
       <p>
         {{ result.recordset.rows.length }} rows ·
         {{ result.recordset.columns.length }} columns
@@ -26,7 +43,7 @@
       [executionProfile]="result.provenance.executionProfile"
     />
 
-    @if (fields && prepared?.ok && !chartOnly) {
+    @if (fields && (prepared?.ok || grouped) && !chartOnly) {
       <div class="view-switch" role="group" aria-label="Result view">
         <button
           type="button"
@@ -45,6 +62,63 @@
       </div>
     }
 
+    @if (groupedError) {
+      <p role="alert">{{ groupedError }}</p>
+    }
+    @if (view() === 'chart' && grouped && fields?.series; as series) {
+      <p class="grouped-scale">
+        {{ fields.unit }} · common scale from {{ grouped.minimum }} to
+        {{ grouped.maximum }}
+      </p>
+      <ul class="series-legend" aria-label="Chart series">
+        @for (item of series; track item.id; let i = $index) {
+          <li>
+            <span [style.background]="seriesColors[i]" aria-hidden="true"></span
+            >{{ item.title }}
+          </li>
+        }
+      </ul>
+      <ol
+        class="grouped-bars"
+        [attr.aria-label]="fields.title || 'Grouped category values'"
+      >
+        @for (group of orderedGroups(); track group.category) {
+          <li>
+            <button
+              type="button"
+              [attr.aria-pressed]="
+                selectionEnabled ? selectedCategory === group.category : null
+              "
+              (click)="
+                selectionEnabled
+                  ? categorySelected.emit(group.category)
+                  : inspectBar(group.sourceRow)
+              "
+            >
+              <strong>{{ group.category }}</strong>
+              @for (item of series; track item.id; let i = $index) {
+                <span class="grouped-measure">
+                  <span class="series-title">{{ item.title }}</span>
+                  <span class="bar-track" aria-hidden="true">
+                    <span
+                      class="zero-line"
+                      [style.left.%]="groupedLeft(0)"
+                    ></span>
+                    <span
+                      class="bar-fill"
+                      [style.background]="seriesColors[i]"
+                      [style.width.%]="groupedWidth(group.values[i])"
+                      [style.left.%]="groupedLeft(group.values[i])"
+                    ></span>
+                  </span>
+                  <span class="exact-value">{{ group.values[i] }}</span>
+                </span>
+              }
+            </button>
+          </li>
+        }
+      </ol>
+    }
     @if (fields && prepared && !prepared.ok) {
       <p class="state error" role="alert">{{ prepared.message }}</p>
     } @else if (view() === 'chart' && fields && prepared?.ok) {
@@ -58,7 +132,9 @@
             aria-label="Number of categories shown"
           >
             @for (count of topNOptions; track count) {
-              <option [value]="count">{{ count }}</option>
+              <option [value]="count" [selected]="count === topN()">
+                {{ count }}
+              </option>
             }
           </select>
         </label>
@@ -68,9 +144,16 @@
           <li>
             <button
               type="button"
-              (click)="inspectBar(bar.sourceRow)"
+              [attr.aria-pressed]="
+                selectionEnabled ? selectedCategory === bar.category : null
+              "
+              (click)="
+                selectionEnabled
+                  ? categorySelected.emit(bar.category)
+                  : inspectBar(bar.sourceRow)
+              "
               [attr.aria-label]="
-                'Inspect ' +
+                (selectionEnabled ? 'Select ' : 'Inspect ') +
                 bar.category +
                 ': ' +
                 bar.value +
@@ -87,6 +170,16 @@
               ></span>
               <strong>{{ numberFormat.format(bar.value) }}</strong>
             </button>
+            @if (selectionEnabled) {
+              <button
+                type="button"
+                class="inspect-category"
+                (click)="inspectBar(bar.sourceRow)"
+                [attr.aria-label]="'Inspect ' + bar.category + ' row'"
+              >
+                Inspect row
+              </button>
+            }
           </li>
         } @empty {
           <li class="empty">No category rows in this result.</li>
@@ -175,24 +268,24 @@
         </nav>
       }
     }
-      @if (selectedValues) {
-        <aside
-          #selectedDetails
-          class="inspection"
-          tabindex="-1"
-          aria-label="Selected row details"
-        >
-          <h3>Row {{ selectedRow()! + 1 }}</h3>
-          <dl>
-            @for (column of result.recordset.columns; track $index) {
-              <div>
-                <dt>{{ column.name }}</dt>
-                <dd>{{ display(selectedValues[$index]) }}</dd>
-              </div>
-            }
-          </dl>
-        </aside>
-      }
+    @if (selectedValues) {
+      <aside
+        #selectedDetails
+        class="inspection"
+        tabindex="-1"
+        aria-label="Selected row details"
+      >
+        <h3>Row {{ selectedRow()! + 1 }}</h3>
+        <dl>
+          @for (column of result.recordset.columns; track $index) {
+            <div>
+              <dt>{{ column.name }}</dt>
+              <dd>{{ display(selectedValues[$index]) }}</dd>
+            </div>
+          }
+        </dl>
+      </aside>
+    }
     <details class="source-details">
       <summary>Source and usage details</summary>
       <dl>
@@ -207,7 +300,10 @@
             {{
               publicApiReceipt
                 ? 'Browser public API'
-                : (result.provenance.executionProfile || 'not reported')
+                : sqliteReceipt
+                  ? 'Browser SQLite'
+                  : result.provenance.executionProfile ||
+                    (ovdbServerExecution ? 'OVDB server' : 'not reported')
             }}
           </dd>
         </div>
@@ -232,6 +328,12 @@
             Source usage rights are unavailable for this public result.
           </p>
         }
+      }
+      @if (sqliteReceipt; as receipt) {
+        <p>
+          Verified SQLite snapshot · {{ receipt.fixtureBytes }} bytes · SHA-256
+          {{ receipt.fixtureSha256 }}
+        </p>
       }
       <sneat-datatug-source-rights-notice [evidence]="result" />
     </details>

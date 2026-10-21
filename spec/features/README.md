@@ -19,6 +19,15 @@ Feature specifications for this project.
 | [Browser Chat Phase 5 FK JOIN exploration](browser-chat-phase-5/README.md) | Approved | Discover and apply deterministic FK JOIN candidates from browser Chat result grids. |
 | [Checkout Journey](checkout-journey/README.md) | Implementing | Review of deployed Pro and Business checkout and a shared purchase flow with post-payment Business space linking. |
 | [In-browser query dispatch](browser-query-dispatch/README.md) | Stable | Resolve saved query definitions and explicit execution targets through one browser dispatcher while preserving project storage identity, runtime capability and result envelopes. |
+| [Copy a demo DataTug project](demo-project-copy/README.md) | Draft | Offer GitHub and local Git project copies after a browser SQLite demo is ready. |
+| [Continue an edited demo database in my project](demo-database-handoff/README.md) | Draft | Carry the active edited SQLite database through optional GitHub and local project ownership without silently switching data. |
+| [Native server federation for saved queries](native-server-federation/README.md) | Draft | Execute a qualified multi-database saved DTQL plan in one bounded OVDB server request and validate physical sources before exposing rows. |
+| [Local preview of public server federation](local-federation-preview/README.md) | Draft | Run real public OVDB queries from the loopback development app through a fixed same-origin transport while retaining canonical source admission. |
+| [Reusable held result exploration](held-result-exploration/README.md) | Implementing | Explore admitted held results with clear actions, stable sorting and complete monthly Orders trends without extra execution. |
+| [Hosted Incident conversation](hosted-incident-conversation/README.md) | Draft | Authenticated human Incident messages, scoped history and replay-safe posting in the private project web UI. |
+| [Shared shipping evidence charts](shared-shipping-evidence-charts/README.md) | Draft | Core-compatible held evidence preparation and one shared three-kind SVG presentation leaf. |
+| [Hosted board authoring](hosted-board-authoring/README.md) | Draft | Create, edit, save and reload canonical boards in an explicitly scoped hosted project. |
+| [Shipping working copy controls](shipping-working-copy-controls/README.md) | Draft | Expose the published Backend v0.42 working-copy lifecycle in the native hosted project web UI. This is one bounded part of the [shipping investigation story](https://github.com/datatug/backstage/tree/main/spec/features/unsigned-shipping-investigation), not recording-readiness proof. |
 
 ## Open Questions
 

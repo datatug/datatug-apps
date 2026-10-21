@@ -1,3 +1,4 @@
+import { Board } from '@datatug/board-models';
 import { IStore } from './store';
 import { IEnvironmentFull } from './environments';
 import { IDbModelFull } from './dbmodels';
@@ -25,9 +26,19 @@ export interface IProjectBase {
 }
 
 export interface IProjectFull extends IProjectBase {
+  readonly boards?: readonly Board[];
   environments?: IEnvironmentFull[];
   dbModels?: IDbModelFull[];
-  dbServers: IProjDbServerFull[];
+  /** Legacy project-full response shape retained for older agents. */
+  dbServers?: IProjDbServerFull[];
+  /** Current datatug.Project wire shape returned by project_full. */
+  dbDrivers?: readonly {
+    readonly id: string;
+    readonly servers?: readonly {
+      readonly server: import('./apis/database').IDbServer;
+      readonly catalogs?: readonly unknown[];
+    }[];
+  }[];
 }
 
 export interface IProjectSummary extends IProjectBase {

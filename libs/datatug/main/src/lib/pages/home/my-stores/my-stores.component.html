@@ -1,45 +1,11 @@
 <ion-card>
-  <ion-list lines="full">
-    <ion-item color="light">
-      <ion-label><h2>Project stores</h2></ion-label>
-    </ion-item>
-  </ion-list>
-
-  <ion-card-content>
-    <p class="store-intro">
-      Choose where project files live. Each store keeps the project connected to
-      its data and query history.
-    </p>
-    <ul class="store-options" aria-label="Project store benefits">
-      <li>
-        <ion-icon name="cloud-outline" aria-hidden="true" />
-        <div>
-          <h3>DataTug Cloud</h3>
-          <p>Fastest setup, with live updates from Cloud storage.</p>
-        </div>
-      </li>
-      <li>
-        <ion-icon name="logo-github" aria-hidden="true" />
-        <div>
-          <h3>GitHub</h3>
-          <p>
-            Keep control in your repository, with version history and branches.
-          </p>
-        </div>
-      </li>
-      <li>
-        <ion-icon name="terminal-outline" aria-hidden="true" />
-        <div>
-          <h3>Local / DataTug CLI</h3>
-          <p>Work locally for fast access and offline use where supported.</p>
-        </div>
-      </li>
-    </ul>
-  </ion-card-content>
+  <ion-item color="light" lines="full">
+    <ion-label><h2>Project stores</h2></ion-label>
+  </ion-item>
 
   @if (authStatus() === 'authenticated') {
-    <ion-list lines="full">
-      <ion-item-divider>
+    <ion-list lines="full" class="connected-stores">
+      <ion-item-divider color="light">
         <ion-label><h3>Connected stores</h3></ion-label>
       </ion-item-divider>
 
@@ -49,15 +15,18 @@
             <ion-icon [name]="storeIcon(store.type)" slot="start" />
             <ion-label>
               <h3>{{ store.title }}</h3>
-              <p>{{ store.type }} · {{ store.url }}</p>
+              <p>{{ storeDescription(store.type) }}</p>
+              @if (store.url) {
+                <p class="store-meta">{{ store.type }} · {{ store.url }}</p>
+              }
             </ion-label>
             <ion-icon name="chevron-forward" slot="end" aria-hidden="true" />
           </ion-item>
         } @empty {
           <ion-item>
             <ion-label color="medium"
-              >No connected stores yet. Explore the public demo
-              above.</ion-label
+              >No connected stores yet. Explore the public demo in My
+              projects.</ion-label
             >
           </ion-item>
         }
@@ -68,5 +37,36 @@
         />
       }
     </ion-list>
+  } @else {
+    <ion-card-content>
+      <p class="store-intro">
+        Choose where project files live. Each option keeps projects connected to
+        their data and query history.
+      </p>
+      <ion-list
+        class="store-options"
+        lines="full"
+        aria-label="Project storage options"
+      >
+        @for (option of storageOptions; track option.type) {
+          <ion-item>
+            <ion-icon [name]="storeIcon(option.type)" slot="start" />
+            <ion-label>
+              <h3>{{ option.title }}</h3>
+              <p>{{ option.description }}</p>
+            </ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card-content>
   }
+  <img
+    class="storage-visual"
+    src="assets/home/storage-harbour-pencil.webp"
+    alt=""
+    width="2172"
+    height="724"
+    loading="lazy"
+    aria-hidden="true"
+  />
 </ion-card>

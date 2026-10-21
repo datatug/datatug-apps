@@ -214,3 +214,130 @@ describe('the query result page', () => {
     expectNoResult(sent(options.beforeSendSpan?.({ description: `GET ${AGENT_RESULT}`, data: { 'http.url': AGENT_RESULT } } as never)));
   });
 });
+
+describe('the query editor opened from a stored result', () => {
+  const RESULT_ID = 'qr-7f3a9c';
+  const PROJECT = 'secret-project';
+  const EDITOR = `/store/http-127.0.0.1:8989/project/${PROJECT}/query`;
+
+  it('is a link page with or without its query, but a deeper path or another page is not', () => {
+    expect(isLinkRoute(EDITOR)).toBe(true);
+    expect(isLinkRoute(`${EDITOR}?result=${RESULT_ID}&env=local`)).toBe(true);
+    expect(isLinkRoute(`${EDITOR}/some/saved`)).toBe(false);
+    expect(isLinkRoute('/store/http-127.0.0.1:8989/project/demo/queries')).toBe(false);
+  });
+
+  it('replaces the result id of the query and the project id of the path', () => {
+    expect(redactResultIds(`${EDITOR}?result=${RESULT_ID}&env=local`)).toBe(
+      '/store/http-127.0.0.1:8989/project/:projectId/query?result=:resultId&env=local',
+    );
+    expect(redactResultIds(`x ?env=local&result=${RESULT_ID}#frag`)).toBe(
+      'x ?env=local&result=:resultId#frag',
+    );
+    expect(redactResultIds(`${EDITOR}`)).toBe('/store/http-127.0.0.1:8989/project/:projectId/query');
+    // another project page keeps its path
+    expect(redactResultIds('/store/http-127.0.0.1:8989/project/demo/queries')).toBe(
+      '/store/http-127.0.0.1:8989/project/demo/queries',
+    );
+    const url = scrubText(`https://datatug.app${EDITOR}?result=${RESULT_ID}&env=local#code=${CODE}`, false);
+    expect(url).toBe('https://datatug.app/store/http-127.0.0.1:8989/project/:projectId/query');
+    expect(url).not.toContain(RESULT_ID);
+    expect(url).not.toContain(CODE);
+  });
+});
+
+describe('Quick Search Sentry project metadata privacy', () => {
+  it.each([
+    '/store/private-agent/project/private-project/quick-search',
+    '/space/private-space/store/firestore/project/private-project/tags',
+    '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model',
+  ])('scrubs %s URLs, identifiers and DOM breadcrumbs', (path) => {
+    const address =
+      path +
+      '?q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
+    history.replaceState(null, '', address);
+    expect(isLinkRoute(path)).toBe(true);
+    const event = {
+      message: 'Navigation ' + address,
+      request: {
+        url: 'https://datatug.app' + address,
+        query_string: 'q=private-query',
+      },
+      breadcrumbs: [
+        { category: 'ui.click', message: 'private-result' },
+        { category: 'ui.input', message: 'private-query' },
+        { category: 'console', message: 'private-result' },
+      ],
+      extra: { result: 'private-result' },
+    };
+    const result = options.beforeSend?.(event as ErrorEvent, {});
+    const serialized = JSON.stringify(result);
+    for (const secret of [
+      'private-agent',
+      'private-project',
+      'private-space',
+      'private-owner',
+      'private-repo',
+      'private-ref',
+      'private-folder',
+      'private-model',
+      'private-query',
+      'private-tag',
+      'private-schema',
+      'private-table',
+      'private-column',
+      'private-result',
+    ])
+      expect(serialized).not.toContain(secret);
+  });
+  it('does not classify lookalike nonproject routes', () => {
+    expect(isLinkRoute('/pricing/quick-search')).toBe(false);
+    expect(isLinkRoute('/store/agent/project/project/quick-search/extra')).toBe(
+      false,
+    );
+  });
+});
+
+describe('queued Quick Search Sentry payloads after leaving the page',()=>{
+  const api='https://api.sneat.cloud/v0/datatug/project/quick-search/search?storage=firestore&spaceID=private-space&project=private-project&branch=private-branch';
+  it.each([
+    '/space/private-space/store/firestore/project/private-project/quick-search?q=private-query',
+    '/space/private-space/store/firestore/project/private-project/tags?name=private-tag',
+    '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model?table=private-table&column=private-column',
+    api,
+  ])('fences the origin %s while Home is current',origin=>{
+    history.replaceState(null,'',origin.startsWith('https:')?'/space/private-space/store/firestore/project/private-project/quick-search?q=private-query':origin);
+    const event={request:{url:origin,query_string:'private-query'},breadcrumbs:[{category:'ui.click',message:'private-result'},{category:'ui.input',message:'private-query'},{category:'console',message:'private-result'}],extra:{result:'private-result'}};
+    history.replaceState(null,'','/home');
+    const result=options.beforeSend?.(event as ErrorEvent,{});
+    for(const secret of ['private-space','private-project','private-branch','private-query','private-tag','private-owner','private-repo','private-ref','private-folder','private-model','private-table','private-column','private-result'])expect(JSON.stringify(result)).not.toContain(secret);
+  });
+  it('scrubs a delayed API breadcrumb and preserves ordinary public telemetry',()=>{
+    history.replaceState(null,'','/home');
+    const breadcrumb=options.beforeBreadcrumb?.({category:'fetch',data:{url:api,method:'POST',status_code:200,body:'private-query',response:'private-result'}},{});
+    expect(breadcrumb).toEqual({category:'fetch',message:undefined,data:{url:'https://api.sneat.cloud/v0/datatug/project/quick-search/search',method:'POST',status_code:200}});
+    const publicEvent={message:'public-error',extra:{label:'public-label'},request:{url:'https://datatug.app/home'}};
+    expect(options.beforeSend?.(publicEvent as ErrorEvent,{})).toMatchObject(publicEvent);
+  });
+});
+
+describe('queued authenticated metadata preview Sentry privacy',()=>{
+  const preview='https://api.sneat.cloud/v0/datatug/project/quick-search/preview?storage=github.com&project=private-repo%40private-owner%40private-folder&branch=private-ref';
+  it('removes queued private preview metadata after navigation to Home',()=>{
+    history.replaceState(null,'','/home');
+    const event={request:{url:preview,query_string:'private-ref',data:{environmentId:'private-env'}},extra:{metadata:'private-table'},breadcrumbs:[{category:'ui.click',message:'private-table'},{category:'console',message:'private-column'},{category:'fetch',data:{url:preview,method:'POST',status_code:200,body:'private-env',response:'private-table'}}]};
+    const out=options.beforeSend?.(event as unknown as ErrorEvent,{});
+    for(const secret of ['private-repo','private-owner','private-folder','private-ref','private-env','private-table','private-column'])expect(JSON.stringify(out)).not.toContain(secret);
+    expect(options.beforeBreadcrumb?.({category:'fetch',data:{url:preview,method:'POST',status_code:200,body:'private-env',response:'private-table'}},{})).toEqual({category:'fetch',message:undefined,data:{url:'https://api.sneat.cloud/v0/datatug/project/quick-search/preview',method:'POST',status_code:200}});
+  });
+});
+
+describe('queued Check metadata query-mode Sentry privacy',()=>{
+  it('drops check identifiers, metadata extra and UI breadcrumbs after Home navigation',()=>{
+    const origin='https://datatug.app/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/quick-search?detailKind=check&objectId=private-check';
+    history.replaceState(null,'','/home');
+    const event={request:{url:origin,query_string:'detailKind=check&objectId=private-check'},extra:{title:'private-title',tags:['private-tag']},breadcrumbs:[{category:'ui.click',message:'private-check'},{category:'console',message:'private-title'}]};
+    const out=options.beforeSend?.(event as unknown as ErrorEvent,{});
+    for(const secret of ['private-owner','private-repo','private-ref','private-folder','private-check','private-title','private-tag'])expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});

@@ -92,14 +92,12 @@
       @if (!listing() && scenario(); as item) {
         <article>
           <ion-card>
-            <ion-list lines="full">
-              <ion-item color="light" lines="full">
-                <ion-label class="ion-text-wrap">
-                  <h1 id="public-scenarios-heading">{{ item.title }}</h1>
-                  <p>{{ item.id }} · version {{ item.version }}</p>
-                </ion-label>
-              </ion-item>
-            </ion-list>
+            <ion-item color="light" lines="full">
+              <ion-label class="ion-text-wrap">
+                <h1 id="public-scenarios-heading">{{ item.title }}</h1>
+                <p>{{ item.id }} · version {{ item.version }}</p>
+              </ion-label>
+            </ion-item>
             <ion-card-content>
               @if (item.description) {
                 <p>{{ item.description }}</p>

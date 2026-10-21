@@ -6,13 +6,15 @@ import {
 } from '@angular/common/http/testing';
 import { ErrorLogger } from '@sneat/core';
 import { PrivateTokenStoreService } from '@sneat/auth-core';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { firstValueFrom, Observable, Subject, of } from 'rxjs';
 
 import { ProjectService } from './project.service';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 import { IProjectRef, projectRefToString } from '../../core/project-context';
 import { IProjectSummary } from '../../models/definition/project';
+import { datatugApiRealProviders, expectDatatugApiRequest } from '../base/datatug-api.test-helpers';
+
 
 describe('ProjectService', () => {
   let http: { get: ReturnType<typeof vi.fn>; post: ReturnType<typeof vi.fn> };
@@ -33,7 +35,7 @@ describe('ProjectService', () => {
           },
         },
         { provide: PrivateTokenStoreService, useValue: {} },
-        { provide: SneatApiService, useValue: sneatApi },
+        { provide: DatatugApiService, useValue: sneatApi },
         {
           provide: DatatugStoreServiceFactory,
           useValue: { getDatatugStoreService: vi.fn() },
@@ -285,7 +287,7 @@ describe('ProjectService local summary HTTP context', () => {
           },
         },
         { provide: PrivateTokenStoreService, useValue: {} },
-        { provide: SneatApiService, useValue: { post: vi.fn() } },
+        { provide: DatatugApiService, useValue: { post: vi.fn() } },
         {
           provide: DatatugStoreServiceFactory,
           useValue: { getDatatugStoreService: vi.fn() },
@@ -361,7 +363,7 @@ describe('ProjectService shared operation fence', () => {
       providers: [
         ProjectService,
         { provide: HttpClient, useValue: http },
-        { provide: SneatApiService, useValue: {} },
+        { provide: DatatugApiService, useValue: {} },
         { provide: ErrorLogger, useValue: {} },
         { provide: PrivateTokenStoreService, useValue: {} },
         { provide: DatatugStoreServiceFactory, useValue: {} },
@@ -383,5 +385,32 @@ describe('ProjectService shared operation fence', () => {
       .subscribe({ error: (e) => (error = e) });
     expect(error).toBeTruthy();
     expect(http.get).not.toHaveBeenCalled();
+  });
+});
+
+describe('ProjectService DataTug API base URL', () => {
+  it('posts create_project to the DataTug API base URL', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectService,
+        ...datatugApiRealProviders(),
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+        { provide: PrivateTokenStoreService, useValue: {} },
+        {
+          provide: DatatugStoreServiceFactory,
+          useValue: { getDatatugStoreService: vi.fn() },
+        },
+      ],
+    });
+    TestBed.inject(ProjectService)
+      .createNewProject('firestore', { title: 'New project', userIDs: [] } as never)
+      .subscribe();
+    expectDatatugApiRequest('POST', 'datatug/projects/create_project');
   });
 });

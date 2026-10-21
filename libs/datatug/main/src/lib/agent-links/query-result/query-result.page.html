@@ -71,15 +71,23 @@
     </ion-segment-button>
     }
   </ion-segment>
-  @if (view() === 'table') {
+  @if (view() === 'table' && openingEditor()) {
+  <ion-card>
+    <ion-card-content
+      ><ion-text color="medium" data-testid="result-opening-editor" role="status"
+        >Opening the query editor…</ion-text
+      ></ion-card-content
+    >
+  </ion-card>
+  } @else if (view() === 'table') {
   <div class="result-grid" data-testid="result-table">
-    <ag-grid-angular *datatugAgGridReady
-      class="ag-theme-quartz"
-      style="height: 100%; width: 100%"
+    <sneat-datatug-results-grid
       [columnDefs]="gridColumns()"
       [rowData]="gridRows()"
-      [defaultColDef]="gridDefaultColDef"
-      [overlayNoRowsTemplate]="gridNoRows"
+      [snapshotKey]="recordset()"
+      [analyticsScope]="totalKnown() ? 'Analytics use the held result rows' : 'Analytics use the loaded rows; this result is incomplete'"
+      exportName="query-result"
+      [stateKey]="gridStateKey()"
       (rowClicked)="gridRowClicked($event)"
     />
   </div>

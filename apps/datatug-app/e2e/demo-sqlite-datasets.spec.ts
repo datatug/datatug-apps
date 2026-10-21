@@ -1,5 +1,12 @@
 import { createHash } from 'node:crypto';
-import { BrowserContext, expect, Locator, Page, test } from '@playwright/test';
+import { APIRequestContext, BrowserContext, Locator, Page } from '@playwright/test';
+import {
+  DEMODB_HOST,
+  DEMODB_LIVE,
+  expect,
+  test,
+  type DemodbGuard,
+} from './helpers/demodb-guard';
 // The catalog is plain TypeScript with no Angular imports; the lib's barrel would pull the whole app into Playwright.
 // eslint-disable-next-line @nx/enforce-module-boundaries
 import {
@@ -23,11 +30,14 @@ import {
  *    read, edit/delete/reset are offered, an edit survives a reload and Reset restores the original, with the
  *    in-memory behaviour asserted instead where the browser context has no OPFS (WebKit default).
  *
- * Needs the network (demodb.dev). The 126.8 MB AdventureWorks journey (a download, then a second one for Reset)
+ * Fixture mode (the default) answers every demodb.dev request from the local, SHA-256 verified fixtures
+ * (helpers/demodb-guard.ts), so the run needs no network and sends nothing to the live hosts. The checks whose point
+ * is the live site (the large file's HEAD, the advertised downloads answering) run only with DEMODB_E2E_MODE=live
+ * (the manual "DemoDB live smoke" workflow). The 126.8 MB AdventureWorks journey (a download, then a second one for Reset)
  * runs only with DATATUG_E2E_ADVENTUREWORKS=1; set DEMODB_CORPUS_URL to read a different registry.
  */
 
-const DEMODB = /(^|\.)demodb\.dev$/;
+const DEMODB = DEMODB_HOST;
 const CORPUS_URL =
   process.env['DEMODB_CORPUS_URL'] || 'https://demodb.dev/corpus.json';
 const RUN_ADVENTUREWORKS = !!process.env['DATATUG_E2E_ADVENTUREWORKS'];
@@ -59,16 +69,15 @@ interface CorpusDatabase {
 }
 
 let corpusPromise: Promise<CorpusDatabase[]> | undefined;
-/** DemoDB's published registry, read once per worker process. */
-function loadCorpus(request: {
-  get(
-    url: string,
-  ): Promise<{ ok(): boolean; status(): number; json(): Promise<unknown> }>;
-}): Promise<CorpusDatabase[]> {
-  corpusPromise ??= request.get(CORPUS_URL).then(async (response) => {
-    if (!response.ok())
-      throw new Error(`${CORPUS_URL}: HTTP ${response.status()}`);
-    return ((await response.json()) as { databases: CorpusDatabase[] })
+/** DemoDB's published registry, read once per worker process (from the fixture, or live exactly once in live mode). */
+function loadCorpus(
+  guard: DemodbGuard,
+  request: APIRequestContext,
+): Promise<CorpusDatabase[]> {
+  corpusPromise ??= guard.get(request, CORPUS_URL).then((response) => {
+    if (response.status !== 200)
+      throw new Error(`${CORPUS_URL}: HTTP ${response.status}`);
+    return (JSON.parse(response.body.toString('utf8')) as { databases: CorpusDatabase[] })
       .databases;
   });
   return corpusPromise;
@@ -81,9 +90,10 @@ test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
+    // demodb.dev requests fall through to the guard in helpers/demodb-guard.ts (local fixtures by default).
+    if (DEMODB.test(url.hostname)) return route.fallback();
     if (
       url.origin === own ||
-      DEMODB.test(url.hostname) ||
       url.protocol === 'data:' ||
       url.protocol === 'blob:'
     ) {
@@ -96,8 +106,9 @@ test.beforeEach(async ({ context, baseURL }) => {
 test.describe('DemoDB registry and DataTug catalog', () => {
   test('list the same datasets with the same SQLite file, SHA-256 and size', async ({
     request,
+    demodbGuard,
   }) => {
-    const corpus = await loadCorpus(request);
+    const corpus = await loadCorpus(demodbGuard, request);
     const registryIds = corpus.map((db) => db.localId).sort();
     expect(
       registryIds,
@@ -135,19 +146,24 @@ for (const id of demoSqliteDatasetIds) {
   test.describe(`dataset ${id}`, () => {
     test('the pinned SQLite file is served live and is the pinned file', async ({
       request,
+      demodbGuard,
     }) => {
       if (large) {
+        test.skip(
+          !DEMODB_LIVE,
+          'The 126.8 MB file is not fixtured; its HEAD runs only in live mode (DEMODB_E2E_MODE=live).',
+        );
         // Not downloaded here (126.8 MB): the server must answer, name the gzip it sends, and (when it reports
         // a length) report the pinned transfer size. The full file is checked by the opt-in browser journey.
-        const response = await request.head(entry.url);
-        expect(response.status()).toBe(200);
-        const length = response.headers()['content-length'];
+        const response = await demodbGuard.head(request, entry.url);
+        expect(response.status).toBe(200);
+        const length = response.headers['content-length'];
         if (length) expect(Number(length)).toBe(entry.transferBytes);
         return;
       }
-      const response = await request.get(entry.url);
-      expect(response.status()).toBe(200);
-      const body = await response.body();
+      const response = await demodbGuard.get(request, entry.url);
+      expect(response.status).toBe(200);
+      const body = response.body;
       expect(body.length).toBe(entry.bytes);
       expect(createHash('sha256').update(body).digest('hex')).toBe(
         entry.sha256,
@@ -157,8 +173,13 @@ for (const id of demoSqliteDatasetIds) {
 
     test('every complete-database download DemoDB advertises answers', async ({
       request,
+      demodbGuard,
     }) => {
-      const db = (await loadCorpus(request)).find(
+      test.skip(
+        !DEMODB_LIVE,
+        'Probes every advertised download on the live hosts; runs only in live mode (DEMODB_E2E_MODE=live).',
+      );
+      const db = (await loadCorpus(demodbGuard, request)).find(
         (candidate) => candidate.localId === id,
       );
       expect(db, `${id} is in the DemoDB registry`).toBeTruthy();
@@ -169,8 +190,8 @@ for (const id of demoSqliteDatasetIds) {
       );
       expect(downloads.map((file) => file.format)).toContain('sqlite');
       for (const file of downloads) {
-        const response = await request.head(file.url);
-        expect(response.status(), `${file.format}: ${file.url}`).toBe(200);
+        const response = await demodbGuard.head(request, file.url);
+        expect(response.status, `${file.format}: ${file.url}`).toBe(200);
       }
     });
 
@@ -178,14 +199,15 @@ for (const id of demoSqliteDatasetIds) {
       page,
       context,
       request,
+      demodbGuard,
     }) => {
       test.skip(
         large && !RUN_ADVENTUREWORKS,
-        'Set DATATUG_E2E_ADVENTUREWORKS=1 to download the 126.8 MB dataset (twice: open, then Reset).',
+        'Set DATATUG_E2E_ADVENTUREWORKS=1 (live mode) to download the 126.8 MB dataset (twice: open, then Reset). The hermetic fixture-served journey is demo-sqlite-adventureworks.spec.ts.',
       );
       test.setTimeout(large ? 1_200_000 : 240_000);
       const loadTimeout = large ? 600_000 : 90_000;
-      const db = (await loadCorpus(request)).find(
+      const db = (await loadCorpus(demodbGuard, request)).find(
         (candidate) => candidate.localId === id,
       );
       if (!db) throw new Error(`${id} is missing from the DemoDB registry`);

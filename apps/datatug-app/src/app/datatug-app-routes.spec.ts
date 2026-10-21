@@ -74,6 +74,23 @@ describe('DataTug app routes', () => {
     expect(feature).toHaveProperty('name', 'DatatugRoutingModule');
   }, 20_000);
 
+  // The route table exactly as the app registers it (no stand-ins): the shared Sneat login page's address for a saved
+  // space is answered with DataTug's own home instead of NG04002.
+  it("sends the shared login page's /space/family/<id> address to the DataTug home through the real route table", async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: PRODUCT_PROFILE,
+          useValue: resolveProductProfile({ hostname: 'datatug.app' }),
+        },
+        provideRouter(routes),
+      ],
+    });
+    const router = TestBed.inject(Router);
+    await expect(router.navigateByUrl('/space/family/x')).resolves.toBe(true);
+    expect(router.url).toBe('/home');
+  }, 30000);
+
   it('does not register the layered-ACL branch competing agent-URL routes', () => {
     const paths = routes.map((route) => route.path);
     expect(paths).not.toContain('agent/:agentId');
@@ -147,6 +164,7 @@ describe('DataTug app routes', () => {
       'pricing/return',
       undefined, // /demo/sqlite: DemoDB local SQLite explorer (matcher)
       undefined, // /demo/ovdb: DemoDB hosted PostgreSQL editions through OpenVaultDB (matcher)
+      'demo/logs', // mapped log evidence over an ordinary OVDB collection
       undefined, // exact historical Chinook demo alias
       undefined, // exact shared-project short folder alias
       undefined, // the hand-off route, which has a matcher instead of a path
@@ -156,6 +174,7 @@ describe('DataTug app routes', () => {
       'debug',
       '',
       '',
+      'space/:spaceType/:spaceId', // a Sneat space has no page in DataTug: the post-login target goes to the profile home
     ]);
   });
 

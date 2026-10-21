@@ -1,3 +1,4 @@
+import { currentDemoDbOvdbUrl } from '../demodb-ovdb';
 import type {
   DeclaredCatalogContext,
   VerifiedDeclaredSource,
@@ -69,7 +70,9 @@ export function configuredFieldChoices(
       ]);
       const explicitHost =
         connection.driver === 'ovdb' &&
-        (connection.host === provider['apiUrl'] ||
+        // Either side may name the DemoDB OVDB API on its legacy base (published before the move).
+        ((typeof connection.host === 'string' && typeof provider['apiUrl'] === 'string' &&
+          currentDemoDbOvdbUrl(connection.host) === currentDemoDbOvdbUrl(provider['apiUrl'])) ||
           connection.host === provider['id']);
       const explicitUpstream =
         connection.upstream?.repository === provider['repository'] &&

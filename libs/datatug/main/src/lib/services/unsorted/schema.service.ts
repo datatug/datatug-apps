@@ -1,6 +1,6 @@
 import { Injectable, inject } from '@angular/core';
 import { Observable, throwError } from 'rxjs';
-import { SneatApiService } from '@sneat/api';
+import { DatatugApiService } from '../base/datatug-api.service';
 import { IRecord } from '@sneat/data';
 import { CreateNamedRequest } from '../../dto/requests';
 import { ISchema } from '../../models/definition/schema';
@@ -8,7 +8,7 @@ import { createProjItem } from '../base/create-object';
 
 @Injectable()
 export class SchemaService {
-  private readonly api = inject(SneatApiService);
+  private readonly api = inject(DatatugApiService);
 
   public createSchema = (
     request: CreateNamedRequest,

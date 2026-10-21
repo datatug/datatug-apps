@@ -1,3 +1,4 @@
+import { ErrorLogger } from '@sneat/core';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter, type Params } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
@@ -17,11 +18,13 @@ async function setup(params: Params, environment: LocalDemoDbEnvironment = fakeE
     return runtime;
   });
   const paramMap = new BehaviorSubject(convertToParamMap(params));
+  const queryParamMap = new BehaviorSubject(convertToParamMap({}));
   await TestBed.configureTestingModule({
     imports: [DemoSqlitePageComponent],
     providers: [
       provideRouter([]),
-      { provide: ActivatedRoute, useValue: { paramMap, snapshot: { paramMap: paramMap.value } } },
+      { provide: ErrorLogger, useValue: { logErrorHandler: () => () => undefined } },
+      { provide: ActivatedRoute, useValue: { paramMap, queryParamMap, snapshot: { paramMap: paramMap.value, queryParamMap: queryParamMap.value } } },
       { provide: LOCAL_DEMODB_RUNTIME_LOADER, useValue: loader },
       { provide: LOCAL_DEMODB_ENVIRONMENT, useValue: environment },
       { provide: OvdbConfirmService, useValue: { confirm: vi.fn(async () => true) } },
@@ -42,6 +45,27 @@ async function setup(params: Params, environment: LocalDemoDbEnvironment = fakeE
 
 describe('DemoSqlitePageComponent', () => {
   afterEach(() => vi.useRealTimers());
+
+  it('offers exactly two copies after ready, keeps browsing after dismiss and reopens local instructions', async () => {
+    const { q, runtimes, settle } = await setup({ dataset: 'chinook' });
+    expect(q('project-copy-offer')).toBeNull();
+    await vi.waitFor(() => expect(runtimes).toHaveLength(1));
+    runtimes[0].open({ imported: true });
+    await vi.waitFor(async () => { await settle(); expect(q('project-copy-github')).not.toBeNull(); });
+    expect(q('project-copy-local')).not.toBeNull();
+    q('project-copy-local')?.click();
+    await settle();
+    expect(q('project-copy-local-instructions')?.textContent).toContain('Download edited SQLite');
+    expect(q('project-copy-file-path')).not.toBeNull();
+    expect(q('project-copy-local-instructions')?.textContent).toContain('OPFS');
+    q('project-copy-dismiss')?.click();
+    await settle();
+    expect(q('project-copy-offer')).toBeNull();
+    expect(q('ovdb-table-list')).not.toBeNull();
+    q('project-copy-reopen')?.click();
+    await settle();
+    expect(q('project-copy-offer')).not.toBeNull();
+  });
 
   it('lists the datasets for /demo/sqlite', async () => {
     const { q, el, loader } = await setup({});
@@ -93,6 +117,13 @@ describe('DemoSqlitePageComponent', () => {
     });
     expect(q('demo-sqlite-replaced')?.textContent).toContain('Demo DB updated; your local edits were reset.');
     expect(q('ovdb-status')?.textContent).toBe('Local copy (memory only)');
+    const offer = q('project-copy-offer');
+    if (!offer) throw new Error('Expected project copy offer');
+    for (const warning of ['demo-sqlite-replaced', 'demo-sqlite-not-persistent']) {
+      const notice = q(warning);
+      if (!notice) throw new Error(`Expected ${warning}`);
+      expect(notice.compareDocumentPosition(offer) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    }
   });
 
   it('asks before a large download: Continue shows phased progress, then the tables', async () => {
@@ -111,13 +142,15 @@ describe('DemoSqlitePageComponent', () => {
     vi.useFakeTimers();
     q('demo-sqlite-continue')?.click();
     await vi.waitFor(() => expect(runtimes).toHaveLength(1));
-    runtimes[0].progress({ phase: 'download', loaded: 12_400_000, total: 126_820_352 });
+    // AdventureWorks is chunked: the bar counts its compressed gzip parts.
+    runtimes[0].progress({ phase: 'download', loaded: 12_400_000, total: 35_367_459 });
     await settle();
     expect(q('demo-sqlite-progress')).toBeNull(); // not before ~400 ms
     vi.advanceTimersByTime(400);
     await settle();
     expect(q('demo-sqlite-progress')?.textContent).toContain('Preparing local copy (126.8 MB)');
-    expect(q('demo-sqlite-progress')?.textContent).toContain('Downloading 12.4 of 126.8 MB (unpacked size)');
+    expect(q('demo-sqlite-progress')?.textContent).toContain('Downloading 12.4 of 35.4 MB');
+    expect(q('demo-sqlite-progress')?.textContent).not.toContain('unpacked size');
     runtimes[0].progress({ phase: 'install', step: 'verify' });
     await settle();
     expect(q('demo-sqlite-progress')?.textContent).toContain('Verifying the download');

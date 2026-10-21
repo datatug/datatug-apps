@@ -61,14 +61,27 @@ function sharedQueryPage(rest: string): boolean {
   return (
     rest === '' ||
     rest === '/overview' ||
+    rest === '/quick-search' ||
+    rest === '/tags' ||
+    /^\/search-schema\/[A-Za-z0-9_-]+$/.test(rest) ||
     rest === '/queries' ||
+    rest === '/shipping' ||
+    /^\/meanings(?:\/(?:new-entity|entity|new-field|field))?$/.test(rest) ||
+    rest === '/boards' ||
+    rest === '/boards/new' ||
+    /^\/board\/[A-Za-z0-9_-]+$/.test(rest) ||
     rest === '/checks' ||
     rest === '/detective' ||
+    rest === '/incidents' ||
+    rest === '/incidents/new' ||
+    /^\/incidents\/[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/(?:checks|detective)\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/detective\/scenario\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*$/.test(rest) ||
     rest === '/sessions' ||
-    /^\/sessions\/[A-Za-z0-9_-]{1,128}(?:\/(?:overview|queries|invoice-overview|invoice-explorer|composer)|\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*)?$/.test(rest)
+    /^\/sessions\/[A-Za-z0-9_-]{1,128}(?:\/(?:overview|queries|invoice-overview|invoice-explorer|composer)|\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*)?$/.test(
+      rest,
+    )
   );
 }
 

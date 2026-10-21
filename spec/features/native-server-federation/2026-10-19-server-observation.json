@@ -1,0 +1,29 @@
+{
+  "captureKind": "public API observation summary transcribed from tool output, not a byte-for-byte response archive",
+  "observedDate": "2026-10-19",
+  "endpoint": "https://cloud.openvaultdb.com/v1/dtql",
+  "method": "POST",
+  "requestOrigin": "https://datatug.app",
+  "status": 200,
+  "accessControlAllowOrigin": "https://datatug.app",
+  "query": "Northwind Customers n inner join Chinook Customer c on n.Country = c.Country; group by n.Country; select country, count(distinct n.CustomerID) as northwindCustomers, count(distinct c.CustomerId) as chinookCustomers; order by n.Country; limit 100",
+  "response": {
+    "complete": true,
+    "columns": ["country", "northwindCustomers", "chinookCustomers"],
+    "execution": {
+      "route": "in-memory",
+      "elapsedMs": 39,
+      "rowsReturned": 17,
+      "sources": [
+        {"database": "northwind", "collection": "Customers", "rows": 93, "elapsedMs": 3},
+        {"database": "chinook", "collection": "Customer", "rows": 59, "elapsedMs": 2}
+      ]
+    },
+    "representativeRows": [
+      {"country": "Canada", "northwindCustomers": 3, "chinookCustomers": 8},
+      {"country": "USA", "northwindCustomers": 13, "chinookCustomers": 13}
+    ]
+  },
+  "caveats": "Exact shared country labels only. UK and United Kingdom are not normalized. Null countries and source-exclusive labels are excluded. Separate bounded source observations included two Northwind null-country records; their provenance was not determined and source contents may change.",
+  "acceptance": "This proves server capability only. Local built-app browser acceptance is a separate Playwright receipt; root deployed UI acceptance remains pending landing."
+}

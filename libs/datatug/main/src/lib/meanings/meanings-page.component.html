@@ -1,0 +1,380 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start"
+      ><ion-menu-button /><ion-back-button [defaultHref]="backHref()"
+    /></ion-buttons>
+    <ion-title>{{ title() }}</ion-title>
+    @if (mode() === 'list' && catalog()?.writable) {
+      <ion-buttons slot="end"
+        ><ion-button [routerLink]="link(href('new-entity'))"
+          >Add entity</ion-button
+        ></ion-buttons
+      >
+    }
+  </ion-toolbar>
+</ion-header>
+<ion-content color="light" class="ion-padding">
+  @if (loading()) {
+    <ion-card
+      ><ion-card-content role="status"
+        ><ion-spinner /> Loading meanings…</ion-card-content
+      ></ion-card
+    >
+  }
+  @if (error()) {
+    <ion-card
+      ><ion-card-content
+        ><p role="alert">{{ error() }}</p>
+        <ion-button fill="clear" [disabled]="pending()" (click)="retry()"
+          >Reload meanings</ion-button
+        ></ion-card-content
+      ></ion-card
+    >
+  }
+  @if (catalog(); as catalog) {
+    @if (!catalog.writable) {
+      <ion-card
+        ><ion-card-content
+          ><ion-note
+            >This project is read-only. Open an editable project copy to add or
+            remove meaning definitions.</ion-note
+          ></ion-card-content
+        ></ion-card
+      >
+    }
+    @if (!catalog.writable && canCopyDemo()) {
+      <ion-button
+        class="ion-margin"
+        [disabled]="pending()"
+        (click)="copyDemoProject()"
+        >{{
+          pending() ? 'Verifying source…' : 'Copy this demo project to GitHub'
+        }}</ion-button
+      >
+    }
+    @if (catalog.discoveryComplete === false) {
+      <p class="ion-margin" role="status">
+        Meaning discovery is incomplete. Some definitions or resource
+        associations could not be verified.
+      </p>
+    }
+    @for (notice of catalog.notices ?? []; track notice) {
+      <ion-card
+        ><ion-card-content
+          ><ion-note>{{ notice }}</ion-note></ion-card-content
+        ></ion-card
+      >
+    }
+    @if (creating()) {
+      @if (canCreate()) {
+        <ion-card>
+          <ion-item lines="full"
+            ><ion-label
+              ><h2>{{ title() }}</h2>
+              <p>
+                Define what this
+                {{ mode() === 'new-field' ? 'field' : 'entity' }} means.
+              </p></ion-label
+            ></ion-item
+          >
+          <form [formGroup]="form" (ngSubmit)="save()">
+            <fieldset [disabled]="pending()">
+              <ion-input
+                label="ID"
+                labelPlacement="stacked"
+                formControlName="conceptId"
+                placeholder="customer-id"
+                helperText="Lowercase letters and numbers, separated by hyphens. IDs stay stable."
+              />
+              <ion-input
+                label="Name"
+                labelPlacement="stacked"
+                formControlName="name"
+              />
+              <ion-textarea
+                label="Description"
+                labelPlacement="stacked"
+                formControlName="description"
+                [autoGrow]="true"
+              />
+              @if (submitted() && form.invalid) {
+                <p role="alert">
+                  Enter an ID, name and description. Use lowercase letters,
+                  numbers and hyphens for the ID.
+                </p>
+              }
+              <div class="actions">
+                <ion-button
+                  fill="clear"
+                  [routerLink]="link(backHref())"
+                  [disabled]="pending()"
+                  >Cancel</ion-button
+                ><ion-button type="submit" [disabled]="pending()">{{
+                  pending() ? 'Saving…' : 'Create'
+                }}</ion-button>
+              </div>
+            </fieldset>
+          </form>
+        </ion-card>
+      } @else {
+        <ion-card
+          ><ion-card-content
+            >Choose an editable project meaning entity before adding a
+            field.<ion-button fill="clear" [routerLink]="link(href())"
+              >Back to meanings</ion-button
+            ></ion-card-content
+          ></ion-card
+        >
+      }
+    } @else if (mode() === 'list') {
+      <ion-card>
+        <ion-item
+          ><ion-input
+            aria-label="Filter meanings"
+            placeholder="Filter entities or fields"
+            [value]="filter()"
+            (ionInput)="filter.set($event.detail.value || '')"
+        /></ion-item>
+        <ion-list>
+          @for (
+            entity of filteredEntities();
+            track entity.documentId + ':' + entity.conceptId
+          ) {
+            <ion-item [routerLink]="link(href('entity', entity))" detail
+              ><ion-label
+                ><h2>{{ entity.name }}</h2>
+                <p>{{ entity.description }}</p>
+                <p>
+                  {{ sourceLabel(entity) }} · {{ entity.conceptId }}
+                  @if (entity.conceptKind) {
+                    · {{ entity.conceptKind }}
+                  }
+                </p></ion-label
+              ></ion-item
+            >
+            @for (
+              field of entity.fields;
+              track field.documentId + ':' + field.conceptId
+            ) {
+              <ion-item
+                [routerLink]="link(href('field', entity, field))"
+                detail
+                class="meaning-field"
+                ><ion-label
+                  ><h3>{{ field.name }}</h3>
+                  <p>{{ field.description }}</p>
+                  @if (field.conceptKind) {
+                    <p>{{ field.conceptKind }}</p>
+                  }
+                </ion-label></ion-item
+              >
+            }
+          } @empty {
+            <ion-item
+              ><ion-label>{{
+                filter()
+                  ? 'No matching meanings.'
+                  : catalog.notices?.length
+                    ? 'No meanings could be resolved from the available project declarations.'
+                    : 'No meanings are declared in this project yet.'
+              }}</ion-label></ion-item
+            >
+          }
+        </ion-list>
+      </ion-card>
+    } @else if (entity(); as entity) {
+      @if (mode() !== 'field' || field()) {
+        <ion-card>
+          <ion-item
+            ><ion-label
+              ><h1>{{ mode() === 'field' ? field()?.name : entity.name }}</h1>
+              <p>
+                {{
+                  mode() === 'field' ? field()?.description : entity.description
+                }}
+              </p>
+              <p class="identity">
+                @if (
+                  mode() === 'field' ? field()?.conceptKind : entity.conceptKind
+                ) {
+                  {{
+                    mode() === 'field'
+                      ? field()?.conceptKind
+                      : entity.conceptKind
+                  }}
+                  ·
+                }
+                {{ sourceLabel(entity) }} ·
+                {{ mode() === 'field' ? field()?.conceptId : entity.conceptId }}
+              </p></ion-label
+            ></ion-item
+          >
+          @if (sourceHref(); as source) {
+            <ion-item
+              [href]="source"
+              target="_blank"
+              rel="noopener noreferrer"
+              detail
+            >
+              <ion-label
+                ><h2>Source definition</h2>
+                <p>{{ sourceLabel(entity) }}</p></ion-label
+              >
+            </ion-item>
+          }
+          @if (mode() === 'field') {
+            <ion-item [routerLink]="link(href('entity', entity))" detail
+              ><ion-label>Entity: {{ entity.name }}</ion-label></ion-item
+            >
+          }
+          @if (
+            mode() === 'entity' &&
+            (!entity.conceptKind || entity.conceptKind === 'entity')
+          ) {
+            <ion-item color="light"
+              ><ion-label><h2>Fields</h2></ion-label>
+              @if (catalog.writable && entity.origin === 'project') {
+                <ion-buttons slot="end"
+                  ><ion-button [routerLink]="link(href('new-field', entity))"
+                    >Add field</ion-button
+                  ></ion-buttons
+                >
+              }
+            </ion-item>
+            <ion-list>
+              @for (
+                field of entity.fields;
+                track field.documentId + ':' + field.conceptId
+              ) {
+                <ion-item
+                  [routerLink]="link(href('field', entity, field))"
+                  detail
+                  ><ion-label
+                    ><h3>{{ field.name }}</h3>
+                    <p>{{ field.description }}</p>
+                    @if (field.conceptKind) {
+                      <p>{{ field.conceptKind }}</p>
+                    }
+                  </ion-label></ion-item
+                >
+              } @empty {
+                <ion-item
+                  ><ion-label color="medium"
+                    >No fields defined.</ion-label
+                  ></ion-item
+                >
+              }
+            </ion-list>
+          }
+        </ion-card>
+        <ion-card>
+          <ion-item color="light"
+            ><ion-label
+              ><h2>Related resources</h2>
+              <p>Resources that define or use this meaning.</p></ion-label
+            ></ion-item
+          >
+          <ion-list>
+            @for (
+              resource of resources();
+              track resource.kind +
+                ':' +
+                resource.environment +
+                ':' +
+                resource.id
+            ) {
+              <ion-item [routerLink]="link(resourceHref(resource))" detail
+                ><ion-label
+                  ><h3>{{ resource.title }}</h3>
+                  <p>
+                    {{
+                      resource.kind === 'board'
+                        ? 'Dashboard'
+                        : resource.kind === 'database'
+                          ? 'Database'
+                          : 'Query'
+                    }}
+                  </p></ion-label
+                ></ion-item
+              >
+            } @empty {
+              <ion-item
+                ><ion-label color="medium"
+                  >No linked resources found.</ion-label
+                ></ion-item
+              >
+            }
+          </ion-list>
+          @if (!catalog.referencesComplete) {
+            <ion-card-content
+              ><ion-note
+                >Reference discovery is incomplete. Deletion is unavailable
+                until the project can check all references.</ion-note
+              ></ion-card-content
+            >
+          }
+        </ion-card>
+        @if (catalog.writable && entity.origin === 'project') {
+          <ion-card
+            ><ion-card-content>
+              @if (confirmDelete()) {
+                <p>
+                  Delete this
+                  {{ mode() === 'field' ? 'field' : 'entity and its fields' }}?
+                </p>
+                <ion-button
+                  fill="clear"
+                  [disabled]="pending()"
+                  (click)="confirmDelete.set(false)"
+                  >Keep</ion-button
+                ><ion-button
+                  color="danger"
+                  [disabled]="pending() || !canDelete()"
+                  (click)="deleteSelected()"
+                  >{{ pending() ? 'Deleting…' : 'Delete' }}</ion-button
+                >
+              } @else {
+                <ion-button
+                  fill="clear"
+                  color="danger"
+                  [disabled]="!canDelete() || pending()"
+                  (click)="confirmDelete.set(true)"
+                  >Delete
+                  {{ mode() === 'field' ? 'field' : 'entity' }}</ion-button
+                >
+                @if (!canDelete()) {
+                  <p>
+                    <ion-note
+                      >Remove all references before deleting. Entity deletion
+                      also checks its fields.</ion-note
+                    >
+                  </p>
+                }
+              }
+            </ion-card-content></ion-card
+          >
+        }
+      } @else {
+        <ion-card
+          ><ion-card-content role="status"
+            >This meaning field was not found.<ion-button
+              fill="clear"
+              [routerLink]="link(href('entity', entity))"
+              >Back to entity</ion-button
+            ></ion-card-content
+          ></ion-card
+        >
+      }
+    } @else {
+      <ion-card
+        ><ion-card-content role="status"
+          >This meaning entity was not found.<ion-button
+            fill="clear"
+            [routerLink]="link(href())"
+            >Back to meanings</ion-button
+          ></ion-card-content
+        ></ion-card
+      >
+    }
+  }
+</ion-content>

@@ -192,6 +192,11 @@ describe('BoardPage same-route tutorial overlay', () => {
     });
     mode.next(null);
     expect(page.displayBoard()?.rows?.[0].cards).toHaveLength(2);
+    const canonical = JSON.stringify(page.boardDef());
+    page.showFullBoard();
+    page.showFullBoard();
+    expect(JSON.stringify(page.displayBoard())).toBe(canonical);
+    expect(JSON.stringify(page.boardDef())).toBe(canonical);
     mode.next('tutorial');
     expect(page.displayBoard()).toBeUndefined();
     await vi.waitFor(() =>
@@ -399,7 +404,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     fixture.destroy();
   });
 
-  it('keeps keyboard focus and in-canvas continuation on each changed card, announces views/tabs, and exposes the source limit', async () => {
+  it('keeps keyboard focus on the stable guide heading as card content changes, announces views/tabs, and exposes the source limit', async () => {
     const board: Board = {
       ...saved,
       rows: [
@@ -467,7 +472,9 @@ describe('BoardPage same-route tutorial overlay', () => {
       value: scroll,
       configurable: true,
     });
+    const canonicalJson = JSON.stringify(board);
     const { fixture, page } = await harness(board, 'tutorial', true, true);
+    const runtime = fixture.debugElement.injector.get(TutorialBoardRuntime);
     await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
     await fixture.whenStable();
     const activate = async (label: string, withinCard = false) => {
@@ -486,33 +493,41 @@ describe('BoardPage same-route tutorial overlay', () => {
     };
     await activate('Add the first card');
     expect(
-      document.activeElement?.getAttribute('data-tutorial-card-heading'),
-    ).toBe('race');
-    expect(document.activeElement?.textContent).toContain('Add Orders race');
-    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
-    await activate('Next Step', true);
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
     expect(document.activeElement?.textContent).toContain(
       'Inspect the source rows',
+    );
+    expect(scroll).toHaveBeenCalledWith({ block: 'start', behavior: 'auto' });
+    await activate('Next Step', true);
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
+    expect(document.activeElement?.textContent).toContain(
+      'Return to the paused race',
     );
     expect(
       fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
     ).toContain('Inspect the source rows');
     expect(
       page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
-    ).toHaveProperty('defaultView', 'grid');
+    ).toHaveProperty('defaultView', 'chart');
+    expect(runtime.presentationView('race', [])).toBe('grid');
+    expect(JSON.stringify(board)).toBe(canonicalJson);
     expect(
       fixture.nativeElement.querySelector('.tutorial-progress').textContent,
     ).toContain('Return to the paused race');
     await activate('Next Step', true);
-    expect(document.activeElement?.textContent).toContain(
-      'Return to the paused race',
-    );
+    expect(runtime.presentationView('race', [])).toBe('chart');
+    expect(document.activeElement?.textContent).toContain('Add Inspection');
     await activate('Next Step', true);
     expect(
-      document.activeElement?.getAttribute('data-tutorial-card-heading'),
-    ).toBe('inspect');
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
     await activate('Next Step', true);
-    expect(document.activeElement?.textContent).toContain('Inspect PostgreSQL');
+    expect(document.activeElement?.textContent).toContain(
+      'Explore another source',
+    );
     expect(
       fixture.nativeElement.querySelector('.tutorial-card-guide').textContent,
     ).toContain('Adding a second source is unavailable');
@@ -520,9 +535,13 @@ describe('BoardPage same-route tutorial overlay', () => {
       fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
     ).toContain('Inspect PostgreSQL');
     await activate('Previous Step', true);
-    expect(document.activeElement?.textContent).toContain(
-      'Previous step restored',
-    );
+    expect(
+      document.activeElement?.hasAttribute('data-tutorial-guide-focus'),
+    ).toBe(true);
+    expect(document.activeElement?.textContent).toContain('Inspect PostgreSQL');
+    expect(
+      fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
+    ).toContain('Previous step restored');
     await activate('Take Control');
     expect(
       document.activeElement?.hasAttribute('data-tutorial-authoring-focus'),
@@ -563,12 +582,23 @@ describe('BoardPage same-route tutorial overlay', () => {
               widget: {
                 name: 'chart',
                 data: {
-                  sources: [{ id: 'orders', queryId: 'demodb/orders' }],
+                  sources: [
+                    {
+                      id: 'orders',
+                      queryId: 'demodb/orders',
+                      transform: {
+                        name: 'orders-monthly-country-count',
+                        orderIdColumn: 'OrderID',
+                        dateColumn: 'OrderDate',
+                        countryColumn: 'ShipCountry',
+                      },
+                    },
+                  ],
                   chart: {
                     type: 'bar-race',
-                    periodColumn: 'month',
-                    categoryColumn: 'country',
-                    valueColumn: 'orders',
+                    periodColumn: 'period',
+                    categoryColumn: 'category',
+                    valueColumn: 'value',
                     unit: 'orders',
                     grain: 'month',
                     onDuplicate: 'reject',
@@ -615,6 +645,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     const { fixture, page, mode } = await harness(editable, 'tutoril', true);
     await vi.waitFor(() => expect(page.tutorialBoard()).toBeTruthy());
     await fixture.whenStable();
+    const runtime = fixture.debugElement.injector.get(TutorialBoardRuntime);
     expect(fixture.nativeElement.textContent).toContain(
       'Your canvas starts here',
     );
@@ -630,18 +661,25 @@ describe('BoardPage same-route tutorial overlay', () => {
       await fixture.whenStable();
     };
     await click('Add the first card');
+    expect(page.tutorialGuide()?.step.title).toBe('Inspect the monthly trend');
+    const originalRace = page.displayBoard()?.rows?.[0].cards?.[0];
+    await click('Next Step');
+    expect(runtime.presentationView('race', [])).toBe('trend');
     expect(page.tutorialGuide()?.step.title).toBe('Inspect the source rows');
-    await click('Next Step');
-    expect(
-      page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
-    ).toHaveProperty('defaultView', 'grid');
     await click('Previous');
-    expect(
-      page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
-    ).toHaveProperty('defaultView', 'chart');
+    expect(runtime.presentationView('race', [])).toBeUndefined();
+    expect(page.tutorialGuide()?.step.title).toBe('Inspect the monthly trend');
     await click('Next Step');
     await click('Next Step');
+    expect(runtime.presentationView('race', [])).toBe('grid');
+    expect(page.tutorialGuide()?.step.title).toBe('Return to the paused race');
+    expect(page.displayBoard()?.rows?.[0].cards?.[0]).toBe(originalRace);
+    expect(originalRace?.widget?.data).toHaveProperty('defaultView', 'chart');
     await click('Next Step');
+    expect(runtime.presentationView('race', [])).toBe('chart');
+    expect(page.tutorialGuide()?.step.title).toBe('Add Source inspection');
+    await click('Next Step');
+    expect(page.tutorialGuide()?.step.title).toBe('Inspect PostgreSQL');
     await click('Next Step');
     expect(page.tutorialGuide()?.step.limitation).toContain('unavailable');
     await click('Take Control');
@@ -674,8 +712,36 @@ describe('BoardPage same-route tutorial overlay', () => {
     page.tabAction(editor, 'select-tab', editor.tabs[2].key);
     const chartEditor = page.tutorialEditors().find((editor) => editor.chart);
     if (!chartEditor) throw new Error('Missing chart editor');
-    page.setTutorialView(chartEditor, 'grid');
+    const resultView = Array.from(
+      fixture.nativeElement.querySelectorAll(
+        'label',
+      ) as NodeListOf<HTMLLabelElement>,
+    )
+      .find((label) => label.textContent?.trim().startsWith('Result view'))
+      ?.querySelector('select');
+    if (!resultView) throw new Error('Missing Result view authoring control');
+    expect(resultView.value).toBe('chart');
+    resultView.value = 'grid';
+    resultView.dispatchEvent(new Event('change', { bubbles: true }));
+    await fixture.whenStable();
+    expect(resultView.value).toBe('grid');
+    expect(runtime.presentationView('race', [])).toBeUndefined();
+    expect(
+      page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
+    ).toHaveProperty('defaultView', 'grid');
     expect(page.displayBoard()?.rows?.[0].cards?.[1]).toBe(edited);
+    await click('Resume Guide');
+    await click('Previous');
+    expect(runtime.presentationView('race', [])).toBe('chart');
+    expect(
+      page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
+    ).toHaveProperty('defaultView', 'chart');
+    await click('Next Step');
+    expect(runtime.presentationView('race', [])).toBeUndefined();
+    expect(
+      page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
+    ).toHaveProperty('defaultView', 'grid');
+    expect(page.displayBoard()?.rows?.[0].cards?.[1]).toEqual(edited);
     expect(JSON.stringify(editable)).toBe(canonicalJson);
     expect(
       persist.mock.instances.every((instance) => instance === sessionStorage),
@@ -693,6 +759,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     expect(
       page.displayBoard()?.rows?.[0].cards?.[0].widget?.data,
     ).toHaveProperty('defaultView', 'grid');
+    expect(runtime.presentationView('race', [])).toBeUndefined();
     mode.next(null);
     await fixture.whenStable();
     sessionStorage.clear();

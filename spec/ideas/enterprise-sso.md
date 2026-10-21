@@ -14,7 +14,7 @@ status: Specified
 
 ## Problem Statement
 
-How might a company adopt OIDC or SAML sign-in in DataTug.app without support tickets, duplicate user accounts, a second organisation model, or weakening Sneat's existing space membership boundary?
+How Might We help a company adopt OIDC or SAML sign-in in DataTug.app without support tickets, duplicate user accounts, a second organisation model, or weakening the Sneat platform's existing space membership boundary?
 
 ## Context
 

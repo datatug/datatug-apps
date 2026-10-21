@@ -12,7 +12,12 @@ import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
 import { provideGithubRedirectCapture } from './github-redirect-capture';
 import { TelegramAuthService } from '@sneat/auth-core';
-import { authRoutes, ssoRoutes, TelegramLoginConfig } from '@sneat/auth-ui';
+import {
+  AUTH_PANEL_UI_CONFIG,
+  authRoutes,
+  ssoRoutes,
+  TelegramLoginConfig,
+} from '@sneat/auth-ui';
 import {
   APP_INFO,
   EnvConfigToken,
@@ -38,6 +43,7 @@ import {
   provideDatatugBusinessCheckoutLiveEnabled,
 } from './app/checkout/business-checkout-config';
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
+import { provideAnalyticsConsent } from './app/analytics-consent/analytics-consent.provider';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { configureAgGrid } from '@datatug/ag-grid';
@@ -48,8 +54,13 @@ import {
   datatugBusinessCheckoutApiOrigin,
   datatugBusinessCheckoutLiveApiOrigin,
   datatugBusinessCheckoutLiveEnabled,
+  datatugEnvironmentProviders,
+  datatugGoogleAnalyticsMeasurementId,
 } from './environments/environment';
-import { withoutDataTugTracking } from './launch-tracking';
+import {
+  dataTugGoogleAnalyticsId,
+  withoutDataTugTracking,
+} from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
 import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
@@ -72,10 +83,14 @@ import { testProjectPreviewInterceptor } from './app/test-project-preview.interc
 // First: take the one-time code of a card's link out of the address before Sentry, PostHog or the router read it.
 const agentLinkCode = takeAgentLinkCode(location, history);
 
-const trackedEnvironmentConfig = withoutDataTugTracking(environmentConfig, {
+const productProfile = {
   hostname: location.hostname,
   queryProfile: new URLSearchParams(location.search).get('profile'),
-});
+};
+const trackedEnvironmentConfig = withoutDataTugTracking(
+  environmentConfig,
+  productProfile,
+);
 // REQ:ui-no-context-telemetry (claude-mod-web-links): no fragment, key, row or loopback agent request data reaches
 // PostHog or Sentry, whichever code starts them.
 const datatugAppEnvironmentConfig = {
@@ -100,6 +115,7 @@ configureAgGrid(AG_GRID_LICENSE_KEY);
 
 bootstrapApplication(DatatugAppComponent, {
   providers: [
+    ...datatugEnvironmentProviders,
     provideZonelessChangeDetection(),
     provideCheckoutAnalyticsPrivacy(),
     provideCheckoutPurchaseRecovery(),
@@ -126,6 +142,13 @@ bootstrapApplication(DatatugAppComponent, {
     },
     provideAgentAccessForModuleClients(),
     provideLinkTelemetryPrivacy(),
+    // After the two privacy initializers above: a checkout address has set its latch before this one reads it.
+    provideAnalyticsConsent(
+      dataTugGoogleAnalyticsId(
+        datatugGoogleAnalyticsMeasurementId,
+        productProfile,
+      ),
+    ),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },
@@ -135,7 +158,8 @@ bootstrapApplication(DatatugAppComponent, {
       useValue: datatugAppEnvironmentConfig.useNgrok
         ? `//${location.host}/v0/`
         : datatugAppEnvironmentConfig.firebaseConfig.emulator
-          ? location.hostname === '127.0.0.1' ||
+          ? location.hostname === 'datatug.localhost' ||
+            location.hostname === '127.0.0.1' ||
             location.hostname === 'localhost'
             ? 'http://127.0.0.1:8090/v0/'
             : 'https://local-api.sneat.ws/v0/'
@@ -197,6 +221,13 @@ bootstrapApplication(DatatugAppComponent, {
     {
       provide: TelegramLoginConfig,
       useValue: { botID: 'SneatBot', localBotID: 'AlextDevBot' },
+    },
+    {
+      provide: AUTH_PANEL_UI_CONFIG,
+      useValue: {
+        showQuickLoginHeader: false,
+        quickLoginProviders: ['google.com', 'microsoft.com', 'github.com'],
+      },
     },
     // App-specific providers
     {
