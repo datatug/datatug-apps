@@ -1,3 +1,4 @@
+import { trimCoreSpace } from '../contract/core-whitespace';
 import type { ExecutionRef, Result, TypedValue } from '../contract/types';
 
 export interface EvidenceScope {
@@ -96,7 +97,7 @@ export function evidenceObject(
   return obj;
 }
 export function evidenceText(v: unknown): string {
-  if (typeof v !== 'string' || !v || v.trim() !== v)
+  if (typeof v !== 'string' || !v || trimCoreSpace(v) !== v)
     throw new Error('Evidence identity must be canonical');
   return v;
 }

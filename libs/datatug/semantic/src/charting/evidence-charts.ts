@@ -1,3 +1,4 @@
+import { trimCoreSpace } from '../contract/core-whitespace';
 import { verifyRowEvidence } from './evidence-integrity';
 import { decodeResult } from '../contract/decoders';
 import type { Result, TypedValue, ExecutionRef } from '../contract/types';
@@ -365,7 +366,7 @@ export async function prepareEvidenceChart(
       const selected = inspect(m.evidenceRefColumn);
       const observed =
         point !== undefined &&
-        clock.trim() !== '' &&
+        trimCoreSpace(clock) !== '' &&
         precision !== undefined &&
         precision > 0;
       return {
@@ -427,10 +428,10 @@ export async function prepareEvidenceChart(
       end !== undefined &&
       end >= start &&
       Number.isSafeInteger(end - start) &&
-      first.trim() !== '' &&
-      last.trim() !== '' &&
+      trimCoreSpace(first) !== '' &&
+      trimCoreSpace(last) !== '' &&
       first !== last &&
-      clock.trim() !== '' &&
+      trimCoreSpace(clock) !== '' &&
       clock === endClock &&
       precision !== undefined &&
       precision > 0 &&

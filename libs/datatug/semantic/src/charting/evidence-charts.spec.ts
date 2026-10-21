@@ -896,3 +896,119 @@ describe('Core v0.63 binding and early-calendar parity through public evidence A
     },
   );
 });
+
+describe('shared exact Go whitespace at every public evidence validation boundary', () => {
+  it.each(['selection', 'context'] as const)(
+    'uses canonical Go whitespace for %s parameter and fact identities',
+    async (origin) => {
+      const r = fixture();
+      for (const field of ['parameterId', 'factId'] as const) {
+        const binding = {
+          parameterId: 'parameter',
+          value: text('selected'),
+          origin,
+          originEvidence: 'client-reported' as const,
+          factId: 'fact',
+        };
+        for (const value of ['\u0085p', 'p\u0085', '\u0085', ' p', 'p ']) {
+          const malformed = {
+            ...r,
+            bindingsApplied: [{ ...binding, [field]: value }],
+          };
+          expect(() => decodeResult(malformed)).toThrow();
+          await expect(
+            resolveRowEvidence(malformed, selector(r)),
+          ).rejects.toThrow();
+        }
+        for (const value of ['\ufeffp', '\ufeff']) {
+          const canonical = {
+            ...r,
+            bindingsApplied: [{ ...binding, [field]: value }],
+          };
+          expect(
+            (await resolveRowEvidence(canonical, selector(r)))?.state,
+          ).toBe('available');
+        }
+      }
+    },
+  );
+  it('distinguishes Core nonempty column names from canonical identities when hashing', async () => {
+    for (const name of ['\u0085', '\u0085 \u0085']) {
+      const recordset = {
+        columns: [{ name, type: 'string' }],
+        rows: [[text('value')]],
+      };
+      expect(() => canonicalRecordsetJSON(recordset)).toThrow();
+      await expect(recordsetFingerprint(recordset)).rejects.toThrow();
+    }
+    // Core Column.Validate requires nonempty after Go trimming, not canonical
+    // whitespace. BOM-only and surrounding-space names are therefore valid.
+    for (const name of ['\ufeff', '\ufeffp', ' p ']) {
+      const recordset = {
+        columns: [{ name, type: 'string' }],
+        rows: [[text('value')]],
+      };
+      const canonical = JSON.stringify(recordset);
+      expect(canonicalRecordsetJSON(recordset)).toBe(canonical);
+      expect(await recordsetFingerprint(recordset)).toBe(
+        createHash('sha256').update(canonical).digest('hex'),
+      );
+    }
+  });
+  it('uses the same Go nonempty rule for provenance and limitation labels before returning refs', async () => {
+    const r = fixture();
+    for (const value of ['\u0085', '\u0085 \u0085']) {
+      for (const malformed of [
+        { ...r, provenance: { ...r.provenance, source: value } },
+        {
+          ...r,
+          limitations: [
+            { policy: value, rowsFiltered: false, hiddenColumns: [] },
+          ],
+        },
+      ])
+        await expect(
+          resolveRowEvidence(malformed, selector(r)),
+        ).rejects.toThrow();
+    }
+    for (const value of ['\ufeff', '\ufeffp', ' source ']) {
+      const valid = {
+        ...r,
+        provenance: { ...r.provenance, source: value },
+        limitations: [
+          { policy: value, rowsFiltered: false, hiddenColumns: [] },
+        ],
+      };
+      expect((await resolveRowEvidence(valid, selector(r)))?.state).toBe(
+        'available',
+      );
+    }
+  });
+  it('applies canonical Go trimming to sidecar source and scope context', async () => {
+    const r = fixture();
+    const malformed = {
+      ...r,
+      rowEvidence: {
+        ...metadata(r),
+        source: { ...source, id: '\u0085source' },
+      },
+    };
+    await expect(resolveRowEvidence(malformed, selector(r))).rejects.toThrow();
+    const valid = {
+      ...r,
+      rowEvidence: {
+        ...metadata(r),
+        source: { ...source, id: '\ufeffsource' },
+        scope: { ...scope, spaceID: '\ufeffspace' },
+      },
+    };
+    const selected = {
+      ...selector(r),
+      source: valid.rowEvidence.source,
+      scope: valid.rowEvidence.scope,
+    };
+    expect((await resolveRowEvidence(valid, selected))?.state).toBe(
+      'available',
+    );
+  });
+});

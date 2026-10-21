@@ -1,3 +1,4 @@
+import { trimCoreSpace } from './core-whitespace';
 import { decodeRowEvidence } from '../charting/row-evidence';
 import { decodeSourceRightsEvidence } from './source-rights';
 import {
@@ -96,13 +97,13 @@ function requireString(v: unknown, path: string): string {
 
 function requireNonEmptyString(v: unknown, path: string): string {
   const value = requireString(v, path);
-  if (!value.trim()) fail(path, 'nonempty string required');
+  if (!trimCoreSpace(value)) fail(path, 'nonempty string required');
   return value;
 }
 function requireRefSegment(v: unknown, path: string): string {
   const value = requireNonEmptyString(v, path);
   if (
-    value.trim() !== value ||
+    trimCoreSpace(value) !== value ||
     value === '.' ||
     value === '..' ||
     /[/\\\p{Cc}]/u.test(value)
@@ -405,8 +406,8 @@ export function decodeBinding(v: unknown, path = 'binding'): Binding {
     factId: optional(obj['factId'], `${path}.factId`, requireString),
   };
   if (
-    !binding.parameterId.trim() ||
-    binding.parameterId.trim() !== binding.parameterId
+    !trimCoreSpace(binding.parameterId) ||
+    trimCoreSpace(binding.parameterId) !== binding.parameterId
   )
     fail(`${path}.parameterId`, 'canonical parameter identity required');
   const evidence =
@@ -415,10 +416,7 @@ export function decodeBinding(v: unknown, path = 'binding'): Binding {
     fail(`${path}.originEvidence`, 'binding origin and evidence mismatch');
   if (binding.origin === 'selection' || binding.origin === 'context') {
     const factId = requireString(binding.factId, `${path}.factId`);
-    // Go strings.TrimSpace includes NEL, but excludes BOM (unlike JS trim).
-    const boundarySpace =
-      /^[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]|[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/u;
-    if (!factId || boundarySpace.test(factId))
+    if (!trimCoreSpace(factId) || trimCoreSpace(factId) !== factId)
       fail(`${path}.factId`, 'canonical fact identity required');
   } else if (binding.factId)
     fail(
@@ -443,7 +441,7 @@ function decodeResultColumn(v: unknown, path: string): ResultColumn {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['name', 'type'], path);
   const name = requireString(obj['name'], `${path}.name`);
-  if (!name.trim()) fail(`${path}.name`, 'column name is required');
+  if (!trimCoreSpace(name)) fail(`${path}.name`, 'column name is required');
   return {
     name,
     type: requireEnum(obj['type'], RESULT_COLUMN_TYPES, `${path}.type`),
