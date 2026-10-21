@@ -38,29 +38,34 @@
 // it — ion-split-pane is
 // `position: absolute; inset: 0` in Ionic, so normal flow would put the
 // header under it.
-$compact-header-height: 3.25rem;
+:host {
+  --datatug-toolbar-height: 56px;
+}
+
+:host-context(.ios) {
+  --datatug-toolbar-height: 44px;
+}
 
 ion-app.compact-header-mode > ion-split-pane {
-  top: calc(
-    #{$compact-header-height} + var(--ion-safe-area-top, 0px)
-  );
+  top: calc(var(--datatug-toolbar-height) + var(--ion-safe-area-top, 0px));
   height: calc(
-    100% - #{$compact-header-height} - var(--ion-safe-area-top, 0px)
+    100% - var(--datatug-toolbar-height) - var(--ion-safe-area-top, 0px)
   );
 }
 
 // Same grayish toolbar family as the side-panel header, so the compact
 // header and the panel read as one chrome rather than unrelated blocks.
-// The safe-area padding keeps the toolbar full-height on notched devices,
-// matching the split-pane offset above.
+// Ionic sizes the toolbar and applies its safe-area padding, just as it does
+// for page headers. The split-pane offset above mirrors that native height.
 .compact-header {
   position: absolute;
   inset: 0 0 auto;
   z-index: 100;
-  padding-top: var(--ion-safe-area-top, 0px);
 
-  ion-toolbar {
-    --min-height: #{$compact-header-height};
+  // Ionic's small iOS title includes subtitle spacing. This title is the
+  // toolbar's single title, so it must fit the standard toolbar height.
+  ion-title {
+    padding-block: 0;
   }
 }
 
