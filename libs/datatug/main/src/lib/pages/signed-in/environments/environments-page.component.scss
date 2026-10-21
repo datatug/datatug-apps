@@ -12,7 +12,14 @@ ion-chip.severity-danger {
   --background: #ffe5e8;
   --color: #a31630;
 }
-@media (prefers-color-scheme: dark) {
+ion-chip.severity-warning ion-icon,
+ion-chip.severity-danger ion-icon {
+  color: inherit;
+}
+:host-context(.ion-palette-dark) {
+  .environment-danger {
+    color: #ffb4c1;
+  }
   .environment-warning {
     color: #ffd866;
   }
