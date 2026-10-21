@@ -683,6 +683,8 @@ describe('HostedIncidentConversationComponent', () => {
     expect(client.incidentAction).not.toHaveBeenCalled();
     const link=f.debugElement.queryAll(By.directive(RouterLink)).find(el=>el.nativeElement.textContent.includes('Open saved Check'));
     if (!link) throw new Error('Saved Check navigation is missing.');
+    expect(link.nativeElement.closest('header')).not.toBeNull();
+    expect(link.nativeElement.getAttribute('title')).toBe('Open saved Check');
     const tree=link.injector.get(RouterLink).urlTree;
     if (!tree) throw new Error('Saved Check route is unavailable.');
     expect(TestBed.inject(Router).serializeUrl(tree)).toContain('/checks/fault-check?environment=demo');
@@ -776,6 +778,49 @@ describe('HostedIncidentConversationComponent', () => {
     await page(f).finalizeCriterion();expect(sessionStorage.length).toBe(1);
     page(f).body.set('competing');await page(f).send();expect(client.incidentAction).toHaveBeenCalledTimes(1);
     remove.mockRestore();await page(f).retryCriterion();expect(client.incidentAction).toHaveBeenCalledTimes(2);expect(sessionStorage.length).toBe(0);
+  });
+
+  it('F1 blocks a remount with unreadable retained criterion storage and recovers only the exact reread intent',async()=>{
+    let f=await mount();selectCriterion(f);
+    client.incidentAction.mockReturnValue(throwError(()=>new HttpErrorResponse({status:0})));
+    await page(f).saveCriterion();const original=structuredClone(client.incidentAction.mock.calls[0].slice(0,3));
+    const key=sessionStorage.key(0);if(!key)throw new Error('Missing original criterion journal');
+    const read=sessionStorage.getItem.bind(sessionStorage),bytes=read(key);f.destroy();TestBed.resetTestingModule();
+    const get=vi.spyOn(sessionStorage,'getItem').mockImplementation(name=>{if(name===key)throw new Error('read denied');return read(name);});
+    const write=vi.spyOn(sessionStorage,'setItem'),remove=vi.spyOn(sessionStorage,'removeItem');
+    f=await mount();page(f).body.set('Do not replace unknown criterion');selectCriterion(f);
+    await page(f).send();await page(f).saveCriterion();await page(f).reviewPending();page(f).abandonPending();
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);expect(write).not.toHaveBeenCalled();expect(remove).not.toHaveBeenCalled();expect(read(key)).toBe(bytes);
+    expect((f.componentInstance as unknown as {invalidPending():boolean}).invalidPending()).toBe(true);
+    get.mockRestore();await page(f).reviewPending();
+    expect(read(key)).toBe(bytes);expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    page(f).keepPendingRetry();await page(f).retryCriterion();
+    expect(client.incidentAction.mock.calls[1].slice(0,3)).toEqual(original);
+    expect(read(key)).toBe(bytes);
+  });
+  it('F1 preserves an already-known ordinary message retry when writes and later reads fail',async()=>{
+    const f=await mount();page(f).body.set('Known ordinary message');
+    vi.spyOn(sessionStorage,'setItem').mockImplementation(()=>{throw new Error('write denied');});
+    client.incidentAction.mockReturnValue(throwError(()=>new HttpErrorResponse({status:0})));
+    await page(f).send();const original=structuredClone(client.incidentAction.mock.calls[0].slice(0,3));
+    vi.spyOn(sessionStorage,'getItem').mockImplementation(()=>{throw new Error('read denied');});
+    await page(f).send();expect(client.incidentAction.mock.calls[1].slice(0,3)).toEqual(original);
+  });
+  it('F1 rechecks a fresh shared slot before creating any replacement message operation',async()=>{
+    const f=await mount();page(f).body.set('Fresh draft');const write=vi.spyOn(sessionStorage,'setItem');
+    vi.spyOn(sessionStorage,'getItem').mockImplementation(()=>{throw new Error('fresh read denied');});
+    await page(f).send();expect(write).not.toHaveBeenCalled();expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+  it('F2 places the accessible draft action in one flat criterion section header',async()=>{
+    const f=await mount();page(f).criterionOpen.set(true);await f.whenStable();
+    const section=f.nativeElement.querySelector('section[aria-label="Resolution criterion"]');
+    const action=section.querySelector('header ion-button[title="Save draft"]');
+    expect(action).not.toBeNull();expect(action.getAttribute('title')).toBe('Save draft');
+    expect(action.querySelector('ion-icon').getAttribute('aria-hidden')).toBe('true');
+    expect(action.querySelector('.header-action-label').textContent).toContain('Save draft');
+    expect(section.querySelectorAll('h3')).toHaveLength(1);
+    expect(section.querySelectorAll('ion-button[title="Save draft"]')).toHaveLength(1);
+    expect(section.querySelector('ion-card')).toBeNull();expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
 });

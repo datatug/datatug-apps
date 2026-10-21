@@ -13,6 +13,8 @@ import {
   optionsOutline,
   checkmarkOutline,
   closeOutline,
+  saveOutline,
+  openOutline,
 } from 'ionicons/icons';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -37,6 +39,7 @@ import {
 import { RouterLink } from '@angular/router';
 import {
   IonButton,
+  IonButtons,
   IonIcon,
   IonInput,
   IonItem,
@@ -83,26 +86,49 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
   selector: 'sneat-datatug-hosted-incident-conversation',
   changeDetection: ChangeDetectionStrategy.OnPush,
   styles: `
+    .incident-conversation {
+      container-type: inline-size;
+    }
     .conversation-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      gap: 1rem;
+      flex-wrap: wrap;
+      gap: 0.25rem 0.5rem;
+      padding: 0.25rem 0.5rem;
+      background: var(--ion-color-light);
+      border-bottom: 1px solid var(--ion-color-light-shade);
     }
-    .conversation-header h2 {
+    .conversation-header h2,
+    .conversation-header h3 {
+      flex: 1 1 8rem;
+      min-width: 0;
       margin: 0;
+      font-size: 1.05rem;
+      font-weight: 600;
+    }
+    .section-actions {
+      margin-inline-start: auto;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      min-width: 0;
+    }
+    .section-actions ion-icon {
+      margin-inline-end: 0.25rem;
     }
     .criterion {
       margin-block: 1rem;
-      border-top: 1px solid var(--ion-color-light-shade);
-      padding-top: 0.5rem;
+      min-width: 0;
     }
     .criterion-details {
       overflow-wrap: anywhere;
     }
-    @media (max-width: 480px) {
+    @container (max-width: 36rem) {
       .header-action-label {
         display: none;
+      }
+      .section-actions ion-icon {
+        margin-inline-end: 0;
       }
     }
     .character-choice {
@@ -113,6 +139,7 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
     }
   `,
   imports: [
+    IonButtons,
     AppliedEvidenceSelectorComponent,
     IonIcon,
     IonInput,
@@ -127,10 +154,10 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
     IonTextarea,
   ],
   template: `
-    <section aria-label="Incident conversation">
+    <section class="incident-conversation" aria-label="Incident conversation">
       <header class="conversation-header">
         <h2>Conversation</h2>
-        <div>
+        <ion-buttons class="section-actions" slot="end">
           <ion-button
             size="small"
             fill="clear"
@@ -154,11 +181,75 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
               >Resolution criterion</span
             ></ion-button
           >
-        </div>
+        </ion-buttons>
       </header>
       @if (criterionOpen() || criterion()) {
         <section class="criterion" aria-label="Resolution criterion">
-          <h3>Resolution criterion</h3>
+          <header class="conversation-header criterion-header">
+            <h3>Resolution criterion</h3>
+            <ion-buttons class="section-actions" slot="end">
+              @if (criterion(); as c) {
+                @if (c.finalized) {
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    title="Open saved Check"
+                    aria-label="Open saved Check"
+                    [routerLink]="savedCheckHref(c)"
+                    [queryParams]="{ environment: environment() }"
+                    ><ion-icon name="open-outline" aria-hidden="true" /><span
+                      class="header-action-label"
+                      >Open saved Check</span
+                    ></ion-button
+                  >
+                } @else if (canWrite()) {
+                  <ion-button
+                    size="small"
+                    fill="clear"
+                    title="Review finalization"
+                    aria-label="Review finalization"
+                    [disabled]="mutationBlocked()"
+                    (click)="finalizeReview.set(true)"
+                    ><ion-icon
+                      name="checkmark-outline"
+                      aria-hidden="true"
+                    /><span class="header-action-label"
+                      >Review finalization</span
+                    ></ion-button
+                  >
+                }
+              }
+              @if (criterionOpen() && !criterion()?.finalized && canWrite()) {
+                <ion-button
+                  size="small"
+                  title="Save draft"
+                  aria-label="Save draft"
+                  [disabled]="
+                    mutationBlocked() ||
+                    !criterionChoice() ||
+                    !criterionCheckID()
+                  "
+                  (click)="saveCriterion()"
+                  ><ion-icon name="save-outline" aria-hidden="true" /><span
+                    class="header-action-label"
+                    >Save draft</span
+                  ></ion-button
+                >
+                <ion-button
+                  size="small"
+                  fill="clear"
+                  title="Cancel criterion editing"
+                  aria-label="Cancel criterion editing"
+                  [disabled]="sending()"
+                  (click)="criterionOpen.set(false); finalizeReview.set(false)"
+                  ><ion-icon name="close-outline" aria-hidden="true" /><span
+                    class="header-action-label"
+                    >Cancel</span
+                  ></ion-button
+                >
+              }
+            </ion-buttons>
+          </header>
           @if (criterion(); as c) {
             <p>
               {{ c.finalized ? 'Finalized' : 'Draft saved' }} · criterion
@@ -182,23 +273,11 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
               <p>Definition digest {{ c.definitionDigest }}</p>
             </details>
             @if (c.finalized) {
-              <ion-button
-                fill="clear"
-                [routerLink]="savedCheckHref(c)"
-                [queryParams]="{ environment: environment() }"
-                >Open saved Check</ion-button
-              >
               <p>
                 On the Check page, select this Incident and the same existing
                 applied context, then use Run.
               </p>
             } @else if (canWrite()) {
-              <ion-button
-                size="small"
-                [disabled]="mutationBlocked()"
-                (click)="finalizeReview.set(true)"
-                >Review finalization</ion-button
-              >
               @if (finalizeReview()) {
                 <p role="alert">
                   Finalize this exact draft before its first matching run. Its
@@ -272,21 +351,6 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
               [disabled]="mutationBlocked()"
               (selected)="criterionChoice.set($event)"
             />
-            <ion-button
-              size="small"
-              [disabled]="
-                mutationBlocked() || !criterionChoice() || !criterionCheckID()
-              "
-              (click)="saveCriterion()"
-              >Save draft</ion-button
-            >
-            <ion-button
-              size="small"
-              fill="clear"
-              [disabled]="sending()"
-              (click)="criterionOpen.set(false); finalizeReview.set(false)"
-              ><ion-icon name="close-outline" slot="start" />Cancel</ion-button
-            >
           }
           @if (pending()?.action) {
             <p role="status">
@@ -421,8 +485,9 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
         }
         @if (invalidPending()) {
           <p role="alert">
-            A saved message attempt cannot be safely retried. Review the
-            conversation and explicitly abandon it before posting a new message.
+            A saved action attempt cannot be safely retried. Restore retry
+            access, review the current Incident, then explicitly retire the
+            local retry before starting another operation.
           </p>
         }
         <ion-item>
@@ -488,15 +553,27 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
             (click)="reviewPending()"
             [disabled]="loading() || sending()"
           >
-            Review pending message
+            {{
+              pending()?.message
+                ? 'Review pending message'
+                : 'Review pending action'
+            }}
           </ion-button>
           @if (pendingReview()) {
-            <div role="group" aria-label="Pending message recovery">
+            <div
+              role="group"
+              [attr.aria-label]="
+                pending()?.message
+                  ? 'Pending message recovery'
+                  : 'Pending action recovery'
+              "
+            >
               <p role="alert">
                 This attempt may already have been saved. A lost reply or
-                changed access cannot prove whether it was delivered. Posting
-                the text again may create a duplicate. Abandoning this local
-                retry does not remove a saved message.
+                changed access cannot prove whether it was delivered. Submitting
+                the {{ pending()?.message ? 'message' : 'action' }} again may
+                create a duplicate. Abandoning this local retry does not remove
+                a saved {{ pending()?.message ? 'message' : 'operation' }}.
               </p>
               @if (hasMore()) {
                 <p>
@@ -538,9 +615,11 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
           {{
             sending()
               ? 'Posting…'
-              : pending()
-                ? 'Retry message'
-                : 'Post message'
+              : pending()?.action
+                ? 'Message posting blocked'
+                : pending()
+                  ? 'Retry message'
+                  : 'Post message'
           }}
         </ion-button>
         @if (posted()) {
@@ -617,6 +696,8 @@ export class HostedIncidentConversationComponent {
       optionsOutline,
       checkmarkOutline,
       closeOutline,
+      saveOutline,
+      openOutline,
     });
     this.nativeLifetime.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
       ++this.requestGeneration;
@@ -690,6 +771,8 @@ export class HostedIncidentConversationComponent {
   private readonly afterSeq = signal(0);
   private readonly lastSeq = signal(0);
   private requestGeneration = 0;
+  private pendingStorageUnreadable = false;
+  private reviewedPendingRaw: string | null | undefined;
   private readonly identity = computed(() =>
     JSON.stringify([this.context(), this.environment(), this.incidentRef()]),
   );
@@ -718,11 +801,15 @@ export class HostedIncidentConversationComponent {
     this.assertion.set('claim');
     this.lastSeq.set(0);
     this.sending.set(false);
+    this.pendingStorageUnreadable = false;
+    this.reviewedPendingRaw = undefined;
     let raw: string | null = null;
     try {
       raw = sessionStorage.getItem(this.storageKey(identity));
     } catch {
-      /* Browser storage is optional for a fresh draft. */
+      this.pendingStorageUnreadable = true;
+      this.invalidPending.set(true);
+      /* Unknown shared storage may retain a criterion. It is never an empty slot. */
     }
     try {
       if (raw && raw.length > 32768)
@@ -899,6 +986,40 @@ export class HostedIncidentConversationComponent {
       this.sending()
     )
       return;
+    let raw: string | null;
+    try {
+      raw = sessionStorage.getItem(this.storageKey());
+    } catch {
+      this.sendError.set(
+        'The shared retry slot is unreadable. Restore storage access and review again; no new operation can replace it.',
+      );
+      return;
+    }
+    if (this.pendingStorageUnreadable) {
+      // Only a successful actual reread can recover the hidden original intent.
+      // A now-absent slot still needs explicit review/abandonment of the unknown local state.
+      this.pendingStorageUnreadable = false;
+      try {
+        const value: unknown =
+          raw && raw.length <= 32768 ? JSON.parse(raw) : undefined;
+        if (isPendingIncidentOperation(value)) {
+          this.pending.set(value);
+          this.invalidPending.set(false);
+          if (value.message) {
+            this.body.set(value.message.body);
+            this.character.set(value.message.presentation?.characterId || '');
+            this.setAssertion(value.message.assertion || 'claim');
+            this.checkID.set(
+              value.message.refs?.find((ref) => ref.kind === 'check')?.artifact
+                ?.id || '',
+            );
+          } else this.criterionOpen.set(true);
+        } else this.invalidPending.set(true);
+      } catch {
+        this.invalidPending.set(true);
+      }
+    }
+    this.reviewedPendingRaw = raw;
     this.pendingReview.set(true);
     await this.read(true);
   }
@@ -920,6 +1041,18 @@ export class HostedIncidentConversationComponent {
     // Only this explicit reviewed action retires the uncertain intent. It
     // cannot retract a message the server may already have committed.
     try {
+      const current = sessionStorage.getItem(this.storageKey());
+      if (
+        this.reviewedPendingRaw === undefined ||
+        current !== this.reviewedPendingRaw
+      ) {
+        this.pendingStorageUnreadable = true;
+        this.invalidPending.set(true);
+        this.pendingReview.set(false);
+        throw new Error(
+          'The retained retry must be reread and reviewed before retirement.',
+        );
+      }
       sessionStorage.removeItem(this.storageKey());
       if (sessionStorage.getItem(this.storageKey()) !== null)
         throw new Error('Retry storage could not be cleared.');
@@ -928,6 +1061,7 @@ export class HostedIncidentConversationComponent {
       return;
     }
     const wasCriterion = !!this.pending()?.action;
+    const wasMessage = !!this.pending()?.message;
     this.pending.set(undefined);
     this.invalidPending.set(false);
     if (!wasCriterion) this.character.set('');
@@ -937,13 +1071,10 @@ export class HostedIncidentConversationComponent {
     this.recoveryNotice.set(
       wasCriterion
         ? 'Original criterion retry abandoned locally. The original operation may already exist on the server. Review the current criterion before saving a new operation.'
-        : 'Original retry abandoned locally. Saved Check references were removed. Review the text before posting a new message; the original may already exist.',
+        : wasMessage
+          ? 'Original retry abandoned locally. Saved Check references were removed. Review the text before posting a new message; the original may already exist.'
+          : 'Unknown local action retry abandoned after review. The original operation may already exist on the server.',
     );
-    try {
-      sessionStorage.removeItem(this.storageKey());
-    } catch {
-      /* The edited draft remains usable in this component. */
-    }
   }
   protected async reviewConflict(): Promise<void> {
     if (!this.conflictHistoryLoaded()) {
@@ -960,6 +1091,13 @@ export class HostedIncidentConversationComponent {
     if (this.pending()?.action) {
       this.conflict.set(false);
       this.pendingReview.set(true);
+      try {
+        this.reviewedPendingRaw = sessionStorage.getItem(this.storageKey());
+      } catch {
+        this.pendingStorageUnreadable = true;
+        this.invalidPending.set(true);
+        this.reviewedPendingRaw = undefined;
+      }
       this.sendError.set(
         'Review the current criterion and history, then explicitly abandon the retained local attempt before creating another operation.',
       );
@@ -1009,6 +1147,23 @@ export class HostedIncidentConversationComponent {
     }
     let pending = this.pending();
     if (!pending) {
+      try {
+        if (sessionStorage.getItem(this.storageKey(identity)) !== null) {
+          this.pendingStorageUnreadable = true;
+          this.invalidPending.set(true);
+          this.sendError.set(
+            'A retained shared operation must be reread and reviewed before posting.',
+          );
+          return;
+        }
+      } catch {
+        this.pendingStorageUnreadable = true;
+        this.invalidPending.set(true);
+        this.sendError.set(
+          'The shared retry slot is unreadable. Restore access and review before posting.',
+        );
+        return;
+      }
       if (
         this.character() &&
         this.messagePresentation()?.status !== 'available'
@@ -1135,11 +1290,17 @@ export class HostedIncidentConversationComponent {
       }
       try {
         sessionStorage.removeItem(this.storageKey(identity));
-        if (pending.action && sessionStorage.getItem(this.storageKey(identity)) !== null) throw new Error('The criterion retry remains in storage.');
+        if (
+          pending.action &&
+          sessionStorage.getItem(this.storageKey(identity)) !== null
+        )
+          throw new Error('The criterion retry remains in storage.');
       } catch {
         if (pending.action) {
           this.pending.set(pending);
-          this.sendError.set('The criterion was saved, but its local retry could not be retired. Retry the exact operation or review and abandon it locally.');
+          this.sendError.set(
+            'The criterion was saved, but its local retry could not be retired. Retry the exact operation or review and abandon it locally.',
+          );
         }
         /* The exact server receipt is confirmed; a retained criterion still blocks competing writes. */
       }
@@ -1251,8 +1412,17 @@ export class HostedIncidentConversationComponent {
       return;
     }
     try {
-      const key = this.storageKey(),
+      const key = this.storageKey();
+      let prior: string | null;
+      try {
         prior = sessionStorage.getItem(key);
+      } catch {
+        this.pendingStorageUnreadable = true;
+        this.invalidPending.set(true);
+        throw new Error(
+          'The shared retry slot is unreadable. Restore access and review before saving a criterion.',
+        );
+      }
       if (prior !== null) {
         this.invalidPending.set(true);
         throw new Error(

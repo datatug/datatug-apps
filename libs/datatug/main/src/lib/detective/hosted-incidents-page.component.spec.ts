@@ -96,6 +96,20 @@ describe('HostedIncidentsPageComponent', () => {
     child.mutationBusy.emit(false);
     parent.selectEnvironment('staging');expect(parent.environment()).toBe('staging');
   });
+
+  it('F1 keeps parent mutations locked when the mounted child cannot read the shared retry slot',async()=>{
+    const key='datatug:incident-message:'+JSON.stringify([{kind:'cloud',storage:'firestore',spaceID:ref.spaceID,project:ref.projectId,principal:'sarah'},'demo',incident.ref]);
+    const bytes=JSON.stringify({operationId:'operation-retained-criterion',expectedSeq:1,action:{type:'criterion-finalize',incidentRef:caseRecord.incidentRefs[0],environment:'demo',expectedSeq:1,criterionVersion:1}});
+    sessionStorage.setItem(key,bytes);const read=sessionStorage.getItem.bind(sessionStorage);
+    const get=vi.spyOn(sessionStorage,'getItem').mockImplementation(name=>{if(name===key)throw new Error('read denied');return read(name);});
+    const write=vi.spyOn(sessionStorage,'setItem');
+    const f=await mount('detail',[],'demo',true,ref,'',[incident],['demo','staging']);
+    await vi.waitFor(()=>expect(f.debugElement.query(By.directive(HostedIncidentConversationComponent))).not.toBeNull());
+    await f.whenStable();const parent=f.componentInstance as unknown as {startCase():Promise<void>;selectEnvironment(value:string):void;environment():string};
+    await parent.startCase();parent.selectEnvironment('staging');
+    expect(client.incidentAction).not.toHaveBeenCalled();expect(parent.environment()).toBe('demo');expect(write).not.toHaveBeenCalled();expect(read(key)).toBe(bytes);
+    get.mockRestore(); sessionStorage.removeItem(key);
+  });
   it('offers the shared landing only for an empty hosted list', async () => {
     const fixture = await mount('list', [], 'demo', true, ref, '', []);
     await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
@@ -504,8 +518,11 @@ describe('HostedIncidentsPageComponent', () => {
     expect(client.incidentAction.mock.calls[2][2]).not.toBe(firstOperation);
   });
 
-  it('keeps exact create and start-case retry IDs in memory when session storage is disabled', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage disabled'); });
+  it('keeps exact parent retry IDs in memory when their storage fails and the shared child slot is readable', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => {
+      if (key.startsWith('datatug:incident-message:')) return null;
+      throw new Error('parent retry storage disabled');
+    });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled'); });
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage disabled'); });
     client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
