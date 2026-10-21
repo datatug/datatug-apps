@@ -20,6 +20,25 @@ import { BoardCardComponent } from '../../components/board-card/board-card.compo
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { IProjectRef } from '../../../../core/project-context';
 
+// This fixture exercises tutorial layout/focus, while the real BoardCard still
+// consumes the widget's public title and projected-header contract.
+@Component({ selector: 'sneat-datatug-board-widget', template: '' })
+class TutorialWidgetDom {
+  readonly embedded = input(false);
+  readonly cardTitle = input<string>();
+  readonly level = input<number>();
+  readonly cardTab = input<unknown>();
+  readonly widgetDef = input<unknown>();
+  readonly boardContext = input<unknown>();
+  readonly projectRef = input<IProjectRef>();
+  readonly boardId = input<string>();
+  readonly cardId = input<string>();
+  readonly readBoardForRun = input<unknown>();
+  readonly displayTitle = () => this.cardTitle() || '';
+  readonly hasHeaderActions = () => false;
+  readonly headerActions = () => null;
+}
+
 @Component({
   selector: 'sneat-datatug-board',
   imports: [BoardCardComponent],
@@ -130,7 +149,7 @@ describe('BoardPage same-route tutorial overlay', () => {
         },
       })
       .overrideComponent(BoardCardComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        set: { imports: [TutorialWidgetDom], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
     const fixture = TestBed.createComponent(BoardPageComponent);
