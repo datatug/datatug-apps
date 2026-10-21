@@ -1,20 +1,28 @@
-<ion-item class="ion-no-padding">
-  <ion-buttons slot="start" class="ion-no-margin">
-    <ion-button routerLink="/" slot="start" aria-label="Go to home">
+<ion-item class="menu-selector-item">
+  <ion-buttons slot="start" class="menu-selector-icon">
+    <ion-button
+      class="menu-selector-icon-button"
+      fill="clear"
+      routerLink="/"
+      aria-label="Go to home"
+    >
       <ion-icon name="storefront-outline" />
     </ion-button>
   </ion-buttons>
-  <ion-label color="medium"> Store </ion-label>
   @if (currentStoreId() && !stores()?.length) {
-    <ion-select disabled [value]="currentStoreId()">
+    <ion-label color="medium">Store</ion-label>
+    <ion-select class="menu-selector-field" disabled [value]="currentStoreId()">
       <ion-select-option [value]="currentStoreId()">{{
         currentStoreDisplayLabel
       }}</ion-select-option>
     </ion-select>
   }
-  @if (stores()) {
+  @if (stores()?.length) {
     <ion-select
+      class="menu-selector-field"
       aria-label="Store"
+      label="Store"
+      labelPlacement="floating"
       interface="popover"
       [value]="currentStoreId()"
       (ionChange)="switchStore($event)"

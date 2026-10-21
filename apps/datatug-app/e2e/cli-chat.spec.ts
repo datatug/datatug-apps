@@ -224,7 +224,11 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await resultCard.getByRole('button', { name: 'Join table' }).click();
   await expect(page.getByText('JOIN applied.')).toBeVisible();
   await expect(page.getByRole('navigation', { name: 'menu' }).getByText('Chat', { exact: true })).toBeVisible();
-  await expect(page.getByRole('navigation', { name: 'menu' }).getByText('Demo project 1')).toBeVisible();
+  const projectSelectionText = page.locator(
+    'sneat-datatug-menu-project-selector ion-select[label="Project"] .select-text',
+  );
+  await expect(projectSelectionText).toBeVisible();
+  await expect(projectSelectionText).toHaveText('Demo project 1');
   await expect(page.getByRole('navigation', { name: 'menu' }).getByText('Overview', { exact: true }).locator('..')).toHaveAttribute('aria-disabled', 'true');
   await expect(page.locator('ion-footer').getByLabel('Message to CLI chat')).toBeVisible();
   const footer = await page.locator('ion-footer').boundingBox();

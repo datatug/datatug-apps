@@ -54,10 +54,55 @@ describe('project saved-query preview', () => {
       '[data-testid="saved-query-sales/invoices"]',
     );
     expect(nested).not.toBeNull();
-    expect(nested.getAttribute('href')).toContain('sales%2Finvoices');
+    const row = nested.closest('ion-item');
+    expect(row.getAttribute('href')).toContain('sales%2Finvoices');
+    expect(row.hasAttribute('button')).toBe(true);
+    expect(row.getAttribute('aria-label')).toContain('SQL, open saved query');
     expect(nested.textContent).toContain('Invoice totals');
-    expect(fixture.nativeElement.innerHTML).toContain('Browse all queries');
+    expect(fixture.nativeElement.innerHTML).toContain('View all 2 queries');
     expect(fixture.nativeElement.innerHTML).not.toContain('Run query');
+  });
+
+  it('keeps branch and connection context in full-row links', async () => {
+    const contextualRef = {
+      storeId: 'localhost:8989',
+      projectId: 'sample',
+      projectApi: 'local' as const,
+      branch: 'feature/topic',
+    };
+    const getQueriesFolder = vi.fn(() =>
+      of({
+        id: '~',
+        folders: [
+          {
+            id: 'sales',
+            items: [
+              {
+                id: 'invoice totals',
+                request: { queryType: 'SQL' },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    await TestBed.configureTestingModule({
+      imports: [ProjectQueriesPreviewComponent],
+      providers: [
+        provideRouter([]),
+        { provide: QueriesService, useValue: { getQueriesFolder } },
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(ProjectQueriesPreviewComponent);
+    fixture.componentRef.setInput('projectRef', contextualRef);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const row = fixture.nativeElement.querySelector('ion-item[button]');
+    const link = new URL(row.getAttribute('href'), 'https://datatug.test');
+    expect(decodeURIComponent(link.pathname)).toContain('query/sales/invoice totals');
+    expect(link.searchParams.get('id')).toBe('sales/invoice totals');
+    expect(link.searchParams.get('projectApi')).toBe('local');
+    expect(link.searchParams.get('branch')).toBe('feature/topic');
   });
 
   it('explains a genuinely empty project and a failed load', async () => {
