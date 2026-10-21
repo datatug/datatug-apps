@@ -37,6 +37,7 @@ import { catchError, map, switchMap } from 'rxjs/operators';
 @Component({
   selector: 'sneat-datatug-menu-env-selector',
   templateUrl: 'menu-env-selector.component.html',
+  styleUrls: ['menu-selector.component.scss'],
   imports: [
     IonItem,
     IonButtons,

@@ -3,6 +3,7 @@ import {
   createSemanticModel,
   rebuildMeaningBindings,
   validateSemanticModel,
+  detachUnusedProjectMeaningReferences,
 } from './semantic-mapping';
 import {
   savedMeaningChoices,
@@ -43,6 +44,15 @@ const source = () => {
   };
 };
 describe('saved meaning reuse', () => {
+  it('removing the last binding detaches canonical refs while retaining reusable definition snapshots', () => {
+    const bundle = source().semanticModel;
+    for (const concept of bundle.meaning.concepts) concept.meaningRef = {documentId:'project',conceptId:concept.id,scope:{storage:'local',project:'p1',branch:'main'}};
+    expect(detachUnusedProjectMeaningReferences(bundle).meaning.concepts.every(concept => !!concept.meaningRef)).toBe(true);
+    const detached = detachUnusedProjectMeaningReferences(rebuildMeaningBindings({...bundle,bindings:[]}));
+    expect(detached.meaning.concepts.every(concept => !concept.meaningRef)).toBe(true);
+    expect(detached.meaning.concepts.map(concept => concept.labels)).toEqual(bundle.meaning.concepts.map(concept => concept.labels));
+    expect(bundle.meaning.concepts[0].meaningRef).toBeDefined();
+  });
   it('excludes current query, labels the source and skips an invalid unrelated saved bundle', () => {
     const good = source(),
       invalid = source();

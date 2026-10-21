@@ -122,12 +122,92 @@ export class DbServerService {
       return this.getGithubDbServers(projectRef.projectId);
     }
     return this.projectService.getFull(projectRef).pipe(
-      map((p) =>
-        p.dbServers?.map((dbServerFull) => ({
-          dbServer: dbServerFull.dbServer,
-          databasesCount: dbServerFull.databases?.length || 0,
-        })),
-      ),
+      map((p) => {
+        const byKey = new Map<
+          string,
+          {
+            dbServer: IDbServer;
+            declaredDatabasesCount: number;
+            environments: Map<string, number>;
+          }
+        >();
+        const addServer = (
+          dbServer: IDbServer,
+          declaredDatabasesCount: number,
+        ) => {
+          const key = serverKey(dbServer);
+          const existing = byKey.get(key);
+          if (existing) {
+            existing.declaredDatabasesCount = Math.max(
+              existing.declaredDatabasesCount,
+              declaredDatabasesCount,
+            );
+            return existing;
+          }
+          const added = {
+            dbServer,
+            declaredDatabasesCount,
+            environments: new Map<string, number>(),
+          };
+          byKey.set(key, added);
+          return added;
+        };
+
+        for (const driver of p.dbDrivers ?? []) {
+          for (const server of driver.servers ?? []) {
+            addServer(
+              {
+                ...server.server,
+                driver: server.server.driver || driver.id,
+              },
+              server.catalogs?.length ?? 0,
+            );
+          }
+        }
+        for (const legacy of p.dbServers ?? []) {
+          addServer(legacy.dbServer, legacy.databases?.length ?? 0);
+        }
+        for (const environment of p.environments ?? []) {
+          for (const candidate of environment.dbServers ??
+            environment.dbServer ??
+            []) {
+            const entry = addServer(
+              {
+                driver: candidate.driver,
+                host: candidate.host ?? '',
+                ...(candidate.port === undefined
+                  ? {}
+                  : { port: candidate.port }),
+                ...(candidate.path === undefined
+                  ? {}
+                  : { path: candidate.path }),
+              },
+              0,
+            );
+            entry.environments.set(
+              environment.id,
+              (entry.environments.get(environment.id) ?? 0) +
+                (candidate.catalogs?.length ?? 0),
+            );
+          }
+        }
+
+        return [...byKey.values()].map((entry) => {
+          const environments = [...entry.environments].map(
+            ([envId, databasesCount]) => ({ envId, databasesCount }),
+          );
+          return {
+            dbServer: entry.dbServer,
+            databasesCount: environments.length
+              ? environments.reduce(
+                  (sum, environment) => sum + environment.databasesCount,
+                  0,
+                )
+              : entry.declaredDatabasesCount,
+            ...(environments.length ? { environments } : {}),
+          };
+        });
+      }),
     );
   }
 
@@ -159,14 +239,19 @@ export class DbServerService {
         >();
         for (const summary of summaries) {
           for (const s of summary.dbServers || []) {
-            const key = `${s.driver}:${s.host}`;
+            const key = serverKey(s);
             const environments = byKey.get(key)?.environments ?? [];
             environments.push({
               envId: summary.id,
               databasesCount: s.catalogs?.length || 0,
             });
             byKey.set(key, {
-              dbServer: { driver: s.driver, host: s.host },
+              dbServer: {
+                driver: s.driver,
+                host: s.host,
+                ...(s.port === undefined ? {} : { port: s.port }),
+                ...(s.path === undefined ? {} : { path: s.path }),
+              },
               environments,
             });
           }
@@ -185,3 +270,8 @@ export class DbServerService {
     );
   }
 }
+
+const serverKey = (server: IDbServer): string =>
+  [server.driver, server.host ?? '', server.port ?? '', server.path ?? ''].join(
+    ':',
+  );

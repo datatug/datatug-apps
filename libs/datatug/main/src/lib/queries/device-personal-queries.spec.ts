@@ -54,6 +54,24 @@ describe('device personal complete query persistence', () => {
     expect((await store.save(ref, query, 0)).revision).toBe(1);
     expect((await store.read(ref, id)).revision).toBe(1);
   });
+  it('detaches canonical provider references while preserving a personal definition snapshot', async () => {
+    const linked = structuredClone(query);
+    linked.semanticModel.meaning.concepts[0].meaningRef = {
+      documentId: 'project',
+      conceptId: 'customer',
+      scope: { storage: 'firestore', project: 'p1', spaceID: 's1' },
+    };
+    const store = new DevicePersonalQueries();
+    await store.save(ref, linked, 0);
+    const reopened = await store.read(ref, id);
+    expect(
+      reopened.query.semanticModel?.meaning.concepts[0].meaningRef,
+    ).toBeUndefined();
+    expect(reopened.query.semanticModel?.meaning.concepts[0].labels).toEqual(
+      linked.semanticModel.meaning.concepts[0].labels,
+    );
+    expect(linked.semanticModel.meaning.concepts[0].meaningRef).toBeDefined();
+  });
   it('refuses non-personal identities', async () => {
     expect(isDevicePersonalQuery('shared-query')).toBe(false);
     await expect(

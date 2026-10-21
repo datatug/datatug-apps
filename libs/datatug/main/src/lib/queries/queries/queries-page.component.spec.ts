@@ -22,8 +22,10 @@ import { IQueryDef, IQueryFolder, QueryType } from '../../models/definition/quer
 describe('SqlQueriesPage', () => {
   let component: QueriesPageComponent;
   let fixture: ComponentFixture<QueriesPageComponent>;
+  let queryParamMap$: BehaviorSubject<ReturnType<typeof makeParamMap>>;
 
   beforeEach(async () => {
+    queryParamMap$ = new BehaviorSubject(makeParamMap({}));
     await TestBed.configureTestingModule({
       imports: [QueriesPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -31,7 +33,7 @@ describe('SqlQueriesPage', () => {
         {
           provide: ActivatedRoute,
           useValue: {
-            queryParamMap: of({ get: () => null }),
+            queryParamMap: queryParamMap$,
             paramMap: of({ get: () => null }),
             snapshot: { paramMap: { get: () => null } },
           },
@@ -68,6 +70,53 @@ describe('SqlQueriesPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+  it('uses URL tab and sort values, and keeps defaults local without rewriting the URL', () => {
+    expect(component.tab).toBe('shared');
+    expect(component.orderTagsBy).toBe('count');
+    expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
+
+    queryParamMap$.next(makeParamMap({ tab: 'personal', 'order-tags-by': 'title' }));
+    expect(component.tab).toBe('personal');
+    expect(component.orderTagsBy).toBe('title');
+
+    // Ionic can keep this page cached while the user is elsewhere. Missing or
+    // invalid values restore its defaults in memory and never rewrite the URL.
+    component.ionViewDidLeave();
+    queryParamMap$.next(makeParamMap({}));
+    expect(component.tab).toBe('shared');
+    expect(component.orderTagsBy).toBe('count');
+    queryParamMap$.next(makeParamMap({ tab: 'unknown', 'order-tags-by': 'unknown' }));
+    expect(component.tab).toBe('shared');
+    expect(component.orderTagsBy).toBe('count');
+    expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
+  });
+  it('removes an incoming fragment on entry while preserving query and history state', () => {
+    const previousUrl = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+    const previousState = window.history.state;
+    const state = { keep: 'router-state' };
+    const path = '/project/github.com/o/r/queries';
+    window.history.replaceState(state, '', `${path}?x=1#frag`);
+    const replaceState = vi.spyOn(window.history, 'replaceState');
+
+    try {
+      component.ionViewWillEnter();
+
+      expect(window.location.pathname).toBe(path);
+      expect(window.location.search).toBe('?x=1');
+      expect(window.location.hash).toBe('');
+      expect(window.history.state).toEqual(state);
+      expect(replaceState).toHaveBeenCalledOnce();
+      expect(TestBed.inject(Router).navigate).not.toHaveBeenCalled();
+
+      window.history.replaceState(state, '', `${path}?x=1`);
+      replaceState.mockClear();
+      component.ionViewWillEnter();
+      expect(replaceState).not.toHaveBeenCalled();
+    } finally {
+      replaceState.mockRestore();
+      window.history.replaceState(previousState, '', previousUrl);
+    }
   });
   it('returns a cold Space query-list URL to its owning project', () => {
     TestBed.inject(ProjectContextService).setCurrent({ storeId: 'firestore', spaceID: 'S1', projectId: 'P1' });
