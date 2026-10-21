@@ -106,8 +106,33 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
             folder: () =>
               of({
                 id: '~',
-                folders: [],
+                folders: [
+                  {
+                    id: 'detective',
+                    items: [
+                      {
+                        id: 'invoice-detail',
+                        title: 'Invoice totals and customer',
+                        type: 'DTQL',
+                        parameters: [
+                          {
+                            id: 'invoice_id',
+                            type: 'integer',
+                            isRequired: true,
+                          },
+                        ],
+                      },
+                    ],
+                  },
+                ],
                 items: [
+                  {
+                    id: 'legacy-structured',
+                    title: 'Structured query',
+                    type: 'TugQL',
+                  },
+                  { id: 'http', title: 'Unsupported HTTP', type: 'HTTP' },
+                  { id: 'future', title: 'Unknown language', type: 'future' },
                   { id: 'receipt', title: 'Receipt', type: 'SQL' },
                   {
                     id: 'assignment',
@@ -198,7 +223,8 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     expect(writes[0].ifNoneMatch).toBe(true);
     expect(writes[0].ifMatch).toBeUndefined();
     expect(
-      (writes[0].board.rows?.[0].cards?.[0].widget?.data as { sql: unknown }).sql,
+      (writes[0].board.rows?.[0].cards?.[0].widget?.data as { sql: unknown })
+        .sql,
     ).toEqual({
       queryId: 'assignment',
       parameters: [{ id: 'order_id', value: 11045 }],
@@ -214,6 +240,48 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
       expect.stringContaining('/board/board-'),
       { replaceUrl: true },
     );
+  });
+  it('authors a native-demo DTQL saved query using the canonical SQL widget and excludes unsupported languages', async () => {
+    const f = await mount();
+    inputTitle(f, 'Invoice investigation');
+    await f.whenStable();
+    const select = f.nativeElement.querySelector(
+      'select[aria-label="Add saved query"]',
+    ) as HTMLSelectElement;
+    const choices = Array.from(select.options).map((option) => option.value);
+    expect(choices).toEqual(
+      expect.arrayContaining([
+        'receipt',
+        'assignment',
+        'legacy-structured',
+        'detective/invoice-detail',
+      ]),
+    );
+    expect(choices).not.toContain('http');
+    expect(choices).not.toContain('future');
+    select.value = 'detective/invoice-detail';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    await f.whenStable();
+    button(f, 'Add query widget').click();
+    await f.whenStable();
+    const parameter = f.nativeElement.querySelector(
+      'input[aria-label="invoice_id for Invoice totals and customer"]',
+    ) as HTMLInputElement;
+    parameter.value = '7';
+    parameter.dispatchEvent(new Event('change', { bubbles: true }));
+    await f.whenStable();
+    button(f, 'Save board').click();
+    await f.whenStable();
+    expect(writes[0].board.rows?.[0].cards?.[0].widget).toEqual({
+      name: 'SQL',
+      data: {
+        sql: {
+          queryId: 'detective/invoice-detail',
+          parameters: [{ id: 'invoice_id', value: 7 }],
+        },
+      },
+    });
+    expect(f.nativeElement.textContent).toContain('Board saved');
   });
   it('retains the exact lost-response operation across remount and refreshes a newer current projection after replay', async () => {
     let original: BoardAssetWrite | undefined;

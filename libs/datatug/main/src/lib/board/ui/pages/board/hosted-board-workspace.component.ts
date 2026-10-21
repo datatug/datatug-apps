@@ -32,6 +32,7 @@ import {
   BoardAssetSnapshot,
 } from '../../../../services/project/project-assets-api.service';
 import { ProjectQueryApiService } from '../../../../services/project/project-query-api.service';
+import { QueryType } from '../../../../models/definition/query-def';
 import { projectPageHref } from '../../../../nav/project-page-href';
 import { detectiveErrorMessage } from '../../../../detective/detective-client.service';
 import { IBoardContext } from '../../../../models/definition/board/board';
@@ -399,7 +400,12 @@ export class HostedBoardWorkspaceComponent {
         if (depth > 8 || choices.length > 2000)
           throw new Error('Query catalog exceeds editor limits.');
         for (const item of value.items ?? []) {
-          if (item.type !== 'SQL') continue;
+          if (
+            ![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(
+              item.type as QueryType,
+            )
+          )
+            continue;
           const id = path ? path + '/' + item.id : item.id;
           if (ids.has(id))
             throw new Error('Query catalog contains duplicate identities.');

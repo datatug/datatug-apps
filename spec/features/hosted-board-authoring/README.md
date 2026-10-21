@@ -26,7 +26,7 @@ Project Boards navigation opens the existing canonical board workflow. Require t
 
 ### REQ: canonical-durable-editor
 
-Boards → New board → title and saved-query widget controls → Save → canonical detail route → cold reload. Existing detail → edit controls → Save → reloaded definition. Use the same Board model, definition action/validation layer and BoardComponent renderer. Query choices come from the authorized project catalogue. Constants use structured typed parameter controls. Preserve supported untouched tab/chart graphs; refuse unsupported definitions rather than strip fields. Never persist inline SQL, results, credentials or selected runtime state.
+Boards → New board → title and saved-query widget controls → Save → canonical detail route → cold reload. Existing detail → edit controls → Save → reloaded definition. Use the same Board model, definition action/validation layer and BoardComponent renderer. Query choices come from the authorized project catalogue and include the canonical runner's SQL, DTQL and TugQL languages; HTTP and unknown languages are unavailable. The canonical SQL widget binds a saved query regardless of which supported language its definition uses. Its saved parameter bindings pass through the existing typed binding validation, and a changed saved binding blocks dispatch from an old card. Constants use structured typed parameter controls. Preserve supported untouched tab/chart graphs; refuse unsupported definitions rather than strip fields. Never persist inline SQL, results, credentials or selected runtime state.
 
 ### REQ: conditional-idempotent-save
 
