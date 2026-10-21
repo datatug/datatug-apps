@@ -1,10 +1,10 @@
 import { Component, computed, inject } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { Router } from '@angular/router';
+import { NavigationEnd, Router } from '@angular/router';
+import { filter, map, startWith } from 'rxjs/operators';
 import { PublicDemoInvestigationPreviewComponent } from '../../detective/public-demo-investigation-preview.component';
 import { isCanonicalPublicDemo } from '../../detective/public-scenario-catalog';
 import { incidentProjectRefFromUrl } from '../../incidents/incident-navigation';
-import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
 import { IncidentListPageComponent } from './list/incident-list-page.component';
 
 /** Selects the curated public preview only for its canonical demo project. */
@@ -21,14 +21,19 @@ import { IncidentListPageComponent } from './list/incident-list-page.component';
 })
 export class ProjectIncidentsPageComponent {
   private readonly router = inject(Router);
-  private readonly navContext = inject(DatatugNavContextService);
-  private readonly project = toSignal(this.navContext.currentProject, {
-    initialValue: undefined,
-  });
+  private readonly currentUrl = toSignal(
+    this.router.events.pipe(
+      filter((event): event is NavigationEnd => event instanceof NavigationEnd),
+      map((event) => event.urlAfterRedirects),
+      startWith(
+        this.router.currentNavigation?.()?.finalUrl?.toString() ??
+          this.router.url,
+      ),
+    ),
+    { requireSync: true },
+  );
 
   protected readonly publicDemo = computed(() =>
-    isCanonicalPublicDemo(
-      this.project()?.ref ?? incidentProjectRefFromUrl(this.router.url),
-    ),
+    isCanonicalPublicDemo(incidentProjectRefFromUrl(this.currentUrl())),
   );
 }
