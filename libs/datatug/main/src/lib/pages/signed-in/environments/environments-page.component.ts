@@ -289,7 +289,7 @@ export class EnvironmentsPageComponent {
                 !this.busy() &&
                 !this.pending
               ) {
-                return input.setFocus();
+                void input.setFocus();
               }
             });
           }
