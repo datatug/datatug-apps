@@ -151,7 +151,7 @@ export class DbServerService {
             })),
           ),
         );
-    return this.projectService.getFull(projectRef).pipe(
+    return this.projectService.getFull(projectRef, true).pipe(
       map((p) => {
         if (
           ![p?.dbDrivers, p?.dbServers, p?.environments].some(Array.isArray) &&

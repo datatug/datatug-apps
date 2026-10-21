@@ -414,3 +414,45 @@ describe('ProjectService DataTug API base URL', () => {
     expectDatatugApiRequest('POST', 'datatug/projects/create_project');
   });
 });
+
+describe('ProjectService explicit full refresh', () => {
+  it('refetches persisted metadata without leaking a same-ID sibling store or serving stale tags', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectService,
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        { provide: PrivateTokenStoreService, useValue: {} },
+        { provide: DatatugApiService, useValue: {} },
+        { provide: DatatugStoreServiceFactory, useValue: {} },
+      ],
+    });
+    const service = TestBed.inject(ProjectService),
+      http = TestBed.inject(HttpTestingController);
+    const first = { storeId: 'localhost:8989', projectId: 'P' },
+      other = { storeId: 'localhost:8990', projectId: 'P' };
+    const initial = firstValueFrom(service.getFull(first));
+    http
+      .expectOne((r) => r.url.includes('8989'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: ['old'] }] });
+    expect((await initial).boards?.[0].tags).toEqual(['old']);
+    const sibling = firstValueFrom(service.getFull(other));
+    http
+      .expectOne((r) => r.url.includes('8990'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: ['sibling'] }] });
+    await sibling;
+    const refreshed = firstValueFrom(service.getFull(first, true));
+    http
+      .expectOne((r) => r.url.includes('8989'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: [] }] });
+    expect((await refreshed).boards?.[0].tags).toEqual([]);
+    expect(
+      (await firstValueFrom(service.getFull(first))).boards?.[0].tags,
+    ).toEqual([]);
+    expect(
+      (await firstValueFrom(service.getFull(other))).boards?.[0].tags,
+    ).toEqual(['sibling']);
+    http.verify();
+  });
+});

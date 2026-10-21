@@ -148,7 +148,10 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
     await view.getByRole('button', { name: 'Save tags', exact: true }).click();
     await expect(view.getByText('Tags saved.', { exact: true })).toBeVisible();
   };
-  await page.goto(`${base}/board/b`);
+  await page.goto(`${base}/boards`);
+  await activePage(page)
+    .getByRole('link', { name: 'Operations board', exact: true })
+    .click();
   await expect(
     activePage(page).getByRole('button', {
       name: 'Remove tag ops',
@@ -157,6 +160,13 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   ).toBeVisible();
   await add('prod');
   await save();
+  await page.goBack();
+  await expect(
+    activePage(page).getByRole('button', { name: 'prod (1)', exact: true }),
+  ).toBeVisible();
+  await activePage(page)
+    .getByRole('link', { name: 'Operations board', exact: true })
+    .click();
   await page.reload();
   await expect(
     activePage(page).getByRole('button', {
@@ -337,7 +347,13 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
     .getByRole('button', { name: 'Clear tags', exact: true })
     .click();
   await expect(page).not.toHaveURL(/tag=/);
-  await page.goto(`${base}/servers/db/sqlite3/-`);
+  await sources.getByRole('link', { name: 'ops', exact: true }).click();
+  const serverTagDetail = activePage(page).locator(
+    'sneat-datatug-project-tags-cloud',
+  );
+  await serverTagDetail
+    .locator('ion-item[href*="/servers/db/sqlite3/-"]')
+    .click();
   await expect(
     activePage(page).getByRole('button', {
       name: 'Remove tag ops',
@@ -348,11 +364,15 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
     .getByRole('button', { name: 'Remove tag ops', exact: true })
     .click();
   await save();
-  await page.reload();
+  await page.goBack();
+  await expect(serverTagDetail.locator('.tag-items')).toContainText(
+    'No matching database servers.',
+  );
+  await page.goBack();
   await expect(
-    activePage(page).getByText('No tags yet.', { exact: true }),
-  ).toBeVisible();
-  await page.goto(`${base}/servers`);
+    sources.getByRole('link', { name: 'ops', exact: true }),
+  ).toHaveCount(0);
+  await expect(sources).toContainText('Local SQLite databases');
   await activePage(page)
     .getByRole('button', { name: 'Configured server', exact: true })
     .click();

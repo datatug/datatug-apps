@@ -161,7 +161,7 @@ export class ProjectAssetsReadService {
     }
     if (this.isUnqualifiedLocal(ref))
       return this.project
-        .getFull(ref)
+        .getFull(ref, true)
         .pipe(
           map((project) =>
             (project.boards ?? []).map(({ id, title, tags }) => ({
