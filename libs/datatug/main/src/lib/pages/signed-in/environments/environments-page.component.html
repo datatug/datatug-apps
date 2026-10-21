@@ -6,6 +6,7 @@
     <sneat-datatug-page-title pageTitle="Environments" />
     <ion-buttons slot="end">
       @if (
+        recoveryReady() &&
         state()?.capabilities?.canWriteOrder &&
         !editing() &&
         !creating() &&
@@ -14,6 +15,7 @@
         <ion-button (click)="manage()">Manage order</ion-button>
       }
       @if (
+        recoveryReady() &&
         state()?.capabilities?.canCreateEnvironment &&
         !creating() &&
         !editing() &&

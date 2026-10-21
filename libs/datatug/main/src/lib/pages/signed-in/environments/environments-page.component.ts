@@ -35,7 +35,15 @@ import {
   arrowDownOutline,
   warningOutline,
 } from 'ionicons/icons';
-import { combineLatest, forkJoin, of } from 'rxjs';
+import { combineLatest, firstValueFrom, of, timeout } from 'rxjs';
+import {
+  environmentTrimName,
+  verifyEnvironmentReceipt,
+} from '../../../models/definition/environment-receipt';
+import {
+  EnvironmentOperationRecoveryService,
+  PendingEnvironmentOperation,
+} from '../../../services/project/environment-operation-recovery.service';
 import {
   catchError,
   distinctUntilChanged,
@@ -48,8 +56,6 @@ import { environmentPresentation } from '../../../models/definition/environment-
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import {
   EnvironmentState,
-  CreateEnvironmentRequest,
-  SaveEnvironmentOrderRequest,
   EnvironmentOperationResult,
 } from '../../../models/definition/environment-state';
 import { IProjectContext } from '../../../nav/nav-models';
@@ -92,6 +98,9 @@ export class EnvironmentsPageComponent {
   private readonly nav = inject(DatatugNavService);
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly service = inject(ProjectEnvironmentStateService);
+  private readonly recovery = inject(EnvironmentOperationRecoveryService);
+  protected readonly recoveryReady = signal(false);
+  private actor = '';
   private readonly auth = inject(SneatAuthStateService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly destroyRef = inject(DestroyRef);
@@ -115,13 +124,85 @@ export class EnvironmentsPageComponent {
   protected name = '';
   private readonly nameInput = viewChild<IonInput>('nameInput');
   protected readonly rejected = signal(false);
-  private pending?: {
-    request: CreateEnvironmentRequest | SaveEnvironmentOrderRequest;
-    kind: 'create' | 'order';
-    generation: number;
-  };
+  private pending?: PendingEnvironmentOperation;
+
+  private current(
+    operation: PendingEnvironmentOperation,
+    generation: number,
+  ): boolean {
+    return (
+      generation === this.generation &&
+      operation.actor === this.actor &&
+      equalProjectRef(operation.project, this.projectContext?.ref)
+    );
+  }
+  private async restore(
+    state: EnvironmentState,
+    generation: number,
+  ): Promise<void> {
+    const project = this.projectContext;
+    if (!project) return;
+    // The authoritative binding already includes the verified transport actor.
+    // Firebase sign-out must not hide an agent operation whose agent actor is unchanged.
+    this.actor = state.scopeBinding;
+    try {
+      const operation = await this.recovery.read(this.actor, project.ref);
+      if (generation !== this.generation) return;
+      this.pending = operation;
+      this.recoveryReady.set(true);
+      if (!operation) return;
+      if (
+        operation.version !== 1 ||
+        operation.actor !== this.actor ||
+        !equalProjectRef(operation.project, project.ref) ||
+        !operation.request.operationId.startsWith(
+          `${operation.before.scopeBinding}.`,
+        )
+      )
+        throw new Error('Recovery scope is invalid.');
+      this.rejected.set(operation.definitiveRejection === true);
+      if ('name' in operation.request) {
+        this.name = operation.request.name;
+        this.creating.set(true);
+      } else {
+        this.draft.set(
+          operation.request.environmentOrder.map(
+            (id) =>
+              operation.before.environments.find((row) => row.id === id) || {
+                id,
+                title: id,
+              },
+          ),
+        );
+        this.editing.set(true);
+      }
+      if (
+        state.scopeBinding !== operation.before.scopeBinding ||
+        JSON.stringify(state.scope) !== JSON.stringify(operation.request.scope)
+      ) {
+        this.message.set(
+          'A previous operation belongs to another authority or actor binding. Reconnect that original authority to reconcile it before starting a new change.',
+        );
+        return;
+      }
+      if (operation.definitiveRejection)
+        this.message.set(
+          'A rejected operation was recovered. Reload latest state before correcting your draft.',
+        );
+      else void this.reconcile();
+    } catch {
+      if (generation !== this.generation) return;
+      this.recoveryReady.set(false);
+      this.message.set(
+        'Device recovery storage is unavailable or invalid. New changes are blocked until recovery storage can be read safely.',
+      );
+    }
+  }
 
   constructor() {
+    this.destroyRef.onDestroy(() => {
+      this.generation++;
+    });
     combineLatest([
       this.datatugNavContextService.currentProject.pipe(
         distinctUntilChanged((left, right) =>
@@ -134,7 +215,9 @@ export class EnvironmentsPageComponent {
       ),
     ])
       .pipe(
-        tap(([project]) => {
+        tap(([project, actor]) => {
+          this.actor = actor;
+          this.recoveryReady.set(false);
           this.generation++;
           this.projectContext = project;
           this.pending = undefined;
@@ -173,6 +256,8 @@ export class EnvironmentsPageComponent {
         this.state.set('state' in view ? view.state : undefined);
         this.environments.set(view.items);
         this.reason.set(('reason' in view && view.reason) || '');
+        if ('state' in view && view.state)
+          void this.restore(view.state, this.generation);
       });
   }
 
@@ -181,11 +266,23 @@ export class EnvironmentsPageComponent {
       this.nav.goEnvironment(this.projectContext, environment);
   }
   protected async add(): Promise<void> {
+    if (
+      !this.recoveryReady() ||
+      this.pending ||
+      !this.state()?.capabilities.canCreateEnvironment
+    )
+      return;
     this.creating.set(true);
     await Promise.resolve();
     await this.nameInput()?.setFocus();
   }
   protected manage(): void {
+    if (
+      !this.recoveryReady() ||
+      this.pending ||
+      !this.state()?.capabilities.canWriteOrder
+    )
+      return;
     this.draft.set([...(this.environments() || [])]);
     this.editing.set(true);
     this.message.set('');
@@ -224,16 +321,23 @@ export class EnvironmentsPageComponent {
   protected get unresolved(): boolean {
     return !!this.pending;
   }
-  protected submit(kind: 'create' | 'order'): void {
+  protected async submit(kind: 'create' | 'order'): Promise<void> {
     const state = this.state();
-    if (!state || !this.projectContext || this.busy() || this.pending) return;
+    if (
+      !state ||
+      !this.projectContext ||
+      !this.recoveryReady() ||
+      this.busy() ||
+      this.pending
+    )
+      return;
     if (
       kind === 'create'
         ? !state.capabilities.canCreateEnvironment
         : !state.capabilities.canWriteOrder
     )
       return;
-    const name = this.name.trim();
+    const name = environmentTrimName(this.name);
     if (
       kind === 'create' &&
       (!name ||
@@ -250,9 +354,13 @@ export class EnvironmentsPageComponent {
       return;
     }
     this.rejected.set(false);
-    this.pending = {
-      kind,
-      generation: this.generation,
+    const generation = this.generation;
+    const operation: PendingEnvironmentOperation = {
+      version: 1,
+      actor: this.actor,
+      project: { ...this.projectContext.ref },
+      before: state,
+      attempts: 0,
       request:
         kind === 'create'
           ? { ...this.service.mutation(state), name }
@@ -261,127 +369,162 @@ export class EnvironmentsPageComponent {
               environmentOrder: this.draft().map((row) => row.id),
             },
     };
-    this.retry();
-  }
-  protected retry(): void {
-    const pending = this.pending;
-    const project = this.projectContext;
-    if (!pending || !project || this.busy()) return;
     this.busy.set(true);
-    this.message.set('Saving…');
-    const request =
-      pending.kind === 'create'
-        ? this.service.create(
-            project.ref,
-            pending.request as CreateEnvironmentRequest,
-          )
-        : this.service.save(
-            project.ref,
-            pending.request as SaveEnvironmentOrderRequest,
-          );
-    request.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
-      next: (result) => {
-        if (pending.generation !== this.generation) return;
-        if (result.operationId !== pending.request.operationId) {
-          this.busy.set(false);
-          this.message.set(
-            'The response could not be verified. Reconcile this operation.',
-          );
-          return;
-        }
-        this.busy.set(false);
-        this.reconcile();
-      },
-      error: (error) => {
-        if (pending.generation !== this.generation) return;
-        this.busy.set(false);
-        // These errors conclusively reject this request. A new operation still requires latest state.
+    try {
+      await this.recovery.reserve(operation);
+      if (!this.current(operation, generation)) return;
+      this.pending = operation;
+      this.busy.set(false);
+      await this.retry();
+    } catch {
+      if (generation !== this.generation) return;
+      this.busy.set(false);
+      this.recoveryReady.set(false);
+      this.message.set(
+        'The operation was not sent because durable recovery could not be reserved. Reload to recover any existing operation.',
+      );
+    }
+  }
+  private async admitted(
+    operation: PendingEnvironmentOperation,
+    write: boolean,
+  ): Promise<EnvironmentState> {
+    const state = await firstValueFrom(
+      this.service
+        .read(operation.project)
+        .pipe(timeout(15000), takeUntilDestroyed(this.destroyRef)),
+    );
+    if (
+      state.scopeBinding !== operation.before.scopeBinding ||
+      JSON.stringify(state.scope) !== JSON.stringify(operation.request.scope) ||
+      !state.capabilities.canReadOrder ||
+      (write &&
+        ('name' in operation.request
+          ? !state.capabilities.canCreateEnvironment
+          : !state.capabilities.canWriteOrder))
+    )
+      throw new Error('Current authority does not admit this operation.');
+    return state;
+  }
+  protected async retry(): Promise<void> {
+    let operation = this.pending;
+    const generation = this.generation;
+    if (!operation || this.busy() || this.rejected() || !this.recoveryReady())
+      return;
+    this.busy.set(true);
+    this.message.set('Checking current access…');
+    try {
+      await this.admitted(operation, true);
+      if (!this.current(operation, generation)) return;
+      operation = await this.recovery.attempt(operation);
+      if (!this.current(operation, generation)) return;
+      this.pending = operation;
+      this.message.set('Saving…');
+      try {
+        await firstValueFrom(
+          ('name' in operation.request
+            ? this.service.create(operation.project, operation.request)
+            : this.service.save(operation.project, operation.request)
+          ).pipe(timeout(15000), takeUntilDestroyed(this.destroyRef)),
+        );
+      } catch (error) {
+        const rejected = error as {
+          status?: number;
+          error?: { code?: string; error?: { code?: string } };
+        };
+        const code = rejected.error?.error?.code || rejected.error?.code;
         if (
-          [400, 401, 403].includes(error?.status) ||
-          (error?.status === 409 &&
-            error?.error?.code === 'ENVIRONMENT_REVISION_CONFLICT')
+          operation.attempts === 1 &&
+          ([400, 401, 403].includes(rejected.status || 0) ||
+            (rejected.status === 409 &&
+              code === 'ENVIRONMENT_REVISION_CONFLICT'))
         ) {
+          operation = { ...operation, definitiveRejection: true };
+          await this.recovery.reserve(operation);
+          if (!this.current(operation, generation)) return;
+          this.pending = operation;
           this.rejected.set(true);
+          this.busy.set(false);
           this.message.set(
             'Change was rejected. Your draft is retained. Reload latest state before trying again.',
           );
-        } else
-          this.message.set(
-            'The outcome is uncertain. Reconcile or retry the same operation.',
-          );
-        if (!this.rejected()) this.reconcile();
-      },
-    });
+          return;
+        }
+      }
+      if (!this.current(operation, generation)) return;
+      this.busy.set(false);
+      await this.reconcile();
+    } catch {
+      if (generation !== this.generation) return;
+      this.busy.set(false);
+      this.message.set(
+        'Current access or durable recovery could not be verified. The original operation is retained; reconnect and reconcile before retrying.',
+      );
+    }
   }
-  protected reconcile(): void {
-    const pending = this.pending;
-    const project = this.projectContext;
-    if (!pending || !project || this.busy()) return;
-    this.busy.set(true);
-    forkJoin({
-      state: this.service.read(project.ref),
-      receipt: this.service.status(project.ref, pending.request),
-    })
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: ({ state, receipt }) => {
-          if (
-            pending.generation !== this.generation ||
-            !equalProjectRef(project.ref, this.projectContext?.ref)
-          )
-            return;
-          this.busy.set(false);
-          this.state.set(state);
-          this.environments.set(state.environments);
-          if (
-            receipt.operationId !== pending.request.operationId ||
-            receipt.status !== 'committed'
-          ) {
-            this.message.set(
-              'The operation is unresolved. Keep this draft and reconcile or retry the same operation.',
-            );
-            return;
-          }
-          this.confirm(pending.kind, receipt, state);
-        },
-        error: () => {
-          if (pending.generation !== this.generation) return;
-          this.busy.set(false);
-          this.message.set(
-            'Could not confirm the outcome. Keep this draft and reconcile or retry the same operation.',
-          );
-        },
-      });
-  }
-  protected reloadLatest(): void {
-    const project = this.projectContext;
+  protected async reconcile(): Promise<void> {
+    const operation = this.pending;
     const generation = this.generation;
-    if (!project || this.busy() || !this.rejected()) return;
+    if (!operation || this.busy() || !this.recoveryReady()) return;
     this.busy.set(true);
-    this.service
-      .read(project.ref)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe({
-        next: (state) => {
-          if (generation !== this.generation) return;
-          this.busy.set(false);
-          this.state.set(state);
-          this.environments.set(state.environments);
-          this.pending = undefined;
-          this.rejected.set(false);
-          this.message.set(
-            'Latest state loaded. Review your draft before saving again.',
-          );
-        },
-        error: () => {
-          if (generation === this.generation) {
-            this.busy.set(false);
-            this.message.set(
-              'Could not load latest state. Your draft is retained.',
-            );
-          }
-        },
-      });
+    try {
+      await this.admitted(operation, false);
+      if (!this.current(operation, generation)) return;
+      const receipt = await firstValueFrom(
+        this.service
+          .status(operation.project, operation.request)
+          .pipe(timeout(15000), takeUntilDestroyed(this.destroyRef)),
+      );
+      await verifyEnvironmentReceipt(
+        operation.before,
+        operation.request,
+        receipt,
+      );
+      const state = await this.admitted(operation, false);
+      if (!this.current(operation, generation)) return;
+      await this.recovery.remove(operation);
+      if (!this.current(operation, generation)) return;
+      this.state.set(state);
+      this.environments.set(state.environments);
+      this.service.changed(operation.project);
+      this.busy.set(false);
+      this.confirm(
+        'name' in operation.request ? 'create' : 'order',
+        receipt,
+        state,
+      );
+    } catch {
+      if (generation !== this.generation) return;
+      this.busy.set(false);
+      this.message.set(
+        'The original operation is still unresolved or its receipt could not be verified. Keep this draft and reconcile; retry sends the same operation only.',
+      );
+    }
+  }
+  protected async reloadLatest(): Promise<void> {
+    const operation = this.pending;
+    const generation = this.generation;
+    if (!operation?.definitiveRejection || this.busy()) return;
+    this.busy.set(true);
+    try {
+      const state = await this.admitted(operation, false);
+      await this.recovery.remove(operation);
+      if (!this.current(operation, generation)) return;
+      this.state.set(state);
+      this.environments.set(state.environments);
+      this.pending = undefined;
+      this.rejected.set(false);
+      this.busy.set(false);
+      this.message.set(
+        'Latest state loaded. Review your draft before saving again.',
+      );
+    } catch {
+      if (generation !== this.generation) return;
+      this.busy.set(false);
+      this.message.set(
+        'Could not load latest state or clear recovery safely. Your draft is retained.',
+      );
+    }
   }
 
   private confirm(

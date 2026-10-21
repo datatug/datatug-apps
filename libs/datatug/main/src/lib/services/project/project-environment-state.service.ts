@@ -1,3 +1,4 @@
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { inject, Injectable } from '@angular/core';
 import {
   catchError,
@@ -7,9 +8,14 @@ import {
   of,
   switchMap,
   throwError,
+  Subject,
+  filter,
+  startWith,
+  combineLatest,
+  distinctUntilChanged,
 } from 'rxjs';
 import { IEnvironmentFull } from '../../models/definition/environments';
-import { IProjectRef } from '../../core/project-context';
+import { equalProjectRef, IProjectRef } from '../../core/project-context';
 import {
   EnvironmentState,
   EnvironmentMutation,
@@ -23,6 +29,30 @@ import { ProjectQueryApiService } from './project-query-api.service';
 @Injectable({ providedIn: 'root' })
 export class ProjectEnvironmentStateService {
   private readonly api = inject(ProjectQueryApiService);
+  private readonly auth = inject(SneatAuthStateService);
+  private readonly changes = new Subject<IProjectRef>();
+  changed(ref: IProjectRef): void {
+    this.changes.next(ref);
+  }
+  watch(
+    ref: IProjectRef,
+    legacy: () => Observable<IEnvironmentFull[]>,
+  ): Observable<{
+    state?: EnvironmentState;
+    items: IEnvironmentFull[];
+    reason?: string;
+  }> {
+    return combineLatest([
+      this.changes.pipe(
+        filter((changed) => equalProjectRef(changed, ref)),
+        startWith(ref),
+      ),
+      this.auth.authState.pipe(
+        map((auth) => `${auth.status}:${auth.user?.uid || ''}`),
+        distinctUntilChanged(),
+      ),
+    ]).pipe(switchMap(() => this.view(ref, legacy)));
+  }
   read(ref: IProjectRef): Observable<EnvironmentState> {
     return this.api.environmentState<EnvironmentState>(ref).pipe(
       map((state) => {

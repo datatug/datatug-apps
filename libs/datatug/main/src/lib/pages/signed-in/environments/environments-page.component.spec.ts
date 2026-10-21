@@ -1,3 +1,5 @@
+import goldens from '../../../models/definition/environment-receipts.golden.json';
+import { EnvironmentOperationRecoveryService } from '../../../services/project/environment-operation-recovery.service';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
@@ -15,7 +17,10 @@ const state: EnvironmentState = {
   contract: 'environment-state/1',
   scope: { ...ref, authorityId: 'agent' },
   scopeBinding: 'a'.repeat(64),
-  environments: [{ id: 'prod' }, { id: 'local' }],
+  environments: [
+    { id: 'prod', title: 'prod' },
+    { id: 'local', title: 'local' },
+  ],
   savedOrder: ['prod', 'local'],
   order: ['prod', 'local'],
   revision: 'r1',
@@ -34,8 +39,23 @@ describe('Environments management', () => {
     items: EnvironmentState['environments'];
   }>();
   const nav = { goEnvironment: vi.fn() };
+  let stored: any;
+  const recovery = {
+    read: vi.fn(async () => stored),
+    reserve: vi.fn(async (operation: any) => {
+      stored = operation;
+    }),
+    attempt: vi.fn(async (operation: any) => {
+      stored = { ...operation, attempts: operation.attempts + 1 };
+      return stored;
+    }),
+    remove: vi.fn(async () => {
+      stored = undefined;
+    }),
+  };
   const api = {
     view: vi.fn(() => response),
+    changed: vi.fn(),
     mutation: vi.fn(() => ({
       scope: state.scope,
       ifRevision: 'r1',
@@ -48,6 +68,7 @@ describe('Environments management', () => {
   };
   beforeEach(async () => {
     vi.clearAllMocks();
+    stored = undefined;
     await TestBed.configureTestingModule({
       imports: [EnvironmentsPageComponent],
       providers: [
@@ -66,12 +87,17 @@ describe('Environments management', () => {
           useValue: { legacyEnvironments: vi.fn() },
         },
         { provide: ProjectEnvironmentStateService, useValue: api },
+        { provide: EnvironmentOperationRecoveryService, useValue: recovery },
         { provide: DatatugNavService, useValue: nav },
         { provide: ErrorLogger, useValue: { logError: vi.fn() } },
       ],
     })
       .overrideComponent(EnvironmentsPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        set: {
+          imports: [],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          template: `@for (environment of environments(); track environment.id) { <button data-testid="environment-list-item" (click)="goEnvironment(environment)">{{presentation(environment).label}} {{presentation(environment).safetyLabel}}</button> }`,
+        },
       })
       .compileComponents();
   });
@@ -81,8 +107,12 @@ describe('Environments management', () => {
     response.next({
       state,
       items: [
-        { id: 'prod', presentation: { label: 'Production', tone: 'danger' } },
-        { id: 'local' },
+        {
+          id: 'prod',
+          title: 'prod',
+          presentation: { label: 'Production', tone: 'danger' },
+        },
+        { id: 'local', title: 'local' },
       ],
     });
     await fixture.whenStable();
@@ -98,40 +128,83 @@ describe('Environments management', () => {
     rows[0].click();
     expect(nav.goEnvironment).toHaveBeenCalledWith(
       { ref },
-      expect.objectContaining({ id: 'prod' }),
+      expect.objectContaining({ id: 'prod', title: 'prod' }),
     );
   });
-  it('retains the exact operation after a lost save response and confirms canonical order before closing', () => {
+  it('retains the exact operation after a lost save response and verifies real Go proof before closing', async () => {
+    const golden = goldens.find(
+      (fixture) =>
+        fixture.transport === 'cli' &&
+        fixture.receipt.kind === 'save-environment-order',
+    )!;
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page = fixture.componentInstance as any;
+    api.mutation.mockReturnValue(golden.request as any);
+    api.read.mockReturnValue(of(golden.before));
+    response.next({
+      state: golden.before as any,
+      items: golden.before.environments,
+    });
+    await vi.waitFor(() => expect(page.recoveryReady()).toBe(true));
+    page.manage();
+    page.draft.set(
+      golden.request.environmentOrder!.map((id) =>
+        golden.before.environments.find((row) => row.id === id),
+      ),
+    );
+    api.save.mockReturnValue(throwError(() => ({ status: 0 })));
+    api.status.mockReturnValue(of({ ...golden.receipt, status: 'pending' }));
+    await page.submit('order');
+    expect(page.editing()).toBe(true);
+    const original = api.save.mock.calls[0][1];
+    expect(stored.request).toEqual(original);
+    api.save.mockReturnValue(of(golden.receipt));
+    api.read.mockReturnValue(of(golden.after));
+    api.status.mockReturnValue(of(golden.receipt));
+    await page.retry();
+    expect(api.save.mock.calls[1][1]).toEqual(original);
+    expect(page.editing()).toBe(false);
+    expect(page.message()).toBe('Order saved.');
+    expect(stored).toBeUndefined();
+  });
+  it('blocks fresh mutations when recovery storage cannot be read', async () => {
+    recovery.read.mockRejectedValueOnce(new Error('storage denied'));
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
     const page = fixture.componentInstance as any;
     response.next({ state, items: state.environments });
-    page.manage();
-    page.move(0, 1);
-    api.save.mockReturnValue(throwError(() => ({ status: 0 })));
-    api.read.mockReturnValue(throwError(() => ({ status: 503 })));
-    api.status.mockReturnValue(of({ operationId: 'op', status: 'pending' }));
-    page.submit('order');
-    expect(page.editing()).toBe(true);
-    const original = api.save.mock.calls[0][1];
-    api.save.mockReturnValue(of({ operationId: 'op' }));
-    api.read.mockReturnValue(
-      of({
-        ...state,
-        order: ['local', 'prod'],
-        environments: [{ id: 'local' }, { id: 'prod' }],
-      }),
-    );
-    api.status.mockReturnValue(
-      of({
-        operationId: 'op',
-        status: 'committed',
-        environmentOrder: ['local', 'prod'],
-      }),
-    );
-    page.retry();
-    expect(api.save.mock.calls[1][1]).toBe(original);
-    expect(page.editing()).toBe(false);
-    expect(page.message()).toBe('Order saved.');
+    await vi.waitFor(() => expect(page.message()).toContain('storage'));
+    page.name = 'Fresh';
+    await page.submit('create');
+    expect(api.create).not.toHaveBeenCalled();
+    expect(page.recoveryReady()).toBe(false);
+  });
+  it('restores unresolved create before offering another mutation after route reentry', async () => {
+    const golden = goldens.find(
+      (fixture) =>
+        fixture.transport === 'cli' &&
+        fixture.receipt.kind === 'create-environment',
+    )!;
+    stored = {
+      version: 1,
+      actor: golden.before.scopeBinding,
+      project: ref,
+      before: golden.before,
+      request: golden.request,
+      attempts: 1,
+    };
+    api.read.mockReturnValue(of(golden.before));
+    api.status.mockReturnValue(of({ ...golden.receipt, status: 'pending' }));
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page = fixture.componentInstance as any;
+    response.next({
+      state: golden.before as any,
+      items: golden.before.environments,
+    });
+    await vi.waitFor(() => expect(page.message()).toContain('unresolved'));
+    expect(page.name).toBe(golden.request.name);
+    expect(page.unresolved).toBe(true);
+    await page.submit('create');
+    expect(api.create).not.toHaveBeenCalled();
   });
   it('does not allow mutations without the corresponding current capability', () => {
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);

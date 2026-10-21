@@ -259,7 +259,7 @@ export class ProjectAssetsReadService {
 
   environments(ref: IProjectRef): Observable<IEnvironmentFull[]> {
     return this.environmentState
-      .view(ref, () => this.legacyEnvironments(ref))
+      .watch(ref, () => this.legacyEnvironments(ref))
       .pipe(map((view) => view.items));
   }
 

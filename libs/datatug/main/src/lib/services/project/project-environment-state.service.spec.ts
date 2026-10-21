@@ -1,3 +1,4 @@
+import { SneatAuthStateService } from '@sneat/auth-core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { ProjectEnvironmentStateService } from './project-environment-state.service';
@@ -18,7 +19,7 @@ const response = {
   },
   scopeBinding: 'a'.repeat(64),
   revision: 'r1',
-  environments: [{ id: 'dev' }, { id: 'prod' }],
+  environments: [{ id: 'dev' }, { id: 'prod', title: 'prod' }],
   savedOrder: ['prod', 'dev'],
   order: ['prod', 'dev'],
   needsRepair: false,
@@ -40,7 +41,15 @@ describe('ProjectEnvironmentStateService scope', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     TestBed.configureTestingModule({
-      providers: [{ provide: ProjectQueryApiService, useValue: api }],
+      providers: [
+        { provide: ProjectQueryApiService, useValue: api },
+        {
+          provide: SneatAuthStateService,
+          useValue: {
+            authState: of({ status: 'authenticated', user: { uid: 'u1' } }),
+          },
+        },
+      ],
     });
   });
   it('validates wire scope while keeping canonical custom order', async () => {
@@ -61,7 +70,7 @@ describe('ProjectEnvironmentStateService scope', () => {
   });
   it('does not disguise a missing current endpoint as an old agent', async () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 404 })));
-    const legacy = vi.fn(() => of([{ id: 'local' }]));
+    const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
     await expect(
       firstValueFrom(
         TestBed.inject(ProjectEnvironmentStateService).view(ref, legacy),
@@ -73,11 +82,11 @@ describe('ProjectEnvironmentStateService scope', () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 426 })));
     const result = await firstValueFrom(
       TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
-        of([{ id: 'local' }]),
+        of([{ id: 'local', title: 'local' }]),
       ),
     );
     expect(result.state).toBeUndefined();
-    expect(result.items).toEqual([{ id: 'local' }]);
+    expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
     expect(result.reason).toContain('Update');
   });
 });

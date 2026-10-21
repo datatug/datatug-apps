@@ -48,7 +48,7 @@ describe('ProjectAssetsReadService', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
-            view: (
+            watch: (
               _ref: unknown,
               legacy: () => import('rxjs').Observable<unknown[]>,
             ) => legacy().pipe(map((items) => ({ items }))),
