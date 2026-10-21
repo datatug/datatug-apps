@@ -1,6 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router, RouterLink } from '@angular/router';
+import { By } from '@angular/platform-browser';
 import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
@@ -176,9 +177,17 @@ describe('shared project menu refuses active-query tab', () => {
       host.querySelector('sneat-datatug-investigation-context-bar'),
     ).toBeNull();
     const items = [...host.querySelectorAll('ion-item')];
-    // Incidents joined the project menu in this profile (UX brief §13):
-    // 5 metadata-only destinations + the incidents link.
-    expect(items).toHaveLength(6);
+    // Six metadata destinations, including hosted Boards, plus Incidents.
+    expect(items).toHaveLength(7);
+    const router = TestBed.inject(Router);
+    const destinations = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .map((item) => {
+        const tree = item.injector.get(RouterLink).urlTree;
+        if (!tree) throw new Error('Project menu link has no destination.');
+        return router.serializeUrl(tree);
+      });
+    expect(destinations).toContain('/space/S1/store/firestore/project/same/boards');
     expect(
       host.querySelector('[data-testid="incidents-project-menu-item"]'),
     ).toBeTruthy();
