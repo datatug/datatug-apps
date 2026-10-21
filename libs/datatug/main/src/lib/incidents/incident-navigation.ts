@@ -1,6 +1,10 @@
 import { convertToParamMap, type Params } from '@angular/router';
 import {
   resolveIncidentRouteScope,
+  incidentAgentQueryParam,
+  incidentStoreQueryParam,
+  incidentProjectQueryParam,
+  incidentEnvironmentQueryParam,
   type IncidentRouteScope,
 } from './incident-route-context';
 import type { IProjectRef } from '../core/project-context';
@@ -20,6 +24,17 @@ export function incidentProjectRouteScope(
   const project = incidentProjectRefFromUrl(currentUrl);
   if (!project) return undefined;
   const url = new URL(currentUrl, 'https://datatug.app');
+  // Angular request ParamMaps read the first repeated value; collapsing URL
+  // entries reads the last. Ambiguous scope must never select sidebar state.
+  if (
+    [
+      incidentAgentQueryParam,
+      incidentStoreQueryParam,
+      incidentProjectQueryParam,
+      incidentEnvironmentQueryParam,
+    ].some((key) => url.searchParams.getAll(key).length > 1)
+  )
+    return undefined;
   const parsed = parseProjectUrl(url.pathname);
   if (!parsed.ok) return undefined;
   const segments = parsed.rest.split('/');

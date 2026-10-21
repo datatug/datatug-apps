@@ -4,6 +4,8 @@ import { NavigationEnd, Router, provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { githubProjectMatcher } from '../../routes/github-project-routes';
 import { datatugProjectRoutes } from '../../routes/datatug-routing-proj';
+import { incidentProjectRouteScope } from '../../incidents/incident-navigation';
+import { resolveIncidentRouteScope } from '../../incidents/incident-route-context';
 import { ErrorLogger } from '@sneat/core';
 import { NEVER, Subject, of } from 'rxjs';
 import { parseDatatugStoreRef } from '../../nav/nav-models';
@@ -93,6 +95,48 @@ describe('project Incident routes with the real router and navigation context', 
   }
 
   beforeEach(() => sessionStorage.clear());
+
+  it.each([
+    ['agent', 'http-localhost:8989', 'http-other:8989', 'agentStoreId'],
+    ['project', 'demo', 'other', 'project'],
+    ['environment', 'local', 'other', 'environment'],
+    ['storeId', 'ops', 'other', 'storeId'],
+  ])(
+    'rejects repeated %s instead of disagreeing with Angular request scope or restoring saved environment',
+    async (key, own, foreign, field) => {
+      const base = '/store/http-localhost:8989/project/demo/incidents';
+      const valid = {
+        agent: 'http-localhost:8989',
+        storeId: 'ops',
+        project: 'demo',
+        environment: 'local',
+      };
+      const app = await boot(`${base}?${new URLSearchParams(valid)}`);
+      expect(app.environment()).toBe('local');
+      for (const values of [
+        [foreign, own],
+        [own, foreign],
+        [own, own],
+      ]) {
+        const query = new URLSearchParams(valid);
+        query.delete(key);
+        values.forEach((value) => query.append(key, value));
+        const url = `${base}?${query}`;
+        await app.harness.navigateByUrl(url);
+        let leaf = app.router.routerState.snapshot.root;
+        while (leaf.firstChild) leaf = leaf.firstChild;
+        // This is the actual ActivatedRoute query map read by Incident pages:
+        // Angular preserves both values and resolves the first one.
+        expect(leaf.queryParamMap.getAll(key)).toEqual(values);
+        expect(leaf.queryParamMap.get(key)).toBe(values[0]);
+        expect(resolveIncidentRouteScope(leaf.queryParamMap, {})).toMatchObject(
+          { [field]: values[0] },
+        );
+        expect(incidentProjectRouteScope(url)).toBeUndefined();
+        expect(app.environment()).toBeUndefined();
+      }
+    },
+  );
 
   it.each(['', '/new', '/ops/INC-1', '/ops/INC-1/record'])(
     'restores the complete Incident environment on a fresh-tab cold load of %s',
