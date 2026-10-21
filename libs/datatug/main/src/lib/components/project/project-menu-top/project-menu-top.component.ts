@@ -184,12 +184,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
         icon: 'book-outline',
       },
       {
-        path: 'environments',
-        title: 'Environments',
-        icon: 'earth-outline',
-        count: (proj) => proj?.environments?.length,
-      },
-      {
+
         path: 'servers',
         title: 'Servers',
         icon: 'server-outline',
