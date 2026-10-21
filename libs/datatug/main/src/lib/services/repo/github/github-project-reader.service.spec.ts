@@ -822,3 +822,10 @@ describe('strict schema inventory completeness', () => {
   });
 
 });
+
+it.each(['', '   ', '\n\t'])('keeps the neutral entity default for an empty flat definition (%j)',async body=>{
+  const {gh,service}=setup();
+  gh.addRepo(REPO,SHA,{'demo-project-1/datatug-project.json':'{}','demo-project-1/entities/Customer.entity.json':body});
+  expect(await first(service.entityDefinitionPath(PROJECT_ID,'Customer'))).toBe('entities/Customer.entity.json');
+  expect(await first(service.getEntity(PROJECT_ID,'Customer'))).toEqual({id:'Customer',fields:[]});
+});

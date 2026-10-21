@@ -1334,9 +1334,10 @@ export class GithubProjectReaderService {
     return this.entityDefinitionPath(projectId, entityId).pipe(
       switchMap((path) => this.getRawJson<IGithubEntityFile>(projectId, path)),
       map((data) => {
-        if (!data)
-          throw new Error('The project entity definition is unavailable.');
-        return { ...data, id: data.id || entityId };
+        // Existing entity callers keep their neutral default for an empty JSON body.
+        return data
+          ? { ...data, id: data.id || entityId }
+          : { id: entityId, fields: [] };
       }),
     );
   }
