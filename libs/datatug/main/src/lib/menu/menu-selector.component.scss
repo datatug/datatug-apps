@@ -1,0 +1,75 @@
+.menu-selector-item {
+  --padding-start: 16px;
+  --inner-padding-end: 12px;
+  --min-height: 56px;
+}
+
+.menu-selector-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  min-width: 40px;
+  margin: 0 12px 0 0;
+}
+
+.menu-selector-icon ion-icon {
+  font-size: 20px;
+}
+
+.menu-selector-icon-button {
+  width: 40px;
+  height: 44px;
+  margin: 0;
+  --padding-start: 0;
+  --padding-end: 0;
+}
+
+.menu-selector-icon-button ion-icon {
+  font-size: 20px;
+}
+
+ion-select.menu-selector-field {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  max-width: none !important;
+}
+
+.menu-selector-row-label {
+  flex: 0 0 auto;
+  min-width: 48px;
+}
+
+.menu-project-selector-item {
+  --min-height: 72px;
+}
+
+ion-select.menu-project-field::part(text) {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-project-empty {
+  flex: 1 1 auto;
+}
+
+.menu-project-error {
+  flex: 0 0 100%;
+  margin-inline-start: 52px;
+  font-size: 0.75rem;
+}
+
+.menu-env-clear {
+  flex: 0 0 44px;
+  width: 44px;
+  min-width: 44px;
+  margin: 0;
+}
+
+.menu-env-clear ion-button {
+  width: 44px;
+  height: 44px;
+  margin: 0;
+}
