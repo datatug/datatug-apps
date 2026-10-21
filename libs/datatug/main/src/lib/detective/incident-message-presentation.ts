@@ -1,6 +1,7 @@
 import {
   criterionObject,
   criterionID,
+  criterionNativeID,
   criterionVersion,
   isCriterionEvidence,
 } from '../incidents/resolution-criterion';
@@ -129,7 +130,7 @@ export function isHostedCriterionAction(
   if (
     !criterionObject(value) ||
     !criterionID(value['incidentRef']) ||
-    !criterionID(value['environment']) ||
+    !criterionNativeID(value['environment']) ||
     !criterionVersion(value['expectedSeq'])
   )
     return false;
@@ -157,7 +158,7 @@ export function isHostedCriterionAction(
     criterionObject(c) &&
     keys(c, ['version', 'checkID', 'maxAgeSeconds']) &&
     criterionVersion(c['version']) &&
-    criterionID(c['checkID']) &&
+    criterionNativeID(c['checkID']) &&
     criterionVersion(c['maxAgeSeconds']) &&
     c['maxAgeSeconds'] <= 86400 &&
     isCriterionEvidence(

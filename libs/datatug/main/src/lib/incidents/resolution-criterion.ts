@@ -12,6 +12,7 @@ export const criterionID = (v: unknown): v is string =>
   v.length <= 512 &&
   v.trim() === v &&
   !/[\s\p{Cc}]/u.test(v);
+export const criterionNativeID = (v: unknown): v is string => typeof v === 'string' && /^[A-Za-z0-9_][A-Za-z0-9_-]{0,127}$/.test(v);
 export const criterionSegment = (v: unknown): v is string =>
   criterionID(v) && v !== '.' && v !== '..' && !/[\\/]/.test(v);
 export const criterionVersion = (v: unknown): v is number =>
@@ -114,7 +115,7 @@ export function isCriterionEvidence(
     !keys(v, ['retention', 'incidentRef', 'caseId', 'context']) ||
     v['retention'] !== 'project-pinned' ||
     v['incidentRef'] !== incidentRef ||
-    ('caseId' in v && !criterionID(v['caseId']))
+    ('caseId' in v && !criterionNativeID(v['caseId']))
   )
     return false;
   const c = v['context'];
@@ -127,9 +128,9 @@ export function isCriterionEvidence(
       'scope',
       'bindings',
     ]) ||
-    !criterionID(c['sessionId']) ||
+    !criterionNativeID(c['sessionId']) ||
     !criterionVersion(c['expectedSessionVersion']) ||
-    !criterionID(c['expectedContextSetId'])
+    !criterionNativeID(c['expectedContextSetId'])
   )
     return false;
   const s = c['scope'],
@@ -138,13 +139,13 @@ export function isCriterionEvidence(
     criterionObject(s) &&
     keys(s, ['environmentId', 'identityDomain']) &&
     s['environmentId'] === environment &&
-    criterionID(s['identityDomain']) &&
+    criterionNativeID(s['identityDomain']) &&
     Array.isArray(b) &&
     b.length === 1 &&
     criterionObject(b[0]) &&
     keys(b[0], ['inputName', 'entryId', 'revisionId']) &&
     b[0]['inputName'] === 'order_id' &&
-    criterionID(b[0]['entryId']) &&
-    criterionID(b[0]['revisionId'])
+    criterionNativeID(b[0]['entryId']) &&
+    criterionNativeID(b[0]['revisionId'])
   );
 }

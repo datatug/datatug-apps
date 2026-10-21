@@ -114,6 +114,10 @@ describe('Hosted criterion frozen Core69 transport', () => {
         action: a,
       };
     expect(isPendingIncidentOperation(pending)).toBe(true);
+    if (a.type === 'criterion-draft') {
+      expect(isHostedCriterionAction({...a, criterion:{...a.criterion, checkID:'x'.repeat(129)}})).toBe(false);
+      expect(isHostedCriterionAction({...a, evidence:{...a.evidence,context:{...a.evidence.context,sessionId:'other/session'}}})).toBe(false);
+    }
     expect(
       isPendingIncidentOperation({ ...pending, message: { body: 'smuggled' } }),
     ).toBe(false);
