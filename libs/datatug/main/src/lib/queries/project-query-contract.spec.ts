@@ -19,6 +19,13 @@ function asReadWire(wire: ProjectQueryWire): ProjectQueryReadWire {
 }
 
 describe('common project query contract', () => {
+  it('retains creation dates on reads without sending store-owned metadata on saves', () => {
+    const wire = { ...toProjectQueryWire(createHostedDemoDbQuery('q')), createdAt: '2026-10-21T12:00:00Z' };
+    const read = fromProjectQueryWire(wire);
+    expect(read.createdAt).toBe(wire.createdAt);
+    expect(toProjectQueryWire(read)).not.toHaveProperty('createdAt');
+    expect(read.createdAt).toBe(wire.createdAt);
+  });
   it.each(['chinook.Customer', 'adventureworks.Person.Person'])(
     'round-trips complete %s source and DTQL body',
     (source) => {

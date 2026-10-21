@@ -74,7 +74,7 @@
 
 .overview-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr 1.3fr 1fr 1.2fr;
+  grid-template-columns: 1fr 1.35fr 1.3fr 1fr 1.2fr;
   gap: 0;
   margin: 0 8px 12px;
   border-bottom: 1px solid var(--ion-color-light-shade);
@@ -134,4 +134,14 @@
 
 .project-metadata-error {
   color: var(--ion-color-danger);
+}
+
+.overview-tab-count {
+  margin: 0 0 0 6px;
+  min-height: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  vertical-align: middle;
+  pointer-events: none;
 }

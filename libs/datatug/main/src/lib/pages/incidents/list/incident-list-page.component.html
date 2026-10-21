@@ -13,8 +13,8 @@
     ) {
       <ion-buttons slot="end">
         <ion-button
-          routerLink="/incidents/new"
-          [queryParams]="scopeQueryParams()"
+          [routerLink]="newIncidentLink()"
+          [queryParams]="incidentNavigationQueryParams()"
         >
           <ion-icon slot="start" name="add-outline" />Report an incident
         </ion-button>
@@ -66,7 +66,7 @@
           ) {
             <ion-item
               [routerLink]="incidentLink(incident)"
-              [queryParams]="scopeQueryParams()"
+              [queryParams]="incidentNavigationQueryParams()"
               button
               detail
             >
@@ -80,8 +80,8 @@
       </ion-card>
     } @else {
       <sneat-datatug-incident-empty-state
-        createLink="/incidents/new"
-        [queryParams]="scopeQueryParams()"
+        [createLink]="newIncidentLink()"
+        [queryParams]="incidentNavigationQueryParams()"
       />
     }
   }

@@ -27,11 +27,37 @@ import { BusinessCheckoutPageComponent } from './business-checkout-page.componen
 import template from './business-checkout-page.component.html?raw';
 
 it('embeds the shared auth panel for signed-out Business checkout', () => {
-  expect(template).toContain(
-    '<sneat-auth-panel\n          [returnTo]="authReturnTo()"\n          initialMode="sign-up"\n          [showIntro]="false"\n        />',
-  );
+  expect(template).toContain('<sneat-auth-panel');
+  expect(template).toContain('[returnTo]="authReturnTo()"');
+  expect(template).toContain('[showIntro]="false"');
   expect(template).not.toContain('Sign in to continue</button>');
 });
+
+it.each([
+  { returning: false, expected: 'sign-up' },
+  { returning: true, expected: undefined },
+])(
+  'opens the embedded auth panel on $expected when returning is $returning',
+  async ({ returning, expected }) => {
+    const root = await render(
+      returning
+        ? { spaceID: 'group_1', mode: 'test', session_id: 'cs_test_123' }
+        : { planID: 'datatug-business-usage-monthly' },
+      TEST_CHECKOUT_ORIGIN,
+      { status: 'notAuthenticated' },
+      'buyer',
+      true,
+      returning,
+    );
+    fixture.componentInstance['state'].set({ stage: 'sign-in' });
+    fixture.detectChanges();
+    const panel = root.querySelector('sneat-auth-panel') as
+      | (HTMLElement & { initialMode?: string })
+      | null;
+    expect(panel).toBeTruthy();
+    expect(panel?.initialMode).toBe(expected);
+  },
+);
 
 it('labels TEST activity separately from LIVE access on the return page', async () => {
   const root = await render(

@@ -1,3 +1,4 @@
+import { QuickSearchApiService } from './quick-search-api.service';
 import { TestBed } from '@angular/core/testing';
 import { of } from 'rxjs';
 import { ProjectService } from '../services/project/project.service';
@@ -32,6 +33,7 @@ describe('Quick Search actual metadata snapshot', () => {
     );
     TestBed.configureTestingModule({
       providers: [
+        { provide: QuickSearchApiService, useValue: {} },
         {
           provide: ProjectService,
           useValue: {
@@ -107,4 +109,41 @@ describe('Quick Search actual metadata snapshot', () => {
     });
     expect(JSON.stringify(documents)).not.toContain('private SQL');
   });
+});
+
+describe('public object metadata authority',()=>{
+  function setup(missingBoard=false, rawOverride?:unknown) {
+    const getBoard=vi.fn((_project:string,id:string,options:unknown)=>{
+      expect(options).toEqual({requireExisting:true});
+      if(missingBoard && id==='second') throw new Error('missing');
+      return of({id,title:'Actual '+id,tags:['customers'],sql:'private-sql',rows:['private-row']});
+    });
+    TestBed.configureTestingModule({providers:[
+      {provide:QuickSearchApiService,useValue:{}},
+      {provide:ProjectService,useValue:{watchProjectSummary:()=>of({id:'p',boards:[{id:'first',title:'Brief'},{id:'second'}],entities:[{id:'customer',title:'Brief entity'}],environments:[{id:'dev',title:'Brief env'}]})}},
+      {provide:ProjectQueryApiService,useValue:{}},
+      {provide:QueriesService,useValue:{getQueriesFolder:()=>of({id:'~',items:[]})}},
+      {provide:GithubProjectReaderService,useValue:{getBoard,listDirectory:()=>of([]),readInfo:()=>of({commit:'a'.repeat(40)}),visitEpoch:()=> '0',getRawJson:(_project:string,path:string)=>of(rawOverride !== undefined ? rawOverride : {id:path.startsWith('entities/')?'customer':'dev',title:'Full source title',tags:['real-tag'],secrets:'private-secret'})}},
+    ]});
+    return TestBed.inject(QuickSearchSnapshotService).preview({storeId:'github.com',projectId:'repo@owner@'});
+  }
+  it('reads actual title and assigned tags missing from brief inventory without copying definitions',async()=>{
+    const snapshot=await setup();
+    expect(snapshot.documents.find(d=>d.kind==='dashboard')).toMatchObject({id:'first',name:'Actual first',tags:['customers']});
+    expect(snapshot.documents.find(d=>d.kind==='entity')).toMatchObject({name:'Full source title',tags:['real-tag']});
+    expect(snapshot.documents.find(d=>d.kind==='environment')).toMatchObject({name:'Full source title',tags:['real-tag']});
+    for(const excluded of ['Brief','private-sql','private-row','private-secret']) expect(JSON.stringify(snapshot)).not.toContain(excluded);
+  });
+  it('marks the entire category unavailable when one full object read fails',async()=>{
+    const snapshot=await setup(true);
+    expect(snapshot.documents.some(d=>d.kind==='dashboard')).toBe(false);
+    expect(snapshot.sourceCoverage.find(c=>c.kind==='dashboard')).toMatchObject({status:'unavailable',count:0});
+  });
+  it.each([[],{id:'customer',tags:null}])('rejects malformed full metadata without changing successful categories (%j)',async raw=>{
+    const snapshot=await setup(false,raw);
+    expect(snapshot.documents.filter(d=>d.kind==='dashboard')).toHaveLength(2);
+    expect(snapshot.documents.some(d=>d.kind==='entity'||d.kind==='environment')).toBe(false);
+    expect(snapshot.sourceCoverage.find(c=>c.kind==='entity')).toMatchObject({status:'unavailable',count:0});
+  });
+
 });

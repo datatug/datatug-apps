@@ -1,10 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
   Router,
+  RouterLink,
 } from '@angular/router';
 import {
   AgentContextService,
@@ -73,6 +75,7 @@ describe('IncidentCreatePageComponent', () => {
   const render = async (
     query: Record<string, string> = {},
     itemsByAgent?: Readonly<Record<string, readonly ContextItem[]>>,
+    currentUrl = '/incidents/new',
   ): Promise<void> => {
     storeId$ = new BehaviorSubject<string | undefined>('localhost:8989');
     project$ = new BehaviorSubject<
@@ -148,8 +151,9 @@ describe('IncidentCreatePageComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(IncidentCreatePageComponent);
     router = TestBed.inject(Router);
+    vi.spyOn(router, 'url', 'get').mockReturnValue(currentUrl);
+    fixture = TestBed.createComponent(IncidentCreatePageComponent);
     fixture.detectChanges();
   };
 
@@ -189,10 +193,14 @@ describe('IncidentCreatePageComponent', () => {
     TestBed.resetTestingModule();
     await render({ draft: 'test' });
     const page = peek(fixture.componentInstance);
-    (fixture.componentInstance as unknown as { cancelDraft(): void }).cancelDraft();
+    (
+      fixture.componentInstance as unknown as { cancelDraft(): void }
+    ).cancelDraft();
     page.ionViewDidEnter();
     expect(page.title).toBe('[Test] Investigate a delayed delivery');
-    (fixture.componentInstance as unknown as { cancelDraft(): void }).cancelDraft();
+    (
+      fixture.componentInstance as unknown as { cancelDraft(): void }
+    ).cancelDraft();
     queryParamMap$.next(convertToParamMap({}));
     fixture.detectChanges();
     expect(page.title).toBe('');
@@ -214,7 +222,15 @@ describe('IncidentCreatePageComponent', () => {
       (node) => (node as HTMLElement).textContent?.trim() === 'Cancel',
     ) as HTMLElement;
     expect(cancel).toBeTruthy();
-    expect(cancel.getAttribute('routerlink')).toBe('/incidents');
+    expect(
+      fixture.debugElement
+        .queryAll(By.directive(RouterLink))
+        .find((element) => element.nativeElement === cancel)
+        ?.injector.get(RouterLink)
+        .urlTree?.toString(),
+    ).toBe(
+      '/incidents?agent=localhost:8989&storeId=billing&project=billing&environment=prod',
+    );
     expect(createSpy).not.toHaveBeenCalled();
   });
   it('does not submit an empty title', () => {
@@ -648,6 +664,99 @@ describe('IncidentCreatePageComponent', () => {
       replaceUrl: true,
     });
   });
+
+  it('keeps a created Incident inside the actual agent project route', async () => {
+    TestBed.resetTestingModule();
+    await render(
+      {},
+      undefined,
+      '/store/localhost:8989/project/billing/incidents/new',
+    );
+    createSpy.mockReturnValue(
+      of({
+        kind: 'ok',
+        data: incident(),
+      } satisfies IncidentApiResult<IncidentDetail>),
+    );
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      ['/store/localhost:8989/project/billing/incidents/ops/INC-1'],
+      {
+        queryParams: {
+          agent: 'localhost:8989',
+          storeId: 'ops',
+          project: 'billing',
+          environment: 'prod',
+        },
+        replaceUrl: true,
+      },
+    );
+  });
+
+  it.each(['test', ''])(
+    'keeps API branch and actual store scope on Cancel and real returned detail for draft %s',
+    async (draft) => {
+      TestBed.resetTestingModule();
+      const scope = {
+        agent: 'agent-b:8989',
+        storeId: 'team-incident-store',
+        project: 'fulfilment',
+        environment: 'staging',
+      };
+      const qualifiers = {
+        projectApi: 'local',
+        branch: 'feature/incident-scope',
+      };
+      const path = '/store/agent-b:8989/project/fulfilment/incidents';
+      await render(
+        { ...scope, ...qualifiers, ...(draft ? { draft } : {}) },
+        undefined,
+        path + '/new?' + new URLSearchParams(qualifiers),
+      );
+      const cancel = fixture.debugElement
+        .queryAll(By.directive(RouterLink))
+        .find(
+          (element) => element.nativeElement.textContent.trim() === 'Cancel',
+        );
+      if (!cancel) throw new Error('Cancel link is missing');
+      const cancelTree = cancel.injector.get(RouterLink).urlTree;
+      expect(cancelTree?.toString().split('?')[0]).toBe(path);
+      expect(cancelTree?.queryParams).toEqual({ ...qualifiers, ...scope });
+      expect(createSpy).not.toHaveBeenCalled();
+      const page = peek(fixture.componentInstance);
+      page.title = 'A real edited report';
+      page.description = 'An observed delay';
+      createSpy.mockReturnValue(
+        of({
+          kind: 'ok',
+          data: incident('returned-store', 'INC-native-result'),
+        }),
+      );
+      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      page.submit();
+      expect(createSpy).toHaveBeenCalledWith(
+        scope.agent,
+        expect.objectContaining({
+          storeId: scope.storeId,
+          project: scope.project,
+          environment: scope.environment,
+          title: 'A real edited report',
+          description: 'An observed delay',
+        }),
+      );
+      expect(navigate).toHaveBeenCalledWith(
+        [path + '/returned-store/INC-native-result'],
+        {
+          queryParams: { ...qualifiers, ...scope, storeId: 'returned-store' },
+          replaceUrl: true,
+        },
+      );
+    },
+  );
 
   it('keeps the draft, restores controls, and reuses the mutation id on failure', () => {
     createSpy.mockReturnValue(

@@ -86,6 +86,14 @@ export class QuickSearchApiService {
         ),
       );
   }
+  /** Authenticated metadata read only; never falls back to anonymous access. */
+  preview(ref: IProjectRef, environmentId?: string) {
+    return this.api.post<SearchSnapshot>(
+      'datatug/project/quick-search/preview',
+      environmentId === undefined ? {} : { environmentId },
+      { params: quickSearchParams(ref) },
+    );
+  }
   enable(ref: IProjectRef, snapshot: SearchSnapshot) {
     return this.api.post<SearchStatus>(
       'datatug/project/quick-search/enable',

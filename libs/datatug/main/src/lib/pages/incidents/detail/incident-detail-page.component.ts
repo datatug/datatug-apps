@@ -1,10 +1,4 @@
-import {
-  Component,
-  DestroyRef,
-  computed,
-  inject,
-  signal,
-} from '@angular/core';
+import { Component, DestroyRef, computed, inject, signal } from '@angular/core';
 import { Router } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
@@ -27,12 +21,15 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import {
-  routingParamStoreId,
-} from '../../../core/datatug-routing-params';
+import { routingParamStoreId } from '../../../core/datatug-routing-params';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import { useIncidentPageReads } from '../../../incidents/incident-page-reads';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
+import {
+  incidentPageCommands,
+  incidentPageQueryParams,
+  incidentProjectRefFromUrl,
+} from '../../../incidents/incident-navigation';
 import {
   IncidentFactView,
   AppendIncidentEventRequest,
@@ -115,19 +112,26 @@ export class IncidentDetailPageComponent {
 
   protected readonly incidentListUrl = computed(() => {
     const context = this.requestContext();
-    const tree = this.router.createUrlTree(['/incidents'], {
-      queryParams: context ? incidentContextQueryParams(context) : undefined,
-    });
+    const tree = this.router.createUrlTree(
+      [...incidentPageCommands(this.router.url)],
+      {
+        queryParams: incidentPageQueryParams(
+          this.router.url,
+          context ? incidentContextQueryParams(context) : undefined,
+        ),
+      },
+    );
     return this.router.serializeUrl(tree);
   });
   protected readonly createCaseUrl = computed(() => {
     const context = this.requestContext();
     const incidentId = this.incidentId();
     if (!context || !incidentId) return undefined;
-    const href = projectPageHref({
+    const project = incidentProjectRefFromUrl(this.router.url) ?? {
       storeId: context.agentStoreId,
       projectId: context.scope.project,
-    }, 'detective');
+    };
+    const href = projectPageHref(project, 'detective');
     const incidentRef = `${context.scope.storeId}/${incidentId}`;
     return `${href}${href.includes('?') ? '&' : '?'}incident=${encodeURIComponent(incidentRef)}`;
   });
@@ -137,11 +141,18 @@ export class IncidentDetailPageComponent {
     if (!storeId || !incidentId) {
       return undefined;
     }
-    return ['/incidents', storeId, incidentId, 'record'] as const;
+    return incidentPageCommands(this.router.url, [
+      storeId,
+      incidentId,
+      'record',
+    ]);
   });
   protected readonly recordQueryParams = computed(() => {
     const context = this.requestContext();
-    return context ? incidentContextQueryParams(context) : undefined;
+    return incidentPageQueryParams(
+      this.router.url,
+      context ? incidentContextQueryParams(context) : undefined,
+    );
   });
   protected readonly recordUrl = computed(() => {
     const commands = this.recordCommands();

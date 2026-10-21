@@ -1,9 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  Router,
+  RouterLink,
 } from '@angular/router';
 import {
   AgentContextService,
@@ -69,7 +72,10 @@ describe('IncidentListPageComponent', () => {
   let listResult$: Subject<IncidentApiResult<IncidentSummary[]>>;
   let listSpy: ReturnType<typeof vi.fn>;
 
-  const render = async (query: Record<string, string> = {}) => {
+  const render = async (
+    query: Record<string, string> = {},
+    currentUrl = '/incidents',
+  ) => {
     storeId$ = new BehaviorSubject<string | undefined>(undefined);
     project$ = new BehaviorSubject<
       { ref: { storeId: string; projectId: string } } | undefined
@@ -130,6 +136,7 @@ describe('IncidentListPageComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
+    vi.spyOn(TestBed.inject(Router), 'url', 'get').mockReturnValue(currentUrl);
     fixture = TestBed.createComponent(IncidentListPageComponent);
     fixture.detectChanges();
   };
@@ -184,6 +191,55 @@ describe('IncidentListPageComponent', () => {
     ).toBeNull();
     await fixture.whenStable();
     expect(fixture.nativeElement.innerHTML).toContain('Report an incident');
+  });
+
+  it('keeps both empty-list actions and the populated action in the explicit API branch and Incident scope', async () => {
+    TestBed.resetTestingModule();
+    const scope = {
+      agent: 'agent-b:8989',
+      storeId: 'team-incident-store',
+      project: 'fulfilment',
+      environment: 'staging',
+    };
+    const qualifiers = {
+      projectApi: 'local',
+      branch: 'feature/incident-scope',
+    };
+    const path = '/store/agent-b:8989/project/fulfilment/incidents';
+    await render(
+      { ...scope, ...qualifiers },
+      path + '?' + new URLSearchParams(qualifiers),
+    );
+    listResult$.next({ kind: 'ok', data: [] });
+    await fixture.whenStable();
+    expect(listSpy).toHaveBeenCalledWith({
+      agentStoreId: scope.agent,
+      scope: {
+        storeId: scope.storeId,
+        project: scope.project,
+        environment: scope.environment,
+        securityContextId: 'ctx-1',
+      },
+    });
+    const emptyLinks = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .map((element) => element.injector.get(RouterLink).urlTree)
+      .filter((tree) => tree?.toString().startsWith(path + '/new'));
+    expect(emptyLinks).toHaveLength(2);
+    expect(emptyLinks.map((tree) => tree?.queryParams)).toEqual([
+      { ...qualifiers, ...scope, draft: 'test' },
+      { ...qualifiers, ...scope },
+    ]);
+    listResult$.next({
+      kind: 'ok',
+      data: [incident(scope.storeId, 'INC-returned', 'Existing')],
+    });
+    await fixture.whenStable();
+    const create = fixture.debugElement
+      .queryAll(By.directive(RouterLink))
+      .map((element) => element.injector.get(RouterLink).urlTree)
+      .find((tree) => tree?.toString().startsWith(path + '/new'));
+    expect(create?.queryParams).toEqual({ ...qualifiers, ...scope });
   });
 
   it('shows an "open a project" guidance state without a complete scope', () => {
@@ -447,5 +503,23 @@ describe('IncidentListPageComponent', () => {
       project: 'billing',
       environment: 'prod',
     });
+  });
+
+  it('keeps create and detail links inside the actual agent project route', async () => {
+    TestBed.resetTestingModule();
+    await render({}, '/store/localhost:8989/project/billing/incidents');
+    selectScope();
+
+    interface Internals {
+      newIncidentLink(): readonly string[];
+      incidentLink(incident: IncidentSummary): readonly string[];
+    }
+    const peek = fixture.componentInstance as unknown as Internals;
+    expect(peek.newIncidentLink()).toEqual([
+      '/store/localhost:8989/project/billing/incidents/new',
+    ]);
+    expect(peek.incidentLink(incident('ops', 'INC-1', 't'))).toEqual([
+      '/store/localhost:8989/project/billing/incidents/ops/INC-1',
+    ]);
   });
 });

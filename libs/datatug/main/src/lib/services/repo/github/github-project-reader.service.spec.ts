@@ -510,12 +510,13 @@ describe('GithubProjectReaderService', () => {
       const semanticModel = createSemanticModel({queryHash:'a'.repeat(64),resultIndex:0,columns:[{name:'ID',dataType:'integer'}]});
       semanticModel.meaning.concepts = [{id:'customer',kind:'entity',labels:{en:'Customer'},description:'A buyer'}];
       const {service} = setup({
-        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',semanticModel}),
+        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',createdAt:'2026-10-21T12:00:00Z',semanticModel}),
         'demo-project-1/queries/sales/regional/customers.query.sql': 'SELECT 1 AS ID',
       });
       const folder = await first(service.getQueriesFolder(PROJECT_ID));
       expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].semanticModel).toEqual(semanticModel);
-      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({semanticModel,text:'SELECT 1 AS ID'});
+      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].createdAt).toBe('2026-10-21T12:00:00Z');
+      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({semanticModel,text:'SELECT 1 AS ID',createdAt:'2026-10-21T12:00:00Z'});
     });
 
     it('builds the recursive folder tree, one folder per queries/ subfolder', async () => {
@@ -688,6 +689,60 @@ describe('GithubProjectReaderService', () => {
   });
 });
 
+describe('actual legacy entity provenance and equivalent dual layouts', () => {
+  it.each(['flat', 'nested', 'equivalent', 'conflict'])(
+    'reads %s layout without inventing a source path',
+    async (mode) => {
+      const { gh, service } = setup();
+      const flat = 'demo-project-1/entities/Customer.entity.json',
+        nested = 'demo-project-1/entities/Customer/Customer.entity.json';
+      const files: Record<string, string> = {
+        'demo-project-1/datatug-project.json': '{}',
+      };
+      if (mode !== 'nested')
+        files[flat] =
+          '{"fields":[{"id":"ID","type":"string"}],"title":"Customer"}';
+      if (mode !== 'flat')
+        files[nested] =
+          mode === 'conflict'
+            ? ' {"title":"Different","fields":[]}'
+            : '{"title":"Customer","fields":[{"type":"string","id":"ID"}]}';
+      gh.addRepo(REPO, SHA, files);
+      expect(await first(service.listEntityIds(PROJECT_ID))).toEqual([
+        'Customer',
+      ]);
+      if (mode === 'conflict')
+        await expect(
+          first(service.getEntity(PROJECT_ID, 'Customer')),
+        ).rejects.toThrow('ambiguous');
+      else {
+        expect(
+          await first(service.entityDefinitionPath(PROJECT_ID, 'Customer')),
+        ).toBe(
+          mode === 'flat'
+            ? 'entities/Customer.entity.json'
+            : 'entities/Customer/Customer.entity.json',
+        );
+        expect(
+          await first(service.getEntity(PROJECT_ID, 'Customer')),
+        ).toMatchObject({
+          id: 'Customer',
+          title: 'Customer',
+          fields: [{ id: 'ID', type: 'string' }],
+        });
+      }
+    },
+  );
+});
+
+describe('strict board metadata reads for search projection',()=>{
+  it('refuses a missing full board instead of inventing searchable title metadata',async()=>{
+    const {service}=setup();
+    await expect(first(service.getBoard(PROJECT_ID,'missing',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
+    expect(await first(service.getBoard(PROJECT_ID,'missing'))).toMatchObject({id:'missing',title:'missing'});
+  });
+});
+
 describe('strict schema inventory completeness', () => {
   function strictSetup(tree?: unknown, missing = false) {
     const gh = new FakeGithub();
@@ -775,4 +830,16 @@ describe('strict schema inventory completeness', () => {
     expect(getFile.mock.calls.some(call=>call[1]==='#tree')).toBe(false);
   });
 
+  it.each(['[]','"invalid"','null'])('rejects malformed board bodies %s in strict mode',async body=>{
+    const {service}=setup({'demo-project-1/boards/board1/board.json':body});
+    await expect(first(service.getBoard(PROJECT_ID,'board1',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
+  });
+
+});
+
+it.each(['', '   ', '\n\t'])('keeps the neutral entity default for an empty flat definition (%j)',async body=>{
+  const {gh,service}=setup();
+  gh.addRepo(REPO,SHA,{'demo-project-1/datatug-project.json':'{}','demo-project-1/entities/Customer.entity.json':body});
+  expect(await first(service.entityDefinitionPath(PROJECT_ID,'Customer'))).toBe('entities/Customer.entity.json');
+  expect(await first(service.getEntity(PROJECT_ID,'Customer'))).toEqual({id:'Customer',fields:[]});
 });

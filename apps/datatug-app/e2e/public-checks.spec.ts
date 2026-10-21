@@ -26,7 +26,7 @@ test('unsigned public Checks browse inspect run pass and intentional fail', asyn
     .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Checks' })
     .click();
   let view = activePage(page).locator('sneat-public-demo-checks');
-  await expect(view.getByText('Sample Checks · 2')).toBeVisible();
+  await expect(view.getByText('Sample Checks · 4')).toBeVisible();
   await view.getByText('Chinook customer coverage', { exact: true }).click();
   view = page.locator('sneat-public-demo-checks').filter({
     has: page.locator('[data-public-check=chinook-customer-coverage]'),
@@ -55,7 +55,7 @@ test('unsigned public Checks browse inspect run pass and intentional fail', asyn
   await view.getByRole('link', { name: 'All Checks', exact: true }).click();
   view = activePage(page)
     .locator('sneat-public-demo-checks')
-    .filter({ has: page.getByText('Sample Checks · 2') });
+    .filter({ has: page.getByText('Sample Checks · 4') });
   await view
     .getByText('Chinook customer coverage — intentional failure', {
       exact: true,

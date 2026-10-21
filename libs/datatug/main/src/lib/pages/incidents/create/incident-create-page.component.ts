@@ -50,6 +50,10 @@ import {
   resolveIncidentRouteScope,
 } from '../../../incidents/incident-route-context';
 import {
+  incidentPageCommands,
+  incidentPageQueryParams,
+} from '../../../incidents/incident-navigation';
+import {
   CreateIncidentRequest,
   IncidentDetail,
   IncidentFactCondition,
@@ -186,33 +190,45 @@ export class IncidentCreatePageComponent {
   protected readonly createdIncidentLink = computed(() => {
     const committed = this.committedIncident();
     return committed
-      ? [
-          '/incidents',
+      ? incidentPageCommands(this.router.url, [
           committed.incident.ref.storeId,
           committed.incident.ref.incidentId,
-        ]
+        ])
       : undefined;
   });
   protected readonly createdIncidentQueryParams = computed(() => {
     const committed = this.committedIncident();
     return committed
-      ? incidentContextQueryParams({
-          agentStoreId: committed.context.agentStoreId,
-          scope: {
-            ...committed.context.scope,
-            storeId: committed.incident.ref.storeId,
-          },
-        })
+      ? incidentPageQueryParams(
+          this.router.url,
+          incidentContextQueryParams({
+            agentStoreId: committed.context.agentStoreId,
+            scope: {
+              ...committed.context.scope,
+              storeId: committed.incident.ref.storeId,
+            },
+          }),
+        )
       : undefined;
   });
 
-  protected readonly isTestDraft = computed(() => this.queryParams().get('draft') === 'test');
+  protected readonly isTestDraft = computed(
+    () => this.queryParams().get('draft') === 'test',
+  );
   private readonly draftTitle = signal('');
   private readonly draftDescription = signal('');
-  protected get title(): string { return this.draftTitle(); }
-  protected set title(value: string) { this.draftTitle.set(value); }
-  protected get description(): string { return this.draftDescription(); }
-  protected set description(value: string) { this.draftDescription.set(value); }
+  protected get title(): string {
+    return this.draftTitle();
+  }
+  protected set title(value: string) {
+    this.draftTitle.set(value);
+  }
+  protected get description(): string {
+    return this.draftDescription();
+  }
+  protected set description(value: string) {
+    this.draftDescription.set(value);
+  }
   private readonly seedTestDraft = effect(() => {
     const isTest = this.isTestDraft();
     if (isTest) untracked(() => this.seedEmptyTestDraft());
@@ -231,6 +247,14 @@ export class IncidentCreatePageComponent {
     this.pendingMutation.set(undefined);
     this.committedIncident.set(undefined);
     this.errorMessage.set(undefined);
+  }
+
+  protected cancelIncidentLink(): readonly string[] {
+    return incidentPageCommands(this.router.url);
+  }
+
+  protected cancelIncidentQueryParams() {
+    return incidentPageQueryParams(this.router.url, this.scopeQueryParams());
   }
 
   protected readonly isSubmitting = signal(false);
@@ -565,13 +589,15 @@ export class IncidentCreatePageComponent {
     this.errorMessage.set(undefined);
     this.router
       .navigate(
-        [
-          '/incidents',
+        incidentPageCommands(this.router.url, [
           committed.incident.ref.storeId,
           committed.incident.ref.incidentId,
-        ],
+        ]),
         {
-          queryParams: incidentContextQueryParams(detailContext),
+          queryParams: incidentPageQueryParams(
+            this.router.url,
+            incidentContextQueryParams(detailContext),
+          ),
           replaceUrl: true,
         },
       )

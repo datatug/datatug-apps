@@ -106,8 +106,8 @@
         expand="block"
         fill="clear"
         (click)="cancelDraft()"
-        routerLink="/incidents"
-        [queryParams]="scopeQueryParams()"
+        [routerLink]="cancelIncidentLink()"
+        [queryParams]="cancelIncidentQueryParams()"
         [disabled]="isSubmitting()"
       >
         Cancel

@@ -3,6 +3,7 @@ import {
   IonCard,
   IonCardHeader,
   IonCardTitle,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -25,7 +26,7 @@ interface ServerLink {
 @Component({
   selector: 'sneat-datatug-project-database-servers-preview',
   standalone: true,
-  imports: [IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList],
+  imports: [IonCard, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel, IonList],
   template: `
     <ion-card>
       <ion-card-header>
@@ -45,6 +46,7 @@ interface ServerLink {
         <ion-list>
           @for (server of servers(); track server.id) {
             <ion-item>
+              <ion-icon name="server-outline" slot="start" color="medium" aria-hidden="true" />
               <ion-label>
                 @if (server.href; as href) {
                   <a [href]="href">{{ server.label }}</a>

@@ -1,4 +1,6 @@
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { IncidentEmptyStateComponent } from '../incidents/incident-empty-state.component';
 import { convertToParamMap, ActivatedRoute, Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { AgentContextService } from '@sneat/datatug-semantic';
@@ -81,6 +83,101 @@ describe('HostedIncidentsPageComponent', () => {
     await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
     expect(fixture.nativeElement.textContent).toContain('Report an incident');
     expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
+  it('keeps the actual hosted Space, project and environment on empty entry and explicit creation', async () => {
+    const selected = {
+      storeId: 'firestore',
+      spaceID: 'team-space',
+      projectId: 'fulfilment-private',
+    };
+    const path =
+      '/space/team-space/store/firestore/project/fulfilment-private/incidents';
+    let fixture = await mount(
+      'list',
+      [],
+      'staging',
+      true,
+      selected,
+      '',
+      [],
+      ['staging'],
+    );
+    await vi.waitFor(() =>
+      expect(
+        fixture.debugElement.query(By.directive(IncidentEmptyStateComponent)),
+      ).toBeTruthy(),
+    );
+    const landing = fixture.debugElement.query(
+      By.directive(IncidentEmptyStateComponent),
+    ).componentInstance as IncidentEmptyStateComponent;
+    expect(landing.createLink()).toBe(path + '/new');
+    expect(landing.queryParams()).toEqual({ environment: 'staging' });
+    expect(client.projectIncidents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'cloud',
+        storage: 'firestore',
+        spaceID: selected.spaceID,
+        project: selected.projectId,
+        principal: 'sarah',
+      }),
+      'staging',
+    );
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    fixture = await mount(
+      'new',
+      [],
+      'staging',
+      true,
+      selected,
+      'test',
+      [],
+      ['staging'],
+    );
+    const page = fixture.componentInstance as unknown as {
+      listHref(): string;
+      environmentQuery(): Record<string, string>;
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
+    expect(page.listHref()).toBe(path);
+    expect(page.environmentQuery()).toEqual({ environment: 'staging' });
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    page.title.set('My actual report');
+    const returned = {
+      ...incident,
+      ref: {
+        storeId: 'hosted-returned-store',
+        incidentId: 'INC-hosted-result',
+      },
+    };
+    client.incidentAction.mockReturnValue(of({ incident: returned }));
+    await page.create();
+    expect(client.incidentAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'cloud',
+        storage: 'firestore',
+        spaceID: selected.spaceID,
+        project: selected.projectId,
+        principal: 'sarah',
+      }),
+      expect.objectContaining({
+        type: 'create',
+        environment: 'staging',
+        title: 'My actual report',
+      }),
+      expect.any(String),
+      expect.any(AbortSignal),
+    );
+    expect(router.navigate).toHaveBeenCalledWith(
+      [path + '/hosted-returned-store/INC-hosted-result'],
+      {
+        queryParams: { environment: 'staging' },
+        replaceUrl: true,
+      },
+    );
   });
 
   it('lets the user edit a test draft and only creates on explicit submission', async () => {
