@@ -1,3 +1,4 @@
+import { ShippingComponentApiService } from './shipping-component-api.service';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
@@ -60,6 +61,21 @@ describe('Shipping workspace native DOM lifecycle', () => {
     TestBed.configureTestingModule({
       imports: [ShippingWorkspaceComponent],
       providers: [
+        {
+          provide: ShippingComponentApiService,
+          useValue: {
+            current: () =>
+              of({
+                available: {
+                  componentId: 'shipping-investigation',
+                  version: 1,
+                  digest: 'a'.repeat(64),
+                  sourceCommit: 'cb841345e88d01229857b2bdb51cc07f4ef4bec7',
+                },
+                exists: false,
+              }),
+          },
+        },
         provideRouter([]),
         { provide: ShippingApiService, useValue: api },
         { provide: DetectiveClientService, useValue: detective },

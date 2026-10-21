@@ -1,3 +1,4 @@
+import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   DestroyRef,
@@ -39,7 +40,15 @@ import {
 @Component({
   selector: 'sneat-datatug-shipping-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IonButton, IonContent, IonHeader, IonTitle, IonToolbar],
+  imports: [
+    RouterLink,
+    IonButton,
+    IonContent,
+    IonHeader,
+    IonTitle,
+    IonToolbar,
+    ShippingComponentInstallerComponent,
+  ],
   template: ` <ion-header
       ><ion-toolbar
         ><ion-title>Shipping training workspace</ion-title></ion-toolbar
@@ -179,6 +188,9 @@ import {
             >Open Incidents and select an environment</a
           >
         </p>
+      }
+      @if (native()) {
+        <sneat-shipping-component-installer />
       }
     </ion-content>`,
 })
