@@ -26,6 +26,7 @@ import {
 } from '@ionic/angular';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { DatatugServicesNavModule } from '../../../services/nav/datatug-services-nav.module';
+import { IncidentEmptyStateComponent } from '../../../incidents/incident-empty-state.component';
 import { IncidentClientService } from '../../../incidents/incident-client.service';
 import { DetectiveDemoStarterComponent } from '../../../detective/detective-demo-starter.component';
 import { isSharedProjectRef } from '../../../core/project-context';
@@ -55,8 +56,7 @@ import {
  * itself never reads the active product profile; only the app shell (brand)
  * and the side menu (whether the *Incidents* item shows) do.
  *
- * The "Houston, we've got a problem" entry point (vision §23) is always
- * shown here, for the same reason.
+ * Both profiles share the same report and test-draft entry points.
  */
 @Component({
   selector: 'sneat-datatug-incident-list',
@@ -81,6 +81,7 @@ import {
     IonNote,
     IonSpinner,
     DetectiveDemoStarterComponent,
+    IncidentEmptyStateComponent,
   ],
 })
 export class IncidentListPageComponent {
