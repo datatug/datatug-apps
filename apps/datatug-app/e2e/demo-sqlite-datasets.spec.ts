@@ -87,6 +87,13 @@ function loadCorpus(
 const sqliteExport = (db: CorpusDatabase): CorpusExport | undefined =>
   db.exports.find((file) => file.format === 'sqlite' && !file.table);
 
+// The dataset matrix runs in Chromium only. What differs between browsers is the storage path (OPFS or memory),
+// and demo-sqlite.spec.ts drives both in all three; a dataset's tables and rows do not depend on the browser.
+test.skip(
+  ({ browserName }) => browserName !== 'chromium',
+  'per-dataset coverage is browser-independent; demo-sqlite.spec.ts covers each browser',
+);
+
 test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
   await context.route('**/*', (route) => {

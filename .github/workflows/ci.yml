@@ -664,7 +664,7 @@ jobs:
       # prints per-host counts). The edited-copy Board -> Query acceptance uses the exact pinned Chinook bytes at its admitted
       # URL (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
       # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
-      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
+      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, in Chromium, plus a check that the DemoDB registry
       # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
       # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the committed DemoDB pages). The live-site
       # check is the manual workflow demodb-live-smoke.yml.

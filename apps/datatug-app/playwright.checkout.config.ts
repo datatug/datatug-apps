@@ -4,7 +4,8 @@ const port = process.env.DATATUG_E2E_PORT || '18786';
 export default defineConfig({
   testDir: './e2e',
   testMatch: ['checkout-journey.spec.ts', 'hosted-incidents.spec.ts'],
-  workers: 1,
+  // Each test signs up its own random emulator user and fakes payment per page, so tests run in parallel.
+  fullyParallel: true,
   outputDir: '../../coverage/apps/datatug-checkout/results',
   globalSetup: './e2e/helpers/demodb-state-setup.ts',
   reporter: [['list'], demodbReporter],
