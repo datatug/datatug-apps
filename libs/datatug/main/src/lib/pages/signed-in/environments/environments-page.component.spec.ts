@@ -1,6 +1,11 @@
 import goldens from '../../../models/definition/environment-receipts.golden.json';
 import { EnvironmentOperationRecoveryService } from '../../../services/project/environment-operation-recovery.service';
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import {
+  Component,
+  CUSTOM_ELEMENTS_SCHEMA,
+  ElementRef,
+  inject,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -11,6 +16,19 @@ import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 import { ProjectEnvironmentStateService } from '../../../services/project/project-environment-state.service';
 import { EnvironmentState } from '../../../models/definition/environment-state';
+
+const focusEnvironmentInput = vi.fn();
+@Component({
+  selector: 'environment-test-name-input',
+  template: '<input aria-label="Environment name" />',
+})
+class EnvironmentNameInputStub {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  async setFocus(): Promise<void> {
+    focusEnvironmentInput();
+    this.host.nativeElement.querySelector('input')?.focus();
+  }
+}
 
 const ref = { storeId: 'localhost:18989', projectId: 'demo' };
 const state: EnvironmentState = {
@@ -100,6 +118,26 @@ describe('Environments management', () => {
         },
       })
       .compileComponents();
+  });
+  it('focuses the inline creation input after Angular renders it', async () => {
+    await TestBed.overrideComponent(EnvironmentsPageComponent, {
+      set: {
+        imports: [EnvironmentNameInputStub],
+        template: `<button (click)="add()">Add environment</button>@if (creating()) { <environment-test-name-input #nameInput /> }`,
+      },
+    }).compileComponents();
+    focusEnvironmentInput.mockClear();
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    fixture.detectChanges();
+    response.next({ state, items: state.environments });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('input')).toBeNull();
+    fixture.nativeElement.querySelector('button').click();
+    await fixture.whenStable();
+    expect(focusEnvironmentInput).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('input'),
+    );
   });
   it('repaints asynchronously and preserves canonical custom order with compact safety metadata', async () => {
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);

@@ -2,6 +2,8 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  Injector,
+  afterNextRender,
   inject,
   signal,
   viewChild,
@@ -123,6 +125,7 @@ export class EnvironmentsPageComponent {
   protected readonly draft = signal<readonly IEnvironmentFull[]>([]);
   protected name = '';
   private readonly nameInput = viewChild<IonInput>('nameInput');
+  private readonly injector = inject(Injector);
   protected readonly rejected = signal(false);
   private pending?: PendingEnvironmentOperation;
 
@@ -265,16 +268,23 @@ export class EnvironmentsPageComponent {
     if (this.projectContext && !this.editing())
       this.nav.goEnvironment(this.projectContext, environment);
   }
-  protected async add(): Promise<void> {
+  protected add(): void {
     if (
       !this.recoveryReady() ||
       this.pending ||
       !this.state()?.capabilities.canCreateEnvironment
     )
       return;
+    const generation = this.generation;
     this.creating.set(true);
-    await Promise.resolve();
-    await this.nameInput()?.setFocus();
+    afterNextRender(
+      () => {
+        if (generation === this.generation && this.creating()) {
+          void this.nameInput()?.setFocus();
+        }
+      },
+      { injector: this.injector },
+    );
   }
   protected manage(): void {
     if (
