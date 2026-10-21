@@ -125,6 +125,7 @@ import {
   SAVED_SCENARIO_PUBLICATION_BLOCKER,
   type PublicDataScenario,
 } from '../../public-data/public-data-scenario';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 const repositoryRoot = resolvePath(
   dirname(fileURLToPath(import.meta.url)),
@@ -460,7 +461,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     let ids = 0;
     await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
         { provide: ProjectMeaningsService, useValue: {} },
-      { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+      provideMockErrorLogger(),
       { provide: RandomIdService, useValue: { newRandomId: () => `handoff-${++ids}` } },
       { provide: ActivatedRoute, useValue: route },
       { provide: Router, useValue: { navigate: vi.fn(async () => true), events: of(), currentNavigation: vi.fn(() => null), lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } } },
@@ -671,13 +672,7 @@ describe('SqlEditorPage', () => {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: RandomIdService,
           useValue: { newRandomId: vi.fn(() => 'test-id') },
@@ -1059,13 +1054,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
             provide: GitHubProjectActivityService,
             useValue: githubProjectActivityStub(),
           },
-          {
-            provide: ErrorLogger,
-            useValue: {
-              logError: vi.fn(),
-              logErrorHandler: vi.fn(() => vi.fn()),
-            },
-          },
+          provideMockErrorLogger(),
           {
             provide: RandomIdService,
             useValue: { newRandomId: vi.fn(() => 'draft-1') },
@@ -6834,13 +6823,7 @@ select (
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: RandomIdService,
           useValue: { newRandomId: vi.fn(() => 'test-id') },
@@ -11071,13 +11054,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: RandomIdService,
           useValue: { newRandomId: vi.fn(() => 'test-id') },
@@ -11276,13 +11253,7 @@ describe('QueryPageComponent dependency injection', () => {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -11343,13 +11314,7 @@ describe('QueryPageComponent dependency injection', () => {
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -11514,13 +11479,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
           provide: GitHubProjectActivityService,
           useValue: githubProjectActivityStub(),
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: RandomIdService,
           useValue: { newRandomId: vi.fn(() => 'test-id') },

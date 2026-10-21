@@ -8,6 +8,7 @@ import { ErrorLogger } from '@sneat/core';
 import { Subject, of } from 'rxjs';
 
 import { DatatugAuthMenuItemComponent } from './datatug-auth-menu-item.component';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('DatatugAuthMenuItemComponent', () => {
   let fixture: ComponentFixture<DatatugAuthMenuItemComponent>;
@@ -24,13 +25,7 @@ describe('DatatugAuthMenuItemComponent', () => {
       providers: [
         provideRouter([]),
         { provide: PRODUCT_PROFILE, useValue: PRODUCT_PROFILES.datatug },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: NavController, useValue: navCtrl },
         { provide: MenuController, useValue: menuCtrl },
         {

@@ -1,12 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router, UrlTree } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { ErrorLogger } from '@sneat/core';
 import { BehaviorSubject, Subject } from 'rxjs';
 import { GithubAuthorizationPageComponent } from './github-authorization-page.component';
 import { GithubConnectionService } from '../../services/repo/github/github-connection.service';
 import { NewProjectService } from './new-project.service';
 import { GITHUB_RECONNECT_SESSION_KEY } from './github-reauthorization-banner.component';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 function harness(actorID = 'actor', useRealNewProjectService = false) {
   TestBed.resetTestingModule();
@@ -36,10 +36,7 @@ function harness(actorID = 'actor', useRealNewProjectService = false) {
         useValue: { authState: auth, signInWith: vi.fn() },
       },
       { provide: GithubConnectionService, useValue: { completeOAuth: complete, complete: completeLegacy } },
-      {
-        provide: ErrorLogger,
-        useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
-      },
+      provideMockErrorLogger(),
     ],
   }).overrideComponent(GithubAuthorizationPageComponent, {
     set: {

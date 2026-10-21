@@ -2,7 +2,6 @@ import { By } from '@angular/platform-browser';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { Component, CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
@@ -13,6 +12,7 @@ import { DatatugUserService } from '../../../services/base/datatug-user-service'
 import { datatugProjectRoutes } from '../../../routes/datatug-routing-proj';
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import { projectPageHref } from '../../../nav/project-page-href';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('ProjectContextMenuComponent', () => {
   let component: ProjectMenuTopComponent;
@@ -34,13 +34,7 @@ describe('ProjectContextMenuComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: Router, useValue: router },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -199,13 +193,7 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
         // Real Router (no override): the Investigation Context child reads
         // RouterSnapshotService, which a stubbed Router token would break.
         provideRouter([]),
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {

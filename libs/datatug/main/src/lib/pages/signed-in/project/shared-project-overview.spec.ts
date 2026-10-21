@@ -8,7 +8,6 @@ import {
   SneatAuthStateService,
 } from '@sneat/auth-core';
 import { DatatugApiService } from '../../../services/base/datatug-api.service';
-import { ErrorLogger } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { datatugRoutes } from '../../../routes/datatug-routing.module';
@@ -19,6 +18,7 @@ import { DatatugStoreServiceFactory } from '../../../services/repo/datatug-store
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { SchemaService } from '../../../services/unsorted/schema.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 const { docMock, reads } = vi.hoisted(() => ({
   docMock: vi.fn((...args: unknown[]) => ({ path: args[1] })),
@@ -90,13 +90,7 @@ describe('real cold shared overview route and metadata read', () => {
         { provide: SneatAuthStateService, useValue: { authState: auth } },
         { provide: Firestore, useValue: {} },
         { provide: DatatugStoreServiceFactory, useValue: storeFactory },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: NavController,
           useValue: { navigateForward: vi.fn(), navigateRoot: vi.fn() },

@@ -25,6 +25,7 @@ import { EnvDbPageComponent } from './env-db-page.component';
 import { ProjectService } from '../../../services/project/project.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('EnvDbPage', () => {
   let component: EnvDbPageComponent;
@@ -40,13 +41,7 @@ describe('EnvDbPage', () => {
       imports: [EnvDbPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ProjectService,
           useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
@@ -176,13 +171,7 @@ describe('EnvDbPage — project ref wiring', () => {
       imports: [EnvDbPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ProjectService,
           useValue: { watchProjectSummary: vi.fn(), getFull: getFullMock },
@@ -264,13 +253,7 @@ describe('EnvDbPage dependency injection', () => {
       imports: [EnvDbPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {

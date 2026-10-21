@@ -1,10 +1,10 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
 import { JoinsComponent } from './joins.component';
 import { QueryContextSqlService } from '../../../query-context-sql.service';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 describe('JoinsComponent', () => {
   let component: JoinsComponent;
@@ -15,13 +15,7 @@ describe('JoinsComponent', () => {
       imports: [JoinsComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: QueryContextSqlService,
           useValue: {
