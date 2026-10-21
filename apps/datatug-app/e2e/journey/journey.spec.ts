@@ -185,12 +185,11 @@ async function goToCatalogTables(
   catalogId: string,
 ): Promise<void> {
   await activePage(page)
-    .locator('.overview-tabs button')
-    .filter({ hasText: /^Environments$/u })
+    .getByRole('button', { name: 'Environments', exact: true })
     .click();
 
   const environment = activePage(page)
-    .getByTestId('environment-list-item')
+    .getByTestId('overview-environment-item')
     .filter({ hasText: new RegExp(envId, 'i') });
   await expect(environment).toBeVisible({ timeout: 15_000 });
   await environment.click();
