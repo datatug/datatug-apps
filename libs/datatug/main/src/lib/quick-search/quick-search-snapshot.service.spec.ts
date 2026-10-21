@@ -1,6 +1,7 @@
 import { QuickSearchApiService } from './quick-search-api.service';
 import { TestBed } from '@angular/core/testing';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
+import { ProjectAssetsReadService } from '../services/project/project-assets-read.service';
 import { ProjectService } from '../services/project/project.service';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
@@ -112,7 +113,7 @@ describe('Quick Search actual metadata snapshot', () => {
 });
 
 describe('public object metadata authority',()=>{
-  function setup(missingBoard=false, rawOverride?:unknown) {
+  function setup(missingBoard=false, rawOverride?:unknown, environmentUnavailable=false) {
     const getBoard=vi.fn((_project:string,id:string,options:unknown)=>{
       expect(options).toEqual({requireExisting:true});
       if(missingBoard && id==='second') throw new Error('missing');
@@ -120,7 +121,8 @@ describe('public object metadata authority',()=>{
     });
     TestBed.configureTestingModule({providers:[
       {provide:QuickSearchApiService,useValue:{}},
-      {provide:ProjectService,useValue:{watchProjectSummary:()=>of({id:'p',boards:[{id:'first',title:'Brief'},{id:'second'}],entities:[{id:'customer',title:'Brief entity'}],environments:[{id:'dev',title:'Brief env'}]})}},
+      {provide:ProjectAssetsReadService,useValue:{environments:()=> environmentUnavailable ? throwError(() => ({status:403})) : of([{id:'dev',title:'Verified inventory'}])}},
+      {provide:ProjectService,useValue:{watchProjectSummary:()=>of({id:'p',boards:[{id:'first',title:'Brief'},{id:'second'}],entities:[{id:'customer',title:'Brief entity'}]})}},
       {provide:ProjectQueryApiService,useValue:{}},
       {provide:QueriesService,useValue:{getQueriesFolder:()=>of({id:'~',items:[]})}},
       {provide:GithubProjectReaderService,useValue:{getBoard,listDirectory:()=>of([]),readInfo:()=>of({commit:'a'.repeat(40)}),visitEpoch:()=> '0',getRawJson:(_project:string,path:string)=>of(rawOverride !== undefined ? rawOverride : {id:path.startsWith('entities/')?'customer':'dev',title:'Full source title',tags:['real-tag'],secrets:'private-secret'})}},
@@ -144,6 +146,13 @@ describe('public object metadata authority',()=>{
     expect(snapshot.documents.filter(d=>d.kind==='dashboard')).toHaveLength(2);
     expect(snapshot.documents.some(d=>d.kind==='entity'||d.kind==='environment')).toBe(false);
     expect(snapshot.sourceCoverage.find(c=>c.kind==='entity')).toMatchObject({status:'unavailable',count:0});
+  });
+
+  it('keeps the environment category unavailable on read failure rather than claiming empty completeness', async () => {
+    const snapshot = await setup(false, undefined, true);
+    expect(snapshot.documents.some(d => d.kind === 'environment')).toBe(false);
+    expect(snapshot.sourceCoverage.find(c => c.kind === 'environment')).toMatchObject({status:'unavailable',count:0});
+    expect(snapshot.documents.some(d => d.kind === 'dashboard')).toBe(true);
   });
 
 });

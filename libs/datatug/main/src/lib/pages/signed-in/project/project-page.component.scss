@@ -45,9 +45,8 @@
   margin: 8px 16px;
 }
 .environment-strip {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0 12px;
+  // Keep the neutral wrapper out of layout so shortcuts wrap with their label.
+  display: contents;
 }
 .environment-label,
 .environment-shortcut {
@@ -143,7 +142,10 @@
   color: var(--ion-color-danger);
 }
 
-@media (prefers-color-scheme: dark) {
+:host-context(.ion-palette-dark) {
+  .environment-danger {
+    color: #ffb4c1;
+  }
   .environment-warning {
     color: #ffd866;
   }

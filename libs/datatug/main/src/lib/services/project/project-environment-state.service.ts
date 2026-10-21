@@ -26,6 +26,10 @@ import {
 import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { ProjectQueryApiService } from './project-query-api.service';
 
+type EnvironmentReadResult =
+  | { status: 'pending' | 'unavailable' }
+  | { status: 'ready'; view: { state?: EnvironmentState; items: IEnvironmentFull[]; reason?: string } };
+
 @Injectable({ providedIn: 'root' })
 export class ProjectEnvironmentStateService {
   private readonly api = inject(ProjectQueryApiService);
@@ -42,6 +46,26 @@ export class ProjectEnvironmentStateService {
     items: IEnvironmentFull[];
     reason?: string;
   }> {
+    return this.triggers(ref).pipe(switchMap(() => this.view(ref, legacy)));
+  }
+
+  /** Presentation only: each attempt clears prior items and can recover on a fresh trigger. */
+  watchResult(
+    ref: IProjectRef,
+    legacy: () => Observable<IEnvironmentFull[]>,
+  ): Observable<EnvironmentReadResult> {
+    return this.triggers(ref).pipe(
+      switchMap(() =>
+        defer(() => this.view(ref, legacy)).pipe(
+          map((view): EnvironmentReadResult => ({ status: 'ready', view })),
+          catchError(() => of<EnvironmentReadResult>({ status: 'unavailable' })),
+          startWith<EnvironmentReadResult>({ status: 'pending' }),
+        ),
+      ),
+    );
+  }
+
+  private triggers(ref: IProjectRef) {
     return combineLatest([
       this.changes.pipe(
         filter((changed) => equalProjectRef(changed, ref)),
@@ -51,7 +75,7 @@ export class ProjectEnvironmentStateService {
         map((auth) => `${auth.status}:${auth.user?.uid || ''}`),
         distinctUntilChanged(),
       ),
-    ]).pipe(switchMap(() => this.view(ref, legacy)));
+    ]);
   }
   read(ref: IProjectRef): Observable<EnvironmentState> {
     return this.api.environmentState<EnvironmentState>(ref).pipe(
