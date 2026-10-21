@@ -14,8 +14,8 @@
       <ion-button
         expand="block"
         color="danger"
-        routerLink="/incidents/new"
-        [queryParams]="scopeQueryParams()"
+        [routerLink]="newIncidentLink()"
+        [queryParams]="incidentNavigationQueryParams()"
       >
         <ion-icon slot="start" name="rocket-outline" />
         Houston, we've got a problem
@@ -59,7 +59,7 @@
           ) {
             <ion-item
               [routerLink]="incidentLink(incident)"
-              [queryParams]="scopeQueryParams()"
+              [queryParams]="incidentNavigationQueryParams()"
               button
               detail
             >

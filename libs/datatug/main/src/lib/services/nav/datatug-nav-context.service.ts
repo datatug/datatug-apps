@@ -5,7 +5,8 @@ import {
 import { readProjectApiQuery } from '../../nav/project-api-routing';
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Subscription } from 'rxjs';
-import { NavigationEnd, Router } from '@angular/router';
+import { ActivatedRouteSnapshot, NavigationEnd, Router } from '@angular/router';
+import { incidentProjectRouteScope } from '../../incidents/incident-navigation';
 import {
   distinctUntilChanged,
   distinctUntilKeyChanged,
@@ -372,15 +373,19 @@ export class DatatugNavContextService {
     const parsed = parseProjectUrl(path);
     if (startsWithProjectSegment(rawUrl)) {
       if (parsed.ok) {
-        let leaf = this.router.routerState?.snapshot?.root;
-        while (leaf?.firstChild) {
-          leaf = leaf.firstChild;
-        }
-        if (
-          leaf?.paramMap.get('projectId') === parsed.projectId &&
-          leaf.paramMap.get('storeId') === parsed.storeId
-        ) {
-          return parsed;
+        let route: ActivatedRouteSnapshot | undefined =
+          this.router.routerState?.snapshot?.root;
+        while (route) {
+          // Child pages can reuse storeId for their own records (Incidents
+          // do). The opened project ancestor, not a shadowable leaf, owns
+          // the identity. A holding route still has no matching ancestor.
+          if (
+            route.paramMap?.get('projectId') === parsed.projectId &&
+            route.paramMap.get('storeId') === parsed.storeId
+          ) {
+            return parsed;
+          }
+          route = route.firstChild ?? undefined;
         }
       }
       return { rest: '' };
@@ -424,7 +429,14 @@ export class DatatugNavContextService {
         this.$currentEnvDbTable.next(undefined);
         return;
       }
-      this.processEnvironment(where.rest);
+      if (/^\/incidents(?:\/|$)/.test(where.rest)) {
+        const scope = incidentProjectRouteScope(rawUrl);
+        // Incident scope is URL authority, never a saved environment from a
+        // prior visit. It must name this opened project and the same agent.
+        this.setCurrentEnvironment(scope?.environment);
+      } else {
+        this.processEnvironment(where.rest);
+      }
       this.processEnvDb(where.rest);
       this.processEnvDbTable(
         where.rest,

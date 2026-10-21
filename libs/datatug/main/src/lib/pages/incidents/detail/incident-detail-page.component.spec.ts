@@ -4,6 +4,7 @@ import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  Router,
 } from '@angular/router';
 import {
   AgentContextService,
@@ -77,10 +78,12 @@ describe('IncidentDetailPageComponent', () => {
   let navEnvironment$: BehaviorSubject<{ id: string } | undefined>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
-  let setInvestigationScopeSpy: Mock<(
-    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
-    agentUrl?: string,
-  ) => void>;
+  let setInvestigationScopeSpy: Mock<
+    (
+      scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+      agentUrl?: string,
+    ) => void
+  >;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let getSpy: ReturnType<typeof vi.fn>;
@@ -103,6 +106,7 @@ describe('IncidentDetailPageComponent', () => {
       kind: 'ok',
       data: [],
     }),
+    currentUrl = '/incidents/ops/INC-1',
   ): Promise<void> => {
     paramMap$ = new BehaviorSubject(convertToParamMap(initialParams));
     queryParamMap$ = new BehaviorSubject(convertToParamMap(initialQuery));
@@ -179,6 +183,7 @@ describe('IncidentDetailPageComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
+    vi.spyOn(TestBed.inject(Router), 'url', 'get').mockReturnValue(currentUrl);
     fixture = TestBed.createComponent(IncidentDetailPageComponent);
     fixture.detectChanges();
   };
@@ -188,6 +193,27 @@ describe('IncidentDetailPageComponent', () => {
 
     expect(getSpy).toHaveBeenCalledWith(requestContext(), 'INC-1', undefined);
     expect(eventsSpy).toHaveBeenCalledWith(requestContext(), 'INC-1');
+  });
+
+  it('keeps cold-loaded back and record links inside the actual agent project', async () => {
+    await render(
+      undefined,
+      undefined,
+      of({ kind: 'ok', data: incident('Checkout errors spike') }),
+      undefined,
+      '/store/url-agent:8989/project/billing/incidents/ops/INC-1',
+    );
+
+    const links = fixture.componentInstance as unknown as {
+      incidentListUrl(): string;
+      recordCommands(): readonly string[];
+    };
+    expect(links.incidentListUrl()).toContain(
+      '/store/url-agent:8989/project/billing/incidents?',
+    );
+    expect(links.recordCommands()).toEqual([
+      '/store/url-agent:8989/project/billing/incidents/ops/INC-1/record',
+    ]);
   });
 
   it('keeps the route store authoritative over a conflicting query store', async () => {

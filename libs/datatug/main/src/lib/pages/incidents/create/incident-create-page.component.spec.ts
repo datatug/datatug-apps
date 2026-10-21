@@ -58,10 +58,12 @@ describe('IncidentCreatePageComponent', () => {
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
   let investigationItems: ReturnType<typeof signal<readonly ContextItem[]>>;
-  let setScopeSpy: Mock<(
-    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
-    agentUrl?: string,
-  ) => void>;
+  let setScopeSpy: Mock<
+    (
+      scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+      agentUrl?: string,
+    ) => void
+  >;
   let clearContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentScopeSpy: ReturnType<typeof vi.fn>;
   let createSpy: ReturnType<typeof vi.fn>;
@@ -71,6 +73,7 @@ describe('IncidentCreatePageComponent', () => {
   const render = async (
     query: Record<string, string> = {},
     itemsByAgent?: Readonly<Record<string, readonly ContextItem[]>>,
+    currentUrl = '/incidents/new',
   ): Promise<void> => {
     storeId$ = new BehaviorSubject<string | undefined>('localhost:8989');
     project$ = new BehaviorSubject<
@@ -78,7 +81,9 @@ describe('IncidentCreatePageComponent', () => {
     >({
       ref: { storeId: 'localhost:8989', projectId: 'billing' },
     });
-    environment$ = new BehaviorSubject<{ id: string } | undefined>({ id: 'prod' });
+    environment$ = new BehaviorSubject<{ id: string } | undefined>({
+      id: 'prod',
+    });
     queryParamMap$ = new BehaviorSubject(convertToParamMap(query));
     securityContextId = signal<string | undefined>('ctx-1');
     refreshAgentContextSpy = vi.fn(() => of({ securityContextId: 'ctx-1' }));
@@ -136,13 +141,17 @@ describe('IncidentCreatePageComponent', () => {
           useValue: { newRandomId: randomIdSpy },
         },
         { provide: IncidentClientService, useValue: { create: createSpy } },
-        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: of({ status: 'notAuthenticated' }) },
+        },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
-    fixture = TestBed.createComponent(IncidentCreatePageComponent);
     router = TestBed.inject(Router);
+    vi.spyOn(router, 'url', 'get').mockReturnValue(currentUrl);
+    fixture = TestBed.createComponent(IncidentCreatePageComponent);
     fixture.detectChanges();
   };
 
@@ -580,6 +589,38 @@ describe('IncidentCreatePageComponent', () => {
       },
       replaceUrl: true,
     });
+  });
+
+  it('keeps a created Incident inside the actual agent project route', async () => {
+    TestBed.resetTestingModule();
+    await render(
+      {},
+      undefined,
+      '/store/localhost:8989/project/billing/incidents/new',
+    );
+    createSpy.mockReturnValue(
+      of({
+        kind: 'ok',
+        data: incident(),
+      } satisfies IncidentApiResult<IncidentDetail>),
+    );
+    const navigateSpy = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+
+    peek(fixture.componentInstance).title = 'Checkout errors spike';
+    peek(fixture.componentInstance).submit();
+
+    expect(navigateSpy).toHaveBeenCalledWith(
+      ['/store/localhost:8989/project/billing/incidents/ops/INC-1'],
+      {
+        queryParams: {
+          agent: 'localhost:8989',
+          storeId: 'ops',
+          project: 'billing',
+          environment: 'prod',
+        },
+        replaceUrl: true,
+      },
+    );
   });
 
   it('keeps the draft, restores controls, and reuses the mutation id on failure', () => {
