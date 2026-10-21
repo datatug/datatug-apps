@@ -145,7 +145,7 @@ describe('canonical Board evidence-chart consumer', () => {
           useValue: {
             getQuery: () =>
               of({
-                id: 'events',
+                id: data.sources[0].queryId.split('/').at(-1),
                 request: {
                   queryType: QueryType.SQL,
                   text: 'select actual_saved_query',
@@ -196,10 +196,14 @@ describe('canonical Board evidence-chart consumer', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         await vi.waitFor(() =>
-          expect(fixture.componentInstance.preparingEvidence()).toBe(false),
+          expect(fixture.componentInstance.preparedEvidence()?.kind).toBe(data.chart.type),
         );
+        expect(fixture.componentInstance.preparingEvidence()).toBe(false);
+        await fixture.whenStable();
         fixture.detectChanges();
         expect(fixture.componentInstance.evidenceError()).toBeNull();
+        expect(fixture.componentInstance.unsupportedReason()).toBeUndefined();
+        expect(fixture.componentInstance.definition()?.id).toBe(data.sources[0].queryId.split('/').at(-1));
         expect(
           fixture.nativeElement.querySelector('datatug-evidence-chart table'),
         ).not.toBeNull();
