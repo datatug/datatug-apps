@@ -6,7 +6,7 @@ import {
 } from '@angular/common/http/testing';
 import { SneatApiAuthTokenBridge } from '@sneat/api';
 import { DatatugApiBaseUrl } from '@sneat/datatug-semantic';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, tap } from 'rxjs';
 import { ProjectAssetsApiService } from './project-assets-api.service';
 const ref = { storeId: 'firestore', spaceID: 'space', projectId: 'training' };
 const board = { id: 'shipping', title: 'Shipping', rows: [] };
@@ -145,6 +145,53 @@ describe('ProjectAssetsApiService', () => {
       receipt: 'operation-one',
     });
   });
+  it.each([
+    [
+      'missing-revision',
+      { ETag: '"sensitive-revision"' },
+      'Board revision header is missing.',
+    ],
+    [
+      'missing-etag',
+      { 'X-Datatug-Asset-Revision': 'sensitive-revision' },
+      'Board ETag header is missing.',
+    ],
+    [
+      'mismatch',
+      {
+        ETag: '"other-sensitive-value"',
+        'X-Datatug-Asset-Revision': 'sensitive-revision',
+      },
+      'Board revision headers do not match a strong ETag.',
+    ],
+    [
+      'weak',
+      {
+        ETag: 'W/"sensitive-revision"',
+        'X-Datatug-Asset-Revision': 'sensitive-revision',
+      },
+      'Board revision headers do not match a strong ETag.',
+    ],
+  ] as const)(
+    'refuses %s with a safe diagnostic and no accepted update snapshot',
+    async (_name, headers, message) => {
+      const api = TestBed.inject(ProjectAssetsApiService);
+      let received = false;
+      const pending = firstValueFrom(
+        api.board(ref, 'demo', 'shipping').pipe(tap(() => (received = true))),
+      );
+      const rejected = expect(pending).rejects.toThrow(message);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const request = http.expectOne((r) =>
+        r.url.endsWith('/datatug/boards/board'),
+      );
+      request.flush(JSON.stringify(board), { headers });
+      await rejected;
+      expect(received).toBe(false);
+      await expect(pending).rejects.not.toThrow('sensitive');
+      http.expectNone((r) => r.method === 'POST');
+    },
+  );
   it('denies missing environment before network and rejects missing/mismatched revision or receipt', async () => {
     const service = TestBed.inject(ProjectAssetsApiService);
     await expect(

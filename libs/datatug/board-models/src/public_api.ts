@@ -34,6 +34,7 @@ export {
   ChartSourceBinding,
   ChartSourceTransform,
   ChartSpec,
+  EvidenceBoardChartSpec,
   BarChartSpec,
   MultiSeriesBarChartSpec,
   ChartSeries,

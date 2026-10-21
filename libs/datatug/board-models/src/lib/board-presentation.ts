@@ -10,7 +10,78 @@ const keys = (value: Record<string, unknown>, allowed: string[]) =>
 
 /** Closed new chart branches mirror Core's wire, including null/absent distinctions. */
 export function validChartSpec(value: unknown): value is ChartSpec {
-  if (!record(value) || !text(value['categoryColumn'])) return false;
+  if (!record(value)) return false;
+  if (['timeline', 'timing-bars', 'heatmap'].includes(String(value['type']))) {
+    const arm =
+      value['type'] === 'timing-bars' ? 'timing' : (value['type'] as string);
+    const fields =
+      arm === 'timeline'
+        ? [
+            'laneColumn',
+            'eventColumn',
+            'sequenceColumn',
+            'timeColumn',
+            'clockDomainColumn',
+            'precisionColumn',
+            'statusColumn',
+            'evidenceRefColumn',
+          ]
+        : arm === 'heatmap'
+          ? ['rowColumn', 'columnColumn', 'statusColumn', 'evidenceRefColumn']
+          : [
+              'rowKeyColumn',
+              'labelColumn',
+              'startTimeColumn',
+              'endTimeColumn',
+              'startClockDomainColumn',
+              'endClockDomainColumn',
+              'startPrecisionColumn',
+              'endPrecisionColumn',
+              'startEvidenceRefColumn',
+              'endEvidenceRefColumn',
+              'startIdentityColumn',
+              'endIdentityColumn',
+            ];
+    // Go strings.TrimSpace: NEL is whitespace; BOM is a valid non-space rune.
+    const coreSpace = (character: string): boolean => {
+      const code = character.charCodeAt(0);
+      return (
+        (code >= 9 && code <= 13) ||
+        (code >= 0x2000 && code <= 0x200a) ||
+        [
+          0x20, 0x85, 0xa0, 0x1680, 0x2028, 0x2029, 0x202f, 0x205f, 0x3000,
+        ].includes(code)
+      );
+    };
+    const canonicalText = (v: unknown): v is string =>
+      typeof v === 'string' &&
+      v.length > 0 &&
+      !coreSpace(v[0]) &&
+      !coreSpace(v[v.length - 1]);
+    if (
+      !keys(value, ['type', 'selectionId', arm]) ||
+      !canonicalText(value['selectionId'])
+    )
+      return false;
+    const mapping = value[arm];
+    if (!record(mapping) || !keys(mapping, fields)) return false;
+    const seen = new Set<string>();
+    for (const field of fields) {
+      const column = mapping[field];
+      if (!canonicalText(column)) return false;
+      if (
+        (field === 'endClockDomainColumn' &&
+          column === mapping['startClockDomainColumn']) ||
+        (field === 'endPrecisionColumn' &&
+          column === mapping['startPrecisionColumn'])
+      )
+        continue;
+      if (seen.has(column)) return false;
+      seen.add(column);
+    }
+    return true;
+  }
+  if (!text(value['categoryColumn'])) return false;
   const common = ['type', 'categoryColumn', 'valueColumn', 'unit'];
   if (value['type'] === 'bar') {
     if (!keys(value, [...common, 'series', 'selectionId'])) return false;
@@ -88,7 +159,10 @@ export function validateChartDefinition(
     throw new Error('Invalid chart configuration.');
   const chart = value['chart'];
   const sources = value['sources'];
-  if (chart.type === 'bar-race' && sources.length !== 1)
+  if (
+    ['bar-race', 'timeline', 'timing-bars', 'heatmap'].includes(chart.type) &&
+    sources.length !== 1
+  )
     throw new Error(
       'The board wire contract requires one source for a bar race.',
     );

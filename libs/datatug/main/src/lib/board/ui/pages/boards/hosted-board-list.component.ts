@@ -49,14 +49,14 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
     }
     @if (scope.error()) {
       <p role="alert">{{ scope.error() }}</p>
-      <ion-button (click)="scope.refresh()">Retry project access</ion-button>
+      <ion-button (click)="reload()">Retry project access</ion-button>
     }
     @if (!scope.loading() && !scope.error() && !scope.admitted()) {
       <p role="status">Choose an available environment to view boards.</p>
     }
     @if (error()) {
       <p role="alert">{{ error() }}</p>
-      <ion-button (click)="scope.refresh()">Retry loading boards</ion-button>
+      <ion-button (click)="reload()">Retry loading boards</ion-button>
     }
     @if (scope.admitted()) {
       @if (scope.canWrite()) {
@@ -89,11 +89,25 @@ export class HostedBoardListComponent {
   readonly boards = signal<{ id: string; title?: string }[]>([]);
   readonly error = signal('');
   readonly loading = signal(false);
+  private generation = 0;
+  reload(): void {
+    this.generation++;
+    this.boards.set([]);
+    this.error.set('');
+    this.loading.set(true);
+    this.scope.refresh();
+  }
   constructor() {
     effect((onCleanup) => {
       const admitted = this.scope.admitted();
-      this.scope.identity();
+      const identity = this.scope.identity();
+      const generation = ++this.generation;
       let cancelled = false;
+      const current = () =>
+        !cancelled &&
+        generation === this.generation &&
+        this.scope.identity() === identity &&
+        this.scope.admitted();
       this.boards.set([]);
       this.error.set('');
       this.loading.set(false);
@@ -104,13 +118,13 @@ export class HostedBoardListComponent {
         this.loading.set(true);
         void firstValueFrom(this.api.boards(ref, this.scope.environment()))
           .then((boards) => {
-            if (!cancelled) this.boards.set(boards);
+            if (current()) this.boards.set(boards);
           })
           .catch((error) => {
-            if (!cancelled) this.error.set(detectiveErrorMessage(error, true));
+            if (current()) this.error.set(detectiveErrorMessage(error, true));
           })
           .finally(() => {
-            if (!cancelled) this.loading.set(false);
+            if (current()) this.loading.set(false);
           });
       });
       onCleanup(() => {

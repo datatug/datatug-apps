@@ -1,3 +1,5 @@
+import type { ChartWidgetDef } from './widget-chart';
+import type { BoardParameterDef } from './widget-parameter';
 import type { Board, BoardCard } from './board';
 import type { BoardWidget } from './board-widget';
 import { validateBoardPresentation } from './board-presentation';
@@ -12,7 +14,10 @@ const keys = (value: object, allowed: string[]) =>
 const literal = (value: unknown): boolean =>
   value == null ||
   ['string', 'boolean'].includes(typeof value) ||
-  (typeof value === 'number' && Number.isFinite(value)) ||
+  (typeof value === 'number' &&
+    Number.isFinite(value) &&
+    !Object.is(value, -0) &&
+    (!Number.isInteger(value) || Number.isSafeInteger(value))) ||
   (Array.isArray(value) &&
     value.length <= 1000 &&
     value.every((item) => !Array.isArray(item) && literal(item)));
@@ -144,8 +149,15 @@ export function validateHostedBoardDefinition(board: Board): void {
           throw new Error('Unsupported tab definition.');
         if (tab['widget']) widget(tab['widget'] as BoardWidget, depth + 1);
       }
-    } else if (value.name !== 'chart')
-      throw new Error('Unsupported hosted board widget.');
+    } else if (value.name === 'chart') {
+      const chart = value.data as unknown as ChartWidgetDef;
+      if (
+        chart.sources.some((source) =>
+          source.parameters?.some((binding) => !literal(binding.value)),
+        )
+      )
+        throw new Error('Unsupported exact chart parameter literal.');
+    } else throw new Error('Unsupported hosted board widget.');
   };
   for (const row of board.rows ?? []) {
     if (!keys(row, ['minHeight', 'maxHeight', 'cards']))
@@ -159,6 +171,14 @@ export function validateHostedBoardDefinition(board: Board): void {
 }
 export type BoardDefinitionEdit =
   | { type: 'title'; title: string }
+  | { type: 'set-chart'; cardId: string; definition: ChartWidgetDef }
+  | { type: 'set-parameter'; parameter: BoardParameterDef }
+  | {
+      type: 'bind-board-parameter';
+      cardId: string;
+      parameterId: string;
+      boardParameterId: string;
+    }
   | { type: 'add-query'; cardId: string; queryId: string; title: string }
   | { type: 'set-query'; cardId: string; queryId: string }
   | { type: 'bind-query'; cardId: string; parameterId: string; value?: unknown }
@@ -172,7 +192,66 @@ export function editBoardDefinition(
   validateHostedBoardDefinition(board);
   let next = clone(board);
   if (edit.type === 'title') next.title = edit.title;
-  else if (edit.type === 'remove-card')
+  else if (edit.type === 'set-parameter') {
+    parameters([edit.parameter]);
+    if (!/^[A-Za-z0-9_-]{1,128}$/.test(edit.parameter.id))
+      throw new Error('Enter a canonical parameter ID.');
+    next.parameters = [
+      ...(next.parameters ?? []).filter((p) => p.id !== edit.parameter.id),
+      {
+        ...next.parameters?.find((p) => p.id === edit.parameter.id),
+        ...clone(edit.parameter),
+      },
+    ];
+  } else if (edit.type === 'set-chart') {
+    const card = next.rows
+      ?.flatMap((row) => row.cards ?? [])
+      .find((item) => item.id === edit.cardId);
+    if (!card) throw new Error('Select a board card.');
+    // Admit the raw proposed graph before JSON cloning can erase numeric forms.
+    card.widget = { name: 'chart', data: edit.definition };
+    validateHostedBoardDefinition(next);
+    if (
+      edit.definition.sources.some(
+        (source) => !authorizedQueryIds.includes(source.queryId),
+      )
+    )
+      throw new Error('Choose a currently available saved query.');
+    card.widget = { name: 'chart', data: clone(edit.definition) };
+  } else if (edit.type === 'bind-board-parameter') {
+    const card = next.rows
+      ?.flatMap((row) => row.cards ?? [])
+      .find((item) => item.id === edit.cardId);
+    if (!next.parameters?.some((p) => p.id === edit.boardParameterId))
+      throw new Error('Choose a declared board parameter.');
+    if (card?.widget?.name === 'SQL') {
+      const data = card.widget.data as {
+        sql: { queryId: string; parameters?: { id: string }[] };
+      };
+      card.widget.data = {
+        ...data,
+        sql: {
+          ...data.sql,
+          parameters: [
+            ...(data.sql.parameters ?? []).filter(
+              (p) => p.id !== edit.parameterId,
+            ),
+            { id: edit.parameterId, boardParameterId: edit.boardParameterId },
+          ],
+        },
+      };
+    } else if (card?.widget?.name === 'chart') {
+      const data = card.widget.data as ChartWidgetDef;
+      if (data.sources.length !== 1)
+        throw new Error('Select a single-source chart.');
+      data.sources[0].parameters = [
+        ...(data.sources[0].parameters ?? []).filter(
+          (p) => p.id !== edit.parameterId,
+        ),
+        { id: edit.parameterId, boardParameterId: edit.boardParameterId },
+      ];
+    } else throw new Error('Select a saved-query card.');
+  } else if (edit.type === 'remove-card')
     next = applyBoardAction(board, board, edit);
   else if (edit.type === 'bind-query') {
     const card = next.rows

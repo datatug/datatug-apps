@@ -100,7 +100,7 @@ describe('resolveProductProfileId', () => {
       expect(
         resolveProductProfileId({
           hostname: 'localhost',
-          queryProfile: 'dashboardius',
+          queryProfile: 'unknown-profile',
         }),
       ).toBe('datatug');
     });
@@ -152,5 +152,24 @@ describe('isLocalDevelopmentHostname', () => {
     ['example.com', false],
   ])('%s -> %s', (hostname, expected) => {
     expect(isLocalDevelopmentHostname(hostname)).toBe(expected);
+  });
+});
+
+describe('Dashboardius canonical profile', () => {
+  it('is a declarative local/config override without an invented deployed domain', () => {
+    expect(
+      resolveProductProfileId({
+        hostname: 'localhost',
+        queryProfile: 'dashboardius',
+      }),
+    ).toBe('dashboardius');
+    expect(
+      resolveProductProfileId({
+        hostname: 'datatug.app',
+        override: 'dashboardius',
+      }),
+    ).toBe('dashboardius');
+    expect(PRODUCT_PROFILES.dashboardius.hostnames).toEqual([]);
+    expect(PRODUCT_PROFILES.dashboardius.homePath).toBe('home');
   });
 });

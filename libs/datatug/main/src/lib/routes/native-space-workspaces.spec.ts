@@ -44,14 +44,12 @@ describe('actual native Space router workspaces', () => {
         artifacts: [],
       }),
     );
-    hostedAssets.board
-      .mockReset()
-      .mockReturnValue(
-        of({
-          board: { id: 'operations', title: 'Operations', rows: [] },
-          revision: 'rev1',
-        }),
-      );
+    hostedAssets.board.mockReset().mockReturnValue(
+      of({
+        board: { id: 'operations', title: 'Operations', rows: [] },
+        revision: 'rev1',
+      }),
+    );
     hostedAssets.boards.mockReset().mockReturnValue(of([]));
     legacyAssets.board.mockReset();
     legacyAssets.boards.mockReset();
@@ -159,7 +157,12 @@ describe('actual native Space router workspaces', () => {
     ).toBeTruthy();
     expect(legacyAssets.boards).not.toHaveBeenCalled();
   });
-  it.each(['boards/new', 'board/operations'])(
+  it.each([
+    'boards/new',
+    'board/operations',
+    'boards/new?environment=training',
+    'board/operations?environment=training',
+  ])(
     'cold-opens %s in the real canonical Board page and hosted editor',
     async (path) => {
       const h = await RouterTestingHarness.create();
@@ -174,6 +177,12 @@ describe('actual native Space router workspaces', () => {
           'ion-select[aria-label="Board environment"]',
         ),
       ).toBeTruthy();
+      expect(
+        h.routeNativeElement?.querySelector('[data-board-page-heading]'),
+      ).toBeNull();
+      expect(h.routeNativeElement?.textContent).not.toContain(
+        'Board details are unavailable for this shared Space project.',
+      );
       expect(legacyAssets.board).not.toHaveBeenCalled();
       if (path === 'boards/new')
         expect(h.routeNativeElement?.textContent).toContain('New board');
@@ -201,6 +210,30 @@ describe('actual native Space router workspaces', () => {
       h.routeNativeElement?.querySelector('sneat-datatug-board'),
     ).toBeTruthy();
     expect(legacyAssets.board).not.toHaveBeenCalled();
+  });
+  it('refreshes the current native catalog when Ionic re-enters the cached Boards page', async () => {
+    const h = await RouterTestingHarness.create();
+    const page = await h.navigateByUrl(
+      `${base}/boards?environment=training`,
+      BoardsPageComponent,
+    );
+    await vi.waitFor(() =>
+      expect(h.routeNativeElement?.textContent).toContain('No boards yet.'),
+    );
+    const reads = hostedAssets.boards.mock.calls.length;
+    hostedAssets.boards.mockReturnValue(
+      of([{ id: 'durably-created', title: 'Created while away' }]),
+    );
+    page.ionViewWillEnter();
+    h.fixture.detectChanges();
+    await h.fixture.whenStable();
+    await vi.waitFor(() =>
+      expect(h.routeNativeElement?.textContent).toContain('Created while away'),
+    );
+    expect(hostedAssets.boards.mock.calls.length).toBeGreaterThan(reads);
+    expect(hostedAssets.boards).toHaveBeenLastCalledWith(ref, 'training');
+    expect(h.routeNativeElement?.textContent).not.toContain('No boards yet.');
+    expect(legacyAssets.boards).not.toHaveBeenCalled();
   });
   it('resolves the actual rendered native menu Boards destination to its existing real page', async () => {
     const h = await RouterTestingHarness.create();

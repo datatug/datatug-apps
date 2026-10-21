@@ -12,7 +12,29 @@ import {
 } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
-import { Board } from '@datatug/board-models';
+import { Board, ChartWidgetDef } from '@datatug/board-models';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+const chartFixture = JSON.parse(
+  readFileSync(
+    resolve(
+      import.meta.dirname,
+      '../../../../../../../board-models/src/lib/testdata/shipping-board.core-v063.json',
+    ),
+    'utf8',
+  ),
+) as Board;
+const chartDefinitions =
+  chartFixture.rows
+    ?.flatMap((r) => r.cards ?? [])
+    .map((c) => c.widget?.data as ChartWidgetDef) ?? [];
+const mappingFields = (data: ChartWidgetDef) => {
+  if (data.chart.type === 'timeline') return data.chart.timeline;
+  if (data.chart.type === 'heatmap') return data.chart.heatmap;
+  if (data.chart.type === 'timing-bars') return data.chart.timing;
+  throw new Error('fixture');
+};
+
 import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
 import { HostedBoardScope } from '../../../core/hosted-board-scope';
 import { BoardComponent } from '../../components/board/board.component';
@@ -173,6 +195,18 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
                 parameters: [
                   { id: 'order_id', type: 'integer', isRequired: true },
                 ],
+                recordsets: [
+                  {
+                    name: 'declared',
+                    columns: Array.from(
+                      new Set(
+                        chartDefinitions.flatMap((data) =>
+                          Object.values(mappingFields(data)),
+                        ),
+                      ),
+                    ).map((name) => ({ name, type: 'string' })),
+                  },
+                ],
               }),
           },
         },
@@ -251,6 +285,81 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     expect(found).toBeTruthy();
     return found as HTMLElement;
   }
+  it('authors three chart kinds and a dynamic board input through DOM, saves, and cold reloads the exact definition', async () => {
+    const f = await mount();
+    inputTitle(f, 'Shipping evidence dashboard');
+    await f.whenStable();
+    const parameter = f.nativeElement.querySelector(
+      'input[aria-label="Parameter ID"]',
+    ) as HTMLInputElement;
+    parameter.value = 'order_id';
+    parameter.dispatchEvent(new Event('input'));
+    await f.whenStable();
+    button(f, 'Add or update required input').click();
+    await f.whenStable();
+    for (const data of chartDefinitions) {
+      const add = f.nativeElement.querySelector(
+        'select[aria-label="Add saved query"]',
+      ) as HTMLSelectElement;
+      add.value = 'assignment';
+      add.dispatchEvent(new Event('change'));
+      await f.whenStable();
+      button(f, 'Add query widget').click();
+      await f.whenStable();
+      const editors = Array.from(
+        f.nativeElement.querySelectorAll('sneat-datatug-board-chart-editor'),
+      ) as HTMLElement[];
+      const editor = editors[editors.length - 1];
+      const change = async (name: string, value: string) => {
+        const select = editor.querySelector(
+          `select[aria-label="${name}"]`,
+        ) as HTMLSelectElement;
+        expect(select).not.toBeNull();
+        select.value = value;
+        select.dispatchEvent(new Event('change'));
+        await f.whenStable();
+      };
+      await change('Chart kind', data.chart.type);
+      for (const [role, column] of Object.entries(mappingFields(data)))
+        await change(role, column);
+      await change('Board input for order_id', 'order_id');
+      const apply = editor.querySelector('button') as HTMLButtonElement;
+      expect(apply.disabled).toBe(false);
+      apply.click();
+      await f.whenStable();
+    }
+    button(f, 'Save board').click();
+    await f.whenStable();
+    expect(writes).toHaveLength(1);
+    const authored = writes[0].board;
+    expect(authored.parameters).toEqual([
+      { id: 'order_id', type: 'integer', isRequired: true },
+    ]);
+    const authoredCharts =
+      authored.rows
+        ?.flatMap((row) => row.cards ?? [])
+        .map((card) => card.widget?.data as ChartWidgetDef) ?? [];
+    expect(authoredCharts.map((data) => data.chart.type)).toEqual([
+      'timeline',
+      'timing-bars',
+      'heatmap',
+    ]);
+    for (const data of authoredCharts)
+      expect(data.sources[0].parameters).toEqual([
+        { id: 'order_id', boardParameterId: 'order_id' },
+      ]);
+    expect(navigate).toHaveBeenCalled();
+    f.destroy();
+    TestBed.resetTestingModule();
+    isNew = false;
+    const cold = await mount();
+    expect(cold.componentInstance.draft()).toEqual(authored);
+    expect(
+      cold.nativeElement.querySelectorAll('sneat-datatug-board-chart-editor')
+        .length,
+    ).toBe(3);
+    expect(writes).toHaveLength(1);
+  });
   it('creates from DOM saved-query controls, saves actual scoped conditions and cold-loads current detail', async () => {
     const f = await mount();
     inputTitle(f, 'Shipping incident');
@@ -263,6 +372,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     await f.whenStable();
     button(f, 'Add query widget').click();
     await f.whenStable();
+    const currentQuery = f.nativeElement.querySelector('select[aria-label="Saved query for Assignment"]') as HTMLSelectElement;
+    expect(currentQuery.value).toBe('assignment');
+    expect(currentQuery.selectedOptions[0]?.value).toBe('assignment');
     const parameter = f.nativeElement.querySelector(
       'input[aria-label="order_id for Assignment"]',
     ) as HTMLInputElement;
