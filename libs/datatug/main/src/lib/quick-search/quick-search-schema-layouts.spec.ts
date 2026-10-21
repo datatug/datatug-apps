@@ -59,6 +59,7 @@ function setup(
   });
   TestBed.configureTestingModule({
     providers: [
+      {provide:QuickSearchApiService,useValue:{}},
       {
         provide: ProjectService,
         useValue: { watchProjectSummary: () => of({ id: 'p' }) },

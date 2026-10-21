@@ -1,3 +1,4 @@
+import { QuickSearchApiService } from './quick-search-api.service';
 import { inject, Injectable } from '@angular/core';
 import { firstValueFrom, take, filter, timeout } from 'rxjs';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
@@ -10,7 +11,7 @@ import {
   inlineSchemaModel,
   schemaTableMetadata,
 } from './quick-search-schema-metadata';
-import { IProjectRef } from '../core/project-context';
+import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { ProjectService } from '../services/project/project.service';
 import { QueriesService } from '../queries/queries.service';
@@ -99,7 +100,7 @@ export function queryDocuments(
       return {
         kind: 'query' as const,
         id,
-        name: item.title || item.id,
+        name: item.title || id.split('/').pop() || id,
         tags: metadataTags(item),
         reference: { objectId: id.split('/').pop() || id, folder: path || '~' },
       };
@@ -109,6 +110,7 @@ export function queryDocuments(
 }
 @Injectable({ providedIn: 'root' })
 export class QuickSearchSnapshotService {
+  private readonly quickSearch = inject(QuickSearchApiService);
   private readonly projects = inject(ProjectService);
   private readonly queries = inject(QueriesService);
   private readonly github = inject(GithubProjectReaderService);
@@ -117,6 +119,17 @@ export class QuickSearchSnapshotService {
     ref: IProjectRef,
     environmentId?: string,
   ): Promise<SearchSnapshot> {
+    // One authorized immutable server snapshot; never mix private cloud metadata
+    // with cached summaries, browser GitHub reads, or a second reader's commit.
+    if (ref.storeId === 'firestore' && ref.spaceID !== undefined && !isSharedProjectRef(ref))
+      throw new Error('Invalid project scope');
+    if (
+      isSharedProjectRef(ref) ||
+      (ref.projectApi === 'cloud' && ['github', 'github.com'].includes(ref.storeId))
+    )
+      return firstValueFrom(
+        this.quickSearch.preview(ref, environmentId).pipe(timeout(15000)),
+      );
     if (['github', 'github.com'].includes(ref.storeId) && ref.branch) {
       const address = readGithubProjectId(ref.projectId);
       if (!address.ok || (address.id.ref && address.id.ref !== ref.branch))
@@ -147,21 +160,65 @@ export class QuickSearchSnapshotService {
       ['entity', summary.entities],
       ['environment', summary.environments],
     ] as const) {
-      // A missing inventory is unknown, never an empty complete category.
+      // Brief inventories identify objects; only their full source owns names/tags.
       if (items && (!ref.spaceID || kind === 'environment' || environmentId)) {
-        complete.add(kind);
-        for (const item of items)
-          documents.push({
-            kind,
-            id: item.id,
-            name: item.title || item.id,
-            tags: metadataTags(item),
-            reference: {
-              objectId: item.id,
-              ...(ref.spaceID && environmentId ? { environmentId } : {}),
-              ...(kind === 'environment' ? { environmentId: item.id } : {}),
-            },
-          });
+        try {
+          const category: SearchDocument[] = [];
+          for (const brief of items) {
+            let item: { id?: string; title?: string } = brief;
+            if (
+              ['github', 'github.com'].includes(ref.storeId) &&
+              !ref.projectApi
+            ) {
+              const raw = await firstValueFrom(
+                kind === 'dashboard'
+                  ? this.github.getBoard(ref.projectId, brief.id, {
+                      requireExisting: true,
+                    })
+                  : this.github.getRawJson<{
+                      id?: string;
+                      title?: string;
+                      tags?: string[];
+                    }>(
+                      ref.projectId,
+                      kind === 'entity'
+                        ? `entities/${brief.id}/${brief.id}.entity.json`
+                        : `environments/${brief.id}/${brief.id}.env.json`,
+                    ),
+              );
+              if (
+                !raw ||
+                Array.isArray(raw) ||
+                typeof raw !== 'object' ||
+                (raw.id !== undefined && raw.id !== brief.id) ||
+                (raw.title !== undefined && typeof raw.title !== 'string')
+              )
+                throw new Error('Object metadata unavailable');
+              if (
+                'tags' in raw &&
+                (!Array.isArray(raw.tags) ||
+                  raw.tags.some((tag) => typeof tag !== 'string'))
+              )
+                throw new Error('Invalid object tags');
+              item = raw;
+            }
+            category.push({
+              kind,
+              id: brief.id,
+              name: item.title || brief.id,
+              tags: metadataTags(item),
+              reference: {
+                objectId: brief.id,
+                ...(ref.spaceID && environmentId ? { environmentId } : {}),
+                ...(kind === 'environment' ? { environmentId: brief.id } : {}),
+              },
+            });
+          }
+          documents.push(...category);
+          complete.add(kind);
+        } catch {
+          // Never publish a partial category or manufacture empty completeness.
+        }
       }
     }
     if (summary.tags && ['github', 'github.com'].includes(ref.storeId)) {

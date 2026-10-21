@@ -36,7 +36,7 @@ function quickSearchPage(
 
 /** Lifecycle/search requests carry scope identifiers even after the page is left. */
 const QUICK_SEARCH_API_ROUTE =
-  /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|enable|refresh|search|disable)\/?$/;
+  /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|preview|enable|refresh|search|disable)\/?$/;
 const SEARCH_ORIGIN_URLS =
   /https?:\/\/[^\s"'<>`]+|\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+/g;
 

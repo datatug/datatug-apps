@@ -734,6 +734,14 @@ describe('actual legacy entity provenance and equivalent dual layouts', () => {
   );
 });
 
+describe('strict board metadata reads for search projection',()=>{
+  it('refuses a missing full board instead of inventing searchable title metadata',async()=>{
+    const {service}=setup();
+    await expect(first(service.getBoard(PROJECT_ID,'missing',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
+    expect(await first(service.getBoard(PROJECT_ID,'missing'))).toMatchObject({id:'missing',title:'missing'});
+  });
+});
+
 describe('strict schema inventory completeness', () => {
   function strictSetup(tree?: unknown, missing = false) {
     const gh = new FakeGithub();
@@ -819,6 +827,11 @@ describe('strict schema inventory completeness', () => {
     const service=TestBed.inject(GithubProjectReaderService);
     expect(await first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).not.toEqual([]);
     expect(getFile.mock.calls.some(call=>call[1]==='#tree')).toBe(false);
+  });
+
+  it.each(['[]','"invalid"','null'])('rejects malformed board bodies %s in strict mode',async body=>{
+    const {service}=setup({'demo-project-1/boards/board1/board.json':body});
+    await expect(first(service.getBoard(PROJECT_ID,'board1',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
   });
 
 });
