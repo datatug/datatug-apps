@@ -546,7 +546,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     expect(
       document.activeElement?.hasAttribute('data-tutorial-authoring-focus'),
     ).toBe(true);
-    expect(fixture.nativeElement.querySelector('datatug-chart-source-editor')).not.toBeNull();
+    expect(fixture.nativeElement.querySelector('sneat-datatug-chart-source-editor')).not.toBeNull();
     expect(fixture.nativeElement.textContent).not.toContain('Add another source (unavailable)');
     await activate('Restart');
     expect(
