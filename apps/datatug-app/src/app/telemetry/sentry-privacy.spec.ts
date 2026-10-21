@@ -320,3 +320,14 @@ describe('queued Quick Search Sentry payloads after leaving the page',()=>{
     expect(options.beforeSend?.(publicEvent as ErrorEvent,{})).toMatchObject(publicEvent);
   });
 });
+
+describe('queued authenticated metadata preview Sentry privacy',()=>{
+  const preview='https://api.sneat.cloud/v0/datatug/project/quick-search/preview?storage=github.com&project=private-repo%40private-owner%40private-folder&branch=private-ref';
+  it('removes queued private preview metadata after navigation to Home',()=>{
+    history.replaceState(null,'','/home');
+    const event={request:{url:preview,query_string:'private-ref',data:{environmentId:'private-env'}},extra:{metadata:'private-table'},breadcrumbs:[{category:'ui.click',message:'private-table'},{category:'console',message:'private-column'},{category:'fetch',data:{url:preview,method:'POST',status_code:200,body:'private-env',response:'private-table'}}]};
+    const out=options.beforeSend?.(event as unknown as ErrorEvent,{});
+    for(const secret of ['private-repo','private-owner','private-folder','private-ref','private-env','private-table','private-column'])expect(JSON.stringify(out)).not.toContain(secret);
+    expect(options.beforeBreadcrumb?.({category:'fetch',data:{url:preview,method:'POST',status_code:200,body:'private-env',response:'private-table'}},{})).toEqual({category:'fetch',message:undefined,data:{url:'https://api.sneat.cloud/v0/datatug/project/quick-search/preview',method:'POST',status_code:200}});
+  });
+});

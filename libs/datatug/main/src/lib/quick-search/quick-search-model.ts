@@ -47,6 +47,7 @@ export interface SearchSnapshot {
 }
 export interface SearchStatus {
   state: 'disabled' | 'indexing' | 'ready' | 'deleting' | 'error';
+  supportsMetadataPreview?: boolean;
   canManage: boolean;
   eligible: boolean;
   audience: string;
