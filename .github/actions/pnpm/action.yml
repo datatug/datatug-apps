@@ -10,6 +10,12 @@ runs:
 
     - name: Setup pnpm
       uses: pnpm/action-setup@v6
+      env:
+        # Nested git-hosted packages run their own install scripts, and those
+        # scripts may try to switch pnpm versions. Ignore the version-switch
+        # failure so the existing workspace pnpm remains active instead of
+        # bailing before dependency installation begins.
+        PNPM_CONFIG_PM_ON_FAIL: ignore
 
     - name: Setup NodeJS
       uses: actions/setup-node@v6
