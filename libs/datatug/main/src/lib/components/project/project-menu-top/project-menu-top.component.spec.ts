@@ -112,14 +112,13 @@ describe('ProjectContextMenuComponent', () => {
     },
   );
 
-  it('REQ:context-basket — links to the Investigation Context screen (the former "Variables" empty-shell entry), unconditionally', () => {
-    const entry = component.projTopLevelPages.find(
-      (page) => page.path === 'variables',
-    );
-    expect(entry).toMatchObject({
-      path: 'variables',
-      title: 'Investigation Context',
-    });
+  it('keeps Investigation Context out of the project menu while preserving its deep-link route', () => {
+    expect(
+      component.projTopLevelPages.some((page) => page.path === 'variables'),
+    ).toBe(false);
+    expect(
+      datatugProjectRoutes.some((route) => route.path === 'variables'),
+    ).toBe(true);
   });
 
   it('places Meanings alphabetically after the fixed Overview entry', () => {

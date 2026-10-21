@@ -1,5 +1,5 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light">
     <ion-buttons slot="start">
       <ion-back-button />
       <ion-menu-button />
@@ -31,7 +31,15 @@
         </ion-buttons>
       }
     </ion-item-divider>
-    @if (environments(); as envs) {
+    @if (environmentsError()) {
+      <ion-item color="danger">
+        <ion-icon name="warning-outline" slot="start" />
+        <ion-label>{{ environmentsError() }}</ion-label>
+        <ion-button slot="end" fill="outline" (click)="retryEnvironments()"
+          >Retry</ion-button
+        >
+      </ion-item>
+    } @else if (environments(); as envs) {
       <div class="environment-options">
         @for (environment of envs; track environment.id) {
           <ion-item class="environment-option" lines="none">
@@ -55,26 +63,25 @@
         <ion-label color="medium">Loading...</ion-label>
       </ion-item>
     }
-  </ion-card>
-  <ion-card>
     @if (tab === 'db') {
       <ion-item>
+        <ion-icon name="search-outline" slot="start" color="medium" />
         <ion-input
-          aria-label="Filter database servers"
-          placeholder="Filter database servers"
+          aria-label="Filter project databases and connections"
+          placeholder="Filter databases and connections"
           [value]="filterText()"
           (ionInput)="filterText.set($event.detail.value || '')"
         />
       </ion-item>
     }
+  </ion-card>
+  <ion-card>
     <ion-card-header>
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="db">
           <ion-label
-            >DB servers
-            <ion-badge color="light">{{
-              filteredDbServers()?.length ?? 0
-            }}</ion-badge>
+            >Database sources
+            <ion-badge color="light">{{ databaseCount() }}</ion-badge>
           </ion-label>
         </ion-segment-button>
         <ion-segment-button value="web">Web servers</ion-segment-button>
@@ -82,58 +89,19 @@
       </ion-segment>
     </ion-card-header>
     @if (tab === 'db') {
-      <ion-list>
-        @if (filteredDbServers(); as servers) {
-          @for (
-            dbServer of servers;
-            track dbServer.dbServer.driver +
-              ':' +
-              getDbServerId(dbServer.dbServer)
-          ) {
-            <ion-item tappable (click)="goDbServer(dbServer)">
-              <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
-              <ion-badge color="medium">{{
-                dbServer.dbServer.driver
-              }}</ion-badge>
-              <ion-badge
-                color="light"
-                class="ion-margin-start"
-                title="Number of databases/catalogs on this server"
-                >{{ dbServer.databasesCount }}
-                {{ dbServer.databasesCount === 1 ? 'database' : 'databases' }}
-              </ion-badge>
-              <ion-buttons slot="end">
-                <ion-button
-                  (click)="deleteDbServer($event, dbServer)"
-                  [disabled]="isDeleting(dbServer.dbServer)"
-                >
-                  <ion-icon name="trash-outline" />
-                </ion-button>
-              </ion-buttons>
-            </ion-item>
-          } @empty {
-            <ion-item>
-              <ion-label color="medium">{{
-                filterText().trim()
-                  ? 'No matching database servers.'
-                  : 'No database servers in the selected environments.'
-              }}</ion-label>
-            </ion-item>
-          }
-          <ion-item>
-            <ion-label color="medium"
-              >Total: {{ servers.length }} database servers
-            </ion-label>
-            <ion-buttons slot="end">
-              <ion-button fill="outline" (click)="addDbServer()"
-                >Add DB server
-              </ion-button>
-            </ion-buttons>
-          </ion-item>
-        } @else {
-          <ion-label color="medium">Loading...</ion-label>
-        }
-      </ion-list>
+      <sneat-datatug-project-database-sources
+        [groups]="databaseGroups()"
+        [loading]="databaseSourcesLoading()"
+        [emptyMessage]="databaseSourcesEmptyMessage()"
+        [environmentsError]="environmentsError()"
+        [declarationsError]="catalogError()"
+        [serversError]="dbServersError()"
+        (openTarget)="openDatabaseTarget($event)"
+        (retryDeclarations)="retryCatalogSources()"
+        (retryServers)="retryDbServers()"
+        (addServer)="addDbServer()"
+        (removeServer)="removeDatabaseServer($event.event, $event.target)"
+      />
     } @else {
       <ion-card-content>
         <p>Not implemented yet.</p>
