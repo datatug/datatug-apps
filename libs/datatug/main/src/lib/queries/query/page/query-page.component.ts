@@ -1,3 +1,10 @@
+import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
+import { heldEvidenceIdentity } from '../../../evidence/retained-evidence-contract';
+import type { HeldEvidenceIdentity } from '@sneat/datatug-semantic';
+import { EvidenceSharePanelComponent, EvidenceShareSelection } from '../../../evidence/evidence-share-panel.component';
+import { requireAppliedInputMatch } from '../../../evidence/applied-evidence';
+import { RetainedRunIntent } from '../../../evidence/run-intent';
+import { useNativeRunLifetime } from '../../../evidence/native-run-lifetime';
 import { DemoTableDraftService } from '../../demo-table-draft.service';
 import { isSavedPublicChartQueryId } from '../../public-data/public-chart-query';
 import { queryContextScope } from '../../../session-context/session-query-scope';
@@ -136,6 +143,7 @@ interface QueryResultGridRow {
 type HostedRowStatus = 'pass' | 'fail' | 'unknown';
 
 interface HostedQueryExecution {
+  readonly evidenceIdentity?: HeldEvidenceIdentity;
   readonly result: FederatedQueryResult;
   readonly generation: number;
   readonly projectKey: string;
@@ -365,7 +373,7 @@ const isNoTargetFormatDiagnostic = (diagnostic: TugQLDiagnostic): boolean =>
   diagnostic.span.end.column === 1;
 import { RandomIdService } from '@sneat/random';
 import { distinctUntilChanged, takeUntil, filter, take } from 'rxjs/operators';
-import { defer, firstValueFrom, map, merge, Subject, Subscription, timeout } from 'rxjs';
+import { defer, firstValueFrom, fromEvent, map, merge, Subject, Subscription, timeout } from 'rxjs';
 import {
   IonAccordion,
   IonAccordionGroup,
@@ -733,6 +741,8 @@ let queryParameterEditorId = 0;
   imports: [
     SemanticMappingDialogComponent,
     GitHubReauthorizationBannerComponent,
+    EvidenceSharePanelComponent,
+    HeldRowEvidenceComponent,
     AuthorComposeControlsComponent,
     AuthorSqlPreviewComponent,
     AuthorCodeEditorComponent,
@@ -1042,6 +1052,37 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly publicSqliteQuery = inject(PublicSqliteQueryService);
   private readonly semanticApi = inject(SemanticApiService);
   private readonly detectiveClient = inject(DetectiveClientService);
+  private readonly retainedScope = useNativeRunLifetime();
+  private readonly retainedQueryIntent = new RetainedRunIntent();
+  public readonly retainedQueryPending = signal(false);
+  public readonly queryEvidenceSelection = signal<EvidenceShareSelection | undefined>(undefined);
+  public chooseQueryEvidence(selection: EvidenceShareSelection | undefined): void {
+    if (!this.retainedQueryPending()) this.queryEvidenceSelection.set(selection);
+  }
+  public readonly retainedQueryReviewed = signal(false);
+  public async reviewRetainedQuery(): Promise<void> {
+    const ref=this.project?.ref;if(!ref?.spaceID||!this.retainedQueryPending()||this.running())return;
+    try {
+      const native=this.retainedScope.capture(ref);
+      const state=await firstValueFrom(this.detectiveClient.state({kind:'cloud',storage:'firestore',spaceID:ref.spaceID,project:ref.projectId,principal:native.actor}).pipe(takeUntil(fromEvent(native.signal,'abort'))));
+      if(native.signal.aborted||this.project?.ref!==ref)return;
+      this.hostedDetectiveState.set(state);this.retainedQueryReviewed.set(true);
+    } catch(error){this.runError.set(detectiveErrorMessage(error,true));}
+  }
+  public abandonRetainedQuery(): void {
+    if(!this.retainedQueryReviewed()||this.running())return;
+    this.retainedQueryIntent.abandonReviewed();this.retainedQueryPending.set(false);this.retainedQueryReviewed.set(false);this.queryEvidenceSelection.set(undefined);
+    this.runError.set('Original retry abandoned after review. The previous run may already be attached; inspect Incident history before starting another.');
+  }
+  private admitExplicitHostedEnvironment(state: DetectiveState): void {
+    const selected = this.route.snapshot.queryParamMap?.get('env');
+    if (!this.hostedEnvironment() && selected && state.environments?.includes(selected)) this.hostedEnvironment.set(selected);
+  }
+  public changeHostedEnvironment(value: string): void {
+    if (this.retainedQueryPending()) return;
+    this.retainedScope.invalidate(); this.hostedEnvironment.set(value);
+  }
+
   public readonly hostedDetectiveState = signal<DetectiveState | undefined>(
     undefined,
   );
@@ -2920,6 +2961,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   public canChoosePublicSqliteSource(): boolean {
     return (
+      (!this.isHostedProject || this.selectedWorkingCopy() !== 'project') &&
       isBrowserSqlProject(this.project?.ref) &&
       this.queryDef()?.request.queryType === QueryType.SQL
     );
@@ -5502,6 +5544,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    this.retainedScope.changes$.pipe(takeUntil(this.destroyed)).subscribe(() => {
+      this.retainedQueryIntent.clearHeld(); this.retainedQueryPending.set(false); this.retainedQueryReviewed.set(false); this.queryEvidenceSelection.set(undefined);
+      this.hostedExecution.set(undefined); this.invalidateFederatedRun(); this.stopFederatedRun();
+      this.setDisplayedResult(undefined); this.committedRun.set(undefined);
+    });
     effect(() => {
       this.agentContext.securityContextId();
       untracked(() => this.scheduleEntryRuntimeLoad());
@@ -5651,6 +5698,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               equalProjectRef(this.project?.ref, ref)
             ) {
               this.hostedDetectiveState.set(state);
+              this.admitExplicitHostedEnvironment(state);
               this.hostedDetectiveLoadedScope.set(requestKey);
             }
           },
@@ -6551,6 +6599,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             equalProjectRef(this.project?.ref, ref)
           ) {
             this.hostedDetectiveState.set(state);
+            this.admitExplicitHostedEnvironment(state);
             this.hostedDetectiveLoadedScope.set(requestKey);
           }
         },
@@ -6961,7 +7010,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const parameters: BindingParameterRef[] = parameterDefs
       .map((p) => ({ id: p.id, meta: p.meta, required: p.isRequired }));
     if (!parameters.length) {
-      this.bindings.set([]);
+      if(this.isHostedProject && this.bindings().length)this.retainedScope.invalidate();
+      setIfChanged(this.bindings, [], bindingsEqual);
       this.clearedParamIds.set(new Set());
       this.confirmedConflicts.set(new Map());
       return;
@@ -7104,6 +7154,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     // own signal graph and never lets Angular's change-detection loop reach a fixed
     // point (observed directly: a real infinite `detectChangesInViewWhileDirty` loop in
     // this component's own tests once `investigationContext.items()` started changing).
+    if(this.isHostedProject && !bindingsEqual(this.bindings(),resolved))this.retainedScope.invalidate();
     setIfChanged(this.bindings, resolved, bindingsEqual);
 
     // Dropping a parameter (e.g. switching to a query with different params)
@@ -7163,6 +7214,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** REQ:no-hidden-filters — the user clears (or, by not clearing, implicitly
    * confirms) every auto-bound parameter before it's ever sent on a run. */
   public clearBinding(parameterId: string): void {
+    if(this.isHostedProject && this.retainedQueryPending()){this.runError.set('Review the previous run before changing its frozen inputs.');return;}
     this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(new Set([...this.clearedParamIds(), parameterId]));
     this.selectedContextFactKeys.set(
@@ -7179,6 +7231,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * highest precedence and become the accepted snapshot immediately; a preceding
    * promotion must never make a fresh user choice look like a context rebind. */
   public editBinding(parameterId: string, value: TypedValue): void {
+    if(this.isHostedProject && this.retainedQueryPending()){this.runError.set('Review the previous run before changing its frozen inputs.');return;}
     this.dismissedRebinds.delete(parameterId);
     this.clearedParamIds.set(
       new Set([...this.clearedParamIds()].filter((id) => id !== parameterId)),
@@ -7231,12 +7284,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public clearNativeParameter(parameterId: string): void {
+    if(this.isHostedProject && this.retainedQueryPending()){this.runError.set('Review the previous run before changing its frozen inputs.');return;}
     this.nativeParameterDrafts.set(new Map(this.nativeParameterDrafts()).set(parameterId, ''));
     this.nativeParameterErrors.set(new Map([...this.nativeParameterErrors()].filter(([id]) => id !== parameterId)));
     this.clearBinding(parameterId);
   }
 
   public setNativeParameterInput(parameter: IParameterDef, input: string | null | undefined): void {
+    if(this.isHostedProject && this.retainedQueryPending()){this.runError.set('Review the previous run before changing its frozen inputs.');return;}
     const raw = input ?? '';
     this.nativeParameterDrafts.set(new Map(this.nativeParameterDrafts()).set(parameter.id, raw));
     if (!raw.length) {
@@ -7603,12 +7658,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    * project/environment/securityContextId Scope and, per api-contract.md, the exact
    * bindingOrigins for the submitted parameter keys — display provenance only, never
    * authorization. */
-  private runHostedSavedQuery(
+  private async runHostedSavedQuery(
     ref: IProjectRef,
     queryId: string,
     definition: IQueryDef | undefined,
     runRequestedAt: number,
-  ): void {
+  ): Promise<void> {
     if (this.running()) return;
     if (
       !ref.spaceID ||
@@ -7659,21 +7714,35 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         binding.value as TypedValue,
       ]),
     );
+    const selection = this.queryEvidenceSelection();
+    let native: { actor: string; signal: AbortSignal };
+    let intent: { operationId: string; payload: unknown } | undefined;
+    try {
+      native = this.retainedScope.capture(ref);
+      if (selection) {
+        if (selection.environment !== environment || selection.choice.evidence.context.scope.environmentId !== environment) throw new Error('Choose applied context for this current environment.');
+        requireAppliedInputMatch(selection.choice, inputs);
+      }
+      intent = await this.retainedQueryIntent.prepare(JSON.stringify([native.actor,ref,queryId,definition,environment]), { inputs, ...(selection ? {evidence:selection.choice.evidence} : {}) });
+      if (native.signal.aborted || this.project?.ref !== ref || this.queryId !== queryId || this.hostedEnvironment() !== environment || this.queryDef() !== definition) return;
+    } catch (error) { if(this.retainedQueryIntent.hasPending)this.retainedQueryPending.set(true);this.runError.set(error instanceof Error ? error.message : 'Current run scope is unavailable.'); return; }
     const context = {
       kind: 'cloud' as const,
       storage: 'firestore' as const,
       spaceID: ref.spaceID,
       project: ref.projectId,
+      principal: native.actor,
     };
     const projectKey = JSON.stringify(ref);
     const definitionKey = JSON.stringify(definition);
     const lifetime = ++this.federatedRunLifetime;
     const current = (): boolean =>
-      lifetime === this.federatedRunLifetime &&
+      !native.signal.aborted && lifetime === this.federatedRunLifetime &&
       JSON.stringify(this.project?.ref) === projectKey &&
       this.queryId === queryId &&
       this.hostedEnvironment() === environment &&
       JSON.stringify(this.queryDef()) === definitionKey;
+    this.retainedQueryPending.set(true);
     this.hostedExecution.set(undefined);
     this.hostedSelectedRow.set(undefined);
     this.hostedStatusFilter.set('all');
@@ -7688,11 +7757,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       environment,
       target: { kind: 'hosted-cloud' },
       hostedInputs: inputs,
+      principal: native.actor, signal: native.signal,
+      operationId: intent.operationId,
+      ...(selection ? { evidence: selection.choice.evidence } : {}),
     });
     this.activeDispatchSession = session;
     void (session.hostedResponse ?? Promise.reject(new Error('Hosted execution session has no response.')))
       .then((response: HostedQueryResponse) => {
           if (!current()) return;
+          this.retainedQueryIntent.confirm(); this.retainedQueryPending.set(false); this.retainedQueryReviewed.set(false);
           const execution = response.result.execution;
           if (
             !execution ||
@@ -7713,7 +7786,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           };
           this.queryRunTiming.set(timing);
           this.commitSuccessfulResult(result, definition, timing);
+          const evidenceIdentity = heldEvidenceIdentity(response,{projectRef:ref,environment,actor:native.actor});
           const executed: HostedQueryExecution = {
+            ...(evidenceIdentity ? {evidenceIdentity} : {}),
             result,
             generation: this.displayedResultGeneration(),
             projectKey,
@@ -7724,6 +7799,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             resultFingerprint: response.resultFingerprint,
           };
           this.hostedExecution.set(executed);
+          if (selection) { this.running.set(false); return; }
           const validateReceipt = (attempt: number): void => {
             if (!current()) return;
             this.detectiveClient
@@ -7735,7 +7811,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
                 ...(this.hostedScenarioTarget()
                   ? { caseId: this.hostedScenarioTarget()?.caseId }
                   : {}),
-              })
+              }, undefined, { signal: native.signal })
               .pipe(takeUntil(this.destroyed))
               .subscribe({
                 next: (validated) => {
@@ -7812,6 +7888,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           validateReceipt(0);
         })
       .catch((error: unknown) => {
+          this.retainedQueryIntent.rejectConflict(error);
+          if(error instanceof HttpErrorResponse && [401,403].includes(error.status)){this.hostedExecution.set(undefined);this.setDisplayedResult(undefined);this.committedRun.set(undefined);this.queryEvidenceSelection.set(undefined);this.hostedDetectiveState.set(undefined);}
           if (!current()) return;
           this.runError.set(detectiveErrorMessage(error, true));
           this.running.set(false);
@@ -8119,7 +8197,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.historySelection++;
     this.queryRunTiming.set(undefined);
     if (projectRef && this.isHostedProject && this.selectedWorkingCopy() === 'project') {
-      this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
+      void this.runHostedSavedQuery(projectRef, queryId, definition, runRequestedAt);
       return;
     }
     if (

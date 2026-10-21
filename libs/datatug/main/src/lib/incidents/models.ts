@@ -117,6 +117,7 @@ export interface IncidentParticipant {
 }
 
 export type IncidentArtifactRefKind =
+  | 'check-run'
   | 'execution'
   | 'snapshot'
   | 'annotation'
@@ -146,6 +147,7 @@ export interface IncidentComparisonRef {
 }
 
 export interface IncidentArtifactRef {
+  readonly checkRun?: { readonly storeId: string; readonly projectId: string; readonly environment: string; readonly checkId: string; readonly checkVersion: number; readonly runId: string; };
   readonly kind: IncidentArtifactRefKind;
   readonly id?: string;
   readonly incident?: IncidentRef;

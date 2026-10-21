@@ -223,7 +223,7 @@ describe('QueryDispatchService transport boundary', () => {
   });
 
   it('uses the hosted Firestore query contract and checks the retained receipt', async () => {
-    hosted.mockReturnValue(of({ result: {
+    hosted.mockReturnValue(of({ queryRevision: 'query-version', resultFingerprint: 'a'.repeat(64), result: {
       ...result,
       execution: { storeId: 'firestore', projectId: 'demo', executionId: 'run-1' },
       provenance: { ...result.provenance, queryId: 'folder/report' },
@@ -235,8 +235,9 @@ describe('QueryDispatchService transport boundary', () => {
     });
     expect((await session.result).execution?.executionId).toBe('run-1');
     expect(hosted).toHaveBeenCalledWith(
-      { kind: 'cloud', storage: 'firestore', spaceID: 'space-1', project: 'demo' },
+      { kind: 'cloud', storage: 'firestore', spaceID: 'space-1', project: 'demo', principal: undefined },
       'folder/report', 'qa', { id: { type: 'integer', value: '2' } },
+      { evidence: undefined, operationId: undefined, signal: expect.any(AbortSignal) },
     );
     await session.dispose();
   });
@@ -244,7 +245,7 @@ describe('QueryDispatchService transport boundary', () => {
   it('runs a backend-shaped hosted federation with a paid source absent from the demo catalog', async () => {
     const definition: IQueryDef = { ...createHostedDemoDbQuery('reports/paid-customers'),
       connectionId: 'paid-source-unknown-to-demo-catalog' };
-    hosted.mockReturnValue(of({ result: {
+    hosted.mockReturnValue(of({ queryRevision: 'query-version', resultFingerprint: 'a'.repeat(64), result: {
       ...result,
       execution: { storeId: 'firestore', projectId: 'paid-project', executionId: 'run-paid-1' },
       provenance: { ...result.provenance, queryId: 'reports/paid-customers' },
@@ -256,8 +257,9 @@ describe('QueryDispatchService transport boundary', () => {
     });
     expect((await session.result).execution?.executionId).toBe('run-paid-1');
     expect(hosted).toHaveBeenCalledExactlyOnceWith(
-      { kind: 'cloud', storage: 'firestore', spaceID: 'shared-space', project: 'paid-project' },
+      { kind: 'cloud', storage: 'firestore', spaceID: 'shared-space', project: 'paid-project', principal: undefined },
       'reports/paid-customers', 'production', { CustomerId: { type: 'integer', value: '42' } },
+      { evidence: undefined, operationId: undefined, signal: expect.any(AbortSignal) },
     );
     expect(catalog).not.toHaveBeenCalled();
     expect(github).not.toHaveBeenCalled();

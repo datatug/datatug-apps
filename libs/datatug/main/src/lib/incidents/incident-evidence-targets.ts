@@ -157,6 +157,8 @@ function evidenceTarget(
           ? `${ref.kind} ${ref.execution.executionId}`
           : ref.kind,
       };
+    case 'check-run':
+      return { kind: ref.kind, label: ref.checkRun ? `Check run ${ref.checkRun.runId}` : 'Check run unavailable' };
     case 'check':
     case 'annotation':
       return {

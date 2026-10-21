@@ -42,6 +42,12 @@
       @if (error()) {
         <p class="feedback error" role="alert">{{ error() }}</p>
       }
+              @if (retainedPending()) {
+                <p role="status">The previous retained run has no confirmed outcome. It may already have been delivered. Retry the unchanged request, or review current state before abandoning it.</p>
+                <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="busy()">Review current run state</ion-button>
+                @if (retainedReviewed()) { <ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="busy()">Abandon original retry and edit a new run</ion-button> }
+              }
+
       @if (message()) {
         <p
           class="feedback"
@@ -369,7 +375,7 @@
                   aria-label="Environment"
                   [disabled]="environmentsLoading() || !!environmentsError()"
                   [value]="environment()"
-                  (ionChange)="environment.set($event.detail.value || '')"
+                  (ionChange)="changeRunEnvironment($event.detail.value || '')"
                 >
                   <ion-select-option value=""
                     >Select environment</ion-select-option
@@ -1358,7 +1364,7 @@
                     aria-label="Environment"
                     [disabled]="environmentsLoading() || !!environmentsError()"
                     [value]="environment()"
-                    (ionChange)="environment.set($event.detail.value || '')"
+                    (ionChange)="changeRunEnvironment($event.detail.value || '')"
                   >
                     <ion-select-option value=""
                       >Select environment</ion-select-option
@@ -1422,6 +1428,7 @@
                   }
                 }
               </div>
+              <sneat-datatug-evidence-share-panel [environment]="environment()" [caseId]="caseId()" [disabled]="busy() || retainedPending()" (selected)="chooseEvidence($event)" />
               <ion-button
                 [disabled]="
                   busy() ||
@@ -1429,7 +1436,7 @@
                   !caseCheckCompatible()
                 "
                 (click)="run()"
-                >{{ busy() ? 'Running…' : 'Run Check' }}</ion-button
+                >{{ busy() ? 'Running…' : retainedPending() ? 'Retry original retained run' : evidenceSelection() ? 'Run Check and attach to Incident' : 'Run Check' }}</ion-button
               >
               }
             </ion-card-content></ion-card

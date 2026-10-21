@@ -67,3 +67,9 @@ Actual authenticated provider identity enrichment and current-rights retained op
 
 ---
 *This document follows the https://specscore.md/feature-specification*
+
+### Canonical retained consumer boundary
+
+Canonical QueryExecutionSession, the single bounded BoardQueryResults cache and BoardResultSnapshot retain the complete Result with its authenticated response SourcePin and applied manifest reference. Sidecar self-claims and current UI source choices cannot supply the trusted expected identity. The existing canonical renderer and declarative Dashboardius profile consume the same snapshot and shared EvidenceChartComponent. Table row controls and chart marks open exact retained selectors through the published current-rights API; they do not rerun queries or persist protected results in Board definitions. Actor/project/environment/input/reset/destroy invalidation clears the pair together. Missing provider metadata remains visibly unavailable.
+
+Go v0.44 Backend response fixtures exercise the actual Core v0.63 wire codec only; synthetic fixture provenance is not runtime authorization or SQLite execution proof. Deployed provider, current-source publication, retained execution and signed-in browser acceptance remain required. Healthy11038 comparison, an admitted attempt-start anchor for elapsed timing, semantic relationship publication and evidence-bound Resolve remain open story gates.

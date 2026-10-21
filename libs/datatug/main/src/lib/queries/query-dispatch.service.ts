@@ -1,3 +1,4 @@
+import { readRetainedQueryResponse } from '../evidence/retained-evidence-contract';
 import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
 import { createPublicOvdbDevFetch } from './public-ovdb-dev-transport';
 import { executeSavedPublicChartQuery, isSavedPublicChartQueryId } from './public-data/public-chart-query';
@@ -133,17 +134,22 @@ export class QueryDispatchService {
   }
 
   async execute(request: QueryDispatchRequest, options?: { readonly maxRows: number }): Promise<FederatedQueryResult> {
+    return (await this.executeHeld(request, options)).result;
+  }
+
+  async executeHeld(request: QueryDispatchRequest, options?: { readonly maxRows: number }): Promise<{ readonly result: FederatedQueryResult; readonly hostedResponse?: HostedQueryResponse }> {
     const session = this.start(request);
     try {
-      const result = await session.result;
-      if (!options) return result;
+      const [result, hostedResponse] = await Promise.all([session.result, session.hostedResponse]);
+      const paired = (value: FederatedQueryResult) => ({result:value,...(hostedResponse?{hostedResponse}:{})});
+      if (!options) return paired(result);
       const total = result.totalRows ?? result.recordset.rows.length;
       if (!Number.isSafeInteger(options.maxRows) || options.maxRows < 1 || options.maxRows > 1000 ||
         !Number.isSafeInteger(total) || total < result.recordset.rows.length || total > options.maxRows)
         throw new QueryDispatchError(`This board accepts at most ${options.maxRows} result rows. Narrow the saved query.`);
       if (result.hasMore || result.truncated)
         throw new QueryDispatchError('This board requires a complete saved query result. Narrow the query.');
-      if (total === result.recordset.rows.length) return result;
+      if (total === result.recordset.rows.length) return paired(result);
       if (!session.getPage) throw new QueryDispatchError('This runtime cannot read the complete result.');
       const rows: (typeof result.recordset.rows)[number][] = [];
       for (let index = 0; rows.length < total; index++) {
@@ -154,7 +160,7 @@ export class QueryDispatchService {
         rows.push(...page);
       }
       request.signal?.throwIfAborted();
-      return { ...result, recordset: { ...result.recordset, rows } };
+      return paired({ ...result, recordset: { ...result.recordset, rows } });
     } finally { await session.dispose(); }
   }
 
@@ -335,12 +341,13 @@ export class QueryDispatchService {
       storage: 'firestore' as const,
       spaceID: request.projectRef.spaceID,
       project: request.projectRef.projectId,
+      principal: request.principal,
     };
     if (request.hostedInputs && request.parameters && JSON.stringify(request.hostedInputs) !== JSON.stringify(request.parameters))
       throw new QueryDispatchError('Hosted inputs differ from the displayed parameter bindings.');
     const source = this.detectiveClient.runHostedQuery(context, request.queryId, request.environment, {
       ...(request.hostedInputs ?? request.parameters ?? {}),
-    });
+    }, { evidence: request.evidence, operationId: request.operationId, signal: request.signal });
     try {
       const response = await firstValueFrom((request.signal
         ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
@@ -350,7 +357,9 @@ export class QueryDispatchService {
         response.result.execution.projectId !== request.projectRef.projectId ||
         response.result.provenance.queryId !== request.queryId)
         throw new QueryDispatchError('The hosted query returned no matching retained execution receipt.');
-      return response;
+      const admitted = await readRetainedQueryResponse(response, { projectRef: request.projectRef, environment: request.environment, actor: request.principal || '' }, request.queryId, request.evidence);
+      if (request.signal?.aborted) throw abortError();
+      return admitted;
     } catch (error) {
       if (request.signal?.aborted) throw abortError();
       throw error;

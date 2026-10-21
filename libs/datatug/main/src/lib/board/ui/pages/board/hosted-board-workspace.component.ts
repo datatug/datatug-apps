@@ -1,3 +1,4 @@
+import { EvidenceSharePanelComponent, EvidenceShareSelection } from '../../../../evidence/evidence-share-panel.component';
 import { BoardChartEditorComponent } from './board-chart-editor.component';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
@@ -73,6 +74,7 @@ interface QueryFolder {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
   imports: [
+    EvidenceSharePanelComponent,
     BoardChartEditorComponent,
     RouterLink,
     IonButton,
@@ -131,6 +133,9 @@ interface QueryFolder {
     }
     @if (notice()) {
       <p role="status">{{ notice() }}</p>
+    }
+    @if (scope.admitted()) {
+      <sneat-datatug-evidence-share-panel [environment]="scope.environment()" [disabled]="saving()" (selected)="evidenceSelection.set($event)" />
     }
     @if (scope.admitted() && parameters().length) {
       <section aria-label="Board runtime parameters">
@@ -542,11 +547,13 @@ export class HostedBoardWorkspaceComponent {
       this.draft()?.parameters,
     ]),
   );
+  readonly evidenceSelection = signal<EvidenceShareSelection | undefined>(undefined);
   readonly boardContext = computed<IBoardContext>(() => ({
     mode: 'view',
     parameters: this.scope.admitted() ? this.parameterValues() : {},
     environment: this.scope.environment(),
     executionTarget: { kind: 'hosted-cloud' },
+    ...(this.evidenceSelection()?.identity === this.scope.page.identity() && this.evidenceSelection()?.environment === this.scope.environment() ? { evidenceSelection: this.evidenceSelection() } : {}),
   }));
   readonly readForRun = (
     ref: NonNullable<ReturnType<typeof this.scope.page.ref>>,

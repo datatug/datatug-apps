@@ -1,3 +1,6 @@
+import retainedFixture from '../../../../evidence/testdata/backend-v044-retained.json';
+import { readRetainedQueryResponse } from '../../../../evidence/retained-evidence-contract';
+import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { NativeQueryFailure } from '../../../../queries/native-query-failure';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import { readFileSync } from 'node:fs';
@@ -42,6 +45,7 @@ describe('BoardWidgetComponent', () => {
     async () => [] as { selectionId: string; title: string }[],
   );
   let runtimeRevision = signal(0);
+  let nativeProject: BehaviorSubject<{ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>;
   let authState: BehaviorSubject<{
     status: 'notAuthenticated' | 'authenticated';
     user?: { uid: string };
@@ -52,6 +56,7 @@ describe('BoardWidgetComponent', () => {
     run.mockReset();
     availableWorkingCopies.mockReset().mockResolvedValue([]);
     runtimeRevision = signal(0);
+    nativeProject = new BehaviorSubject<{ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>(undefined);
     authState = new BehaviorSubject<{
       status: 'notAuthenticated' | 'authenticated';
       user?: { uid: string };
@@ -63,6 +68,7 @@ describe('BoardWidgetComponent', () => {
         BoardPresentationSelection,
         { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
+        {provide:DatatugNavContextService,useValue:{currentProject:nativeProject,currentEnv:of(undefined)}},
         {
           provide: SneatAuthStateService,
           useValue: { authState: authState.asObservable() },
@@ -72,6 +78,7 @@ describe('BoardWidgetComponent', () => {
           provide: QueryDispatchService,
           useValue: {
             execute: run,
+            executeHeld: async (...args: Parameters<typeof run>) => ({ result: await run(...args) }),
             runtimeRevision: runtimeRevision.asReadonly(),
             availableWorkingCopies,
           },
@@ -1132,6 +1139,7 @@ describe('BoardWidgetComponent', () => {
     };
     getQuery.mockReturnValue(of(definition));
     authState.next({ status: 'authenticated', user: { uid: 'sarah' } });
+    nativeProject.next({ref});
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('boardContext', {
       environment: 'demo',
@@ -1170,6 +1178,23 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.componentInstance.runError()).toContain(
       'board card changed',
     );
+  });
+
+  it('pairs authenticated provider identity with the complete held Result, never trusts a sidecar alone, and clears both on native actor change', async () => {
+    const queryId='shipping/receipt',ref={storeId:'firestore',spaceID:'fixture-space',projectId:'fixture-project'};
+    configureShowcase({name:'SQL',data:{sql:{queryId}}});
+    getQuery.mockReturnValue(of({id:'receipt',title:'Request received',request:{queryType:QueryType.SQL,text:'SELECT request_id FROM shipping_requests'}}));
+    authState.next({status:'authenticated',user:{uid:'sarah'}});nativeProject.next({ref});
+    fixture.componentRef.setInput('projectRef',ref);fixture.componentRef.setInput('boardContext',{environment:'demo',executionTarget:{kind:'hosted-cloud'}});
+    const response=await readRetainedQueryResponse(retainedFixture.query,{projectRef:ref,environment:'demo',actor:'sarah'},queryId);
+    const execute=vi.spyOn(TestBed.inject(QueryDispatchService),'executeHeld').mockResolvedValue({result:response.result,hostedResponse:response});
+    fixture.detectChanges();await fixture.whenStable();await fixture.componentInstance.run();
+    expect(fixture.componentInstance.result()).toMatchObject({rowEvidence:response.result.rowEvidence});
+    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity?.source.generation).toBe(response.sourcePin?.revision.generation);
+    execute.mockResolvedValue({result:response.result});await fixture.componentInstance.run();
+    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity).toBeUndefined();
+    authState.next({status:'authenticated',user:{uid:'maya'}});
+    expect(fixture.componentInstance.result()).toBeUndefined();expect(fixture.componentInstance.heldSnapshot()).toBeUndefined();
   });
 
   it('runs a saved server DTQL definition by default without choosing a working copy', async () => {
