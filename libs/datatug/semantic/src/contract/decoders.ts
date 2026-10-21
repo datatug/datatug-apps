@@ -162,7 +162,9 @@ const DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
 
 function isValidCalendarDate(value: string): boolean {
   const [y, m, d] = value.split('-').map(Number);
-  const date = new Date(Date.UTC(y, m - 1, d));
+  const date = new Date(0);
+  // setUTCFullYear preserves proleptic years 0–99; Date.UTC remaps them to 1900–1999.
+  date.setUTCFullYear(y, m - 1, d);
   return (
     date.getUTCFullYear() === y &&
     date.getUTCMonth() === m - 1 &&
@@ -411,9 +413,14 @@ export function decodeBinding(v: unknown, path = 'binding'): Binding {
     binding.origin === 'default' ? 'server-default' : 'client-reported';
   if (binding.originEvidence !== evidence)
     fail(`${path}.originEvidence`, 'binding origin and evidence mismatch');
-  if (binding.origin === 'selection' || binding.origin === 'context')
-    requireNonEmptyString(binding.factId, `${path}.factId`);
-  else if (binding.factId)
+  if (binding.origin === 'selection' || binding.origin === 'context') {
+    const factId = requireString(binding.factId, `${path}.factId`);
+    // Go strings.TrimSpace includes NEL, but excludes BOM (unlike JS trim).
+    const boundarySpace =
+      /^[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]|[\t-\r \u0085\u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000]$/u;
+    if (!factId || boundarySpace.test(factId))
+      fail(`${path}.factId`, 'canonical fact identity required');
+  } else if (binding.factId)
     fail(
       `${path}.factId`,
       'manual/default binding cannot claim fact provenance',

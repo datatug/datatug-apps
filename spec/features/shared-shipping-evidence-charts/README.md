@@ -49,7 +49,7 @@ Leaf tests make no provider/ACL, current retention, Board persistence, canonical
 
 ### Review correction
 
-Independent review of `fcf15711` found that direct public hashing and evidence resolution could bypass full recordset/Result validation. One shared decodeRecordset path now validates closed Core column types, names, every cell and row width before all public hashes; public verify/resolve use the shared full Result decoder, including the absent-sidecar path, before exposing references. Digest and verified operations live in a separate integrity module to avoid a decoder import cycle. Regressions include independently computed matching digests for invalid non-key cells/columns and missing required Result envelopes. No validation bypass or authority waiver is accepted.
+Independent review of `fcf15711` found that direct public hashing and evidence resolution could bypass full recordset/Result validation. One shared decodeRecordset path now validates closed Core column types, names, every cell and row width before all public hashes; public verify/resolve use the shared full Result decoder, including the absent-sidecar path, before exposing references. Digest and verified operations live in a separate integrity module to avoid a decoder import cycle. Regressions include independently computed matching digests for invalid non-key cells/columns and missing required Result envelopes. Follow-up Core parity checks require canonical selection/context fact IDs before verified resolution and preserve proleptic Gregorian years 0000–0099 without JavaScript Date.UTC remapping. Public helper tests cover valid early dates and leap-century refusals. No validation bypass or authority waiver is accepted.
 
 ## Open Questions
 

@@ -772,3 +772,127 @@ describe('public integrity entry points cannot bypass Core structural validation
       ).rejects.toThrow();
   });
 });
+
+describe('Core v0.63 binding and early-calendar parity through public evidence APIs', () => {
+  it.each(['selection', 'context'] as const)(
+    'refuses noncanonical %s fact provenance despite matching recordset hash',
+    async (origin) => {
+      const r = fixture();
+      for (const factId of [
+        ' padded ',
+        '\tfact',
+        'fact\n',
+        '\u0085fact',
+        'fact\u00a0',
+        '',
+      ]) {
+        const malformed = {
+          ...r,
+          bindingsApplied: [
+            {
+              parameterId: 'parameter',
+              value: text('selected'),
+              origin,
+              originEvidence: 'client-reported' as const,
+              factId,
+            },
+          ],
+        };
+        expect(() => decodeResult(malformed)).toThrow();
+        await expect(
+          verifyRowEvidence(metadata(r), malformed),
+        ).rejects.toThrow();
+        await expect(
+          resolveRowEvidence(malformed, selector(r)),
+        ).rejects.toThrow();
+      }
+      const canonical = {
+        ...r,
+        bindingsApplied: [
+          {
+            parameterId: 'parameter',
+            value: text('selected'),
+            origin,
+            originEvidence: 'client-reported' as const,
+            factId: 'fact-1',
+          },
+        ],
+      };
+      expect((await resolveRowEvidence(canonical, selector(r)))?.state).toBe(
+        'available',
+      );
+    },
+  );
+  it.each([
+    '0000-02-29',
+    '0001-01-01',
+    '0004-02-29',
+    '0099-12-31',
+    '0100-02-28',
+    '1900-02-28',
+    '2000-02-29',
+  ])(
+    'preserves Core-valid %s through canonical bytes/hash and available-ref resolution',
+    async (value) => {
+      const recordset = {
+        columns: [{ name: 'date', type: 'date' }],
+        rows: [[{ type: 'date' as const, value }]],
+      };
+      const canonical = JSON.stringify(recordset);
+      expect(canonicalRecordsetJSON(recordset)).toBe(canonical);
+      expect(await recordsetFingerprint(recordset)).toBe(
+        createHash('sha256').update(canonical).digest('hex'),
+      );
+      const r = fixture();
+      const actual = {
+        ...r.recordset,
+        columns: r.recordset.columns.map((c) =>
+          c.name === 'event' ? { ...c, type: 'date' } : c,
+        ),
+        rows: [
+          r.recordset.rows[0].map((v, i) =>
+            r.recordset.columns[i].name === 'event'
+              ? { type: 'date' as const, value }
+              : v,
+          ),
+        ],
+      };
+      const withDate = {
+        ...r,
+        recordset: actual,
+        rowEvidence: {
+          ...metadata(r),
+          recordsetFingerprint: createHash('sha256')
+            .update(JSON.stringify(actual))
+            .digest('hex'),
+        },
+      };
+      expect(
+        (
+          await resolveRowEvidence(withDate, {
+            ...selector(r),
+            recordsetFingerprint: withDate.rowEvidence.recordsetFingerprint,
+          })
+        )?.state,
+      ).toBe('available');
+    },
+  );
+  it.each([
+    '0000-02-30',
+    '0001-02-29',
+    '0099-02-29',
+    '0100-02-29',
+    '1900-02-29',
+    '2001-02-29',
+  ])(
+    'still refuses invalid leap/calendar date %s before public hashing',
+    async (value) => {
+      const recordset = {
+        columns: [{ name: 'date', type: 'date' }],
+        rows: [[{ type: 'date' as const, value }]],
+      };
+      expect(() => canonicalRecordsetJSON(recordset)).toThrow();
+      await expect(recordsetFingerprint(recordset)).rejects.toThrow();
+    },
+  );
+});
