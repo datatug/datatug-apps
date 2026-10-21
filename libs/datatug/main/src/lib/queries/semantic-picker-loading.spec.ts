@@ -13,6 +13,7 @@ const harness = (list: () => Promise<never[]>) => {
   };
   return {
     semanticMappingLifetime: 0,
+    semanticLocalSave: signal(undefined),
     semanticBasis: signal(basis),
     project: { ref: { storeId: 'github.com', projectId: 'project' } },
     displayedResultIsPreviousRun: () => false,

@@ -587,7 +587,9 @@ test.describe('the hand-off holding page', () => {
 
     await page.goBack();
     await expect(page).toHaveURL(/\/demo$/);
-    await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
+    await expect(
+      page.locator('sneat-datatug-demo-holding').getByRole('heading', { level: 1 }),
+    ).toBeVisible();
     await expect(page).toHaveTitle('Живое демо DataTug');
     await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
   });

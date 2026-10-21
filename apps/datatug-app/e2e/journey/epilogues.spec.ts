@@ -166,19 +166,11 @@ test.describe('Epilogue A — close/reopen', () => {
     const context = page.context();
     const reopenedPage = await context.newPage();
     await reopenedPage.goto(projectUrl);
-    // "the project appears" — same mechanism J1 uses: the Title input's VALUE,
-    // not merely some text existing (proves a real load, not a stale/loading
-    // shell).
+    // The project heading proves the real project summary loaded.
     await expect(
       reopenedPage
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     // The empty state must be the REAL empty-context rendering: the assertion
     // above already forced a wait for real content before this check runs, so
     // an absent chip here cannot be "still loading".
@@ -211,14 +203,8 @@ test.describe('Epilogue A — close/reopen', () => {
     await freshPage.goto(projectUrl);
     await expect(
       freshPage
-        // S152: the project page's Title `ion-label` was removed (founder
-        // ruling "still see 'Title' label before project title - not
-        // needed") — the value now lives in the first `ion-input` of the
-        // project-info card, with no text label to match on any more.
-        .locator('ion-card ion-input')
-        .first()
-        .getByRole('textbox'),
-    ).toHaveValue('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+        .locator('h1.project-title'),
+    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
     await expect(
       freshPage.locator('sneat-datatug-investigation-context-bar'),
     ).not.toContainText('Customer.ID', { timeout: 5_000 });

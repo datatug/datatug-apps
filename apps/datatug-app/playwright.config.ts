@@ -28,6 +28,7 @@ export default defineConfig({
   // Hosted Incidents seeds Firebase Auth and Firestore; the checkout lane starts
   // those emulators and serves the SSO E2E app.
   testIgnore: [
+    'project-meanings-real.spec.ts',
     'checkout-journey.spec.ts',
     'hosted-incidents.spec.ts',
     'checkout-provider.spec.ts',
@@ -97,6 +98,7 @@ export default defineConfig({
       // project below (real agent, no interception) and must not also run
       // under this default project.
       testIgnore: [
+        'project-meanings-real.spec.ts',
         'checkout-journey.spec.ts',
         'hosted-incidents.spec.ts',
         'checkout-provider.spec.ts',

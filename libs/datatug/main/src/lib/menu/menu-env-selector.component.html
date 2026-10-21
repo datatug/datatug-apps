@@ -1,45 +1,44 @@
-<ion-item class="ion-no-padding">
-  <ion-icon name="globe-outline" slot="start" aria-hidden="true" />
-  <ion-label>
-    @if (currentEnvId()) {
-      Env
-    } @else {
-      Envs
-    }
-    @if (!currentEnvId() && environments().length) {
-      <ion-badge color="light" class="ion-margin-start">
-        <ion-text color="medium" style="font-weight: normal"
-          >{{ environments().length }}
-        </ion-text>
-      </ion-badge>
-    }
-  </ion-label>
-  @if (environments().length) {
-    <ion-select
-      aria-label="Environment"
-      [value]="currentEnvId()"
-      interface="popover"
-      (ionChange)="switchEnv($event)"
-    >
-      @for (env of environments(); track env.id) {
-        <ion-select-option [value]="env.id"
-          >{{ env.title || env.id }}
-        </ion-select-option>
+<ion-item class="menu-selector-item">
+  <span slot="start" class="menu-selector-icon" aria-hidden="true">
+    <ion-icon name="globe-outline" />
+  </span>
+  <div class="menu-env-content">
+    <div class="menu-env-heading">
+      <a [routerLink]="environmentsHref()">Environments</a>
+      @if (environments().length) {
+        <ion-badge color="light">{{ environments().length }}</ion-badge>
       }
-    </ion-select>
-  }
-  @if (!environments().length && currentEnvId()) {
-    <!-- An agent that lists no environments still names the one in use. -->
-    <ion-note slot="end" data-testid="menu-env-current">{{
-      currentEnvId()
-    }}</ion-note>
-  }
+    </div>
+    @if (currentEnvId()) {
+      @if (environments().length) {
+        <ion-select
+          class="menu-selector-field menu-env-field"
+          aria-label="Environment"
+          justify="space-between"
+          [value]="currentEnvId()"
+          interface="popover"
+          (ionChange)="switchEnv($event)"
+        >
+          @for (env of environments(); track env.id) {
+            <ion-select-option [value]="env.id">{{ env.title || env.id }}</ion-select-option>
+          }
+        </ion-select>
+      } @else {
+        <!-- An agent that lists no environments still names the one in use. -->
+        <ion-note data-testid="menu-env-current">{{ currentEnvId() }}</ion-note>
+      }
+    } @else {
+      <ion-buttons class="menu-env-choices" role="group" aria-label="Choose an environment">
+        @for (env of environments(); track env.id) {
+          <ion-button fill="solid" color="light" size="small" (click)="selectEnv(env.id)">
+            {{ env.title || env.id }}
+          </ion-button>
+        }
+      </ion-buttons>
+    }
+  </div>
   @if (currentEnvId()) {
-    <ion-buttons
-      slot="end"
-      class="ion-no-margin ion-no-padding"
-      style="margin-right: -1em"
-    >
+    <ion-buttons slot="end" class="menu-env-clear">
       <ion-button
         color="medium"
         (click)="clearEnv()"
@@ -50,14 +49,3 @@
     </ion-buttons>
   }
 </ion-item>
-<!--		<ion-item class="ion-no-padding" *ngIf="currentEnvId">-->
-<!--			<ion-buttons slot="start" class="ion-no-margin">-->
-<!--				<ion-button>-->
-<!--					<ion-icon name="layers-outline"></ion-icon>-->
-<!--				</ion-button>-->
-<!--			</ion-buttons>-->
-<!--			<ion-label>DB instance</ion-label>-->
-<!--			<ion-select value="SomeDb" interface="popover">-->
-<!--				<ion-select-option>Some DB instance</ion-select-option>-->
-<!--			</ion-select>-->
-<!--		</ion-item>-->

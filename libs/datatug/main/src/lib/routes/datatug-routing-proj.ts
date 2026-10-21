@@ -1,3 +1,4 @@
+import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { RouterModule, Routes } from '@angular/router';
 import { NgModule } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
@@ -26,13 +27,6 @@ const emptyShellProjectRoutes: Routes = [
     loadComponent: () =>
       import('../pages/signed-in/widgets/widgets-page.component').then(
         (m) => m.WidgetsPageComponent,
-      ),
-  },
-  {
-    path: 'tags',
-    loadComponent: () =>
-      import('../pages/signed-in/tags/tags-page.component').then(
-        (m) => m.TagsPageComponent,
       ),
   },
   {
@@ -70,6 +64,30 @@ const emptyShellProjectRoutes: Routes = [
 ];
 
 export const datatugProjectRoutes: Routes = [
+  ...projectMeaningsRoutes,
+  {
+    path: 'quick-search',
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'tags',
+    data: { discovery: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'search-schema/:dbModelId',
+    data: { schemaDetail: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
   {
     path: 'browser-db/:connectionId/table/:table',
     loadComponent: () =>
@@ -353,6 +371,9 @@ export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter(
     [
       'chat',
       'overview',
+      'quick-search',
+      'tags',
+      'search-schema/:dbModelId',
       'board/:board',
       'boards',
       'entities',

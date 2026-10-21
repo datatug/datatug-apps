@@ -74,6 +74,11 @@ ion-split-pane {
 
 //@import '../../../styles/sneat';
 
+// Page headers use a neutral surface across routed pages and dialogs.
+ion-header > ion-toolbar {
+  --background: var(--ion-color-light);
+}
+
 // Section labels in lists use the same light background throughout DataTug.
 ion-item-divider,
 ion-list-header {
@@ -165,6 +170,13 @@ ion-popover.datatug-dialog {
   --width: min(90vw, calc(100vw - 2rem));
   --max-width: calc(100vw - 2rem);
   --max-height: calc(100dvh - 2rem);
+}
+
+// Project names are user data and can be long; make the selector popover wide
+// enough for them and use Ionic's rich-option layout so labels wrap in full.
+ion-popover.menu-project-options {
+  --width: min(24rem, calc(100vw - 2rem));
+  --max-width: calc(100vw - 2rem);
 }
 
 // Keep the new-project form actions visible while Ionic scrolls long content.
@@ -494,6 +506,13 @@ ion-select {
 ion-card > ion-list:is(.list-md, .list-ios) {
   padding-top: 0;
   padding-bottom: 0;
+}
+
+// Project overview cards keep dividers between rows, never beneath their final row.
+sneat-datatug-project ion-card > ion-item:last-child,
+sneat-datatug-project ion-card > ion-list > ion-item:last-child {
+  --border-width: 0;
+  --inner-border-width: 0;
 }
 
 // REQ:semantic-markers-in-grid — env-db-table.page.ts embeds this exact markup (icon

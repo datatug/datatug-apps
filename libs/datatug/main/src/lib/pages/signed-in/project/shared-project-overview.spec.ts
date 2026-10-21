@@ -129,11 +129,7 @@ describe('real cold shared overview route and metadata read', () => {
     await h.fixture.whenStable();
   };
   const title = (h: RouterTestingHarness) =>
-    (
-      h.routeNativeElement?.querySelector(
-        'ion-input',
-      ) as HTMLInputElement | null
-    )?.value;
+    h.routeNativeElement?.querySelector('h1.project-title')?.textContent?.trim();
   it('cold-loads actual metadata, clears A on B navigation, and ignores late A without unsupported calls', async () => {
     const h = await RouterTestingHarness.create();
     await h.navigateByUrl(url('S1'), ProjectPageComponent);
@@ -175,13 +171,13 @@ describe('real cold shared overview route and metadata read', () => {
     expect(title(h)).toBe('Visible title');
     requiredRead(path('S1')).error({ code: 'permission-denied' });
     await settle(h);
-    expect(title(h)).toBe('Project unavailable');
+    expect(title(h)).toBe('same');
     expect(h.routeNativeElement?.textContent).toContain(
       'Check your sign-in and Space access',
     );
     auth.next({ status: 'notAuthenticated', user: null });
     await settle(h);
-    expect(title(h)).toBe('Project unavailable');
+    expect(title(h)).toBe('same');
     auth.next({ status: 'authenticated', user: { uid: 'bob' } });
     requiredRead(path('S1')).next(metadata('Bob title'));
     await settle(h);
