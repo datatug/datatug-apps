@@ -1,5 +1,11 @@
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
+import {
+  ActivatedRoute,
+  Router,
+  convertToParamMap,
+  Params,
+  NavigationExtras,
+} from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
 import { BehaviorSubject, of } from 'rxjs';
 import { QueriesTabComponent } from '../queries/queries/queries-tab.component';
@@ -21,7 +27,15 @@ it('combines type/text/all tag selections across nested folders and preserves UR
     tags,
     request: { queryType: type, text: '' },
   });
-  const navigate = vi.fn(() => Promise.resolve(true));
+  const navigate = vi.fn((_commands: unknown[], options: NavigationExtras) => {
+    const previous = params.value;
+    const merged: Params = Object.fromEntries(
+      previous.keys.map((key) => [key, previous.getAll(key)]),
+    );
+    Object.assign(merged, options.queryParams);
+    params.next(convertToParamMap(merged));
+    return Promise.resolve(true);
+  });
   TestBed.configureTestingModule({
     imports: [QueriesTabComponent],
     providers: [
@@ -40,10 +54,15 @@ it('combines type/text/all tag selections across nested folders and preserves UR
               folders: [
                 {
                   id: 'nested',
-                  items: [
-                    query('match', ['ops', 'prod']),
-                    query('other', ['ops']),
-                    query('http', ['ops', 'prod'], QueryType.HTTP),
+                  folders: [
+                    {
+                      id: 'deep',
+                      items: [
+                        query('match', ['ops', 'prod']),
+                        query('other', ['ops']),
+                        query('http', ['ops', 'prod'], QueryType.HTTP),
+                      ],
+                    },
                   ],
                 },
               ],
@@ -72,9 +91,35 @@ it('combines type/text/all tag selections across nested folders and preserves UR
   expect(component.filteredItems?.map((item) => item.query.id)).toEqual([
     'match',
   ]);
-  expect(component.filteredItems?.[0].folders).toEqual(['~', 'nested']);
+  expect(component.filteredItems?.[0].folders).toEqual(['~', 'nested', 'deep']);
   component.cd('nested');
+  component.cd('deep');
+  expect(params.value.get('folder')).toBe('nested/deep');
+  expect(component.currentFolder.path).toBe('~/nested/deep');
+  expect(component.currentFolder.items?.map((item) => item.id)).toContain(
+    'match',
+  );
+  expect(component.filteredItems?.map((item) => item.query.id)).toEqual([
+    'match',
+  ]);
+  params.next(
+    convertToParamMap({
+      folder: 'nested',
+      tag: ['ops', 'prod'],
+      tab: 'shared',
+      environment: 'dev',
+    }),
+  );
+  await fixture.whenStable();
+  expect(component.currentFolder.path).toBe('~/nested');
+  expect(component.currentFolder.folders?.[0].id).toBe('deep');
+  expect(component.filteredItems?.map((item) => item.query.id)).toEqual([
+    'match',
+  ]);
   component.cd('..');
+  expect(params.value.getAll('tag')).toEqual(['ops', 'prod']);
+  expect(params.value.get('tab')).toBe('shared');
+  expect(params.value.get('environment')).toBe('dev');
   expect(navigate).toHaveBeenLastCalledWith(
     [],
     expect.objectContaining({ queryParamsHandling: 'merge' }),

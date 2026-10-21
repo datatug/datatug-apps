@@ -13,6 +13,7 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   let queryTags = ['ops'];
   let revision = 1;
   let failSave = false;
+  let failServerMetadata = false;
   const board = () => ({
     id: 'b',
     title: 'Operations board',
@@ -69,6 +70,8 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
         branches: [{ name: 'main', head: 'head' }],
       });
     if (path.endsWith('/projects/project_summary')) return reply(summary());
+    if (path.endsWith('/projects/project_full') && failServerMetadata)
+      return reply({ error: 'unavailable' }, 503);
     if (path.endsWith('/projects/project_full'))
       return reply({
         ...summary(),
@@ -241,6 +244,29 @@ test('project tags: edit persisted metadata and follow count chips to URL-backed
   ).toBeVisible();
   await add('restored');
   await save();
+  failServerMetadata = true;
+  await page.reload();
+  await expect(
+    activePage(page)
+      .getByRole('alert')
+      .filter({ hasText: 'Server tags could not be loaded' }),
+  ).toBeVisible();
+  await expect(
+    activePage(page).locator('sneat-datatug-project-item-tags'),
+  ).toHaveCount(0);
+  await expect(
+    activePage(page).getByText('No tags yet.', { exact: true }),
+  ).toHaveCount(0);
+  failServerMetadata = false;
+  await activePage(page)
+    .getByRole('button', { name: 'Reload tags', exact: true })
+    .click();
+  await expect(
+    activePage(page).getByRole('button', {
+      name: 'Remove tag restored',
+      exact: true,
+    }),
+  ).toBeVisible();
   await page.goto(`${base}/query?id=q`);
   await expect(
     activePage(page).getByRole('button', {

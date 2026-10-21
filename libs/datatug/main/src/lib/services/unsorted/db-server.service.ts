@@ -146,13 +146,17 @@ export class DbServerService {
           ),
         );
     return this.projectService.getFull(projectRef).pipe(
-      map((p) =>
-        p.dbServers?.map((dbServerFull) => ({
+      map((p) => {
+        if (!Array.isArray(p?.dbServers))
+          throw new Error(
+            'Database server catalog is unavailable for this project connection.',
+          );
+        return p.dbServers.map((dbServerFull) => ({
           dbServer: dbServerFull.dbServer ?? dbServerFull.server,
           tags: dbServerFull.tags,
           databasesCount: dbServerFull.databases?.length || 0,
-        })),
-      ),
+        }));
+      }),
     );
   }
 

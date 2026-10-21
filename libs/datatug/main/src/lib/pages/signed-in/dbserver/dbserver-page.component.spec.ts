@@ -42,6 +42,7 @@ describe('DbserverPage', () => {
         {
           provide: DbServerService,
           useValue: {
+            getDbServers: vi.fn(() => of([])),
             getDbServerSummary: vi.fn(),
             getServerDatabases: vi.fn(),
           },
@@ -135,6 +136,7 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
         {
           provide: DbServerService,
           useValue: {
+            getDbServers: vi.fn(() => of([])),
             getDbServerSummary: vi.fn(() => getDbServerSummary$.asObservable()),
             getServerDatabases: vi.fn(() => getServerDatabases$.asObservable()),
           },
@@ -328,6 +330,7 @@ describe('DbserverPage on a GitHub-store project (S161)', () => {
         {
           provide: DbServerService,
           useValue: {
+            getDbServers: vi.fn(() => of([])),
             getDbServerSummary: vi.fn(() =>
               throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
             ),
@@ -410,5 +413,69 @@ describe('DbserverPage on a GitHub-store project (S161)', () => {
       'sneat-datatug-page-title',
     ) as { pageTitle?: string };
     expect(titleEl.pageTitle).toBe('DB server: (no host)');
+  });
+});
+
+describe('DbserverPage tag metadata availability', () => {
+  it('keeps failed read-only tags unknown, retries, and distinguishes known empty tags', async () => {
+    const reads = [new Subject<never[]>(), new Subject<never[]>()];
+    const getDbServers = vi
+      .fn()
+      .mockReturnValueOnce(reads[0])
+      .mockReturnValueOnce(reads[1]);
+    TestBed.configureTestingModule({
+      imports: [DbserverPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of({
+              get: (key: string) => (key === 'dbDriver' ? 'sqlite3' : 'host'),
+            }),
+          },
+        },
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current$: of({
+              storeId: 'github.com',
+              projectId: 'repo@owner@folder',
+            }),
+          },
+        },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers,
+            getDbServerSummary: () =>
+              throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
+            getServerDatabases: () =>
+              throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
+          },
+        },
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+      ],
+    });
+    TestBed.overrideComponent(DbserverPageComponent, {
+      set: {
+        imports: [],
+        template:
+          '@if (serverTagsLoading()) { <p>Loading server tags</p> } @if (serverTagsError()) { <p role="alert">{{ serverTagsError() }}</p> } @if (serverTags()) { <p>Known tags</p> }',
+      },
+    });
+    const fixture = TestBed.createComponent(DbserverPageComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Loading server tags');
+    reads[0].error(new Error('403'));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.serverTags()).toBeUndefined();
+    expect(fixture.nativeElement.textContent).toContain('could not be loaded');
+    expect(fixture.nativeElement.textContent).not.toContain('Known tags');
+    fixture.componentInstance.loadServerTags();
+    reads[1].next([]);
+    await fixture.whenStable();
+    expect(fixture.componentInstance.serverTags()).toEqual([]);
+    expect(fixture.componentInstance.serverTagsError()).toBe('');
+    expect(fixture.nativeElement.textContent).toContain('Known tags');
   });
 });

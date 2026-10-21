@@ -174,3 +174,23 @@ it('joins exact hostless Core server tags with environment usage without duplica
   expect(result[0].tags).toEqual(['chinook']);
   expect(result[0].environments).toHaveLength(2);
 });
+it('reports a missing legacy catalog as unavailable while accepting a real empty catalog', async () => {
+  const getFull = vi.fn(() => of({}));
+  TestBed.configureTestingModule({
+    providers: [
+      DbServerService,
+      { provide: HttpClient, useValue: {} },
+      { provide: ProjectQueryApiService, useValue: {} },
+      { provide: ProjectContextService, useValue: {} },
+      { provide: ProjectService, useValue: { getFull } },
+      { provide: GithubProjectReaderService, useValue: {} },
+    ],
+  });
+  const { firstValueFrom } = await import('rxjs');
+  const service = TestBed.inject(DbServerService);
+  await expect(firstValueFrom(service.getDbServers(ref))).rejects.toThrow(
+    'catalog is unavailable',
+  );
+  getFull.mockReturnValue(of({ dbServers: [] }));
+  await expect(firstValueFrom(service.getDbServers(ref))).resolves.toEqual([]);
+});

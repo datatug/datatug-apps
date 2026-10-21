@@ -8,6 +8,7 @@ import {
   IonBackButton,
   IonBadge,
   IonButtons,
+  IonButton,
   IonCard,
   IonContent,
   IonHeader,
@@ -24,7 +25,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { map, takeUntil } from 'rxjs/operators';
-import { combineLatest, Subject } from 'rxjs';
+import { combineLatest, Subject, Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   DbServerService,
@@ -60,6 +61,7 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
     IonHeader,
     IonToolbar,
     IonButtons,
+    IonButton,
     IonBackButton,
     IonMenuButton,
     IonContent,
@@ -83,7 +85,10 @@ export class DbserverPageComponent implements OnDestroy {
   private readonly dbServerService = inject(DbServerService);
   private readonly projectContextService = inject(ProjectContextService);
 
-  readonly serverTags = signal<string[]>([]);
+  readonly serverTags = signal<string[] | undefined>(undefined);
+  readonly serverTagsLoading = signal(false);
+  readonly serverTagsError = signal('');
+  private metadataSubscription?: Subscription;
   private metadataReadGeneration = 0;
   readonly projectRef = signal<IProjectRef | undefined>(undefined);
   readonly getDbServerId = getDbServerId;
@@ -143,29 +148,7 @@ export class DbserverPageComponent implements OnDestroy {
       .subscribe(([dbServer, target]) => {
         this.dbServer.set(dbServer);
         this.projectRef.set(target);
-        const metadataGeneration = ++this.metadataReadGeneration;
-        this.serverTags.set([]);
-        if (target && dbServer)
-          this.dbServerService
-            .getDbServers(target)
-            .pipe(takeUntil(this.destroyed))
-            .subscribe({
-              next: (items) => {
-                if (metadataGeneration === this.metadataReadGeneration)
-                  this.serverTags.set(
-                    items.find(
-                      (item) =>
-                        item.dbServer.driver === dbServer.driver &&
-                        (item.dbServer.host ?? '') === (dbServer.host ?? '') &&
-                        (item.dbServer.port ?? 0) === (dbServer.port ?? 0),
-                    )?.tags ?? [],
-                  );
-              },
-              error: () => {
-                if (metadataGeneration === this.metadataReadGeneration)
-                  this.serverTags.set([]);
-              },
-            });
+        this.loadServerTags();
         if (dbServer && target) {
           this.loadData();
         }
@@ -175,6 +158,49 @@ export class DbserverPageComponent implements OnDestroy {
   ngOnDestroy() {
     // console.log('DbserverPage.ngOnDestroy()');
     this.destroyed.next();
+  }
+
+  loadServerTags(): void {
+    const target = this.projectRef(),
+      server = this.dbServer();
+    const generation = ++this.metadataReadGeneration;
+    this.metadataSubscription?.unsubscribe();
+    this.serverTags.set(undefined);
+    this.serverTagsError.set('');
+    this.serverTagsLoading.set(!!target && !!server);
+    if (!target || !server) return;
+    const fail = () => {
+      if (generation !== this.metadataReadGeneration) return;
+      this.serverTagsLoading.set(false);
+      this.serverTagsError.set(
+        'Server tags could not be loaded. Check project access and retry.',
+      );
+    };
+    this.metadataSubscription = this.dbServerService
+      .getDbServers(target)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (items) => {
+          if (generation !== this.metadataReadGeneration) return;
+          if (!Array.isArray(items)) {
+            fail();
+            return;
+          }
+          this.serverTags.set(
+            items.find(
+              (item) =>
+                item.dbServer.driver === server.driver &&
+                (item.dbServer.host ?? '') === (server.host ?? '') &&
+                (item.dbServer.port ?? 0) === (server.port ?? 0),
+            )?.tags ?? [],
+          );
+          this.serverTagsLoading.set(false);
+        },
+        error: fail,
+        complete: () => {
+          if (this.serverTagsLoading()) fail();
+        },
+      });
   }
 
   private loadData(): void {
