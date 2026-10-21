@@ -297,3 +297,26 @@ describe('Quick Search Sentry project metadata privacy', () => {
     );
   });
 });
+
+describe('queued Quick Search Sentry payloads after leaving the page',()=>{
+  const api='https://api.sneat.cloud/v0/datatug/project/quick-search/search?storage=firestore&spaceID=private-space&project=private-project&branch=private-branch';
+  it.each([
+    '/space/private-space/store/firestore/project/private-project/quick-search?q=private-query',
+    '/space/private-space/store/firestore/project/private-project/tags?name=private-tag',
+    '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model?table=private-table&column=private-column',
+    api,
+  ])('fences the origin %s while Home is current',origin=>{
+    history.replaceState(null,'',origin.startsWith('https:')?'/space/private-space/store/firestore/project/private-project/quick-search?q=private-query':origin);
+    const event={request:{url:origin,query_string:'private-query'},breadcrumbs:[{category:'ui.click',message:'private-result'},{category:'ui.input',message:'private-query'},{category:'console',message:'private-result'}],extra:{result:'private-result'}};
+    history.replaceState(null,'','/home');
+    const result=options.beforeSend?.(event as ErrorEvent,{});
+    for(const secret of ['private-space','private-project','private-branch','private-query','private-tag','private-owner','private-repo','private-ref','private-folder','private-model','private-table','private-column','private-result'])expect(JSON.stringify(result)).not.toContain(secret);
+  });
+  it('scrubs a delayed API breadcrumb and preserves ordinary public telemetry',()=>{
+    history.replaceState(null,'','/home');
+    const breadcrumb=options.beforeBreadcrumb?.({category:'fetch',data:{url:api,method:'POST',status_code:200,body:'private-query',response:'private-result'}},{});
+    expect(breadcrumb).toEqual({category:'fetch',message:undefined,data:{url:'https://api.sneat.cloud/v0/datatug/project/quick-search/search',method:'POST',status_code:200}});
+    const publicEvent={message:'public-error',extra:{label:'public-label'},request:{url:'https://datatug.app/home'}};
+    expect(options.beforeSend?.(publicEvent as ErrorEvent,{})).toMatchObject(publicEvent);
+  });
+});

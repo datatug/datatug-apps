@@ -34,6 +34,28 @@ function quickSearchPage(
     : undefined;
 }
 
+/** Lifecycle/search requests carry scope identifiers even after the page is left. */
+const QUICK_SEARCH_API_ROUTE =
+  /^\/(?:v0\/)?datatug\/project\/quick-search\/(?:status|enable|refresh|search|disable)\/?$/;
+const SEARCH_ORIGIN_URLS =
+  /https?:\/\/[^\s"'<>`]+|\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+/g;
+
+/** A queued SDK payload retains its originating URLs; never rely only on current location. */
+export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
+  if (depth >= 10) return false;
+  if (typeof value === 'string')
+    return (value.match(SEARCH_ORIGIN_URLS) || []).some((address) => {
+      const path = address
+        .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '')
+        .split(/[?#]/)[0];
+      return !!quickSearchPage(path) || QUICK_SEARCH_API_ROUTE.test(path);
+    });
+  if (!value || typeof value !== 'object') return false;
+  return Object.values(value).some((item) =>
+    hasQuickSearchOrigin(item, depth + 1),
+  );
+}
+
 /** Whether pathname (no query or fragment) is a table, view, records, record, query result or result editor page. */
 export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
@@ -103,7 +125,12 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
       (searchPage === 'search-schema' ? '/:dbModelId' : '')
     );
   }
-  if (dropQuery || loopbackAgentOrigin(noFragment) || isLinkRoute(path)) {
+  if (
+    QUICK_SEARCH_API_ROUTE.test(path.split('?')[0]) ||
+    dropQuery ||
+    loopbackAgentOrigin(noFragment) ||
+    isLinkRoute(path)
+  ) {
     return redactResultIds(noFragment.split('?')[0]);
   }
   return redactResultIds(noFragment);
@@ -111,7 +138,7 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
 
 const ABSOLUTE_URL = /\bhttps?:\/\/[^\s"'<>`]+/g;
 const RELATIVE_LINK_PATH =
-  /(^|[\s"'(=:])(\/(?:store|space|project)\/[^\s"'<>`]+)/g;
+  /(^|[\s"'(=:])(\/(?:store|space|project|v0|datatug)\/[^\s"'<>`]+)/g;
 const LINK_FRAGMENT_PARTS = /#(?:[^\s"'<>`#]*&)?(?:code|pk)=[^\s"'<>`]*/g;
 
 /**

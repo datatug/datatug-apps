@@ -181,3 +181,16 @@ describe('Quick Search project metadata privacy', () => {
     });
   });
 });
+
+describe('queued Quick Search PostHog events after leaving the page',()=>{
+  it.each(SEARCH_PRIVACY_PAGES)('retains origin privacy for %s on Home',path=>{
+    const config=start(path+'?q=private-query');
+    history.replaceState(null,'','/home');applyPosthogRoutePrivacy('/home');
+    const properties={$current_url:'https://datatug.app'+path+'?q=private-query&name=private-tag',$el_text:'private-result',$elements:[{text:'private-result'}],$elements_chain:'private-result'};
+    const result=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-query','private-tag','private-project','private-owner','private-result'])expect(JSON.stringify(result)).not.toContain(secret);
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties:{...properties,$snapshot_data:'private-result'}})).toBeNull();
+    expect(config.before_send({event:'public_event',properties:{$current_url:'https://datatug.app/home',label:'public-label'}})).toEqual({event:'public_event',properties:{$current_url:'https://datatug.app/home',label:'public-label'}});
+  });
+});
