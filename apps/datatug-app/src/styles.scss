@@ -167,6 +167,13 @@ ion-popover.datatug-dialog {
   --max-height: calc(100dvh - 2rem);
 }
 
+// Project names are user data and can be long; make the selector popover wide
+// enough for them and use Ionic's rich-option layout so labels wrap in full.
+ion-popover.menu-project-options {
+  --width: min(24rem, calc(100vw - 2rem));
+  --max-width: calc(100vw - 2rem);
+}
+
 // Keep the new-project form actions visible while Ionic scrolls long content.
 ion-popover.datatug-dialog sneat-datatug-new-project-form ion-footer {
   position: sticky;

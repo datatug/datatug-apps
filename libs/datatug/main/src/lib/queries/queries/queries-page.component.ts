@@ -121,19 +121,14 @@ export class QueriesPageComponent
 
   constructor() {
     this.route.queryParamMap.subscribe((q) => {
-      const tab = q.get('tab') as Tab;
-      if (!tab) {
-        this.updateUrlWithCurrentTab();
-      } else if (tab !== this.tab && tabs.includes(tab)) {
-        this.tab = tab;
-      }
+      const tab = q.get('tab');
+      this.tab = tab && tabs.includes(tab as Tab) ? (tab as Tab) : 'shared';
 
-      const orderBy = q.get(paramOrderTagsBy) as OrderBy;
-      if (!orderBy) {
-        this.updateUrlWithOrderTagsBy();
-      } else if (orderBy != this.orderTagsBy && orderBys.includes(orderBy)) {
-        this.orderTagsBy = orderBy;
-      }
+      const orderBy = q.get(paramOrderTagsBy);
+      this.orderTagsBy =
+        orderBy && orderBys.includes(orderBy as OrderBy)
+          ? (orderBy as OrderBy)
+          : 'count';
     });
   }
 
@@ -161,6 +156,16 @@ export class QueriesPageComponent
   }
 
   ionViewWillEnter(): void {
+    // Query lists have no fragment-based deep links. Clear an incoming
+    // fragment without routing so unrelated query parameters and Back history
+    // remain untouched.
+    if (window.location.hash) {
+      window.history.replaceState(
+        window.history.state,
+        '',
+        window.location.pathname + window.location.search,
+      );
+    }
     this.isActiveView = true;
   }
 

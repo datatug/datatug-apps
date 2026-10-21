@@ -32,6 +32,7 @@ import { DatatugNavService } from '../services/nav/datatug-nav.service';
 @Component({
   selector: 'sneat-datatug-menu-store-selector',
   templateUrl: 'menu-store-selector.component.html',
+  styleUrls: ['menu-selector.component.scss'],
   imports: [
     RouterLink,
     IonItem,
