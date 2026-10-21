@@ -1,3 +1,4 @@
+import { decodeRowEvidence } from '../charting/row-evidence';
 import { decodeSourceRightsEvidence } from './source-rights';
 import {
   isAuthorizationResult,
@@ -460,6 +461,7 @@ export function decodeResult(v: unknown, path = 'result'): Result {
       'sourceRights',
       'usedSourceIds',
       'execution',
+      'rowEvidence',
     ],
     path,
   );
@@ -483,7 +485,7 @@ export function decodeResult(v: unknown, path = 'result'): Result {
     obj['bindingsApplied'],
     `${path}.bindingsApplied`,
   ).map((b, i) => decodeBinding(b, `${path}.bindingsApplied[${i}]`));
-  return {
+  const result: Result = {
     ...decodeSourceRightsEvidence(obj),
     recordset: { columns, rows },
     limitations,
@@ -496,6 +498,9 @@ export function decodeResult(v: unknown, path = 'result'): Result {
           execution: decodeExecutionRef(obj['execution'], `${path}.execution`),
         }),
   };
+  return obj['rowEvidence'] === undefined
+    ? result
+    : { ...result, rowEvidence: decodeRowEvidence(obj['rowEvidence'], result) };
 }
 
 // ---- Candidate ----
