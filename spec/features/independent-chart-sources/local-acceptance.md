@@ -29,3 +29,11 @@ Durable workspace-local receipt and JSON reporter output: `.wb/reports/showcase-
 The first browser pass exposed an equal-array input reset bug that cleared the selected query/confirmation. A semantic identity guard and focused regression fixed it. The first seed test also clicked ahead of Angular rendering; it now waits each visible step change. Earlier failed runs are not represented as successful. The final fixture preserves captured root rows while simulating the newly coordinated structured source terms; it does not imply those terms are deployed.
 
 See [acceptance reconciliation](acceptance-reconciliation.md) for the explicit provider-rights publication dependency and separate root-owned live evidence.
+
+## Additive fixture compatibility correction
+
+After the initial freeze, review identified that existing country/tutorial callers omitted the new source fixture option while the paired Demo root query now declares the stable provider identity. The helper now derives its explicitly simulated identity/terms mode from the actual saved root contract, independently of the new-card journey option. All selected root/customer identities must agree. Actual legacy definitions retain legacy fixture behavior. No product admission or provider response is relaxed.
+
+The existing every-stage canonical five-card tutorial passed25.7s. The existing desktop country interaction reached successful chart/selection/reuse but exposed a stale summary selector after structured terms introduced nested disclosures; the test now selects the outer disclosure's direct summary. Only that failed desktop test was repeated and passed4.2s (18.7s including server setup). These are separate final successful checks, not a claim that the initial two-test run passed. Both reports retain zero live requests and escapes. Fixture typecheck/lint passed.
+
+Durable local reports: `.wb/reports/showcase-source-add/fixture-correction-first/report.json` retains the initial desktop failure and successful tutorial; `fixture-correction-desktop/report.json` retains the successful desktop repetition. Unchanged product/model unit suites were not rerun for this fixture-only correction.
