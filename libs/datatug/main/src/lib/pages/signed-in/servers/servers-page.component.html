@@ -1,5 +1,5 @@
 <ion-header>
-  <ion-toolbar>
+  <ion-toolbar color="light">
     <ion-buttons slot="start">
       <ion-back-button />
       <ion-menu-button />
@@ -55,18 +55,91 @@
         <ion-label color="medium">Loading...</ion-label>
       </ion-item>
     }
-  </ion-card>
-  <ion-card>
     @if (tab === 'db') {
       <ion-item>
+        <ion-icon name="search-outline" slot="start" color="medium" />
         <ion-input
-          aria-label="Filter database servers"
-          placeholder="Filter database servers"
+          aria-label="Filter database servers and sample sources"
+          placeholder="Filter servers and sample sources"
           [value]="filterText()"
           (ionInput)="filterText.set($event.detail.value || '')"
         />
       </ion-item>
     }
+  </ion-card>
+  @if (tab === 'db') {
+    <ion-card>
+      <ion-item-divider>
+        <ion-label>
+          <strong>Sample database sources</strong>
+          <p>Declared in this project's connection catalog</p>
+        </ion-label>
+        @if (catalogError()) {
+          <ion-item color="danger">
+            <ion-icon name="warning-outline" slot="start" />
+            <ion-label>{{ catalogError() }}</ion-label>
+            <ion-button
+              slot="end"
+              fill="outline"
+              (click)="retryCatalogSources()"
+              >Retry</ion-button
+            >
+          </ion-item>
+        } @else if (visibleDatasetSources(); as datasets) {
+          <ion-badge slot="end" color="medium">
+            {{ datasets.length }}
+            {{ datasets.length === 1 ? 'dataset' : 'datasets' }}
+          </ion-badge>
+        }
+      </ion-item-divider>
+      <ion-list>
+        @if (visibleDatasetSources(); as datasets) {
+          @for (dataset of datasets; track dataset.dataset) {
+            <ion-item [attr.data-testid]="'catalog-dataset-' + dataset.dataset">
+              <ion-icon name="server-outline" slot="start" color="primary" />
+              <ion-label>
+                <strong class="dataset-name">{{ dataset.dataset }}</strong>
+                @for (source of dataset.sources; track source.id) {
+                  <p class="source-edition">
+                    <strong>{{ sourceFormat(source) }}</strong>
+                    <span> · {{ sourceAccess(source) }}</span>
+                    @if (source.environments?.length) {
+                      <span> · {{ source.environments!.join(', ') }}</span>
+                    }
+                    @if (source.source) {
+                      <span> · </span>
+                      <a
+                        [href]="source.source"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        (click)="$event.stopPropagation()"
+                        >Source</a
+                      >
+                    }
+                  </p>
+                }
+              </ion-label>
+            </ion-item>
+          } @empty {
+            <ion-item>
+              <ion-label color="medium">
+                {{
+                  filterText().trim() || selectedEnvironmentIds().size === 0
+                    ? 'No sample database sources match the current filters.'
+                    : 'No sample database sources are declared.'
+                }}
+              </ion-label>
+            </ion-item>
+          }
+        } @else {
+          <ion-item>
+            <ion-label color="medium">Loading source catalog...</ion-label>
+          </ion-item>
+        }
+      </ion-list>
+    </ion-card>
+  }
+  <ion-card>
     <ion-card-header>
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="db">
@@ -83,7 +156,15 @@
     </ion-card-header>
     @if (tab === 'db') {
       <ion-list>
-        @if (filteredDbServers(); as servers) {
+        @if (dbServersError()) {
+          <ion-item color="danger">
+            <ion-icon name="warning-outline" slot="start" />
+            <ion-label>{{ dbServersError() }}</ion-label>
+            <ion-button slot="end" fill="outline" (click)="retryDbServers()"
+              >Retry</ion-button
+            >
+          </ion-item>
+        } @else if (filteredDbServers(); as servers) {
           @for (
             dbServer of servers;
             track dbServer.dbServer.driver +

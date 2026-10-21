@@ -32,7 +32,11 @@ import {
   STORE_ID_GITHUB_COM,
   STORE_TYPE_GITHUB,
 } from '@sneat/core';
-import { IProjectRef } from '../../../core/project-context';
+import {
+  equalProjectRef,
+  IProjectRef,
+  isSharedProjectRef,
+} from '../../../core/project-context';
 import { AddDbServerComponent } from '../../../db/modals/add-db-serve/add-db-server.component';
 import {
   getDbServerId,
@@ -43,6 +47,7 @@ import { IEnvironmentFull } from '../../../models/definition/environments';
 import { tryProjectUrl } from '../../../nav/nav-models';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { ProjectService } from '../../../services/project/project.service';
+import { ProjectQueryApiService } from '../../../services/project/project-query-api.service';
 import { DatatugServicesProjectModule } from '../../../services/project/datatug-services-project.module';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
@@ -54,6 +59,25 @@ import { EnvironmentService } from '../../../services/unsorted/environment.servi
 // themselves — no shared util exists for it in this codebase yet.
 const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
+
+interface ProjectConnectionSource {
+  readonly id?: string;
+  readonly dataset?: string;
+  readonly storage?: string;
+  readonly source?: string;
+  readonly readiness?: string;
+  readonly query?: string;
+  readonly environments?: readonly string[];
+}
+
+interface ProjectConnectionCatalog {
+  readonly connections?: readonly ProjectConnectionSource[];
+}
+
+interface DatasetSources {
+  readonly dataset: string;
+  readonly sources: readonly ProjectConnectionSource[];
+}
 
 @Component({
   selector: 'sneat-datatug-servers',
@@ -124,6 +148,7 @@ export class ServersPageComponent implements OnDestroy {
   private readonly dbServerService = inject(DbServerService);
   private readonly environmentService = inject(EnvironmentService);
   private readonly projectService = inject(ProjectService);
+  private readonly projectQueries = inject(ProjectQueryApiService);
 
   protected tab: 'db' | 'web' | 'api' = 'db';
 
@@ -137,6 +162,44 @@ export class ServersPageComponent implements OnDestroy {
     undefined,
   );
   protected readonly filterText = signal('');
+  protected readonly dbServersError = signal<string | undefined>(undefined);
+  protected readonly catalogSources = signal<
+    readonly ProjectConnectionSource[] | undefined
+  >(undefined);
+  protected readonly catalogError = signal<string | undefined>(undefined);
+
+  protected readonly visibleDatasetSources = computed(
+    (): DatasetSources[] | undefined => {
+      const sources = this.catalogSources();
+      if (!sources) return undefined;
+      const selected = this.selectedEnvironmentIds();
+      const query = this.filterText().trim().toLocaleLowerCase();
+      const groups = new Map<string, ProjectConnectionSource[]>();
+      for (const source of sources) {
+        const dataset = source.dataset?.trim();
+        if (!dataset) continue;
+        if (
+          source.environments?.length &&
+          !source.environments.some((environment) => selected.has(environment))
+        ) {
+          continue;
+        }
+        if (
+          query &&
+          ![dataset, source.storage, source.readiness, source.id].some(
+            (value) => value?.toLocaleLowerCase().includes(query),
+          )
+        ) {
+          continue;
+        }
+        groups.set(dataset, [...(groups.get(dataset) ?? []), source]);
+      }
+      return [...groups].map(([dataset, datasetSources]) => ({
+        dataset,
+        sources: datasetSources,
+      }));
+    },
+  );
 
   // The project's real environment list (S153: the "Local"/"PROD" checkboxes
   // used to be hard-coded text with no binding at all — they matched neither
@@ -209,6 +272,10 @@ export class ServersPageComponent implements OnDestroy {
   );
 
   private readonly destroyed = new Subject<void>();
+  private loadEpoch = 0;
+  private dbServersRequest = 0;
+  private environmentsRequest = 0;
+  private catalogRequest = 0;
   // Written from the same `.subscribe()` callback as `dbServers` above.
   // Never read by the template, but kept as a signal too for consistency
   // and so tools/check-zoneless-fields.mjs doesn't need a carve-out for it.
@@ -229,20 +296,23 @@ export class ServersPageComponent implements OnDestroy {
       .pipe(takeUntil(this.destroyed))
       .subscribe((target) => {
         const previousTarget = this.target();
-        if (
-          target &&
-          (previousTarget?.storeId !== target?.storeId ||
-            previousTarget?.projectId !== target?.projectId)
-        ) {
-          this.loadDbServers(target);
-          this.loadEnvironments(target);
+        if (!equalProjectRef(previousTarget, target)) {
+          const epoch = ++this.loadEpoch;
+          this.clearLoadedState();
+          if (target) {
+            this.loadDbServers(target, epoch);
+            this.loadEnvironments(target, epoch);
+            this.loadCatalogSources(target, epoch);
+          }
         }
         this.target.set(target);
       });
   }
 
   ngOnDestroy() {
+    this.loadEpoch++;
     this.destroyed.next();
+    this.destroyed.complete();
   }
 
   /** Toggles one environment's checked state — bound to each checkbox row's
@@ -281,7 +351,42 @@ export class ServersPageComponent implements OnDestroy {
    * adjacent driver badge (see the template) already names the driver, so
    * this only needs to say plainly that there's no host, not repeat it. */
   protected serverLabel(dbServer: IDbServer): string {
-    return dbServer.host?.trim() || '(no host)';
+    return dbServer.host?.trim() || dbServer.path?.trim() || '(no host)';
+  }
+
+  protected sourceFormat(source: ProjectConnectionSource): string {
+    switch (source.storage) {
+      case 'sqlite':
+        return 'SQLite';
+      case 'postgresql':
+        return 'PostgreSQL';
+      case 'ingitdb':
+        return 'inGitDB';
+      default:
+        return source.storage || 'Unknown format';
+    }
+  }
+
+  protected sourceAccess(source: ProjectConnectionSource): string {
+    if (source.readiness === 'public-api') return 'Public API declared';
+    if (
+      source.readiness === 'hosted-repository' &&
+      source.query === 'local-checkout-required'
+    )
+      return 'Hosted repository declared · local checkout required';
+    if (source.readiness === 'hosted-repository')
+      return 'Hosted repository declared';
+    return source.readiness || 'Setup required';
+  }
+
+  protected retryDbServers(): void {
+    const target = this.target();
+    if (target) this.loadDbServers(target, this.loadEpoch);
+  }
+
+  protected retryCatalogSources(): void {
+    const target = this.target();
+    if (target) this.loadCatalogSources(target, this.loadEpoch);
   }
 
   /**
@@ -395,14 +500,27 @@ export class ServersPageComponent implements OnDestroy {
       );
   }
 
-  private loadDbServers(target: IProjectRef): void {
-    this.dbServerService.getDbServers(target).subscribe({
-      next: (dbServers) => {
-        this.dbServers.set(dbServers || []);
-      },
-      error: (err) =>
-        this.errorLogger.logError(err, 'Failed to load list of DB servers'),
-    });
+  private loadDbServers(target: IProjectRef, epoch: number): void {
+    const request = ++this.dbServersRequest;
+    this.dbServers.set(undefined);
+    this.dbServersError.set(undefined);
+    this.dbServerService
+      .getDbServers(target)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (dbServers) => {
+          if (epoch !== this.loadEpoch || request !== this.dbServersRequest)
+            return;
+          this.dbServers.set(dbServers || []);
+        },
+        error: (err) => {
+          if (epoch !== this.loadEpoch || request !== this.dbServersRequest)
+            return;
+          this.dbServers.set(undefined);
+          this.dbServersError.set('Database servers could not be loaded.');
+          this.errorLogger.logError(err, 'Failed to load list of DB servers');
+        },
+      });
   }
 
   /** Same GitHub-vs-agent split `EnvironmentsPageComponent` already uses
@@ -411,22 +529,74 @@ export class ServersPageComponent implements OnDestroy {
    * (`EnvironmentService.listEnvironments()` for GitHub, `ProjectService`'s
    * own `getFull()` for a live agent). Every environment starts checked,
    * matching this page's previous (hard-coded) all-checked look. */
-  private loadEnvironments(target: IProjectRef): void {
+  private loadEnvironments(target: IProjectRef, epoch: number): void {
+    const request = ++this.environmentsRequest;
+    this.environments.set(undefined);
     const environments$ = isGithubStoreId(target.storeId)
       ? this.environmentService.listEnvironments(target.projectId)
       : this.projectService
           .getFull(target)
           .pipe(map((full) => full.environments || []));
-    environments$.subscribe({
+    environments$.pipe(takeUntil(this.destroyed)).subscribe({
       next: (environments) => {
+        if (epoch !== this.loadEpoch || request !== this.environmentsRequest)
+          return;
         this.environments.set(environments);
         this.selectedEnvironmentIds.set(new Set(environments.map((e) => e.id)));
       },
-      error: (err) =>
-        this.errorLogger.logError(err, 'Failed to load project environments'),
+      error: (err) => {
+        if (epoch !== this.loadEpoch || request !== this.environmentsRequest)
+          return;
+        this.environments.set([]);
+        this.errorLogger.logError(err, 'Failed to load project environments');
+      },
     });
+  }
+
+  private loadCatalogSources(target: IProjectRef, epoch: number): void {
+    const request = ++this.catalogRequest;
+    this.catalogSources.set(undefined);
+    this.catalogError.set(undefined);
+    if (isSharedProjectRef(target)) {
+      this.catalogSources.set([]);
+      this.catalogError.set(
+        'Connection catalog discovery is unavailable for shared projects.',
+      );
+      return;
+    }
+    this.projectQueries
+      .connectionCatalog<ProjectConnectionCatalog>(target)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (catalog) => {
+          if (epoch !== this.loadEpoch || request !== this.catalogRequest)
+            return;
+          this.catalogSources.set(catalog?.connections ?? []);
+        },
+        error: (err) => {
+          if (epoch !== this.loadEpoch || request !== this.catalogRequest)
+            return;
+          this.catalogSources.set([]);
+          this.catalogError.set(
+            'The project connection catalog could not be loaded.',
+          );
+          this.errorLogger.logError(
+            err,
+            'Failed to load project connection catalog',
+          );
+        },
+      });
+  }
+
+  private clearLoadedState(): void {
+    this.dbServers.set(undefined);
+    this.dbServersError.set(undefined);
+    this.environments.set(undefined);
+    this.selectedEnvironmentIds.set(new Set());
+    this.catalogSources.set(undefined);
+    this.catalogError.set(undefined);
   }
 }
 
 const serverId = (dbServer: IDbServer): string =>
-  [dbServer.driver, dbServer.host, '' + dbServer.port].join('/');
+  [dbServer.driver, dbServer.host, '' + dbServer.port, dbServer.path].join('/');

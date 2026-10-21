@@ -12,3 +12,12 @@
   --padding-start: 0;
   --inner-padding-end: 0;
 }
+
+.dataset-name {
+  text-transform: capitalize;
+}
+
+.source-edition {
+  margin-block: 4px;
+  white-space: normal;
+}

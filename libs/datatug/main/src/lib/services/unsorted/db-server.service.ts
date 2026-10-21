@@ -122,12 +122,50 @@ export class DbServerService {
       return this.getGithubDbServers(projectRef.projectId);
     }
     return this.projectService.getFull(projectRef).pipe(
-      map((p) =>
-        p.dbServers?.map((dbServerFull) => ({
+      map((p) => {
+        if (p.dbDrivers) {
+          return p.dbDrivers.flatMap((driver) =>
+            (driver.servers ?? []).map((server) => {
+              const dbServer = {
+                ...server.server,
+                driver: server.server.driver || driver.id,
+              };
+              const environments = (p.environments ?? []).flatMap(
+                (environment) => {
+                  const matching = (
+                    environment.dbServers ??
+                    environment.dbServer ??
+                    []
+                  ).filter(
+                    (candidate) => serverKey(candidate) === serverKey(dbServer),
+                  );
+                  return matching.length
+                    ? [
+                        {
+                          envId: environment.id,
+                          databasesCount: matching.reduce(
+                            (sum, candidate) =>
+                              sum + (candidate.catalogs?.length ?? 0),
+                            0,
+                          ),
+                        },
+                      ]
+                    : [];
+                },
+              );
+              return {
+                dbServer,
+                databasesCount: server.catalogs?.length ?? 0,
+                ...(environments.length ? { environments } : {}),
+              };
+            }),
+          );
+        }
+        return (p.dbServers ?? []).map((dbServerFull) => ({
           dbServer: dbServerFull.dbServer,
           databasesCount: dbServerFull.databases?.length || 0,
-        })),
-      ),
+        }));
+      }),
     );
   }
 
@@ -159,14 +197,17 @@ export class DbServerService {
         >();
         for (const summary of summaries) {
           for (const s of summary.dbServers || []) {
-            const key = `${s.driver}:${s.host}`;
+            const key = serverKey(s);
             const environments = byKey.get(key)?.environments ?? [];
             environments.push({
               envId: summary.id,
               databasesCount: s.catalogs?.length || 0,
             });
             byKey.set(key, {
-              dbServer: { driver: s.driver, host: s.host },
+              dbServer: {
+                driver: s.driver,
+                host: s.host,
+              },
               environments,
             });
           }
@@ -185,3 +226,8 @@ export class DbServerService {
     );
   }
 }
+
+const serverKey = (server: IDbServer): string =>
+  [server.driver, server.host ?? '', server.port ?? '', server.path ?? ''].join(
+    ':',
+  );

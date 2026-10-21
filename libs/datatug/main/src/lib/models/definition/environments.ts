@@ -22,6 +22,9 @@ export interface IEnvironmentBase {
 }
 
 export interface IEnvironmentFull extends IEnvironmentBase {
+  /** Current environment wire shape. */
+  dbServers?: IEnvDbServer[];
+  /** Older clients used the singular key. */
   dbServer?: IEnvDbServer[];
 }
 

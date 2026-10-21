@@ -2,11 +2,12 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
 import { ErrorLogger, STORE_ID_GITHUB_COM } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { map, of, Subject } from 'rxjs';
 
 import { ServersPageComponent } from './servers-page.component';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { ProjectService } from '../../../services/project/project.service';
+import { ProjectQueryApiService } from '../../../services/project/project-query-api.service';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { IProjectRef } from '../../../core/project-context';
@@ -29,6 +30,10 @@ const noopEnvironmentServiceProvider = {
 const noopProjectServiceProvider = {
   provide: ProjectService,
   useValue: { getFull: vi.fn(() => of({})) },
+};
+const noopProjectQueryApiProvider = {
+  provide: ProjectQueryApiService,
+  useValue: { connectionCatalog: vi.fn(() => of({ connections: [] })) },
 };
 
 describe('ServersPage', () => {
@@ -66,6 +71,7 @@ describe('ServersPage', () => {
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       .overrideComponent(ServersPageComponent, {
@@ -84,6 +90,211 @@ describe('ServersPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+});
+
+describe('ServersPage source discovery lifecycle', () => {
+  let fixture: ComponentFixture<ServersPageComponent>;
+  let current$: Subject<IProjectRef | undefined>;
+  let serversByRequest: Subject<IProjDbServerSummary[]>[];
+  let environmentsByRequest: Subject<IEnvironmentFull[]>[];
+  let catalogsByRequest: Subject<{ connections: readonly unknown[] }>[];
+  let connectionCatalog: ReturnType<typeof vi.fn>;
+
+  beforeEach(async () => {
+    current$ = new Subject<IProjectRef | undefined>();
+    serversByRequest = [];
+    environmentsByRequest = [];
+    catalogsByRequest = [];
+    connectionCatalog = vi.fn(() => {
+      const result = new Subject<{ connections: readonly unknown[] }>();
+      catalogsByRequest.push(result);
+      return result;
+    });
+
+    await TestBed.configureTestingModule({
+      imports: [ServersPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ProjectContextService,
+          useValue: { current$: current$, current: undefined },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: { logError: vi.fn(), logErrorHandler: vi.fn() },
+        },
+        { provide: ModalController, useValue: { create: vi.fn() } },
+        { provide: NavController, useValue: { navigateForward: vi.fn() } },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers: vi.fn(() => {
+              const result = new Subject<IProjDbServerSummary[]>();
+              serversByRequest.push(result);
+              return result;
+            }),
+            deleteDbServer: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: {
+            getFull: vi.fn(() => {
+              const result = new Subject<IEnvironmentFull[]>();
+              environmentsByRequest.push(result);
+              return result.pipe(map((environments) => ({ environments })));
+            }),
+          },
+        },
+        noopEnvironmentServiceProvider,
+        {
+          provide: ProjectQueryApiService,
+          useValue: { connectionCatalog },
+        },
+      ],
+    })
+      .overrideComponent(ServersPageComponent, {
+        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+      })
+      .compileComponents();
+    fixture = TestBed.createComponent(ServersPageComponent);
+    fixture.detectChanges();
+  });
+
+  it('shows six datasets while keeping their 18 declared formats and access requirements distinct', async () => {
+    current$.next({
+      storeId: 'http://agent',
+      projectId: 'demo',
+      projectApi: 'local',
+      branch: 'main',
+    });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([
+      { id: 'dev', title: 'DEV' },
+      { id: 'QA', title: 'QA' },
+      { id: 'UAT', title: 'UAT' },
+    ]);
+    const datasets = [
+      'chinook',
+      'northwind',
+      'pubs',
+      'sakila',
+      'adventureworks',
+      'employees',
+    ];
+    catalogsByRequest[0].next({
+      connections: datasets.flatMap((dataset) => [
+        {
+          id: `${dataset}-sqlite`,
+          dataset,
+          storage: 'sqlite',
+          readiness: 'public-api',
+          query: 'ovdb-read',
+          environments: ['dev'],
+          source: `https://demodb.dev/${dataset}`,
+        },
+        {
+          id: `${dataset}-postgresql`,
+          dataset,
+          storage: 'postgresql',
+          readiness: 'public-api',
+          query: 'ovdb-read',
+          environments: ['QA', 'UAT'],
+          source: `https://cloud.openvaultdb.com/${dataset}`,
+        },
+        {
+          id: `${dataset}-ingitdb`,
+          dataset,
+          storage: 'ingitdb',
+          readiness: 'hosted-repository',
+          query: 'local-checkout-required',
+          environments: ['dev'],
+          source: `https://github.com/demo-db/${dataset}`,
+        },
+      ]),
+    });
+    await fixture.whenStable();
+
+    expect(
+      fixture.nativeElement.querySelectorAll(
+        '[data-testid^="catalog-dataset-"]',
+      ),
+    ).toHaveLength(6);
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('SQLite · Public API declared');
+    expect(text).toContain('PostgreSQL · Public API declared');
+    expect(text).toContain(
+      'inGitDB · Hosted repository declared · local checkout required',
+    );
+    expect(text).not.toContain('connected');
+  });
+
+  it('keys loads by the exact project ref, clears on no target, and ignores late responses', async () => {
+    const first = {
+      storeId: 'http://agent',
+      projectId: 'demo',
+      projectApi: 'local' as const,
+      branch: 'one',
+    };
+    current$.next(first);
+    current$.next({ ...first, branch: 'two' });
+    current$.next(undefined);
+
+    catalogsByRequest[1].next({
+      connections: [{ id: 'late', dataset: 'late', storage: 'sqlite' }],
+    });
+    serversByRequest[1].next([
+      {
+        dbServer: { driver: 'postgres', host: 'late' },
+        databasesCount: 1,
+      },
+    ]);
+    await fixture.whenStable();
+
+    expect(connectionCatalog).toHaveBeenCalledTimes(2);
+    expect(connectionCatalog.mock.calls[1][0]).toEqual({
+      ...first,
+      branch: 'two',
+    });
+    expect(fixture.nativeElement.textContent).not.toContain('late');
+  });
+
+  it('keeps catalog sources visible when configured-server discovery fails', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].error(new Error('server inventory unavailable'));
+    environmentsByRequest[0].next([{ id: 'dev', title: 'DEV' }]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-sqlite',
+          dataset: 'chinook',
+          storage: 'sqlite',
+          readiness: 'public-api',
+          environments: ['dev'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain('Database servers could not be loaded.');
+    expect(text).toContain('chinook');
+    expect(text).toContain('SQLite · Public API declared');
+  });
+
+  it('does not call the unsupported catalog transport for a shared project', async () => {
+    current$.next({
+      storeId: 'firestore',
+      projectId: 'demo',
+      spaceID: 'space',
+    });
+    await fixture.whenStable();
+
+    expect(connectionCatalog).not.toHaveBeenCalled();
+    expect(fixture.nativeElement.textContent).toContain(
+      'Connection catalog discovery is unavailable for shared projects.',
+    );
   });
 });
 
@@ -144,6 +355,7 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
         { provide: DbServerService, useValue: dbServerServiceMock },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       // Keep the real template so the Loading -> list transition is
@@ -251,6 +463,7 @@ describe("ServersPage clears the delete button's disabled state once deletion co
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       // See the identical override + comment in the "Loading..." describe
@@ -463,6 +676,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
           useValue: { listEnvironments: vi.fn(() => of(environments)) },
         },
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       // Same idiom as every other describe block in this file: keep the
@@ -610,6 +824,7 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
         },
         noopEnvironmentServiceProvider,
         noopProjectServiceProvider,
+        noopProjectQueryApiProvider,
       ],
     })
       .overrideComponent(ServersPageComponent, {
