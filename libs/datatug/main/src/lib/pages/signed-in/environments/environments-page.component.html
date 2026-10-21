@@ -10,9 +10,6 @@
 
 <ion-content color="light">
   <ion-card>
-    <ion-item color="light" lines="full"
-      ><ion-label><h2>Environments</h2></ion-label></ion-item
-    >
     <ion-list lines="full">
       @if (loadError()) {
         <ion-item
@@ -26,7 +23,6 @@
             button
             detail
             (click)="goEnvironment(environment)"
-            [color]="presentation(environment).tone"
             data-testid="environment-list-item"
           >
             <ion-icon
@@ -35,12 +31,26 @@
               aria-hidden="true"
             />
             <ion-label class="ion-text-wrap"
-              ><h3>{{ presentation(environment).label }}</h3>
+              ><h3
+                [class.environment-warning]="
+                  presentation(environment).tone === 'warning'
+                "
+                [class.environment-danger]="
+                  presentation(environment).tone === 'danger'
+                "
+              >
+                {{ presentation(environment).label }}
+              </h3>
               @if (presentation(environment).label !== environment.id) {
                 <p>Environment ID: {{ environment.id }}</p>
               }
               @if (presentation(environment).safetyLabel; as safety) {
-                <p>{{ safety }}</p>
+                <ion-chip [color]="presentation(environment).tone"
+                  ><ion-icon
+                    [icon]="warningIcon"
+                    aria-hidden="true"
+                  /><ion-label>{{ safety }}</ion-label></ion-chip
+                >
               }
             </ion-label>
           </ion-item>

@@ -1,3 +1,4 @@
+import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { Injectable, inject } from '@angular/core';
 import {
   Observable,
@@ -265,7 +266,9 @@ export class ProjectAssetsReadService {
           ),
       );
     if (ref.projectApi === 'cloud')
-      return this.api.environments<IEnvironmentFull[]>(ref);
+      return this.api
+        .environments<IEnvironmentFull[]>(ref)
+        .pipe(map((items) => resolveEnvironmentOrder(items).items));
     if (ref.storeId === 'github' || ref.storeId === 'github.com') {
       return this.githubProject(ref).pipe(
         switchMap((project) =>
@@ -290,6 +293,7 @@ export class ProjectAssetsReadService {
                 };
               }),
             ),
+            map((items) => resolveEnvironmentOrder(items).items),
           ),
         ),
       );
@@ -297,7 +301,17 @@ export class ProjectAssetsReadService {
     if (this.isUnqualifiedLocal(ref))
       return this.project
         .getFull(ref)
-        .pipe(map((project) => project.environments ?? []));
-    return this.api.environments<IEnvironmentFull[]>(ref);
+        .pipe(
+          map(
+            (project) =>
+              resolveEnvironmentOrder(
+                project.environments ?? [],
+                project.environmentOrder,
+              ).items,
+          ),
+        );
+    return this.api
+      .environments<IEnvironmentFull[]>(ref)
+      .pipe(map((items) => resolveEnvironmentOrder(items).items));
   }
 }

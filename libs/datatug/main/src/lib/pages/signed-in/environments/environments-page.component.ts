@@ -1,3 +1,5 @@
+import { warningOutline } from 'ionicons/icons';
+import { resolveEnvironmentOrder } from '../../../models/definition/environment-order';
 import { equalProjectRef } from '../../../core/project-context';
 import { Component, DestroyRef, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
@@ -19,6 +21,7 @@ import {
   IonMenuButton,
   IonToolbar,
   IonCard,
+  IonChip,
   IonList,
   IonItem,
   IonLabel,
@@ -51,6 +54,7 @@ const isGithubStoreId = (storeId: string): boolean =>
 @Component({
   selector: 'sneat-datatug-environments',
   templateUrl: './environments-page.component.html',
+  styleUrl: './environments-page.component.scss',
   imports: [
     DatatugCoreModule,
     DatatugServicesNavModule,
@@ -59,6 +63,7 @@ const isGithubStoreId = (storeId: string): boolean =>
     DatatugServicesUnsortedModule,
     FormsModule,
     IonCard,
+    IonChip,
     IonList,
     IonItem,
     IonLabel,
@@ -74,6 +79,7 @@ const isGithubStoreId = (storeId: string): boolean =>
   ],
 })
 export class EnvironmentsPageComponent {
+  protected readonly warningIcon = warningOutline;
   readonly datatugNavContextService = inject(DatatugNavContextService);
   private readonly datatugNavService = inject(DatatugNavService);
   private readonly projectService = inject(ProjectService);
@@ -119,7 +125,13 @@ export class EnvironmentsPageComponent {
         }),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe((environments) => this.environments.set(environments));
+      .subscribe((environments) =>
+        this.environments.set(
+          environments
+            ? resolveEnvironmentOrder(environments).items
+            : undefined,
+        ),
+      );
   }
 
   protected goEnvironment(item: unknown): void {

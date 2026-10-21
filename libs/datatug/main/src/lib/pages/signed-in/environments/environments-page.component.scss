@@ -1,0 +1,27 @@
+.environment-warning {
+  color: #806000;
+}
+.environment-danger {
+  color: var(--ion-color-danger-shade);
+}
+ion-chip[color='warning'] {
+  --background: #fff1bf;
+  --color: #594300;
+}
+ion-chip[color='danger'] {
+  --background: #ffe5e8;
+  --color: #a31630;
+}
+@media (prefers-color-scheme: dark) {
+  .environment-warning {
+    color: #ffd866;
+  }
+  ion-chip[color='warning'] {
+    --background: #4a3900;
+    --color: #ffe49b;
+  }
+  ion-chip[color='danger'] {
+    --background: #591525;
+    --color: #ffd8df;
+  }
+}
