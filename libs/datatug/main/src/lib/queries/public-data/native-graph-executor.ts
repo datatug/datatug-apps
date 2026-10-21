@@ -645,9 +645,10 @@ export interface GraphCoverage {
 }
 const typed = (value: unknown): TypedValue => {
   if (value instanceof JsonNumberToken) {
-    if (/^-?(?:0|[1-9][0-9]*)$/.test(value.token))
+    if (/^(?:0|-?[1-9][0-9]*)$/.test(value.token))
       return { type: 'integer', value: value.token };
-    if (/^-?(?:0|[1-9][0-9]*)\.[0-9]+$/.test(value.token))
+    // Core integers exclude negative zero; decimals retain this exact wire token.
+    if (value.token === '-0' || /^-?(?:0|[1-9][0-9]*)\.[0-9]+$/.test(value.token))
       return { type: 'decimal', value: value.token };
     return { type: 'string', value: 'JSON numeric token: ' + value.token };
   }

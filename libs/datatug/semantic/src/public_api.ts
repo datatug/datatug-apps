@@ -59,3 +59,9 @@ export { LimitationHeaderComponent } from './lib/components/limitation-header/li
 export { SemanticMarkerComponent } from './lib/components/semantic-marker/semantic-marker.component';
 
 export * from './lib/components/source-rights-notice.component';
+
+export * from './charting/row-evidence';
+export * from './charting/evidence-json';
+export * from './charting/evidence-charts';
+
+export * from './charting/evidence-integrity';

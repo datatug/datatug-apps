@@ -1,3 +1,4 @@
+import type { RowEvidence } from '../charting/row-evidence';
 import type { SourceRightsEvidence } from './source-rights';
 import type { AuthorizationResult } from './authorization';
 // Frozen wire types for the DataTug agent HTTP contract described in the hub
@@ -167,6 +168,7 @@ export interface ExecutionRef {
 /** The exact success envelope for every read/execute endpoint below except
  * `semantic/columns` and `semantic/related`. */
 export interface Result extends SourceRightsEvidence {
+  readonly rowEvidence?: RowEvidence;
   readonly recordset: {
     readonly columns: readonly ResultColumn[];
     readonly rows: readonly (readonly TypedValue[])[];
