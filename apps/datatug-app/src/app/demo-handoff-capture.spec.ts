@@ -902,6 +902,27 @@ describe('demo hand-off capture', () => {
       return { replaced, stash: win[DEMO_HANDOFF_STASH], kept };
     }
 
+    it.each([
+      '/project/github.com/acme/demo/quick-search',
+      '/project/github.com/acme/demo/tree/HEAD/dir/-/quick-search',
+      '/PROJECT/GITHUB.COM/acme/demo/QUICK-SEARCH',
+    ])('cold reload retains Quick Search q and removes msg only on exact page %s',path=>{
+      const out=run(path,'?q=customer&msg=private&x=1');
+      expect(out.replaced).toEqual([path+'?q=customer&x=1']);
+      expect(out.stash).toBeUndefined();expect(out.kept.size).toBe(0);
+    });
+    it.each([
+      '/project/github.com/invalid_owner/repo/quick-search',
+      '/project/github.com/acme/repo.git.git/quick-search',
+      '/project/github.com/acme/repo/quick-search//extra',
+      '/project/github.com/acme/repo/tree/ref%2Fother/folder/-/quick-search',
+    ])('cold reload never preserves q on a malformed locator %s',path=>{
+      expect(run(path,'?q=private&msg=private').replaced).toEqual([path]);
+    });
+    it.each(['quick-searching','quick-search/extra','quick-seаrch','queries'])('cold reload strips question parameters from lookalike %s',page=>{
+      const path='/project/github.com/acme/demo/'+page;
+      expect(run(path,'?q=private&msg=private&x=1').replaced).toEqual([path+'?x=1']);
+    });
     it('exists in index.html, ahead of the Google Analytics snippet', () => {
       expect(script).toBeTruthy();
       expect(html.indexOf('datatug-handoff-stash')).toBeLessThan(

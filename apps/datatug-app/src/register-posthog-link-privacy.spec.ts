@@ -205,3 +205,15 @@ describe('queued authenticated metadata preview privacy',()=>{
     for(const secret of ['private-repo','private-owner','private-folder','private-ref','private-table','private-column','private-result']) expect(JSON.stringify(out)).not.toContain(secret);
   });
 });
+
+describe('queued Check metadata query-mode privacy',()=>{
+  it('scrubs private check identity and DOM metadata after navigation away',()=>{
+    const path='/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/quick-search?detailKind=check&objectId=private-check';
+    const config=start(path);history.replaceState(null,'','/home');applyPosthogRoutePrivacy('/home');
+    const properties={$current_url:'https://datatug.app'+path,$el_text:'private-title',$elements:[{text:'private-tag'}]};
+    expect(config.before_send({event:'$autocapture',properties})).toBeNull();
+    expect(config.before_send({event:'$snapshot',properties})).toBeNull();
+    const out=config.before_send({event:'manual_event',properties});
+    for(const secret of ['private-owner','private-repo','private-ref','private-folder','private-check','private-title','private-tag'])expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});
