@@ -6,6 +6,7 @@ import { readProjectApiQuery } from '../../nav/project-api-routing';
 import { Injectable, inject } from '@angular/core';
 import { BehaviorSubject, Subscription } from 'rxjs';
 import { ActivatedRouteSnapshot, NavigationEnd, Router } from '@angular/router';
+import { incidentProjectRouteScope } from '../../incidents/incident-navigation';
 import {
   distinctUntilChanged,
   distinctUntilKeyChanged,
@@ -428,7 +429,14 @@ export class DatatugNavContextService {
         this.$currentEnvDbTable.next(undefined);
         return;
       }
-      this.processEnvironment(where.rest);
+      if (/^\/incidents(?:\/|$)/.test(where.rest)) {
+        const scope = incidentProjectRouteScope(rawUrl);
+        // Incident scope is URL authority, never a saved environment from a
+        // prior visit. It must name this opened project and the same agent.
+        this.setCurrentEnvironment(scope?.environment);
+      } else {
+        this.processEnvironment(where.rest);
+      }
       this.processEnvDb(where.rest);
       this.processEnvDbTable(
         where.rest,

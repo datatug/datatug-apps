@@ -1,4 +1,8 @@
-import type { Params } from '@angular/router';
+import { convertToParamMap, type Params } from '@angular/router';
+import {
+  resolveIncidentRouteScope,
+  type IncidentRouteScope,
+} from './incident-route-context';
 import type { IProjectRef } from '../core/project-context';
 import {
   projectApiQuery,
@@ -8,6 +12,34 @@ import { projectPageHref } from '../nav/project-page-href';
 import { parseProjectUrl } from '../nav/nav-models';
 
 const INCIDENT_PATH = /^\/incidents(?:\/|$)/;
+
+/** Complete Incident authority belonging to the project addressed by this URL. */
+export function incidentProjectRouteScope(
+  currentUrl: string,
+): IncidentRouteScope | undefined {
+  const project = incidentProjectRefFromUrl(currentUrl);
+  if (!project) return undefined;
+  const url = new URL(currentUrl, 'https://datatug.app');
+  const parsed = parseProjectUrl(url.pathname);
+  if (!parsed.ok) return undefined;
+  const segments = parsed.rest.split('/');
+  const incidentStoreId = segments[3]
+    ? decodeURIComponent(segments[2])
+    : undefined;
+  const scope = resolveIncidentRouteScope(
+    convertToParamMap(Object.fromEntries(url.searchParams)),
+    {},
+    incidentStoreId,
+  );
+  return scope &&
+    scope.agentStoreId === project.storeId &&
+    scope.project === project.projectId &&
+    (!incidentStoreId ||
+      !url.searchParams.has('storeId') ||
+      url.searchParams.get('storeId') === incidentStoreId)
+    ? scope
+    : undefined;
+}
 
 /**
  * Reads a project only from the current Incident URL. Ambient navigation state

@@ -28,7 +28,11 @@ import {
   parseProjectUrl,
 } from '../../../nav/nav-models';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
-import { incidentPageQueryParams } from '../../../incidents/incident-navigation';
+import {
+  incidentPageQueryParams,
+  incidentProjectRefFromUrl,
+  incidentProjectRouteScope,
+} from '../../../incidents/incident-navigation';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
@@ -94,9 +98,23 @@ export class ProjectMenuTopComponent implements OnDestroy {
   // Signal mirror of the plain `project` field so the computed above
   // recomputes on context change (zoneless: plain fields notify nothing).
   private readonly currentProjectId = signal<string | undefined>(undefined);
+  private readonly currentUrl = signal('');
   // Context carry-over from the retired sidebar card: link the incident list
   // to the active store/project/environment scope when all three are known.
   protected readonly incidentQueryParams = computed(() => {
+    const currentUrl = this.currentUrl();
+    if (incidentProjectRefFromUrl(currentUrl)) {
+      const explicit = incidentProjectRouteScope(currentUrl);
+      return incidentPageQueryParams(
+        currentUrl,
+        explicit
+          ? incidentContextQueryParams({
+              agentStoreId: explicit.agentStoreId,
+              scope: explicit,
+            })
+          : undefined,
+      );
+    }
     const agentStoreId = this.currentStoreId();
     const project = this.currentProjectId();
     const environment = this.currentEnvironment()?.id;
@@ -189,7 +207,6 @@ export class ProjectMenuTopComponent implements OnDestroy {
         icon: 'book-outline',
       },
       {
-
         path: 'servers',
         title: 'Servers',
         icon: 'server-outline',
@@ -237,6 +254,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   constructor() {
     const syncSession = () => {
+      this.currentUrl.set(this.router?.url || location.href);
       const parsed = this.router
         ? parseProjectUrl(this.router.url.split('?')[0])
         : undefined;

@@ -78,18 +78,54 @@ describe('project Incident routes with the real router and navigation context', 
     const service = TestBed.inject(DatatugNavContextService);
     let project: unknown;
     let store: string | undefined;
+    let environment: string | undefined;
     service.currentProject.subscribe((value) => (project = value));
     service.currentStoreId.subscribe((value) => (store = value));
+    service.currentEnv.subscribe((value) => (environment = value?.id));
     const harness = await RouterTestingHarness.create(initialUrl);
     return {
       harness,
       router: TestBed.inject(Router),
       project: () => project,
       store: () => store,
+      environment: () => environment,
     };
   }
 
   beforeEach(() => sessionStorage.clear());
+
+  it.each(['', '/new', '/ops/INC-1', '/ops/INC-1/record'])(
+    'restores the complete Incident environment on a fresh-tab cold load of %s',
+    async (page) => {
+      const app = await boot(
+        `/store/http-localhost:8989/project/demo/incidents${page}?agent=http-localhost:8989&storeId=ops&project=demo&environment=local`,
+      );
+      expect(app.environment()).toBe('local');
+      expect(app.project()).toMatchObject({
+        ref: { storeId: 'http-localhost:8989', projectId: 'demo' },
+      });
+    },
+  );
+
+  it.each([
+    '',
+    'agent=http-localhost:8989&storeId=ops&project=demo',
+    'agent=http-other:8989&storeId=ops&project=demo&environment=local',
+    'agent=http-localhost:8989&storeId=ops&project=other&environment=local',
+    'agent=http-localhost:8989&storeId=other&project=demo&environment=local',
+  ])(
+    'does not revive a saved environment for missing or mismatched Incident scope %s',
+    async (query) => {
+      const app = await boot(
+        '/store/http-localhost:8989/project/demo/incidents/ops/INC-1?agent=http-localhost:8989&storeId=ops&project=demo&environment=previous',
+      );
+      expect(app.environment()).toBe('previous');
+      await app.harness.navigateByUrl(
+        `/store/http-localhost:8989/project/demo/incidents/ops/INC-1?${query}`,
+      );
+      expect(app.environment()).toBeUndefined();
+    },
+  );
 
   it.each([
     ['/project/github.com/owner/repo', 'github.com', 'repo@owner@'],
@@ -131,9 +167,12 @@ describe('project Incident routes with the real router and navigation context', 
     const app = await boot();
     await app.harness.navigateByUrl('/project/github.com/owner/repo/incidents');
     expect(app.project()).toBeDefined();
-    await app.harness.navigateByUrl('/project/github.com/owner/repo/chat');
+    await app.harness.navigateByUrl(
+      '/project/github.com/owner/repo/chat?agent=github.com&storeId=ops&project=repo%40owner%40&environment=local',
+    );
     expect(app.project()).toBeUndefined();
     expect(app.store()).toBeUndefined();
+    expect(app.environment()).toBeUndefined();
   });
 });
 
