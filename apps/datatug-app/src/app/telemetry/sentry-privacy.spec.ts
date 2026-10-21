@@ -331,3 +331,13 @@ describe('queued authenticated metadata preview Sentry privacy',()=>{
     expect(options.beforeBreadcrumb?.({category:'fetch',data:{url:preview,method:'POST',status_code:200,body:'private-env',response:'private-table'}},{})).toEqual({category:'fetch',message:undefined,data:{url:'https://api.sneat.cloud/v0/datatug/project/quick-search/preview',method:'POST',status_code:200}});
   });
 });
+
+describe('queued Check metadata query-mode Sentry privacy',()=>{
+  it('drops check identifiers, metadata extra and UI breadcrumbs after Home navigation',()=>{
+    const origin='https://datatug.app/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/quick-search?detailKind=check&objectId=private-check';
+    history.replaceState(null,'','/home');
+    const event={request:{url:origin,query_string:'detailKind=check&objectId=private-check'},extra:{title:'private-title',tags:['private-tag']},breadcrumbs:[{category:'ui.click',message:'private-check'},{category:'console',message:'private-title'}]};
+    const out=options.beforeSend?.(event as unknown as ErrorEvent,{});
+    for(const secret of ['private-owner','private-repo','private-ref','private-folder','private-check','private-title','private-tag'])expect(JSON.stringify(out)).not.toContain(secret);
+  });
+});

@@ -274,6 +274,7 @@ describe('navigating to a short address', () => {
           [
             { path: 'chat', component: PageStub },
             { path: 'queries', component: PageStub },
+            { path: 'quick-search', component: PageStub },
             { path: '', component: PageStub },
           ] as Routes,
       },
@@ -526,6 +527,27 @@ describe('navigating to a short address', () => {
     expect(result.component).toBe(PageStub);
     expect(result.projectId).toBe('r@o@dir@main');
     expect(notice).toHaveBeenCalledWith('o', 'r', 'main');
+  });
+
+  describe('Quick Search owns q while chat questions remain private',()=>{
+    it.each([
+      ['/project/github.com/acme/demo/quick-search?q=customer&msg=private','/project/github.com/acme/demo/quick-search?q=customer'],
+      ['/project/github.com/acme/demo/tree/main/dir/-/quick-search?q=customer','/project/github.com/acme/demo/tree/HEAD/dir/-/quick-search?q=customer'],
+      ['/PROJECT/GITHUB.COM/acme/demo/QUICK-SEARCH?q=customer','/project/github.com/acme/demo/quick-search?q=customer'],
+    ])('preserves actual query through the real guard: %s',async(from,to)=>{
+      const result=await visit(from);expect(result.url).toBe(to);expect(result.component).toBe(PageStub);
+      const router=TestBed.inject(Router);
+      await router.navigateByUrl('/project/github.com/acme/demo/quick-search?q=order');
+      expect(router.url).toBe('/project/github.com/acme/demo/quick-search?q=order');
+    });
+    it('preserves q on a registered cloud project without probing anonymous GitHub',async()=>{
+      const url='/project/github.com/o/r/tree/HEAD/folder/-/quick-search?projectApi=cloud&branch=work&q=customer&msg=private';
+      const result=await visit(url);expect(result.url).toBe(url.replace('&msg=private',''));expect(summary).not.toHaveBeenCalled();expect(branch).not.toHaveBeenCalled();
+    });
+    it.each(['quick-searching','quick-search/extra','quick-seаrch','chat','queries'])('does not preserve q for lookalike or other page %s',async page=>{
+      const result=await visit('/project/github.com/acme/demo/'+page+'?q=private&msg=private');
+      expect(result.url).not.toMatch(/[?&](q|msg)=/);
+    });
   });
 
   // review r2, B1: whatever the inline script of the app concluded about an address, the question must not survive
