@@ -38,7 +38,7 @@ import {
   serverOutline,
   layersOutline,
 } from 'ionicons/icons';
-import { Subscription, combineLatest } from 'rxjs';
+import { Subscription, combineLatest, firstValueFrom, timeout } from 'rxjs';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { IProjectRef, equalProjectRef } from '../core/project-context';
@@ -326,11 +326,16 @@ import {
             Quick Search is disabled. Open Index settings to preview metadata
             and give indexing consent.
           </p>
+          @if (!schemaDetail) {
+            <ion-button (click)="settings.set(true)">Open Index settings</ion-button>
+          }
         }
-        <p aria-live="polite">
-          {{ groups().length }} {{ groups().length === 1 ? 'name' : 'names' }} ·
-          {{ items().length }} items
-        </p>
+        @if (status()?.state === 'ready' || schemaDetail) {
+          <p aria-live="polite">
+            {{ groups().length }} {{ groups().length === 1 ? 'name' : 'names' }} ·
+            {{ items().length }} items
+          </p>
+        }
         @if (!busy() && searched() && !groups().length) {
           <p role="status">
             {{
@@ -708,7 +713,9 @@ export class QuickSearchPageComponent {
     this.snapshot.set(undefined);
     this.error.set('');
     try {
-      const snapshot = await this.snapshots.preview(ref, this.environmentId());
+      const snapshot = this.status()?.supportsMetadataPreview
+        ? await firstValueFrom(this.api.preview(ref, this.environmentId()).pipe(timeout(15000)))
+        : await this.snapshots.preview(ref, this.environmentId());
       if (generation === this.generation) this.snapshot.set(snapshot);
     } catch {
       if (generation === this.generation)

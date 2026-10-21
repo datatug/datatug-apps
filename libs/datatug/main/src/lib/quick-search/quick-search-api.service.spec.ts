@@ -76,3 +76,26 @@ describe('QuickSearchApiService', () => {
     expect(api.getAsAnonymous).not.toHaveBeenCalled();
   });
 });
+
+describe('authenticated Quick Search metadata preview',()=>{
+  it('uses only the established qualified identity and optional environment body',()=>{
+    const post=vi.fn(()=>of({documents:[],sourceCoverage:[]}));
+    TestBed.configureTestingModule({providers:[{provide:DatatugApiService,useValue:{post}}]});
+    const service=TestBed.inject(QuickSearchApiService),ref={storeId:'github.com',projectId:'repo@owner@folder',projectApi:'cloud' as const,branch:'private-ref'};
+    service.preview(ref,'env-1').subscribe();
+    const [path,body,options]=post.mock.calls[0] as unknown as [string,unknown,{params:import('@angular/common/http').HttpParams}];
+    expect(path).toBe('datatug/project/quick-search/preview');
+    expect(body).toEqual({environmentId:'env-1'});
+    expect(options.params.get('project')).toBe('repo@owner@folder');
+    expect(options.params.get('branch')).toBe('private-ref');
+    service.preview(ref).subscribe();
+    expect((post.mock.calls[1] as unknown[])[1]).toEqual({});
+  });
+  it.each([SneatApiNotAuthenticatedError,{status:403}])('never retries preview anonymously (%s)',error=>{
+    const api={post:vi.fn(()=>throwError(()=>error)),postAsAnonymous:vi.fn()};
+    TestBed.configureTestingModule({providers:[{provide:DatatugApiService,useValue:api}]});
+    TestBed.inject(QuickSearchApiService).preview({storeId:'github.com',projectId:'repo@owner@',projectApi:'cloud'}).subscribe({error:()=>undefined});
+    expect(api.postAsAnonymous).not.toHaveBeenCalled();
+    expect(api.post).toHaveBeenCalledOnce();
+  });
+});
