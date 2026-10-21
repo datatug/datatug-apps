@@ -81,10 +81,16 @@ th {
   outline-offset: 2px;
 }
 
+:host {
+  display: block;
+  min-width: 0;
+  container: datatug-board-header / inline-size;
+}
+
 .widget-header {
   --min-height: 3rem;
 }
-@media (max-width: 36rem) {
+@container datatug-board-header (max-width: 42rem) {
   .header-action-text {
     display: none;
   }
