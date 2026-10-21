@@ -345,3 +345,20 @@ describe('SessionContextApiService DataTug API base URL', () => {
     expectDatatugApiRequest('GET', 'datatug/session-context/capabilities');
   });
 });
+
+
+describe('per-scope native dispatch metadata', () => {
+  it.each([false, undefined])('preserves explicit false or omitted eligibility without dropping either demo domain: %s', async eligibility => {
+    TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),SessionContextApiService]});
+    const http=TestBed.inject(HttpTestingController),service=TestBed.inject(SessionContextApiService);
+    const environments=[{environmentId:'demo',identityDomain:'invoice'},{environmentId:'demo',identityDomain:'shipping',...(eligibility===undefined?{}:{nativeDetective:eligibility})}];
+    const pending=service.capabilities(localProject);http.expectOne(r=>r.url.endsWith('/session-context/capabilities')).flush({...capabilities,environments});
+    expect((await pending).environments).toEqual(environments);http.verify();
+  });
+  it('refuses a string false instead of treating it as a native dispatch grant', async () => {
+    TestBed.configureTestingModule({providers:[provideHttpClient(),provideHttpClientTesting(),SessionContextApiService]});
+    const http=TestBed.inject(HttpTestingController),service=TestBed.inject(SessionContextApiService);
+    const pending=service.capabilities(localProject),assertion=expect(pending).rejects.toThrow('does not support');
+    http.expectOne(r=>r.url.endsWith('/session-context/capabilities')).flush({...capabilities,environments:[{environmentId:'demo',identityDomain:'shipping',nativeDetective:'false'}]});await assertion;http.verify();
+  });
+});

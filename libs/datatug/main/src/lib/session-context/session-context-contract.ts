@@ -108,7 +108,7 @@ export interface ContextCapabilities {
   readonly nativeDetective?: boolean;
   readonly operationScope?: DetectiveOperationScope;
   readonly schemaVersion: 1; readonly actorId: string; readonly databaseId: string; readonly projectId: string;
-  readonly environments: readonly (SessionScope & { readonly title?: string; readonly querySources?: readonly ContextQuerySource[] })[];
+  readonly environments: readonly (SessionScope & { readonly title?: string; readonly nativeDetective?: boolean; readonly querySources?: readonly ContextQuerySource[] })[];
   readonly actions: readonly ContextCommand['action'][];
   readonly subjects?: readonly {
     readonly id: string; readonly label: string; readonly subject: ContextSubject;
