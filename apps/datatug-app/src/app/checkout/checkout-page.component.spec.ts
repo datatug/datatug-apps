@@ -214,6 +214,15 @@ it.each([
 
     expect(root.textContent?.replace(/\s+/g, ' ')).toContain(copy);
     expect(root.querySelector('sneat-auth-panel')).toBeTruthy();
+    // New purchasers open on Sign up; a visitor returning from payment already
+    // has an account and keeps the default Sign in tab.
+    expect(
+      (
+        root.querySelector('sneat-auth-panel') as HTMLElement & {
+          initialMode?: string;
+        }
+      ).initialMode,
+    ).toBe(returning ? undefined : 'sign-up');
     expect(root.textContent).not.toContain(
       'Continue with your DataTug account',
     );
