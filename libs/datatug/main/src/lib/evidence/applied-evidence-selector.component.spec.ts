@@ -17,7 +17,7 @@ import {
 } from './applied-context.spec-helper';
 const ref = { storeId: 'firestore', spaceID: 'space', projectId: 'project' };
 describe('Explicit current applied context DOM selection', () => {
-  it.each(['actor', 'source-reset'] as const)(
+  it.each(['actor', 'source-reset', 'inspect'] as const)(
     'selects an actual applied revision before any Case, then clears matching %s without hidden writes',
     async (change) => {
       const snapshot = appliedSnapshot(),
@@ -59,12 +59,22 @@ describe('Explicit current applied context DOM selection', () => {
       const page = TestBed.createComponent(AppliedEvidenceSelectorComponent),
         values: unknown[] = [];
       page.componentInstance.selected.subscribe((value) => values.push(value));
+      if (change === 'inspect') page.componentRef.setInput('mode', 'inspect');
       page.componentRef.setInput('projectRef', ref);
       page.componentRef.setInput('actor', 'sarah');
       page.componentRef.setInput('environment', 'demo');
       page.componentRef.setInput('incidentRef', 'incidents/INC-1');
       page.detectChanges();
       await page.whenStable();
+      if (change === 'inspect') {
+        expect(page.nativeElement.textContent).toContain(
+          'Inspection does not Apply',
+        );
+        expect(page.nativeElement.textContent).not.toContain(
+          'Sharing attaches',
+        );
+      } else
+        expect(page.nativeElement.textContent).toContain('Sharing attaches');
       const load = page.nativeElement.querySelector('ion-button');
       load.click();
       await vi.waitFor(() => expect(api.list).toHaveBeenCalledOnce());

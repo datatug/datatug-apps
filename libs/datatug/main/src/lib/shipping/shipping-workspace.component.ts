@@ -1,3 +1,4 @@
+import { NativeSemanticBrowserComponent } from './native-semantic-browser.component';
 import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
 import { ShippingQueryAccessComponent } from './shipping-query-access.component';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -43,6 +44,7 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     ShippingQueryAccessComponent,
+    NativeSemanticBrowserComponent,
     RouterLink,
     IonButton,
     IonContent,
@@ -205,6 +207,10 @@ import {
       }
       @if (native()) {
         <sneat-shipping-component-installer />
+        <sneat-native-semantic-browser
+          [environments]="environments()"
+          [canWrite]="canWrite()"
+        />
       }
     </ion-content>`,
 })

@@ -36,12 +36,25 @@ import {
   selector: 'sneat-datatug-applied-evidence-selector',
   imports: [IonButton, IonSelect, IonSelectOption],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  template: `<section aria-label="Share retained evidence">
-    <p>
-      Sharing attaches the actual run to Incident {{ incidentRef() }}. Choose an
-      existing enabled, applied Context Bag revision. This does not Apply a
-      draft.
-    </p>
+  template: `<section
+    [attr.aria-label]="
+      mode() === 'inspect'
+        ? 'Choose inspection context'
+        : 'Share retained evidence'
+    "
+  >
+    @if (mode() === 'inspect') {
+      <p>
+        Choose an existing enabled applied Context Bag revision. Inspection does
+        not Apply a draft or share a run.
+      </p>
+    } @else {
+      <p>
+        Sharing attaches the actual run to Incident {{ incidentRef() }}. Choose
+        an existing enabled, applied Context Bag revision. This does not Apply a
+        draft.
+      </p>
+    }
     <ion-button
       (click)="load()"
       [disabled]="disabled() || busy() || !incidentRef()"
@@ -76,7 +89,9 @@ import {
       (ionChange)="selectChoice($event.detail.value)"
       [disabled]="disabled() || busy()"
     >
-      <ion-select-option value="">Do not share this run</ion-select-option>
+      <ion-select-option value="">{{
+        mode() === 'inspect' ? 'No revision selected' : 'Do not share this run'
+      }}</ion-select-option>
       @for (choice of choices(); track $index) {
         <ion-select-option [value]="String($index)"
           >{{ choice.label }} ·
@@ -96,6 +111,7 @@ import {
   </section>`,
 })
 export class AppliedEvidenceSelectorComponent {
+  readonly mode = input<'share' | 'inspect'>('share');
   readonly projectRef = input<IProjectRef>();
   readonly actor = input('');
   readonly environment = input('');

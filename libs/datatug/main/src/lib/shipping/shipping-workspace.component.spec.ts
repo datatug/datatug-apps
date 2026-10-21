@@ -1,3 +1,5 @@
+import { NativeSemanticApiService } from './native-semantic-api.service';
+import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { ShippingComponentApiService } from './shipping-component-api.service';
 import { signal } from '@angular/core';
@@ -63,6 +65,8 @@ describe('Shipping workspace native DOM lifecycle', () => {
     TestBed.configureTestingModule({
       imports: [ShippingWorkspaceComponent],
       providers: [
+        { provide: NativeSemanticApiService, useValue: {} },
+        { provide: ProjectAssetsApiService, useValue: {} },
         {
           provide: DatatugNavContextService,
           useValue: { currentEnv: of(undefined) },
