@@ -20,6 +20,7 @@ export enum ProjectItem {
 export type ProjectItemType = `${ProjectItem}`;
 
 export interface IProjectBase {
+  readonly environmentOrder?: readonly string[];
   id: string;
   title: string;
   access: ProjectAccess;
