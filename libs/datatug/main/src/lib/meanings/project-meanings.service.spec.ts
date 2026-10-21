@@ -1,3 +1,4 @@
+import { RepositoryMeaningsReaderService } from './repository-meanings-reader.service';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -37,6 +38,11 @@ describe('project meanings durable provider and public reads', () => {
     listDirectory: vi.fn(),
     getRawJson: vi.fn(),
   };
+  const discovery = {
+    enrich: vi.fn(
+      async (_ref: unknown, value: ProjectMeaningsCatalog) => value,
+    ),
+  };
   const assets = { boards: vi.fn(), board: vi.fn() };
   beforeEach(() => {
     vi.resetAllMocks();
@@ -49,6 +55,7 @@ describe('project meanings durable provider and public reads', () => {
           }
         : { storage: 'github.com', project: 'repo@owner@datatug' },
     );
+    discovery.enrich.mockImplementation(async (_ref, value) => value);
     api.meaningsCatalog.mockReturnValue(of(catalog));
     api.changeMeaning.mockReturnValue(
       of({ receipt: write.operationId, catalog }),
@@ -59,10 +66,36 @@ describe('project meanings durable provider and public reads', () => {
     TestBed.configureTestingModule({
       providers: [
         ProjectMeaningsService,
+        {
+          provide: RepositoryMeaningsReaderService,
+          useValue: discovery,
+        },
         { provide: ProjectQueryApiService, useValue: api },
         { provide: GithubProjectReaderService, useValue: github },
         { provide: ProjectAssetsReadService, useValue: assets },
       ],
+    });
+  });
+  it('re-enriches a durable mutation acknowledgement and retains success when optional discovery fails', async () => {
+    const service = TestBed.inject(ProjectMeaningsService);
+    discovery.enrich.mockImplementation(async (_ref, value) => ({
+      ...value,
+      discoveryComplete: false,
+      notices: ['An external source is unavailable.'],
+    }));
+    expect(await firstValueFrom(service.change(ref, write))).toMatchObject({
+      revision: catalog.revision,
+      writable: true,
+      referencesComplete: true,
+      discoveryComplete: false,
+    });
+    expect(discovery.enrich).toHaveBeenCalledWith(ref, catalog);
+    discovery.enrich.mockRejectedValue(new Error('source down'));
+    expect(await firstValueFrom(service.change(ref, write))).toMatchObject({
+      revision: catalog.revision,
+      writable: true,
+      referencesComplete: true,
+      discoveryComplete: false,
     });
   });
   it('uses the selected shared project only and propagates provider persistence failure', async () => {

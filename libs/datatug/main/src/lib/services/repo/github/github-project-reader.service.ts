@@ -159,6 +159,7 @@ interface IGithubGitTreeResponse {
 export interface IGithubWireQueryItem {
   tags?: string[];
   semanticModel?: IQueryDef['semanticModel'];
+  targets?: IQueryDef['targets'];
   id: string;
   title?: string;
   type: string;
@@ -1261,23 +1262,84 @@ export class GithubProjectReaderService {
   public listEntityIds(projectId: string): Observable<string[]> {
     return this.listDirectory(projectId, 'entities').pipe(
       map((entries) =>
-        entries.filter((e) => e.type === 'dir').map((e) => e.name),
+        [
+          ...new Set(
+            entries.flatMap((entry) =>
+              entry.type === 'dir'
+                ? [entry.name]
+                : entry.name.endsWith('.entity.json')
+                  ? [entry.name.slice(0, -'.entity.json'.length)]
+                  : [],
+            ),
+          ),
+        ].sort(),
       ),
     );
   }
-
-  /** One entity's full definition — `entities/<id>/<id>.entity.json`
-   * (mirrors `entity.service.ts`'s pre-existing `getEntityFromGithub`, now
-   * routed through this shared reader instead of its own ad hoc URL/split
-   * that silently ignored a project id's `@folder` segment). */
+  /** Resolve actual legacy layout before presenting a source link; ambiguous definitions fail closed. */
+  public entityDefinitionPath(
+    projectId: string,
+    entityId: string,
+  ): Observable<string> {
+    if (!entityId || /[\\/]/.test(entityId))
+      return throwError(() => new Error('Invalid entity identity.'));
+    const { folder } = parseGithubProjectId(projectId),
+      prefix = folder ? `${folder}/` : '';
+    const candidates = [
+      `entities/${entityId}/${entityId}.entity.json`,
+      `entities/${entityId}.entity.json`,
+    ];
+    return this.getTree(projectId).pipe(
+      switchMap((tree) => {
+        const matches = candidates.filter((path) =>
+          tree.some(
+            (entry) => entry.type === 'blob' && entry.path === prefix + path,
+          ),
+        );
+        if (!matches.length)
+          throw new Error('The project entity definition is missing.');
+        if (matches.length === 1) return of(matches[0]);
+        const decoded = (value: unknown) =>
+          JSON.stringify(value, (_key, item) =>
+            item && typeof item === 'object' && !Array.isArray(item)
+              ? Object.fromEntries(
+                  Object.entries(item).sort(([a], [b]) => a.localeCompare(b)),
+                )
+              : item,
+          );
+        return forkJoin(
+          matches.map((path) =>
+            this.getRawJson<IGithubEntityFile>(projectId, path),
+          ),
+        ).pipe(
+          map((definitions) => {
+            const normalized = definitions.map((value) =>
+              value ? { ...value, id: value.id || entityId } : value,
+            );
+            if (
+              !normalized[0] ||
+              decoded(normalized[0]) !== decoded(normalized[1])
+            )
+              throw new Error('The project entity definition is ambiguous.');
+            return matches[0];
+          }),
+        );
+      }),
+    );
+  }
   public getEntity(
     projectId: string,
     entityId: string,
   ): Observable<IGithubEntityFile> {
-    return this.getRawJson<IGithubEntityFile>(
-      projectId,
-      `entities/${entityId}/${entityId}.entity.json`,
-    ).pipe(map((data) => data || { id: entityId, fields: [] }));
+    return this.entityDefinitionPath(projectId, entityId).pipe(
+      switchMap((path) => this.getRawJson<IGithubEntityFile>(projectId, path)),
+      map((data) => {
+        // Existing entity callers keep their neutral default for an empty JSON body.
+        return data
+          ? { ...data, id: data.id || entityId }
+          : { id: entityId, fields: [] };
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -1447,6 +1509,7 @@ export class GithubProjectReaderService {
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
                 : {}),
+              targets: def?.targets,
               parameters: def?.parameters,
               relationshipBindings: def?.relationshipBindings,
               recordsets: def?.recordsets,
@@ -1544,6 +1607,7 @@ export class GithubProjectReaderService {
                   ...(def?.semanticModel
                     ? { semanticModel: def.semanticModel }
                     : {}),
+                  targets: def?.targets,
                   parameters: def?.parameters,
                   relationshipBindings: def?.relationshipBindings,
                   recordsets: def?.recordsets,
