@@ -62,6 +62,9 @@ function sharedQueryPage(rest: string): boolean {
     rest === '' ||
     rest === '/overview' ||
     rest === '/queries' ||
+    rest === '/boards' ||
+    rest === '/boards/new' ||
+    /^\/board\/[A-Za-z0-9_-]+$/.test(rest) ||
     rest === '/checks' ||
     rest === '/detective' ||
     rest === '/incidents' ||
@@ -71,7 +74,9 @@ function sharedQueryPage(rest: string): boolean {
     /^\/detective\/scenario\/[A-Za-z0-9_-]+$/.test(rest) ||
     /^\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*$/.test(rest) ||
     rest === '/sessions' ||
-    /^\/sessions\/[A-Za-z0-9_-]{1,128}(?:\/(?:overview|queries|invoice-overview|invoice-explorer|composer)|\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*)?$/.test(rest)
+    /^\/sessions\/[A-Za-z0-9_-]{1,128}(?:\/(?:overview|queries|invoice-overview|invoice-explorer|composer)|\/query\/[A-Za-z0-9_-]+(?:%2F[A-Za-z0-9_-]+)*)?$/.test(
+      rest,
+    )
   );
 }
 

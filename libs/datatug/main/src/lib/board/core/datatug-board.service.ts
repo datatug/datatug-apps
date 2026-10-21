@@ -4,6 +4,7 @@ import { map } from 'rxjs/operators';
 import { ISneatApiService } from '@sneat/api';
 import { DatatugApiService } from '../../services/base/datatug-api.service';
 import { STORE_ID_GITHUB_COM, STORE_TYPE_GITHUB } from '@sneat/core';
+import { isSharedProjectRef } from '../../core/project-context';
 import { Board } from '@datatug/board-models';
 import { CreateNamedRequest } from '../../dto/requests';
 import { IProjBoard } from '../../models/definition/project';
@@ -27,7 +28,8 @@ export class DatatugBoardService {
   // Injected directly, not via `SneatApiServiceFactory` — see the longer note
   // in `ProjectService`: the factory called `inject()` inside a method, which
   // throws NG0203 when the call originates from a UI event handler.
-  private readonly sneatApiService: ISneatApiService = inject(DatatugApiService);
+  private readonly sneatApiService: ISneatApiService =
+    inject(DatatugApiService);
   private readonly githubReader = inject(GithubProjectReaderService);
 
   getBoard(
@@ -71,6 +73,13 @@ export class DatatugBoardService {
 
   createNewBoard(request: CreateNamedRequest): Observable<IProjBoard> {
     const { projectRef } = request;
+    if (isSharedProjectRef(projectRef))
+      return throwError(
+        () =>
+          new Error(
+            'Open Boards and choose an environment to create a hosted board.',
+          ),
+      );
     if (isGithubStoreId(projectRef.storeId)) {
       return throwError(() => new Error(GITHUB_READ_ONLY_MESSAGE));
     }

@@ -216,13 +216,13 @@ describe('ProjectAssetsReadService', () => {
     expect(github.listDirectory).not.toHaveBeenCalled();
   });
 
-  it('fails explicitly for shared Firestore assets without a request or fallback', async () => {
+  it('requires an explicit environment for shared Firestore board reads without a fallback', async () => {
     const service = TestBed.inject(ProjectAssetsReadService);
     await expect(
       firstValueFrom(
         service.boards({ storeId: 'firestore', projectId: 'p', spaceID: 's' }),
       ),
-    ).rejects.toThrow('not supported');
+    ).rejects.toThrow('Choose an admitted environment');
     expect(api.boards).not.toHaveBeenCalled();
     expect(github.listDirectory).not.toHaveBeenCalled();
   });

@@ -81,6 +81,8 @@ import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { tabKey } from '../../components/board-widget/nested-tab-path';
+import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
+import { isSharedProjectRef } from '../../../../core/project-context';
 import { currentTutorialStep, tutorialSteps } from './tutorial-scenario';
 
 interface TutorialEditor {
@@ -126,6 +128,7 @@ interface TutorialStatus {
     DatatugServicesNavModule,
     DatatugServicesStoreModule,
     DatatugServicesUnsortedModule,
+    HostedBoardWorkspaceComponent,
     // BoardServiceModule,
     SneatDatatugPageTitleComponent,
     IonHeader,
@@ -174,6 +177,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   // detection & state" section and
   // pages/signed-in/project/project-page.component.ts (PR #95) for the
   // established pattern.
+  readonly hostedProject = computed(() => {
+    const ref = this.projectRef();
+    return !!ref && isSharedProjectRef(ref);
+  });
   readonly boardId = signal<string | null | undefined>(undefined);
 
   readonly projBoard = signal<IProjBoard | undefined>(undefined);
@@ -424,7 +431,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.loadError.set(undefined);
           this.favoriteError.set(undefined);
           this.loading.set(true);
-          if (!ref) return EMPTY;
+          if (!ref || isSharedProjectRef(ref)) {
+            this.loading.set(false);
+            return EMPTY;
+          }
           if (!id) {
             this.loading.set(false);
             this.loadError.set('Board ID is missing.');

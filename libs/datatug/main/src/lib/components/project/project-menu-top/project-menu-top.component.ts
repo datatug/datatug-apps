@@ -304,7 +304,12 @@ export class ProjectMenuTopComponent implements OnDestroy {
 
   incidentsProjectRoute(): UrlTree | string {
     const projectRef = this.project?.ref;
-    if ((isCanonicalPublicDemo(projectRef) || (projectRef && isSharedProjectRef(projectRef))) && this.router && projectRef) {
+    if (
+      (isCanonicalPublicDemo(projectRef) ||
+        (projectRef && isSharedProjectRef(projectRef))) &&
+      this.router &&
+      projectRef
+    ) {
       return this.router.parseUrl(projectPageHref(projectRef, 'incidents'));
     }
     return '/incidents';
@@ -321,9 +326,14 @@ export class ProjectMenuTopComponent implements OnDestroy {
     if (
       (this.cliBridgeChat && page !== 'chat') ||
       (this.metadataOnly() &&
-        !['overview', 'queries', 'checks', 'detective', 'sessions'].includes(
-          page,
-        ))
+        ![
+          'overview',
+          'queries',
+          'checks',
+          'detective',
+          'sessions',
+          'boards',
+        ].includes(page))
     )
       return false;
     const project = this.project;

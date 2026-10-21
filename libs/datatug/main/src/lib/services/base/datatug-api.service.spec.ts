@@ -1,4 +1,4 @@
-import { provideHttpClient } from '@angular/common/http';
+import { HttpResponse, provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   provideHttpClientTesting,
@@ -34,21 +34,27 @@ describe('DatatugApiService', () => {
     ['POST', 'datatug/github/oauth/resolve-repository'],
     ['POST', 'datatug/github/authorization/start'],
     ['POST', 'datatug/github/authorization/complete'],
-  ])('keeps TEST %s %s on the injected authoritative service', (method, endpoint) => {
-    const http = configure([
-      { provide: SneatApiBaseUrl, useValue: identity },
-      { provide: DatatugApiBaseUrl, useValue: preview },
-    ]);
-    const api = TestBed.inject(DatatugApiService);
-    const body = { operationID: 'operation', state: 'state' };
-    (method === 'GET' ? api.get(endpoint) : api.post(endpoint, body)).subscribe();
-    const request = http.expectOne(identity + endpoint);
-    expect(request.request.method).toBe(method);
-    expect(request.request.headers.get('Authorization')).toBe('Bearer token');
-    if (method === 'POST') expect(request.request.body).toEqual(body);
-    request.flush({});
-    http.verify();
-  });
+  ])(
+    'keeps TEST %s %s on the injected authoritative service',
+    (method, endpoint) => {
+      const http = configure([
+        { provide: SneatApiBaseUrl, useValue: identity },
+        { provide: DatatugApiBaseUrl, useValue: preview },
+      ]);
+      const api = TestBed.inject(DatatugApiService);
+      const body = { operationID: 'operation', state: 'state' };
+      (method === 'GET'
+        ? api.get(endpoint)
+        : api.post(endpoint, body)
+      ).subscribe();
+      const request = http.expectOne(identity + endpoint);
+      expect(request.request.method).toBe(method);
+      expect(request.request.headers.get('Authorization')).toBe('Bearer token');
+      if (method === 'POST') expect(request.request.body).toEqual(body);
+      request.flush({});
+      http.verify();
+    },
+  );
 
   it.each([
     ['POST', 'datatug/projects/create_project'],
@@ -60,24 +66,34 @@ describe('DatatugApiService', () => {
     ['GET', 'datatug/github/oauth/start'],
     ['GET', 'datatug/github/oauth/repositories/extra'],
     ['GET', 'datatug/github/oauth/repositories?redirect=https://other.test'],
-  ])('keeps non-identity TEST %s %s on the scoped preview', (method, endpoint) => {
-    const http = configure([
-      { provide: SneatApiBaseUrl, useValue: identity },
-      { provide: DatatugApiBaseUrl, useValue: preview },
-    ]);
-    const api = TestBed.inject(DatatugApiService);
-    (method === 'GET' ? api.get(endpoint) : api.post(endpoint, {})).subscribe();
-    http.expectOne(preview + endpoint).flush({});
-    http.verify();
-  });
+  ])(
+    'keeps non-identity TEST %s %s on the scoped preview',
+    (method, endpoint) => {
+      const http = configure([
+        { provide: SneatApiBaseUrl, useValue: identity },
+        { provide: DatatugApiBaseUrl, useValue: preview },
+      ]);
+      const api = TestBed.inject(DatatugApiService);
+      (method === 'GET'
+        ? api.get(endpoint)
+        : api.post(endpoint, {})
+      ).subscribe();
+      http.expectOne(preview + endpoint).flush({});
+      http.verify();
+    },
+  );
 
   it('does not change identity routes for another overridden DataTug base', () => {
     const http = configure([
       { provide: SneatApiBaseUrl, useValue: identity },
       { provide: DatatugApiBaseUrl, useValue: 'https://datatug.test/v0/' },
     ]);
-    TestBed.inject(DatatugApiService).get('datatug/github/oauth/repositories').subscribe();
-    http.expectOne('https://datatug.test/v0/datatug/github/oauth/repositories').flush({});
+    TestBed.inject(DatatugApiService)
+      .get('datatug/github/oauth/repositories')
+      .subscribe();
+    http
+      .expectOne('https://datatug.test/v0/datatug/github/oauth/repositories')
+      .flush({});
     http.verify();
   });
 
@@ -86,12 +102,49 @@ describe('DatatugApiService', () => {
       { provide: SneatApiBaseUrl, useValue: identity },
       { provide: DatatugApiBaseUrl, useValue: preview },
     ]);
-    const response = firstValueFrom(TestBed.inject(DatatugApiService).get('datatug/github/oauth/repositories'));
-    http.expectOne(identity + 'datatug/github/oauth/repositories').flush({}, { status: 401, statusText: 'Unauthorized' });
-    const retry = http.expectOne(identity + 'datatug/github/oauth/repositories');
+    const response = firstValueFrom(
+      TestBed.inject(DatatugApiService).get(
+        'datatug/github/oauth/repositories',
+      ),
+    );
+    http
+      .expectOne(identity + 'datatug/github/oauth/repositories')
+      .flush({}, { status: 401, statusText: 'Unauthorized' });
+    const retry = http.expectOne(
+      identity + 'datatug/github/oauth/repositories',
+    );
     expect(retry.request.headers.get('Authorization')).toBe('Bearer token');
     retry.flush({ repositories: [] });
     await expect(response).resolves.toEqual({ repositories: [] });
+    http.verify();
+  });
+
+  it('retains real response headers and the authenticated 401 retry for asset detail', async () => {
+    const http = configure([
+      { provide: DatatugApiBaseUrl, useValue: 'https://datatug.test/v0/' },
+    ]);
+    const pending = firstValueFrom(
+      TestBed.inject(DatatugApiService).getResponse<{ id: string }>(
+        'datatug/boards/board',
+      ),
+    );
+    const first = http.expectOne(
+      'https://datatug.test/v0/datatug/boards/board',
+    );
+    expect(first.request.headers.get('Authorization')).toBe('Bearer token');
+    first.flush({}, { status: 401, statusText: 'Unauthorized' });
+    const retry = http.expectOne(
+      'https://datatug.test/v0/datatug/boards/board',
+    );
+    expect(retry.request.headers.get('Authorization')).toBe('Bearer token');
+    retry.flush(
+      { id: 'b' },
+      { headers: { ETag: '"rev"', 'X-Datatug-Asset-Revision': 'rev' } },
+    );
+    const result = await pending;
+    expect(result).toBeInstanceOf(HttpResponse);
+    expect(result.body).toEqual({ id: 'b' });
+    expect(result.headers.get('ETag')).toBe('"rev"');
     http.verify();
   });
 

@@ -28,6 +28,8 @@ import {
   tap,
 } from 'rxjs/operators';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
+import { HostedBoardListComponent } from './hosted-board-list.component';
+import { isSharedProjectRef } from '../../../../core/project-context';
 import { equalProjectRef } from '../../../../core/project-context';
 import {
   IProjBoard,
@@ -64,6 +66,7 @@ import { projectPageHref } from '../../../../nav/project-page-href';
     // fix, same cause, as `EnvironmentsPageComponent`/`QueriesPageComponent`
     // (S120 PR #89, S121 Task 17 item B.1) — mirrors the exact module set
     // those pages already declare for the identical transitive chain.
+    HostedBoardListComponent,
     DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesProjectModule,
@@ -116,6 +119,10 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
   readonly loadError = signal<string | undefined>(undefined);
   defaultHref?: string;
   readonly project = signal<IProjectContext | undefined>(undefined);
+  readonly hostedProject = computed(() => {
+    const ref = this.project()?.ref;
+    return !!ref && isSharedProjectRef(ref);
+  });
   readonly unsupportedProject = computed(() => {
     const ref = this.project()?.ref;
     return !!ref?.spaceID;
@@ -146,7 +153,7 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
         switchMap(({ ref }) => {
           this.boards.set(undefined);
           this.loadError.set(undefined);
-          return ref
+          return ref && !isSharedProjectRef(ref)
             ? this.assets.boards(ref).pipe(
                 map((boards) => ({ status: 'success' as const, boards })),
                 catchError((err: unknown) => {
