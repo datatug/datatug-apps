@@ -224,18 +224,18 @@ describe('ServersPage source discovery lifecycle', () => {
 
     expect(
       fixture.nativeElement.querySelectorAll(
-        '[data-testid^="database-declaration:"]',
+        '[data-testid^="database-database:"]',
       ),
     ).toHaveLength(6);
     expect(
       fixture.nativeElement.querySelectorAll(
-        '[data-testid^="database-declaration:"] .database-instance-separated',
+        '[data-testid^="database-database:"] .database-instance-separated',
       ),
     ).toHaveLength(12);
     expect(
       [
         ...fixture.nativeElement.querySelectorAll(
-          '[data-testid^="database-declaration:"]',
+          '[data-testid^="database-database:"]',
         ),
       ].every(
         (item) =>
@@ -294,14 +294,19 @@ describe('ServersPage source discovery lifecycle', () => {
     expect(text).toContain('accounting');
     expect(text).toContain('warehouse-mysql');
     expect(text).toContain('db.internal:5432');
-    expect(text).toContain('Total: 2 databases · 3 instances');
+    expect(text).toContain('Total: 2 databases · 3 source instances');
+    expect(
+      [...fixture.nativeElement.querySelectorAll('ion-badge')].map((badge) =>
+        badge.textContent?.trim(),
+      ),
+    ).toEqual(['2', '2 databases']);
     expect(
       fixture.nativeElement.querySelectorAll('.instance-action'),
     ).toHaveLength(2);
 
     fixture.nativeElement
       .querySelector(
-        '[data-testid="database-catalog:accounting"] .instance-action',
+        '[data-testid="database-database:accounting"] .instance-action',
       )
       .click();
     expect(navigateForward).toHaveBeenCalledWith(
@@ -318,6 +323,105 @@ describe('ServersPage source discovery lifecycle', () => {
 
     expect(fixture.nativeElement.textContent).toContain(
       'No databases are configured in this project.',
+    );
+  });
+
+  it.each(['servers', 'environments', 'declarations'] as const)(
+    'does not claim the project is empty when only %s has resolved empty',
+    async (resolvedSource) => {
+      current$.next({ storeId: 'http://agent', projectId: 'pending' });
+      if (resolvedSource === 'servers') serversByRequest[0].next([]);
+      if (resolvedSource === 'environments') environmentsByRequest[0].next([]);
+      if (resolvedSource === 'declarations')
+        catalogsByRequest[0].next({ connections: [] });
+      await fixture.whenStable();
+
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('Loading database sources...');
+      expect(text).not.toContain('No databases are configured');
+    },
+  );
+
+  it('merges exact catalog and dataset identifiers, deduplicates full-scope instances, and preserves case and whitespace distinctions', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'identities' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([
+      {
+        id: 'prod',
+        title: 'Production',
+        dbServers: [
+          {
+            id: 'postgres',
+            driver: 'postgres',
+            host: 'db.internal',
+            catalogs: ['Reporting', 'Reporting', 'reporting', ' Reporting '],
+          },
+        ],
+      },
+    ]);
+    const declarations = [
+      {
+        id: 'reporting-api',
+        dataset: 'Reporting',
+        storage: 'postgresql',
+        source: 'https://one.example/reporting',
+        environments: ['prod'],
+      },
+      {
+        id: 'reporting-api',
+        dataset: 'Reporting',
+        storage: 'postgresql',
+        source: 'https://two.example/reporting',
+        environments: ['prod'],
+      },
+      {
+        id: 'reporting-api',
+        dataset: 'reporting',
+        storage: 'postgresql',
+        source: 'https://one.example/reporting',
+        environments: ['prod'],
+      },
+      {
+        id: 'reporting-api',
+        dataset: ' Reporting ',
+        storage: 'postgresql',
+        source: 'https://one.example/reporting',
+        environments: ['prod'],
+      },
+    ];
+    catalogsByRequest[0].next({
+      connections: [declarations[0], ...declarations, declarations[0]],
+    });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.textContent).toContain(
+      'Total: 3 databases · 7 source instances',
+    );
+    expect(
+      fixture.nativeElement.querySelectorAll(
+        '[data-testid="database-database:Reporting"] .database-instance',
+      ),
+    ).toHaveLength(3);
+    const firstKeys = [
+      ...fixture.nativeElement.querySelectorAll('[data-instance-key]'),
+    ].map((item) => item.getAttribute('data-instance-key'));
+
+    fixture.componentInstance['retryCatalogSources']();
+    catalogsByRequest[1].next({ connections: [...declarations].reverse() });
+    await fixture.whenStable();
+    expect(
+      [...fixture.nativeElement.querySelectorAll('[data-instance-key]')].map(
+        (item) => item.getAttribute('data-instance-key'),
+      ),
+    ).toEqual(firstKeys);
+
+    fixture.nativeElement
+      .querySelector(
+        '[data-testid="database-database:Reporting"] .instance-action',
+      )
+      .click();
+    expect(navigateForward).toHaveBeenCalledWith(
+      '/store/http-agent/project/identities/env/prod/db/Reporting',
     );
   });
 
@@ -512,6 +616,12 @@ describe('ServersPage source discovery lifecycle', () => {
 
     expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
     expect(fixture.nativeElement.textContent).toContain('chinook');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Loading remaining database sources...',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'No databases are configured',
+    );
 
     environmentsByRequest[0].error(new Error('environment read unavailable'));
     await fixture.whenStable();
@@ -522,6 +632,9 @@ describe('ServersPage source discovery lifecycle', () => {
     await fixture.whenStable();
     expect(fixture.nativeElement.textContent).toContain('data/dev.sqlite');
     expect(fixture.nativeElement.textContent).toContain('chinook');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Loading remaining database sources...',
+    );
 
     environmentsByRequest[1].next([{ id: 'prod', title: 'PROD' }]);
     await fixture.whenStable();
@@ -918,7 +1031,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
 
   function databaseLabelText(): string | undefined {
     const innerHtml = fixture.nativeElement.querySelector(
-      '[data-testid^="database-catalog:"] .database-name',
+      '[data-testid="database-database:chinook-local"] .database-name',
     )?.innerHTML;
     return innerHtml === undefined ? undefined : stripComments(innerHtml);
   }
@@ -1025,7 +1138,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     expect(dbTabBadgeText()).toBe('0');
     expect(html()).toContain('Total: 0 databases');
     expect(
-      fixture.nativeElement.querySelector('[data-testid^="database-catalog:"]'),
+      fixture.nativeElement.querySelector('[data-testid^="database-database:"]'),
     ).toBeNull();
   });
 

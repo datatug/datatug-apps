@@ -178,6 +178,7 @@ export class ServersPageComponent implements OnDestroy {
       instance: ProjectDatabaseGroup['instances'][number],
     ) => {
       const existing = groups.get(key);
+      if (existing?.instances.some((item) => item.key === instance.key)) return;
       groups.set(key, {
         key,
         title,
@@ -191,8 +192,13 @@ export class ServersPageComponent implements OnDestroy {
         environment.dbServer ??
         []) {
         for (const catalog of server.catalogs ?? []) {
-          add(`catalog:${catalog}`, catalog, 'database', {
-            key: `catalog:${environment.id}:${catalog}:${serverKey(server)}`,
+          if (!catalog) continue;
+          add(`database:${catalog}`, catalog, 'database', {
+            key: scopedKey('catalog', [
+              environment.id,
+              catalog,
+              serverKey(server),
+            ]),
             title: 'Registered catalog',
             driver: server.driver,
             detail: serverLocation(server),
@@ -208,7 +214,7 @@ export class ServersPageComponent implements OnDestroy {
       }
     }
     for (const source of this.catalogSources() ?? []) {
-      const dataset = source.dataset?.trim();
+      const dataset = source.dataset;
       if (!dataset) continue;
       if (
         environmentFilterAvailable &&
@@ -217,12 +223,21 @@ export class ServersPageComponent implements OnDestroy {
       ) {
         continue;
       }
-      add(`declaration:${dataset}`, dataset, 'database', {
-        key: `declaration:${source.id ?? source.storage ?? dataset}`,
+      const environments = [...(source.environments ?? [])].sort();
+      add(`database:${dataset}`, dataset, 'database', {
+        key: scopedKey('declaration', [
+          dataset,
+          source.id ?? '',
+          source.storage ?? '',
+          source.source ?? '',
+          source.readiness ?? '',
+          source.query ?? '',
+          ...environments,
+        ]),
         title: source.id || source.storage || 'Declared connection',
         driver: this.sourceFormat(source),
         detail: '',
-        environments: source.environments ?? [],
+        environments,
         availability: this.sourceAccess(source),
         source: source.source,
       });
@@ -246,8 +261,16 @@ export class ServersPageComponent implements OnDestroy {
           : {}),
       });
     }
-    if (!query) return [...groups.values()];
-    return [...groups.values()].filter((group) =>
+    const normalizedGroups = [...groups.values()]
+      .map((group) => ({
+        ...group,
+        instances: [...group.instances].sort((a, b) =>
+          a.key.localeCompare(b.key),
+        ),
+      }))
+      .sort((a, b) => a.key.localeCompare(b.key));
+    if (!query) return normalizedGroups;
+    return normalizedGroups.filter((group) =>
       [
         group.title,
         ...group.instances.flatMap((instance) => [
@@ -261,11 +284,16 @@ export class ServersPageComponent implements OnDestroy {
     );
   });
 
+  protected readonly databaseCount = computed(
+    () =>
+      this.databaseGroups().filter((group) => group.kind === 'database').length,
+  );
+
   protected readonly databaseSourcesLoading = computed(
     () =>
-      this.environments() === undefined &&
-      this.catalogSources() === undefined &&
-      this.dbServers() === undefined,
+      (this.environments() === undefined && !this.environmentsError()) ||
+      (this.catalogSources() === undefined && !this.catalogError()) ||
+      (this.dbServers() === undefined && !this.dbServersError()),
   );
 
   protected readonly databaseSourcesEmptyMessage = computed(() => {
@@ -752,3 +780,8 @@ const serverLocation = (server: IDbServer): string =>
   (server.host?.trim()
     ? `${server.host.trim()}${server.port ? `:${server.port}` : ''}`
     : 'Project configuration');
+
+// JSON preserves case and whitespace while length-safe array encoding avoids
+// collisions between scopes such as ["a:b", "c"] and ["a", "b:c"].
+const scopedKey = (kind: string, scope: readonly string[]): string =>
+  `${kind}:${JSON.stringify(scope)}`;

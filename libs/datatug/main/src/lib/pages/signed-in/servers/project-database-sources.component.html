@@ -25,6 +25,11 @@
       >
     </ion-item>
   }
+  @if (loading() && groups().length) {
+    <ion-item>
+      <ion-label color="medium">Loading remaining database sources...</ion-label>
+    </ion-item>
+  }
   @for (group of groups(); track group.key) {
     <ion-item lines="full" [attr.data-testid]="'database-' + group.key">
       <ion-icon name="server-outline" slot="start" color="primary" />
@@ -37,6 +42,7 @@
         ) {
           <p
             class="database-instance"
+            [attr.data-instance-key]="instance.key"
             [class.database-instance-separated]="!last"
           >
             @if (instance.target) {
@@ -109,7 +115,7 @@
       Total: {{ databaseCount() }}
       {{ databaseCount() === 1 ? 'database' : 'databases' }} ·
       {{ instanceCount() }}
-      {{ instanceCount() === 1 ? 'instance' : 'instances' }}
+      {{ instanceCount() === 1 ? 'source instance' : 'source instances' }}
     </ion-label>
     <ion-button slot="end" fill="outline" (click)="addServer.emit()"
       >Add DB server</ion-button
