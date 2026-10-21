@@ -112,10 +112,10 @@ test('a Board card runs an arbitrary pinned SQLite edition with its own schema',
       headers: { 'access-control-allow-origin': '*' },
     }));
     await page.goto(PROJECT_URL);
-    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
-    await expect(environment).toBeVisible();
-    await environment.click();
-    await page.getByRole('radio', { name: 'dev' }).click();
+    await page
+      .locator('sneat-datatug-menu-env-selector')
+      .getByRole('button', { name: 'dev', exact: true })
+      .click();
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
     await page.getByRole('link', { name: 'Chinook customer insights' }).last().click();
     const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Country ledger' });
@@ -385,11 +385,10 @@ test.describe('GitHub-store project — every side-menu page loads without error
       ),
     ).toBeVisible();
 
-    // --- Environments (side-menu click) ------------------------------------
+    // --- Environments (selector heading link) -----------------------------
     await page
-      .locator('sneat-datatug-project-menu-top ion-item', {
-        hasText: 'Environments',
-      })
+      .locator('sneat-datatug-menu-env-selector')
+      .getByRole('link', { name: 'Environments', exact: true })
       .click();
     const environmentRows = activePage(page).getByTestId(
       'environment-list-item',
@@ -476,10 +475,10 @@ test.describe('GitHub-store project — every side-menu page loads without error
   }) => {
     const errors = installErrorLoggerWatch(page);
     await page.goto(PROJECT_URL);
-    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
-    await expect(environment).toBeVisible();
-    await environment.click();
-    await page.getByRole('radio', { name: 'dev' }).click();
+    await page
+      .locator('sneat-datatug-menu-env-selector')
+      .getByRole('button', { name: 'dev', exact: true })
+      .click();
     await page
       .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
       .click();

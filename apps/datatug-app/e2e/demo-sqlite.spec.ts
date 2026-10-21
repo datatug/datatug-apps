@@ -64,10 +64,10 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     await editName(page, SQLITE_ORIGINAL_ARTIST_1, edited);
     await page.locator('a.brand-home-link').first().click();
     await page.getByTestId('open-demo-github').click();
-    const environment = page.locator('sneat-datatug-menu-env-selector ion-select');
-    await expect(environment).toBeVisible();
-    await environment.click();
-    await page.getByRole('radio', { name: 'dev' }).click();
+    await page
+      .locator('sneat-datatug-menu-env-selector')
+      .getByRole('button', { name: 'dev', exact: true })
+      .click();
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
     await page.getByRole('link', { name: 'Chinook customer insights' }).last().click();
     const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Live artist names' });

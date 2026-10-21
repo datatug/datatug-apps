@@ -23,19 +23,36 @@ test('environment selector follows project data, URL, reload, and Clear', async 
 }) => {
   await page.goto(PROJECT_URL);
   const selector = page.locator('sneat-datatug-menu-env-selector ion-select');
-  await expect(selector).toBeVisible({ timeout: 20_000 });
+  const environmentControls = page.locator('sneat-datatug-menu-env-selector');
+  const choices = environmentControls.getByRole('group', { name: 'Choose an environment' });
+  await expect(choices.getByRole('button')).toHaveCount(5);
+  await expect(selector).toHaveCount(0);
+  await expect(page.locator('sneat-datatug-project-menu-top').getByRole('link', { name: 'Environments', exact: true })).toHaveCount(0);
+  await environmentControls.getByRole('link', { name: 'Environments', exact: true }).click();
+  await expect(page).toHaveURL(/\/environments$/);
+
+  await choices.getByRole('button', { name: 'prod', exact: true }).click();
+  await expect(page).toHaveURL(/\/env\/prod$/);
+  await expect(selector).toBeVisible();
   await expect(selector.locator('ion-select-option')).toHaveCount(5);
+  await expect(selector).toHaveJSProperty('value', 'prod');
+  await expect(choices).toHaveCount(0);
+  const iconEndGap = await selector.locator('.select-icon').evaluate((icon) => {
+    const root = icon.getRootNode() as ShadowRoot;
+    return root.host.getBoundingClientRect().right - icon.getBoundingClientRect().right;
+  });
+  expect(iconEndGap).toBeLessThanOrEqual(12);
 
   await selector.click();
-  await page.getByRole('radio', { name: 'prod' }).click();
-  await expect(page).toHaveURL(/\/env\/prod$/);
-  await expect(selector).toHaveJSProperty('value', 'prod');
+  await page.getByRole('radio', { name: 'local', exact: true }).click();
+  await expect(page).toHaveURL(/\/env\/local$/);
+  await expect(selector).toHaveJSProperty('value', 'local');
 
   await page.reload();
   const reloadedSelector = page.locator(
     'sneat-datatug-menu-env-selector ion-select',
   );
-  await expect(reloadedSelector).toHaveJSProperty('value', 'prod');
+  await expect(reloadedSelector).toHaveJSProperty('value', 'local');
 
   await page
     .locator('sneat-datatug-menu-env-selector ion-button[color="medium"]')
@@ -43,7 +60,8 @@ test('environment selector follows project data, URL, reload, and Clear', async 
   await expect(page).toHaveURL(/\/demo-project-1\/?$/);
   await expect(
     page.locator('sneat-datatug-menu-env-selector ion-select'),
-  ).toHaveJSProperty('value', undefined);
+  ).toHaveCount(0);
+  await expect(choices.getByRole('button')).toHaveCount(5);
   await page.reload();
   await expect(page).toHaveURL(/\/demo-project-1\/?$/);
   await expect(
