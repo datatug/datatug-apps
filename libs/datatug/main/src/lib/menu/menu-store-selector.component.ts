@@ -71,16 +71,20 @@ export class MenuStoreSelectorComponent implements OnDestroy {
     const storeId = this.currentStoreId();
     if (!storeId || stores.some((store) => store.id === storeId)) return stores;
 
-    const ref = parseDatatugStoreRef(storeId);
-    return [
-      {
-        id: storeId,
-        title: storeIdToDisplayLabel(storeId),
-        type: ref.type,
-        url: ref.url,
-      },
-      ...stores,
-    ];
+    try {
+      const ref = parseDatatugStoreRef(storeId);
+      return [
+        {
+          id: storeId,
+          title: storeIdToDisplayLabel(storeId),
+          type: ref.type,
+          url: ref.url,
+        },
+        ...stores,
+      ];
+    } catch {
+      return stores;
+    }
   });
 
   private readonly destroyed = new Subject<void>();

@@ -63,6 +63,13 @@ describe('MenuStoreSelectorComponent', () => {
       }),
     );
     expect(goStore).not.toHaveBeenCalled();
+
+    currentStoreId.next('unsupported-store');
+    fixture.detectChanges();
+    expect(() => fixture.componentInstance.stores()).not.toThrow();
+    expect(fixture.componentInstance.stores()).toContainEqual(
+      expect.objectContaining({ id: 'github.com' }),
+    );
   });
 
   it('navigates to the selected store so its projects can be browsed', async () => {
