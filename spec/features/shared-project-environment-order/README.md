@@ -51,8 +51,18 @@ overview tab at implementation time must move to or remain reachable from the
 full Environments page before the duplicate is removed.
 
 If I have current project-metadata write access, I follow the Environments label
-to the full Environments page and open **Manage order** there. I move rows by
-drag handle or by visible Move up and Move down controls that also work from the
+to the full Environments page. The page title remains **Environments**, without
+a second Environments card heading. Each environment uses a neutral row surface
+rather than filling the whole row with its presentation color. A compact
+severity chip and the environment navigation link convey the metadata-derived
+caution level with text, iconography, and an accessible color treatment.
+
+The page-header **Add environment** action reveals and focuses a compact inline
+creation row after the existing environments. The row contains a name input,
+Add, and Cancel; no empty form occupies the page before I ask to add an
+environment. A successful create appears through the same canonical environment
+reader and order resolver. I can then open **Manage order**, move rows by drag
+handle or by visible Move up and Move down controls that also work from the
 keyboard. On a narrow screen the controls remain visible and usable without
 hover. Cancel returns to the full Environments page with the persisted order
 unchanged. Save disables duplicate submission, shows progress, and stays on the
@@ -100,6 +110,61 @@ saved list are appended in default order. Thus custom, newly created, and
 remaining environments never disappear because order metadata is incomplete.
 Editors surface that the saved order needs repair. The next accepted save emits
 one complete, duplicate-free list for the then-current environment set.
+
+### Severity presentation
+
+Environment order and environment caution are separate contracts. Order never
+creates, upgrades, or downgrades a caution level. The presentation resolver
+uses only stored environment presentation metadata. The currently supported
+metadata has `label`, `icon`, and Ionic `tone`; it has no independent severity
+field. Existing behavior maps `danger` to **High caution** and `warning` to
+**Use caution**. Those two mappings remain the only metadata-derived caution
+levels until the project contract gains an explicit severity value.
+
+The full Environments page renders every environment on a neutral background.
+For a `danger` or `warning` tone it shows a small severity chip containing the
+existing caution text and matching accessible danger or warning color, and
+styles the environment navigation link with that same caution color. The chip text and
+warning icon make the meaning available without color. For `primary`,
+`success`, invalid, or missing tone metadata, the row and link use the normal
+neutral text treatment and no caution chip is shown; these tones do not imply a
+safety level. Custom IDs and aliases receive no caution treatment merely from
+their ID or resolved position. The compact overview row uses the same resolver
+and lightweight link/icon treatment, without a colored block background.
+
+This changes presentation only. Stored label, icon, tone, warning text, access,
+and runtime risk semantics are preserved. If an explicit severity property is
+introduced later, its allowed values and label/color mapping require a versioned
+project-contract change rather than inference from environment order.
+
+### Inline environment creation
+
+The Environments page keeps its page title and removes the repeated card
+heading. An **Add environment** action in the page header is visible and enabled
+only when the current project/store advertises a real create-environment
+capability and the current actor has project write access. Activating it reveals
+one inline editor as the final list row and moves focus to its name input.
+Cancel clears the draft, hides the row, and returns focus to the header action.
+
+Submission reuses the existing `EnvironmentService.createEnvironment` contract:
+`POST datatug/environment/create_environment` with the exact `projectRef` and a
+trimmed, nonempty `name`. The server remains authoritative for ID generation,
+duplicate names, store-specific validation, and access. Enter and the Add
+button submit the same operation. While it is pending, the input and both
+submission paths cannot send a second request. A validation, authorization,
+conflict, network, or server error keeps the editor and draft visible, restores
+usable controls, associates the error with the input/action, and permits retry
+or cancel.
+
+The page does not optimistically claim creation from an HTTP acknowledgement.
+After success it rereads the canonical environment collection. Only that read
+adds the new stable ID to the list, after which the shared order resolver places
+it using the saved-order reconciliation rule for missing live IDs. Creation
+does not rewrite `environmentOrder`, classify from the display name, or change
+any existing environment ID, metadata, selection, or scope. A store without a
+verified authenticated implementation of the create contract exposes no
+enabled Add action; the browser never substitutes a direct Firestore, provider,
+or filesystem write.
 
 ### Shared persistence and authority
 
@@ -156,18 +221,25 @@ moves around it.
 ### Current capability boundary
 
 At specification time, `IEnvironmentPresentation` contains only label, icon and
-tone; `IProjectSummary` and Core's `ProjectFile` have no order field. Environment
+tone. Its shared resolver maps `danger` to `High caution`, `warning` to `Use
+caution`, and invalid or absent tone to neutral; it does not label other tones
+as safe. `IProjectSummary` and Core's `ProjectFile` have no order field. Environment
 lists arrive through separate GitHub, local-agent, hosted project-state and
 summary paths. Hosted shared-project summary serialization does not expose an
 order, the general project-assets reader rejects shared-project environment
 reads, the backend has no project-metadata order mutation, and the local agent
 has no project-metadata mutation route. The current project overview renders
 both a large bordered environment shortcut strip and a separate Environments
-tab with the same destinations, while the full Environments page lists details
-but has no reorder action. Design and implementation must close these gaps end
-to end and reconcile the pending project-overview work before editing that
-shared surface. A UI-only sort, browser storage, or demo-specific data path does
-not satisfy this feature.
+tab with the same destinations. The full Environments page repeats its page
+title in a card heading, fills each row with `presentation.tone`, and has no
+reorder or inline-add action. An existing browser client calls
+`datatug/environment/create_environment` with `projectRef` and name, but no
+matching handler was found in the surveyed current backend or local-agent
+repositories; implementation must verify each store's real authenticated
+capability before enabling Add. Design and implementation must close these gaps
+end to end and reconcile the pending project-overview work before editing that
+shared surface. A UI-only sort, browser storage, unverified create route, or
+demo-specific data path does not satisfy this feature.
 
 ## Acceptance Criteria
 
@@ -201,10 +273,47 @@ not satisfy this feature.
   the full Environments page; when an environment link is activated, then it
   opens that exact environment without changing current selection as a side
   effect. The links are presented as navigation, not selected filter chips.
+- Given the compact overview row or full Environments page, when environments
+  have `danger` or `warning` presentation tone, then their links use the
+  matching accessible caution color and icon and the full-page row has a small
+  severity chip reading **High caution** or **Use caution**. The environment row
+  itself has a neutral background and the caution meaning does not depend on
+  color alone.
+- Given an environment with `primary`, `success`, invalid, or missing tone, or
+  with a custom ID, when it is shown, then its link uses neutral text and no
+  caution chip is invented from the ID, alias, list position, or order. Stored
+  presentation metadata and warning semantics remain unchanged.
 - Given environment add/edit/detail or other actions present in the overview or
   pending integration when the duplicate tab is removed, then each action is
   retained or moved to the full Environments page and remains reachable by
   keyboard and touch.
+- Given the full Environments page, when it renders, then it has one page-level
+  Environments title, no repeated Environments card heading, and no permanently
+  empty creation form.
+- Given a store with a verified create-environment capability and an actor with
+  project write access, when Add environment is activated, then one compact
+  final-row editor opens, the name input receives focus, and Add and Cancel are
+  keyboard- and touch-operable. Cancel clears and hides the draft and restores
+  focus to the page-header action.
+- Given an empty or whitespace-only name, when submission is attempted, then no
+  request is sent and the name error is associated with the input. Given a
+  nonempty name, submission trims it and sends the existing
+  `datatug/environment/create_environment` request with the exact project
+  reference; Enter and Add share the same guarded operation.
+- Given environment creation is pending, when Add is clicked, Enter is pressed,
+  or the action is clicked again, then only one request is in flight. Given a
+  validation, duplicate, authorization, conflict, network, or server error,
+  then the draft remains visible, the controls become usable, and an associated
+  error offers retry or Cancel without changing environment order.
+- Given the create request succeeds, when the canonical environment collection
+  is reread, then the server-issued stable ID appears exactly once through the
+  shared resolver's missing-live-ID rule. No success state or new row is
+  published from the acknowledgement alone, and the create does not silently
+  rewrite a saved order or current selection.
+- Given a read-only actor or a store without a verified authenticated create
+  implementation, when the page renders, then there is no enabled Add
+  environment mutation. Direct client Firestore, provider, or filesystem writes
+  cannot substitute for the missing capability.
 - Given an authorized project editor on Project overview → Environments label →
   full Environments page, when Manage order is opened, then the editor shows
   actual project environments with stable identity and presentation, a drag
@@ -267,6 +376,10 @@ not satisfy this feature.
   selection, scopes, presentation tone and warning text, access checks, query
   dispatch, board/query/session/incident data, and connection definitions are
   byte-for-byte or semantically unchanged as applicable.
+- Given any accepted or rejected environment create, then existing environment
+  IDs, current selection, scopes, stored presentation metadata, warning
+  semantics, query dispatch, and connection definitions remain unchanged. A
+  new environment's caution presentation comes only from its stored metadata.
 
 ### Verification
 
@@ -275,16 +388,21 @@ not satisfy this feature.
   complete-permutation validation, revision conflicts, idempotent retry, and
   scope changes.
 - Focused UI tests exercise the compact overview row, removed duplicate tab,
-  preserved full-page actions, navigation semantics, wrapping, warning icons,
-  accessible labels, drag and keyboard/button reorder, mobile-visible controls,
-  cancel, pending, denial, conflict, failure/retry, canonical reread, and
-  selected-environment stability in the zoneless app.
+  preserved full-page actions, single page title, neutral environment rows,
+  caution chip/link mapping, missing-tone fallback, navigation semantics,
+  wrapping, warning icons, accessible labels, inline-add focus and keyboard
+  behavior, create validation, double-submit prevention, create failure/retry,
+  canonical create reread, drag and keyboard/button reorder, mobile-visible
+  controls, cancel, pending, denial, conflict, reorder failure/retry, canonical
+  order reread, and selected-environment stability in the zoneless app.
 - Store tests prove hosted Firestore, provider-backed GitHub, and local-agent
   project-file persistence through their real adapters. A whole browser journey
-  uses a real writable project: reader A reorders a standard and custom
-  environment, reloads, reader B observes the same order, and an existing query
-  still runs against the previously selected environment. Mocked request tests
-  and a Save click are recorded separately and do not establish persistence.
+  uses a real writable project: the editor adds an environment through a
+  capability-backed create route, observes it after canonical reread, reader A
+  reorders a standard and custom environment, reloads, reader B observes the
+  same order, and an existing query still runs against the previously selected
+  environment. Mocked request tests, an HTTP acknowledgement, an Add click, and
+  a Save click are recorded separately and do not establish persistence.
 - Existing projects without the field and ordinary demo projects use the same
   generic default resolver. No fixture-only branch, personal-order substitute,
   TUI-only check, cloned-flow exception, or video rendering is acceptance
