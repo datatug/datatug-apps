@@ -1,5 +1,9 @@
 import { TestBed } from '@angular/core/testing';
-import { NavigationEnd, Router } from '@angular/router';
+import { Component } from '@angular/core';
+import { NavigationEnd, Router, provideRouter } from '@angular/router';
+import { RouterTestingHarness } from '@angular/router/testing';
+import { githubProjectMatcher } from '../../routes/github-project-routes';
+import { datatugProjectRoutes } from '../../routes/datatug-routing-proj';
 import { ErrorLogger } from '@sneat/core';
 import { NEVER, Subject, of } from 'rxjs';
 import { parseDatatugStoreRef } from '../../nav/nav-models';
@@ -9,6 +13,129 @@ import { AppContextService } from '../../core/services/app-context.service';
 import { ProjectContextService } from '../project/project-context.service';
 import { ProjectService } from '../project/project.service';
 import { EnvironmentService } from '../unsorted/environment.service';
+
+describe('project Incident routes with the real router and navigation context', () => {
+  @Component({ selector: 'sneat-incident-route-test', template: '' })
+  class RoutePage {}
+
+  async function boot(initialUrl?: string) {
+    window.history.replaceState({}, '', '/');
+    const incidents = datatugProjectRoutes.find((r) => r.path === 'incidents');
+    if (!incidents?.children)
+      throw new Error('Missing project Incident routes');
+    // Keep the production matcher and Incident route tree; replace only page
+    // rendering so network-backed page providers cannot mask context behavior.
+    const children = [
+      {
+        ...incidents,
+        children: incidents.children.map((route) => {
+          const page = { ...route, component: RoutePage };
+          delete page.loadComponent;
+          return page;
+        }),
+      },
+    ];
+    TestBed.configureTestingModule({
+      providers: [
+        provideRouter([
+          { matcher: githubProjectMatcher, children },
+          { path: 'store/:storeId/project/:projectId', children },
+          { path: '**', component: RoutePage },
+        ]),
+        DatatugNavContextService,
+        {
+          provide: AppContextService,
+          useValue: { currentApp: of({ appCode: 'datatug' }) },
+        },
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current: undefined,
+            current$: of(undefined),
+            setCurrent: vi.fn(),
+          },
+        },
+        {
+          provide: ProjectService,
+          useValue: {
+            watchProjectSummary: vi.fn(() => NEVER),
+            getFull: vi.fn(() => NEVER),
+          },
+        },
+        {
+          provide: EnvironmentService,
+          useValue: { getEnvSummary: vi.fn(() => NEVER) },
+        },
+        {
+          provide: ErrorLogger,
+          useValue: {
+            logError: vi.fn(),
+            logErrorHandler: vi.fn(() => vi.fn()),
+          },
+        },
+      ],
+    });
+    const service = TestBed.inject(DatatugNavContextService);
+    let project: unknown;
+    let store: string | undefined;
+    service.currentProject.subscribe((value) => (project = value));
+    service.currentStoreId.subscribe((value) => (store = value));
+    const harness = await RouterTestingHarness.create(initialUrl);
+    return {
+      harness,
+      router: TestBed.inject(Router),
+      project: () => project,
+      store: () => store,
+    };
+  }
+
+  beforeEach(() => sessionStorage.clear());
+
+  it.each([
+    ['/project/github.com/owner/repo', 'github.com', 'repo@owner@'],
+    [
+      '/project/github.com/owner/repo/tree/feature/folder/-',
+      'github.com',
+      'repo@owner@folder@feature',
+    ],
+    ['/store/http-localhost:8989/project/demo', 'http-localhost:8989', 'demo'],
+  ])(
+    'keeps the owning project through the Incident journey at %s',
+    async (base, storeId, projectId) => {
+      const app = await boot();
+      for (const page of ['', '/new', '/ops/INC-1', '/ops/INC-1/record']) {
+        await app.harness.navigateByUrl(
+          `${base}/incidents${page}?projectApi=cloud&branch=develop`,
+        );
+        expect(app.project()).toMatchObject({
+          ref: { storeId, projectId, projectApi: 'cloud', branch: 'develop' },
+        });
+        expect(app.store()).toBe(storeId);
+      }
+      let leaf = app.router.routerState.snapshot.root;
+      while (leaf.firstChild) leaf = leaf.firstChild;
+      expect(leaf.paramMap.get('storeId')).toBe('ops');
+    },
+  );
+
+  it('selects the project on a cold detail load after routing has resolved', async () => {
+    const app = await boot(
+      '/project/github.com/owner/repo/incidents/ops/INC-1',
+    );
+    expect(app.project()).toMatchObject({
+      ref: { storeId: 'github.com', projectId: 'repo@owner@' },
+    });
+  });
+
+  it('clears the project for an unresolved handoff rather than borrowing an earlier project', async () => {
+    const app = await boot();
+    await app.harness.navigateByUrl('/project/github.com/owner/repo/incidents');
+    expect(app.project()).toBeDefined();
+    await app.harness.navigateByUrl('/project/github.com/owner/repo/chat');
+    expect(app.project()).toBeUndefined();
+    expect(app.store()).toBeUndefined();
+  });
+});
 
 describe('DatatugNavContextService', () => {
   let service: DatatugNavContextService;
