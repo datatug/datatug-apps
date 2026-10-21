@@ -1,8 +1,7 @@
 import {
   Component,
-  OnChanges,
   OnDestroy,
-  SimpleChanges,
+  computed,
   inject,
   input,
   signal,
@@ -44,7 +43,7 @@ import { DatatugNavService } from '../services/nav/datatug-nav.service';
     IonSelectOption,
   ],
 })
-export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
+export class MenuStoreSelectorComponent implements OnDestroy {
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly nav = inject(DatatugNavService);
   readonly datatugNavContextService = inject(DatatugNavContextService);
@@ -65,7 +64,28 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
     return storeIdToDisplayLabel(this.currentStoreId());
   }
 
-  readonly stores = signal<IDatatugStoreBriefWithId[] | undefined>(undefined);
+  readonly stores = computed<IDatatugStoreBriefWithId[]>(() => {
+    const stores = allUserStoresAsFlatList({
+      ...this.datatugUser()?.datatug?.stores,
+    });
+    const storeId = this.currentStoreId();
+    if (!storeId || stores.some((store) => store.id === storeId)) return stores;
+
+    try {
+      const ref = parseDatatugStoreRef(storeId);
+      return [
+        {
+          id: storeId,
+          title: storeIdToDisplayLabel(storeId),
+          type: ref.type,
+          url: ref.url,
+        },
+        ...stores,
+      ];
+    } catch {
+      return stores;
+    }
+  });
 
   private readonly destroyed = new Subject<void>();
 
@@ -93,14 +113,6 @@ export class MenuStoreSelectorComponent implements OnDestroy, OnChanges {
   ngOnDestroy(): void {
     this.destroyed.next();
     this.destroyed.complete();
-  }
-
-  ngOnChanges(changes: SimpleChanges): void {
-    if (changes['datatugUser']) {
-      this.stores.set(
-        allUserStoresAsFlatList(this.datatugUser()?.datatug?.stores),
-      );
-    }
   }
 
   switchStore(event: CustomEvent): void {

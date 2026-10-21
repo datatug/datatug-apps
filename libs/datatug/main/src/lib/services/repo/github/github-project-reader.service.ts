@@ -193,6 +193,8 @@ export interface IGithubEnvDbServer {
   id: string;
   driver: string;
   host: string;
+  port?: number;
+  path?: string;
   catalogs?: string[];
 }
 
@@ -207,6 +209,8 @@ export interface IGithubEnvironmentSummary {
 interface IGithubEnvDbServerFile {
   driver: string;
   host?: string;
+  port?: number;
+  path?: string;
   catalogs?: string[];
 }
 
@@ -1126,6 +1130,8 @@ export class GithubProjectReaderService {
             id: [s.driver, ...(s.catalogs || [])].join(':') || `server-${i}`,
             driver: s.driver,
             host: s.host || '',
+            port: s.port,
+            path: s.path,
             catalogs: s.catalogs,
           })),
         };
@@ -1293,7 +1299,14 @@ export class GithubProjectReaderService {
       return defFileName.slice(0, -'.json'.length);
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    const ext = type === 'HTTP' ? 'http' : type === 'TugQL' ? 'tugql' : type === 'DTQL' ? 'dtql' : 'sql';
+    const ext =
+      type === 'HTTP'
+        ? 'http'
+        : type === 'TugQL'
+          ? 'tugql'
+          : type === 'DTQL'
+            ? 'dtql'
+            : 'sql';
     return `${stem}.${ext}`;
   }
 
