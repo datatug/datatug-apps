@@ -1,3 +1,4 @@
+import { createSemanticModel } from '../../../queries/semantic-mapping';
 import { firstValueFrom } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 
@@ -505,6 +506,18 @@ describe('GithubProjectReaderService', () => {
   });
 
   describe('getQueriesFolder', () => {
+    it('preserves MeaningGraph documents through nested query catalog and cold query reads', async () => {
+      const semanticModel = createSemanticModel({queryHash:'a'.repeat(64),resultIndex:0,columns:[{name:'ID',dataType:'integer'}]});
+      semanticModel.meaning.concepts = [{id:'customer',kind:'entity',labels:{en:'Customer'},description:'A buyer'}];
+      const {service} = setup({
+        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',semanticModel}),
+        'demo-project-1/queries/sales/regional/customers.query.sql': 'SELECT 1 AS ID',
+      });
+      const folder = await first(service.getQueriesFolder(PROJECT_ID));
+      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].semanticModel).toEqual(semanticModel);
+      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({semanticModel,text:'SELECT 1 AS ID'});
+    });
+
     it('builds the recursive folder tree, one folder per queries/ subfolder', async () => {
       const { service } = setup({
         'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',

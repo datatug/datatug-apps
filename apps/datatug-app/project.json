@@ -5,6 +5,14 @@
   "sourceRoot": "apps/datatug-app/src",
   "prefix": "sneat",
   "targets": {
+    "e2e-meanings": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-meanings-e2e"],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.meanings.config.ts --forbid-only"
+      }
+    },
     "typecheck-showcase-e2e": {
       "executor": "nx:run-commands",
       "options": {
