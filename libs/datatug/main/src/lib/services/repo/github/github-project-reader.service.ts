@@ -1256,11 +1256,15 @@ export class GithubProjectReaderService {
   public getBoard(
     projectId: string,
     boardId: string,
+    options?: { readonly requireExisting?: boolean },
   ): Observable<IGithubBoardFile & { id: string }> {
     return this.getRawJson<IGithubBoardFile>(
       projectId,
       `boards/${boardId}/board.json`,
-    ).pipe(map((file) => ({ id: boardId, title: boardId, ...file })));
+    ).pipe(map((file) => {
+      if (options?.requireExisting && (!file || typeof file !== 'object' || Array.isArray(file))) throw new Error('Board metadata unavailable');
+      return { id: boardId, title: boardId, ...file };
+    }));
   }
 
   // ---------------------------------------------------------------------

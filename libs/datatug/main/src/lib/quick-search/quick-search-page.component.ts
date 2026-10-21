@@ -326,11 +326,16 @@ import {
             Quick Search is disabled. Open Index settings to preview metadata
             and give indexing consent.
           </p>
+          @if (!schemaDetail) {
+            <ion-button (click)="settings.set(true)">Open Index settings</ion-button>
+          }
         }
-        <p aria-live="polite">
-          {{ groups().length }} {{ groups().length === 1 ? 'name' : 'names' }} ·
-          {{ items().length }} items
-        </p>
+        @if (status()?.state === 'ready' || schemaDetail) {
+          <p aria-live="polite">
+            {{ groups().length }} {{ groups().length === 1 ? 'name' : 'names' }} ·
+            {{ items().length }} items
+          </p>
+        }
         @if (!busy() && searched() && !groups().length) {
           <p role="status">
             {{

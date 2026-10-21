@@ -687,3 +687,11 @@ describe('GithubProjectReaderService', () => {
     });
   });
 });
+
+describe('strict board metadata reads for search projection',()=>{
+  it('refuses a missing full board instead of inventing searchable title metadata',async()=>{
+    const {service}=setup();
+    await expect(first(service.getBoard(PROJECT_ID,'missing',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
+    expect(await first(service.getBoard(PROJECT_ID,'missing'))).toMatchObject({id:'missing',title:'missing'});
+  });
+});
