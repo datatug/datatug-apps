@@ -4234,8 +4234,10 @@ test('query workspace clarity preserves active context, inspected row and explic
   await tabs.locator('ion-segment-button[value="related"]').click();
   await expect(author.getByTestId('author-related-empty')).toContainText('Customer is already included');
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-expanded/);
   await expect(author.getByTestId('author-related-metadata-details')).toContainText(/Cross-source cost\s*unknown/u);
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-collapsed/);
   await expect(author.getByTestId('author-run-readiness')).toContainText('Preview the current draft');
   await author.getByTestId('author-run-recovery').click();
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
@@ -4259,6 +4261,8 @@ test('query workspace clarity preserves active context, inspected row and explic
   const retainedSource = await copyEditorSource(page, author.locator('.cm-content'));
   const retainedReceipt = await receipt.locator('.author-receipt-summary').innerText();
   await tabs.locator('ion-segment-button[value="related"]').click();
+  await expect(tabs.locator('ion-segment-button[value="related"]')).toHaveClass(/segment-button-checked/);
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-collapsed/);
   // Expanded real metadata makes the phone editor taller before it becomes a desktop sidebar.
   // Keep the result the reader scrolled to visible even when trailing metadata permits a deeper scroll.
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
