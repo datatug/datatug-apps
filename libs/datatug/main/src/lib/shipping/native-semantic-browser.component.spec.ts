@@ -411,6 +411,15 @@ describe('Native physical inspection and durable mapping DOM', () => {
     await f.whenStable();
     expect(f.componentInstance.error()).toContain('Unavailable');
     expect(f.nativeElement.textContent).not.toContain('Mapping missing');
+    const inspector = f.nativeElement.querySelector(
+      '[aria-label="Selected physical cell"]',
+    );
+    expect(inspector.textContent).toMatch(/string\s*·\s*request-11045/);
+    expect(inspector.textContent).toContain(
+      'Meaning resolution is unavailable',
+    );
+    expect(inspector.textContent).not.toContain('NULL cells');
+    expect(inspector.textContent).toContain('Retry meaning resolution');
     expect(f.componentInstance.saveAllowed()).toBe(false);
     api.resolve.mockResolvedValue({
       column: 'request_id',
@@ -419,6 +428,86 @@ describe('Native physical inspection and durable mapping DOM', () => {
     await f.componentInstance.selectCell(0, 0);
     expect(f.componentInstance.resolution()).toBeUndefined();
     expect(f.componentInstance.error()).toContain('Unavailable');
+  });
+  it('shows actual NULL type/value and only NULL guidance, without a semantic read or retry', async () => {
+    api.browse.mockResolvedValue({
+      ...rows,
+      columns: [{ name: 'partner_id', type: 'TEXT', nullable: true }],
+      rows: [{ rowToken, cells: [{ type: 'null', value: null }] }],
+    });
+    const f = await mount();
+    await inspect(f);
+    const inspector = f.nativeElement.querySelector(
+      '[aria-label="Selected physical cell"]',
+    );
+    expect(inspector.textContent).toMatch(/null\s*·\s*NULL/);
+    expect(inspector.textContent).toContain('NULL cells cannot be mapped');
+    expect(inspector.textContent).not.toContain(
+      'Meaning resolution is unavailable',
+    );
+    expect(inspector.textContent).not.toContain('Retry meaning resolution');
+    expect(api.resolve).not.toHaveBeenCalled();
+  });
+  it('announces actual saving, recovery review and loading while suppressing stale notices', async () => {
+    const f = await mount();
+    await prepare(f);
+    let rejectSave: (error: Error) => void = () => undefined;
+    api.addMapping.mockImplementation(
+      () =>
+        new Promise((_, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    f.componentInstance.notice.set('Earlier successful action');
+    const saving = f.componentInstance.save();
+    await vi.waitFor(() => expect(api.addMapping).toHaveBeenCalledOnce());
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain('Saving mapping…');
+    expect(f.nativeElement.textContent).not.toContain(
+      'Earlier successful action',
+    );
+    expect(f.nativeElement.textContent).not.toContain('Loading current data…');
+    rejectSave(new Error('unknown delivery'));
+    await saving;
+    let resolveReview: (value: unknown) => void = () => undefined;
+    api.resolve.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveReview = resolve;
+        }),
+    );
+    f.componentInstance.notice.set('Earlier delivery status');
+    const reviewing = f.componentInstance.reviewPending();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain(
+      'Reviewing mapping recovery…',
+    );
+    expect(f.nativeElement.textContent).not.toContain(
+      'Earlier delivery status',
+    );
+    expect(f.nativeElement.textContent).not.toContain('Saving mapping…');
+    resolveReview({
+      column: 'request_id',
+      value: { type: 'string', value: 'request-11045' },
+    });
+    await reviewing;
+    let resolveRows: (value: unknown) => void = () => undefined;
+    api.browse.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveRows = resolve;
+        }),
+    );
+    f.componentInstance.notice.set('Earlier review status');
+    const loading = f.componentInstance.inspect('current_routes');
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain('Loading current data…');
+    expect(f.nativeElement.textContent).not.toContain('Earlier review status');
+    expect(f.nativeElement.textContent).not.toContain(
+      'Reviewing mapping recovery…',
+    );
+    resolveRows(rows);
+    await loading;
   });
   it('opens only a current offered Related lookup with the same complete selected context', async () => {
     const lookup = {

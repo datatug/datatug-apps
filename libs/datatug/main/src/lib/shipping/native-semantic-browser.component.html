@@ -14,8 +14,8 @@
     >
   </ion-toolbar>
   <p>
-    Inspect actual data using an existing applied order. Inspection does not
-    create context, run a Check or attach evidence.
+    Choose an existing Incident and applied context, then select a table and
+    cell to inspect.
   </p>
   <ion-select
     label="Logical environment"
@@ -45,14 +45,11 @@
   }
   @if (restoring()) {
     <p role="status">Checking stored mapping operation…</p>
-  }
-  @if (busy()) {
-    <p role="status">Reading current authority…</p>
-  }
-  @if (error()) {
+  } @else if (busy()) {
+    <p role="status">{{ workStatus() }}</p>
+  } @else if (error()) {
     <p role="alert">{{ error() }}</p>
-  }
-  @if (notice()) {
+  } @else if (notice()) {
     <p role="status">{{ notice() }}</p>
   }
   @if (pending() || blocked()) {
@@ -179,8 +176,13 @@
     @if (selected(); as cell) {
       <section aria-label="Selected physical cell">
         <h3>{{ cell.collection }}.{{ cell.column }}</h3>
+        @if (selectedValue(); as value) {
+          <p>
+            {{ value.type }} ·
+            {{ value.type === 'null' ? 'NULL' : value.value }}
+          </p>
+        }
         @if (resolution(); as resolved) {
-          <p>{{ resolved.value.type }} · {{ resolved.value.value }}</p>
           @if (resolved.entity) {
             <p role="status">
               {{ resolved.provenance === 'declared' ? 'Declared' : 'Inferred' }}
@@ -207,11 +209,15 @@
               permission.
             </p>
           }
+        } @else if (selectedValue()?.type === 'null') {
+          <p>NULL cells cannot be mapped or used for Related.</p>
         } @else {
-          <p>
-            No nonnull resolution is available. NULL cells cannot be mapped or
-            used for Related.
-          </p>
+          <p>Meaning resolution is unavailable for this cell.</p>
+          <ion-button
+            (click)="retryResolution()"
+            [disabled]="busy() || restoring()"
+            >Retry meaning resolution</ion-button
+          >
         }
         @if (entity(); as target) {
           <p>

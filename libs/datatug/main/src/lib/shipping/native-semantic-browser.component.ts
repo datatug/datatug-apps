@@ -152,6 +152,20 @@ export class NativeSemanticBrowserComponent {
   readonly fieldId = signal('');
   readonly picker = signal(false);
   readonly busy = signal(false);
+  readonly workStatus = signal('Loading current data…');
+  readonly selectedValue = computed(() => {
+    const selected = this.selected(),
+      rows = this.rows();
+    if (!selected || rows?.collection !== selected.collection) return undefined;
+    const column = rows.columns.findIndex(
+      (item) => item.name === selected.column,
+    );
+    return column < 0
+      ? undefined
+      : rows.rows.find((item) => item.rowToken === selected.rowToken)?.cells[
+          column
+        ];
+  });
   readonly error = signal('');
   readonly notice = signal('');
   readonly pending = signal<NativeMapping | undefined>(undefined);
@@ -296,9 +310,14 @@ export class NativeSemanticBrowserComponent {
     if (!selection) throw new Error('Select an actual cell.');
     return { ...this.scoped(), selection };
   }
-  private async attempt(work: (signal: AbortSignal) => Promise<void>) {
+  private async attempt(
+    work: (signal: AbortSignal) => Promise<void>,
+    message = 'Loading current data…',
+  ) {
     if (this.busy()) return;
     const signal = this.lifetime.signal;
+    this.workStatus.set(message);
+    this.notice.set('');
     this.busy.set(true);
     this.error.set('');
     try {
@@ -395,6 +414,10 @@ export class NativeSemanticBrowserComponent {
     }
     this.notice.set('');
     await this.readCell();
+  }
+  async retryResolution() {
+    if (this.selectedValue()?.type !== 'null' && this.selected())
+      await this.readCell();
   }
   private async readCell() {
     await this.attempt(async (signal) => {
@@ -505,6 +528,9 @@ export class NativeSemanticBrowserComponent {
         ifMatch: entity.revision,
       }),
     );
+    this.workStatus.set('Saving mapping…');
+    this.notice.set('');
+    this.error.set('');
     this.busy.set(true);
     const signal = this.lifetime.signal;
     try {
@@ -595,7 +621,7 @@ export class NativeSemanticBrowserComponent {
         }
         throw error;
       }
-    });
+    }, 'Saving mapping…');
     if (
       !this.pending() &&
       !this.blocked() &&
@@ -656,7 +682,7 @@ export class NativeSemanticBrowserComponent {
         this.entity.set(entity);
         this.reviewed.set(true);
       }
-    });
+    }, 'Reviewing mapping recovery…');
   }
   abandon() {
     const scope = this.journalScope();
