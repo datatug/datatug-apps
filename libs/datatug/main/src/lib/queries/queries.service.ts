@@ -92,6 +92,7 @@ export const AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE =
  * `undefined.queryType`.
  */
 interface IWireQueryItem {
+  readonly createdAt?: string;
   id: string;
   title?: string;
   type: string;
