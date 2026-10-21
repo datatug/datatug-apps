@@ -39,7 +39,11 @@ import {
 } from '@ionic/angular';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../../../core/feature-flags';
-import { IProjectRef, equalProjectRef } from '../../../core/project-context';
+import {
+  IProjectRef,
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../../../core/project-context';
 import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { environmentPresentation } from '../../../models/definition/environment-presentation';
@@ -199,6 +203,15 @@ export class ProjectPageComponent
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
+  protected readonly shippingHref = computed(() => {
+    const ref = this.project()?.ref;
+    return ref &&
+      isSharedProjectRef(ref) &&
+      ref.branch === undefined &&
+      ref.projectApi === undefined
+      ? projectPageHref(ref, 'shipping')
+      : undefined;
+  });
   protected readonly sandboxHref = computed(() => {
     const ref = this.project()?.ref;
     return isCanonicalDemoDbProject(ref)

@@ -143,6 +143,11 @@ describe('real cold shared overview route and metadata read', () => {
     expect(title(h)).toBe('First title');
     expect(h.routeNativeElement?.textContent).toContain('Space: S1');
     expect(
+      h.routeNativeElement?.querySelector(
+        'a[href="/space/S1/store/firestore/project/same/shipping"], ion-item[href="/space/S1/store/firestore/project/same/shipping"]',
+      ),
+    ).toBeTruthy();
+    expect(
       h.routeNativeElement?.querySelector('sneat-datatug-folder'),
     ).toBeNull();
     expect(h.routeNativeElement?.querySelector('ion-select')).toBeNull();

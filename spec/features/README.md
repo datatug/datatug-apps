@@ -26,6 +26,7 @@ Feature specifications for this project.
 | [Reusable held result exploration](held-result-exploration/README.md) | Implementing | Explore admitted held results with clear actions, stable sorting and complete monthly Orders trends without extra execution. |
 | [Hosted Incident conversation](hosted-incident-conversation/README.md) | Draft | Authenticated human Incident messages, scoped history and replay-safe posting in the private project web UI. |
 | [Hosted board authoring](hosted-board-authoring/README.md) | Draft | Create, edit, save and reload canonical boards in an explicitly scoped hosted project. |
+| [Shipping working copy controls](shipping-working-copy-controls/README.md) | Draft | Expose the published Backend v0.42 working-copy lifecycle in the native hosted project web UI. This is one bounded part of the [shipping investigation story](https://github.com/datatug/backstage/tree/main/spec/features/unsigned-shipping-investigation), not recording-readiness proof. |
 
 ## Open Questions
 

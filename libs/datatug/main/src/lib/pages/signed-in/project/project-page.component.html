@@ -15,6 +15,11 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (shippingHref(); as href) {
+    <ion-item [routerLink]="href" detail="true"
+      ><ion-label>Shipping training workspace</ion-label></ion-item
+    >
+  }
   <ion-card class="project-context-card">
     <ion-item>
       <ion-input
