@@ -201,6 +201,14 @@ describe('actual native Space router workspaces', () => {
         'Open shipping board',
       ),
     );
+    expect(
+      h.routeNativeElement?.querySelector(
+        'sneat-datatug-shipping-query-access',
+      ),
+    ).toBeTruthy();
+    expect(
+      h.routeNativeElement?.querySelector('sneat-shipping-component-installer'),
+    ).toBeTruthy();
     const router = TestBed.inject(Router);
     const destination = h.routeDebugElement
       ?.queryAll(By.directive(RouterLink))
