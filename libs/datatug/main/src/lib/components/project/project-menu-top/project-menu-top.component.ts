@@ -27,8 +27,8 @@ import {
   IProjectContext,
   parseProjectUrl,
 } from '../../../nav/nav-models';
-import { isSharedProjectRef } from '../../../core/project-context';
 import { incidentContextQueryParams } from '../../../incidents/incident-route-context';
+import { incidentPageQueryParams } from '../../../incidents/incident-navigation';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
@@ -100,17 +100,22 @@ export class ProjectMenuTopComponent implements OnDestroy {
     const agentStoreId = this.currentStoreId();
     const project = this.currentProjectId();
     const environment = this.currentEnvironment()?.id;
-    if (!agentStoreId || !project || !environment) {
-      return undefined;
-    }
-    return incidentContextQueryParams({
-      agentStoreId,
-      scope: {
-        storeId: project,
-        project,
-        environment,
-      },
-    });
+    const scope =
+      agentStoreId && project && environment
+        ? incidentContextQueryParams({
+            agentStoreId,
+            scope: {
+              storeId: project,
+              project,
+              environment,
+            },
+          })
+        : undefined;
+    const projectRef = this.project?.ref;
+    return incidentPageQueryParams(
+      projectRef ? projectPageHref(projectRef, 'incidents') : '/incidents',
+      scope,
+    );
   });
 
   // Widgets, Tags and DB models are empty-shell pages — see
@@ -302,15 +307,10 @@ export class ProjectMenuTopComponent implements OnDestroy {
     return isCanonicalPublicDemo(this.project?.ref);
   }
 
-  incidentsProjectRoute(): UrlTree | string {
+  incidentsProjectRoute(): string {
     const projectRef = this.project?.ref;
-    if (
-      (isCanonicalPublicDemo(projectRef) ||
-        (projectRef && isSharedProjectRef(projectRef))) &&
-      this.router &&
-      projectRef
-    ) {
-      return this.router.parseUrl(projectPageHref(projectRef, 'incidents'));
+    if (projectRef) {
+      return projectPageHref(projectRef, 'incidents').split('?')[0];
     }
     return '/incidents';
   }

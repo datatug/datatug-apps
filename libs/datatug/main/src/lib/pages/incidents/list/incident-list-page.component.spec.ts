@@ -4,6 +4,7 @@ import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
+  Router,
 } from '@angular/router';
 import {
   AgentContextService,
@@ -58,16 +59,21 @@ describe('IncidentListPageComponent', () => {
   let queryParamMap$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let securityContextId: ReturnType<typeof signal<string | undefined>>;
   let refreshAgentContextSpy: ReturnType<typeof vi.fn>;
-  let setInvestigationScopeSpy: Mock<(
-    scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
-    agentUrl?: string,
-  ) => void>;
+  let setInvestigationScopeSpy: Mock<
+    (
+      scope: Omit<ContextScope, 'agentUrl'> | ContextScope,
+      agentUrl?: string,
+    ) => void
+  >;
   let clearInvestigationContextSpy: ReturnType<typeof vi.fn>;
   let isCurrentInvestigationScopeSpy: ReturnType<typeof vi.fn>;
   let listResult$: Subject<IncidentApiResult<IncidentSummary[]>>;
   let listSpy: ReturnType<typeof vi.fn>;
 
-  const render = async (query: Record<string, string> = {}) => {
+  const render = async (
+    query: Record<string, string> = {},
+    currentUrl = '/incidents',
+  ) => {
     storeId$ = new BehaviorSubject<string | undefined>(undefined);
     project$ = new BehaviorSubject<
       { ref: { storeId: string; projectId: string } } | undefined
@@ -120,11 +126,15 @@ describe('IncidentListPageComponent', () => {
           },
         },
         { provide: IncidentClientService, useValue: { list: listSpy } },
-        { provide: SneatAuthStateService, useValue: { authState: of({ status: 'notAuthenticated' }) } },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: of({ status: 'notAuthenticated' }) },
+        },
       ],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
     }).compileComponents();
 
+    vi.spyOn(TestBed.inject(Router), 'url', 'get').mockReturnValue(currentUrl);
     fixture = TestBed.createComponent(IncidentListPageComponent);
     fixture.detectChanges();
   };
@@ -153,7 +163,9 @@ describe('IncidentListPageComponent', () => {
   it('shows an "open a project" guidance state without a complete scope', () => {
     fixture.detectChanges();
 
-    expect(fixture.nativeElement.innerHTML).toContain('Create a private project');
+    expect(fixture.nativeElement.innerHTML).toContain(
+      'Create a private project',
+    );
     expect(listSpy).not.toHaveBeenCalled();
   });
 
@@ -409,5 +421,23 @@ describe('IncidentListPageComponent', () => {
       project: 'billing',
       environment: 'prod',
     });
+  });
+
+  it('keeps create and detail links inside the actual agent project route', async () => {
+    TestBed.resetTestingModule();
+    await render({}, '/store/localhost:8989/project/billing/incidents');
+    selectScope();
+
+    interface Internals {
+      newIncidentLink(): readonly string[];
+      incidentLink(incident: IncidentSummary): readonly string[];
+    }
+    const peek = fixture.componentInstance as unknown as Internals;
+    expect(peek.newIncidentLink()).toEqual([
+      '/store/localhost:8989/project/billing/incidents/new',
+    ]);
+    expect(peek.incidentLink(incident('ops', 'INC-1', 't'))).toEqual([
+      '/store/localhost:8989/project/billing/incidents/ops/INC-1',
+    ]);
   });
 });

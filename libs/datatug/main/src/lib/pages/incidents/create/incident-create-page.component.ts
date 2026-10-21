@@ -48,6 +48,10 @@ import {
   resolveIncidentRouteScope,
 } from '../../../incidents/incident-route-context';
 import {
+  incidentPageCommands,
+  incidentPageQueryParams,
+} from '../../../incidents/incident-navigation';
+import {
   CreateIncidentRequest,
   IncidentDetail,
   IncidentFactCondition,
@@ -119,7 +123,9 @@ export class IncidentCreatePageComponent {
   });
   protected readonly hostedIncidentNewHref = computed(() => {
     const ref = this.navProject()?.ref;
-    return ref && isSharedProjectRef(ref) ? projectPageHref(ref, 'incidents/new') : undefined;
+    return ref && isSharedProjectRef(ref)
+      ? projectPageHref(ref, 'incidents/new')
+      : undefined;
   });
   private readonly navEnvironment = toSignal(this.navContext.currentEnv, {
     initialValue: undefined,
@@ -182,25 +188,35 @@ export class IncidentCreatePageComponent {
   protected readonly createdIncidentLink = computed(() => {
     const committed = this.committedIncident();
     return committed
-      ? [
-          '/incidents',
+      ? incidentPageCommands(this.router.url, [
           committed.incident.ref.storeId,
           committed.incident.ref.incidentId,
-        ]
+        ])
       : undefined;
   });
   protected readonly createdIncidentQueryParams = computed(() => {
     const committed = this.committedIncident();
     return committed
-      ? incidentContextQueryParams({
-          agentStoreId: committed.context.agentStoreId,
-          scope: {
-            ...committed.context.scope,
-            storeId: committed.incident.ref.storeId,
-          },
-        })
+      ? incidentPageQueryParams(
+          this.router.url,
+          incidentContextQueryParams({
+            agentStoreId: committed.context.agentStoreId,
+            scope: {
+              ...committed.context.scope,
+              storeId: committed.incident.ref.storeId,
+            },
+          }),
+        )
       : undefined;
   });
+
+  protected cancelIncidentLink(): readonly string[] {
+    return incidentPageCommands(this.router.url);
+  }
+
+  protected cancelIncidentQueryParams() {
+    return incidentPageQueryParams(this.router.url, this.scopeQueryParams());
+  }
 
   // Written only from template `[(ngModel)]` bindings (user input) — no
   // async writer touches these, so plain fields are zoneless-safe as-is
@@ -539,13 +555,15 @@ export class IncidentCreatePageComponent {
     this.errorMessage.set(undefined);
     this.router
       .navigate(
-        [
-          '/incidents',
+        incidentPageCommands(this.router.url, [
           committed.incident.ref.storeId,
           committed.incident.ref.incidentId,
-        ],
+        ]),
         {
-          queryParams: incidentContextQueryParams(detailContext),
+          queryParams: incidentPageQueryParams(
+            this.router.url,
+            incidentContextQueryParams(detailContext),
+          ),
           replaceUrl: true,
         },
       )

@@ -11,7 +11,9 @@ import {
   routingParamDriver,
   routingParamEntityId,
   routingParamEnvironmentId,
+  routingParamIncidentId,
   routingParamServerType,
+  routingParamStoreId,
 } from '../core/datatug-routing-params';
 
 // The empty-shell pages (Widgets, Tags, Resources, DB models, Diff) — see
@@ -435,10 +437,38 @@ datatugProjectRoutes.unshift(
   {
     path: 'incidents',
     data: { section: 'incidents' },
-    loadComponent: () =>
-      import('../detective/public-demo-investigation-preview.component').then(
-        (m) => m.PublicDemoInvestigationPreviewComponent,
-      ),
+    children: [
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('../pages/incidents/create/incident-create-page.component').then(
+            (m) => m.IncidentCreatePageComponent,
+          ),
+      },
+      {
+        path:
+          ':' + routingParamStoreId + '/:' + routingParamIncidentId + '/record',
+        loadComponent: () =>
+          import('../pages/incidents/record/incident-resolution-record-page.component').then(
+            (m) => m.IncidentResolutionRecordPageComponent,
+          ),
+      },
+      {
+        path: ':' + routingParamStoreId + '/:' + routingParamIncidentId,
+        loadComponent: () =>
+          import('../pages/incidents/detail/incident-detail-page.component').then(
+            (m) => m.IncidentDetailPageComponent,
+          ),
+      },
+      {
+        path: '',
+        pathMatch: 'full',
+        loadComponent: () =>
+          import('../pages/incidents/project-incidents-page.component').then(
+            (m) => m.ProjectIncidentsPageComponent,
+          ),
+      },
+    ],
   },
 );
 

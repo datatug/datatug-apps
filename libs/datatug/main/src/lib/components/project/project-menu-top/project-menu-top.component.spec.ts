@@ -293,24 +293,53 @@ describe('ProjectMenuTopComponent — Incidents link (UX brief §13)', () => {
       branch: 'release/context',
     });
     expect(tree?.toString()).not.toContain('%3F');
+
+    storeId$.next('github.com');
+    env$.next({ id: 'prod' });
+    const internals = fixture.componentInstance as unknown as IncidentInternals;
+    expect(fixture.componentInstance.incidentsProjectRoute()).not.toContain(
+      '?',
+    );
+    expect(internals.incidentQueryParams()).toEqual({
+      projectApi: 'cloud',
+      branch: 'release/context',
+      agent: 'github.com',
+      storeId: 'repo@owner@datatug',
+      project: 'repo@owner@datatug',
+      environment: 'prod',
+    });
   });
 
-  it('keeps canonical demo and private hosted Incident links project-qualified', () => {
+  it('keeps every project Incident link project-qualified, including an agent project without an environment', () => {
     const fixture = render(PRODUCT_PROFILES.datatug);
     project$.next({ ref: DEMO_PROJECT_REF });
     expect(fixture.componentInstance.isDemoProject()).toBe(true);
     expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
       projectPageHref(DEMO_PROJECT_REF, 'incidents'),
     );
-    const privateRef = { storeId: 'firestore', spaceID: 'private-space', projectId: 'private-project' };
+    const privateRef = {
+      storeId: 'firestore',
+      spaceID: 'private-space',
+      projectId: 'private-project',
+    };
     project$.next({ ref: privateRef });
-    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(projectPageHref(privateRef, 'incidents'));
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
+      projectPageHref(privateRef, 'incidents'),
+    );
     project$.next({
       ref: { storeId: 'localhost:8989', projectId: 'shop' },
     });
     expect(fixture.componentInstance.isDemoProject()).toBe(false);
-    expect(fixture.componentInstance.incidentsProjectRoute()).toBe(
-      '/incidents',
+    expect(fixture.componentInstance.incidentsProjectRoute().toString()).toBe(
+      projectPageHref(
+        { storeId: 'localhost:8989', projectId: 'shop' },
+        'incidents',
+      ),
     );
+    expect(
+      (
+        fixture.componentInstance as unknown as IncidentInternals
+      ).incidentQueryParams(),
+    ).toBeUndefined();
   });
 });
