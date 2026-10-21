@@ -1,5 +1,17 @@
 /** Query-scoped semantic documents. No sampled row values enter this contract. */
+export interface SemanticMeaningScope {
+  readonly storage: 'firestore' | 'github.com' | 'local';
+  readonly project: string;
+  readonly spaceID?: string;
+  readonly branch?: string;
+}
+export interface SemanticMeaningRef {
+  readonly documentId: 'project';
+  readonly conceptId: string;
+  readonly scope: SemanticMeaningScope;
+}
 export interface SemanticConcept {
+  meaningRef?: SemanticMeaningRef;
   id: string;
   kind: 'entity' | 'property';
   labels: { en: string };
@@ -146,8 +158,11 @@ export function semanticValidationState(
 ): 'unmapped' | 'checking' | 'review' | 'confirmed' {
   if (!saved) return 'unmapped';
   if (!basis || !currentHash) return 'checking';
-  return previousRun || currentHash !== basis.queryHash || !sameSemanticBasis(saved.basis, basis)
-    ? 'review' : 'confirmed';
+  return previousRun ||
+    currentHash !== basis.queryHash ||
+    !sameSemanticBasis(saved.basis, basis)
+    ? 'review'
+    : 'confirmed';
 }
 
 /** Fail closed at every persistence/import boundary; no permissive metadata casts. */
@@ -238,6 +253,7 @@ export function validateSemanticModel(
       'description',
       'of',
       'bindings',
+      'meaningRef',
     ]);
     if (
       !text(c['id'], 80) ||
@@ -247,6 +263,34 @@ export function validateSemanticModel(
       !text(c['description'], 4096)
     )
       fail();
+    if (c['meaningRef'] !== undefined) {
+      const ref = object(c['meaningRef'], ['documentId', 'conceptId', 'scope']);
+      if (
+        ref['documentId'] !== 'project' ||
+        typeof ref['conceptId'] !== 'string' ||
+        ref['conceptId'].length > 80 ||
+        !/^[a-z][a-z0-9]*(-[a-z][a-z0-9]*)*$/.test(ref['conceptId'])
+      )
+        fail();
+      const scope = object(ref['scope'], [
+        'storage',
+        'project',
+        'spaceID',
+        'branch',
+      ]);
+      if (
+        !['firestore', 'github.com', 'local'].includes(
+          scope['storage'] as string,
+        ) ||
+        !text(scope['project'], 1024) ||
+        ('spaceID' in scope && !text(scope['spaceID'], 256)) ||
+        ('branch' in scope && !text(scope['branch'], 256)) ||
+        (scope['storage'] === 'firestore'
+          ? 'branch' in scope
+          : 'spaceID' in scope)
+      )
+        fail();
+    }
     const labels = object(c['labels'], ['en']);
     if (!text(labels['en'])) fail();
     if (c['kind'] === 'entity' && ('of' in c || 'bindings' in c)) fail();
@@ -335,4 +379,40 @@ export function validateSemanticModel(
     [...expected].some((key) => !actual.has(key))
   )
     fail();
+}
+
+/** Personal copies preserve the definition snapshot without claiming a provider-managed reference. */
+export function detachProjectMeaningReferences(
+  model: SemanticModel,
+): SemanticModel {
+  const copy = structuredClone(model);
+  for (const concept of copy.meaning.concepts) delete concept.meaningRef;
+  return copy;
+}
+
+/** Removing the last mapped use detaches its retained definition snapshot from project lifecycle. */
+export function detachUnusedProjectMeaningReferences(
+  model: SemanticModel,
+): SemanticModel {
+  const copy = structuredClone(model);
+  const mapped = new Set(copy.bindings.map((binding) => binding.concept));
+  const owners = new Set(
+    copy.meaning.concepts
+      .filter(
+        (concept) =>
+          concept.kind === 'property' &&
+          mapped.has(concept.id) &&
+          concept.meaningRef,
+      )
+      .map((concept) => concept.of),
+  );
+  for (const concept of copy.meaning.concepts)
+    if (
+      concept.meaningRef &&
+      (concept.kind === 'property'
+        ? !mapped.has(concept.id)
+        : !owners.has(concept.id))
+    )
+      delete concept.meaningRef;
+  return copy;
 }
