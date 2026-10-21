@@ -11,7 +11,7 @@ import {
   AgentContextService,
   DatatugApiBaseUrl,
 } from '@sneat/datatug-semantic';
-import { BehaviorSubject, firstValueFrom, of } from 'rxjs';
+import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
 import {
@@ -50,12 +50,16 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     user: { uid: 'sarah' },
   });
   const project = new BehaviorSubject({ ref });
+  const environment = new BehaviorSubject<{ id: string } | undefined>(
+    undefined,
+  );
   let http: HttpTestingController;
   let bridge: SneatApiAuthTokenBridge;
   beforeEach(() => {
     sessionStorage.clear();
     auth.next({ status: 'authenticated', user: { uid: 'sarah' } });
     project.next({ ref });
+    environment.next(undefined);
     TestBed.configureTestingModule({
       imports: [ShippingComponentInstallerComponent],
       providers: [
@@ -66,7 +70,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
         { provide: SneatAuthStateService, useValue: { authState: auth } },
         {
           provide: DatatugNavContextService,
-          useValue: { currentProject: project, currentEnv: of(undefined) },
+          useValue: { currentProject: project, currentEnv: environment },
         },
         { provide: AgentContextService, useValue: {} },
       ],
@@ -367,6 +371,107 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
       expect(entries()).toHaveLength(1);
     },
   );
+  it('cancels the initial token wait synchronously on environment change', async () => {
+    bridge.beginAuthentication();
+    const f = await mount();
+    environment.next({ id: 'production' });
+    bridge.setExplicitToken('token-B');
+    http.expectNone((r) => r.method === 'GET');
+    await settle(f);
+    const current = read();
+    expect(current.request.params.get('environment')).toBe('demo');
+    current.flush({ available, exists: false });
+    await settle(f);
+  });
+  it('cancels a mutation token wait on environment change and requires explicit same-intent retry', async () => {
+    const f = await loadAbsent();
+    bridge.beginAuthentication();
+    button(f, 'Install shipping content').click();
+    const original = JSON.parse(
+      sessionStorage.getItem(entries()[0]) || '{}',
+    ).intent;
+    environment.next({ id: 'production' });
+    bridge.setExplicitToken('token-B');
+    http.expectNone((r) => r.method === 'POST');
+    await settle(f);
+    read().flush({ available, exists: false });
+    await settle(f);
+    http.expectNone((r) => r.method === 'POST');
+    button(f, 'Retry original installation').click();
+    expect(write().request.body).toEqual(original);
+  });
+  it('cancels an in-flight mutation and late current read synchronously on environment changes', async () => {
+    const f = await loadAbsent();
+    button(f, 'Install shipping content').click();
+    const mutation = write();
+    const original = structuredClone(mutation.request.body);
+    environment.next({ id: 'production' });
+    expect(mutation.cancelled).toBe(true);
+    await settle(f);
+    const late = read();
+    environment.next({ id: 'staging' });
+    expect(late.cancelled).toBe(true);
+    expect(f.componentInstance.state()).toBeUndefined();
+    expect(() =>
+      late.flush({
+        available,
+        exists: true,
+        installation: installed(original.operationId),
+      }),
+    ).toThrow();
+    await settle(f);
+    read().flush({ available, exists: false });
+    await settle(f);
+    expect(f.nativeElement.textContent).not.toContain(
+      'Shipping content is installed.',
+    );
+    expect(f.componentInstance.pending()?.intent).toEqual(original);
+    http.expectNone((r) => r.method === 'POST');
+  });
+  it('preserves a conflict across remount and supersedes it only after deliberate fresh absence review', async () => {
+    const f = await loadAbsent();
+    button(f, 'Install shipping content').click();
+    const first = write();
+    const original = structuredClone(first.request.body);
+    first.flush({}, { status: 409, statusText: 'Conflict' });
+    await settle(f);
+    f.componentInstance.reviewConflict();
+    http.expectNone((r) => r.method === 'POST');
+    expect(f.componentInstance.pending()?.intent).toEqual(original);
+    f.destroy();
+    const resumed = await mount();
+    read().flush({
+      available: { ...available, digest: 'b'.repeat(64) },
+      exists: false,
+    });
+    await settle(resumed);
+    expect(resumed.componentInstance.pending()?.intent).toEqual(original);
+    http.expectNone((r) => r.method === 'POST');
+    button(resumed, 'Reviewed conflict; prepare new install').click();
+    const replacement = write();
+    expect(replacement.request.body.operationId).not.toBe(original.operationId);
+    expect(replacement.request.body.componentDigest).toBe('b'.repeat(64));
+    expect(
+      JSON.parse(sessionStorage.getItem(entries()[0]) || '{}').intent,
+    ).toEqual(replacement.request.body);
+    const accepted = {
+      ...installed(replacement.request.body.operationId),
+      digest: 'b'.repeat(64),
+    };
+    replacement.flush(accepted);
+    await settle(resumed);
+    expect(resumed.componentInstance.state()?.installation).toBeUndefined();
+    read().flush({
+      available: { ...available, digest: 'b'.repeat(64) },
+      exists: true,
+      installation: accepted,
+    });
+    await settle(resumed);
+    expect(resumed.nativeElement.textContent).toContain(
+      'Shipping content is installed.',
+    );
+    expect(entries()).toHaveLength(0);
+  });
   it('blocks replacement install when the persisted journal is malformed', async () => {
     const f = await loadAbsent();
     button(f, 'Install shipping content').click();

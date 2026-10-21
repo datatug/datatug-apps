@@ -12,7 +12,15 @@ import {
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { Router, RouterLink } from '@angular/router';
 import { IonButton, IonSpinner } from '@ionic/angular';
-import { Subject, filter, firstValueFrom, takeUntil } from 'rxjs';
+import {
+  Subject,
+  distinctUntilChanged,
+  filter,
+  firstValueFrom,
+  map,
+  takeUntil,
+} from 'rxjs';
+import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { useDetectivePageContext } from '../detective/detective-page-context';
 import { projectPageHref } from '../nav/project-page-href';
 import { SHIPPING_SOURCE, shippingScope } from './shipping-api.service';
@@ -79,6 +87,14 @@ interface InstallationJournal {
           any existing definitions. No replacement operation will be sent
           automatically.
         </p>
+        @if (state()?.exists === false && currentAuthorized()) {
+          <ion-button
+            (click)="reviewConflict()"
+            [disabled]="busy() || loading()"
+          >
+            Reviewed conflict; prepare new install
+          </ion-button>
+        }
       } @else if (original.phase === 'acknowledged') {
         <p role="status">
           The installation was acknowledged. Confirm its current state before
@@ -99,7 +115,9 @@ interface InstallationJournal {
       <p>No shipping component is installed.</p>
       <ion-button
         (click)="install()"
-        [disabled]="busy() || loading() || !currentAuthorized() || journalInvalid()"
+        [disabled]="
+          busy() || loading() || !currentAuthorized() || journalInvalid()
+        "
         >Install shipping content</ion-button
       >
     }
@@ -142,11 +160,21 @@ export class ShippingComponentInstallerComponent {
     return tree;
   }
   constructor() {
+    // The original stream cancels synchronously, before a waiting credential
+    // can deliver the old demo mutation after navigation changes environment.
+    inject(DatatugNavContextService)
+      .currentEnv.pipe(
+        map((environment) => environment?.id),
+        distinctUntilChanged(),
+        takeUntilDestroyed(),
+      )
+      .subscribe(() => this.reset());
     this.page.scopeChanges$
       .pipe(takeUntilDestroyed())
       .subscribe(() => this.reset());
     effect(() => {
       this.page.identity();
+      this.page.currentEnvironment();
       untracked(() => {
         this.reset();
         this.restore();
@@ -304,6 +332,22 @@ export class ShippingComponentInstallerComponent {
     this.pending.set(journal);
     void this.send();
   }
+  reviewConflict() {
+    const held = this.pending();
+    if (
+      held?.phase !== 'conflict' ||
+      this.state()?.exists !== false ||
+      !this.currentAuthorized() ||
+      this.busy() ||
+      this.loading()
+    )
+      return;
+    // Only this deliberate review supersedes the failed intent. Persisting the
+    // new frozen intent replaces the old journal atomically before delivery.
+    this.pending.set(undefined);
+    this.install();
+    if (!this.pending()) this.pending.set(held);
+  }
   async send() {
     const held = this.pending(),
       ref = this.page.ref(),
@@ -348,6 +392,8 @@ export class ShippingComponentInstallerComponent {
     } catch (error) {
       if (!this.alive(epoch, identity)) return;
       if (error instanceof HttpErrorResponse && error.status === 409) {
+        this.state.set(undefined);
+        this.authorizedFor.set(undefined);
         const conflict = { ...held, phase: 'conflict' as const };
         this.persist(conflict);
         this.pending.set(conflict);

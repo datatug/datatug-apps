@@ -1,3 +1,4 @@
+import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { ShippingComponentApiService } from './shipping-component-api.service';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
@@ -43,6 +44,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
     actor.set('sarah');
     page.current = {
       scopeChanges$: changes,
+      currentEnvironment: () => undefined,
       ref,
       identity,
       context: () => ({
@@ -61,6 +63,10 @@ describe('Shipping workspace native DOM lifecycle', () => {
     TestBed.configureTestingModule({
       imports: [ShippingWorkspaceComponent],
       providers: [
+        {
+          provide: DatatugNavContextService,
+          useValue: { currentEnv: of(undefined) },
+        },
         {
           provide: ShippingComponentApiService,
           useValue: {
