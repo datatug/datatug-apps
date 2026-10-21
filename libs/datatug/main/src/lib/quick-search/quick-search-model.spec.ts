@@ -1,3 +1,5 @@
+import { DEMO_PROJECT_REF } from '@datatug/project-address';
+import { checkMetadataTarget } from './quick-search-model';
 import {
   groupSearchItems,
   SearchDocument,
@@ -93,4 +95,23 @@ it.each(['Customers','..','team/'])('keeps actual tag %s separate from cross-kin
   expect(url.pathname).not.toBe('/');
   expect(url.searchParams.get('tag') ?? decodeURIComponent(url.pathname.split('/').at(-1) || '')).toBe(name);
   expect(searchNameHref(ref,name)).toBe('/space/S/store/firestore/project/P/tag-discovery?name='+encodeURIComponent(name));
+});
+
+describe('typed Check metadata destinations',()=>{
+  const item:SearchDocument={kind:'check',id:'check-a',name:'Check A',tags:[],reference:{objectId:'check-a'}};
+  it('keeps Firestore and the exact default demo on their existing Check page',()=>{
+    expect(searchItemHref({storeId:'firestore',spaceID:'s',projectId:'p'},item)).toContain('/checks/check-a');
+    expect(searchItemHref(DEMO_PROJECT_REF,item)).toContain('/checks/check-a');
+  });
+  it('routes other GitHub checks to a closed metadata query and preserves qualifiers',()=>{
+    const href=searchItemHref({storeId:'github.com',projectId:'repo@owner@folder',projectApi:'cloud',branch:'feature'},item) as string;
+    expect(href).toContain('/quick-search?');
+    const url=new URL(href,'https://datatug.app');
+    expect(url.searchParams.get('detailKind')).toBe('check');expect(url.searchParams.get('objectId')).toBe('check-a');
+    expect(url.searchParams.get('projectApi')).toBe('cloud');expect(url.searchParams.get('branch')).toBe('feature');
+    expect(searchItemHref({...DEMO_PROJECT_REF,branch:'feature'},item)).toContain('detailKind=check');
+  });
+  it.each(['?detailKind=table&objectId=a','?detailKind=check','?objectId=a','?detailKind=check&objectId=../a','?detailKind=check&detailKind=check&objectId=a'])('rejects malformed metadata selector %s',query=>{
+    const params=new URLSearchParams(query);expect(checkMetadataTarget(params)).toEqual({kind:'invalid'});
+  });
 });

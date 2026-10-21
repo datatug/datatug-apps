@@ -341,3 +341,15 @@ describe('inline schema navigation and snapshot consistency', () => {
     expect(fixture.componentInstance.items()).toEqual([]);
   });
 });
+
+describe('split schema empty-directory sentinel parity',()=>{
+  it('ignores only an explicit .gitkeep file in a verified tables/views inventory',async()=>{
+    const snapshot=await setup({'dbmodels/shop/dbo/tables/Customers/dbo.Customers.columns.json':{columns:[]},'dbmodels/shop/dbo/views/.gitkeep':''}).preview();
+    expect(snapshot.sourceCoverage.find(c=>c.kind==='view')).toMatchObject({status:'complete',count:0});
+    expect(snapshot.sourceCoverage.find(c=>c.kind==='table')).toMatchObject({status:'complete',count:1});
+  });
+  it('keeps an unknown schema inventory file unavailable',async()=>{
+    const snapshot=await setup({'dbmodels/shop/dbo/views/unknown.json':{}}).preview();
+    expect(snapshot.sourceCoverage.find(c=>c.kind==='view')).toMatchObject({status:'unavailable',count:0});
+  });
+});

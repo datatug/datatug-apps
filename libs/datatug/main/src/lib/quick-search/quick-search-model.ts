@@ -1,4 +1,5 @@
 import { projectTagHref } from '../tags/tag-navigation';
+import { isPublicChecksProject } from '../detective/public-checks-project';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
 
@@ -171,6 +172,14 @@ export function searchItemHref(
       page = ['board', id];
       break;
     case 'check':
+      if (
+        ['github', 'github.com'].includes(ref.storeId) &&
+        !isPublicChecksProject(ref)
+      )
+        return withParameters(projectPageHref(ref, ['quick-search']), {
+          detailKind: 'check',
+          objectId: id,
+        });
       page = ['checks', id];
       break;
     case 'entity':
@@ -200,4 +209,25 @@ export function searchItemHref(
 /** Name groups retain cross-kind discovery separately from actual tag detail. */
 export function searchNameHref(ref: IProjectRef, name: string): string {
   return withParameters(projectPageHref(ref, ['tag-discovery']), {name});
+}
+
+export type CheckMetadataTarget =
+  | { kind: 'none' }
+  | { kind: 'invalid' }
+  | { kind: 'check'; objectId: string };
+/** Query metadata mode is closed: duplicate, unknown and incomplete selectors fail visibly. */
+export function checkMetadataTarget(params: {
+  has(name: string): boolean;
+  getAll(name: string): string[];
+}): CheckMetadataTarget {
+  if (!params.has('detailKind') && !params.has('objectId'))
+    return { kind: 'none' };
+  const kinds = params.getAll('detailKind'),
+    ids = params.getAll('objectId');
+  return kinds.length === 1 &&
+    kinds[0] === 'check' &&
+    ids.length === 1 &&
+    /^[A-Za-z0-9_-]{1,128}$/.test(ids[0])
+    ? { kind: 'check', objectId: ids[0] }
+    : { kind: 'invalid' };
 }
