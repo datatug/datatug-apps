@@ -465,49 +465,8 @@
                         /></label>
                       }
                     }
-                    <h4>Independent source bindings</h4>
-                    @for (source of chart.sources; track source.id) {
-                      <p>
-                        <strong>{{ source.id }}</strong> · {{ source.queryId }}
-                      </p>
-                      @for (
-                        binding of source.parameters ?? [];
-                        track binding.id
-                      ) {
-                        <p>
-                          {{ binding.id }} ←
-                          {{
-                            binding.boardParameterId || 'saved constant/default'
-                          }}
-                        </p>
-                      }
-                      <button
-                        type="button"
-                        [disabled]="chart.sources.length === 1"
-                        (click)="removeTutorialSource(editor, source.id)"
-                      >
-                        Remove source {{ source.id }}
-                      </button>
-                    }
-                    <button
-                      type="button"
-                      aria-disabled="true"
-                      (click)="explainSourceLimit(editorIndex)"
-                      [attr.aria-describedby]="
-                        'source-composition-limit-' + editorIndex
-                      "
-                    >
-                      Add another source (unavailable)
-                    </button>
-                    <p
-                      [id]="'source-composition-limit-' + editorIndex"
-                      tabindex="-1"
-                    >
-                      A second source is unavailable until separate execution
-                      and composition are supported. Use a separate saved-query
-                      tab for independent inspection; missing provider rights
-                      keep a source chart-ineligible.
-                    </p>
+                    <sneat-datatug-chart-source-editor [definition]="chart" [queries]="tutorialSourceQueries(editor)" (edit)="editTutorialSource(editor, $event)" />
+
                   }
                 </fieldset>
               }

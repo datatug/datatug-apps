@@ -1,3 +1,4 @@
+import { editChartSources, type ChartSourceEdit } from './chart-source-edit';
 import type { ChartWidgetDef } from './widget-chart';
 import type { BoardParameterDef } from './widget-parameter';
 import type { Board, BoardCard } from './board';
@@ -170,6 +171,7 @@ export function validateHostedBoardDefinition(board: Board): void {
   }
 }
 export type BoardDefinitionEdit =
+  | (ChartSourceEdit & { cardId: string })
   | { type: 'title'; title: string }
   | { type: 'set-chart'; cardId: string; definition: ChartWidgetDef }
   | { type: 'set-parameter'; parameter: BoardParameterDef }
@@ -203,6 +205,10 @@ export function editBoardDefinition(
         ...clone(edit.parameter),
       },
     ];
+  } else if (edit.type === 'add-chart-source' || edit.type === 'remove-chart-source') {
+    const card = next.rows?.flatMap((row) => row.cards ?? []).find((item) => item.id === edit.cardId);
+    if (!card || card.widget?.name !== 'chart') throw new Error('Select a chart card.');
+    card.widget = { name: 'chart', data: editChartSources(card.widget.data as ChartWidgetDef, edit, authorizedQueryIds) };
   } else if (edit.type === 'set-chart') {
     const card = next.rows
       ?.flatMap((row) => row.cards ?? [])

@@ -1,3 +1,36 @@
+@if (executionOnly()) {
+  <section [attr.aria-label]="'Source ' + sourceBindingId()">
+    <h4>{{ sourceBindingId() }} · {{ definition()?.title || sourceBinding()?.queryId }}</h4>
+    @if (definitionLoading() || running()) { <p role="status">Loading source…</p> }
+    @if (runError() || unsupportedReason() || sourceAdmissionError(); as error) { <p role="alert">{{ error }}</p> }
+    @if (unsupportedReason()) { <ion-button size="small" fill="outline" [disabled]="definitionLoading() || running()" (click)="retrySourceDefinition()">Retry source definition</ion-button> }
+    @if (running()) { <ion-button size="small" fill="clear" (click)="cancelSource()">Cancel source run</ion-button> }
+    <ion-button size="small" fill="outline" [disabled]="running() || definitionLoading() || !definition() || !!unsupportedReason()" (click)="run()">{{ runError() ? 'Retry source' : result() ? 'Refresh source' : 'Run source' }}</ion-button>
+    @if (queryUrlTree(); as tree) { <ion-button size="small" fill="clear" [routerLink]="tree">Open saved query</ion-button> }
+    @if (result(); as held) {
+      <p>{{ held.provenance.source }} · {{ held.recordset.rows.length }} source rows</p>
+      <details [open]="sourceRowsVisible()"><summary>Inspect {{ sourceBindingId() }} source rows and terms</summary>
+        <sneat-datatug-source-rights-notice [evidence]="held" />
+        <sneat-datatug-held-result-presentation [embedded]="true" [result]="held" [loading]="running()" [error]="runError() ?? null" />
+      </details>
+    }
+  </section>
+} @else if (independent()) {
+  <section class="ion-padding" aria-label="Independent chart sources">
+    @if (chartWidgetDef()?.title; as title) { <p>{{ title }}</p> }
+    <div class="chart-view-switch" role="group" aria-label="Independent result view">
+      <button type="button" [attr.aria-pressed]="chartView() === 'chart'" (click)="setChartView('chart')">Chart</button>
+      <button type="button" [attr.aria-pressed]="chartView() === 'grid'" (click)="setChartView('grid')">Source rows</button>
+    </div>
+    @if (chartView() === 'chart') {
+    @if (independentBars().data; as data) { <sneat-datatug-independent-bars [data]="data" [unit]="chartWidgetDef()?.chart?.unit || ''" /> }
+    @else { <p role="status">{{ independentBars().error }}</p> }
+    }
+    @for (source of sourceControllers(); track source.id) {
+      <ng-container *ngComponentOutlet="nestedWidgetComponent; inputs: source.inputs" />
+    }
+  </section>
+} @else {
 @if(retainedPending()) {
   <p role="status">The previous retained run has no confirmed outcome and may already be attached. Retry the unchanged card, or review current board access before abandoning it.</p>
   <ion-button fill="outline" (click)="reviewRetainedRun()" [disabled]="running()">Review current board access</ion-button>
@@ -353,4 +386,6 @@
       }
     </div>
   }
+}
+
 }

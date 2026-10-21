@@ -12,6 +12,7 @@ export const countryBoardURL =
 export const countryOrders = JSON.parse(
   countryFixture('northwind-orders-records.json'),
 ) as Record<string, unknown>[];
+const customerCounts = JSON.parse(countryFixture('customer-country-source-counts.json')) as Record<string, { rows: { country: string; customers: number }[] }>;
 const snapshot = JSON.parse(countryFixture('ovdb-inspector-snapshot.json'));
 const publication = countryFixture('northwind-orders-rights.json');
 const countPublication = countryFixture('northwind-country-count-rights.json');
@@ -45,11 +46,32 @@ export async function installCountryComparisonFixture(
     failRootOnce?: boolean;
     partialOrders?: boolean;
     syntheticZero?: boolean;
+    failCustomerChinookOnce?: boolean;
+    holdCustomerChinookSecond?: Promise<void>;
+    customerOrdinary?: boolean;
+    independentSources?: boolean;
   } = {},
 ) {
   await installFakeGithub(context, [
     { fullName: 'datatug/datatug-demo-project', dir: source },
   ]);
+  // Explicit simulated-valid-server fixture. Production identity/rights remain a separate provider receipt.
+  const customerDefinitions = options.independentSources ? Object.fromEntries(['northwind', 'chinook'].map((database) => [database, JSON.parse(readFileSync(join(source, `demo-project-1/queries/demodb/${database}-customer-country-counts-server.query.json`), 'utf8'))])) : {};
+  const configuredIds = [...new Set(Object.values(customerDefinitions).map((definition) => definition.federation?.expectedServerIdentity?.serverId).filter(Boolean))];
+  if (configuredIds.length > 1) throw new Error('Customer fixture definitions select different server identities.');
+  const fixtureServerId = configuredIds[0] || 'showcase-fixture-server';
+  const terms = (database: string) => {
+    const collection = database === 'northwind' ? 'Customers' : 'Customer';
+    const expected = customerDefinitions[database]?.federation?.expectedSourceRights;
+    const sourceRights = expected?.length ? expected : [{ sourceId: `ovdb:${encodeURIComponent(fixtureServerId)}/${database}/${collection}`, source: { serverId: fixtureServerId, databaseId: database, recordset: collection }, declaration: { text: 'Simulated source reuse terms for fixture acceptance. Not a production declaration.' }, declarationScope: 'recordset', declaredAt: { serverId: fixtureServerId, databaseId: database, recordset: collection }, evidenceOrigin: 'server-declared', pins: [], transformations: [] }];
+    return { sourceRights, usedSourceIds: sourceRights.map((right: { sourceId: string }) => right.sourceId) };
+  };
+  if (options.independentSources) await context.route((url) => ['raw.githubusercontent.com', 'cdn.jsdelivr.net'].includes(url.hostname) && /\/queries\/demodb\/(?:northwind|chinook)-customer-country-counts-server\.query\.json$/.test(url.pathname), (route) => {
+    const database = route.request().url().includes('/northwind-customer-') ? 'northwind' : 'chinook';
+    const definition = structuredClone(customerDefinitions[database]);
+    definition.federation.expectedServerIdentity ??= { baseUrl: definition.federation.ovdbBaseUrl, serverId: fixtureServerId };
+    return route.fulfill({ json: definition, headers: { 'access-control-allow-origin': '*' } });
+  });
   await context.route(
     'https://raw.githubusercontent.com/demo-db/northwind/**/source-rights.json',
     (route) =>
@@ -104,6 +126,21 @@ export async function installCountryComparisonFixture(
         '/__datatug_public_ovdb/cloud',
         '',
       );
+      const customerDatabase = path === '/v1/databases/northwind/dtql' ? 'northwind' : path === '/v1/databases/chinook/dtql' ? 'chinook' : undefined;
+      if (customerDatabase && route.request().method() === 'POST') {
+        const body = route.request().postData() ?? '';
+        const query = readFileSync(join(source, `demo-project-1/queries/demodb/${customerDatabase}-customer-country-counts-server.query.dtql`), 'utf8');
+        expect(body).toBe(query);
+        posts.push('customer-' + customerDatabase);
+        const attempt = posts.filter((value) => value === 'customer-' + customerDatabase).length;
+        if (customerDatabase === 'chinook' && options.failCustomerChinookOnce && attempt === 1)
+          return route.fulfill({ status: 503, body: 'fixture source refusal' });
+        if (customerDatabase === 'chinook' && options.holdCustomerChinookSecond && attempt === 2)
+          await options.holdCustomerChinookSecond;
+        const rows = customerCounts[customerDatabase].rows;
+        // Pinned SQLite-derived real aggregates in the public transport envelope, not a captured server receipt.
+        return route.fulfill({ contentType: route.request().headers()['accept']?.includes('application/vnd.openvaultdb.query-stream+json') ? 'application/vnd.openvaultdb.query-stream+json' : 'application/json', json: { records: rows.map((data) => ({ data })), columns: ['country', 'customers'], complete: true, execution: { route: 'database', rowsReturned: rows.length, sources: [{ database: customerDatabase, collection: customerDatabase === 'northwind' ? 'Customers' : 'Customer' }] }, ...(options.independentSources ? terms(customerDatabase) : {}) } });
+      }
       if (path === '/v1/dtql' && route.request().method() === 'POST') {
         const body = route.request().postData() ?? '';
         rootBodies.push(body);
@@ -118,15 +155,20 @@ export async function installCountryComparisonFixture(
             body: 'fixture temporary refusal',
           });
         const result = structuredClone(snapshot.comparison);
+        if (options.independentSources) {
+          // Preserve captured root rows; simulate the coordinated new provider inventory/usage only.
+          result.sourceRights = [...terms('northwind').sourceRights, ...terms('chinook').sourceRights];
+          result.usedSourceIds = result.sourceRights.map((right: { sourceId: string }) => right.sourceId);
+        }
         // Deliberately synthetic negative fixture only: real captured labels all have shipping matches.
         if (options.syntheticZero)
           result.records[0].data.country = 'United Kingdom';
         return route.fulfill({ json: result });
       }
       if (path === '/v1/databases/northwind')
-        return route.fulfill({ json: snapshot.northwind });
+        return route.fulfill({ json: { ...snapshot.northwind, ...(options.independentSources ? { serverId: fixtureServerId, sourceRights: terms('northwind').sourceRights } : {}), capabilities: { ...snapshot.northwind.capabilities, dtql: true, dtqlStreaming: !options.customerOrdinary, dtqlStreamingErrors: !options.customerOrdinary } } });
       if (path === '/v1/databases/chinook')
-        return route.fulfill({ json: snapshot.chinook });
+        return route.fulfill({ json: { ...snapshot.chinook, ...(options.independentSources ? { serverId: fixtureServerId, sourceRights: terms('chinook').sourceRights } : {}), capabilities: { ...snapshot.chinook.capabilities, dtql: true, dtqlStreaming: !options.customerOrdinary, dtqlStreamingErrors: !options.customerOrdinary } } });
       return route.abort();
     },
   );

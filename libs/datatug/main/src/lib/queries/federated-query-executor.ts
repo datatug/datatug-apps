@@ -210,6 +210,16 @@ export type FederatedQueryResult = Omit<RunQueryResponse, 'provenance'> & {
   readonly runtimeRead?: import('./public-data/immutable-federation').RuntimeReadReport;
   readonly providerReads?: unknown;
   readonly nativeStream?: true;
+  /** Local transport observation, not a provider execution profile or source attestation. */
+  readonly nativeStreamRead?: {
+    readonly endpoint: string;
+    readonly queryId: string;
+    readonly plannedSources: readonly { readonly database: string; readonly collection: string }[];
+    readonly terminalComplete: true;
+    readonly observedRows: number;
+    readonly providerSources?: readonly { readonly database: string; readonly collection: string }[];
+    readonly providerRows?: number;
+  };
   /** Worker staging marker for a complete ordinary /dtql response. */
   readonly nativeDirect?: true;
   /** Validated ordinary envelope, distinct from a protected execution receipt. */
@@ -477,6 +487,23 @@ async function runNativeStream(
   }, signal, undefined, mappedErrors);
   signal?.throwIfAborted();
   rights.acceptWholeQuery(stream.footer as unknown as Record<string, unknown>);
+  const footer = stream.footer as unknown as Record<string, unknown>;
+  if ((footer['hasMore'] !== undefined && footer['hasMore'] !== false) || (footer['truncated'] !== undefined && footer['truncated'] !== false))
+    throw new Error('The native query stream is partial.');
+  const execution = footer['execution'] as Record<string, unknown> | undefined;
+  const declaredSources = execution?.['sources'];
+  let providerSources: { database: string; collection: string }[] | undefined;
+  if (declaredSources !== undefined) {
+    if (!Array.isArray(declaredSources) || declaredSources.some((source) => !source || typeof source !== 'object' || typeof source.database !== 'string' || typeof source.collection !== 'string'))
+      throw new Error('The native query stream has invalid execution sources.');
+    providerSources = declaredSources.map((source) => ({ database: source.database, collection: source.collection }));
+    const planned = sources.map((source) => `${source.database}/${source.name}`).sort();
+    const actual = providerSources.map((source) => `${source.database}/${source.collection}`).sort();
+    if (JSON.stringify(planned) !== JSON.stringify(actual)) throw new Error('The native query stream execution sources differ from its plan.');
+  }
+  const providerRows = execution?.['rowsReturned'];
+  if (providerRows !== undefined && (!Number.isSafeInteger(providerRows) || providerRows !== count))
+    throw new Error('The native query stream execution count differs from its records.');
   const columns = ovdbResultColumns(stream.footer.columns, definition);
   const rows = first.map((record) => ovdbStreamRow(record, columns));
   if (onOutputPage && !observer?.onNativeRecord) await onOutputPage(rows);
@@ -486,6 +513,13 @@ async function runNativeStream(
     ...rights.evidence(),
     ...(stream.footer.providerReads === undefined ? {} : { providerReads: stream.footer.providerReads }),
     recordset: { columns, rows }, totalRows: count, hasMore: false, nativeStream: true,
+    nativeStreamRead: {
+      endpoint: `${base}/v1/databases/${encodeURIComponent(database)}/dtql`, queryId: definition.id,
+      plannedSources: sources.map((source) => ({ database: source.database, collection: source.name })),
+      terminalComplete: true, observedRows: count,
+      ...(providerSources ? { providerSources } : {}),
+      ...(typeof providerRows === 'number' ? { providerRows } : {}),
+    },
     limitations: [], bindingsApplied: [], truncated: false,
     provenance: { source: `${base}/v1/databases/${database} (direct OVDB)`, queryId: definition.id,
       mode: 'live', observedAt: new Date().toISOString() },
