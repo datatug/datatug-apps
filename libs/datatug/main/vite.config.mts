@@ -6,6 +6,7 @@ export function createDatatugMainViteConfig(coverageEnabled = true): ViteUserCon
 	const config = createBaseViteConfig({
 		dirname: __dirname,
 		name: 'datatug-main',
+		shareModulesAcrossFiles: true,
 	});
 	return {
 		...config,
@@ -18,8 +19,7 @@ export function createDatatugMainViteConfig(coverageEnabled = true): ViteUserCon
 							['json', { outputFile: '../../../coverage/libs/datatug/main/vitest-results.json' }],
 						]
 					: config.test?.reporters,
-			// The full suite can lose a VM thread before reporting results.
-			// Isolate each test file in a process while retaining the shared gates.
+			// The full suite can lose a VM thread before reporting results, so it runs in forks.
 			pool: 'forks',
 			coverage: {
 				...config.test?.coverage,
