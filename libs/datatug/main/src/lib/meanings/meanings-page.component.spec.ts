@@ -150,12 +150,56 @@ describe('Meanings page route, mutation and zoneless lifecycle', () => {
     service.catalog.mockReturnValue(response);
     const fixture = await render();
     expect(fixture.nativeElement.textContent).toContain('Loading meanings');
-    response.next(catalog);
+    response.next({
+      ...catalog,
+      entities: [
+        {
+          ...catalog.entities[0],
+          fields: [
+            ...catalog.entities[0].fields,
+            {
+              documentId: 'meaning:external',
+              conceptId: 'customer-name',
+              name: 'Customer name',
+              description:
+                'Name from the explicitly linked external definition',
+              resources: [],
+            },
+          ],
+        },
+      ],
+    });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Customer ID');
-    expect(
-      fixture.nativeElement.querySelector('ion-item[detail]'),
-    ).toBeTruthy();
+    const item = fixture.nativeElement.querySelector('ion-list > ion-item'),
+      entityLink = item.querySelector('h2 > a'),
+      columns = item.querySelector('p.identity'),
+      fieldLinks = Array.from(
+        columns.querySelectorAll('a'),
+      ) as HTMLAnchorElement[];
+    expect(entityLink.querySelector('strong').textContent).toBe('Customer');
+    expect(columns.textContent.replace(/\s+/g, ' ').trim()).toBe(
+      'Columns: Customer ID, Customer name',
+    );
+    expect(fieldLinks.map((link) => link.textContent.trim())).toEqual([
+      'Customer ID',
+      'Customer name',
+    ]);
+    const entityURL = new URL(
+        entityLink.getAttribute('href'),
+        'https://datatug.app',
+      ),
+      fieldURL = new URL(fieldLinks[0].href, 'https://datatug.app'),
+      externalFieldURL = new URL(fieldLinks[1].href, 'https://datatug.app');
+    expect(entityURL.pathname).toMatch(/\/meanings\/entity$/);
+    expect(entityURL.searchParams.get('concept')).toBe('customer');
+    expect(fieldURL.pathname).toMatch(/\/meanings\/field$/);
+    expect(fieldURL.searchParams.get('field')).toBe('customer-id');
+    expect(externalFieldURL.searchParams.get('fieldDocument')).toBe(
+      'meaning:external',
+    );
+    expect(externalFieldURL.searchParams.get('field')).toBe('customer-name');
+    expect(item.querySelector('a a')).toBeNull();
+    expect(item.hasAttribute('href')).toBe(false);
   });
   it('loads a cold field URL and returns to its entity; folder query links retain their ID', async () => {
     data.next({ meaningMode: 'field' });
