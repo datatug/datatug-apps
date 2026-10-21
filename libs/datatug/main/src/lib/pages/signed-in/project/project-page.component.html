@@ -15,6 +15,13 @@
 </ion-header>
 
 <ion-content color="light">
+  <form class="overview-quick-search ph-no-capture" role="search" (submit)="submitQuickSearch($event)">
+    <label for="project-quick-search">Quick Search</label>
+    <div>
+      <input id="project-quick-search" class="ph-no-capture ph-mask sentry-mask" data-sentry-mask type="search" name="q" placeholder="Search tables, columns, queries, tags…" [value]="quickSearchQuery()" (input)="updateQuickSearch($event)" />
+      <button type="submit" [disabled]="!quickSearchQuery().trim() || !project()?.ref">Search</button>
+    </div>
+  </form>
   @if (shippingHref(); as href) {
     <ion-item [routerLink]="href" detail="true"
       ><ion-label>Shipping training workspace</ion-label></ion-item

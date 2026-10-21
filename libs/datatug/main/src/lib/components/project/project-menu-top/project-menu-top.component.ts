@@ -150,6 +150,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       icon: 'home-outline',
     },
     ...ProjectMenuTopComponent.sortProjectPages([
+      { path: 'quick-search', title: 'Quick Search', icon: 'search-outline' },
       {
         path: 'sessions',
         title: 'Sessions',
@@ -188,12 +189,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
         icon: 'book-outline',
       },
       {
-        path: 'environments',
-        title: 'Environments',
-        icon: 'earth-outline',
-        count: (proj) => proj?.environments?.length,
-      },
-      {
+
         path: 'servers',
         title: 'Servers',
         icon: 'server-outline',
@@ -324,6 +320,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
       (this.metadataOnly() &&
         ![
           'overview',
+          'quick-search',
           'queries',
           'checks',
           'detective',

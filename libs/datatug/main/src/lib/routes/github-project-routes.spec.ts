@@ -182,6 +182,9 @@ describe('the routes as registered', () => {
     );
     expect(shared?.canMatch).toHaveLength(1);
     expect(shared?.children?.map((r) => r.path)).toEqual([
+      'quick-search',
+      'tags',
+      'search-schema/:dbModelId',
       'meanings',
       'meanings/new-entity',
       'meanings/entity',
