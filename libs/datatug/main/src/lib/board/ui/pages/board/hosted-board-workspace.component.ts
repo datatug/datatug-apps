@@ -1,3 +1,5 @@
+import type { ChartSourceEdit } from '@datatug/board-models';
+import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
 import { EvidenceSharePanelComponent, EvidenceShareSelection } from '../../../../evidence/evidence-share-panel.component';
 import { BoardChartEditorComponent } from './board-chart-editor.component';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
@@ -73,7 +75,7 @@ interface QueryFolder {
   selector: 'sneat-datatug-hosted-board-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
-  imports: [
+  imports: [ChartSourceEditorComponent,
     EvidenceSharePanelComponent,
     BoardChartEditorComponent,
     RouterLink,
@@ -248,6 +250,10 @@ interface QueryFolder {
                       })
                     "
                   />
+                }
+                @if (card.widget?.name === 'chart') {
+                  <sneat-datatug-chart-source-editor [definition]="$any(card.widget.data)" [queries]="queries()" [disabled]="saving() || !!pending()" (edit)="editSource(card.id, $event)" />
+                  <p>Save the board to run the updated source configuration.</p>
                 }
                 @if (card.widget?.name === 'SQL') {
                   <label
@@ -761,6 +767,7 @@ export class HostedBoardWorkspaceComponent {
   reload() {
     this.refresh.update((n) => n + 1);
   }
+  editSource(cardId: string, edit: ChartSourceEdit): void { this.edit({ ...edit, cardId }); }
   cardQuery(card: BoardCard) {
     return (
       (card.widget?.data as { sql?: { queryId?: string } })?.sql?.queryId || ''

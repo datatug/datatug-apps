@@ -12,6 +12,7 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: [
     'showcase-country-comparison.spec.ts',
+    'showcase-independent-sources.spec.ts',
     'showcase-tutorial-acceptance.spec.ts',
     'showcase-inspector-polish.spec.ts',
     'query-grid-enterprise.spec.ts',
@@ -22,7 +23,7 @@ export default defineConfig({
   timeout: 60_000,
   expect: { timeout: 15_000 },
   globalSetup: './e2e/helpers/demodb-state-setup.ts',
-  reporter: [['list'], demodbReporter],
+  reporter: [['list'], demodbReporter, ['json', { outputFile: '../../coverage/apps/datatug-showcase-exploration/report.json' }]],
   use: {
     baseURL: `http://localhost:${port}`,
     trace: 'retain-on-failure',

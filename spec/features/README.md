@@ -29,6 +29,7 @@ Feature specifications for this project.
 | [Hosted board authoring](hosted-board-authoring/README.md) | Draft | Create, edit, save and reload canonical boards in an explicitly scoped hosted project. |
 | [Shipping working copy controls](shipping-working-copy-controls/README.md) | Draft | Expose the published Backend v0.42 working-copy lifecycle in the native hosted project web UI. This is one bounded part of the [shipping investigation story](https://github.com/datatug/backstage/tree/main/spec/features/unsigned-shipping-investigation), not recording-readiness proof. |
 | [Shared project environment order](shared-project-environment-order/README.md) | Implementing | Persist and apply one project-owned environment order from least risky to most risky across every environment reader and selector. |
+| [Independent chart source composition](independent-chart-sources/README.md) | Implementing | Add a compatible independently executed saved query to a normal chart, with the same action in the guided session. |
 
 ## Open Questions
 
