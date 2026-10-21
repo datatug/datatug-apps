@@ -158,30 +158,25 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   });
   await overviewSearch.press('Enter');
   await expect(page).toHaveURL(/quick-search\?q=Customers$/);
-  await page.locator('sneat-datatug-quick-search').waitFor();
+  const main = page.locator(
+    'sneat-datatug-quick-search[data-search-view=search].ion-page:not(.ion-page-hidden):not(.ion-page-invisible)',
+  );
+  await expect(main).toBeVisible();
   // Development-only Angular debug API supplies the controlled HTTP fixture's
   // bearer token through the real auth bridge; no application test hook ships.
-  await page.evaluate(() => {
+  await main.evaluate((element) => {
     const debug = window as unknown as {
       ng: {
         getComponent(element: Element): {
           api: { api: { setApiAuthToken(token: string): void } };
+          loadStatus(): void;
         };
       };
     };
-    debug.ng
-      .getComponent(
-        document.querySelector('sneat-datatug-quick-search') as Element,
-      )
-      .api.api.setApiAuthToken('quick-search-http-fixture');
+    const component = debug.ng.getComponent(element);
+    component.api.api.setApiAuthToken('quick-search-http-fixture');
+    component.loadStatus();
   });
-  await page
-    .locator('sneat-datatug-quick-search')
-    .getByRole('button', { name: 'Retry status' })
-    .click();
-  const main = page.locator(
-    'sneat-datatug-quick-search[data-search-view=search]:not(.ion-page-hidden)',
-  );
   const schemaPage = page.locator(
     'sneat-datatug-quick-search[data-search-view=schema]:not(.ion-page-hidden)',
   );
@@ -250,6 +245,15 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   await expect(page).toHaveURL(/quick-search\?q=Customers$/);
   await expect(main.locator('.results > li')).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect
+    .poll(() => main.evaluate((host) => ({
+      interactive: getComputedStyle(host).pointerEvents !== 'none',
+      animations: host.getAnimations({ subtree: true }).filter((animation) =>
+        animation.playState === 'running' &&
+        animation.effect?.getComputedTiming().iterations !== Infinity,
+      ).length,
+    })))
+    .toEqual({ interactive: true, animations: 0 });
   await main.getByRole('link', { name: 'Table@Chinook', exact: true }).focus();
   await expect(
     main.getByRole('link', { name: 'Table@Chinook', exact: true }),
