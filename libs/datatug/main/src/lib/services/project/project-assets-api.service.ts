@@ -76,8 +76,19 @@ export class ProjectAssetsApiService {
         )
           throw new Error('Board detail response is unavailable.');
         const revision = response.headers.get('X-Datatug-Asset-Revision');
-        if (!revision || response.headers.get('ETag') !== `"${revision}"`)
-          throw new Error('Reload this board to obtain its current revision.');
+        if (!revision)
+          throw new Error(
+            'Board revision header is missing. Saving is blocked. Retry loading; if this persists, the server must expose its revision header.',
+          );
+        const etag = response.headers.get('ETag');
+        if (!etag)
+          throw new Error(
+            'Board ETag header is missing. Saving is blocked. Retry loading; if this persists, the server must expose its ETag header.',
+          );
+        if (etag !== `"${revision}"`)
+          throw new Error(
+            'Board revision headers do not match a strong ETag. Saving is blocked. Retry loading; if this persists, the server must return matching revision headers.',
+          );
         const board = parseHostedBoardDefinition(response.body);
         if (board.id !== id) throw new Error('Board detail identity mismatch.');
         return { board, revision };

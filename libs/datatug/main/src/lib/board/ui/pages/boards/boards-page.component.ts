@@ -5,6 +5,7 @@ import {
   computed,
   inject,
   signal,
+  viewChild,
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import {
@@ -127,6 +128,12 @@ export class BoardsPageComponent implements OnInit, OnDestroy {
     const ref = this.project()?.ref;
     return !!ref?.spaceID;
   });
+
+  private readonly hostedList = viewChild(HostedBoardListComponent);
+  ionViewWillEnter(): void {
+    // Ionic retains routed pages. Re-entry must read the current authorized catalog.
+    this.hostedList()?.reload();
+  }
 
   folderPath = '~';
 

@@ -1,4 +1,7 @@
-import { nativeQueryDiagnostic, nativeQueryDiagnosticMessage } from '../../../../queries/native-query-failure';
+import {
+  nativeQueryDiagnostic,
+  nativeQueryDiagnosticMessage,
+} from '../../../../queries/native-query-failure';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import {
   admitComparisonChart,
@@ -13,6 +16,7 @@ import {
   effect,
   inject,
   input,
+  output,
   WritableSignal,
   untracked,
 } from '@angular/core';
@@ -23,6 +27,7 @@ import { IonButton } from '@ionic/angular';
 import {
   BoardWidget,
   ChartWidgetDef,
+  ChartSpec,
   SQLWidgetDef,
   TabsWidgetDef,
 } from '@datatug/board-models';
@@ -39,6 +44,11 @@ import { QueryDispatchError } from '../../../../queries/query-dispatch';
 import type { QueryRuntimeOption } from '../../../../queries/query-runtime-registry.service';
 import {
   chartEvidenceError,
+  decodeResult,
+  prepareEvidenceChart,
+  type PreparedEvidenceChart,
+  type HeldEvidenceIdentity,
+  type EvidenceInspection,
   prepareBarRace,
   prepareOrdersMonthlyTrend,
   transformOrdersMonthlyCountryCount,
@@ -49,6 +59,7 @@ import {
   type TypedValue,
 } from '@sneat/datatug-semantic';
 import {
+  EvidenceChartComponent,
   BarRaceChartComponent,
   OrdersMonthlyTrendComponent,
   type BarRaceChartViews,
@@ -79,6 +90,8 @@ export interface BoardResultSnapshot {
     | ServerChartRecordset;
   readonly identity?: string;
   readonly previous?: BoardResultSnapshot;
+  /** Authenticated retained provider identity; never derived from sidecar or UI. */
+  readonly evidenceIdentity?: HeldEvidenceIdentity;
 }
 
 @Component({
@@ -87,9 +100,11 @@ export interface BoardResultSnapshot {
   styleUrl: './board-widget.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EvidenceChartComponent,
     TabsWidgetComponent,
     RouterLink,
     IonButton,
+    EvidenceChartComponent,
     BarRaceChartComponent,
     OrdersMonthlyTrendComponent,
     HeldResultPresentationComponent,
@@ -170,7 +185,7 @@ export class BoardWidgetComponent {
       revision: this.dispatcher.runtimeRevision(),
     }),
   );
-  readonly result = computed(() => {
+  readonly heldSnapshot = computed(() => {
     const identity = this.executionIdentity();
     for (
       let snapshot = this.snapshotStore()();
@@ -178,10 +193,48 @@ export class BoardWidgetComponent {
       snapshot = snapshot.previous
     ) {
       if (snapshot.queryId === this.queryId() && snapshot.identity === identity)
-        return snapshot.result;
+        return snapshot;
     }
     return undefined;
   });
+  readonly result = computed(() => this.heldSnapshot()?.result);
+  readonly evidenceKind = computed(() =>
+    ['timeline', 'timing-bars', 'heatmap'].includes(
+      this.chartWidgetDef()?.chart.type ?? '',
+    ),
+  );
+  private readonly preparedEvidenceIdentity = signal('');
+  private readonly preparedEvidenceInputs = signal<
+    { snapshot: BoardResultSnapshot; chart: ChartSpec } | undefined
+  >(undefined);
+  private readonly heldPreparedEvidence = signal<PreparedEvidenceChart | null>(
+    null,
+  );
+  readonly preparedEvidence = computed(() =>
+    this.preparedEvidenceIdentity() === this.executionIdentity() &&
+    this.preparedEvidenceInputs()?.snapshot === this.heldSnapshot() &&
+    this.preparedEvidenceInputs()?.chart === this.chartWidgetDef()?.chart
+      ? this.heldPreparedEvidence()
+      : null,
+  );
+  readonly evidenceError = signal<string | null>(null);
+  readonly preparingEvidence = signal(false);
+  readonly inspectedEvidence = signal<EvidenceInspection | undefined>(
+    undefined,
+  );
+  readonly inspectEvidence = output<EvidenceInspection>();
+  inspectHeldEvidence(value: EvidenceInspection): void {
+    if (
+      !this.preparedEvidence() ||
+      !this.result() ||
+      this.preparedEvidenceIdentity() !== this.executionIdentity() ||
+      this.running() ||
+      this.preparingEvidence()
+    )
+      return;
+    this.inspectedEvidence.set(value);
+    this.inspectEvidence.emit(value);
+  }
   readonly showcase = computed(() => {
     const ref = this.projectRef();
     if (
@@ -408,6 +461,63 @@ export class BoardWidgetComponent {
   );
 
   constructor() {
+    effect((onCleanup) => {
+      const chart = this.chartWidgetDef()?.chart;
+      const held = this.heldSnapshot();
+      const currentIdentity = this.executionIdentity();
+      const result = this.result();
+      const running = this.running();
+      this.heldPreparedEvidence.set(null);
+      this.preparedEvidenceIdentity.set('');
+      this.preparedEvidenceInputs.set(undefined);
+      this.inspectedEvidence.set(undefined);
+      this.evidenceError.set(null);
+      this.preparingEvidence.set(false);
+      if (!chart || !this.evidenceKind() || !result || running) return;
+      const identity = held?.evidenceIdentity;
+      if (!identity || !held) {
+        this.evidenceError.set(
+          'Retained source identity is unavailable for this result. The server must provide admitted execution evidence.',
+        );
+        return;
+      }
+      let cancelled = false;
+      onCleanup(() => {
+        cancelled = true;
+      });
+      this.preparingEvidence.set(true);
+      try {
+        const core = decodeResult(result);
+        void prepareEvidenceChart(chart, core, identity)
+          .then(
+            (data) => {
+              if (!cancelled) {
+                this.heldPreparedEvidence.set(data);
+                this.preparedEvidenceIdentity.set(currentIdentity);
+                this.preparedEvidenceInputs.set({ snapshot: held, chart });
+              }
+            },
+            (error: unknown) => {
+              if (!cancelled)
+                this.evidenceError.set(
+                  error instanceof Error
+                    ? error.message
+                    : 'Held evidence is unavailable.',
+                );
+            },
+          )
+          .finally(() => {
+            if (!cancelled) this.preparingEvidence.set(false);
+          });
+      } catch (error) {
+        this.evidenceError.set(
+          error instanceof Error
+            ? error.message
+            : 'Held evidence is unavailable.',
+        );
+        this.preparingEvidence.set(false);
+      }
+    });
     effect(() => this.chartView.set(this.initialPresentationView().view));
     this.destroyRef.onDestroy(() => {
       const id = this.chartWidgetDef()?.chart.selectionId;

@@ -1,3 +1,4 @@
+import { BoardChartEditorComponent } from './board-chart-editor.component';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
   IParameterDef,
@@ -71,6 +72,7 @@ interface QueryFolder {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
   imports: [
+    BoardChartEditorComponent,
     RouterLink,
     IonButton,
     IonItem,
@@ -169,11 +171,67 @@ interface QueryFolder {
               edit({ type: 'title', title: $event.detail.value || '' })
             "
         /></ion-item>
+        <section aria-label="Board parameter declarations">
+          <h2>Board inputs</h2>
+          <p>
+            Declare reusable inputs here; active values above are never saved.
+          </p>
+          <label
+            >Parameter ID
+            <input
+              aria-label="Parameter ID"
+              [value]="newParameterId()"
+              (input)="newParameterId.set($any($event.target).value)"
+              [disabled]="saving() || !!pending()"
+          /></label>
+          <label
+            >Parameter type
+            <select
+              aria-label="Parameter type"
+              [value]="newParameterType()"
+              (change)="newParameterType.set($any($event.target).value)"
+              [disabled]="saving() || !!pending()"
+            >
+              <option value="integer">Integer</option>
+              <option value="string">Text</option>
+              <option value="number">Number</option>
+              <option value="boolean">Boolean</option>
+              <option value="date">Date</option>
+              <option value="datetime">Date and time</option>
+            </select></label
+          >
+          <ion-button
+            (click)="declareParameter()"
+            [disabled]="!newParameterId() || saving() || !!pending()"
+            >Add or update required input</ion-button
+          >
+        </section>
         <section aria-label="Saved query widgets">
           <h2>Saved query widgets</h2>
           @for (card of cards(); track card.id) {
             <div>
               <strong>{{ card.title || card.id }}</strong>
+              @if (
+                card.widget?.name === 'SQL' || card.widget?.name === 'chart'
+              ) {
+                <sneat-datatug-board-chart-editor
+                  [card]="card"
+                  [queries]="queries()"
+                  [project]="scope.page.ref()"
+                  [scopeIdentity]="
+                    scope.page.identity() + ':' + scope.environment()
+                  "
+                  [boardParameters]="board.parameters || []"
+                  [disabled]="saving() || !!pending()"
+                  (definition)="
+                    edit({
+                      type: 'set-chart',
+                      cardId: card.id,
+                      definition: $event,
+                    })
+                  "
+                />
+              }
               @if (card.widget?.name === 'SQL') {
                 <label
                   >Saved query
@@ -192,7 +250,10 @@ interface QueryFolder {
                     "
                   >
                     @for (query of queries(); track query.id) {
-                      <option [value]="query.id">
+                      <option
+                        [value]="query.id"
+                        [selected]="query.id === cardQuery(card)"
+                      >
                         {{ query.title || query.id }}
                       </option>
                     }
@@ -346,6 +407,18 @@ export class HostedBoardWorkspaceComponent {
   private readonly loadedKey = signal<string | undefined>(undefined);
   readonly revision = signal<string | undefined>(undefined);
   readonly queries = signal<QueryChoice[]>([]);
+  readonly newParameterId = signal('');
+  readonly newParameterType = signal('integer');
+  declareParameter() {
+    this.edit({
+      type: 'set-parameter',
+      parameter: {
+        id: this.newParameterId(),
+        type: this.newParameterType(),
+        isRequired: true,
+      },
+    });
+  }
   readonly selectedQuery = signal('');
   readonly loading = signal(false);
   readonly saving = signal(false);

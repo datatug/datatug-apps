@@ -59,7 +59,11 @@ This is tested scalar-wire compatibility, not an assertion of complete Core tran
 
 ## Open Questions
 
-Canonical Board/editor and declarative Dashboardius profile integration, actual retained provider enrichment, current-rights open behavior and browser-authored Go Project Store roundtrip remain owning consumer gates.
+The canonical Board model admits the three persisted variants alongside bar/bar-race. Structured hosted controls choose an authorized saved query, declared result columns and declared Board input bindings; they apply through the existing definition action adapter. The unchanged Demo board at da6f75453cfcfaecdb127a39e013dda3f2c19107 is a byte-pinned compatibility fixture. Published Core v0.63.0 remains the Go wire oracle. Raw numeric admission and current-authorized conditional saves remain unchanged.
+
+BoardWidget consumes the same EvidenceChartComponent for DataTug and the declarative Dashboardius profile. QueryExecutionSession.result, BoardQueryResults and BoardResultSnapshot preserve the whole held Result, including optional rowEvidence. An optional HeldEvidenceIdentity belongs to that same snapshot, is compared with actual execution/scope/source and is discarded with stale held results. It is not inferred from current UI choices or sidecar self-claims. Preparation is asynchronous and scope fenced; exact grid/mark selections preserve both timing endpoint selectors without executing another query.
+
+Actual authenticated provider identity enrichment and current-rights retained opening are not yet bound to published client APIs. Missing expected identity displays unavailable; selecting admitted held evidence does not invent a route or claim that opening succeeded. Browser-authored actual Go Project Store save/reload in both profiles remains a runtime acceptance gate. The source-only consumer does not establish source publication, direct-log opening, healthy11038 comparison, elapsed lane-start anchoring, red-to-green recovery, or full screencast readiness.
 
 ---
 *This document follows the https://specscore.md/feature-specification*

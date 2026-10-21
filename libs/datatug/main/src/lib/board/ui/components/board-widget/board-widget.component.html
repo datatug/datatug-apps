@@ -57,7 +57,35 @@
       @if (runError() || unsupportedReason(); as error) {
         <p role="alert">{{ error }}</p>
       }
-      @if (chartWidgetDef()?.chart?.type === 'bar-race') {
+      @if (evidenceKind()) {
+        <datatug-evidence-chart
+          [data]="preparedEvidence()"
+          [loading]="running() || preparingEvidence()"
+          [error]="evidenceError() || runError() || null"
+          (inspect)="inspectHeldEvidence($event)"
+        />
+        @if (inspectedEvidence()) {
+          <p role="status">
+            Exact held evidence selected. Opening retained evidence is
+            unavailable on this server.
+          </p>
+        }
+        <ion-button
+          [disabled]="
+            running() ||
+            definitionLoading() ||
+            !definition() ||
+            !!unsupportedReason()
+          "
+          (click)="run()"
+          >Refresh chart</ion-button
+        >
+        @if (queryUrlTree(); as tree) {
+          <ion-button fill="clear" [routerLink]="tree"
+            >Open saved query</ion-button
+          >
+        }
+      } @else if (chartWidgetDef()?.chart?.type === 'bar-race') {
         <div [hidden]="chartView() !== 'chart'">
           <datatug-bar-race-chart
             [views]="preparedRace().views ?? null"
