@@ -156,10 +156,11 @@ function optional<T>(
   return v === undefined ? undefined : decode(v, path);
 }
 
-const INTEGER_PATTERN = /^-?(0|[1-9]\d*)$/;
+const INTEGER_PATTERN = /^(0|-?[1-9]\d*)$/;
 const DECIMAL_PATTERN = /^-?(0|[1-9]\d*)(\.\d+)?$/;
 const DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
-const DATETIME_PATTERN = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?Z$/;
+const DATETIME_PATTERN =
+  /^(\d{4}-\d{2}-\d{2})T(\d{1,2}):(\d{2}):(\d{2})(?:[.,]\d+)?Z$/;
 
 function isValidCalendarDate(value: string): boolean {
   const [y, m, d] = value.split('-').map(Number);
@@ -218,10 +219,15 @@ export function decodeTypedValue(v: unknown, path = 'value'): TypedValue {
     }
     case 'datetime': {
       const s = requireString(obj['value'], `${path}.value`);
+      // Match Core's time.Parse(time.RFC3339), including its one-digit hour
+      // and comma-fraction fallback. Validate parts; never rewrite wire text.
+      const parts = DATETIME_PATTERN.exec(s);
       if (
-        !DATETIME_PATTERN.test(s) ||
-        Number.isNaN(Date.parse(s)) ||
-        new Date(Date.parse(s)).toISOString().slice(0, 19) !== s.slice(0, 19)
+        !parts ||
+        !isValidCalendarDate(parts[1]) ||
+        Number(parts[2]) > 23 ||
+        Number(parts[3]) > 59 ||
+        Number(parts[4]) > 59
       ) {
         fail(`${path}.value`, `"${s}" is not RFC3339 normalized to UTC`);
       }
@@ -366,7 +372,7 @@ export function decodeLimitation(v: unknown, path = 'limitation'): Limitation {
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['policy', 'rowsFiltered', 'hiddenColumns'], path);
   const hiddenColumns = requireArray(
-    obj['hiddenColumns'],
+    obj['hiddenColumns'] === null ? [] : obj['hiddenColumns'],
     `${path}.hiddenColumns`,
   ).map((x, i) => requireString(x, `${path}.hiddenColumns[${i}]`));
   return {
@@ -457,7 +463,7 @@ export function decodeRecordset(
   const obj = requireObject(v, path);
   requireExactKeys(obj, ['columns', 'rows'], path);
   const normalize = (value: unknown): unknown =>
-    normalizeNilArrays && value == null ? [] : value;
+    value === null || (normalizeNilArrays && value === undefined) ? [] : value;
   const columns = requireArray(
     normalize(obj['columns']),
     `${path}.columns`,
@@ -555,11 +561,11 @@ export function decodeResult(v: unknown, path = 'result'): Result {
   );
   const recordset = decodeRecordset(obj['recordset'], `${path}.recordset`);
   const limitations = requireArray(
-    obj['limitations'],
+    obj['limitations'] === null ? [] : obj['limitations'],
     `${path}.limitations`,
   ).map((l, i) => decodeLimitation(l, `${path}.limitations[${i}]`));
   const bindingsApplied = requireArray(
-    obj['bindingsApplied'],
+    obj['bindingsApplied'] === null ? [] : obj['bindingsApplied'],
     `${path}.bindingsApplied`,
   ).map((b, i) => decodeBinding(b, `${path}.bindingsApplied[${i}]`));
   const result: Result = {

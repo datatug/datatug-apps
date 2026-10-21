@@ -1,3 +1,4 @@
+import coreParityJSON from './testdata/core-v063-wire-parity.json?raw';
 import {
   canonicalRecordsetJSON,
   recordsetFingerprint,
@@ -1010,5 +1011,164 @@ describe('shared exact Go whitespace at every public evidence validation boundar
     expect((await resolveRowEvidence(valid, selected))?.state).toBe(
       'available',
     );
+  });
+});
+
+describe('actual published Core v0.63 Go1.27.2 wire parity oracle', () => {
+  const parity = JSON.parse(coreParityJSON) as {
+    source: string;
+    goVersion: string;
+    cases: {
+      type: string;
+      value: string;
+      valid: boolean;
+      canonicalJSON?: string;
+      sha256?: string;
+    }[];
+    nilCases: {
+      name: string;
+      wireJSON: string;
+      valid: boolean;
+      sha256?: string;
+    }[];
+  };
+  it('pins actual Go oracle bytes independently of the TypeScript implementation', () => {
+    expect(parity.source).toContain('datatug-core v0.63.0');
+    expect(parity.goVersion).toBe('go1.27.2');
+    expect(createHash('sha256').update(coreParityJSON).digest('hex')).toBe(
+      'aee6ca424b7796e64d73df3b260938ee222784368a820ba327a20466b7518761',
+    );
+  });
+  it.each(parity.cases)(
+    '$type $value matches actual Go validity and exact canonical text',
+    async (c) => {
+      const recordset = {
+        columns: [{ name: 'value', type: c.type }],
+        rows: [[{ type: c.type, value: c.value }]],
+      } as unknown as Result['recordset'];
+      if (c.valid) {
+        expect(canonicalRecordsetJSON(recordset)).toBe(c.canonicalJSON);
+        expect(await recordsetFingerprint(recordset)).toBe(c.sha256);
+      } else {
+        expect(() => canonicalRecordsetJSON(recordset)).toThrow();
+        await expect(recordsetFingerprint(recordset)).rejects.toThrow();
+      }
+    },
+  );
+  it.each(parity.nilCases)(
+    '$name matches actual Core nil-slice Result admission',
+    async (c) => {
+      if (!c.valid) {
+        await expect(decodeEvidenceResultJSON(c.wireJSON)).rejects.toThrow();
+        return;
+      }
+      const decoded = await decodeEvidenceResultJSON(c.wireJSON);
+      expect(decoded.recordset.columns).toEqual([]);
+      expect(decoded.recordset.rows).toEqual(
+        c.name === 'nil-zero-column-row' ? [[]] : [],
+      );
+      expect(decoded.bindingsApplied).toEqual([]);
+      expect(decoded.limitations).toEqual(
+        c.name === 'nil-hidden-columns'
+          ? [
+              {
+                policy: 'visible-policy',
+                rowsFiltered: false,
+                hiddenColumns: [],
+              },
+            ]
+          : [],
+      );
+      expect(await recordsetFingerprint(decoded.recordset)).toBe(c.sha256);
+      expect(decoded.provenance.observedAt).toBe('2026-10-21T12:00:00,5Z');
+      expect(
+        await resolveRowEvidence(decoded, selector(fixture())),
+      ).toBeUndefined();
+    },
+  );
+  it('admits explicit nil result collections through direct verified resolution, while preserving required fields', async () => {
+    const r = fixture();
+    const raw = {
+      ...r,
+      limitations: null,
+      bindingsApplied: null,
+    } as unknown as Result;
+    expect((await resolveRowEvidence(raw, selector(r)))?.state).toBe(
+      'available',
+    );
+    const hidden = {
+      ...r,
+      limitations: [
+        { policy: 'visible-policy', rowsFiltered: false, hiddenColumns: null },
+      ],
+    } as unknown as Result;
+    expect((await resolveRowEvidence(hidden, selector(r)))?.state).toBe(
+      'available',
+    );
+    await expect(
+      resolveRowEvidence(
+        { ...r, limitations: undefined } as unknown as Result,
+        selector(r),
+      ),
+    ).rejects.toThrow();
+    await expect(
+      resolveRowEvidence(
+        {
+          ...r,
+          recordset: { columns: undefined, rows: [] },
+        } as unknown as Result,
+        selector(r),
+      ),
+    ).rejects.toThrow();
+  });
+  it('refuses integer negative zero in a non-key cell and binding before returning matching-hash refs', async () => {
+    const r = fixture();
+    const recordset = {
+      ...r.recordset,
+      rows: [
+        r.recordset.rows[0].map((v, i) =>
+          i === 1 ? { type: 'integer', value: '-0' } : v,
+        ),
+      ],
+    } as unknown as Result['recordset'];
+    const digest = createHash('sha256')
+      .update(JSON.stringify(recordset))
+      .digest('hex');
+    const forged = {
+      ...r,
+      recordset,
+      rowEvidence: { ...metadata(r), recordsetFingerprint: digest },
+    };
+    await expect(
+      resolveRowEvidence(forged, {
+        ...selector(r),
+        recordsetFingerprint: digest,
+      }),
+    ).rejects.toThrow();
+    const binding = {
+      ...r,
+      bindingsApplied: [
+        {
+          parameterId: 'parameter',
+          value: { type: 'integer' as const, value: '-0' },
+          origin: 'manual' as const,
+          originEvidence: 'client-reported' as const,
+        },
+      ],
+    };
+    await expect(resolveRowEvidence(binding, selector(r))).rejects.toThrow();
+  });
+  it('does not relax observed millisecond timing for alternate legal wire timestamps', async () => {
+    for (const value of ['2018-05-20T10:05:00,5Z', '2018-05-20T1:00:00Z']) {
+      const row = (
+        await prepareEvidenceChart(
+          timing,
+          withCell('at', text(value)),
+          identity,
+        )
+      ).rows[0];
+      expect(row.durationMs).toBeUndefined();
+      expect(row.inspections).toEqual([]);
+    }
   });
 });
