@@ -421,3 +421,72 @@ function required<T>(value: T | undefined | null): T {
     throw new Error('Required meaning declaration is missing.');
   return value;
 }
+
+it('resolves copied usage adapters at an older same-repository pin without rebasing their meaning identity', async () => {
+  const source = input(),
+    previous = source.own;
+  source.own = {
+    ...graph(demo, [concept('customer')]),
+    revision: 'b'.repeat(40),
+  };
+  const uses = source.uses as {
+    version: number;
+    bindings: { meaning: string }[];
+  };
+  source.uses = {
+    version: 1,
+    bindings: [
+      {
+        ...uses.bindings[0],
+        meaning: `meaning://github.com/datatug/datatug-demo-project/customer-id?ref=${previous.revision}`,
+      },
+    ],
+  };
+  source.readRepository = vi.fn(async (repository) =>
+    repository === demo ? previous : repo(repository),
+  );
+  const result = await enrichRepositoryMeanings(source);
+  const previousCustomer = required(
+    result.entities.find(
+      (entity) =>
+        entity.conceptId === 'customer' &&
+        entity.source?.revision === previous.revision,
+    ),
+  );
+  expect(previousCustomer.documentId).toContain(previous.revision);
+  expect(
+    previousCustomer.fields.find((field) => field.conceptId === 'customer-id')
+      ?.resources,
+  ).toContainEqual(
+    expect.objectContaining({
+      kind: 'query',
+      id: 'customers/customer-invoices',
+    }),
+  );
+  const currentCustomer = required(
+    result.entities.find(
+      (entity) =>
+        entity.conceptId === 'customer' &&
+        entity.source?.revision === source.own.revision,
+    ),
+  );
+  expect(currentCustomer.resources).toEqual([]);
+  expect(result.notices ?? []).toEqual([]);
+  validateProjectMeaningsCatalog(result);
+});
+it('continues rejecting pinned self-addresses inside native graph declarations', async () => {
+  const source = input();
+  source.legacy = [];
+  source.uses = undefined;
+  source.own = {
+    ...graph(demo, [
+      concept('customer', 'entity', {
+        extends: `meaning://github.com/datatug/datatug-demo-project/customer?ref=${source.own.revision}`,
+      }),
+    ]),
+    revision: 'b'.repeat(40),
+  };
+  const result = await enrichRepositoryMeanings(source);
+  expect(result.notices?.join(' ')).toContain('native self-reference');
+  expect(source.readRepository).not.toHaveBeenCalled();
+});

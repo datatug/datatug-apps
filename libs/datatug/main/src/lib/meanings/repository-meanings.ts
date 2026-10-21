@@ -332,6 +332,7 @@ export async function enrichRepositoryMeanings(
   const resolve = async (
     reference: unknown,
     owner: MeaningRepository,
+    usageAdapter = false,
   ): Promise<Concept> => {
     const text = string(reference, 'meaning reference');
     let repository = owner.repository,
@@ -347,8 +348,11 @@ export async function enrichRepositoryMeanings(
       repository = `https://github.com/${match[1]}`;
       id = match[2];
       if (repository === owner.repository) {
-        if (match[3])
-          throw new Error('A native self-reference cannot carry a revision.');
+        if (match[3]) {
+          if (!usageAdapter)
+            throw new Error('A native self-reference cannot carry a revision.');
+          revision = match[3];
+        }
       } else {
         if (!match[3])
           throw new Error('External meanings require a full immutable commit.');
@@ -358,11 +362,11 @@ export async function enrichRepositoryMeanings(
           owner.revision,
           repository,
         ]);
-        if (pins.has(pinKey) && pins.get(pinKey) !== revision)
+        if (!usageAdapter && pins.has(pinKey) && pins.get(pinKey) !== revision)
           throw new Error(
             'Conflicting revisions for the same borrowed meaning repository.',
           );
-        pins.set(pinKey, revision);
+        if (!usageAdapter) pins.set(pinKey, revision);
       }
     }
     safeId(id);
@@ -529,7 +533,7 @@ export async function enrichRepositoryMeanings(
                 `Meaning use references an undeclared column in ${location}.`,
               );
           }
-          const concept = await resolve(binding['meaning'], input.own);
+          const concept = await resolve(binding['meaning'], input.own, true);
           await visit(concept);
           const linked = related(
             location,
