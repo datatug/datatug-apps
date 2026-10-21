@@ -85,20 +85,27 @@ export class ProjectService {
     projectRef: IProjectRef,
   ): Observable<IProjectSummary | undefined> {
     return this.rawProjectSummary(projectRef).pipe(
-      switchMap((summary) =>
-        summary
-          ? this.environmentState
-              .watch(projectRef, () =>
-                of(
-                  (summary.environments || []).map((environment) => ({
-                    ...environment,
-                    title: environment.title || environment.id,
-                  })),
-                ),
-              )
-              .pipe(map((view) => ({ ...summary, environments: view.items })))
-          : of(undefined),
-      ),
+      switchMap((summary) => {
+        if (!summary) return of(undefined);
+        // Metadata authority does not authorize an environment inventory.
+        const metadata = { ...summary, environments: undefined };
+        return this.environmentState
+          .watchResult(projectRef, () =>
+            of(
+              (summary.environments || []).map((environment) => ({
+                ...environment,
+                title: environment.title || environment.id,
+              })),
+            ),
+          )
+          .pipe(
+            map((result) =>
+              result.status === 'ready'
+                ? { ...metadata, environments: result.view.items }
+                : metadata,
+            ),
+          );
+      }),
     );
   }
 

@@ -1,6 +1,6 @@
 import { IEnvironmentFull } from '../../models/definition/environments';
 import { ProjectEnvironmentStateService } from './project-environment-state.service';
-import { map as environmentMap } from 'rxjs';
+import { map as environmentMap, startWith as environmentStartWith } from 'rxjs';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient, provideHttpClient } from '@angular/common/http';
 import {
@@ -34,6 +34,13 @@ describe('ProjectService', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
             watch: (
               _ref: unknown,
               legacy: () => Observable<IEnvironmentFull[]>,
@@ -153,8 +160,12 @@ describe('ProjectService', () => {
         response$.complete();
 
         expect(http.get).toHaveBeenCalledTimes(1);
-        expect(received['first']).toEqual([{ ...summary, environments: [] }]);
-        expect(received['second']).toEqual([{ ...summary, environments: [] }]);
+        expect(received['first']).toEqual(firstCall === 'getSummary'
+          ? [{ ...summary, environments: undefined }]
+          : [{ ...summary, environments: undefined }, { ...summary, environments: [] }]);
+        expect(received['second']).toEqual(secondCall === 'getSummary'
+          ? [{ ...summary, environments: undefined }]
+          : [{ ...summary, environments: undefined }, { ...summary, environments: [] }]);
       },
     );
 
@@ -200,7 +211,7 @@ describe('ProjectService', () => {
 
     const summary = { id: 'X91FirPb', title: 'Project 1' } as IProjectSummary;
     summary$.next(summary);
-    expect(received).toEqual([{ ...summary, environments: [] }]);
+    expect(received).toEqual([{ ...summary, environments: undefined }, { ...summary, environments: [] }]);
   });
 
   it('loads direct GitHub project summaries from the selected branch', () => {
@@ -294,6 +305,13 @@ describe('ProjectService local summary HTTP context', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
             watch: (
               _ref: unknown,
               legacy: () => Observable<IEnvironmentFull[]>,
@@ -388,6 +406,13 @@ describe('ProjectService shared operation fence', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
             watch: (
               _ref: unknown,
               legacy: () => Observable<IEnvironmentFull[]>,
@@ -428,6 +453,13 @@ describe('ProjectService DataTug API base URL', () => {
         {
           provide: ProjectEnvironmentStateService,
           useValue: {
+            watchResult: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(
+              environmentMap((items) => ({ status: 'ready', view: { items } })),
+              environmentStartWith({ status: 'pending' }),
+            ),
             watch: (
               _ref: unknown,
               legacy: () => Observable<IEnvironmentFull[]>,

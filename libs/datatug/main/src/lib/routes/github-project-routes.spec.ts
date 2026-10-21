@@ -192,6 +192,7 @@ describe('the routes as registered', () => {
       'meanings/field',
       '',
       'overview',
+      'environments',
       'shipping',
       'boards/new',
       'board/:board',
