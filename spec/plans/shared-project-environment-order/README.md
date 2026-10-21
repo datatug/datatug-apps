@@ -285,20 +285,43 @@ served project plus current branch (or null for non-Git), without switching it.
 
 Canonical order lives in the existing `datatug-project.json`; create writes
 `environments/<id>/<id>.env.json`. Add a small Core filestore environment
-transaction helper, not a general transaction framework. Private local evidence and WAL use the existing resolved Git directory's
-`datatug-environment-operations/<rootDigest>/` when Git exists; non-Git uses
-the agent's configured private state directory under
-`environment-operations/<rootDigest>/`, mode 0700, records mode 0600.
-`rootDigest` binds the canonical served root and authority. Reuse this state
-location on restart; do not place private journals in exported project files.
+transaction helper, not a general transaction framework. Private local evidence
+and WAL use one namespace per canonical served project root, shared across
+participating processes; actor/authority bindings belong inside individual
+receipts and never partition WAL discovery. For Git, use the resolved Git
+directory's `datatug-environment-operations/<rootDigest>/`; `rootDigest` hashes
+only the canonical project root. For non-Git, use the fixed project-root
+`.datatug-environments.lock` plus a durable
+`.datatug-environments-owner.json` recovery locator. The locator contains format,
+canonical-root digest, OS owner UID, namespace UUID and the absolute private
+namespace directory selected by the first process. It contains no operation
+payload or credentials, is mode 0600, and is excluded from project exports;
+private namespace directories are mode 0700 and records mode 0600.
+
+Create/validate that locator while holding the common project lock, using
+atomic rename and directory fsync before creating any transaction intent or
+changing canonical files. Never replace the locked inode. A later process,
+regardless of its configured private state root or authority ID, must use the
+registered namespace: its own empty directory cannot prove there is no WAL.
+Validate canonical-root binding, OS ownership/modes, namespace identity and
+symlink-free resolution before opening the registered directory. Missing,
+unreadable, mismatched or corrupt registered state returns recovery-required
+before any successful environment read or mutation; never silently initialize
+a replacement. A locator/namespace may be rehomed only with the project locked,
+all intents recovered, retained receipts/tombstones durably copied and verified,
+and an atomic fsynced locator switch; this feature adds no rehome endpoint.
+
 Stage files beside their allowlisted destinations so rename stays on the same
 filesystem. No absolute paths or auth secrets go in wire responses. All current
 agent/Core environment collection and summary readers, and environment
 create/delete/full-project-save writers, acquire the same process-plus-file
-project environment lock and recover the WAL before touching those files.
-Reuse existing project API Git lock when Git exists; non-Git uses a fixed
-`.datatug-environments.lock` file at the canonical project root so separate
-agent processes share the same lock even with separate private state roots. Lock order is Git/project lock then environment lock. Use private already-locked store helpers to avoid recursively acquiring the
+project environment lock, discover the registered namespace and recover its WAL
+before touching those files. Physical recovery completes a previously durable
+commit decision; it does not transfer the originating actor's receipt access or
+mutation authority to the recovering actor. Recheck current request authority
+before serving data or starting a new operation. Reuse the existing project API
+Git lock when Git exists; non-Git processes always use the fixed root lock even
+when private state roots and authority IDs differ. Lock order is Git/project lock then environment lock. Use private already-locked store helpers to avoid recursively acquiring the
 same file lock. Never call the existing non-atomic parallel SaveProject from
 inside this operation. Existing SaveProject must hold the outer lock for its
 environment/metadata section and preserve order when reconstructing metadata.
@@ -322,7 +345,15 @@ unrecoverable fsync leaves a visible unresolved/recovery-required state and
 blocks new writes for that project; preserve evidence and external files.
 Receipt expiry replaces full evidence with the durable tombstone. Restart
 replay and every crash point must be fault-injected in store tests, including
-a crash after environment rename but before receipt installation. Ordinary
+a crash after environment rename but before receipt installation. Add an
+actual two-process non-Git test: A and B use different configured private state
+roots and authority IDs for the same canonical project. Crash A after each
+canonical rename and before committed receipt installation; a subsequent read
+and mutation through B must discover/recover A's exact registered intent or
+return recovery-required, with no partial successful read or new write. Repeat
+with A's namespace inaccessible and with a corrupt locator to prove fail-closed
+behavior; when recovery succeeds, A's replay returns its original ID and B
+cannot read A's private receipt. Ordinary
 reorder changes only metadata plus receipt; no README regeneration or unrelated
 query/connection save is invoked. Local Git state is fenced but this feature
 adds no automatic commit/push. External tools that bypass agent locks are
@@ -395,7 +426,7 @@ Implement GitHub snapshot read and atomic expected-head create/order commit with
 **Depends-On:** 3
 **Status:** planning
 
-Implement authenticated agent endpoints and narrowly scoped filestore WAL/locking/recovery for Git and non-Git projects. Wire all environment readers and membership writers through the lock; fault-inject every durable step and verify restart replay, external modification refusal, branch/root fencing and write opt-in.
+Implement authenticated agent endpoints and narrowly scoped filestore WAL/locking/recovery for Git and non-Git projects. Wire all environment readers and membership writers through the lock; fault-inject every durable step and verify restart replay, two-process shared namespace discovery across different private roots/authority IDs, fail-closed inaccessible recovery, external modification refusal, branch/root fencing and write opt-in.
 
 ### Task 5: Host wiring and consumer order cutover
 
