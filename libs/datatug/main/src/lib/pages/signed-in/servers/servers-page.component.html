@@ -67,100 +67,21 @@
       <ion-item>
         <ion-icon name="search-outline" slot="start" color="medium" />
         <ion-input
-          aria-label="Filter database servers and sample sources"
-          placeholder="Filter servers and sample sources"
+          aria-label="Filter project databases and connections"
+          placeholder="Filter databases and connections"
           [value]="filterText()"
           (ionInput)="filterText.set($event.detail.value || '')"
         />
       </ion-item>
     }
   </ion-card>
-  @if (tab === 'db') {
-    <ion-card>
-      <ion-item-divider>
-        <ion-label>
-          <strong>Sample database sources</strong>
-          <p>Declared in this project's connection catalog</p>
-        </ion-label>
-        @if (!catalogError() && visibleDatasetSources(); as datasets) {
-          <ion-badge slot="end" color="medium">
-            {{ datasets.length }}
-            {{ datasets.length === 1 ? 'dataset' : 'datasets' }}
-          </ion-badge>
-        }
-      </ion-item-divider>
-      <ion-list>
-        @if (catalogError()) {
-          <ion-item color="danger">
-            <ion-icon name="warning-outline" slot="start" />
-            <ion-label>{{ catalogError() }}</ion-label>
-            <ion-button
-              class="catalog-retry-button"
-              slot="end"
-              color="light"
-              fill="solid"
-              [attr.aria-label]="'Retry loading the connection catalog'"
-              (click)="retryCatalogSources()"
-              >Retry</ion-button
-            >
-          </ion-item>
-        } @else if (visibleDatasetSources(); as datasets) {
-          @for (dataset of datasets; track dataset.dataset) {
-            <ion-item [attr.data-testid]="'catalog-dataset-' + dataset.dataset">
-              <ion-icon name="server-outline" slot="start" color="primary" />
-              <ion-label>
-                <strong class="dataset-name">{{ dataset.dataset }}</strong>
-                @for (source of dataset.sources; track source.id) {
-                  <p class="source-edition">
-                    <strong>{{ sourceFormat(source) }}</strong>
-                    <span> · {{ sourceAccess(source) }}</span>
-                    @if (source.environments?.length) {
-                      <span> · {{ source.environments!.join(', ') }}</span>
-                    }
-                    @if (source.source) {
-                      <span> · </span>
-                      <a
-                        [href]="source.source"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        (click)="$event.stopPropagation()"
-                        >Source</a
-                      >
-                    }
-                  </p>
-                }
-              </ion-label>
-            </ion-item>
-          } @empty {
-            <ion-item>
-              <ion-label color="medium">
-                {{
-                  filterText().trim() ||
-                  selectedEnvironmentIds().size === 0 ||
-                  (catalogSources()?.length ?? 0) > 0
-                    ? 'No sample database sources match the current filters.'
-                    : 'No sample database sources are declared.'
-                }}
-              </ion-label>
-            </ion-item>
-          }
-        } @else {
-          <ion-item>
-            <ion-label color="medium">Loading source catalog...</ion-label>
-          </ion-item>
-        }
-      </ion-list>
-    </ion-card>
-  }
   <ion-card>
     <ion-card-header>
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="db">
           <ion-label
             >Database sources
-            <ion-badge color="light">{{
-              filteredDbServers()?.length ?? 0
-            }}</ion-badge>
+            <ion-badge color="light">{{ databaseGroups().length }}</ion-badge>
           </ion-label>
         </ion-segment-button>
         <ion-segment-button value="web">Web servers</ion-segment-button>
@@ -168,77 +89,19 @@
       </ion-segment>
     </ion-card-header>
     @if (tab === 'db') {
-      <ion-list>
-        @if (dbServersError()) {
-          <ion-item color="danger">
-            <ion-icon name="warning-outline" slot="start" />
-            <ion-label>{{ dbServersError() }}</ion-label>
-            <ion-button slot="end" fill="outline" (click)="retryDbServers()"
-              >Retry</ion-button
-            >
-          </ion-item>
-        } @else if (filteredDbServers(); as servers) {
-          @for (dbServer of servers; track serverIdentity(dbServer.dbServer)) {
-            <ion-item
-              data-testid="database-source-row"
-              [button]="canOpenDbServer(dbServer.dbServer)"
-              [detail]="canOpenDbServer(dbServer.dbServer)"
-              [attr.tappable]="canOpenDbServer(dbServer.dbServer) ? true : null"
-              (click)="goDbServer(dbServer)"
-            >
-              <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
-              @if (!canOpenDbServer(dbServer.dbServer)) {
-                <ion-badge color="light">{{
-                  sourceKindLabel(dbServer.dbServer)
-                }}</ion-badge>
-              }
-              <ion-badge color="medium">{{
-                dbServer.dbServer.driver
-              }}</ion-badge>
-              <ion-badge
-                color="light"
-                class="ion-margin-start"
-                [title]="databaseCountTitle(dbServer.dbServer)"
-                >{{ databaseCountLabel(dbServer) }}
-              </ion-badge>
-              @if (canOpenDbServer(dbServer.dbServer)) {
-                <ion-buttons slot="end">
-                  <ion-button
-                    aria-label="Remove database server"
-                    (click)="deleteDbServer($event, dbServer)"
-                    [disabled]="isDeleting(dbServer.dbServer)"
-                  >
-                    <ion-icon name="trash-outline" />
-                  </ion-button>
-                </ion-buttons>
-              }
-            </ion-item>
-          } @empty {
-            <ion-item>
-              <ion-label color="medium">{{
-                filterText().trim()
-                  ? 'No matching database sources.'
-                  : 'No database sources in the selected environments.'
-              }}</ion-label>
-            </ion-item>
-          }
-          <ion-item>
-            <ion-label color="medium"
-              >Total: {{ servers.length }}
-              {{
-                servers.length === 1 ? 'database source' : 'database sources'
-              }}
-            </ion-label>
-            <ion-buttons slot="end">
-              <ion-button fill="outline" (click)="addDbServer()"
-                >Add DB server
-              </ion-button>
-            </ion-buttons>
-          </ion-item>
-        } @else {
-          <ion-label color="medium">Loading...</ion-label>
-        }
-      </ion-list>
+      <sneat-datatug-project-database-sources
+        [groups]="databaseGroups()"
+        [loading]="databaseSourcesLoading()"
+        [emptyMessage]="databaseSourcesEmptyMessage()"
+        [environmentsError]="environmentsError()"
+        [declarationsError]="catalogError()"
+        [serversError]="dbServersError()"
+        (openTarget)="openDatabaseTarget($event)"
+        (retryDeclarations)="retryCatalogSources()"
+        (retryServers)="retryDbServers()"
+        (addServer)="addDbServer()"
+        (removeServer)="removeDatabaseServer($event.event, $event.target)"
+      />
     } @else {
       <ion-card-content>
         <p>Not implemented yet.</p>

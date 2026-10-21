@@ -16,7 +16,6 @@ import {
   IonItem,
   IonItemDivider,
   IonLabel,
-  IonList,
   IonMenuButton,
   IonSegment,
   IonSegmentButton,
@@ -53,6 +52,11 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import {
+  ProjectDatabaseGroup,
+  ProjectDatabaseSourcesComponent,
+  ProjectDatabaseTarget,
+} from './project-database-sources.component';
 
 // Same one-off `isGithubStoreId` idiom `EnvironmentService`,
 // `DbServerService` and `EnvironmentsPageComponent` each already define for
@@ -72,11 +76,6 @@ interface ProjectConnectionSource {
 
 interface ProjectConnectionCatalog {
   readonly connections?: readonly ProjectConnectionSource[];
-}
-
-interface DatasetSources {
-  readonly dataset: string;
-  readonly sources: readonly ProjectConnectionSource[];
 }
 
 @Component({
@@ -110,9 +109,8 @@ interface DatasetSources {
     // "real" one (S136, found live before `nav-context-root-singletons`
     // landed). Now that `ProjectContextService` is `providedIn: 'root'`,
     // every page shares the one true instance and this stream resolves
-    // correctly again — confirmed live, S136, against the GitHub-store demo
-    // project (`getGithubDbServers()`'s own aggregated `sqlite3` result now
-    // renders here).
+    // correctly again — confirmed live, S136, against a GitHub-store project
+    // whose database inventory is aggregated from its environments.
     DatatugServicesProjectModule,
     DatatugServicesUnsortedModule,
     FormsModule,
@@ -131,12 +129,12 @@ interface DatasetSources {
     IonCardHeader,
     IonSegment,
     IonSegmentButton,
-    IonList,
     IonIcon,
     IonCardContent,
     IonButton,
     IonBadge,
     IonMenuButton,
+    ProjectDatabaseSourcesComponent,
   ],
 })
 export class ServersPageComponent implements OnDestroy {
@@ -168,45 +166,130 @@ export class ServersPageComponent implements OnDestroy {
   >(undefined);
   protected readonly catalogError = signal<string | undefined>(undefined);
 
-  protected readonly visibleDatasetSources = computed(
-    (): DatasetSources[] | undefined => {
-      const sources = this.catalogSources();
-      if (!sources) return undefined;
-      const selected = this.selectedEnvironmentIds();
-      const environmentFilterAvailable = this.environments() !== undefined;
-      const query = this.filterText().trim().toLocaleLowerCase();
-      const groups = new Map<string, ProjectConnectionSource[]>();
-      for (const source of sources) {
-        const dataset = source.dataset?.trim();
-        if (!dataset) continue;
-        if (
-          environmentFilterAvailable &&
-          source.environments?.length &&
-          !source.environments.some((environment) => selected.has(environment))
-        ) {
-          continue;
+  protected readonly databaseGroups = computed((): ProjectDatabaseGroup[] => {
+    const groups = new Map<string, ProjectDatabaseGroup>();
+    const selected = this.selectedEnvironmentIds();
+    const environmentFilterAvailable = this.environments() !== undefined;
+    const query = this.filterText().trim().toLocaleLowerCase();
+    const add = (
+      key: string,
+      title: string,
+      kind: ProjectDatabaseGroup['kind'],
+      instance: ProjectDatabaseGroup['instances'][number],
+    ) => {
+      const existing = groups.get(key);
+      groups.set(key, {
+        key,
+        title,
+        kind,
+        instances: [...(existing?.instances ?? []), instance],
+      });
+    };
+    for (const environment of this.environments() ?? []) {
+      if (!selected.has(environment.id)) continue;
+      for (const server of environment.dbServers ??
+        environment.dbServer ??
+        []) {
+        for (const catalog of server.catalogs ?? []) {
+          add(`catalog:${catalog}`, catalog, 'database', {
+            key: `catalog:${environment.id}:${catalog}:${serverKey(server)}`,
+            title: 'Registered catalog',
+            driver: server.driver,
+            detail: serverLocation(server),
+            environments: [environment.id],
+            availability: 'Catalog metadata available when scanned',
+            target: {
+              kind: 'catalog',
+              environment: environment.id,
+              catalog,
+            },
+          });
         }
-        if (
-          query &&
-          ![dataset, source.storage, source.readiness, source.id].some(
-            (value) => value?.toLocaleLowerCase().includes(query),
-          )
-        ) {
-          continue;
-        }
-        groups.set(dataset, [...(groups.get(dataset) ?? []), source]);
       }
-      return [...groups].map(([dataset, datasetSources]) => ({
-        dataset,
-        sources: datasetSources,
-      }));
-    },
+    }
+    for (const source of this.catalogSources() ?? []) {
+      const dataset = source.dataset?.trim();
+      if (!dataset) continue;
+      if (
+        environmentFilterAvailable &&
+        source.environments?.length &&
+        !source.environments.some((environment) => selected.has(environment))
+      ) {
+        continue;
+      }
+      add(`declaration:${dataset}`, dataset, 'database', {
+        key: `declaration:${source.id ?? source.storage ?? dataset}`,
+        title: source.id || source.storage || 'Declared connection',
+        driver: this.sourceFormat(source),
+        detail: '',
+        environments: source.environments ?? [],
+        availability: this.sourceAccess(source),
+        source: source.source,
+      });
+    }
+    for (const summary of this.filteredDbServers() ?? []) {
+      if (!summary.dbServer.host?.trim() && !summary.dbServer.path?.trim())
+        continue;
+      const location = serverLocation(summary.dbServer);
+      add(`server:${serverKey(summary.dbServer)}`, location, 'server', {
+        key: `server:${serverKey(summary.dbServer)}`,
+        title: 'Configured server',
+        driver: summary.dbServer.driver,
+        detail: location,
+        environments: summary.environments?.map((item) => item.envId) ?? [],
+        availability: summary.dbServer.path?.trim()
+          ? 'File source · server inventory'
+          : 'Server inventory',
+        deleting: this.isDeleting(summary.dbServer),
+        ...(this.canOpenDbServer(summary.dbServer)
+          ? { target: { kind: 'server' as const, server: summary.dbServer } }
+          : {}),
+      });
+    }
+    if (!query) return [...groups.values()];
+    return [...groups.values()].filter((group) =>
+      [
+        group.title,
+        ...group.instances.flatMap((instance) => [
+          instance.title,
+          instance.driver,
+          instance.detail,
+          instance.availability,
+          ...instance.environments,
+        ]),
+      ].some((value) => value.toLocaleLowerCase().includes(query)),
+    );
+  });
+
+  protected readonly databaseSourcesLoading = computed(
+    () =>
+      this.environments() === undefined &&
+      this.catalogSources() === undefined &&
+      this.dbServers() === undefined,
   );
 
-  // The project's real environment list (S153: the "Local"/"PROD" checkboxes
-  // used to be hard-coded text with no binding at all — they matched neither
-  // the demo project's real five environments, `QA`/`UAT`/`dev`/`local`/
-  // `prod`, nor anything the component tracked). `undefined` while loading.
+  protected readonly databaseSourcesEmptyMessage = computed(() => {
+    const hasDefinitions =
+      (this.catalogSources()?.length ?? 0) > 0 ||
+      (this.dbServers()?.some((server) => !!server.dbServer.host?.trim()) ??
+        false) ||
+      (this.environments()?.some((environment) =>
+        (environment.dbServers ?? environment.dbServer ?? []).some(
+          (server) => !!server.catalogs?.length,
+        ),
+      ) ??
+        false);
+    return this.filterText().trim() ||
+      (!!this.environments()?.length &&
+        this.selectedEnvironmentIds().size === 0) ||
+      hasDefinitions
+      ? 'No database sources match the current filters.'
+      : 'No databases are configured in this project.';
+  });
+
+  // The project's environment list. The previous "Local"/"PROD" checkboxes
+  // were hard-coded text with no binding to project configuration.
+  // `undefined` while loading.
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
@@ -346,14 +429,7 @@ export class ServersPageComponent implements OnDestroy {
     this.selectedEnvironmentIds.set(new Set());
   }
 
-  /** The row label for one DB server: its `host` when the project actually
-   * declares one, or an explicit placeholder otherwise — never blank. The
-   * demo project's `environments/*.env.json` files declare `dbServers`
-   * entries with a `driver` and `catalogs` but no `host` at all (sqlite3 is
-   * file-based, not network-addressed), which is exactly the blank row the
-   * founder's ruling flagged ("no server name shown in the row") — the
-   * adjacent driver badge (see the template) already names the driver, so
-   * this only needs to say plainly that there's no host, not repeat it. */
+  /** A searchable label for configured server inventory. */
   protected serverLabel(dbServer: IDbServer): string {
     return (
       dbServer.host?.trim() ||
@@ -364,32 +440,8 @@ export class ServersPageComponent implements OnDestroy {
     );
   }
 
-  protected serverIdentity(dbServer: IDbServer): string {
-    return serverKey(dbServer);
-  }
-
   protected canOpenDbServer(dbServer: IDbServer): boolean {
     return !!dbServer.host?.trim() && !dbServer.path?.trim();
-  }
-
-  protected sourceKindLabel(dbServer: IDbServer): string {
-    if (dbServer.path?.trim()) return 'File source';
-    if (dbServer.driver === 'sqlite3') return 'Declared by environments';
-    return 'Host not declared';
-  }
-
-  protected databaseCountLabel(dbServer: IProjDbServerSummary): string {
-    const count = dbServer.databasesCount;
-    if (!dbServer.dbServer.host?.trim()) {
-      return `${count} declared ${count === 1 ? 'placement' : 'placements'}`;
-    }
-    return `${count} ${count === 1 ? 'database' : 'databases'}`;
-  }
-
-  protected databaseCountTitle(dbServer: IDbServer): string {
-    return dbServer.host?.trim()
-      ? 'Number of databases/catalogs on this server'
-      : 'Database/catalog declarations across the selected environments';
   }
 
   protected sourceFormat(source: ProjectConnectionSource): string {
@@ -430,6 +482,48 @@ export class ServersPageComponent implements OnDestroy {
   protected retryEnvironments(): void {
     const target = this.target();
     if (target) this.loadEnvironments(target, this.loadEpoch);
+  }
+
+  protected openDatabaseTarget(target: ProjectDatabaseTarget): void {
+    if (target.kind === 'server' && target.server) {
+      this.goDbServer({ dbServer: target.server, databasesCount: 0 });
+      return;
+    }
+    const project = this.target();
+    if (!project || !target.environment || !target.catalog) return;
+    const url = tryProjectUrl(project, [
+      'env',
+      target.environment,
+      'db',
+      target.catalog,
+    ]);
+    if (typeof url !== 'string') {
+      this.errorLogger.logError(
+        new Error(`no exact address for the project (${url.reason})`),
+        'Failed to navigate to database catalog',
+      );
+      return;
+    }
+    this.navCtrl
+      .navigateForward(url)
+      .catch((err) =>
+        this.errorLogger.logError(
+          err,
+          'Failed to navigate to database catalog',
+        ),
+      );
+  }
+
+  protected removeDatabaseServer(
+    event: Event,
+    target: ProjectDatabaseTarget,
+  ): void {
+    const server = target.server;
+    const summary = this.dbServers()?.find(
+      (candidate) =>
+        server && serverKey(candidate.dbServer) === serverKey(server),
+    );
+    if (summary) this.deleteDbServer(event, summary);
   }
 
   /**
@@ -608,7 +702,7 @@ export class ServersPageComponent implements OnDestroy {
     if (isSharedProjectRef(target)) {
       this.catalogSources.set([]);
       this.catalogError.set(
-        'Connection catalog discovery is unavailable for shared projects.',
+        'Database connection declarations are unavailable for shared projects.',
       );
       return;
     }
@@ -626,7 +720,7 @@ export class ServersPageComponent implements OnDestroy {
             return;
           this.catalogSources.set([]);
           this.catalogError.set(
-            'The project connection catalog could not be loaded.',
+            'Database connection declarations could not be loaded.',
           );
         },
       });
@@ -652,3 +746,9 @@ const serverKey = (dbServer: IDbServer): string =>
     dbServer.port ?? '',
     dbServer.path ?? '',
   ].join('/');
+
+const serverLocation = (server: IDbServer): string =>
+  server.path?.trim() ||
+  (server.host?.trim()
+    ? `${server.host.trim()}${server.port ? `:${server.port}` : ''}`
+    : 'Project configuration');

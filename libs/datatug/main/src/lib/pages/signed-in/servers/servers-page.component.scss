@@ -12,18 +12,3 @@
   --padding-start: 0;
   --inner-padding-end: 0;
 }
-
-.dataset-name {
-  text-transform: capitalize;
-}
-
-.source-edition {
-  margin-block: 4px;
-  white-space: normal;
-}
-
-.catalog-retry-button {
-  --background: var(--ion-color-light);
-  --color: var(--ion-color-danger-shade);
-  font-weight: 600;
-}

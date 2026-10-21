@@ -1,0 +1,118 @@
+<ion-item-divider>
+  <ion-label>
+    <strong>Database sources</strong>
+    <p>Catalogs and connections configured in this project</p>
+  </ion-label>
+  <ion-badge slot="end" color="medium">
+    {{ databaseCount() }}
+    {{ databaseCount() === 1 ? 'database' : 'databases' }}
+  </ion-badge>
+</ion-item-divider>
+<ion-list>
+  @if (declarationsError()) {
+    <ion-item color="danger">
+      <ion-label>{{ declarationsError() }}</ion-label>
+      <ion-button slot="end" color="light" (click)="retryDeclarations.emit()"
+        >Retry declarations</ion-button
+      >
+    </ion-item>
+  }
+  @if (serversError()) {
+    <ion-item color="danger">
+      <ion-label>{{ serversError() }}</ion-label>
+      <ion-button slot="end" color="light" (click)="retryServers.emit()"
+        >Retry servers</ion-button
+      >
+    </ion-item>
+  }
+  @for (group of groups(); track group.key) {
+    <ion-item lines="full" [attr.data-testid]="'database-' + group.key">
+      <ion-icon name="server-outline" slot="start" color="primary" />
+      <ion-label>
+        <strong class="database-name">{{ group.title }}</strong>
+        @for (
+          instance of group.instances;
+          track instance.key;
+          let last = $last
+        ) {
+          <p
+            class="database-instance"
+            [class.database-instance-separated]="!last"
+          >
+            @if (instance.target) {
+              <ion-button
+                size="small"
+                fill="clear"
+                class="instance-action"
+                (click)="openTarget.emit(instance.target)"
+                >{{ instance.title }}</ion-button
+              >
+            } @else {
+              <strong>{{ instance.title }}</strong>
+            }
+            <span> · {{ instance.driver }}</span>
+            @if (instance.detail) {
+              <span> · {{ instance.detail }}</span>
+            }
+            @if (instance.environments.length) {
+              <span> · {{ instance.environments.join(', ') }}</span>
+            }
+            <span> · {{ instance.availability }}</span>
+            @if (instance.source) {
+              <span> · </span>
+              <a
+                [href]="instance.source"
+                target="_blank"
+                rel="noopener noreferrer"
+                (click)="$event.stopPropagation()"
+                >Source</a
+              >
+            }
+            @if (instance.target?.kind === 'server') {
+              <ion-buttons class="instance-actions">
+                <ion-button
+                  aria-label="Remove database server"
+                  [disabled]="instance.deleting"
+                  (click)="
+                    $event.stopPropagation();
+                    removeServer.emit({
+                      event: $event,
+                      target: instance.target,
+                    })
+                  "
+                >
+                  <ion-icon name="trash-outline" />
+                </ion-button>
+              </ion-buttons>
+            }
+          </p>
+        }
+      </ion-label>
+    </ion-item>
+  } @empty {
+    @if (loading()) {
+      <ion-item
+        ><ion-label color="medium"
+          >Loading database sources...</ion-label
+        ></ion-item
+      >
+    } @else if (
+      !environmentsError() && !declarationsError() && !serversError()
+    ) {
+      <ion-item
+        ><ion-label color="medium">{{ emptyMessage() }}</ion-label></ion-item
+      >
+    }
+  }
+  <ion-item lines="none">
+    <ion-label color="medium">
+      Total: {{ databaseCount() }}
+      {{ databaseCount() === 1 ? 'database' : 'databases' }} ·
+      {{ instanceCount() }}
+      {{ instanceCount() === 1 ? 'instance' : 'instances' }}
+    </ion-label>
+    <ion-button slot="end" fill="outline" (click)="addServer.emit()"
+      >Add DB server</ion-button
+    >
+  </ion-item>
+</ion-list>
