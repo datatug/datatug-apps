@@ -19,6 +19,7 @@ import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal, takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
   IonButton,
+  IonButtons,
   IonItem,
   IonLabel,
   IonInput,
@@ -75,6 +76,7 @@ interface QueryFolder {
     BoardChartEditorComponent,
     RouterLink,
     IonButton,
+    IonButtons,
     IonItem,
     IonLabel,
     IonInput,
@@ -88,7 +90,16 @@ interface QueryFolder {
       [queryParams]="{ environment: scope.environment() || null }"
       >Back to Boards</a
     >
-    <h1>{{ isNew() ? 'New board' : draft()?.title || 'Board' }}</h1>
+    <header class="board-heading">
+      <h1>{{ isNew() ? 'New board' : draft()?.title || 'Board' }}</h1>
+      @if (scope.admitted() && scope.canWrite() && draft() && !editing()) {
+        <ion-buttons
+          ><ion-button (click)="beginEdit()"
+            >Edit board</ion-button
+          ></ion-buttons
+        >
+      }
+    </header>
     <ion-item
       ><ion-label>Environment</ion-label
       ><ion-select
@@ -160,225 +171,238 @@ interface QueryFolder {
       @if (!scope.canWrite()) {
         <p role="status">You can view this board, but cannot save changes.</p>
       }
-      @if (scope.canWrite()) {
-        <ion-item
-          ><ion-label position="stacked">Board title</ion-label
-          ><ion-input
-            aria-label="Board title"
-            [value]="board.title"
-            [disabled]="saving() || !!pending()"
-            (ionInput)="
-              edit({ type: 'title', title: $event.detail.value || '' })
-            "
-        /></ion-item>
-        <section aria-label="Board parameter declarations">
-          <h2>Board inputs</h2>
-          <p>
-            Declare reusable inputs here; active values above are never saved.
-          </p>
-          <label
-            >Parameter ID
-            <input
-              aria-label="Parameter ID"
-              [value]="newParameterId()"
-              (input)="newParameterId.set($any($event.target).value)"
+      @if (scope.canWrite() && editing()) {
+        <section class="board-editor" aria-label="Edit board definition">
+          <ion-item
+            ><ion-label position="stacked">Board title</ion-label
+            ><ion-input
+              aria-label="Board title"
+              [value]="board.title"
               [disabled]="saving() || !!pending()"
-          /></label>
-          <label
-            >Parameter type
-            <select
-              aria-label="Parameter type"
-              [value]="newParameterType()"
-              (change)="newParameterType.set($any($event.target).value)"
-              [disabled]="saving() || !!pending()"
+              (ionInput)="
+                edit({ type: 'title', title: $event.detail.value || '' })
+              "
+          /></ion-item>
+          <section aria-label="Board parameter declarations">
+            <h2>Board inputs</h2>
+            <p>
+              Declare reusable inputs here; active values above are never saved.
+            </p>
+            <label
+              >Parameter ID
+              <input
+                aria-label="Parameter ID"
+                [value]="newParameterId()"
+                (input)="newParameterId.set($any($event.target).value)"
+                [disabled]="saving() || !!pending()"
+            /></label>
+            <label
+              >Parameter type
+              <select
+                aria-label="Parameter type"
+                [value]="newParameterType()"
+                (change)="newParameterType.set($any($event.target).value)"
+                [disabled]="saving() || !!pending()"
+              >
+                <option value="integer">Integer</option>
+                <option value="string">Text</option>
+                <option value="number">Number</option>
+                <option value="boolean">Boolean</option>
+                <option value="date">Date</option>
+                <option value="datetime">Date and time</option>
+              </select></label
             >
-              <option value="integer">Integer</option>
-              <option value="string">Text</option>
-              <option value="number">Number</option>
-              <option value="boolean">Boolean</option>
-              <option value="date">Date</option>
-              <option value="datetime">Date and time</option>
-            </select></label
-          >
-          <ion-button
-            (click)="declareParameter()"
-            [disabled]="!newParameterId() || saving() || !!pending()"
-            >Add or update required input</ion-button
-          >
-        </section>
-        <section aria-label="Saved query widgets">
-          <h2>Saved query widgets</h2>
-          @for (card of cards(); track card.id) {
-            <div>
-              <strong>{{ card.title || card.id }}</strong>
-              @if (
-                card.widget?.name === 'SQL' || card.widget?.name === 'chart'
-              ) {
-                <sneat-datatug-board-chart-editor
-                  [card]="card"
-                  [queries]="queries()"
-                  [project]="scope.page.ref()"
-                  [scopeIdentity]="
-                    scope.page.identity() + ':' + scope.environment()
-                  "
-                  [boardParameters]="board.parameters || []"
-                  [disabled]="saving() || !!pending()"
-                  (definition)="
-                    edit({
-                      type: 'set-chart',
-                      cardId: card.id,
-                      definition: $event,
-                    })
-                  "
-                />
-              }
-              @if (card.widget?.name === 'SQL') {
-                <label
-                  >Saved query
-                  <select
-                    [attr.aria-label]="
-                      'Saved query for ' + (card.title || card.id)
+            <ion-button
+              (click)="declareParameter()"
+              [disabled]="!newParameterId() || saving() || !!pending()"
+              >Add or update required input</ion-button
+            >
+          </section>
+          <section aria-label="Saved query widgets">
+            <h2>Saved query widgets</h2>
+            @for (card of cards(); track card.id) {
+              <div>
+                <strong>{{ card.title || card.id }}</strong>
+                @if (
+                  card.widget?.name === 'SQL' || card.widget?.name === 'chart'
+                ) {
+                  <sneat-datatug-board-chart-editor
+                    [card]="card"
+                    [queries]="queries()"
+                    [project]="scope.page.ref()"
+                    [scopeIdentity]="
+                      scope.page.identity() + ':' + scope.environment()
                     "
-                    [value]="cardQuery(card)"
+                    [boardParameters]="board.parameters || []"
                     [disabled]="saving() || !!pending()"
-                    (change)="
+                    (definition)="
                       edit({
-                        type: 'set-query',
+                        type: 'set-chart',
                         cardId: card.id,
-                        queryId: $any($event.target).value,
+                        definition: $event,
                       })
                     "
-                  >
-                    @for (query of queries(); track query.id) {
-                      <option
-                        [value]="query.id"
-                        [selected]="query.id === cardQuery(card)"
-                      >
-                        {{ query.title || query.id }}
-                      </option>
-                    }
-                  </select></label
-                >
-
-                @for (parameter of cardParameters(card); track parameter.id) {
+                  />
+                }
+                @if (card.widget?.name === 'SQL') {
                   <label
-                    >{{ parameter.id
-                    }}{{ parameter.isRequired ? ' (required)' : '' }}
-                    <input
+                    >Saved query
+                    <select
                       [attr.aria-label]="
-                        parameter.id + ' for ' + (card.title || card.id)
+                        'Saved query for ' + (card.title || card.id)
                       "
-                      [value]="parameterValue(card, parameter)"
+                      [value]="cardQuery(card)"
                       [disabled]="saving() || !!pending()"
                       (change)="
-                        bindParameter(
-                          card,
-                          parameter,
-                          $any($event.target).value
-                        )
+                        edit({
+                          type: 'set-query',
+                          cardId: card.id,
+                          queryId: $any($event.target).value,
+                        })
                       "
-                    />
-                  </label>
+                    >
+                      @for (query of queries(); track query.id) {
+                        <option
+                          [value]="query.id"
+                          [selected]="query.id === cardQuery(card)"
+                        >
+                          {{ query.title || query.id }}
+                        </option>
+                      }
+                    </select></label
+                  >
+
+                  @for (parameter of cardParameters(card); track parameter.id) {
+                    <label
+                      >{{ parameter.id
+                      }}{{ parameter.isRequired ? ' (required)' : '' }}
+                      <input
+                        [attr.aria-label]="
+                          parameter.id + ' for ' + (card.title || card.id)
+                        "
+                        [value]="parameterValue(card, parameter)"
+                        [disabled]="saving() || !!pending()"
+                        (change)="
+                          bindParameter(
+                            card,
+                            parameter,
+                            $any($event.target).value
+                          )
+                        "
+                      />
+                    </label>
+                  }
+                } @else {
+                  <p>
+                    Existing {{ card.widget?.name || 'empty' }} widget is
+                    preserved.
+                  </p>
                 }
-              } @else {
-                <p>
-                  Existing {{ card.widget?.name || 'empty' }} widget is
-                  preserved.
-                </p>
-              }
-              <ion-button
-                (click)="edit({ type: 'remove-card', cardId: card.id })"
+                <ion-button
+                  (click)="edit({ type: 'remove-card', cardId: card.id })"
+                  [disabled]="saving() || !!pending()"
+                  >Remove {{ card.title || card.id }}</ion-button
+                >
+              </div>
+            }
+            <label
+              >Add saved query
+              <select
+                aria-label="Add saved query"
+                [value]="selectedQuery()"
                 [disabled]="saving() || !!pending()"
-                >Remove {{ card.title || card.id }}</ion-button
+                (change)="selectedQuery.set($any($event.target).value)"
               >
-            </div>
-          }
-          <label
-            >Add saved query
-            <select
-              aria-label="Add saved query"
-              [value]="selectedQuery()"
-              [disabled]="saving() || !!pending()"
-              (change)="selectedQuery.set($any($event.target).value)"
-            >
-              <option value="">Choose a saved query</option>
-              @for (query of queries(); track query.id) {
-                <option [value]="query.id">
-                  {{ query.title || query.id }}
-                </option>
-              }
-            </select></label
-          >
-          <ion-button
-            (click)="addQuery()"
-            [disabled]="!selectedQuery() || saving() || !!pending()"
-            >Add query widget</ion-button
-          >
-        </section>
-        @if (pending()) {
-          <p role="status">
-            This save may already have completed. Retry the original operation
-            before starting another save.
-          </p>
-          @if (conflict()) {
-            <p role="alert">
-              The board changed. Review the current saved definition before
-              creating a new save.
-            </p>
-          }
-          <ion-button (click)="reviewCurrent()" [disabled]="saving()"
-            >Review current saved board</ion-button
-          >
-          @if (reviewed()) {
-            <p role="status">
-              Current saved board reviewed: {{ reviewed()?.board?.title }}.
-              Starting a new save may repeat changes already delivered.
-            </p>
-            <section aria-label="Current saved board review">
-              <h3>Current saved widgets</h3>
-              <ul>
-                @for (
-                  card of reviewed()?.board?.rows?.flatMap(flattenCards) || [];
-                  track card.id
-                ) {
-                  <li>
-                    {{ card.title || card.id }} ·
-                    {{ card.widget?.name || 'empty' }}
-                  </li>
+                <option value="">Choose a saved query</option>
+                @for (query of queries(); track query.id) {
+                  <option [value]="query.id">
+                    {{ query.title || query.id }}
+                  </option>
                 }
-              </ul>
-              <p>Saved queries: {{ reviewedQueries() }}</p>
-            </section>
-            <ion-button (click)="resumeDraft()"
-              >Keep draft and start a new save</ion-button
+              </select></label
             >
-            <ion-button (click)="useCurrent()"
-              >Use current saved board</ion-button
+            <ion-button
+              (click)="addQuery()"
+              [disabled]="!selectedQuery() || saving() || !!pending()"
+              >Add query widget</ion-button
             >
-          }
-          @if (reviewedAbsent()) {
+          </section>
+          @if (pending()) {
             <p role="status">
-              No saved board currently exists at this identity. The earlier
-              operation may have completed before it was deleted.
+              This save may already have completed. Retry the original operation
+              before starting another save.
             </p>
-            <ion-button (click)="resumeDraft()"
-              >Review draft and start a new create</ion-button
+            @if (conflict()) {
+              <p role="alert">
+                The board changed. Review the current saved definition before
+                creating a new save.
+              </p>
+            }
+            <ion-button (click)="reviewCurrent()" [disabled]="saving()"
+              >Review current saved board</ion-button
             >
+            @if (reviewed()) {
+              <p role="status">
+                Current saved board reviewed: {{ reviewed()?.board?.title }}.
+                Starting a new save may repeat changes already delivered.
+              </p>
+              <section aria-label="Current saved board review">
+                <h3>Current saved widgets</h3>
+                <ul>
+                  @for (
+                    card of reviewed()?.board?.rows?.flatMap(flattenCards) ||
+                      [];
+                    track card.id
+                  ) {
+                    <li>
+                      {{ card.title || card.id }} ·
+                      {{ card.widget?.name || 'empty' }}
+                    </li>
+                  }
+                </ul>
+                <p>Saved queries: {{ reviewedQueries() }}</p>
+              </section>
+              <ion-button (click)="resumeDraft()"
+                >Keep draft and start a new save</ion-button
+              >
+              <ion-button (click)="useCurrent()"
+                >Use current saved board</ion-button
+              >
+            }
+            @if (reviewedAbsent()) {
+              <p role="status">
+                No saved board currently exists at this identity. The earlier
+                operation may have completed before it was deleted.
+              </p>
+              <ion-button (click)="resumeDraft()"
+                >Review draft and start a new create</ion-button
+              >
+            }
           }
-        }
-        <ion-button
-          (click)="save()"
-          [disabled]="
-            saving() || loading() || conflict() || !board.title.trim()
-          "
-          >{{
-            saving()
-              ? 'Saving…'
-              : pending()
-                ? 'Retry original save'
-                : 'Save board'
-          }}</ion-button
-        >
+          <div class="editor-actions">
+            @if (savedDefinition() && !pending()) {
+              <ion-button
+                fill="outline"
+                (click)="cancelEdit()"
+                [disabled]="saving()"
+                >Cancel</ion-button
+              >
+            }
+            <ion-button
+              (click)="save()"
+              [disabled]="
+                saving() || loading() || conflict() || !board.title.trim()
+              "
+              >{{
+                saving()
+                  ? 'Saving…'
+                  : pending()
+                    ? 'Retry original save'
+                    : 'Save board'
+              }}</ion-button
+            >
+          </div>
+        </section>
       }
       <sneat-datatug-board
         [boardDef]="board"
@@ -388,6 +412,50 @@ interface QueryFolder {
       />
     }
   </section>`,
+  styles: [
+    `
+      :host {
+        display: block;
+        padding: 16px;
+      }
+      .board-heading {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+      }
+      h1 {
+        margin: 16px 0;
+      }
+      .board-editor {
+        margin: 24px 0;
+      }
+      .board-editor > section {
+        margin: 24px 0;
+      }
+      .board-editor label {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin: 16px 0;
+      }
+      .board-editor input,
+      .board-editor select {
+        padding: 10px;
+        min-height: 44px;
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .editor-actions {
+        display: flex;
+        justify-content: flex-end;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 24px;
+      }
+    `,
+  ],
 })
 export class HostedBoardWorkspaceComponent {
   private readonly destroyRef = inject(DestroyRef);
@@ -404,6 +472,31 @@ export class HostedBoardWorkspaceComponent {
     () => this.route.snapshot.data['createBoard'] === true,
   );
   readonly draft = signal<Board | undefined>(undefined);
+  readonly savedDefinition = signal<Board | undefined>(undefined);
+  private readonly editingKey = signal<string | undefined>(undefined);
+  readonly editing = computed(
+    () =>
+      this.loadedKey() === this.key() &&
+      (this.editingKey() === this.key() || !!this.pending()),
+  );
+  beginEdit() {
+    if (this.loadedKey() === this.key() && this.scope.canWrite())
+      this.editingKey.set(this.key());
+  }
+  cancelEdit() {
+    const saved = this.savedDefinition();
+    if (
+      !saved ||
+      this.pending() ||
+      this.saving() ||
+      this.loadedKey() !== this.key()
+    )
+      return;
+    this.draft.set(saved);
+    this.editingKey.set(undefined);
+    this.error.set('');
+    this.notice.set('Changes discarded. Showing the saved board.');
+  }
   private readonly loadedKey = signal<string | undefined>(undefined);
   readonly revision = signal<string | undefined>(undefined);
   readonly queries = signal<QueryChoice[]>([]);
@@ -500,6 +593,8 @@ export class HostedBoardWorkspaceComponent {
       const generation = ++this.generation;
       this.loadedKey.set(undefined);
       this.draft.set(undefined);
+      this.savedDefinition.set(undefined);
+      this.editingKey.set(undefined);
       this.queries.set([]);
       this.error.set('');
       this.notice.set('');
@@ -631,6 +726,8 @@ export class HostedBoardWorkspaceComponent {
       this.queries.set(choices);
       this.revision.set(held?.revision);
       this.pending.set(pending);
+      this.savedDefinition.set(held?.board);
+      this.editingKey.set(this.isNew() || pending ? key : undefined);
       this.draft.set(
         pending?.write.board ??
           held?.board ?? {
@@ -663,7 +760,13 @@ export class HostedBoardWorkspaceComponent {
     );
   }
   edit(action: BoardDefinitionEdit) {
-    if (this.pending() || this.saving() || !this.scope.canWrite()) return;
+    if (
+      !this.editing() ||
+      this.pending() ||
+      this.saving() ||
+      !this.scope.canWrite()
+    )
+      return;
     try {
       this.error.set('');
       const board = this.draft();
@@ -789,6 +892,7 @@ export class HostedBoardWorkspaceComponent {
     if (
       !ref ||
       !board ||
+      !this.editing() ||
       this.loadedKey() !== this.key() ||
       !this.scope.canWrite() ||
       this.saving() ||
@@ -827,6 +931,8 @@ export class HostedBoardWorkspaceComponent {
       this.journal.clear(key);
       this.pending.set(undefined);
       this.draft.set(current.board);
+      this.savedDefinition.set(current.board);
+      this.editingKey.set(undefined);
       this.revision.set(current.revision);
       this.notice.set('Board saved.');
       if (this.isNew())
@@ -879,6 +985,8 @@ export class HostedBoardWorkspaceComponent {
     this.pending.set(undefined);
     this.conflict.set(false);
     this.revision.set(current?.revision);
+    this.savedDefinition.set(current?.board);
+    this.editingKey.set(this.key());
     this.reviewed.set(undefined);
     this.reviewedAbsent.set(false);
     this.notice.set(
@@ -890,5 +998,6 @@ export class HostedBoardWorkspaceComponent {
     if (!current) return;
     this.resumeDraft();
     this.draft.set(current.board);
+    this.editingKey.set(undefined);
   }
 }
