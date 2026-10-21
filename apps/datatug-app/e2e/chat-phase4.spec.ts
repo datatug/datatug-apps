@@ -104,7 +104,10 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
 
   await page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="CustomerId"]').click();
   await workspace.getByRole('button', { name: 'Bookmark selection' }).click();
+  await expect(workspace.getByRole('tab', { name: /Bookmarks/ })).toHaveAttribute('aria-selected', 'true');
+  await expect(workspace.locator('.bookmark-item')).toHaveCount(2);
   await workspace.locator('ion-segment-button[value="selected"]').click();
+  await expect(workspace.getByRole('tab', { name: 'Selected', exact: true })).toHaveAttribute('aria-selected', 'true');
   await workspace.getByRole('button', { name: 'Bookmark view' }).click();
   await expect(workspace.locator('.bookmark-item')).toHaveCount(3);
   const masked = await page.evaluate(async () => {
