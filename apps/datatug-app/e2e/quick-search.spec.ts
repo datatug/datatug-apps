@@ -5,7 +5,10 @@ const metadata = {
   id: 'search-demo',
   title: 'Search demo',
   access: 'public',
-  boards: [{ id: 'customers-board', title: 'Customers' }],
+  boards: [
+    { id: 'customers-board', title: 'Customers' },
+    { id: 'orders-board', title: 'Orders' },
+  ],
   entities: [],
   environments: [],
   tags: { Customers: 1 },
@@ -132,6 +135,22 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     name: 'Quick Search',
     exact: true,
   });
+  const overviewRows = page.locator(
+    'sneat-datatug-project:not(.ion-page-hidden) ion-card > ion-list > ion-item',
+  );
+  await expect(overviewRows).toHaveCount(2);
+  const rowBorders = await overviewRows.evaluateAll((rows) =>
+    rows.map((row) => {
+      const native = row.shadowRoot?.querySelector('.item-native'),
+        inner = row.shadowRoot?.querySelector('.item-inner');
+      return (
+        (native ? parseFloat(getComputedStyle(native).borderBottomWidth) : 0) +
+        (inner ? parseFloat(getComputedStyle(inner).borderBottomWidth) : 0)
+      );
+    }),
+  );
+  expect(rowBorders[0]).toBeGreaterThan(0);
+  expect(rowBorders[1]).toBe(0);
   await overviewSearch.fill('Customers');
   await page.screenshot({
     path: testInfo.outputPath('quick-search-overview-input.png'),
@@ -198,6 +217,10 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     .fill('Customers');
   await main.getByRole('button', { name: 'Search', exact: true }).click();
   await expect(main.locator('.results > li')).toHaveCount(1);
+  await expect(main.locator('.results > li').last()).toHaveCSS(
+    'border-bottom-width',
+    '0px',
+  );
   await expect(
     main.getByRole('link', { name: 'Table@Chinook', exact: true }),
   ).toBeVisible();

@@ -419,6 +419,8 @@ import {
       }
       .results > li {
         padding: 18px 0;
+      }
+      .results > li:not(:last-child) {
         border-bottom: 1px solid var(--ion-color-light-shade);
       }
       .name {
