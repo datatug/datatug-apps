@@ -28,6 +28,8 @@ export interface IQueryFolderContext extends IQueryFolder {
 
 // Defines user's query
 export interface IQueryDef extends IQueryItem {
+  /** Store-assigned creation instant (RFC3339); drafts omit it until first save. */
+  readonly createdAt?: string;
   semanticModel?: import("../../queries/semantic-mapping").SemanticModel;
   request: IQueryRequest;
   /** Reviewed schema relationship pins retained by Git-backed query files. */
@@ -119,3 +121,6 @@ export interface IQueryTarget {
 export interface ICredentials {
   username: string;
 }
+
+/** Persisted query records always include store-assigned creation metadata. */
+export interface ISavedQueryDef extends IQueryDef { readonly createdAt: string; }

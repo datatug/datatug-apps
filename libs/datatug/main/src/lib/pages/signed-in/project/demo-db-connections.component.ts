@@ -1,7 +1,7 @@
 import { isDemoDbOvdbDatabaseUrl } from '../../../queries/demodb-ovdb';
 import { Component, Input, computed, inject, signal } from '@angular/core';
 import { RouterLink } from '@angular/router';
-import { IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList } from '@ionic/angular';
+import { IonCard, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import type { IProjectRef } from '../../../core/project-context';
 import { projectPageHref } from '../../../nav/project-page-href';
@@ -108,7 +108,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
 @Component({
   selector: 'sneat-datatug-demodb-connections',
   standalone: true,
-  imports: [RouterLink, IonCard, IonCardHeader, IonCardTitle, IonItem, IonLabel, IonList],
+  imports: [RouterLink, IonCard, IonCardHeader, IonCardTitle, IonIcon, IonItem, IonLabel, IonList],
   template: `
     @if (catalog()) {
       <ion-card>
@@ -116,6 +116,7 @@ function validCatalog(raw: ConnectionCatalog): boolean {
         <ion-list>
           @for (group of groups(); track group.id) {
             <ion-item [attr.data-testid]="'dataset-' + group.id">
+              <ion-icon name="server-outline" slot="start" color="medium" aria-hidden="true" />
               <ion-label>
                 <strong>{{ title(group.id) }}</strong>
                 @for (edition of group.connections; track edition.id) {
@@ -155,7 +156,9 @@ function validCatalog(raw: ConnectionCatalog): boolean {
         <ion-card-header><ion-card-title>BigQuery discoveries (setup planned)</ion-card-title></ion-card-header>
         <ion-list>
           @for (plan of catalog()!.bigQueryPlans; track plan.id) {
-            <ion-item><ion-label>{{ plan.title }} · your Google account and execution project required
+            <ion-item>
+              <ion-icon name="server-outline" slot="start" color="medium" aria-hidden="true" />
+              <ion-label>{{ plan.title }} · your Google account and execution project required
               <p><a [href]="plan.directory" target="_blank" rel="noopener noreferrer">OVDB Directory</a> · Query unavailable</p>
             </ion-label></ion-item>
           }

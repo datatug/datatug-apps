@@ -157,6 +157,7 @@ interface IGithubGitTreeResponse {
  * here): datatug-cli's `GET /queries/all_queries`/`get_query` responses, and this
  * GitHub reader, both ultimately describe the same on-disk `datatug.QueryDef` JSON. */
 export interface IGithubWireQueryItem {
+  readonly createdAt?: string;
   tags?: string[];
   semanticModel?: IQueryDef['semanticModel'];
   targets?: IQueryDef['targets'];
@@ -1503,6 +1504,7 @@ export class GithubProjectReaderService {
             return {
               id: def?.id || bareId,
               title: def?.title,
+              createdAt: def?.createdAt,
               tags: def?.tags,
               type: def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
@@ -1599,6 +1601,7 @@ export class GithubProjectReaderService {
                 (text): IGithubWireQueryItem => ({
                   id: def?.id || bareId,
                   title: def?.title,
+                  createdAt: def?.createdAt,
                   type,
                   text,
                   ...(def?.connectionId

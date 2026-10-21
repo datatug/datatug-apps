@@ -21,16 +21,6 @@ export type ProductProfileId = 'datatug' | 'incidentius' | 'dashboardius';
  * authorization (REQ:profile-selection-is-not-authorization) or which data is
  * reachable (REQ:no-profile-private-data).
  */
-/** A YouTube video a profile can feature on its home page. */
-export interface ProductIntroVideo {
-  /** The 11-character YouTube video ID (the part after `youtu.be/`). */
-  readonly youtubeId: string;
-  /** Accessible name for the player and its play button. */
-  readonly title: string;
-  /** Local poster image path, relative to the app root (no leading slash). */
-  readonly posterSrc: string;
-}
-
 export interface ProductProfile {
   /** Stable identifier — matches its key in {@link PRODUCT_PROFILES}. */
   readonly id: ProductProfileId;
@@ -106,15 +96,6 @@ export interface ProductProfile {
    */
   readonly showPoweredByDalgo: boolean;
 
-  /**
-   * Introduction video shown on this profile's home page (founder, 2026-10-21:
-   * "embed the video onto main page of datatug.app"). Omitted means no video.
-   * The home page shows a local poster and loads the YouTube player only after
-   * the visitor presses play, from the privacy-enhanced youtube-nocookie.com
-   * domain, so nothing is requested from YouTube before that.
-   */
-  readonly homeIntroVideo?: ProductIntroVideo;
-
   /** Product-specific billing entry; omitted when the profile has no checkout. */
   readonly pricingUrl?: string;
 
@@ -147,11 +128,6 @@ export const PRODUCT_PROFILES: Readonly<
     entryPointLabel: 'Open a project',
     showIncidentsMenuItem: true,
     showPoweredByDalgo: true,
-    homeIntroVideo: Object.freeze({
-      youtubeId: 'PjVOaOd-ero',
-      title: 'DataTug introduction (draft)',
-      posterSrc: 'assets/home/intro-video-poster.webp',
-    }),
     hostnames: ['datatug.app'],
   }),
   dashboardius: Object.freeze({
