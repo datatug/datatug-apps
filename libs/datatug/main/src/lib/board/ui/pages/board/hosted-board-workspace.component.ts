@@ -150,7 +150,7 @@ interface QueryFolder {
             <ion-item>
               <ion-input
                 [label]="parameter.def.title || parameter.def.id"
-                labelPlacement="fixed"
+                [labelPlacement]="'fixed'"
                 [placeholder]="parameter.def.type"
                 [value]="parameterText(parameter)"
                 [attr.aria-invalid]="

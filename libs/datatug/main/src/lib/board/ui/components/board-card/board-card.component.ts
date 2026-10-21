@@ -61,6 +61,9 @@ export class BoardCardTabService {
   },
   styles: [
     `
+      ion-card {
+        container: datatug-board-header / inline-size;
+      }
       ion-card-header {
         padding: 0;
       }

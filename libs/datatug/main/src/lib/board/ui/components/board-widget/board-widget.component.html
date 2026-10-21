@@ -54,7 +54,7 @@
   <ion-toolbar color="light" class="widget-header">
     <ion-title size="small">{{ displayTitle() }}</ion-title>
     <ion-buttons slot="end"
-      ><ng-container [ngTemplateOutlet]="headerActions() || null"
+      ><ng-container [ngTemplateOutlet]="widgetHeaderActions"
     /></ion-buttons>
   </ion-toolbar>
 }

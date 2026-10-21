@@ -495,7 +495,7 @@
             <ion-item [title]="'@' + p.def.id">
               <ion-input
                 [label]="p.def.title || p.def.id"
-                labelPlacement="fixed"
+                [labelPlacement]="'fixed'"
                 [placeholder]="p.def.type"
                 [value]="parameterText(p)"
                 [attr.aria-invalid]="
