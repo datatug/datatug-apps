@@ -1,12 +1,12 @@
 ---
 format: https://specscore.md/feature-specification
-status: In Review
+status: Approved
 ---
 
 # Feature: Shared project environment order
 
 > [SpecScore.**Studio**](https://specscore.studio): | [Explore](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/shared-project-environment-order?op=explore) | [Edit](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/shared-project-environment-order?op=edit) | [Ask question](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/shared-project-environment-order?op=ask) | [Request change](https://specscore.studio/app/github.com/datatug/datatug-apps/spec/features/shared-project-environment-order?op=request-change) |
-**Status:** In Review
+**Status:** Approved
 **Source Ideas:** —
 
 ## Summary
