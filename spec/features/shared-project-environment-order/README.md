@@ -313,7 +313,9 @@ demo-specific data path does not satisfy this feature.
 
 ## Acceptance Criteria
 
-### Default and reconciliation
+### AC: default-and-reconciliation
+
+**Default and reconciliation**
 
 - Given environments with mixed-case standard aliases and custom IDs and no
   saved order, when any supported reader lists them, then it applies the exact
@@ -331,7 +333,9 @@ demo-specific data path does not satisfy this feature.
   reader or filtered by a consumer, then saved relative order wins and the
   consumer preserves it.
 
-### Editor journey and accessibility
+### AC: editor-journey-and-accessibility
+
+**Editor journey and accessibility**
 
 - Given a project overview with environments, when it renders, then it shows one
   compact borderless `Environments:` navigation row in resolved order, stays on
@@ -408,7 +412,9 @@ demo-specific data path does not satisfy this feature.
   draft, shows a specific error and offers a safe retry or reload. It does not
   display a saved state from an HTTP acknowledgement alone.
 
-### Persistence, concurrency, and scope
+### AC: persistence-concurrency-and-scope
+
+**Persistence, concurrency, and scope**
 
 - Given an authorized editor and a valid complete permutation, when Save
   succeeds and canonical metadata is reread, then reload and another authorized
@@ -451,7 +457,9 @@ demo-specific data path does not satisfy this feature.
   hidden Add fail acceptance. Per-store contract tests include validation,
   denial, stale membership, receipt replay/expiry and canonical reread.
 
-### Store and safety boundaries
+### AC: store-and-safety-boundaries
+
+**Store and safety boundaries**
 
 - Given a hosted Space project, when its order is saved, then a Go HTTPS handler
   authorizes the current actor and writes Firestore transactionally; browser
@@ -474,7 +482,9 @@ demo-specific data path does not satisfy this feature.
   semantics, query dispatch, and connection definitions remain unchanged. A
   new environment's caution presentation comes only from its stored metadata.
 
-### Verification
+### AC: verification
+
+**Verification**
 
 - Focused contract tests cover the default comparator, aliases, case,
   deterministic custom-ID ordering using identical JS/Go golden fixtures
