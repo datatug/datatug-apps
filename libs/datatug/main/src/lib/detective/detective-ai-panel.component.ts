@@ -13,8 +13,10 @@ import {
 import {
   IonBadge,
   IonButton,
+  IonButtons,
   IonCard,
   IonCardContent,
+  IonIcon,
   IonInput,
   IonItem,
   IonLabel,
@@ -93,8 +95,10 @@ function editFromValue(value: DetectiveInputValue): InputEdit {
     CommonModule,
     IonBadge,
     IonButton,
+    IonButtons,
     IonCard,
     IonCardContent,
+    IonIcon,
     IonInput,
     IonItem,
     IonLabel,
@@ -110,6 +114,8 @@ function editFromValue(value: DetectiveInputValue): InputEdit {
 })
 export class DetectiveAiPanelComponent {
   private readonly client = inject(DetectiveClientService);
+  protected readonly contentId =
+    'detective-ai-proposals-' + crypto.randomUUID();
   readonly context = input<DetectiveRequestContext | undefined>();
   readonly identity = input<string | undefined>();
   readonly state = input<DetectiveState | undefined>();

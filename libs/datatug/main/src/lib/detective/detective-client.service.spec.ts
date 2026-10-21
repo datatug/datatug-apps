@@ -252,6 +252,7 @@ describe('DetectiveClientService', () => {
         ifMatch: 2,
         operationId: expect.any(String),
       }),
+      { retryUnauthorizedOnce: false },
     );
     expect(api.post.mock.calls[0][1]).not.toHaveProperty('securityContextId');
     http.expectNone(() => true);
@@ -390,7 +391,7 @@ describe('DetectiveClientService', () => {
       project: 'P1',
     };
     api.get.mockReturnValue(of({ caseId: 'case-1', incidents: [] }));
-    api.post.mockReturnValue(of({ receipt: 'accepted' }));
+    api.post.mockReturnValue(of({ receipt: 'operation-reloaded-create' }));
     client.linkedIncidents(cloud, 'case-1').subscribe();
     expect(api.get.mock.calls[0][0]).toBe('datatug/detective/incidents');
     expect(api.get.mock.calls[0][1].get('caseId')).toBe('case-1');
@@ -452,7 +453,7 @@ describe('DetectiveClientService', () => {
     const params = api.get.mock.calls[0][1];
     expect(params.get('afterSeq')).toBe('25'); expect(params.get('limit')).toBe('50');
     expect(params.get('incidentRef')).toBe('incident-store/INC-1'); expect(params.get('environment')).toBe('demo');
-    api.post.mockReturnValue(of({ receipt: 'accepted' }));
+    api.post.mockReturnValue(of({ receipt: 'operation-fixed' }));
     client.incidentAction(cloud, { type: 'append-message', incidentRef: 'incident-store/INC-1', environment: 'demo', expectedSeq: 7, message: { body: 'Question?', assertion: 'question' } }, 'operation-fixed').subscribe();
     expect(api.post.mock.calls[0][1]).toEqual({storage:'firestore',spaceID:'space',project:'training',type:'append-message',incidentRef:'incident-store/INC-1',environment:'demo',expectedSeq:7,message:{body:'Question?',assertion:'question'},operationId:'operation-fixed'});
   });

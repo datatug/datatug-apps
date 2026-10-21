@@ -82,6 +82,21 @@ describe('SessionWorkspaceShellComponent auth lifecycle', () => {
     fixture.detectChanges();
   });
 
+  it('offers only the metadata-supported overview for the selected native Bag scope', async () => {
+    const workspace = TestBed.inject(SessionWorkspaceService);
+    await fixture.whenStable();
+    const bag = {id:'bag',sessionId:'session',title:'Selected context',scope:environment,version:1,entryIds:[]};
+    vi.spyOn(workspace,'selectedBag').mockReturnValue(bag);
+    workspace.capabilities.set({...caps,subjects:[{id:'order',label:'Order',scope:environment,subject:{conceptId:'Order',fieldId:'order_id',fieldMappingRef:'Order.id'},type:'integer',shape:'scalar'}]});
+    expect(fixture.componentInstance.invoiceOverviewAvailable()).toBe(false);
+    await fixture.componentInstance.openWorkspacePage('invoice-overview');
+    expect(fixture.componentInstance.formError()).toContain('requires an admitted integer invoice input');
+    workspace.capabilities.set({...caps,subjects:[{id:'invoice',label:'Invoice',scope:environment,subject:{conceptId:'invoice',fieldId:'InvoiceId',fieldMappingRef:'Invoice.id'},type:'integer',shape:'scalar'}]});
+    expect(fixture.componentInstance.invoiceOverviewAvailable()).toBe(true);
+    workspace.capabilities.set({...caps,subjects:[{id:'invoice',label:'Invoice',scope:{...environment,identityDomain:'other'},subject:{conceptId:'invoice',fieldId:'InvoiceId',fieldMappingRef:'Invoice.id'},type:'integer',shape:'scalar'}]});
+    expect(fixture.componentInstance.invoiceOverviewAvailable()).toBe(false);
+  });
+
   it('refreshes capabilities after sign-in while the Sessions URL stays unchanged', async () => {
     const workspace = TestBed.inject(SessionWorkspaceService);
     await fixture.whenStable();

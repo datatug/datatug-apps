@@ -1,0 +1,36 @@
+:host {
+  display: block;
+}
+
+.project-selector {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+  max-width: none !important;
+}
+
+.project-readonly {
+  flex: 1 1 auto;
+  min-width: 0;
+
+  p {
+    margin: 0 0 2px;
+    color: var(--ion-color-medium);
+    font-size: 0.75rem;
+  }
+
+  h2 {
+    margin: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+  }
+}
+
+ion-buttons {
+  flex: 0 0 auto;
+}
+
+ion-button {
+  min-width: 44px;
+  min-height: 44px;
+}

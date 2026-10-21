@@ -33,6 +33,7 @@ import {
 @Component({
   selector: 'sneat-datatug-menu-project-selector',
   templateUrl: 'menu-project-selector.component.html',
+  styleUrl: 'menu-project-selector.component.scss',
   imports: [
     IonItem,
     IonButtons,

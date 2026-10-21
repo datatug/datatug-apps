@@ -1,3 +1,10 @@
+import { HttpErrorResponse } from '@angular/common/http';
+import { HeldRowEvidenceComponent } from '../../../../evidence/held-row-evidence.component';
+import { RetainedEvidenceViewerComponent } from '../../../../evidence/retained-evidence-viewer.component';
+import { heldEvidenceIdentity } from '../../../../evidence/retained-evidence-contract';
+import { requireAppliedInputMatch } from '../../../../evidence/applied-evidence';
+import { useNativeRunLifetime } from '../../../../evidence/native-run-lifetime';
+import { RetainedRunIntent } from '../../../../evidence/run-intent';
 import {
   nativeQueryDiagnostic,
   nativeQueryDiagnosticMessage,
@@ -22,7 +29,7 @@ import {
 } from '@angular/core';
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import { IonButton } from '@ionic/angular';
 import {
   BoardWidget,
@@ -33,11 +40,14 @@ import {
 } from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
-import { equalProjectRef } from '../../../../core/project-context';
+import {
+  equalProjectRef,
+  isSharedProjectRef,
+} from '../../../../core/project-context';
 import { projectPageHref } from '../../../../nav/project-page-href';
 import { QueryType } from '../../../../models/definition/query-def';
 import { IQueryDef } from '../../../../models/definition/query-def';
-import { firstValueFrom, timeout } from 'rxjs';
+import { firstValueFrom, fromEvent, takeUntil, timeout } from 'rxjs';
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
 import { QueryDispatchError } from '../../../../queries/query-dispatch';
@@ -71,7 +81,10 @@ import {
 import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { isSavedPublicChartQueryId } from '../../../../queries/public-data/public-chart-query';
-import { BoardQueryResults } from '../../../core/board-query-results.service';
+import {
+  BoardQueryResults,
+  boardExecutionCacheKey,
+} from '../../../core/board-query-results.service';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -100,6 +113,8 @@ export interface BoardResultSnapshot {
   styleUrl: './board-widget.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RetainedEvidenceViewerComponent,
+    HeldRowEvidenceComponent,
     EvidenceChartComponent,
     TabsWidgetComponent,
     RouterLink,
@@ -148,6 +163,54 @@ export class BoardWidgetComponent {
   private readonly queries = inject(QueriesService);
   private readonly dispatcher = inject(QueryDispatchService);
   private readonly heldQueries = inject(BoardQueryResults, { optional: true });
+  private readonly nativeRunLifetime = useNativeRunLifetime();
+  private readonly retainedIntent = new RetainedRunIntent();
+  readonly retainedPending = signal(false);
+  readonly retainedReviewed = signal(false);
+  async reviewRetainedRun(): Promise<void> {
+    const ref = this.projectRef(),
+      id = this.boardId(),
+      read = this.readBoardForRun();
+    if (!ref || !id || !read || this.running()) return;
+    const key = this.executionIdentity();
+    this.retainedReviewed.set(false);
+    try {
+      const lifetime = this.nativeRunLifetime.capture(
+        ref,
+        this.choices.actor(),
+        this.definition()?.connectionId === 'shipping-working-copy' ||
+          this.boardContext()?.evidenceSelection
+          ? {
+              sourceId: 'shipping-working-copy',
+              environment: this.boardContext()?.environment || '',
+            }
+          : undefined,
+      );
+      await firstValueFrom(
+        read(ref, id).pipe(
+          takeUntil(fromEvent(lifetime.signal, 'abort')),
+          timeout(15000),
+        ),
+      );
+      if (
+        !lifetime.signal.aborted &&
+        key === this.executionIdentity() &&
+        this.retainedPending()
+      )
+        this.retainedReviewed.set(true);
+    } catch {
+      this.runError.set(
+        'Current board rights could not be refreshed. Original run may already be attached.',
+      );
+    }
+  }
+  abandonRetainedRun(): void {
+    if (!this.retainedReviewed() || this.running()) return;
+    this.retainedIntent.abandonReviewed();
+    this.retainedPending.set(false);
+    this.retainedReviewed.set(false);
+  }
+
   private readonly destroyRef = inject(DestroyRef);
   private activeRun?: AbortController;
   private activeIdentity?: string;
@@ -461,6 +524,15 @@ export class BoardWidgetComponent {
   );
 
   constructor() {
+    this.nativeRunLifetime.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
+      this.activeRun?.abort();
+      this.heldQueries?.invalidate();
+      this.retainedIntent.clearHeld();
+      this.retainedPending.set(false);
+      this.retainedReviewed.set(false);
+      this.snapshotStore().set(undefined);
+      this.inspectedEvidence.set(undefined);
+    });
     effect((onCleanup) => {
       const chart = this.chartWidgetDef()?.chart;
       const held = this.heldSnapshot();
@@ -761,8 +833,29 @@ export class BoardWidgetComponent {
     this.runError.set(undefined);
     this.runFailure.set(undefined);
     try {
+      const originalNative =
+        this.boardContext()?.executionTarget?.kind === 'hosted-cloud' &&
+        isSharedProjectRef(ref)
+          ? this.nativeRunLifetime.capture(
+              ref,
+              actor,
+              this.definition()?.connectionId === 'shipping-working-copy' ||
+                this.boardContext()?.evidenceSelection
+                ? {
+                    sourceId: 'shipping-working-copy',
+                    environment: this.boardContext()?.environment || '',
+                  }
+                : undefined,
+            )
+          : undefined;
+      const readSignal = originalNative
+        ? AbortSignal.any([controller.signal, originalNative.signal])
+        : controller.signal;
       const board = await firstValueFrom(
-        readBoard(ref, boardId).pipe(timeout(15000)),
+        readBoard(ref, boardId).pipe(
+          takeUntil(fromEvent(readSignal, 'abort')),
+          timeout(15000),
+        ),
       );
       if (
         !this.stillCurrent(
@@ -876,8 +969,61 @@ export class BoardWidgetComponent {
         throw new Error(
           'This saved query changed. Reopen the board before running it.',
         );
-      const execute = (signal: AbortSignal) =>
-        this.dispatcher.execute(
+      const selection = context?.evidenceSelection;
+      const hosted =
+        context?.executionTarget?.kind === 'hosted-cloud' &&
+        isSharedProjectRef(ref);
+      const native = hosted
+        ? this.nativeRunLifetime.capture(
+            ref,
+            actor,
+            selection || definition.connectionId === 'shipping-working-copy'
+              ? {
+                  sourceId: 'shipping-working-copy',
+                  environment: context?.environment || '',
+                }
+              : undefined,
+          )
+        : undefined;
+      if (selection) {
+        if (
+          !hosted ||
+          selection.environment !== context?.environment ||
+          selection.choice.evidence.context.scope.environmentId !==
+            context?.environment
+        )
+          throw new Error(
+            'Choose applied context for this current hosted environment.',
+          );
+        requireAppliedInputMatch(selection.choice, parameters);
+      }
+      const intent = hosted
+        ? await this.retainedIntent.prepare(
+            JSON.stringify([
+              actor,
+              ref,
+              boardId,
+              cardId,
+              path,
+              definition,
+              context,
+            ]),
+            {
+              queryId,
+              parameters,
+              ...(selection ? { evidence: selection.choice.evidence } : {}),
+            },
+          )
+        : undefined;
+      if (
+        controller.signal.aborted ||
+        native?.signal.aborted ||
+        identity !== this.executionIdentity()
+      )
+        return;
+      if (intent) this.retainedPending.set(true);
+      const execute = async (signal: AbortSignal) => {
+        return this.dispatcher.executeHeld(
           {
             projectRef: ref,
             definition,
@@ -895,10 +1041,14 @@ export class BoardWidgetComponent {
               ? { runtimeBinding: context.runtimeBinding }
               : {}),
             parameters,
-            signal,
+            signal: native ? AbortSignal.any([signal, native.signal]) : signal,
+            ...(native ? { principal: native.actor } : {}),
+            ...(intent ? { operationId: intent.operationId } : {}),
+            ...(selection ? { evidence: selection.choice.evidence } : {}),
           },
           { maxRows: 1000 },
         );
+      };
       const scope = JSON.stringify({
         ref,
         boardId,
@@ -907,14 +1057,12 @@ export class BoardWidgetComponent {
         tutorial: this.sessionOnly(),
         revision: this.dispatcher.runtimeRevision(),
       });
-      const key = JSON.stringify({
-        queryId,
-        definition,
-        selectedRuntimeId,
-        parameters,
-      });
+      const key = boardExecutionCacheKey(
+        { queryId, definition, selectedRuntimeId, parameters },
+        intent?.operationId,
+      );
       const rawResult = this.heldQueries
-        ? await this.heldQueries.read(
+        ? await this.heldQueries.readExecution(
             scope,
             key,
             controller.signal,
@@ -922,7 +1070,15 @@ export class BoardWidgetComponent {
             execute,
           )
         : await execute(controller.signal);
-      const result = this.chartResult(rawResult, definition);
+      const result = this.chartResult(rawResult.result, definition);
+      const evidenceIdentity =
+        rawResult.hostedResponse && native && context?.environment
+          ? heldEvidenceIdentity(rawResult.hostedResponse, {
+              projectRef: ref,
+              environment: context.environment,
+              actor: native.actor,
+            })
+          : undefined;
       if (
         this.stillCurrent(
           generation,
@@ -938,12 +1094,20 @@ export class BoardWidgetComponent {
         this.snapshotStore().set({
           queryId,
           result,
+          ...(evidenceIdentity ? { evidenceIdentity } : {}),
           identity,
           previous: this.retainSnapshots(previous, identity),
         });
+        if (intent) {
+          this.retainedIntent.confirm();
+          this.retainedPending.set(false);
+          this.retainedReviewed.set(false);
+        }
         this.rememberChoice();
       }
     } catch (error) {
+      this.retainedIntent.rejectConflict(error);
+      if (this.retainedIntent.hasPending) this.retainedPending.set(true);
       if (
         this.stillCurrent(
           generation,
@@ -956,6 +1120,13 @@ export class BoardWidgetComponent {
           path,
         )
       ) {
+        if (
+          error instanceof HttpErrorResponse &&
+          [401, 403].includes(error.status)
+        ) {
+          this.snapshotStore().set(undefined);
+          this.inspectedEvidence.set(undefined);
+        }
         this.runFailure.set(error);
         this.runError.set(
           nativeQueryDiagnosticMessage(nativeQueryDiagnostic(error)) ??

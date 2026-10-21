@@ -1,9 +1,26 @@
+import type { HostedQueryResponse } from '../../detective/detective-client.service';
 import { Injectable, OnDestroy } from '@angular/core';
 import type { FederatedQueryResult } from '../../queries/federated-query-executor';
 
+export interface BoardHeldExecution {
+  readonly result: FederatedQueryResult;
+  readonly hostedResponse?: HostedQueryResponse;
+}
+export function boardExecutionCacheKey(
+  value: Readonly<Record<string, unknown>>,
+  operationId?: string,
+): string {
+  return JSON.stringify({
+    ...value,
+    // A retained receipt can confirm only the dispatch that carried this ID.
+    // Current hosted intents therefore cannot borrow another card's response.
+    ...(operationId ? { operationId } : {}),
+  });
+}
+
 interface HeldRun {
   readonly controller: AbortController;
-  readonly result: Promise<FederatedQueryResult>;
+  readonly result: Promise<BoardHeldExecution>;
   users: number;
   settled: boolean;
   bytes: number;
@@ -16,6 +33,10 @@ export class BoardQueryResults implements OnDestroy {
   private scope = '';
   private readonly runs = new Map<string, HeldRun>();
 
+  invalidate(): void {
+    this.clear();
+  }
+
   async read(
     scope: string,
     key: string,
@@ -23,6 +44,20 @@ export class BoardQueryResults implements OnDestroy {
     reuse: boolean,
     execute: (signal: AbortSignal) => Promise<FederatedQueryResult>,
   ): Promise<FederatedQueryResult> {
+    return (
+      await this.readExecution(scope, key, signal, reuse, async (owned) => ({
+        result: await execute(owned),
+      }))
+    ).result;
+  }
+
+  async readExecution(
+    scope: string,
+    key: string,
+    signal: AbortSignal,
+    reuse: boolean,
+    execute: (signal: AbortSignal) => Promise<BoardHeldExecution>,
+  ): Promise<BoardHeldExecution> {
     signal.throwIfAborted();
     if (scope !== this.scope) {
       this.clear();
@@ -35,8 +70,13 @@ export class BoardQueryResults implements OnDestroy {
     let run = this.runs.get(key);
     if (!run) {
       if (this.runs.size >= 12) {
-        const oldest = [...this.runs].find(([, candidate]) => candidate.settled);
-        if (!oldest) throw new Error('Too many board queries are running. Wait for one to finish.');
+        const oldest = [...this.runs].find(
+          ([, candidate]) => candidate.settled,
+        );
+        if (!oldest)
+          throw new Error(
+            'Too many board queries are running. Wait for one to finish.',
+          );
         this.runs.delete(oldest[0]);
       }
       const controller = new AbortController();
@@ -68,7 +108,7 @@ export class BoardQueryResults implements OnDestroy {
     run.users++;
     const owned = run;
     try {
-      return await new Promise<FederatedQueryResult>((resolve, reject) => {
+      return await new Promise<BoardHeldExecution>((resolve, reject) => {
         const abort = () =>
           reject(new DOMException('The board context changed.', 'AbortError'));
         signal.addEventListener('abort', abort, { once: true });

@@ -1,3 +1,4 @@
+import type { EvidenceShareSelection } from '../../../evidence/evidence-share-panel.component';
 import { IParameterValueWithoutID } from '../parameter';
 import type { QueryRuntimeTarget } from '../../../queries/query-dispatch';
 import type { OvdbConnection } from '../../../ovdb/ovdb-connection';
@@ -19,6 +20,8 @@ export interface IBoardWidgetInstance {
 
 export interface IBoardContext {
   mode: 'edit' | 'view';
+  /** Explicit runtime sharing selection, never part of a persisted Board. */
+  evidenceSelection?: EvidenceShareSelection;
   parameters: Record<string, IParameterValueWithoutID>;
   environment?: string;
   /** Runtime selection is explicit context, independent of project storage. */

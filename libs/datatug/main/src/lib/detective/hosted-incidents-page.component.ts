@@ -1,3 +1,6 @@
+import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
+import { MappedContextInputComponent, MappedInputChoice } from './mapped-context-input.component';
+import { SessionContextApiService } from '../session-context/session-context-api.service';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -8,7 +11,7 @@ import {
   signal,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { toSignal } from '@angular/core/rxjs-interop';
+import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   IonBackButton,
   IonButton,
@@ -42,7 +45,7 @@ import {
   HostedProjectIncidents,
 } from './hosted-linkage.models';
 import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
-import { DetectiveCase, DetectiveState } from './models';
+import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
 
 /** A private, hosted Incident workflow. Agent incident pages keep their own route family. */
 @Component({
@@ -51,6 +54,7 @@ import { DetectiveCase, DetectiveState } from './models';
   imports: [
     RouterLink,
     HostedIncidentConversationComponent,
+    MappedContextInputComponent,
     IonBackButton,
     IonButton,
     IonButtons,
@@ -148,7 +152,10 @@ import { DetectiveCase, DetectiveState } from './models';
                 <ion-input aria-label="Order ID" type="number" inputmode="numeric"
                   [value]="orderId()" (ionInput)="orderId.set($event.detail.value || '')" />
               </ion-item>
-              <p>Order ID is saved as structured context. Other details remain in the description.</p>
+              <p>Legacy OrderID is saved as number context. Mapped inputs keep their explicit canonical name and type.</p>
+              <ion-button fill="outline" (click)="loadMappedInputs()" [disabled]="busy() || !canWrite() || !environment()">Choose mapped incident inputs</ion-button>
+              @if (mappedError()) { <p role="alert">{{mappedError()}}</p> }
+              <sneat-datatug-mapped-context-input [choices]="mappedChoices()" [disabled]="busy()" (valuesChanged)="setMappedInputs($event)" />
               @if (!canWrite()) {
                 <p role="status">You can view Incidents in this project, but cannot create them.</p>
               }
@@ -245,6 +252,63 @@ export class HostedIncidentsPageComponent {
   protected readonly title = signal('');
   protected readonly description = signal('');
   protected readonly orderId = signal('');
+  private readonly mutationLifetime = useNativeRunLifetime();
+  private readonly contextApi = inject(SessionContextApiService);
+  private mappedLifetime = new AbortController();
+  constructor() {
+    this.scope.scopeChanges$.pipe(takeUntilDestroyed()).subscribe(() => this.clearMappedInputs());
+    this.route.paramMap.pipe(takeUntilDestroyed()).subscribe(() => this.mutationLifetime.invalidate());
+    this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe(() => this.mutationLifetime.invalidate());
+    this.destroyRef.onDestroy(() => this.mappedLifetime.abort());
+  }
+  private clearMappedInputs(): void {
+    this.mappedLifetime.abort(); this.mappedLifetime = new AbortController();
+    this.mappedHeld.set(undefined); this.mappedValues.set(undefined); this.mappedError.set('');
+  }
+
+  private readonly mappedHeld = signal<
+    { key: string; choices: readonly MappedInputChoice[] } | undefined
+  >(undefined);
+  private readonly mappedValues = signal<
+    | { key: string; values: Readonly<Record<string, DetectiveInputValue>> }
+    | undefined
+  >(undefined);
+  private readonly mappedKey = computed(() =>
+    JSON.stringify([this.scope.identity(), this.environment()]),
+  );
+  protected readonly mappedChoices = computed(() =>
+    this.mappedHeld()?.key === this.mappedKey()
+      ? (this.mappedHeld()?.choices ?? [])
+      : [],
+  );
+  protected readonly mappedError = signal('');
+  protected setMappedInputs(
+    values: Readonly<Record<string, DetectiveInputValue>>,
+  ) {
+    this.mappedValues.set({ key: this.mappedKey(), values });
+  }
+  protected async loadMappedInputs(): Promise<void> {
+    const ref = this.scope.ref(),
+      key = this.mappedKey();
+    if (!ref || !this.canWrite() || !this.environment()) return;
+    this.clearMappedInputs();
+    const signal = this.mappedLifetime.signal;
+    try {
+      const capabilities = await this.contextApi.capabilities(ref, signal);
+      if (key !== this.mappedKey() || this.destroyRef.destroyed) return;
+      if (capabilities.actorId !== this.scope.context()?.principal) throw new Error('Mapped inputs are not available for this signed-in actor.');
+      this.mappedHeld.set({
+        key,
+        choices: (capabilities.subjects ?? []).filter(
+          (item) => item.scope.environmentId === this.environment(),
+        ),
+      });
+    } catch (error) {
+      if (key === this.mappedKey() && !this.destroyRef.destroyed)
+        this.mappedError.set(detectiveErrorMessage(error, true));
+    }
+  }
+
   protected readonly busy = signal(false);
   protected readonly saveError = signal('');
   protected readonly savedIncident = signal<{ href: string; environment: string } | undefined>(undefined);
@@ -334,6 +398,7 @@ export class HostedIncidentsPageComponent {
   protected environmentQuery() { return { environment: this.environment() }; }
   protected selectEnvironment(value: string): void {
     if (this.busy() || !this.environments().includes(value)) return;
+    this.clearMappedInputs();
     this.environment.set(value);
     void this.router.navigate([], {
       relativeTo: this.route,
@@ -360,9 +425,28 @@ export class HostedIncidentsPageComponent {
     this.busy.set(true);
     this.saveError.set('');
     try {
+      if (!projectRef) return;
+      const lifetime = this.mutationLifetime.capture(projectRef, context.principal);
+      const mapped =
+        this.mappedValues()?.key === this.mappedKey()
+          ? this.mappedValues()?.values
+          : {};
+      if (rawOrder && mapped?.['OrderID'])
+        throw new Error(
+          'Choose either the legacy OrderID field or a mapped OrderID input.',
+        );
+      const inputs = {
+        ...(rawOrder
+          ? { OrderID: { type: 'number' as const, value: Number(rawOrder) } }
+          : {}),
+        ...mapped,
+      };
       const action: HostedIncidentAction = {
-        type: 'create', title, description: this.description().trim(), environment,
-        ...(rawOrder ? { context: { OrderID: { type: 'number', value: Number(rawOrder) } } } : {}),
+        type: 'create',
+        title,
+        description: this.description().trim(),
+        environment,
+        ...(Object.keys(inputs).length ? { context: inputs } : {}),
       };
       // Keep an ambiguous create's server operation ID across a page reload. The key is a
       // digest of the exact request and authenticated scope; no Incident text is stored.
@@ -376,7 +460,7 @@ export class HostedIncidentsPageComponent {
       } catch { /* Session storage can be disabled; in-memory retries still work. */ }
       this.pendingCreate = { key: retryKey, operationId };
       if (this.destroyRef.destroyed || this.scope.identity() !== identity || this.environment() !== environment) return;
-      const result = await firstValueFrom(this.client.incidentAction(context, action, operationId));
+      const result = await firstValueFrom(this.client.incidentAction(context, action, operationId, lifetime.signal));
       const item = result.incident;
       if (!item?.ref?.incidentId || !item.ref.storeId)
         throw new Error('The server did not return a hosted Incident reference.');
@@ -421,6 +505,8 @@ export class HostedIncidentsPageComponent {
     this.busy.set(true);
     this.saveError.set('');
     try {
+      if (!projectRef) return;
+      const lifetime = this.mutationLifetime.capture(projectRef, context.principal);
       const retryKey = await this.retryKey('incident-start-case', identity, [environment, incidentRef]);
       let draft: { id: string; title: string; operationId: string } | undefined;
       try {
@@ -447,7 +533,7 @@ export class HostedIncidentsPageComponent {
       const response = await firstValueFrom(this.client.incidentAction(context, {
         type: 'start-case', incidentRef,
         environment, case: newCase, ifMatch: 0,
-      }, draft.operationId));
+      }, draft.operationId, lifetime.signal));
       if (!response.case?.id) throw new Error('The server did not return the new Detective Case.');
       try {
         if (sessionStorage.getItem(retryKey) === JSON.stringify(draft)) sessionStorage.removeItem(retryKey);

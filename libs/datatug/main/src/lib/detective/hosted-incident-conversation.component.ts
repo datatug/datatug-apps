@@ -1,3 +1,7 @@
+import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { RetainedEvidenceViewerComponent } from '../evidence/retained-evidence-viewer.component';
+import { decodeEvidenceArtifactRef, type ArtifactRef } from '@sneat/datatug-semantic';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
@@ -21,7 +25,7 @@ import {
   IonSelectOption,
   IonTextarea,
 } from '@ionic/angular';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, fromEvent, takeUntil } from 'rxjs';
 import { IProjectRef } from '../core/project-context';
 import { incidentEventSummary } from '../incidents/incident-event-summary';
 import {
@@ -54,6 +58,7 @@ type PendingMessage = {
   selector: 'sneat-datatug-hosted-incident-conversation',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RetainedEvidenceViewerComponent,
     RouterLink,
     IonButton,
     IonItem,
@@ -97,6 +102,8 @@ type PendingMessage = {
                       >{{ evidenceLabel(ref) }}</a
                     >
                   </p>
+                } @else if (canOpenRetained(ref)) {
+                  <ion-button fill="clear" (click)="openRetained(ref)">{{ evidenceLabel(ref) }} · Open actual retained run</ion-button>
                 } @else {
                   <p>{{ evidenceLabel(ref) }} · No supported evidence view</p>
                 }
@@ -105,6 +112,10 @@ type PendingMessage = {
           </ion-item>
         }
       </ion-list>
+      @if (retainedTarget(); as target) {
+        <sneat-datatug-retained-evidence-viewer [projectRef]="projectRef()" [environment]="environment()" [target]="target" />
+        <ion-button fill="clear" (click)="retainedTarget.set(undefined)">Close retained evidence</ion-button>
+      }
       @if (ready() && !events().length) {
         <p>No visible messages in the loaded history.</p>
       }
@@ -243,6 +254,12 @@ type PendingMessage = {
 })
 export class HostedIncidentConversationComponent {
   readonly context = input.required<CloudContext>();
+  protected readonly retainedTarget = signal<ArtifactRef | undefined>(undefined);
+  protected canOpenRetained(ref: IncidentArtifactRef): boolean {
+    try { const value=decodeEvidenceArtifactRef(ref); const c=this.context(); return value.kind==='execution' ? value.execution.storeId===c.storage&&value.execution.projectId===c.project : value.kind==='check-run'&&value.checkRun.storeId===c.storage&&value.checkRun.projectId===c.project&&value.checkRun.environment===this.environment(); } catch { return false; }
+  }
+  protected openRetained(ref: IncidentArtifactRef): void { if(this.canOpenRetained(ref))this.retainedTarget.set(decodeEvidenceArtifactRef(ref)); }
+
   readonly environment = input.required<string>();
   readonly incidentRef = input.required<IncidentRef>();
   readonly canWrite = input(false);
@@ -250,6 +267,15 @@ export class HostedIncidentConversationComponent {
   readonly incidentUpdated = output<HostedIncidentView>();
   private readonly client = inject(DetectiveClientService);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly nativeLifetime = useNativeRunLifetime();
+  constructor() {
+    this.nativeLifetime.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
+      ++this.requestGeneration;
+      this.events.set([]); this.retainedTarget.set(undefined);
+      this.ready.set(false); this.body.set(''); this.pending.set(undefined);
+      this.sending.set(false); this.loading.set(false);
+    });
+  }
   protected readonly events = signal<IncidentEvent[]>([]);
   protected readonly loading = signal(false);
   protected readonly sending = signal(false);
@@ -277,6 +303,7 @@ export class HostedIncidentConversationComponent {
   private readonly reset = effect(() => {
     const identity = this.identity();
     this.events.set([]);
+    this.retainedTarget.set(undefined);
     this.ready.set(false);
     this.body.set('');
     this.pending.set(undefined);
@@ -358,18 +385,20 @@ export class HostedIncidentConversationComponent {
     this.readError.set('');
     this.ready.set(false);
     if (reset) {
+      this.retainedTarget.set(undefined);
       this.events.set([]);
       this.afterSeq.set(0);
       this.hasMore.set(false);
     }
     try {
+      const lifetime = this.nativeLifetime.capture(this.projectRef(), context.principal);
       // Re-admit the Incident and rights on every page, not just the original route load.
       const detail = await firstValueFrom(
         this.client.projectIncident(
           context,
           environment,
           `${ref.storeId}/${ref.incidentId}`,
-        ),
+        ).pipe(takeUntil(fromEvent(lifetime.signal, 'abort'))),
       );
       if (!this.current(identity, generation)) return false;
       if (
@@ -388,7 +417,7 @@ export class HostedIncidentConversationComponent {
           environment,
           `${ref.storeId}/${ref.incidentId}`,
           after,
-        ),
+        ).pipe(takeUntil(fromEvent(lifetime.signal, 'abort'))),
       );
       if (!this.current(identity, generation)) return false;
       if (
@@ -508,6 +537,9 @@ export class HostedIncidentConversationComponent {
     const context = this.context();
     const ref = this.incidentRef();
     const environment = this.environment();
+    let lifetime: ReturnType<typeof this.nativeLifetime.capture>;
+    try { lifetime = this.nativeLifetime.capture(this.projectRef(), context.principal); }
+    catch (error) { this.sendError.set(detectiveErrorMessage(error, true)); return; }
     let pending = this.pending();
     if (!pending) {
       const selected = this.checks().find(
@@ -565,6 +597,7 @@ export class HostedIncidentConversationComponent {
             message: pending.message,
           },
           pending.operationId,
+          lifetime.signal,
         ),
       );
       if (this.destroyRef.destroyed || identity !== this.identity()) return;
@@ -573,6 +606,7 @@ export class HostedIncidentConversationComponent {
         result.event.incident.storeId !== ref.storeId ||
         result.event.incident.incidentId !== ref.incidentId ||
         result.event.type !== 'note.added' ||
+        result.event.actor.kind !== 'human' || result.event.actor.id !== context.principal || result.event.actor.via !== 'web' ||
         !Number.isSafeInteger(result.event.seq) ||
         !Number.isSafeInteger(result.incident.lastSeq) ||
         result.incident.ref.storeId !== ref.storeId ||
@@ -626,12 +660,12 @@ export class HostedIncidentConversationComponent {
         this.sending.set(false);
     }
   }
-  private projectRef(): IProjectRef {
+  protected projectRef(): IProjectRef {
     const c = this.context();
     return { storeId: c.storage, spaceID: c.spaceID, projectId: c.project };
   }
   protected evidenceLabel(ref: IncidentArtifactRef): string {
-    return ref.kind === 'check'
+    return ref.kind === 'check-run' ? `Check run: ${ref.checkRun?.checkId || 'unavailable'} · version ${ref.checkRun?.checkVersion || 'unavailable'} · ${ref.checkRun?.runId || 'unavailable'}` : ref.kind === 'check'
       ? `Check definition: ${ref.artifact?.id || 'unavailable'}`
       : ref.kind === 'query'
         ? `Saved query: ${ref.artifact?.id || 'unavailable'}`

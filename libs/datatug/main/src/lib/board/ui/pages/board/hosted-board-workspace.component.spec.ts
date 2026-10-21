@@ -1,3 +1,6 @@
+import { DetectiveClientService } from '../../../../detective/detective-client.service';
+import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
+import { AgentContextService } from '@sneat/datatug-semantic';
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -134,6 +137,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     await TestBed.configureTestingModule({
       imports: [HostedBoardWorkspaceComponent],
       providers: [
+        {provide:DatatugNavContextService,useValue:{currentProject:of({ref}),currentEnv:of({id:'demo'})}},
+        {provide:DetectiveClientService,useValue:{projectIncidents:vi.fn(()=>of({incidents:[]}))}},
+        {provide:AgentContextService,useValue:{}},
         { provide: ProjectAssetsApiService, useValue: api },
         {
           provide: ProjectQueryApiService,
@@ -214,6 +220,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
           provide: QueryDispatchService,
           useValue: {
             execute: dispatch,
+            executeHeld: async (...args: Parameters<typeof dispatch>) => ({result:await dispatch(...args)}),
             runtimeRevision: signal(0),
             availableWorkingCopies: () => Promise.resolve([]),
           },
@@ -527,6 +534,9 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     expect(dispatch.mock.calls[0][0].parameters).toEqual({
       order_id: { type: 'integer', value: '7' },
     });
+    button(f, 'Review current board access').click();
+    await vi.waitFor(()=>expect(f.nativeElement.textContent).toContain('Abandon original retry'));
+    button(f, 'Abandon original retry').click();
     let rejectOldRun: ((reason: Error) => void) | undefined;
     dispatch.mockImplementationOnce(
       () =>
@@ -560,7 +570,10 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     await f.whenStable();
     expect(dispatch).toHaveBeenCalledTimes(2);
     expect(saved.parameters?.[0].defaultValue).toBe(7);
-    expect(sessionStorage.length).toBe(0);
+    expect(sessionStorage.length).toBe(1);
+    const retryKey=sessionStorage.key(0);expect(retryKey).toMatch(/^datatug-retained-run\/1\/[a-f0-9]{64}$/);
+    expect(sessionStorage.getItem(retryKey || '')).toMatch(/^operation-/);
+    expect(JSON.stringify([retryKey,sessionStorage.getItem(retryKey || '')])).not.toContain('11062');
     scope.admitted.set(false);
     scope.identity.set('maya/other/prod');
     await f.whenStable();
