@@ -95,8 +95,11 @@
             <ion-icon name="warning-outline" slot="start" />
             <ion-label>{{ catalogError() }}</ion-label>
             <ion-button
+              class="catalog-retry-button"
               slot="end"
-              fill="outline"
+              color="light"
+              fill="solid"
+              [attr.aria-label]="'Retry loading the connection catalog'"
               (click)="retryCatalogSources()"
               >Retry</ion-button
             >
@@ -132,7 +135,9 @@
             <ion-item>
               <ion-label color="medium">
                 {{
-                  filterText().trim() || selectedEnvironmentIds().size === 0
+                  filterText().trim() ||
+                  selectedEnvironmentIds().size === 0 ||
+                  (catalogSources()?.length ?? 0) > 0
                     ? 'No sample database sources match the current filters.'
                     : 'No sample database sources are declared.'
                 }}
@@ -152,7 +157,7 @@
       <ion-segment [(ngModel)]="tab">
         <ion-segment-button value="db">
           <ion-label
-            >DB servers
+            >Database sources
             <ion-badge color="light">{{
               filteredDbServers()?.length ?? 0
             }}</ion-badge>
@@ -175,6 +180,7 @@
         } @else if (filteredDbServers(); as servers) {
           @for (dbServer of servers; track serverIdentity(dbServer.dbServer)) {
             <ion-item
+              data-testid="database-source-row"
               [button]="canOpenDbServer(dbServer.dbServer)"
               [detail]="canOpenDbServer(dbServer.dbServer)"
               [attr.tappable]="canOpenDbServer(dbServer.dbServer) ? true : null"
@@ -182,7 +188,9 @@
             >
               <ion-label>{{ serverLabel(dbServer.dbServer) }}</ion-label>
               @if (!canOpenDbServer(dbServer.dbServer)) {
-                <ion-badge color="light">File source</ion-badge>
+                <ion-badge color="light">{{
+                  sourceKindLabel(dbServer.dbServer)
+                }}</ion-badge>
               }
               <ion-badge color="medium">{{
                 dbServer.dbServer.driver
@@ -190,31 +198,36 @@
               <ion-badge
                 color="light"
                 class="ion-margin-start"
-                title="Number of databases/catalogs on this server"
-                >{{ dbServer.databasesCount }}
-                {{ dbServer.databasesCount === 1 ? 'database' : 'databases' }}
+                [title]="databaseCountTitle(dbServer.dbServer)"
+                >{{ databaseCountLabel(dbServer) }}
               </ion-badge>
-              <ion-buttons slot="end">
-                <ion-button
-                  (click)="deleteDbServer($event, dbServer)"
-                  [disabled]="isDeleting(dbServer.dbServer)"
-                >
-                  <ion-icon name="trash-outline" />
-                </ion-button>
-              </ion-buttons>
+              @if (canOpenDbServer(dbServer.dbServer)) {
+                <ion-buttons slot="end">
+                  <ion-button
+                    aria-label="Remove database server"
+                    (click)="deleteDbServer($event, dbServer)"
+                    [disabled]="isDeleting(dbServer.dbServer)"
+                  >
+                    <ion-icon name="trash-outline" />
+                  </ion-button>
+                </ion-buttons>
+              }
             </ion-item>
           } @empty {
             <ion-item>
               <ion-label color="medium">{{
                 filterText().trim()
-                  ? 'No matching database servers.'
-                  : 'No database servers in the selected environments.'
+                  ? 'No matching database sources.'
+                  : 'No database sources in the selected environments.'
               }}</ion-label>
             </ion-item>
           }
           <ion-item>
             <ion-label color="medium"
-              >Total: {{ servers.length }} database servers
+              >Total: {{ servers.length }}
+              {{
+                servers.length === 1 ? 'database source' : 'database sources'
+              }}
             </ion-label>
             <ion-buttons slot="end">
               <ion-button fill="outline" (click)="addDbServer()"

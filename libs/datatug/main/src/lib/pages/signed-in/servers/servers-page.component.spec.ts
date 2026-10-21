@@ -12,10 +12,7 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { IProjectRef } from '../../../core/project-context';
 import { IEnvironmentFull } from '../../../models/definition/environments';
-import {
-  DB_SERVER_ID_NO_HOST,
-  IProjDbServerSummary,
-} from '../../../models/definition/apis/database';
+import { IProjDbServerSummary } from '../../../models/definition/apis/database';
 
 // Every describe block below provides these two — `EnvironmentService` and
 // `ProjectService` — because the constructor unconditionally calls
@@ -289,6 +286,29 @@ describe('ServersPage source discovery lifecycle', () => {
     expect(text).toContain('SQLite · Public API declared');
   });
 
+  it('distinguishes a selected-environment mismatch from an empty catalog', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    serversByRequest[0].next([]);
+    environmentsByRequest[0].next([{ id: 'local', title: 'LOCAL' }]);
+    catalogsByRequest[0].next({
+      connections: [
+        {
+          id: 'chinook-postgresql',
+          dataset: 'chinook',
+          storage: 'postgresql',
+          environments: ['QA', 'UAT'],
+        },
+      ],
+    });
+    await fixture.whenStable();
+
+    const text = fixture.nativeElement.textContent;
+    expect(text).toContain(
+      'No sample database sources match the current filters.',
+    );
+    expect(text).not.toContain('No sample database sources are declared.');
+  });
+
   it('shows only the inline catalog error and does not emit a global error', async () => {
     current$.next({ storeId: 'http://agent', projectId: 'demo' });
     serversByRequest[0].next([]);
@@ -303,6 +323,12 @@ describe('ServersPage source discovery lifecycle', () => {
     expect(text).not.toContain('No sample database sources are declared.');
     expect(text).not.toContain('No sample database sources match');
     expect(logError).not.toHaveBeenCalled();
+    const retry = fixture.nativeElement.querySelector(
+      'ion-button.catalog-retry-button',
+    );
+    expect(retry?.getAttribute('color')).toBe('light');
+    expect(retry?.getAttribute('fill')).toBe('solid');
+    expect(retry?.textContent?.trim()).toBe('Retry');
   });
 
   it('shows an environment-specific retry state without hiding scoped servers or catalog sources', async () => {
@@ -637,12 +663,11 @@ describe("ServersPage clears the delete button's disabled state once deletion co
  * badge next to sqlite3 - all this does not add up".
  *
  * The fixture below mirrors what `DbServerService`'s own
- * `getGithubDbServers()` (db-server.service.ts) actually aggregates from
- * that demo project's real `environments/*.env.json` files (verified live
- * via the GitHub API, 2026-09-10): one `sqlite3` server declared with no
- * `host` (sqlite3 is file-based, not network-addressed) across five
- * environments — `QA`, `UAT`, `dev`, `local`, `prod` — each contributing
- * exactly one catalog, for a `databasesCount` of 5. Built by hand here
+ * `DbServerService` actually aggregates from that demo project's real
+ * `environments/*.env.json` files: one `sqlite3` source declared with no
+ * `host` (sqlite3 is file-based, not network-addressed). Local contributes
+ * five catalog placements, dev one, and prod one; QA and UAT declare none.
+ * Built by hand here
  * (rather than driven through the real `GithubProjectReaderService`) so this
  * spec exercises `ServersPageComponent` in isolation, the same idiom every
  * other describe block in this file already uses.
@@ -659,7 +684,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     storeId: STORE_ID_GITHUB_COM,
     projectId: 'datatug-demo-projects@datatug@demo-project-1',
   };
-  const environmentIds = ['QA', 'UAT', 'dev', 'local', 'prod'];
+  const environmentIds = ['local', 'dev', 'prod', 'QA', 'UAT'];
   const environments: IEnvironmentFull[] = environmentIds.map((id) => ({
     id,
     title: id,
@@ -667,11 +692,12 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
   const dbServers: IProjDbServerSummary[] = [
     {
       dbServer: { driver: 'sqlite3', host: '' },
-      databasesCount: 5,
-      environments: environmentIds.map((envId) => ({
-        envId,
-        databasesCount: 1,
-      })),
+      databasesCount: 7,
+      environments: [
+        { envId: 'local', databasesCount: 5 },
+        { envId: 'dev', databasesCount: 1 },
+        { envId: 'prod', databasesCount: 1 },
+      ],
     },
   ];
 
@@ -722,21 +748,20 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
       ?.textContent?.trim();
   }
 
-  // Scoped to `ion-item[tappable]` (the attribute the template's own DB
-  // server row carries, `deleteDbServer($event, dbServer)`'s sibling
-  // `<ion-item>`) rather than a generic `ion-list ion-item`, so these never
-  // accidentally match the list's own trailing "Total: ..." row once every
-  // server row has been filtered out (see the last test below).
+  // Scoped to the source row so these never accidentally match the list's
+  // trailing "Total: ..." row once every server row has been filtered out.
   function rowDatabasesBadgeText(): string | undefined {
     return fixture.nativeElement
-      .querySelector('ion-item[tappable] ion-badge.ion-margin-start')
+      .querySelector(
+        '[data-testid="database-source-row"] ion-badge.ion-margin-start',
+      )
       ?.textContent?.replace(/\s+/g, ' ')
       .trim();
   }
 
   function rowLabelText(): string | undefined {
     const innerHtml = fixture.nativeElement.querySelector(
-      'ion-item[tappable] ion-label',
+      '[data-testid="database-source-row"] ion-label',
     )?.innerHTML;
     return innerHtml === undefined ? undefined : stripComments(innerHtml);
   }
@@ -792,20 +817,27 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     fixture = TestBed.createComponent(ServersPageComponent);
   });
 
-  it('badge and footer total both equal the one row shown — never the old hard-coded "2" — and the row is unambiguously labeled "5 databases", not a bare "5"', async () => {
+  it('labels the aggregate as seven declared placements rather than seven unique databases', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
     expect(dbTabBadgeText()).toBe('1');
-    expect(rowDatabasesBadgeText()).toBe('5 databases');
-    expect(html()).toContain('Total: 1 database servers');
+    expect(rowDatabasesBadgeText()).toBe('7 declared placements');
+    expect(html()).toContain('Total: 1 database source');
   });
 
-  it('shows an explicit "(no host)" placeholder for the demo project\'s host-less sqlite3 row, never a blank label', async () => {
+  it('presents the hostless SQLite aggregate as a local declaration without navigation or removal actions', async () => {
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(rowLabelText()).toBe('(no host)');
+    expect(rowLabelText()).toBe('Local SQLite databases');
+    const row = fixture.nativeElement.querySelector(
+      '[data-testid="database-source-row"]',
+    );
+    expect((row as unknown as { button: boolean })?.button).toBe(false);
+    expect((row as unknown as { detail: boolean })?.detail).toBe(false);
+    expect(row?.querySelector('ion-buttons')).toBeNull();
+    expect(html()).toContain('Declared by environments');
   });
 
   it("narrows the row's database count once the environment filter excludes some — but not all — of its contributing environments, keeping the badge/total in sync", async () => {
@@ -816,11 +848,11 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     fixture.detectChanges();
     await fixture.whenStable();
 
-    expect(rowDatabasesBadgeText()).toBe('4 databases');
+    expect(rowDatabasesBadgeText()).toBe('6 declared placements');
     // The row itself still counts as one server — only its own database
     // count narrowed, not the server list.
     expect(dbTabBadgeText()).toBe('1');
-    expect(html()).toContain('Total: 1 database servers');
+    expect(html()).toContain('Total: 1 database source');
   });
 
   it('drops the row — and both the badge and the total fall to 0 — once every environment contributing to it is unchecked', async () => {
@@ -834,9 +866,11 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     await fixture.whenStable();
 
     expect(dbTabBadgeText()).toBe('0');
-    expect(html()).toContain('Total: 0 database servers');
+    expect(html()).toContain('Total: 0 database sources');
     expect(
-      fixture.nativeElement.querySelector('ion-item[tappable]'),
+      fixture.nativeElement.querySelector(
+        '[data-testid="database-source-row"]',
+      ),
     ).toBeNull();
   });
 
@@ -850,16 +884,16 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     };
 
     await type('  SQLITE3 ');
-    expect(rowLabelText()).toBe('(no host)');
+    expect(rowLabelText()).toBe('Local SQLite databases');
     expect(dbTabBadgeText()).toBe('1');
 
     await type('postgres');
     expect(rowLabelText()).toBeUndefined();
     expect(dbTabBadgeText()).toBe('0');
-    expect(html()).toContain('No matching database servers.');
+    expect(html()).toContain('No matching database sources.');
 
     await type('');
-    expect(rowLabelText()).toBe('(no host)');
+    expect(rowLabelText()).toBe('Local SQLite databases');
     expect(dbTabBadgeText()).toBe('1');
   });
 
@@ -878,7 +912,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
       .click();
     fixture.detectChanges();
     expect(dbTabBadgeText()).toBe('1');
-    expect(rowDatabasesBadgeText()).toBe('5 databases');
+    expect(rowDatabasesBadgeText()).toBe('7 declared placements');
   });
 });
 
@@ -966,28 +1000,10 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
       '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlserver/localhost%3A1433',
     ],
     [
-      "the GitHub demo project's host-less sqlite3 server (no host at all)",
-      oldDemo,
-      hostLess,
-      `/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
-    ],
-    [
-      'the project at the root of a GitHub repository',
-      { storeId: STORE_ID_GITHUB_COM, projectId: 'chinook-demo@datatug@' },
-      hostLess,
-      `/project/github.com/datatug/chinook-demo/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
-    ],
-    [
       'an agent project with a host and a port (unchanged)',
       { storeId: 'localhost:8989', projectId: 'datatug-demo-project' },
       withHostAndPort,
       '/store/localhost:8989/project/datatug-demo-project/servers/db/sqlserver/localhost%3A1433',
-    ],
-    [
-      'an agent project given as http-localhost:8989 (unchanged)',
-      { storeId: 'http-localhost:8989', projectId: 'p1' },
-      hostLess,
-      `/store/http-localhost:8989/project/p1/servers/db/sqlite3/${DB_SERVER_ID_NO_HOST}`,
     ],
   ])('navigates for %s', async (_name, target, server, address) => {
     const { component, navigateForward, logError } = await setup(target);
@@ -1026,6 +1042,15 @@ describe('ServersPage.goDbServer() navigation target (S160, NG04002 regression; 
       dbServer: { driver: 'sqlite3', host: '', path: 'data/chinook.sqlite' },
       databasesCount: 1,
     });
+
+    expect(navigateForward).not.toHaveBeenCalled();
+    expect(logError).not.toHaveBeenCalled();
+  });
+
+  it('does not invent a detail route for an environment-declared hostless source', async () => {
+    const { component, navigateForward, logError } = await setup(oldDemo);
+
+    component.goDbServer(hostLess);
 
     expect(navigateForward).not.toHaveBeenCalled();
     expect(logError).not.toHaveBeenCalled();

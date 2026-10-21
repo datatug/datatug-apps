@@ -355,7 +355,13 @@ export class ServersPageComponent implements OnDestroy {
    * adjacent driver badge (see the template) already names the driver, so
    * this only needs to say plainly that there's no host, not repeat it. */
   protected serverLabel(dbServer: IDbServer): string {
-    return dbServer.host?.trim() || dbServer.path?.trim() || '(no host)';
+    return (
+      dbServer.host?.trim() ||
+      dbServer.path?.trim() ||
+      (dbServer.driver === 'sqlite3'
+        ? 'Local SQLite databases'
+        : 'Host not declared')
+    );
   }
 
   protected serverIdentity(dbServer: IDbServer): string {
@@ -363,7 +369,27 @@ export class ServersPageComponent implements OnDestroy {
   }
 
   protected canOpenDbServer(dbServer: IDbServer): boolean {
-    return !dbServer.path?.trim();
+    return !!dbServer.host?.trim() && !dbServer.path?.trim();
+  }
+
+  protected sourceKindLabel(dbServer: IDbServer): string {
+    if (dbServer.path?.trim()) return 'File source';
+    if (dbServer.driver === 'sqlite3') return 'Declared by environments';
+    return 'Host not declared';
+  }
+
+  protected databaseCountLabel(dbServer: IProjDbServerSummary): string {
+    const count = dbServer.databasesCount;
+    if (!dbServer.dbServer.host?.trim()) {
+      return `${count} declared ${count === 1 ? 'placement' : 'placements'}`;
+    }
+    return `${count} ${count === 1 ? 'database' : 'databases'}`;
+  }
+
+  protected databaseCountTitle(dbServer: IDbServer): string {
+    return dbServer.host?.trim()
+      ? 'Number of databases/catalogs on this server'
+      : 'Database/catalog declarations across the selected environments';
   }
 
   protected sourceFormat(source: ProjectConnectionSource): string {
