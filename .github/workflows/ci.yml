@@ -44,6 +44,7 @@ jobs:
         run: |
           python3 -m unittest discover -s .github/scripts -p 'test_classify_metadata_change.py' -v
           python3 -m unittest discover -s .github/scripts -p 'test_workflow_baseline.py' -v
+          bash .github/scripts/renovate-copilot-fix.test.sh
       - name: Classify exact cumulative change
         id: classify
         env:
