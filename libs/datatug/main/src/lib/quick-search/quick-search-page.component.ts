@@ -38,7 +38,7 @@ import {
   serverOutline,
   layersOutline,
 } from 'ionicons/icons';
-import { Subscription, combineLatest } from 'rxjs';
+import { Subscription, combineLatest, firstValueFrom, timeout } from 'rxjs';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { IProjectRef, equalProjectRef } from '../core/project-context';
@@ -713,7 +713,9 @@ export class QuickSearchPageComponent {
     this.snapshot.set(undefined);
     this.error.set('');
     try {
-      const snapshot = await this.snapshots.preview(ref, this.environmentId());
+      const snapshot = this.status()?.supportsMetadataPreview
+        ? await firstValueFrom(this.api.preview(ref, this.environmentId()).pipe(timeout(15000)))
+        : await this.snapshots.preview(ref, this.environmentId());
       if (generation === this.generation) this.snapshot.set(snapshot);
     } catch {
       if (generation === this.generation)

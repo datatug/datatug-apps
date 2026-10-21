@@ -5,7 +5,7 @@ import {
   ActivatedRoute,
   convertToParamMap,
 } from '@angular/router';
-import { BehaviorSubject, Subject, of } from 'rxjs';
+import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
 import { QuickSearchPageComponent } from './quick-search-page.component';
 import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
@@ -30,6 +30,7 @@ describe('Quick Search consent and async state', () => {
     user: { uid: 'first' },
   });
   let api: {
+    preview: ReturnType<typeof vi.fn>;
     status: ReturnType<typeof vi.fn>;
     search: ReturnType<typeof vi.fn>;
     enable: ReturnType<typeof vi.fn>;
@@ -42,6 +43,7 @@ describe('Quick Search consent and async state', () => {
       ref: { storeId: 'firestore', spaceID: 's', projectId: 'p' },
     });
     api = {
+      preview: vi.fn(() => of({documents:[],sourceCoverage:[]})),
       status: vi.fn(() => of(ready)),
       search: vi.fn(() => of({ items: [], tags: [], itemCount: 0 })),
       enable: vi.fn(() => of(ready)),
@@ -76,6 +78,39 @@ describe('Quick Search consent and async state', () => {
         },
       ],
     });
+  });
+  it('uses all canonical categories and tag names only when the authenticated status advertises preview capability',async()=>{
+    api.status.mockReturnValue(of({...ready,supportsMetadataPreview:true}));
+    const documents=(['table','column','view','query','dashboard','check','entity','environment','tag'] as const).map(kind=>({kind,id:kind,name:'Canonical '+kind,tags:['customers'],reference:{objectId:kind}}));
+    const snapshot={documents,sourceCoverage:documents.map(d=>({kind:d.kind,status:'complete' as const,count:1}))};
+    api.preview.mockReturnValue(of(snapshot));
+    const fixture=TestBed.createComponent(QuickSearchPageComponent),page=fixture.componentInstance;
+    await fixture.whenStable();
+    const fallback=TestBed.inject(QuickSearchSnapshotService).preview;
+    expect(api.preview).not.toHaveBeenCalled();
+    await page.preview();
+    expect(page.snapshot()).toBe(snapshot);
+    expect(api.preview).toHaveBeenCalledExactlyOnceWith(page.project(),undefined);
+    expect(fallback).not.toHaveBeenCalled();
+    expect(api.enable).not.toHaveBeenCalled();expect(api.refresh).not.toHaveBeenCalled();
+  });
+  it.each([false,undefined])('keeps public legacy preview when capability is %s',async capability=>{
+    api.status.mockReturnValue(of({...ready,supportsMetadataPreview:capability}));
+    TestBed.overrideProvider(DatatugNavContextService,{useValue:{currentProject:of({ref:{storeId:'github.com',projectId:'repo@owner@'}})}});
+    const fixture=TestBed.createComponent(QuickSearchPageComponent);
+    await fixture.whenStable();await fixture.componentInstance.preview();
+    expect(TestBed.inject(QuickSearchSnapshotService).preview).toHaveBeenCalledOnce();
+    expect(api.preview).not.toHaveBeenCalled();expect(api.enable).not.toHaveBeenCalled();
+  });
+  it('does not fall back or index after an advertised canonical preview fails',async()=>{
+    api.status.mockReturnValue(of({...ready,supportsMetadataPreview:true}));
+    api.preview.mockReturnValue(throwError(()=>({status:403})));
+    const fixture=TestBed.createComponent(QuickSearchPageComponent);
+    await fixture.whenStable();await fixture.componentInstance.preview();
+    expect(fixture.componentInstance.snapshot()).toBeUndefined();
+    expect(fixture.componentInstance.error()).toContain('Could not read selected metadata');
+    expect(TestBed.inject(QuickSearchSnapshotService).preview).not.toHaveBeenCalled();
+    expect(api.enable).not.toHaveBeenCalled();expect(api.refresh).not.toHaveBeenCalled();
   });
   it('offers settings instead of a zero-result search counter while indexing is disabled',async()=>{
     api.status.mockReturnValue(of({...ready,state:'disabled'}));
