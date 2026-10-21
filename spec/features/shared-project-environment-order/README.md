@@ -350,10 +350,12 @@ demo-specific data path does not satisfy this feature.
   severity chip reading **High caution** or **Use caution**. The environment row
   itself has a neutral background and the caution meaning does not depend on
   color alone.
-- Given an environment with `neutral`, `primary`, `success`, invalid, or missing tone, or
-  with a custom ID, when it is shown, then its link uses neutral text and no
-  caution chip is invented from the ID, alias, list position, or order. Stored
-  presentation metadata and warning semantics remain unchanged.
+- Given an environment with `neutral`, `primary`, `success`, invalid, or missing
+  tone, when it is shown, then its link uses neutral text and no caution chip.
+  Custom and recognized IDs never create or suppress stored caution: a custom
+  ID with `danger` or `warning` receives the same caution treatment as any other
+  ID with that tone. Stored presentation metadata and warning semantics remain
+  unchanged regardless of ID, alias, list position, or order.
 - Given environment add/edit/detail or other actions present in the overview or
   landed baseline when the duplicate tab is removed, then each action is
   retained or moved to the full Environments page and remains reachable by
