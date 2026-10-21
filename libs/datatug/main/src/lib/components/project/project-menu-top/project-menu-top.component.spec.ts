@@ -122,6 +122,12 @@ describe('ProjectContextMenuComponent', () => {
     });
   });
 
+  it('places Meanings alphabetically after the fixed Overview entry', () => {
+    const titles = component.projTopLevelPages.map(page => page.title);
+    expect(titles[0]).toBe('Overview');
+    expect(titles.slice(1)).toEqual(titles.slice(1).toSorted((a,b) => a.localeCompare(b)));
+    expect(component.projTopLevelPages.find(page => page.path === 'meanings')?.title).toBe('Meanings');
+  });
   it('keeps the Sandbox route for deep links without duplicating it in the project menu', () => {
     expect(
       component.projTopLevelPages.some(

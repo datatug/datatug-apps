@@ -33,6 +33,7 @@ import {
 import {
   conceptId,
   rebuildMeaningBindings,
+  detachUnusedProjectMeaningReferences,
   type SemanticModel,
 } from './semantic-mapping';
 @Component({
@@ -100,8 +101,7 @@ import {
             @for (choice of savedChoices(); track choice.key) {
               <ion-select-option [value]="choice.key"
                 >{{ choice.entity.labels.en }} ·
-                {{ choice.property.labels.en }} — {{ choice.sourceTitle }} (on
-                this device)</ion-select-option
+                {{ choice.property.labels.en }} — {{ choice.sourceTitle }}{{ choice.sourceKind === 'project' ? '' : ' (on this device)' }}</ion-select-option
               >
             }
           </ion-select>
@@ -116,8 +116,7 @@ import {
           }
           @if (reusedSource()) {
             <ion-note
-              >Copied from {{ reusedSource() }}. Edits here affect only this
-              query.</ion-note
+              >{{ reusedSourceKind() === 'project' ? 'Linked to' : 'Copied from' }} {{ reusedSource() }}. Edits here affect only this query. {{ reusedSourceKind() === 'project' ? 'Manage the shared definition from Meanings.' : '' }}</ion-note
             >
           }
           @if (property() === 'new') {
@@ -293,6 +292,7 @@ export class SemanticMappingDialogComponent {
   readonly choicesLoading = input(false);
   readonly choicesMessage = input('');
   readonly reusedSource = signal('');
+  readonly reusedSourceKind = signal<'device' | 'project'>('device');
   readonly save = output<SemanticModel>();
   readonly dismissed = output<void>();
   readonly draft = signal<SemanticModel | undefined>(undefined);
@@ -357,6 +357,7 @@ export class SemanticMappingDialogComponent {
         this.draft.set(copied.bundle);
         this.chooseProperty(copied.propertyId);
         this.reusedSource.set(choice.sourceTitle);
+        this.reusedSourceKind.set(choice.sourceKind || 'device');
         this.importError.set('');
       } catch (error) {
         this.importError.set(
@@ -471,19 +472,19 @@ export class SemanticMappingDialogComponent {
         ...(this.role().trim() ? { role: this.role().trim() } : {}),
       },
     ];
-    this.save.emit(rebuildMeaningBindings(bundle));
+    this.save.emit(detachUnusedProjectMeaningReferences(rebuildMeaningBindings(bundle)));
   }
   remove(): void {
     if (this.saving() || (this.needsReview() && !this.reviewed())) return;
     const bundle = this.draft();
     if (bundle)
       this.save.emit(
-        rebuildMeaningBindings({
+        detachUnusedProjectMeaningReferences(rebuildMeaningBindings({
           ...bundle,
           bindings: bundle.bindings.filter(
             (b) => b.columnIndex !== this.columnIndex(),
           ),
-        }),
+        })),
       );
   }
   async importMeanings(event: Event): Promise<void> {

@@ -1,7 +1,7 @@
 import { IEnvironmentPresentation } from '../../../models/definition/environments';
 import { Injectable, InjectionToken, inject } from '@angular/core';
 import { Observable, defer, forkJoin, from, of, throwError } from 'rxjs';
-import { map, switchMap } from 'rxjs/operators';
+import { map, mergeMap, switchMap, toArray } from 'rxjs/operators';
 import { IParameterDef } from '../../../models/definition/parameter';
 import type { IQueryDef } from '../../../models/definition/query-def';
 import { IRecordsetDef } from '../../../models/definition/recordset';
@@ -157,6 +157,7 @@ interface IGithubGitTreeResponse {
  * here): datatug-cli's `GET /queries/all_queries`/`get_query` responses, and this
  * GitHub reader, both ultimately describe the same on-disk `datatug.QueryDef` JSON. */
 export interface IGithubWireQueryItem {
+  semanticModel?: IQueryDef['semanticModel'];
   id: string;
   title?: string;
   type: string;
@@ -1293,7 +1294,14 @@ export class GithubProjectReaderService {
       return defFileName.slice(0, -'.json'.length);
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    const ext = type === 'HTTP' ? 'http' : type === 'TugQL' ? 'tugql' : type === 'DTQL' ? 'dtql' : 'sql';
+    const ext =
+      type === 'HTTP'
+        ? 'http'
+        : type === 'TugQL'
+          ? 'tugql'
+          : type === 'DTQL'
+            ? 'dtql'
+            : 'sql';
     return `${stem}.${ext}`;
   }
 
@@ -1309,61 +1317,67 @@ export class GithubProjectReaderService {
   public getQueriesFolder(
     projectId: string,
   ): Observable<IGithubWireQueryFolder> {
-    return this.listDirectory(projectId, 'queries').pipe(
-      switchMap((entries) => {
-        const subfolders = entries
-          .filter((e) => e.type === 'dir')
-          .map((e) => e.name);
-        const rootItemFiles = entries
-          .filter(
-            (e) =>
-              e.type === 'file' &&
-              GithubProjectReaderService.isQueryDefFile(e.name),
-          )
-          .map((e) => e.name);
-
-        const rootItems$ = this.loadQueryItems(projectId, '', rootItemFiles);
-        const folders$: Observable<IGithubWireQueryFolder[]> = subfolders.length
-          ? forkJoin(
-              subfolders.map((folderName) =>
-                this.listDirectory(projectId, `queries/${folderName}`).pipe(
-                  switchMap((folderEntries) => {
-                    const itemFiles = folderEntries
-                      .filter(
-                        (e) =>
-                          e.type === 'file' &&
-                          GithubProjectReaderService.isQueryDefFile(e.name),
-                      )
-                      .map((e) => e.name);
-                    return this.loadQueryItems(
-                      projectId,
-                      folderName,
-                      itemFiles,
-                    ).pipe(
-                      map(
-                        (items): IGithubWireQueryFolder => ({
-                          id: folderName,
-                          items: items.length ? items : undefined,
-                        }),
+    return defer(() => {
+      let directories = 0,
+        queryDefinitions = 0;
+      const readFolder = (
+        folder: string,
+        depth: number,
+      ): Observable<IGithubWireQueryFolder> => {
+        if (++directories > 128 || depth > 16)
+          throw new Error(
+            'The saved query folder catalog exceeds its read limit.',
+          );
+        return this.listDirectory(
+          projectId,
+          folder ? `queries/${folder}` : 'queries',
+        ).pipe(
+          switchMap((entries) => {
+            const files = entries
+              .filter(
+                (entry) =>
+                  entry.type === 'file' &&
+                  GithubProjectReaderService.isQueryDefFile(entry.name),
+              )
+              .map((entry) => entry.name);
+            queryDefinitions += files.length;
+            if (queryDefinitions > 1000)
+              throw new Error(
+                'The saved query definition catalog exceeds its read limit.',
+              );
+            const children = entries.filter((entry) => entry.type === 'dir');
+            const folders = children.length
+              ? from(children).pipe(
+                  mergeMap(
+                    (entry) =>
+                      readFolder(
+                        folder ? `${folder}/${entry.name}` : entry.name,
+                        depth + 1,
                       ),
-                    );
-                  }),
-                ),
-              ),
-            )
-          : of([]);
-
-        return forkJoin([rootItems$, folders$]).pipe(
-          map(([rootItems, folders]) => ({
-            id: '~',
-            folders: folders.length
-              ? folders.sort((a, b) => a.id.localeCompare(b.id))
-              : undefined,
-            items: rootItems.length ? rootItems : undefined,
-          })),
+                    8,
+                  ),
+                  toArray(),
+                )
+              : of([]);
+            return forkJoin([
+              this.loadQueryItems(projectId, folder, files),
+              folders,
+            ]).pipe(
+              map(([items, folders]) => ({
+                id: folder ? folder.slice(folder.lastIndexOf('/') + 1) : '~',
+                ...(items.length ? { items } : {}),
+                ...(folders.length
+                  ? {
+                      folders: folders.sort((a, b) => a.id.localeCompare(b.id)),
+                    }
+                  : {}),
+              })),
+            );
+          }),
         );
-      }),
-    );
+      };
+      return readFolder('', 0);
+    });
   }
 
   private loadQueryItems(
@@ -1387,6 +1401,9 @@ export class GithubProjectReaderService {
               title: def?.title,
               type: def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
+              ...(def?.semanticModel
+                ? { semanticModel: def.semanticModel }
+                : {}),
               parameters: def?.parameters,
               relationshipBindings: def?.relationshipBindings,
               recordsets: def?.recordsets,
@@ -1425,7 +1442,7 @@ export class GithubProjectReaderService {
             return false;
           }
           const relFromQueries = e.path.slice(queriesPrefix.length);
-          const slashIdx = relFromQueries.indexOf('/');
+          const slashIdx = relFromQueries.lastIndexOf('/');
           const folderName =
             slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
           const fileName =
@@ -1448,7 +1465,7 @@ export class GithubProjectReaderService {
         }
 
         const relFromQueries = match.path.slice(queriesPrefix.length);
-        const slashIdx = relFromQueries.indexOf('/');
+        const slashIdx = relFromQueries.lastIndexOf('/');
         const folderName =
           slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
         const fileName =
@@ -1480,6 +1497,9 @@ export class GithubProjectReaderService {
                   text,
                   ...(def?.connectionId
                     ? { connectionId: def.connectionId }
+                    : {}),
+                  ...(def?.semanticModel
+                    ? { semanticModel: def.semanticModel }
                     : {}),
                   parameters: def?.parameters,
                   relationshipBindings: def?.relationshipBindings,
