@@ -18,7 +18,7 @@ Expose the published Backend v0.42 working-copy lifecycle in the native hosted p
 
 ### REQ: native-entry-and-current-authority
 
-Native project overview links to its scoped shipping workspace. Cold links refetch current metadata; Back opens overview and the exit opens Incidents, where an environment must be selected. Public/GitHub projects have no mutation controls. Verified actor and State.canWrite are affordance fences only: each Backend operation retains current Space/project/service authorization. These controls do not publish SQL sources or change entitlements.
+Native project overview links to its scoped shipping workspace. The actual Space-owned router mounts shipping, Boards, new Board and Board detail pages; exact board aliases redirect to Boards. Unsupported session, malformed, public-store and extra-segment variants remain rejected. Actual Router navigation tests instantiate existing page templates and follow the rendered native Boards destination. Cold links refetch current metadata; Back opens overview and the exit opens Incidents, where an environment must be selected. Public/GitHub projects have no mutation controls. Verified actor and State.canWrite are affordance fences only: each Backend operation retains current Space/project/service authorization. These controls do not publish SQL sources or change entitlements.
 
 ### REQ: explicit-lifecycle
 
