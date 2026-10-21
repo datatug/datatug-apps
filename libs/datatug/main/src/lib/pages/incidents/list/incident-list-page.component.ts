@@ -1,5 +1,5 @@
 import { Component, computed, effect, inject, signal } from '@angular/core';
-import { ActivatedRoute, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
 import {
   AgentContextService,
@@ -35,6 +35,10 @@ import {
   incidentContextQueryParams,
   resolveIncidentRouteScope,
 } from '../../../incidents/incident-route-context';
+import {
+  incidentPageCommands,
+  incidentPageQueryParams,
+} from '../../../incidents/incident-navigation';
 import {
   IncidentRequestContext,
   IncidentSummary,
@@ -82,6 +86,7 @@ import {
 export class IncidentListPageComponent {
   private readonly navContext = inject(DatatugNavContextService);
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
   private readonly incidentClient = inject(IncidentClientService);
   private readonly agentContext = inject(AgentContextService);
   private readonly investigationContext = inject(InvestigationContextService);
@@ -94,7 +99,9 @@ export class IncidentListPageComponent {
   });
   protected readonly hostedIncidentsHref = computed(() => {
     const ref = this.navProject()?.ref;
-    return ref && isSharedProjectRef(ref) ? projectPageHref(ref, 'incidents') : undefined;
+    return ref && isSharedProjectRef(ref)
+      ? projectPageHref(ref, 'incidents')
+      : undefined;
   });
   private readonly navEnvironment = toSignal(this.navContext.currentEnv, {
     initialValue: undefined,
@@ -134,6 +141,14 @@ export class IncidentListPageComponent {
     const context = this.requestContext();
     return context ? incidentContextQueryParams(context) : undefined;
   });
+
+  protected newIncidentLink(): readonly string[] {
+    return incidentPageCommands(this.router.url, ['new']);
+  }
+
+  protected incidentNavigationQueryParams() {
+    return incidentPageQueryParams(this.router.url, this.scopeQueryParams());
+  }
 
   protected readonly incidents = signal<IncidentSummary[] | undefined>(
     undefined,
@@ -255,7 +270,10 @@ export class IncidentListPageComponent {
   });
 
   protected incidentLink(incident: IncidentSummary): readonly string[] {
-    return ['/incidents', incident.ref.storeId, incident.ref.incidentId];
+    return incidentPageCommands(this.router.url, [
+      incident.ref.storeId,
+      incident.ref.incidentId,
+    ]);
   }
 
   ionViewDidEnter(): void {

@@ -1,3 +1,42 @@
+.overview-quick-search {
+  margin: 16px;
+  label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  div {
+    display: flex;
+    gap: 8px;
+  }
+  input {
+    flex: 1;
+    min-width: 0;
+    padding: 12px;
+    border: 1px solid var(--ion-color-medium);
+    border-radius: 6px;
+    background: var(--ion-background-color);
+    color: var(--ion-text-color);
+    font: inherit;
+  }
+  button {
+    padding: 10px 16px;
+    border: 0;
+    border-radius: 6px;
+    background: var(--ion-color-primary);
+    color: var(--ion-color-primary-contrast);
+    font: inherit;
+  }
+  button:disabled {
+    opacity: 0.5;
+  }
+  input:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--ion-color-primary);
+    outline-offset: 2px;
+  }
+}
+
 .overview-environments {
   display: flex;
   align-items: baseline;
@@ -108,4 +147,14 @@
   .environment-warning {
     color: #ffd866;
   }
+}
+
+.overview-tab-count {
+  margin: 0 0 0 6px;
+  min-height: 20px;
+  height: 20px;
+  padding: 0 6px;
+  font-size: 0.75rem;
+  vertical-align: middle;
+  pointer-events: none;
 }

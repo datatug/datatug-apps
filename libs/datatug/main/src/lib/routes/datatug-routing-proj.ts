@@ -12,7 +12,9 @@ import {
   routingParamDriver,
   routingParamEntityId,
   routingParamEnvironmentId,
+  routingParamIncidentId,
   routingParamServerType,
+  routingParamStoreId,
 } from '../core/datatug-routing-params';
 
 // The empty-shell pages (Widgets, Tags, Resources, DB models, Diff) — see
@@ -27,13 +29,6 @@ const emptyShellProjectRoutes: Routes = [
     loadComponent: () =>
       import('../pages/signed-in/widgets/widgets-page.component').then(
         (m) => m.WidgetsPageComponent,
-      ),
-  },
-  {
-    path: 'tags',
-    loadComponent: () =>
-      import('../pages/signed-in/tags/tags-page.component').then(
-        (m) => m.TagsPageComponent,
       ),
   },
   {
@@ -72,6 +67,29 @@ const emptyShellProjectRoutes: Routes = [
 
 export const datatugProjectRoutes: Routes = [
   ...projectMeaningsRoutes,
+  {
+    path: 'quick-search',
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'tags',
+    data: { discovery: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
+  {
+    path: 'search-schema/:dbModelId',
+    data: { schemaDetail: true },
+    loadComponent: () =>
+      import('../quick-search/quick-search-page.component').then(
+        (m) => m.QuickSearchPageComponent,
+      ),
+  },
   {
     path: 'browser-db/:connectionId/table/:table',
     loadComponent: () =>
@@ -355,6 +373,9 @@ export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter(
     [
       'chat',
       'overview',
+      'quick-search',
+      'tags',
+      'search-schema/:dbModelId',
       'board/:board',
       'boards',
       'entities',
@@ -437,10 +458,38 @@ datatugProjectRoutes.unshift(
   {
     path: 'incidents',
     data: { section: 'incidents' },
-    loadComponent: () =>
-      import('../detective/public-demo-investigation-preview.component').then(
-        (m) => m.PublicDemoInvestigationPreviewComponent,
-      ),
+    children: [
+      {
+        path: 'new',
+        loadComponent: () =>
+          import('../pages/incidents/create/incident-create-page.component').then(
+            (m) => m.IncidentCreatePageComponent,
+          ),
+      },
+      {
+        path:
+          ':' + routingParamStoreId + '/:' + routingParamIncidentId + '/record',
+        loadComponent: () =>
+          import('../pages/incidents/record/incident-resolution-record-page.component').then(
+            (m) => m.IncidentResolutionRecordPageComponent,
+          ),
+      },
+      {
+        path: ':' + routingParamStoreId + '/:' + routingParamIncidentId,
+        loadComponent: () =>
+          import('../pages/incidents/detail/incident-detail-page.component').then(
+            (m) => m.IncidentDetailPageComponent,
+          ),
+      },
+      {
+        path: '',
+        pathMatch: 'full',
+        loadComponent: () =>
+          import('../pages/incidents/project-incidents-page.component').then(
+            (m) => m.ProjectIncidentsPageComponent,
+          ),
+      },
+    ],
   },
 );
 

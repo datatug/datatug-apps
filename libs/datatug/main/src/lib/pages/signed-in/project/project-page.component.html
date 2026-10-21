@@ -17,6 +17,13 @@
 </ion-header>
 
 <ion-content color="light">
+  <form class="overview-quick-search ph-no-capture" role="search" (submit)="submitQuickSearch($event)">
+    <label for="project-quick-search">Quick Search</label>
+    <div>
+      <input id="project-quick-search" class="ph-no-capture ph-mask sentry-mask" data-sentry-mask type="search" name="q" placeholder="Search tables, columns, queries, tags…" [value]="quickSearchQuery()" (input)="updateQuickSearch($event)" />
+      <button type="submit" [disabled]="!quickSearchQuery().trim() || !project()?.ref">Search</button>
+    </div>
+  </form>
   @if (shippingHref(); as href) {
     <ion-item [routerLink]="href" detail="true"
       ><ion-label>Shipping training workspace</ion-label></ion-item
@@ -122,10 +129,15 @@
         <button
           type="button"
           [class.active]="activeTab() === tab.id"
+          [attr.aria-label]="tab.label"
+          [attr.aria-description]="tab.id === 'queries' && queryCount() !== undefined ? queryCount() + ' queries' : null"
           [attr.aria-pressed]="activeTab() === tab.id"
           (click)="selectTab(tab.id)"
         >
           {{ tab.label }}
+          @if (tab.id === 'queries' && queryCount() !== undefined) {
+            <ion-chip class="overview-tab-count" [attr.aria-label]="queryCount() + ' queries'">{{ queryCount() }}</ion-chip>
+          }
         </button>
       }
     </nav>
@@ -193,7 +205,8 @@
           } @else if (boards(); as items) {
             @for (board of items; track board.id) {
               <ion-item button detail (click)="goBoard(board)"
-                ><ion-label>{{ board.title || board.id }}</ion-label></ion-item
+                ><ion-icon name="easel-outline" slot="start" color="medium" aria-hidden="true" />
+                <ion-label>{{ board.title || board.id }}</ion-label></ion-item
               >
             } @empty {
               <ion-item
@@ -209,7 +222,7 @@
       >
     }
   } @else if (activeTab() === 'queries') {
-    <sneat-datatug-project-queries-preview [projectRef]="project()?.ref" />
+    <sneat-datatug-project-queries-preview [querySource]="querySource()" [projectRef]="project()?.ref" />
   } @else if (activeTab() === 'databases') {
     @if (projectItemsUnsupported()) {
       <ion-card
@@ -251,6 +264,7 @@
                 (click)="goEntity(entity)"
                 data-testid="overview-entity-item"
               >
+                <ion-icon name="book-outline" slot="start" color="medium" aria-hidden="true" />
                 <ion-label>{{ entity.dbo?.title || entity.id }}</ion-label>
               </ion-item>
             } @empty {

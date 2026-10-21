@@ -281,4 +281,23 @@ describe('public sample investigation routes', () => {
       section: 'incidents',
     });
   });
+
+  it('keeps the public Incident example ahead of real nested project Incident pages', () => {
+    const incidentExample = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'incidents/examples/:exampleId',
+    );
+    const incidentShell = datatugProjectRoutes.findIndex(
+      (route) => route.path === 'incidents',
+    );
+    const children = datatugProjectRoutes[incidentShell].children ?? [];
+
+    expect(incidentExample).toBeLessThan(incidentShell);
+    expect(children.map((route) => route.path)).toEqual([
+      'new',
+      ':storeId/:incidentId/record',
+      ':storeId/:incidentId',
+      '',
+    ]);
+    expect(children.at(-1)?.pathMatch).toBe('full');
+  });
 });

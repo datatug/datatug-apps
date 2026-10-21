@@ -27,6 +27,7 @@ type NavigationOptions = NonNullable<
 >;
 
 export type ProjectTopLevelPage =
+  | 'quick-search'
   | 'sessions'
   | 'chat'
   | 'checks'
@@ -36,6 +37,7 @@ export type ProjectTopLevelPage =
   | 'boards'
   | 'dbmodels'
   | 'entities'
+  | 'incidents'
   | 'meanings'
   | 'environments'
   | 'servers'

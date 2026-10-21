@@ -25,8 +25,8 @@ Pull requests, merge groups and pushes run the offline browser and real-agent la
 The AdventureWorks in-browser journey (download through the chunked gzip parts, verify, open, read, edit, reload, Reset) is its own workflow, `.github/workflows/demo-sqlite-adventureworks.yml`, in Chromium only, because the file is 126.8 MB unpacked and is downloaded twice. It runs on a pull request and on a push to `main` only when demo SQLite code, its catalog, the DemoDB guard or fixtures, the lane itself or the dependencies changed, and by hand; never on a schedule, and it is not part of `deploy-gate`. It sends no request to a DemoDB host: the gzip parts come from the `demo-db/adventureworks` GitHub repository (`apps/datatug-app/e2e/README.md`, "DemoDB fixtures"). When you change demo SQLite code, run `pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks` locally.
 
 The Chromium app and Query mobile WebKit jobs use the validated demo catalog revision
-`1e7d7ea16d76d5b09844c9f14a9c12e871d42efb` (it carries the server-comparison query the showcase specs read), and the demo
-SQLite job uses `f40286a57ea3a04b93875335234665ece2595ed0`, through the fake GitHub
+`7c67575a8313d67ecae364c1dd7164ee85c48ae0` (it carries required creation dates on all 59 query definitions and the server-comparison query the showcase specs read), and the demo
+SQLite job uses `7c67575a8313d67ecae364c1dd7164ee85c48ae0`, through the fake GitHub
 reader. The app job verifies GitHub's API, tree and raw source at its commit. The demo SQLite job includes the edited-copy Board to Query acceptance
 in its existing three-browser suite. The demo catalog admits the relative
 bundled Chinook asset and rights sidecar; the app serves those exact checked

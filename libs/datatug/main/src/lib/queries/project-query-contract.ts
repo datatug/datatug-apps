@@ -74,6 +74,8 @@ export function toProjectQueryWire(
   assertFields(query, [
     'id',
     'title',
+    // Server-managed metadata may round-trip through the editor but is never sent on save.
+    'createdAt',
     'request',
     'draft',
     'connectionId',

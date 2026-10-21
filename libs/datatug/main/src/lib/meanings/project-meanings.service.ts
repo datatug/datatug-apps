@@ -1,3 +1,4 @@
+import { RepositoryMeaningsReaderService } from './repository-meanings-reader.service';
 import { inject, Injectable } from '@angular/core';
 import {
   defer,
@@ -35,10 +36,13 @@ export class ProjectMeaningsService {
   private readonly api = inject(ProjectQueryApiService);
   private readonly github = inject(GithubProjectReaderService);
   private readonly assets = inject(ProjectAssetsReadService);
+  private readonly repositoryMeanings = inject(RepositoryMeaningsReaderService);
 
   catalog(ref: IProjectRef): Observable<ProjectMeaningsCatalog> {
     return this.catalogAt(ref).pipe(
+      switchMap((catalog) => this.presentation(ref, catalog)),
       map((catalog) => {
+        validateProjectMeaningsCatalog(catalog);
         const expected = this.api.meaningScope(ref),
           scope = catalog.scope;
         if (
@@ -53,6 +57,25 @@ export class ProjectMeaningsService {
         return catalog;
       }),
     );
+  }
+  private async presentation(
+    ref: IProjectRef,
+    catalog: ProjectMeaningsCatalog,
+  ): Promise<ProjectMeaningsCatalog> {
+    try {
+      const result = await this.repositoryMeanings.enrich(ref, catalog);
+      validateProjectMeaningsCatalog(result);
+      return result;
+    } catch {
+      return {
+        ...catalog,
+        discoveryComplete: false,
+        notices: [
+          ...(catalog.notices ?? []),
+          'Repository meaning discovery could not be completed. The provider-managed catalog is still available.',
+        ],
+      };
+    }
   }
   refForCatalog(
     ref: IProjectRef,
@@ -161,6 +184,7 @@ export class ProjectMeaningsService {
           );
         return ack.catalog;
       }),
+      switchMap((catalog) => this.presentation(ref, catalog)),
     );
   }
 }

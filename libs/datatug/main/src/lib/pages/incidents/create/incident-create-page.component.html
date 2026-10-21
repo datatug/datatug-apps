@@ -94,8 +94,8 @@
       <ion-button
         expand="block"
         fill="clear"
-        routerLink="/incidents"
-        [queryParams]="scopeQueryParams()"
+        [routerLink]="cancelIncidentLink()"
+        [queryParams]="cancelIncidentQueryParams()"
         [disabled]="isSubmitting()"
       >
         Cancel

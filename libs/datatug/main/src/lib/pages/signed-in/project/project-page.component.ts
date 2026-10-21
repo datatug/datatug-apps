@@ -1,7 +1,7 @@
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { race, Subject, of } from 'rxjs';
-import { catchError, takeUntil } from 'rxjs/operators';
+import { race, Subject, of, Observable } from 'rxjs';
+import { catchError, shareReplay, takeUntil } from 'rxjs/operators';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
@@ -12,6 +12,7 @@ import {
   IonButtons,
   IonCard,
   IonCardContent,
+  IonChip,
   IonCardHeader,
   IonCardTitle,
   IonContent,
@@ -63,7 +64,9 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 import { qualifiedLocalReadVersionGuidance } from '../../../services/project/project-query-api.service';
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
-import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
+import { QueriesService } from '../../../queries/queries.service';
+import type { IQueryFolder } from '../../../models/definition/query-def';
+import { ProjectQueriesPreviewComponent, countProjectQueries } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
@@ -93,6 +96,7 @@ import { readGithubProjectId } from '@datatug/project-address';
     IonContent,
     IonCard,
     IonCardContent,
+  IonChip,
     IonCardHeader,
     IonCardTitle,
     IonButton,
@@ -113,6 +117,9 @@ export class ProjectPageComponent
   private readonly projectService = inject(ProjectService);
   private readonly auth = inject(SneatAuthStateService);
   private readonly projectAssets = inject(ProjectAssetsReadService);
+  private readonly queriesService = inject(QueriesService);
+  protected readonly queryCount = signal<number | undefined>(undefined);
+  protected readonly querySource = signal<Observable<IQueryFolder | null | undefined> | undefined>(undefined);
   private readonly navController = inject(NavController);
 
   // readonly DbModel = ProjectItem.dbModel as const;
@@ -158,6 +165,19 @@ export class ProjectPageComponent
       project.brief?.access ? `Access: ${project.brief.access}` : undefined,
     ].filter((value): value is string => !!value);
   });
+  readonly quickSearchQuery = signal('');
+  updateQuickSearch(event: Event): void {
+    if (event.target instanceof HTMLInputElement) this.quickSearchQuery.set(event.target.value);
+  }
+  submitQuickSearch(event: Event): void {
+    event.preventDefault();
+    const ref=this.project()?.ref,q=this.quickSearchQuery().trim();
+    if (!ref || !q) return;
+    const destination=this.router.parseUrl(projectPageHref(ref,['quick-search']));
+    destination.queryParams={...destination.queryParams,q};
+    void this.router.navigateByUrl(destination).catch(() => this.errorLogger.logError('Could not open Quick Search'));
+  }
+
   protected readonly publicDataHref = computed(() => {
     const ref = this.project()?.ref;
     return ref && !ref.spaceID
@@ -253,6 +273,7 @@ export class ProjectPageComponent
   private setProjRef = (ref: IProjectRef) => {
     try {
       this.scopeChanged.next();
+      if (!equalProjectRef(this.project()?.ref, ref)) this.quickSearchQuery.set('');
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },
@@ -260,6 +281,8 @@ export class ProjectPageComponent
       this.metadataState.set('loading');
       this.metadataReadError.set(undefined);
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
+      this.queryCount.set(undefined);
+      this.querySource.set(undefined);
       this.environments.set(undefined);
       this.entities.set(undefined);
       this.boards.set(undefined);
@@ -274,6 +297,12 @@ export class ProjectPageComponent
       // excluded because that API does not expose these asset collections.
       const cancel$ = race([this.scopeChanged, this.destroyed]);
       if (!ref.spaceID) {
+        const queries$ = this.queriesService.getQueriesFolder(ref, '~', 'shared').pipe(shareReplay({ bufferSize: 1, refCount: true }));
+        this.querySource.set(queries$);
+        queries$.pipe(takeUntil(cancel$)).subscribe({
+          next: folder => this.queryCount.set(countProjectQueries(folder)),
+          error: () => this.queryCount.set(undefined),
+        });
         const environments$ = this.projectAssets.environments(ref);
         environments$
           .pipe(

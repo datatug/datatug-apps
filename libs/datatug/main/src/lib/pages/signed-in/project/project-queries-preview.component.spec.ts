@@ -3,149 +3,185 @@ import { provideRouter } from '@angular/router';
 import { of, Subject, throwError } from 'rxjs';
 import { describe, expect, it, vi } from 'vitest';
 import { QueriesService } from '../../../queries/queries.service';
-import { ProjectQueriesPreviewComponent } from './project-queries-preview.component';
+import {
+  ProjectQueriesPreviewComponent,
+  countProjectQueries,
+} from './project-queries-preview.component';
 
 const ref = {
   storeId: 'github.com',
   projectId: 'datatug-demo-project@datatug@demo-project-1',
 };
+const query = (id: string, createdAt = '2026-10-21T12:00:00Z') => ({
+  id,
+  title: id,
+  createdAt,
+  request: { queryType: 'SQL' },
+});
 
-describe('project saved-query preview', () => {
-  async function create(getQueriesFolder: ReturnType<typeof vi.fn>) {
-    await TestBed.configureTestingModule({
-      imports: [ProjectQueriesPreviewComponent],
-      providers: [
-        provideRouter([]),
-        { provide: QueriesService, useValue: { getQueriesFolder } },
-      ],
-    }).compileComponents();
-    const fixture = TestBed.createComponent(ProjectQueriesPreviewComponent);
-    fixture.componentRef.setInput('projectRef', ref);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    fixture.detectChanges();
-    return fixture;
-  }
+async function create(getQueriesFolder: ReturnType<typeof vi.fn>) {
+  await TestBed.configureTestingModule({
+    imports: [ProjectQueriesPreviewComponent],
+    providers: [
+      provideRouter([]),
+      { provide: QueriesService, useValue: { getQueriesFolder } },
+    ],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(ProjectQueriesPreviewComponent);
+  fixture.componentRef.setInput('projectRef', ref);
+  fixture.detectChanges();
+  await fixture.whenStable();
+  return fixture;
+}
+const titles = (element: HTMLElement) =>
+  [...element.querySelectorAll('[data-testid^="saved-query-"]')].map((row) =>
+    row.textContent?.trim(),
+  );
+const sort = async (
+  fixture: Awaited<ReturnType<typeof create>>,
+  value: string,
+) => {
+  fixture.nativeElement
+    .querySelector('ion-segment')
+    .dispatchEvent(new CustomEvent('ionChange', { detail: { value } }));
+  await fixture.whenStable();
+};
+const reverse = async (fixture: Awaited<ReturnType<typeof create>>) => {
+  fixture.nativeElement.querySelector('ion-button').click();
+  await fixture.whenStable();
+};
 
-  it('shows saved queries from the shared reader and links to their exact detail routes', async () => {
-    const getQueriesFolder = vi.fn(() =>
-      of({
-        id: '~',
-        items: [
-          { id: 'top', title: 'Top query', request: { queryType: 'SQL' } },
-        ],
-        folders: [
-          {
-            id: 'sales',
-            items: [
-              {
-                id: 'invoices',
-                title: 'Invoice totals',
-                request: { queryType: 'SQL' },
-              },
-            ],
-          },
-        ],
-      }),
+describe('project query overview', () => {
+  it('defaults to creation date descending, supports both directions and both sorting tabs', async () => {
+    const fixture = await create(
+      vi.fn(() =>
+        of({
+          id: '~',
+          items: [
+            query('Alpha', '2026-01-01T00:00:00Z'),
+            query('Zulu', '2026-03-01T00:00:00Z'),
+            query('Bravo', '2026-02-01T00:00:00Z'),
+          ],
+        }),
+      ),
     );
-    const fixture = await create(getQueriesFolder);
-    expect(getQueriesFolder).toHaveBeenCalledWith(ref, '~', 'shared');
-    const nested = fixture.nativeElement.querySelector(
-      '[data-testid="saved-query-sales/invoices"]',
+    expect(titles(fixture.nativeElement)).toEqual(['Zulu', 'Bravo', 'Alpha']);
+    expect(fixture.nativeElement.textContent).not.toContain('Project queries');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      'Reusable requests',
     );
-    expect(nested).not.toBeNull();
-    const row = nested.closest('ion-item');
-    expect(row.getAttribute('href')).toContain('sales%2Finvoices');
-    expect(row.hasAttribute('button')).toBe(true);
-    expect(row.getAttribute('aria-label')).toContain('SQL, open saved query');
-    expect(nested.textContent).toContain('Invoice totals');
-    expect(fixture.nativeElement.innerHTML).toContain('View all 2 queries');
-    expect(fixture.nativeElement.innerHTML).not.toContain('Run query');
+    await reverse(fixture);
+    expect(titles(fixture.nativeElement)).toEqual(['Alpha', 'Bravo', 'Zulu']);
+    await sort(fixture, 'alphabetical');
+    expect(titles(fixture.nativeElement)).toEqual(['Alpha', 'Bravo', 'Zulu']);
+    await reverse(fixture);
+    expect(titles(fixture.nativeElement)).toEqual(['Zulu', 'Bravo', 'Alpha']);
+    expect(
+      fixture.nativeElement.querySelectorAll('ion-segment-button ion-icon'),
+    ).toHaveLength(2);
   });
 
-  it('keeps branch and connection context in full-row links', async () => {
-    const contextualRef = {
-      storeId: 'localhost:8989',
-      projectId: 'sample',
-      projectApi: 'local' as const,
-      branch: 'feature/topic',
-    };
-    const getQueriesFolder = vi.fn(() =>
-      of({
-        id: '~',
-        folders: [
-          {
-            id: 'sales',
-            items: [
-              {
-                id: 'invoice totals',
-                request: { queryType: 'SQL' },
-              },
-            ],
-          },
-        ],
-      }),
+  it('sorts all recursive queries before taking the first 100 and retains exact paths', async () => {
+    const items = Array.from({ length: 105 }, (_, i) =>
+      query(
+        `Query ${String(i).padStart(3, '0')}`,
+        new Date(Date.UTC(2026, 0, i + 1)).toISOString(),
+      ),
     );
-    await TestBed.configureTestingModule({
-      imports: [ProjectQueriesPreviewComponent],
-      providers: [
-        provideRouter([]),
-        { provide: QueriesService, useValue: { getQueriesFolder } },
-      ],
-    }).compileComponents();
-    const fixture = TestBed.createComponent(ProjectQueriesPreviewComponent);
-    fixture.componentRef.setInput('projectRef', contextualRef);
-    fixture.detectChanges();
-    await fixture.whenStable();
-    const row = fixture.nativeElement.querySelector('ion-item[button]');
-    const link = new URL(row.getAttribute('href'), 'https://datatug.test');
-    expect(decodeURIComponent(link.pathname)).toContain('query/sales/invoice totals');
-    expect(link.searchParams.get('id')).toBe('sales/invoice totals');
-    expect(link.searchParams.get('projectApi')).toBe('local');
-    expect(link.searchParams.get('branch')).toBe('feature/topic');
+    const folder = { id: '~', folders: [{ id: 'nested', items }] };
+    const fixture = await create(vi.fn(() => of(folder)));
+    expect(countProjectQueries(folder as never)).toBe(105);
+    expect(titles(fixture.nativeElement)).toHaveLength(100);
+    expect(titles(fixture.nativeElement)[0]).toBe('Query 104');
+    expect(titles(fixture.nativeElement)[99]).toBe('Query 005');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Showing 100 of 105 queries.',
+    );
+    expect(
+      fixture.nativeElement
+        .querySelector('ion-item[button]')
+        .getAttribute('href'),
+    ).toContain('nested%2FQuery%20104');
+    await reverse(fixture);
+    expect(titles(fixture.nativeElement)[0]).toBe('Query 000');
   });
 
-  it('explains a genuinely empty project and a failed load', async () => {
-    const getQueriesFolder = vi.fn(() =>
-      of({ id: '~', items: [], folders: [] }),
+  it('shows all 59 records without an inner total or heading', async () => {
+    const fixture = await create(
+      vi.fn(() =>
+        of({
+          id: '~',
+          items: Array.from({ length: 59 }, (_, i) => query(`q-${i}`)),
+        }),
+      ),
     );
-    const fixture = await create(getQueriesFolder);
-    expect(fixture.nativeElement.innerHTML).toContain(
-      'No shared queries saved in this project yet',
-    );
-    getQueriesFolder.mockImplementation(() =>
-      throwError(() => new Error('offline')),
+    expect(titles(fixture.nativeElement)).toHaveLength(59);
+    expect(fixture.nativeElement.querySelector('ion-card-title')).toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('View all 59');
+  });
+
+  it.each([
+    undefined,
+    'invalid',
+    '2026',
+    '1',
+    '2026-02-31T12:00:00Z',
+    '0001-01-01T00:00:00Z',
+  ])(
+    'rejects saved queries without valid creation metadata: %s',
+    async (createdAt) => {
+      const fixture = await create(
+        vi.fn(() =>
+          of({ id: '~', items: [{ ...query('invalid'), createdAt }] }),
+        ),
+      );
+      expect(
+        fixture.nativeElement.querySelector('[role="alert"]'),
+      ).not.toBeNull();
+      expect(titles(fixture.nativeElement)).toHaveLength(0);
+    },
+  );
+
+  it('reuses the parent query source without issuing a second folder request', async () => {
+    const get = vi.fn(() => of({ id: '~', items: [] }));
+    const fixture = await create(get);
+    get.mockClear();
+    fixture.componentRef.setInput(
+      'querySource',
+      of({ id: '~', items: [query('Shared source')] }),
     );
     fixture.componentRef.setInput('projectRef', {
       ...ref,
       projectId: 'another',
     });
-    fixture.detectChanges();
-    expect(
-      fixture.nativeElement.querySelector('[role="alert"]')?.innerHTML,
-    ).toContain('could not be loaded');
+    await fixture.whenStable();
+    expect(get).not.toHaveBeenCalled();
+    expect(titles(fixture.nativeElement)).toEqual(['Shared source']);
   });
 
-  it('drops a stale project response after the project changes', async () => {
+  it('handles empty, error and stale responses without leaking old project rows', async () => {
     const pending = new Subject<unknown>();
-    const getQueriesFolder = vi
+    const get = vi
       .fn()
       .mockReturnValueOnce(pending)
-      .mockReturnValueOnce(of({ id: '~', items: [], folders: [] }));
-    const fixture = await create(getQueriesFolder);
+      .mockReturnValueOnce(of({ id: '~', items: [] }))
+      .mockReturnValueOnce(throwError(() => new Error('offline')));
+    const fixture = await create(get);
     fixture.componentRef.setInput('projectRef', {
       ...ref,
       projectId: 'second',
     });
     fixture.detectChanges();
-    pending.next({
-      id: '~',
-      items: [{ id: 'stale', request: { queryType: 'SQL' } }],
-    });
+    await fixture.whenStable();
+    pending.next({ id: '~', items: [query('stale')] });
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('No shared queries');
+    expect(titles(fixture.nativeElement)).toHaveLength(0);
+    fixture.componentRef.setInput('projectRef', { ...ref, projectId: 'third' });
     fixture.detectChanges();
-    expect(fixture.nativeElement.innerHTML).toContain(
-      'No shared queries saved in this project yet',
-    );
-    expect(fixture.nativeElement.textContent).not.toContain('stale');
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement.querySelector('[role="alert"]'),
+    ).not.toBeNull();
   });
 });

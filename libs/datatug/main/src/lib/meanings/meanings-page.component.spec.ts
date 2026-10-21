@@ -82,6 +82,69 @@ describe('Meanings page route, mutation and zoneless lifecycle', () => {
     fixture.detectChanges();
     return fixture;
   }
+  it('keeps cross-repository field links and source provenance distinct on a cold URL with consistent gutters', async () => {
+    const source = {
+      repository: 'https://github.com/example/graph',
+      revision: 'a'.repeat(40),
+      path: 'main.meaning.yaml',
+      kind: 'custom' as const,
+    };
+    const entity = {
+      ...catalog.entities[0],
+      documentId: 'meaning:parent',
+      origin: 'external' as const,
+      source,
+      fields: [
+        {
+          ...catalog.entities[0].fields[0],
+          documentId: 'meaning:child',
+          source: { ...source, repository: 'https://github.com/example/child' },
+          description: 'Exact imported field',
+        },
+      ],
+    };
+    service.catalog.mockReturnValue(
+      of({ ...catalog, discoveryComplete: false, entities: [entity] }),
+    );
+    data.next({ meaningMode: 'field' });
+    params.next(
+      convertToParamMap({
+        document: entity.documentId,
+        concept: entity.conceptId,
+        field: 'customer-id',
+        fieldDocument: 'meaning:child',
+      }),
+    );
+    const fixture = await render(),
+      page = fixture.componentInstance;
+    expect(page.field()?.description).toBe('Exact imported field');
+    expect(fixture.nativeElement.innerHTML).toContain('Exact imported field');
+    expect(
+      fixture.nativeElement
+        .querySelector('ion-content')
+        .classList.contains('ion-padding'),
+    ).toBe(true);
+    expect(page.href('field', entity, entity.fields[0])).toContain(
+      'fieldDocument=meaning%3Achild',
+    );
+    expect(page.sourceHref()).toBe(
+      'https://github.com/example/child/blob/' +
+        source.revision +
+        '/main.meaning.yaml',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain('Delete field');
+  });
+  it('allows managed deletion despite incomplete optional repository discovery', async () => {
+    service.catalog.mockReturnValue(
+      of({ ...catalog, discoveryComplete: false }),
+    );
+    data.next({ meaningMode: 'entity' });
+    params.next(
+      convertToParamMap({ document: 'project', concept: 'customer' }),
+    );
+    const fixture = await render();
+    expect(fixture.componentInstance.canDelete()).toBe(true);
+  });
   it('renders entity fields after an asynchronous load with no manual change detection', async () => {
     const response = new Subject<ProjectMeaningsCatalog>();
     service.catalog.mockReturnValue(response);
@@ -281,9 +344,7 @@ describe('Meanings page route, mutation and zoneless lifecycle', () => {
     await fixture.whenStable();
     old.next(catalog);
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain(
-      'No MeaningGraph entities',
-    );
+    expect(fixture.nativeElement.textContent).toContain('No meanings');
     expect(fixture.nativeElement.textContent).not.toContain('Buyer identifier');
   });
 });
