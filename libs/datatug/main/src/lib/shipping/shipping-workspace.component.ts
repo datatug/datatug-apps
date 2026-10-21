@@ -1,3 +1,5 @@
+import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
+import { ShippingQueryAccessComponent } from './shipping-query-access.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   DestroyRef,
@@ -39,7 +41,16 @@ import {
 @Component({
   selector: 'sneat-datatug-shipping-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IonButton, IonContent, IonHeader, IonTitle, IonToolbar],
+  imports: [
+    ShippingQueryAccessComponent,
+    RouterLink,
+    IonButton,
+    IonContent,
+    IonHeader,
+    IonTitle,
+    IonToolbar,
+    ShippingComponentInstallerComponent,
+  ],
   template: ` <ion-header
       ><ion-toolbar
         ><ion-title>Shipping training workspace</ion-title></ion-toolbar
@@ -48,8 +59,9 @@ import {
     <ion-content class="ion-padding">
       <a [routerLink]="overviewHref()">Back to project overview</a>
       <p>
-        Prepare an isolated working copy. These controls do not publish a query
-        source or grant access to shipping data.
+        Prepare an isolated working copy, then explicitly choose query access
+        below. Working-copy actions do not grant project membership or paid
+        access.
       </p>
       @if (!native()) {
         <p role="status">
@@ -80,6 +92,17 @@ import {
             <p>{{ artifact.id }} · {{ artifact.sha256 }}</p>
           }
         </details>
+      }
+      @if (native()) {
+        <sneat-datatug-shipping-query-access
+          [environments]="environments()"
+          [canWrite]="canWrite()"
+        />
+        <p>
+          <a [routerLink]="sessionsHref()"
+            >Open Sessions and explicitly select Shipping orders</a
+          >
+        </p>
       }
       @if (notice()) {
         <p role="status">{{ notice() }}</p>
@@ -180,6 +203,9 @@ import {
           >
         </p>
       }
+      @if (native()) {
+        <sneat-shipping-component-installer />
+      }
     </ion-content>`,
 })
 export class ShippingWorkspaceComponent {
@@ -202,6 +228,10 @@ export class ShippingWorkspaceComponent {
   readonly canWrite = computed(
     () => this.native() && this.grantedFor() === this.page.identity(),
   );
+  readonly environments = signal<readonly string[]>([]);
+  readonly sessionsHref = computed(() =>
+    projectPageHref(this.page.ref(), 'sessions'),
+  );
   readonly revision = signal<ShippingRevision | undefined>(undefined);
   readonly pending = signal<ShippingIntent | undefined>(undefined);
   readonly conflict = signal(false);
@@ -221,6 +251,7 @@ export class ShippingWorkspaceComponent {
     effect((onCleanup) => {
       const identity = this.page.identity();
       untracked(() => {
+        this.environments.set([]);
         this.pending.set(undefined);
         this.conflict.set(false);
         this.confirmReset.set(false);
@@ -258,6 +289,7 @@ export class ShippingWorkspaceComponent {
       void firstValueFrom(this.detective.state(context))
         .then(async (state) => {
           if (cancelled) return;
+          this.environments.set(state.environments ?? []);
           this.grantedFor.set(
             state.capabilities.canWrite ? this.page.identity() : undefined,
           );

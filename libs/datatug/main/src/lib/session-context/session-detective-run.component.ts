@@ -231,7 +231,11 @@ export class SessionDetectiveRunComponent {
   private readonly router = inject(Router);
   protected readonly recoveryHref = computed(() => {
     const draft = this.operation.draft();
-    return draft ? this.router.parseUrl(nativeRecoveryHref(draft.project, draft.recoveryId)) : '';
+    return draft
+      ? this.router.parseUrl(
+          nativeRecoveryHref(draft.project, draft.recoveryId),
+        )
+      : '';
   });
   protected readonly scopes = computed(
     () =>
@@ -240,7 +244,10 @@ export class SessionDetectiveRunComponent {
         ?.environments.filter(
           (scope) =>
             scope.environmentId ===
-            (this.environmentChoice() || this.environment()),
+              (this.environmentChoice() || this.environment()) &&
+            (scope.nativeDetective ??
+              this.workspace.capabilities()?.nativeDetective ??
+              false),
         ) || [],
   );
   protected readonly selectedScope = computed(() =>

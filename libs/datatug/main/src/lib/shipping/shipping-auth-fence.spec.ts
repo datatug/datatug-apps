@@ -1,3 +1,4 @@
+import { ShippingComponentApiService } from './shipping-component-api.service';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
@@ -30,6 +31,21 @@ describe('Shipping initial native authentication fence', () => {
     TestBed.configureTestingModule({
       imports: [ShippingWorkspaceComponent],
       providers: [
+        {
+          provide: ShippingComponentApiService,
+          useValue: {
+            current: () =>
+              of({
+                available: {
+                  componentId: 'shipping-investigation',
+                  version: 1,
+                  digest: 'a'.repeat(64),
+                  sourceCommit: 'cb841345e88d01229857b2bdb51cc07f4ef4bec7',
+                },
+                exists: false,
+              }),
+          },
+        },
         provideRouter([]),
         provideHttpClient(),
         provideHttpClientTesting(),

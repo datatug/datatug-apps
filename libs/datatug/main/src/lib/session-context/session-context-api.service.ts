@@ -109,7 +109,7 @@ export class SessionContextApiService {
       !Array.isArray(value.environments) ||
       !Array.isArray(value.actions) ||
       value.environments.some(
-        (scope) => !scope.environmentId || !scope.identityDomain,
+        (scope) => !scope.environmentId || !scope.identityDomain || (scope.nativeDetective !== undefined && typeof scope.nativeDetective !== 'boolean'),
       ) ||
       (value.nativeDetective === true &&
         (!validDetectiveOperationScope(value.operationScope) ||
