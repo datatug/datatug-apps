@@ -7,6 +7,8 @@ import {
 import { ErrorLogger, AnalyticsService, SNEAT_FIREBASE_AUTH } from '@sneat/core';
 import { Firestore } from 'firebase/firestore';
 
+export { resetSharedGlobals };
+
 export function configureGlobalTestBed() {
   try {
     TestBed.configureTestingModule({

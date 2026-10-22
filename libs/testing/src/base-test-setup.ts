@@ -278,9 +278,28 @@ export function resetSharedGlobals() {
     delete (window as any).history;
   }
   window.history.replaceState(null, '', '/');
+  restoreStorageSpies(window.localStorage);
+  restoreStorageSpies(window.sessionStorage);
   window.localStorage?.clear();
   window.sessionStorage?.clear();
   document.body.innerHTML = '';
+}
+
+/**
+ * `vi.restoreAllMocks()` does not undo `vi.spyOn(sessionStorage, 'getItem')`: happy-dom's Storage is a Proxy that
+ * keeps the spied method as an own property, so a spec that made storage throw left it throwing for every later file
+ * in the worker. Restoring each storage spy directly gives the next file real storage again.
+ */
+function restoreStorageSpies(storage: Storage | undefined) {
+  if (!storage) {
+    return;
+  }
+  for (const method of ['getItem', 'setItem', 'removeItem', 'clear', 'key'] as const) {
+    const candidate = (storage as unknown as Record<string, unknown>)[method];
+    if (vi.isMockFunction(candidate)) {
+      candidate.mockRestore();
+    }
+  }
 }
 
 export function setupBaseTestEnvironment() {
