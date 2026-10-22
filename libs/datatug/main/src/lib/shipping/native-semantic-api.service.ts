@@ -18,10 +18,10 @@ import {
   validateScope,
   validateSelection,
   validateMapping,
-  object,
   entityRevision,
   exact,
 } from './native-semantic-contract';
+import { decodeNativeApplicable } from './native-check-preflight-contract';
 @Injectable({ providedIn: 'root' })
 export class NativeSemanticApiService {
   private readonly api = inject(DatatugApiService);
@@ -182,27 +182,9 @@ export class NativeSemanticApiService {
       signal,
     );
   }
-  /** The WIP has no complete Check closure proof. Transport exists, but it
-   * cannot grant a Run capability or produce a readiness badge. */
-  applicable(
-    request: NativeRequest,
-    signal: AbortSignal,
-  ): Promise<{ available: false; reason: string }> {
+  /** Binding preflight only; never a Check result or permission to execute. */
+  applicable(request: NativeRequest, signal: AbortSignal) {
     validateSelection(request.selection);
-    return this.post(
-      'applicable',
-      request,
-      (v) => {
-        const o = object(v);
-        if (!Array.isArray(o['queries']) || !Array.isArray(o['checks']))
-          throw new Error('Check suggestions are unavailable.');
-        return {
-          available: false as const,
-          reason:
-            'Applicable Checks are unavailable until full definition and binding proof is supported.',
-        };
-      },
-      signal,
-    );
+    return this.post('applicable', request, decodeNativeApplicable, signal);
   }
 }

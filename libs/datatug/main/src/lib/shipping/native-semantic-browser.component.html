@@ -300,11 +300,63 @@
             <p>{{ reason }}</p>
           }
         }
-        <h4>Applicable Checks</h4>
+        <ion-toolbar class="tables-toolbar">
+          <h4 slot="start">Applicable Checks</h4>
+          <ion-buttons slot="end">
+            <ion-button
+              (click)="findChecks()"
+              [disabled]="busy() || restoring()"
+              aria-label="Find checks for selected cell"
+            >
+              <ion-icon [icon]="findChecksIcon" aria-hidden="true" />Find checks
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
         <p>
-          Unavailable until the server supplies complete definition and binding
-          proof. Mapping does not predict a passing Check.
+          Binding availability only. This does not predict a Check result or
+          grant permission to run.
         </p>
+        @if (checksPending()) {
+          <p role="status">Finding checks for the current selection…</p>
+        } @else if (checksError()) {
+          <p role="alert">{{ checksError() }}</p>
+        } @else if (applicable(); as suggestions) {
+          <ul class="check-list" aria-label="Check suggestions">
+            @for (check of suggestions.checks; track check.id) {
+              <li>
+                <strong>{{ check.title }}</strong>
+                <p>{{ check.id }} · version {{ check.revision }}</p>
+                <p>
+                  {{ checkLabels[check.preflight.state].label }} ·
+                  {{ checkLabels[check.preflight.state].detail }}
+                </p>
+                <ion-button
+                  fill="clear"
+                  size="small"
+                  [routerLink]="checkHref(check.id)"
+                  [queryParams]="{ environment: environment() }"
+                  >Open Check</ion-button
+                >
+                <details>
+                  <summary>Binding preflight details</summary>
+                  <p>Definition SHA-256 {{ check.definitionDigest }}</p>
+                  <p>
+                    Check {{ check.preflight.checkId }}
+                    @if (check.preflight.stepId) {
+                      · step {{ check.preflight.stepId }}
+                    }
+                  </p>
+                </details>
+              </li>
+            } @empty {
+              <li>
+                No applicable Checks were offered for the current selection.
+              </li>
+            }
+          </ul>
+        } @else {
+          <p>Find checks for this physical cell and applied context.</p>
+        }
         <details>
           <summary>Physical selection identity</summary>
           <p>{{ cell.schemaToken }} · {{ cell.rowToken }}</p>
