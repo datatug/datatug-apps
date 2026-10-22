@@ -17,7 +17,7 @@ const STYLE = `
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
   padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
   background: var(--ion-background-color, #fff); color: var(--ion-text-color, #000);
-  border-top: 1px solid var(--ion-color-step-150, rgba(0, 0, 0, 0.2));
+  border-top: 1px solid var(--ion-background-color-step-150, rgba(0, 0, 0, 0.2));
   font: 14px/1.4 var(--ion-font-family, system-ui, sans-serif);
 }
 .datatug-analytics-consent p { flex: 1 1 280px; margin: 0; }

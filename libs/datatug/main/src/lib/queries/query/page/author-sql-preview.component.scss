@@ -90,8 +90,8 @@ sneat-author-source-inspector,
 .author-sql-scroll {
   max-width: 100%;
   overflow-x: auto;
-  background: var(--ion-color-step-50, #f8fafc);
-  scrollbar-color: var(--ion-color-step-400, #94a3b8) transparent;
+  background: var(--ion-background-color-step-50, #f8fafc);
+  scrollbar-color: var(--ion-background-color-step-400, #94a3b8) transparent;
 }
 
 .author-sql-scroll pre {
@@ -143,7 +143,7 @@ sneat-author-source-inspector,
 }
 
 .author-binding-row + .author-binding-row {
-  border-top: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-top: 1px solid var(--ion-background-color-step-150, #e5e7eb);
 }
 
 .author-binding-index,
@@ -156,7 +156,7 @@ sneat-author-source-inspector,
   width: fit-content;
   padding: 0.1rem 0.3rem;
   border-radius: 0.3rem;
-  background: var(--ion-color-step-100, #f1f5f9);
+  background: var(--ion-background-color-step-100, #f1f5f9);
 }
 
 .author-binding-value {

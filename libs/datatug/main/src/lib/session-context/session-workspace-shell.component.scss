@@ -10,7 +10,7 @@ ion-tab-button small { display: block; color: var(--dt-text-muted); font-size: .
 .session-primary-actions > .session-context-button { flex: 1 0 12rem; min-width: min(100%, 12rem); max-width: 100%; height: auto; --padding-top: 8px; --padding-bottom: 8px; }
 .session-context-button::part(native) { white-space: normal; text-align: left; }
 .session-summary strong { font-weight: 600; }
-.session-start { padding: 14px 16px; border-bottom: 1px solid var(--ion-color-step-150, #ddd); }
+.session-start { padding: 14px 16px; border-bottom: 1px solid var(--ion-background-color-step-150, #ddd); }
 .session-start h1 { font-size: 1.25rem; font-weight: 600; margin: 0 0 6px; }
 .session-start p { margin: 0; color: var(--dt-text-muted); }
 .session-tab-close { flex: 0 0 auto; margin-left: -6px; }

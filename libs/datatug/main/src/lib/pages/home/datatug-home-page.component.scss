@@ -225,3 +225,46 @@
     }
   }
 }
+
+// The hero is a card: in dark it takes the dark card surface, light text, and a dark scrim over the (light) picture.
+:host-context(.ion-palette-dark) .home-hero {
+  background: var(--ion-card-background, #1e1e1e);
+
+  .hero-layout::before {
+    background: linear-gradient(
+      90deg,
+      rgba(30, 30, 30, 0.94),
+      rgba(30, 30, 30, 0.7) 32%,
+      transparent 56%
+    );
+  }
+
+  .hero-message,
+  h1 {
+    color: #f2f2f2;
+  }
+
+  .hero-copy {
+    color: #d0d2d8;
+  }
+
+  .hero-visual {
+    filter: brightness(0.78) saturate(0.95);
+  }
+}
+
+@media (max-width: 575.98px) {
+  :host-context(.ion-palette-dark) .home-hero {
+    .hero-layout::before {
+      background: linear-gradient(
+        rgba(30, 30, 30, 0.96) 0%,
+        rgba(30, 30, 30, 0.9) 44%,
+        transparent 76%
+      );
+    }
+
+    .hero-visual {
+      background: var(--ion-card-background, #1e1e1e);
+    }
+  }
+}

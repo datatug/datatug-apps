@@ -41,6 +41,40 @@ p.firebase-emulator-warning {
   // Secondary text. Ionic's `--ion-color-medium` is ~3:1 on white and ~5:1 on
   // the dark surfaces; this one is >= 6:1 on both. Use it for any muted text.
   --dt-text-muted: #5b5e66;
+  // Panel palette for self-styled panels (board tutorial, held results): light values; dark values below.
+  --dt-p-accent: #30557a;
+  --dt-p-axis: #6f8098;
+  --dt-p-border: #dce5ef;
+  --dt-p-ctl-bg: #f6f9fc;
+  --dt-p-ctl-border: #a9bad0;
+  --dt-p-ctl-hover: #eaf1fa;
+  --dt-p-error: #a61b1b;
+  --dt-p-faint: #f8fafc;
+  --dt-p-fg: #17213a;
+  --dt-p-input-border: #ced9e7;
+  --dt-p-label: #34455c;
+  --dt-p-link: #174b7c;
+  --dt-p-muted: #43536a;
+  --dt-p-muted2: #596b84;
+  --dt-p-notice-bg: #fff6e8;
+  --dt-p-notice-edge: #a95f00;
+  --dt-p-notice-fg: #573500;
+  --dt-p-ok-bg: #d9f4ef;
+  --dt-p-ok-fg: #145750;
+  --dt-p-row: #e7edf4;
+  --dt-p-soft: #edf1f6;
+  --dt-p-subtle: #f3f7fb;
+  --dt-p-surface: #fff;
+  --dt-p-track: #e8eff7;
+  --dt-p-tut-border: #c8d9e9;
+  --dt-p-tut-dash: #97b3d1;
+  --dt-p-tut-edge: #356393;
+  --dt-p-tut-hover: #e4f0fc;
+  --dt-p-tut-input: #7b99b8;
+  --dt-p-tut-line: #d6e2ee;
+  --dt-p-tut-panel: #f5f9fd;
+  --dt-p-tut-row: #e5edf4;
+  --dt-p-tut-sub: #465b72;
 }
 
 html,
@@ -52,6 +86,39 @@ ion-split-pane {
 .ion-palette-dark {
   color-scheme: dark;
   --dt-text-muted: #b8bac2;
+  --dt-p-accent: #9cc8f5;
+  --dt-p-axis: #8d9bb0;
+  --dt-p-border: #3d4048;
+  --dt-p-ctl-bg: #2a2c31;
+  --dt-p-ctl-border: #5a5f6a;
+  --dt-p-ctl-hover: #34373d;
+  --dt-p-error: #ff8a8a;
+  --dt-p-faint: #26282c;
+  --dt-p-fg: #f2f2f2;
+  --dt-p-input-border: #4a4f5a;
+  --dt-p-label: #d0d2d8;
+  --dt-p-link: #9cc8f5;
+  --dt-p-muted: #b8bac2;
+  --dt-p-muted2: #b8bac2;
+  --dt-p-notice-bg: #3a2e12;
+  --dt-p-notice-edge: #e0a040;
+  --dt-p-notice-fg: #ffd9a0;
+  --dt-p-ok-bg: #123a35;
+  --dt-p-ok-fg: #7fe0d2;
+  --dt-p-row: #34373d;
+  --dt-p-soft: #2a2c31;
+  --dt-p-subtle: #26282c;
+  --dt-p-surface: var(--ion-card-background, #1e1e1e);
+  --dt-p-track: #34373d;
+  --dt-p-tut-border: #3d4048;
+  --dt-p-tut-dash: #5a6f88;
+  --dt-p-tut-edge: #6f9fd0;
+  --dt-p-tut-hover: #34425a;
+  --dt-p-tut-input: #6b7e96;
+  --dt-p-tut-line: #3d4048;
+  --dt-p-tut-panel: #25282d;
+  --dt-p-tut-row: #34373d;
+  --dt-p-tut-sub: #b8bac2;
 }
 
 // Padding-less grid for page layout (`.ion-grid-layout`): the grid, its rows
@@ -545,7 +612,7 @@ sneat-datatug-project ion-card > ion-list > ion-item:last-child {
 // <div class="ion-page">, so it needs an explicit width.
 .context-panel-pane {
   max-width: 360px;
-  border-inline-start: 1px solid var(--ion-color-step-150, #d9d9d9);
+  border-inline-start: 1px solid var(--ion-background-color-step-150, #d9d9d9);
 }
 
 // CLI chat spans two panels; keep these styles global to avoid the component CSS budget.
@@ -922,4 +989,10 @@ datatug-cli-chat-page {
 // while the compact header is shown.
 ion-app.compact-header-mode ion-menu-button:not(.app-level-menu-button) {
   display: none;
+}
+
+// A plain solid ion-button in a toolbar paints with the toolbar's contrast colour (white), a bright block in dark.
+.ion-palette-dark ion-toolbar ion-button[fill='solid']:not([color]) {
+  --background: #2a2c31 !important;
+  --color: #f2f2f2 !important;
 }

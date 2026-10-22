@@ -27,16 +27,16 @@
 .chart-view-switch button {
   min-height: 2.75rem;
   padding-inline: 0.75rem;
-  border: 1px solid #a9bad0;
+  border: 1px solid var(--chart-ctl-border, #a9bad0);
   border-radius: 0.5rem;
-  background: #f6f9fc;
-  color: #17213a;
+  background: var(--chart-ctl-bg, #f6f9fc);
+  color: var(--chart-ctl-fg, #17213a);
   cursor: pointer;
 }
 
 .chart-view-switch button[aria-pressed='true'] {
   border-color: #2563eb;
-  background: #eaf1fa;
+  background: var(--chart-ctl-on, #eaf1fa);
   font-weight: 650;
 }
 
@@ -56,7 +56,7 @@ table {
 
 th,
 td {
-  border-bottom: 1px solid var(--ion-color-step-150, #ddd);
+  border-bottom: 1px solid var(--ion-background-color-step-150, #ddd);
   padding: 0.5rem 0.75rem;
   text-align: left;
   white-space: nowrap;
@@ -69,10 +69,10 @@ th {
 .clear-country {
   min-height: 2.75rem;
   padding: 0.5rem 1rem;
-  border: 1px solid #a9bad0;
+  border: 1px solid var(--chart-ctl-border, #a9bad0);
   border-radius: 0.5rem;
-  background: #f6f9fc;
-  color: #17213a;
+  background: var(--chart-ctl-bg, #f6f9fc);
+  color: var(--chart-ctl-fg, #17213a);
   font: inherit;
   cursor: pointer;
 }
@@ -110,4 +110,11 @@ th {
   .header-action-text {
     display: none;
   }
+}
+
+:host-context(.ion-palette-dark) {
+  --chart-ctl-border: #5a5f6a;
+  --chart-ctl-bg: #2a2c31;
+  --chart-ctl-fg: #f2f2f2;
+  --chart-ctl-on: #34425a;
 }

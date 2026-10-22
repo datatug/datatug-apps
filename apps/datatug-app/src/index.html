@@ -15,8 +15,9 @@
         var root = document.documentElement;
         var query = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
         function apply() {
-          var mode = 'auto';
-          try { var stored = localStorage.getItem('datatug.theme.v1'); if (stored === 'light' || stored === 'dark') mode = stored; } catch (e) {}
+          // ThemeService records the live choice here, so a blocked localStorage does not turn Dark back into Auto.
+          var mode = root.getAttribute('data-theme-mode') || 'auto';
+          if (!root.getAttribute('data-theme-mode')) try { var stored = localStorage.getItem('datatug.theme.v1'); if (stored === 'light' || stored === 'dark') mode = stored; } catch (e) {}
           var dark = mode === 'dark' || (mode === 'auto' && !!query && query.matches);
           root.classList.toggle('ion-palette-dark', dark);
           root.style.colorScheme = dark ? 'dark' : 'light';

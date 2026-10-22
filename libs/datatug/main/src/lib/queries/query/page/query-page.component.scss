@@ -18,7 +18,7 @@
 }
 .query-view-switch {
   width: fit-content;
-  border-bottom: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-bottom: 1px solid var(--ion-background-color-step-150, #e5e7eb);
 }
 .query-view-switch ion-button {
   min-height: 2.75rem;
@@ -135,7 +135,7 @@
 }
 .author-preview-empty {
   padding: 0.75rem;
-  border-top: 1px solid var(--ion-color-step-150, #e5e7eb);
+  border-top: 1px solid var(--ion-background-color-step-150, #e5e7eb);
 }
 .author-preview-empty h3,
 .author-preview-empty p {
