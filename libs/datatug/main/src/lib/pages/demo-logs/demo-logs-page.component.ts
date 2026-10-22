@@ -7,6 +7,8 @@
 //     declared source opens.
 //   Source settings → "Read this source": ad hoc mode, a typed OVDB address (for example the local
 //     agent at http://127.0.0.1:6832) with the fixed default field mapping. Never started from a URL.
+//   A loopback or private-network source (declared or ad hoc) is read only when the app itself is
+//   served from loopback; on a hosted origin it is hidden and refused before any request.
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
@@ -17,13 +19,18 @@ import {
   IonBackButton, IonButtons, IonContent, IonHeader, IonMenuButton,
   IonTitle, IonToolbar,
 } from '@ionic/angular';
+import { OpenVaultDbHttpError } from '@dalgo/ovdb/client';
 import { fetchOvdbDescriptor, type OvdbConnection } from '../../ovdb/ovdb-connection';
 import { ovdbDatabase, type OvdbRow } from '../../ovdb/ovdb-records';
 import { LogSourceCatalogService } from './log-source-catalog.service';
+import { APP_SERVED_FROM_LOOPBACK, LOCAL_SOURCE_ON_HOSTED_MESSAGE, isLocalNetworkUrl } from './log-source-reach';
 import {
   DEFAULT_LOG_FIELDS, DEFAULT_LOG_IDENTIFIERS, RFC3339_UTC, identifierValue, recordRoute,
-  type LogFields, type LogIdentifier, type LogRecordMapping, type LogRole, type LogSource,
+  LogSourceError, type LogFields, type LogIdentifier, type LogRecordMapping, type LogRole, type LogSource,
 } from './log-source-declarations';
+
+/** A message this page words itself; safe to show as is. */
+class LogPageError extends Error {}
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 type Filter = { readonly field: string; readonly operator: '==' | '>=' | '<='; readonly value: string | number };
@@ -45,6 +52,24 @@ interface LogView {
 interface AppliedQuery extends LogView { readonly values: Readonly<Record<string, string>> }
 
 const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
+const CONNECTION_FAILURE = /failed to fetch|networkerror|load failed|network request failed|err_connection|abort/i;
+
+// TODO(#514): replace this plain-language mapping with the shared ErrorStateComponent (friendly,
+// sanitised Details with a reference ID) once datatug-apps#514 is on public-demo.
+/** A stated, non-raw message: connection failures and server error bodies never reach the visitor verbatim. */
+function friendlyLogError(error: unknown, fallback: string): string {
+  if (error instanceof LogSourceError) return error.message;
+  if (error instanceof OpenVaultDbHttpError) {
+    return error.status === 404 ? 'The log source does not have this database or collection.'
+      : error.status === 401 || error.status === 403 ? 'The log source refused the read.'
+      : error.status === 429 ? 'The log source is busy. Try again in a moment.'
+      : error.status >= 500 ? 'The log source had a problem. Try again later.'
+      : 'The log source could not answer this query. Check the filters and try again.';
+  }
+  if (error instanceof Error && CONNECTION_FAILURE.test(error.message)) return 'The log source could not be reached. Check your connection and try again.';
+  if (error instanceof LogPageError) return error.message;
+  return fallback;
+}
 
 @Component({
   selector: 'sneat-datatug-demo-logs-page',
@@ -117,6 +142,7 @@ const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
           <button type="submit" [disabled]="state() === 'loading' || !view()">{{ state() === 'loading' ? 'Loading…' : 'Find evidence' }}</button>
           <p class="filter-note">Identifiers use exact equality and the time range is inclusive. Text search and regex are unavailable. Showing at most 100 newest entries. Edits take effect when you select Find evidence.</p>
 
+          @if (localSourcesAllowed) {
           <details class="source-settings"><summary>Source settings · {{ settingsSummary() }}</summary>
             <p class="filter-note">Read another OVDB collection, for example a local agent at http://127.0.0.1:6832. It uses the default log field names and is labelled ad hoc. The optional token stays in this page's memory and is sent only to a loopback server.</p>
             <div class="source-controls">
@@ -127,6 +153,7 @@ const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
               <button type="button" (click)="readAdhoc()">Read this source</button>
             </div>
           </details>
+          }
         </form>
 
         @if (state() === 'loading') { <p role="status">Reading the source in place…</p> }
@@ -200,6 +227,8 @@ export class DemoLogsPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
   private readonly catalog = inject(LogSourceCatalogService);
+  /** False on a hosted origin: no source on the visitor's own machine or network is offered or read. */
+  protected readonly localSourcesAllowed = inject(APP_SERVED_FROM_LOOPBACK);
 
   readonly sources = signal<readonly LogSource[]>([]);
   readonly sourceId = signal('');
@@ -343,9 +372,14 @@ export class DemoLogsPageComponent {
       this.fail(error, 'The project’s log sources could not be read.');
       return;
     }
-    this.sources.set(sources);
+    const offered = this.localSourcesAllowed ? sources : sources.filter((item) => !isLocalNetworkUrl(item.baseUrl));
+    this.sources.set(offered);
     const sourceParam = params.get('source');
-    const source = sourceParam === null ? sources[0] : sources.find((item) => item.id === sourceParam);
+    if (sourceParam !== null && offered.length < sources.length && !offered.some((item) => item.id === sourceParam) && sources.some((item) => item.id === sourceParam)) {
+      return this.fail(undefined, LOCAL_SOURCE_ON_HOSTED_MESSAGE);
+    }
+    const source = sourceParam === null ? offered[0] : offered.find((item) => item.id === sourceParam);
+    if (!source && sourceParam === null) return this.fail(undefined, 'This project declares no log source that the hosted app can read.');
     if (!source) return this.fail(undefined, `There is no declared log source “${sourceParam}”.`);
     const collectionParam = params.get('collection');
     const collection = collectionParam === null ? source.collections[0] : source.collections.find((item) => item.id === collectionParam);
@@ -379,7 +413,7 @@ export class DemoLogsPageComponent {
     if (Object.entries(params).every(([key, value]) => (current.get(key) ?? '') === value)) return this.load();
     try {
       const navigated = await this.router.navigate([], { relativeTo: this.route, queryParams: params });
-      if (!navigated) throw new Error('The evidence URL could not be updated.');
+      if (!navigated) throw new LogPageError('The evidence URL could not be updated.');
     } catch (error) {
       this.fail(error, 'The evidence URL could not be updated.');
     }
@@ -394,7 +428,7 @@ export class DemoLogsPageComponent {
     this.#request++;
     this.rows.set([]);
     this.applied.set(null);
-    this.error.set(error instanceof Error && error.message ? error.message : message);
+    this.error.set(friendlyLogError(error, message));
     this.state.set('error');
   }
 
@@ -403,7 +437,7 @@ export class DemoLogsPageComponent {
     if (!token) return globalThis.fetch.bind(globalThis);
     const url = new URL(baseUrl);
     if (url.protocol !== 'http:' || !LOOPBACK.includes(url.hostname)) {
-      throw new Error('A local owner token can only be used with an HTTP loopback source.');
+      throw new LogPageError('A local owner token can only be used with an HTTP loopback source.');
     }
     return (input, init) => {
       const headers = new Headers(init?.headers);
@@ -440,7 +474,9 @@ export class DemoLogsPageComponent {
     this.selectedKey.set('');
     this.applied.set(null);
     try {
-      if (!view.baseUrl || !view.databaseId || !view.collection) throw new Error('Enter an OVDB URL, a database and a collection.');
+      if (!view.baseUrl || !view.databaseId || !view.collection) throw new LogPageError('Enter an OVDB URL, a database and a collection.');
+      // Last line of defence: nothing on the visitor's machine or network is called from a hosted origin.
+      if (!this.localSourcesAllowed && isLocalNetworkUrl(view.baseUrl)) throw new LogPageError(LOCAL_SOURCE_ON_HOSTED_MESSAGE);
       const sourceFetch = this.sourceFetch(view.baseUrl);
       const descriptor = await fetchOvdbDescriptor(sourceFetch, view.baseUrl, view.databaseId);
       const listed = descriptor.collections ?? [];
@@ -448,11 +484,11 @@ export class DemoLogsPageComponent {
         this.unavailable.set(this.declaredSource()?.collections.map((item) => item.id).filter((id) => !listed.includes(id)) ?? []);
       }
       if (!listed.includes(view.collection)) {
-        throw new Error(view.mode === 'declared'
+        throw new LogPageError(view.mode === 'declared'
           ? `${view.collectionTitle} is declared but not available from the source yet. Choose another collection.`
           : 'The selected collection is unavailable for ordinary OVDB queries.');
       }
-      if (descriptor.capabilities.query !== true) throw new Error('The selected collection is unavailable for ordinary OVDB queries.');
+      if (descriptor.capabilities.query !== true) throw new LogPageError('The selected collection is unavailable for ordinary OVDB queries.');
       const connection: OvdbConnection = { id: view.databaseId, title: view.databaseId, baseUrl: view.baseUrl, databaseId: view.databaseId, fetch: sourceFetch, descriptor };
       const result = await ovdbDatabase(connection).query<Record<string, unknown>>({
         source: { kind: 'collection', name: view.collection }, filters,

@@ -1,5 +1,6 @@
 import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
+import { demoProjectDeclaringLogs } from './helpers/log-sources-fixture';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -184,8 +185,10 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
   });
 
   test.beforeEach(async ({ page }) => {
-    // The viewer reads the declared sources (demo-project-1/connections/log-sources.json) of this checkout.
-    if (demoProject) await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: demoProject }]);
+    // The public demo project declares no loopback source, so this local journey declares it itself.
+    const declared = demoProjectDeclaringLogs();
+    page.on('close', declared.dispose);
+    await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: declared.dir }]);
     if (adapterPort !== 6832) {
       await page.route('http://127.0.0.1:6832/**', async route => {
         const response = await route.fetch({ url: route.request().url().replace('http://127.0.0.1:6832', adapterOrigin) });

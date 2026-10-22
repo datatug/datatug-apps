@@ -1,38 +1,7 @@
-import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { expect, test } from './helpers/demodb-guard';
 import { installFakeGithub } from './helpers/fake-github';
+import { demoProjectDeclaringLogs } from './helpers/log-sources-fixture';
 import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
-
-/** A one-commit demo project that declares only the loopback evidence source (connections/log-sources.json). */
-function demoProjectDeclaringLoopbackLogs(): { dir: string; dispose: () => void } {
-  const dir = mkdtempSync(join(tmpdir(), 'datatug-log-sources-'));
-  const project = join(dir, 'demo-project-1');
-  mkdirSync(join(project, 'connections'), { recursive: true });
-  writeFileSync(join(project, 'datatug-project.json'), JSON.stringify({ id: 'datatug-demo-project', title: 'Log sources fixture' }));
-  writeFileSync(join(project, 'connections/log-sources.json'), JSON.stringify({
-    format: 'datatug-log-sources/v1',
-    sources: [{
-      id: 'northwind-local', title: 'Northwind evidence (local agent)', synthetic: true,
-      database: 'http://127.0.0.1:6832/v1/databases/northwind_evidence',
-      collections: [{ id: 'fulfillment_events', title: 'Fulfillment events' }],
-      fields: {
-        timestamp: 'timestamp', severity: 'severity', service: 'service', origin: 'source', message: 'message',
-        correlation: 'correlation_id', reference: 'source_ref', raw: 'raw', parser: 'parser',
-        parseStatus: 'parse_status', structured: 'fields_json',
-      },
-      identifiers: [{ field: 'order_id', label: 'Order ID', param: 'order', type: 'string' }],
-      window: { from: '2018-04-21T09:12:00Z', to: '2018-04-21T09:14:00Z' },
-      records: [],
-    }],
-  }));
-  execFileSync('git', ['-C', dir, 'init', '--quiet']);
-  execFileSync('git', ['-C', dir, 'add', '-A']);
-  execFileSync('git', ['-C', dir, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test', 'commit', '--quiet', '-m', 'log sources']);
-  return { dir, dispose: () => rmSync(dir, { recursive: true, force: true }) };
-}
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';
@@ -56,7 +25,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
   page,
 }) => {
   const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
-  const fixture = demoProjectDeclaringLoopbackLogs();
+  const fixture = demoProjectDeclaringLogs();
   test.info().attach('log-sources-fixture', { body: fixture.dir });
   await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: fixture.dir }]);
   page.on('close', fixture.dispose);
@@ -611,4 +580,55 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   expect(calls.map((call) => call.path)).toContain(
     '/v0/datatug/me/log-connections',
   );
+});
+
+test.describe('hosted origin (REQ:logs-read-in-place)', () => {
+  const HOSTED = 'https://hosted.datatug.test';
+
+  /** Serves the app under a non-loopback origin, so the page behaves as it does on datatug.app. */
+  async function openHosted(page: import('@playwright/test').Page, baseURL: string) {
+    const fixture = demoProjectDeclaringLogs({ withShipping: true });
+    page.on('close', fixture.dispose);
+    await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: fixture.dir }]);
+    const local: string[] = [];
+    page.on('request', (request) => {
+      if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(request.url())) local.push(request.url());
+    });
+    await page.route('https://ovdb.demodb.dev/**', async (route) => {
+      const url = route.request().url();
+      if (url.endsWith('/query')) {
+        await route.fulfill({ status: 200, json: { records: [] } });
+      } else {
+        await route.fulfill({ status: 200, json: { id: 'shipping-logs', collections: ['baseline'], capabilities: { query: true, write: false, read: true } } });
+      }
+    });
+    await page.route(`${HOSTED}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({ url: `${baseURL}${url.pathname}${url.search}` });
+      await route.fulfill({ response });
+    });
+    return local;
+  }
+
+  for (const path of [
+    '/demo/logs?source=shipping-logs&order=11045',
+    '/demo/logs?source=northwind-local&order=11039',
+    '/demo/logs',
+  ]) {
+    test(`${path} sends no request to the visitor's machine`, async ({ page, baseURL }) => {
+      const local = await openHosted(page, baseURL as string);
+      const picker = page.getByLabel('Log source');
+      await page.goto(`${HOSTED}${path}`);
+      await expect(page.locator('main.evidence-page')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole('status').or(page.getByRole('alert')).first()).toBeVisible({ timeout: 30_000 });
+      if (path.includes('northwind-local')) {
+        await expect(page.getByRole('alert')).toContainText('hosted app does not read it');
+      } else {
+        await expect(picker.locator('option')).toHaveText(['Shipping logs']);
+      }
+      await expect(page.getByText('local agent')).toHaveCount(0);
+      await expect(page.locator('details.source-settings')).toHaveCount(0);
+      expect(local).toEqual([]);
+    });
+  }
 });

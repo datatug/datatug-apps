@@ -8,6 +8,7 @@ import type { OvdbRow } from '../../ovdb/ovdb-records';
 import { DemoLogsPageComponent } from './demo-logs-page.component';
 import { LogSourceCatalogService } from './log-source-catalog.service';
 import type { LogSource } from './log-source-declarations';
+import { APP_SERVED_FROM_LOOPBACK } from './log-source-reach';
 import { declaredShippingLogs } from './log-source-declarations.spec-helper';
 
 @Component({
@@ -50,12 +51,13 @@ const malformedRow: OvdbRow = {
 
 type Request = { url: string; method: string; body?: string; authorization?: string };
 
-async function setup(params: Params, options: { rows?: readonly OvdbRow[]; sources?: readonly LogSource[] | Error; expectRows?: number } = {}) {
+async function setup(params: Params, options: { rows?: readonly OvdbRow[]; sources?: readonly LogSource[] | Error; expectRows?: number; hosted?: boolean; fetchFails?: boolean } = {}) {
   const requests: Request[] = [];
   const paramMap = new BehaviorSubject(convertToParamMap(params));
   const route = { snapshot: { queryParamMap: paramMap.value }, queryParamMap: paramMap.asObservable() };
   vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    if (options.fetchFails) throw new TypeError('Failed to fetch');
     requests.push({ url, method: init?.method ?? 'GET', body: init?.body?.toString(), authorization: new Headers(init?.headers).get('Authorization') ?? undefined });
     if (url === 'https://ovdb.demodb.dev/v1/databases/shipping-logs') return new Response(JSON.stringify(shippingDescriptor), { status: 200 });
     if (url === 'http://127.0.0.1:6832/v1/databases/northwind_evidence') return new Response(JSON.stringify(northwindDescriptor), { status: 200 });
@@ -68,6 +70,7 @@ async function setup(params: Params, options: { rows?: readonly OvdbRow[]; sourc
     imports: [DemoLogsPageComponent],
     providers: [
       provideRouter([]),
+      ...(options.hosted ? [{ provide: APP_SERVED_FROM_LOOPBACK, useValue: false }] : []),
       { provide: ActivatedRoute, useValue: route },
       { provide: LogSourceCatalogService, useValue: { sources: () => sources instanceof Error ? Promise.reject(sources) : Promise.resolve(sources) } },
     ],
@@ -224,5 +227,44 @@ describe('DemoLogsPageComponent', () => {
     } }));
     await vi.waitFor(() => expect(requests.filter((r) => r.method === 'POST')).toHaveLength(2));
     expect(where(requests.at(-1))).toContainEqual({ field: 'order_id', op: '==', value: 11038 });
+  });
+
+  describe('on a hosted origin (REQ:logs-read-in-place)', () => {
+    const calledMachine = (requests: Request[]) => requests.filter((r) => /\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(r.url));
+
+    it('hides declared loopback sources from the picker and reads the public one', async () => {
+      const { requests, el, component } = await setup({ order: '11045' }, { hosted: true, rows: [shippingRow], expectRows: 1 });
+      expect(component.sources().map((s) => s.id)).toEqual(['shipping-logs']);
+      expect(el.textContent).not.toContain('local agent');
+      expect(el.querySelector('.source-settings')).toBeNull();
+      expect(calledMachine(requests)).toEqual([]);
+    });
+
+    it('refuses ?source=<loopback source> without any request and says why', async () => {
+      const { requests, el } = await setup({ source: 'northwind-local', order: '11039' }, { hosted: true });
+      expect(requests).toEqual([]);
+      expect(el.querySelector('[role="alert"]')?.textContent).toContain('hosted app does not read it');
+    });
+
+    it('refuses an ad hoc loopback or private-network address', async () => {
+      const { requests, component } = await setup({ order: '11045' }, { hosted: true, rows: [shippingRow], expectRows: 1 });
+      const count = requests.length;
+      for (const url of ['http://127.0.0.1:6832', 'http://localhost:6832', 'http://[::1]:6832', 'https://192.168.1.5', 'https://10.0.0.2']) {
+        component.baseUrl.set(url);
+        component.databaseId.set('northwind_evidence');
+        component.adhocCollection.set('fulfillment_events');
+        component.readAdhoc();
+        await vi.waitFor(() => expect(component.state()).toBe('error'));
+        expect(component.error()).toContain('hosted app does not read it');
+      }
+      expect(requests).toHaveLength(count);
+    });
+
+    it('shows a stated message, not the raw "Failed to fetch", when the public source is unreachable', async () => {
+      const { el } = await setup({ order: '11045' }, { hosted: true, fetchFails: true });
+      const alert = el.querySelector('[role="alert"]')?.textContent ?? '';
+      expect(alert).toContain('could not be reached');
+      expect(alert).not.toContain('Failed to fetch');
+    });
   });
 });

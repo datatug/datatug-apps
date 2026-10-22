@@ -518,17 +518,6 @@ datatugProjectRoutes.unshift(
   },
 );
 
-// Last: an address that names no page of this project shows a not-found page inside the
-// project instead of failing to match (NG04002, crash dialog, redirect home) — for example
-// `-/dbmodels` while ENABLE_EMPTY_SHELL_PAGES is false.
-datatugProjectRoutes.push({
-  path: '**',
-  loadComponent: () =>
-    import('../pages/project-page-not-found/project-page-not-found.component').then(
-      (m) => m.ProjectPageNotFoundComponent,
-    ),
-});
-
 @NgModule({
   imports: [RouterModule.forChild(datatugProjectRoutes)],
   exports: [RouterModule],
