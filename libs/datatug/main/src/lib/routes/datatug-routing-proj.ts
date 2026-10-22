@@ -194,11 +194,16 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
-    path: 'shipping',
+    path: 'sources/:sourceId',
     loadComponent: () =>
-      import('../shipping/shipping-workspace.component').then(
-        (m) => m.ShippingWorkspaceComponent,
+      import('../source-workspace/source-workspace-page.component').then(
+        (m) => m.SourceWorkspacePageComponent,
       ),
+  },
+  {
+    path: 'shipping',
+    pathMatch: 'full',
+    redirectTo: 'sources/shipping-working-copy',
   },
   {
     path: 'boards/new',

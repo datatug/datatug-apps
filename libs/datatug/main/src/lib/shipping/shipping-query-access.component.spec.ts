@@ -1,8 +1,10 @@
+import { SOURCE_UI_SCOPE } from '../source-workspace/source-workspace-contract';
+import { mountShippingController } from './shipping-controller.spec-helper';
 import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, Subject, throwError } from 'rxjs';
-import { ShippingQueryAccessComponent } from './shipping-query-access.component';
+import { ShippingPublicationController } from './shipping-publication.controller';
 import { ShippingApiService } from './shipping-api.service';
 const page = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../detective/detective-page-context', () => ({
@@ -31,22 +33,20 @@ describe('Shipping current query access lifecycle', () => {
       context: () => ({ principal: actor() }),
     };
     TestBed.configureTestingModule({
-      imports: [ShippingQueryAccessComponent],
+      imports: [],
       providers: [{ provide: ShippingApiService, useValue: api }],
     });
   });
   const mount = async () => {
-    const f = TestBed.createComponent(ShippingQueryAccessComponent);
-    f.componentRef.setInput('environments', ['demo']);
-    f.componentRef.setInput('canWrite', true);
+    const f = await mountShippingController(ShippingPublicationController);
+    f.setInput('environments', ['demo']);
+    f.setInput('canWrite', true);
     f.detectChanges();
     await f.whenStable();
     return f;
   };
   const choose = async (f: Awaited<ReturnType<typeof mount>>) => {
-    const select = f.nativeElement.querySelector('select') as HTMLSelectElement;
-    select.value = 'demo';
-    select.dispatchEvent(new Event('change'));
+    f.componentInstance.chooseEnvironment('demo');
     await f.whenStable();
   };
   it('requires explicit admitted environment and observed absence before CAS0; rereads current state after an old acknowledgement', async () => {
@@ -68,7 +68,7 @@ describe('Shipping current query access lifecycle', () => {
       exists: true,
       publication: { revision: 3, enabled: false },
     });
-    expect(f.nativeElement.textContent).toContain('Query access disabled');
+    expect(f.componentInstance.enabled()).toBe(false);
   });
   it('does not turn read failure into absent state or enable an unobserved mutation', async () => {
     api.publication.mockReturnValue(
@@ -79,7 +79,7 @@ describe('Shipping current query access lifecycle', () => {
     f.componentInstance.prepare(true);
     expect(api.publish).not.toHaveBeenCalled();
     expect(f.componentInstance.current()).toBeUndefined();
-    expect(f.nativeElement.querySelector('[role=alert]')).toBeTruthy();
+    expect(f.componentInstance.error()).not.toBe('');
   });
   it('retains the exact uncertain intent across remount;401 requires explicit metadata refresh then exact retry', async () => {
     api.publish.mockReturnValue(
@@ -137,6 +137,48 @@ describe('Shipping current query access lifecycle', () => {
     });
     expect(f.componentInstance.current()).toBeUndefined();
     f.destroy();
+  });
+  it('preserves an uncertain original from another environment without restoring, reading or overwriting it in a new host scope', async () => {
+    api.publish.mockReturnValue(
+      throwError(() => new HttpErrorResponse({ status: 401 })),
+    );
+    const first = await mount();
+    await choose(first);
+    first.componentInstance.prepare(true);
+    await first.whenStable();
+    const original = sessionStorage.getItem(
+      'datatug.shipping.publication.intent.v1',
+    );
+    first.destroy();
+    api.publication.mockClear();
+    const next = await mountShippingController(ShippingPublicationController, [
+      {
+        provide: SOURCE_UI_SCOPE,
+        useValue: {
+          projectRef: ref(),
+          actor: actor(),
+          identity: identity(),
+          sourceId: 'shipping-working-copy',
+          environment: 'other',
+        },
+      },
+    ]);
+    next.setInput('environments', ['demo', 'other']);
+    next.setInput('canWrite', true);
+    await next.whenStable();
+    expect(next.componentInstance.pending()).toBeUndefined();
+    expect(next.componentInstance.recoveryBlocked()).toBe(true);
+    expect(api.publication).not.toHaveBeenCalled();
+    next.componentInstance.chooseEnvironment('demo');
+    expect(next.componentInstance.environment()).toBe('');
+    next.componentInstance.chooseEnvironment('other');
+    await next.whenStable();
+    next.componentInstance.prepare(true);
+    await next.whenStable();
+    expect(api.publish).toHaveBeenCalledTimes(1);
+    expect(
+      sessionStorage.getItem('datatug.shipping.publication.intent.v1'),
+    ).toBe(original);
   });
   it('revocation clears the old intent and metadata instead of offering a retry', async () => {
     const f = await mount();
