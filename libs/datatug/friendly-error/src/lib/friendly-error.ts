@@ -190,7 +190,7 @@ function classify(error: unknown, what: string): Parts {
       code: 'RATE-LIMIT',
     };
   }
-  if (status === 401) {
+  if (status === 401 || /not authenticated|no firebase id token/i.test(text)) {
     return {
       kind: 'unauthenticated',
       title: 'Sign in to see this',

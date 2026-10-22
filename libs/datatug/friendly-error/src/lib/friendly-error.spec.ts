@@ -144,4 +144,13 @@ describe('friendlyError', () => {
   it('gives each occurrence a short reference', () => {
     expect(friendlyError(new Error('a')).reference).toMatch(/^[0-9a-f]{8}$/);
   });
+
+  it('treats a missing sign-in token as "sign in", not an unknown failure', () => {
+    const f = friendlyError(
+      'User is not authenticated yet - no Firebase ID token',
+      'the environments',
+    );
+    expect(f.kind).toBe('unauthenticated');
+    expect(f.title).toBe('Sign in to see this');
+  });
 });
