@@ -149,13 +149,17 @@ export class ProjectCardsService {
 
   constructor() {
     // Another person (or signing out) must never be served what the previous one was allowed to read.
+    let previous: string | undefined;
     effect(() => {
-      this.choices.actor();
+      const actor = this.choices.actor();
       untracked(() => {
         this.lists.clear();
         this.cards.clear();
-        this.revisions.clear();
         this.stamps.clear();
+        // Revisions guard saves of the person who read them: dropped on a real switch (A to B, or A signing
+        // out), kept when the sign-in merely resolves (no actor yet, then the user).
+        if (previous !== undefined && previous !== actor) this.revisions.clear();
+        previous = actor;
       });
     });
   }
@@ -343,10 +347,15 @@ export class ProjectCardsService {
     ref: IProjectRef,
     id: string,
     environment?: string,
+    forceReload = false,
   ): Observable<ProjectCard> {
     if (!id || !CARD_ID_PATTERN.test(id))
       return throwError(() => new Error('Invalid card id'));
     const key = this.scopeKey(ref, environment) + '|' + id;
+    if (forceReload) {
+      this.cards.delete(key);
+      this.stamps.get(this.cards)?.delete(key);
+    }
     return this.cached(this.cards, key, () =>
       this.loadCard(ref, id, environment),
     );

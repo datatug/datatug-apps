@@ -413,4 +413,28 @@ describe('ProjectCardsService: cache scope and lifetime', () => {
     http.expectOne((r) => r.url.endsWith('/datatug/cards/card')).flush(customer);
     await again;
   });
+
+  it('reads a card past its cache when asked to', async () => {
+    const card = firstValueFrom(service.getCard(local, 'customer'));
+    http.expectOne((r) => r.url.endsWith('/datatug/cards/card')).flush(customer);
+    await card;
+    const again = firstValueFrom(service.getCard(local, 'customer', undefined, true));
+    http.expectOne((r) => r.url.endsWith('/datatug/cards/card')).flush({ ...customer, title: 'Edited' });
+    expect((await again).title).toBe('Edited');
+  });
+
+  it('drops save revisions on a real user switch, not when the sign-in merely resolves', () => {
+    const revisions = (service as never as { revisions: Map<string, string> }).revisions;
+    revisions.set('k', 'rev-1');
+    actor.set(undefined); // alice -> signed out: a real switch
+    TestBed.tick();
+    expect(revisions.size).toBe(0);
+    revisions.set('k', 'rev-2');
+    actor.set('carol'); // authenticating -> user: nothing to drop
+    TestBed.tick();
+    expect(revisions.get('k')).toBe('rev-2');
+    actor.set('dave'); // carol -> dave
+    TestBed.tick();
+    expect(revisions.size).toBe(0);
+  });
 });

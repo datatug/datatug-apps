@@ -342,6 +342,7 @@
               [boardContext]="ctx.runContext()"
               [cache]="cache"
               [showHeader]="true"
+              (parameterValuesChange)="previewValuesEntered($event)"
             />
           </div>
         } @else {

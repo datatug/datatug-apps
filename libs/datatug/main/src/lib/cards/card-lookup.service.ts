@@ -266,6 +266,7 @@ export class CardLookupService {
       (key === undefined || this.card() || this.cardLoading())
     )
       return;
+    const refreshed = key !== undefined && key === this.loadedFor && active?.card !== this.loadedBrief;
     this.cardLoad?.unsubscribe();
     // Another card, or none: nothing of the previous card stays on show while the next loads.
     if (key !== this.loadedFor) this.card.set(undefined);
@@ -278,7 +279,8 @@ export class CardLookupService {
       return;
     }
     this.cardLoading.set(true);
-    this.cardLoad = this.cards.getCard(ref, key, this.environment()).subscribe({
+    // The list was refreshed (the card may have been edited): the card is read past its cache too.
+    this.cardLoad = this.cards.getCard(ref, key, this.environment(), refreshed).subscribe({
       next: (card) => {
         this.card.set(card);
         this.cardLoading.set(false);

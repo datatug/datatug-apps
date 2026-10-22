@@ -255,6 +255,28 @@ describe('ProjectCardViewComponent', () => {
     expect(run).toHaveBeenCalledOnce();
   });
 
+  it('keeps values entered inline when the same supplied values arrive again, and drops them for different ones', async () => {
+    fixture.componentRef.setInput(
+      'card',
+      queryCard({ parameters: [{ id: 'region', type: 'string', isRequired: true, title: 'Region' }] }),
+    );
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('parameterValues', { customerId: 'ALFKI' });
+    await settle();
+    fixture.componentInstance.setDraft('region', 'EU');
+    fixture.componentInstance.submit();
+    await settle();
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+    // an equal object (what a page produces on every render) is not new input
+    fixture.componentRef.setInput('parameterValues', { customerId: 'ALFKI' });
+    await settle();
+    expect(fixture.nativeElement.querySelector('form')).toBeNull();
+    // other values start over
+    fixture.componentRef.setInput('parameterValues', { customerId: 'ANATR' });
+    await settle();
+    expect(fixture.nativeElement.querySelector('form')).not.toBeNull();
+  });
+
   it('shares one query between cards of the same cache and refresh refetches (AC cache)', async () => {
     const cache = new BoardQueryResults(PROJECT_CARD_RESULTS_OPTIONS);
     const second = TestBed.createComponent(ProjectCardViewComponent);

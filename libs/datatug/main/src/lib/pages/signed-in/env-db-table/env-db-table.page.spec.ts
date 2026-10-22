@@ -468,11 +468,11 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       component = await createComponent([
         { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
       ]);
-      const cellEl = document.createElement('div');
-      cellEl.setAttribute('tabulator-field', 'CustomerId');
-      const row = { getData: () => ({ CustomerId: 5, Name: 'Ann' }) };
-
-      component.onGridRowClick({ target: cellEl } as unknown as Event, row);
+      component.onGridCellSelected({
+        row: {},
+        column: { field: 'CustomerId' },
+        rowData: { CustomerId: 5, Name: 'Ann' },
+      });
 
       const cell = lookupOf(component).cell();
       expect(cell?.identity).toEqual({
@@ -501,17 +501,33 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
           ],
         },
       };
-      const cellEl = document.createElement('div');
-      cellEl.setAttribute('tabulator-field', 'CountryId');
-      component.onGridRowClick(
-        { target: cellEl } as unknown as Event,
-        { getData: () => ({ CountryId: 7 }) },
-      );
+      component.onGridCellSelected({
+        row: {},
+        column: { field: 'CountryId' },
+        rowData: { CountryId: 7 },
+      });
       expect(component.selection()).toBeUndefined();
       expect(lookupOf(component).cell()?.identity.entity).toEqual({
         entity: 'Country',
         field: 'CountryId',
       });
+    });
+
+    it('looks cards up from one source: a click selects semantically, the cell selection feeds the cards', async () => {
+      component = await createComponent([
+        { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      ]);
+      const select = vi.spyOn(lookupOf(component), 'select');
+      const cellEl = document.createElement('div');
+      cellEl.setAttribute('tabulator-field', 'CustomerId');
+      component.onGridRowClick(
+        { target: cellEl } as unknown as Event,
+        { getData: () => ({ CustomerId: 5 }) },
+      );
+      expect(component.selection()?.value).toBe(5);
+      expect(select).not.toHaveBeenCalled();
+      component.onGridCellSelected({ row: {}, column: { field: 'CustomerId' }, rowData: { CustomerId: 5 } });
+      expect(select).toHaveBeenCalledTimes(1);
     });
 
     it('looks cards up when the grid selects a cell by keyboard or touch, anchored on that cell', async () => {

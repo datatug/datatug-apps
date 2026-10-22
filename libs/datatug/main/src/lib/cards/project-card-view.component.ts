@@ -12,7 +12,10 @@ import { FormsModule } from '@angular/forms';
 import { IonButton, IonInput, IonItem, IonToggle } from '@ionic/angular';
 import type { BoardCard, ProjectCard } from '@datatug/board-models';
 import { BoardCardComponent } from '../board/ui/components/board-card/board-card.component';
-import type { BoardQueryResults } from '../board/core/board-query-results.service';
+import {
+  canonicalJson,
+  type BoardQueryResults,
+} from '../board/core/board-query-results.service';
 import type { IProjectRef } from '../core/project-context';
 import type { IBoardContext } from '../models/definition/board/board';
 import { cardQueryIds } from './card-model';
@@ -130,6 +133,10 @@ export class ProjectCardViewComponent {
   readonly formError = signal<string | undefined>(undefined);
   readonly generation = signal(0);
 
+  /** The supplied values compared by content, so an equal object does not look like new input. */
+  private readonly suppliedKey = computed(() =>
+    canonicalJson(this.parameterValues()),
+  );
   readonly values = computed(() => ({
     ...this.parameterValues(),
     ...this.entered(),
@@ -150,10 +157,11 @@ export class ProjectCardViewComponent {
   }));
 
   constructor() {
-    // A different card or newly supplied values drop what the user typed.
+    // A different card or genuinely different supplied values drop what the user typed; the same values
+    // arriving again (a new object, or the page echoing what was entered) do not.
     effect(() => {
       this.card();
-      this.parameterValues();
+      this.suppliedKey();
       untracked(() => {
         this.entered.set({});
         this.draft.set({});

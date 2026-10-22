@@ -594,18 +594,13 @@ from ${this.tableFromClause(currentTable)}`;
   public onGridRowClick = (event: Event, row: unknown): void => {
     try {
       const target = event.target as HTMLElement | null;
-      const cellElement = target?.closest('[tabulator-field]') ?? null;
-      const field = cellElement?.getAttribute('tabulator-field');
+      const field = target
+        ?.closest('[tabulator-field]')
+        ?.getAttribute('tabulator-field');
       if (!field) {
         return;
       }
-      this.selectCardCell(
-        field,
-        (
-          row as { getData?: () => Record<string, unknown> } | undefined
-        )?.getData?.(),
-        cellElement,
-      );
+
       const mapping = this.semanticColumns().find((m) => m.column === field);
       if (!mapping) {
         this.selection.set(undefined);
@@ -677,8 +672,8 @@ from ${this.tableFromClause(currentTable)}`;
 
   /**
    * A cell became the active selection by mouse, touch or keyboard arrow keys (the grid's range selection
-   * navigates cell to cell): looks up its project cards. A click also reaches {@link onGridRowClick}; the
-   * lookup's debounce folds the two into one.
+   * navigates cell to cell): looks up its project cards. Cards are looked up from here only (a click
+   * reaches {@link onGridRowClick} too, which owns the semantic selection).
    */
   public onGridCellSelected(event: {
     row: unknown;

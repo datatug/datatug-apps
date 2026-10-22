@@ -13,7 +13,7 @@ import { CellCardPanelComponent } from './cell-card-panel.component';
 import { CellCardPopoverComponent } from './cell-card-popover.component';
 
 /** Narrowest results area that still has room for the card beside the grid. */
-export const SIDE_PANE_MIN_WIDTH = 900;
+export const SIDE_PANE_MIN_WIDTH = 640;
 
 /**
  * Project cards for the cell selected in a query result: a side pane (or a

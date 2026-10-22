@@ -79,7 +79,7 @@ describe('CardLookupService', () => {
     expect(listCards).toHaveBeenCalledWith(ref, 'LOCAL');
     expect(service.values()).toEqual({ customerId: 3 });
     expect(service.panelOpen()).toBe(true);
-    expect(getCard).toHaveBeenCalledWith(ref, 'customer', 'LOCAL');
+    expect(getCard).toHaveBeenCalledWith(ref, 'customer', 'LOCAL', false);
     expect(service.card()?.id).toBe('customer');
   });
 
@@ -152,7 +152,7 @@ describe('CardLookupService', () => {
     ]);
     service.choose('glob');
     expect(service.active()?.card.id).toBe('glob');
-    expect(getCard).toHaveBeenLastCalledWith(ref, 'glob', 'LOCAL');
+    expect(getCard).toHaveBeenLastCalledWith(ref, 'glob', 'LOCAL', false);
     service.choose('nope');
     expect(service.active()?.card.id).toBe('glob');
   });
@@ -297,6 +297,8 @@ describe('CardLookupService', () => {
     service.select(cell('3'));
     settle();
     expect(getCard).toHaveBeenCalledTimes(2);
+    // ...past the card cache, so an edited card is what shows
+    expect(getCard).toHaveBeenLastCalledWith(ref, 'customer', 'LOCAL', true);
   });
 
   it('shows every card as a popover while the page has no room beside its grid', () => {

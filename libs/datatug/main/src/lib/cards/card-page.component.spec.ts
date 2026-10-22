@@ -1,4 +1,5 @@
-import { Component, input } from '@angular/core';
+import { Component, input, output } from '@angular/core';
+import { By } from '@angular/platform-browser';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { AlertController } from '@ionic/angular';
 import { Subject, of, throwError } from 'rxjs';
@@ -27,6 +28,7 @@ class CardViewStub {
   readonly boardContext = input<unknown>();
   readonly cache = input<unknown>();
   readonly showHeader = input(true);
+  readonly parameterValuesChange = output<Record<string, unknown>>();
   refresh = vi.fn();
   json = () => JSON.stringify(this.parameterValues());
 }
@@ -465,6 +467,17 @@ describe('CardPageComponent', () => {
   });
 
   describe('preview', () => {
+    it("shows the values filled in the card's own input form in the preview inputs", async () => {
+      await create({ params: { cardId: 'customer' }, service: { getCard: vi.fn(() => of(saved)) } });
+      await settleTimers();
+      const view = fixture.debugElement.query(By.directive(CardViewStub)).componentInstance as CardViewStub;
+      view.parameterValuesChange.emit({ customerId: 'ALFKI' });
+      await fixture.whenStable();
+      fixture.detectChanges();
+      expect((q('[data-preview="customerId"]') as never as { value: string }).value).toBe('ALFKI');
+      expect(q('.view').textContent).toContain('{"customerId":"ALFKI"}');
+    });
+
     it('renders the card through the shared card view with the values typed into its inputs', async () => {
       await create({ params: { cardId: 'customer' }, service: { getCard: vi.fn(() => of(saved)) } });
       await settleTimers();

@@ -274,6 +274,21 @@ describe('CellCardPopoverComponent', () => {
     outside.remove();
   });
 
+  it('still closes on Escape when a stray inline ion-popover that is not presented exists', async () => {
+    await settle();
+    // Ionic marks an inline overlay that is not presented overlay-hidden
+    const stray = document.createElement('ion-popover');
+    stray.classList.add('overlay-hidden');
+    document.body.appendChild(stray);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(lookup.dismiss).toHaveBeenCalledTimes(1);
+    // presented: Escape belongs to it
+    stray.classList.remove('overlay-hidden');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(lookup.dismiss).toHaveBeenCalledTimes(1);
+    stray.remove();
+  });
+
   it('stops listening once the tooltip is closed', async () => {
     lookup.tooltipOpen.set(false);
     await settle();
@@ -323,7 +338,7 @@ describe('ResultCellCardsComponent', () => {
     expect(select).toHaveBeenLastCalledWith(undefined);
   });
 
-  it('tells the page when the pane opens, and turns cards into popovers below 900px of results width', async () => {
+  it('tells the page when the pane opens, and turns cards into popovers below 640px of results width', async () => {
     const observers: { cb: ResizeObserverCallback; el: Element; disconnect: () => void }[] = [];
     vi.stubGlobal(
       'ResizeObserver',
@@ -345,15 +360,15 @@ describe('ResultCellCardsComponent', () => {
       expect(observers[0].el).toBe(fixture.nativeElement.parentElement);
       const resize = (width: number) =>
         observers[0].cb([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver);
-      resize(899);
+      resize(639);
       expect(lookup.compact()).toBe(true);
-      resize(900);
+      resize(640);
       expect(lookup.compact()).toBe(false);
       lookup.matches.set([{ card: { id: 'c', title: 'C' } as never, parameterId: 'p', rank: 1 }]);
       lookup.resolvedCell.set({ identity: { column: 'x' }, value: 1 });
       TestBed.tick();
       expect(opened.at(-1)).toBe(true);
-      resize(700);
+      resize(600);
       TestBed.tick();
       expect(opened.at(-1)).toBe(false); // a narrow page gets a popover, not a pane
       expect(lookup.mode()).toBe('tooltip');

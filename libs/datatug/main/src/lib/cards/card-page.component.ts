@@ -512,6 +512,17 @@ export class CardPageComponent {
       }
     this.previewInputError.update((all) => ({ ...all, [id]: message }));
   }
+  /** The card's own input form was filled in: the preview inputs show (and keep) the same values. */
+  protected previewValuesEntered(values: Record<string, unknown>): void {
+    const text: Record<string, string> = {};
+    for (const p of this.previewCard()?.parameters ?? []) {
+      const value = values[p.id];
+      if (value === undefined || value === null) continue;
+      text[p.id] = typeof value === 'object' ? JSON.stringify(value) : String(value);
+    }
+    this.previewText.set(text);
+    this.previewInputError.set({});
+  }
   protected refreshPreview(): void {
     this.view()?.refresh();
   }

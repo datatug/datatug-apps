@@ -136,6 +136,7 @@ export class CellCardPopoverComponent {
     ].some(
       (overlay) =>
         !overlay.classList.contains('cell-card-popover') &&
+        // Ionic marks every overlay that is not presented (an inline one waiting for isOpen) overlay-hidden.
         !overlay.classList.contains('overlay-hidden'),
     );
   }
