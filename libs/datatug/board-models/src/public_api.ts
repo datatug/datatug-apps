@@ -78,3 +78,26 @@ export {
   editBoardDefinition,
   BoardDefinitionEdit,
 } from './lib/board-definition-edit';
+
+// New public exports for human review — standalone project cards (spec/features/project-cards):
+export {
+  BOARD_WIDGET_NAME_TEXT,
+  BOARD_WIDGET_NAME_FIELDS,
+  CARD_ID_PATTERN,
+  CardDisplay,
+  CardMatchRule,
+  CardParameterDef,
+  ProjectCard,
+  ProjectCardBrief,
+  BoardCardRef,
+  ParameterRowsSource,
+  TextWidgetDef,
+  FieldsWidgetDef,
+} from './lib/card';
+export {
+  CardCellIdentity,
+  CardMatch,
+  CardMatchRank,
+  matchCards,
+  matchRuleRank,
+} from './lib/card-match';
