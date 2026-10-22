@@ -138,8 +138,11 @@ export function resolveParameterMeaning(
   entities: readonly (LookupEntity | null | undefined)[],
   parameter: Pick<IParameterDef, 'id' | 'meta'>,
 ): ParameterMeaning | undefined {
-  if (parameter.meta?.entity && parameter.meta.field)
-    return { entity: parameter.meta.entity, field: parameter.meta.field, provenance: 'declared' };
+  if (parameter.meta) {
+    // A declared meta with a blank part is invalid: no meaning, and the name is not tried instead (Core twin).
+    const { entity, field } = parameter.meta;
+    return entity?.trim() && field?.trim() ? { entity, field, provenance: 'declared' } : undefined;
+  }
   const name = parameter.id.replace(/^@/, '');
   if (!name) return undefined;
   const matches: ParameterMeaning[] = [];
