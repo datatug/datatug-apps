@@ -20,10 +20,12 @@
       Boards are unavailable for this project connection or branch.
     </p>
   } @else if (loadError()) {
-    <div class="ion-padding">
-      <p role="alert">{{ loadError() }}</p>
-      <ion-button (click)="retryLoad()">Retry loading boards</ion-button>
-    </div>
+    <sneat-datatug-error-state
+      what="the boards"
+      [error]="loadFailure()"
+      [hint]="loadGuidance()"
+      (retry)="retryLoad()"
+    />
   } @else {
     @if (favoriteBoards().length) {
       <section class="ion-padding" aria-label="Favorite boards">

@@ -77,6 +77,12 @@ import { injectCardsContext } from './cards-context';
 import { cardEntityNames, cardQueryIds } from './related-links';
 import { ProjectCardViewComponent } from './project-card-view.component';
 import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../components/parameters/parameter-lookup.service';
+import type { IParameterDef } from '../models/definition/parameter';
+import {
   CardNotFoundError,
   ProjectCardsService,
 } from './project-cards.service';
@@ -127,6 +133,7 @@ function move<T>(list: T[], index: number, delta: number): void {
     CardParametersEditorComponent,
     CardWidgetEditorComponent,
     ProjectCardViewComponent,
+    ParameterLookupButtonComponent,
     RouterLink,
     SneatDatatugPageTitleComponent,
     IonBackButton,
@@ -514,7 +521,30 @@ export class CardPageComponent {
 
   // ---- preview -------------------------------------------------------------------
 
+  /** Where preview input pickers look values up (parameter-lookup); a card has no host source. */
+  protected readonly previewLookupContext = computed<ParameterLookupHost>(() => {
+    const environment = this.ctx.environment();
+    return { projectRef: this.ctx.ref(), ...(environment ? { environment } : {}) };
+  });
+  /** Preview inputs whose value was picked in the lookup ("from lookup"). */
+  protected readonly previewPicked = signal<Readonly<Record<string, true>>>({});
+
+  protected previewLookupPicked(id: string, pick: ParameterLookupPick): void {
+    this.setPreviewText(id, String(pick.value));
+    this.previewPicked.update((all) => ({ ...all, [id]: true }));
+  }
+
+  protected asParameterDef(param: object): IParameterDef {
+    return param as IParameterDef;
+  }
+
   protected setPreviewText(id: string, text: string): void {
+    if (this.previewPicked()[id])
+      this.previewPicked.update((all) => {
+        const next = { ...all };
+        delete next[id];
+        return next;
+      });
     this.previewText.update((all) => ({ ...all, [id]: text }));
     const type = this.previewCard()?.parameters?.find((p) => p.id === id)?.type;
     let message = '';

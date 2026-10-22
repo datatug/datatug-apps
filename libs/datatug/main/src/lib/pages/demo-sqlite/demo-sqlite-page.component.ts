@@ -27,6 +27,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -37,6 +38,8 @@ import {
   IonToolbar,
   type ViewWillEnter,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { arrowBackOutline } from 'ionicons/icons';
 import { map } from 'rxjs';
 import { OvdbDatabaseBrowserComponent } from '../../ovdb/ovdb-database-browser.component';
 import {
@@ -59,6 +62,8 @@ const installLabels: Record<DemoDbInstallStep, string> = {
   open: 'Opening the local copy…',
 };
 
+addIcons({ arrowBackOutline });
+
 @Component({
   selector: 'sneat-datatug-demo-sqlite-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -75,6 +80,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
     IonCardTitle,
     IonContent,
     IonHeader,
+    IonIcon,
     IonItem,
     IonLabel,
     IonList,
@@ -87,13 +93,20 @@ const installLabels: Record<DemoDbInstallStep, string> = {
   ],
   styles: `
     .demo-sqlite-progress { width: 100%; height: 8px; accent-color: var(--ion-color-primary); }
+    /* The back link leads to the table list: say so where there is room, keep the arrow only on a phone. */
+    @media (max-width: 575px) { .back-to-tables .back-label { display: none; } .back-to-tables ion-icon { margin: 0; } }
   `,
   template: `
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-menu-button />
-          <ion-back-button [defaultHref]="backHref()" />
+          <!-- Both stay in the toolbar (one is hidden): the link leads to the table list whatever page the user came from. -->
+          <ion-button class="page-back-link back-to-tables" [class.ion-hide]="!tableParam()" data-testid="back-to-tables" aria-label="All tables" [routerLink]="backHref()" routerDirection="back">
+            <ion-icon slot="start" name="arrow-back-outline" />
+            <span class="back-label">All tables</span>
+          </ion-button>
+          <ion-back-button [class.ion-hide]="!!tableParam()" [defaultHref]="backHref()" />
         </ion-buttons>
         <ion-title>{{ entry() ? entry()!.title + ' · local SQLite' : 'DemoDB in DataTug' }}</ion-title>
       </ion-toolbar>
@@ -200,16 +213,21 @@ const installLabels: Record<DemoDbInstallStep, string> = {
             }
             <sneat-datatug-project-copy-offer [dataset]="datasetParam()" [table]="tableParam() || undefined" />
             @if (session()?.connection(); as connection) {
-              <ion-button data-testid="demo-sqlite-close" fill="clear" (click)="closeCopy()">Close local runtime</ion-button>
               <sneat-datatug-ovdb-database-browser
                 [connection]="connection"
+                [showTitle]="false"
+                [hasSourceActions]="true"
                 [basePath]="basePath()"
                 [table]="tableParam()"
                 [focusRecordId]="focusRecordId()"
                 [relatedEvidence]="relatedLogEvidence()"
                 [statusText]="persistent() ? 'Local copy ready' : 'Local copy (memory only)'"
                 [resetNote]="resetNote()"
-              />
+              >
+                <ion-item ovdbSourceAction button detail="false" data-testid="demo-sqlite-close" (click)="closeCopy()">
+                  <ion-label>Close local runtime</ion-label>
+                </ion-item>
+              </sneat-datatug-ovdb-database-browser>
             }
           }
         }

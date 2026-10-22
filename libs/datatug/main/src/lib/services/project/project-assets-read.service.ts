@@ -1,8 +1,10 @@
+import { ProjectItemNotFoundError } from '../../core/project-item-not-found.error';
 import { ProjectEnvironmentStateService } from './project-environment-state.service';
 import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { Injectable, inject } from '@angular/core';
 import {
   Observable,
+  catchError,
   defer,
   from,
   mergeMap,
@@ -173,7 +175,12 @@ export class ProjectAssetsReadService {
     return this.api.boards<IProjBoard[]>(ref);
   }
 
-  board(ref: IProjectRef, id: string, environment?: string): Observable<Board> {
+  board(
+    ref: IProjectRef,
+    id: string,
+    environment?: string,
+    options?: { readonly requireExisting?: boolean },
+  ): Observable<Board> {
     if (isSharedProjectRef(ref))
       return this.hosted
         .board(ref, environment || '', id)
@@ -193,7 +200,19 @@ export class ProjectAssetsReadService {
     if (ref.storeId === 'github' || ref.storeId === 'github.com')
       return this.githubProject(ref).pipe(
         switchMap(
-          (project) => this.github.getBoard(project, id) as Observable<Board>,
+          (project) =>
+            this.github.getBoard(
+              project,
+              id,
+              options?.requireExisting ? { requireExisting: true } : undefined,
+            ) as Observable<Board>,
+        ),
+        catchError((error: unknown) =>
+          options?.requireExisting &&
+          error instanceof Error &&
+          error.message === 'Board metadata unavailable'
+            ? throwError(() => new ProjectItemNotFoundError('board', id))
+            : throwError(() => error),
         ),
       );
     return this.api.board<Board>(ref, id);

@@ -347,8 +347,17 @@
                     fill="outline"
                     [attr.data-preview]="p.id"
                     [value]="previewText()[p.id]"
+                    [helperText]="previewPicked()[p.id] ? 'from lookup' : undefined"
                     (ionInput)="setPreviewText(p.id, val($event))"
-                  />
+                  >
+                    <sneat-datatug-parameter-lookup-button
+                      slot="end"
+                      [parameter]="asParameterDef(p)"
+                      [context]="previewLookupContext()"
+                      [currentValue]="previewText()[p.id]"
+                      (picked)="previewLookupPicked(p.id, $event)"
+                    />
+                  </ion-input>
                 }
               }
             </div>

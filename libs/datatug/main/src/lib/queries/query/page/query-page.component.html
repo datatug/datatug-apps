@@ -575,6 +575,10 @@
       <sneat-datatug-http-query-editor
         [request]="httpReq"
         (requestChange)="httpRequestChanged($event)"
+        [parameters]="httpParameters"
+        (parametersChange)="httpParametersChanged($event)"
+        [rowBinding]="httpRowBinding()"
+        [bagEntries]="httpBagEntries()"
       />
     }
   } @else if (isTextQueryWorkspace()) {
@@ -1117,7 +1121,11 @@
                 <ion-note [id]="parameterDetailsPrefix + '-hint-' + $index">{{ nativeParameterHint(parameter) }}</ion-note>
                 </div>
                 <ion-buttons slot="end">
-                  <!-- Slot for the parameter lookup [...] button (task parameter-lookup); keep this row's structure stable. -->
+                  @if (nativeParameterSupported(parameter)) {
+                    <sneat-datatug-parameter-lookup-button [parameter]="parameter" [context]="parameterLookupContext()"
+                      [currentValue]="nativeParameterValue(parameter.id)" [disabled]="running() || !!queryState.isSaving"
+                      (picked)="onNativeParameterPicked(parameter, $event)" />
+                  }
                   @if (nativeParameterValue(parameter.id) !== '') {
                     <ion-button fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
                       (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" slot="icon-only" /></ion-button>
@@ -1953,6 +1961,11 @@
       }
       </div>
     </div>
+    <sneat-datatug-http-row-action
+      [project]="project"
+      [row]="httpActionRow()"
+      [checkedRows]="httpCheckedRows()"
+    />
     @if (resultChartUnavailableText(); as chartUnavailable) {
       <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }

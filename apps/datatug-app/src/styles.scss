@@ -916,6 +916,35 @@ datatug-cli-chat-page {
 // (datatug-app.component, UX brief §1) which owns the menu affordance, so
 // per-page ion-menu-button bars would double it — hide the page-level ones
 // while the compact header is shown.
-ion-app.compact-header-mode ion-menu-button:not(.app-level-menu-button) {
+//
+// One header per page, at every width (founder, 2026-10-22): a routed page that has an `ion-header` of its own
+// (other than Home's, which yields to the shell) is its single header on narrow layouts. The shell's
+// compact bar is hidden for it, the page's own menu button is shown again, and page-toolbar-adoption.ts
+// adds Sign in (and a menu button where the toolbar has none) to the page's toolbar. A toolbar with
+// a back button keeps the menu too, at the end.
+$page-owns-header: 'ion-router-outlet > .ion-page:not(.ion-page-hidden) ion-header:not(.home-header)';
+
+ion-app.compact-header-mode:not(:has(#{$page-owns-header})) ion-menu-button:not(.app-level-menu-button) {
+  display: none;
+}
+
+ion-app.compact-header-mode:has(#{$page-owns-header}) {
+  > .compact-header {
+    display: none;
+  }
+  > ion-split-pane {
+    top: 0;
+    height: 100%;
+  }
+  // Back on the left, menu at the end (page-toolbar-adoption.ts mounts the end-slot menu): the page's own
+  // start-slot menu button would sit next to the back button, so it yields.
+  ion-toolbar:has(ion-back-button, .page-back-link) ion-menu-button:not(.app-level-menu-button) {
+    display: none;
+  }
+}
+
+// Sign in is adopted at every width (the side panel's own "Please sign in" is not in the page header);
+// the adopted menu button only where the side panel is hidden.
+ion-app:not(.compact-header-mode) .shell-adopted-menu {
   display: none;
 }

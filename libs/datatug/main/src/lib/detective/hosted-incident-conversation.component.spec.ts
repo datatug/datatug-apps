@@ -16,6 +16,9 @@ import { IncidentEvent } from '../incidents/models';
 import { HostedIncidentEvents } from './hosted-linkage.models';
 
 import sourceOperationFixture from '../evidence/testdata/source-operation.facade.go.json';
+import { restoreStorageSpies } from '../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 const context = {
   kind: 'cloud' as const,
   storage: 'firestore' as const,

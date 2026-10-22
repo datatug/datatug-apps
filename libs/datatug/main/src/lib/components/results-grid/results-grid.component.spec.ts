@@ -16,6 +16,9 @@ import {
   type GridApi,
 } from 'ag-grid-community';
 import { RowGroupingModule } from 'ag-grid-enterprise';
+import { restoreStorageSpies } from '../../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 /** A column as the grid's api hands it out. */
 const col = (

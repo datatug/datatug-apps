@@ -104,7 +104,7 @@ for (const width of [1440, 900, 390]) {
 
     await page.getByRole('link', { name: 'Back to Sessions' }).click();
     if (width < 992)
-      await page.locator('ion-menu-button.app-level-menu-button').click();
+      await page.locator('ion-menu-button.app-level-menu-button:visible').click();
     await page.getByTestId('incidents-project-menu-item').click();
     await expect(page).toHaveURL(
       `${new URL(page.url()).origin}${project}/-/incidents`,

@@ -106,9 +106,18 @@ const QUESTION_PARAMS = ['msg', 'q'];
  * The URL of this navigation without the visitor's question, in every other way as it was (path as typed, other
  * parameters, fragment); undefined when it has none, or when there is no navigation (a guard run outside one).
  */
-function withoutQuestion(router: Router, segments: readonly UrlSegment[], allowSearchQuery: boolean): UrlTree | undefined {
+function withoutQuestion(
+  router: Router,
+  segments: readonly UrlSegment[],
+  allowSearchQuery: boolean,
+): UrlTree | undefined {
   const address = readShortGithubAddress(paths(segments));
-  const questionParams = allowSearchQuery && address.kind === 'project' && address.parts.rest === '/quick-search' ? ['msg'] : QUESTION_PARAMS;
+  const questionParams =
+    allowSearchQuery &&
+    address.kind === 'project' &&
+    address.parts.rest === '/quick-search'
+      ? ['msg']
+      : QUESTION_PARAMS;
   const typed = router.getCurrentNavigation()?.extractedUrl;
   if (
     !typed ||

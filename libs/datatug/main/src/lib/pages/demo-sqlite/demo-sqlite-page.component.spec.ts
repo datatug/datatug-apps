@@ -92,7 +92,7 @@ describe('DemoSqlitePageComponent', () => {
     });
     expect(q('table-Artist')?.getAttribute('href')).toBe('/demo/sqlite/chinook/table/Artist');
     expect(q('ovdb-status')?.textContent).toBe('Local copy ready');
-    expect(q('reset-database')).not.toBeNull();
+    expect(q('source-menu')).not.toBeNull();
     expect(q('demo-sqlite-not-persistent')).toBeNull();
     expect(q('demo-sqlite-replaced')).toBeNull();
   });

@@ -10,4 +10,8 @@ describe('query page template for HTTP queries', () => {
   it('disables Save while the HTTP request has a save problem', () => {
     expect(template).toContain('!!httpSaveProblem');
   });
+
+  it('binds the session context bag to the HTTP editor', () => {
+    expect(template).toContain('[bagEntries]="httpBagEntries()"');
+  });
 });
