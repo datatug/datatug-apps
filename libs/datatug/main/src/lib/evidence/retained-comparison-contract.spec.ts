@@ -3,6 +3,7 @@ import facade from './testdata/comparison-facade.go.json';
 import httpFixture from './testdata/comparison-http.go.json';
 import {
   decodeResult,
+  decodeTypedValue,
   prepareEvidenceChart,
   resolveRowEvidence,
   type EvidenceChartSpec,
@@ -23,7 +24,8 @@ import {
   comparisonInputs,
   frozenComparison,
 } from './retained-comparison-contract';
-import { QueryType, type IQueryDef } from '../models/definition/query-def';
+import { QueryType } from '../models/definition/query-def';
+import { fromProjectQueryWire } from '../queries/project-query-contract';
 
 const scope = {
   projectRef: {
@@ -40,10 +42,24 @@ const openScope = {
   nativeProjectId: httpFixture.request.project,
 };
 const declaration = decodeQueryComparison(httpFixture.request.comparison);
-const query = {
-  ...httpFixture.open.savedQuery,
-  request: { queryType: QueryType.SQL, text: httpFixture.open.savedQuery.text },
-} as IQueryDef;
+function fixtureQuery(wire: typeof httpFixture.open.savedQuery) {
+  if (wire.type !== QueryType.SQL) throw new Error('Expected actual SQL fixture');
+  return fromProjectQueryWire({ ...wire, type: QueryType.SQL });
+}
+function fixtureInputs(wire: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(wire).map(([key, raw]) => {
+    const value = decodeTypedValue(raw);
+    if (value.type !== 'integer') throw new Error('Expected actual integer fixture');
+    return [key, { ...value }];
+  }));
+}
+function fixtureSelector<T extends { rowKey: unknown }>(wire: T) {
+  const rowKey = decodeTypedValue(wire.rowKey);
+  if (rowKey.type !== 'integer' && rowKey.type !== 'string')
+    throw new Error('Expected actual scalar row key');
+  return { ...wire, rowKey };
+}
+const query = fixtureQuery(httpFixture.open.savedQuery);
 const chart: EvidenceChartSpec = {
   type: 'timeline',
   selectionId: 'comparison-observations',
@@ -221,7 +237,7 @@ describe('Actual Go retained comparison protocol', () => {
         nativeDatabaseId: original.response.manifest.session.databaseId,
       },
       original.request.selector.execution,
-      original.request.selector,
+      fixtureSelector(original.request.selector),
     );
     expect(opened.originalEvidence?.status).toBe('available');
   });
@@ -255,7 +271,7 @@ describe('Actual Go retained comparison protocol', () => {
       '__proto__',
     );
     const frozen = frozenComparison(
-      cold.savedQuery as unknown as IQueryDef,
+      fixtureQuery(cold.savedQuery),
       live.comparison.inputs,
     );
     expect(frozen?.controlInput).toBe('__proto__');
@@ -291,7 +307,7 @@ describe('Actual Go retained comparison protocol', () => {
       httpFixture.open,
       openScope,
       httpFixture.run.result.execution,
-      httpFixture.openRequest.selector,
+      fixtureSelector(httpFixture.openRequest.selector),
     );
     expect(opened.comparison).toEqual(httpFixture.open.comparison);
     expect(opened.manifest.inputs['order_id']).toEqual({
@@ -324,7 +340,7 @@ describe('Actual Go retained comparison protocol', () => {
         wire,
         openScope,
         httpFixture.run.result.execution,
-        httpFixture.openRequest.selector,
+        fixtureSelector(httpFixture.openRequest.selector),
       ),
     ).rejects.toThrow(/Original order/);
   });
@@ -334,7 +350,7 @@ describe('Actual Go retained comparison protocol', () => {
     });
     const client = TestBed.inject(DetectiveClientService),
       http = TestBed.inject(HttpTestingController);
-    const inputs = structuredClone(httpFixture.request.inputs),
+    const inputs = fixtureInputs(httpFixture.request.inputs),
       comparison = decodeQueryComparison(httpFixture.request.comparison);
     const response = firstValueFrom(
       client.runHostedQuery(
@@ -356,7 +372,7 @@ describe('Actual Go retained comparison protocol', () => {
         },
       ),
     );
-    inputs.order_id.value = '11062';
+    inputs['order_id'].value = '11062';
     const request = http.expectOne((r) =>
       r.url.endsWith('/datatug/queries/run_query'),
     );
@@ -402,7 +418,7 @@ describe('Actual Go retained comparison protocol', () => {
         wire.comparison.declaration.projection.eventColumn = 'artifact';
         break;
       case 'inputs':
-        wire.comparison.inputs.order_id.value = '11062';
+        wire.comparison.inputs['order_id'].value = '11062';
         break;
       case 'revision':
         wire.comparison.queryRevision = 'other';
@@ -501,9 +517,10 @@ describe('Actual Go retained comparison protocol', () => {
         },
       }),
     ).toThrow();
-    const wrong = structuredClone(chart);
-    if (wrong.type !== 'timeline') throw new Error('wrong type');
-    wrong.timeline.eventColumn = 'artifact';
+    if (chart.type !== 'timeline') throw new Error('wrong type');
+    const wrong: EvidenceChartSpec = {
+      ...chart, timeline: { ...chart.timeline, eventColumn: 'artifact' },
+    };
     await expect(
       prepareEvidenceChart(wrong, response.result, identity),
     ).rejects.toThrow(/mappings/);
