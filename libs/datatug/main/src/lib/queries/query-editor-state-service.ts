@@ -1,4 +1,5 @@
 import { isDevicePersonalQuery } from './device-personal-queries';
+import { isCredentialHttpHeader, savableHttpHeaders } from './http-credential-headers';
 import { equalProjectRef, isSharedProjectRef } from '../core/project-context';
 import {
   fromProjectQueryWire,
@@ -88,9 +89,9 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
         (def.request as ISqlQueryRequest).text
       );
     case QueryType.HTTP:
-      return (
-        (queryState.request as IHttpQueryRequest).url !=
-        (def.request as IHttpQueryRequest).url
+      return isHttpRequestChanged(
+        queryState.request as IHttpQueryRequest,
+        def.request as IHttpQueryRequest,
       );
     default:
       throw new Error(
@@ -98,6 +99,42 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
       );
   }
 };
+
+/** Compares what an HTTP query saves: URL, method, savable headers and body. */
+function isHttpRequestChanged(
+  current: IHttpQueryRequest,
+  saved: IHttpQueryRequest,
+): boolean {
+  const savedShape = (r: IHttpQueryRequest) =>
+    JSON.stringify([
+      r.url ?? '',
+      r.method ?? 'GET',
+      savableHttpHeaders(r.headers).map((h) => [h.name, h.value]),
+      r.body ?? '',
+    ]);
+  return savedShape(current) !== savedShape(saved);
+}
+
+/**
+ * A saved HTTP request has its credential headers stripped; the editor keeps
+ * them for the session, so a save must not drop them from the live request.
+ */
+function withSessionHttpHeaders<T extends { queryType: unknown }>(
+  saved: T,
+  live: { queryType: unknown } | undefined,
+): T {
+  if (saved.queryType !== QueryType.HTTP || live?.queryType !== QueryType.HTTP)
+    return saved;
+  const kept = ((live as IHttpQueryRequest).headers ?? []).filter(
+    (h) => h.name.trim() !== '' && isCredentialHttpHeader(h.name),
+  );
+  if (!kept.length) return saved;
+  const savedHttp = saved as unknown as IHttpQueryRequest;
+  return {
+    ...savedHttp,
+    headers: [...(savedHttp.headers ?? []), ...kept],
+  } as unknown as T;
+}
 
 const $state = new BehaviorSubject<IQueryEditorState | undefined>(undefined);
 
@@ -944,7 +981,7 @@ export class QueryEditorStateService {
             request:
               JSON.stringify(current.request) ===
               JSON.stringify(queryState.request)
-                ? def.request
+                ? withSessionHttpHeaders(def.request, queryState.request)
                 : current.request,
             federation:
               JSON.stringify(current.federation ?? current.def?.federation) ===

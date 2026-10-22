@@ -121,11 +121,16 @@ describe('common project query contract', () => {
     );
     expect(JSON.stringify(enriched)).toBe(before);
   });
-  it('refuses unsupported HTTP and asset fields rather than stripping them', () => {
+  it('refuses unsupported HTTP request fields and asset fields rather than stripping them', () => {
     expect(() =>
       toProjectQueryWire({
         id: 'q',
-        request: { queryType: QueryType.HTTP, url: '/foo', method: 'GET' } as IHttpQueryRequest,
+        request: {
+          queryType: QueryType.HTTP,
+          url: '/foo',
+          method: 'GET',
+          timeout: 5,
+        } as unknown as IHttpQueryRequest,
       }),
     ).toThrow(UnsupportedQueryContractError);
     expect(() =>

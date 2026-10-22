@@ -530,7 +530,12 @@
   }
 
   @if (queryState.queryType === 'HTTP') {
-    <sneat-datatug-http-query-editor />
+    @if (httpRequest; as httpReq) {
+      <sneat-datatug-http-query-editor
+        [request]="httpReq"
+        (requestChange)="httpRequestChanged($event)"
+      />
+    }
   } @else if (isTextQueryWorkspace()) {
     @if (isTugqlAuthorJourney()) {
     @if (queryView() === 'compare') {
