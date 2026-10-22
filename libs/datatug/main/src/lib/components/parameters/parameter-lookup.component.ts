@@ -261,7 +261,8 @@ export class ParameterLookupComponent
       this.selectedIndex.set(index >= 0 ? index : undefined);
     } catch (e) {
       if (generation !== this.generation) return;
-      if ((e as Error)?.name === 'AbortError') return;
+      // Only this search's own cancellation is silent; any other abort is a failure to show.
+      if (controller.signal.aborted) return;
       this.page.set(undefined);
       this.selectedIndex.set(undefined);
       this.error.set(`The lookup could not read ${this.collection()}.`);

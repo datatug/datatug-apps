@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   ElementRef,
   Injector,
   computed,
@@ -75,6 +76,8 @@ export class ParameterLookupButtonComponent {
   private availabilityGeneration = 0;
 
   constructor() {
+    // A dialog must not outlive the input it fills (for example, the board navigated away).
+    inject(DestroyRef).onDestroy(() => this.lookup.closeOpen());
     effect(() => {
       const parameter = this.parameter();
       const host = this.context();

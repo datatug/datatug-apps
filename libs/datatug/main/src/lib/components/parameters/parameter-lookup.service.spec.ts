@@ -30,6 +30,7 @@ describe('ParameterLookupService', () => {
   beforeEach(() => {
     dismissed = { data: { value: { type: 'string', value: 'BOTTM' } }, role: 'select' };
     create = vi.fn(() => Promise.resolve({
+      dismiss: vi.fn(() => Promise.resolve(true)),
       present: vi.fn(() => Promise.resolve()),
       onWillDismiss: vi.fn(() => Promise.resolve(dismissed)),
     }));
@@ -76,6 +77,21 @@ describe('ParameterLookupService', () => {
     expect(publicLookup.entity).toHaveBeenCalledWith(ref, 'Customer');
     dismissed = { role: 'cancel' };
     expect(await service.open(meaning, { projectRef: ref })).toBeUndefined();
+    service.closeOpen();
+  });
+
+  it('closes a dialog that is still open when its host goes away', async () => {
+    const service = TestBed.inject(ParameterLookupService);
+    publicLookup.sources.mockResolvedValue([{ id: 'nw' }]);
+    let finish!: (v: unknown) => void;
+    const modal = { dismiss: vi.fn(() => Promise.resolve(true)), present: vi.fn(() => Promise.resolve()), onWillDismiss: vi.fn(() => new Promise((r) => { finish = r; })) };
+    create.mockResolvedValueOnce(modal);
+    const opening = service.open(meaning, { projectRef: ref });
+    await vi.waitFor(() => expect(modal.onWillDismiss).toHaveBeenCalled());
+    service.closeOpen();
+    expect(modal.dismiss).toHaveBeenCalledWith(undefined, 'cancel');
+    finish({ role: 'cancel' });
+    expect(await opening).toBeUndefined();
   });
 
   it('opens nothing when no provider applies', async () => {

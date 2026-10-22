@@ -61,6 +61,15 @@ export class ParameterLookupService {
   }
 
   /** Opens the dialog; resolves with the picked key, or undefined when cancelled or unavailable. */
+  /** The open dialog, so a host that goes away can close it ({@link closeOpen}). */
+  private openModal?: HTMLIonModalElement;
+
+  /** Closes a dialog this service opened and is still showing. */
+  closeOpen(): void {
+    void this.openModal?.dismiss(undefined, 'cancel');
+    this.openModal = undefined;
+  }
+
   async open(parameter: IParameterDef, host: ParameterLookupHost, currentValue?: string): Promise<ParameterLookupResult | undefined> {
     const provider = await this.provider(parameter, host);
     if (!provider) return undefined;
@@ -69,10 +78,12 @@ export class ParameterLookupService {
       componentProps: { parameter, provider, currentValue },
       cssClass: 'parameter-lookup-modal',
     });
+    this.openModal = modal;
     await modal.present();
     // present() resolves after the enter animation, when the overlay no longer moves focus itself.
     void (modal.querySelector?.('ion-searchbar') as HTMLIonSearchbarElement | null)?.setFocus?.();
     const { data, role } = await modal.onWillDismiss<ParameterLookupResult>();
+    if (this.openModal === modal) this.openModal = undefined;
     return role === 'select' && data?.value ? data : undefined;
   }
 

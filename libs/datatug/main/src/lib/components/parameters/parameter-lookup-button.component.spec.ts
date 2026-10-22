@@ -9,7 +9,7 @@ import { ErrorLogger } from '@sneat/core';
 const param: IParameterDef = { id: 'CustomerID', title: 'Customer', type: 'string', meta: { entity: 'Customer', field: 'ID' } };
 
 describe('ParameterLookupButtonComponent', () => {
-  const lookup = { isAvailable: vi.fn(), open: vi.fn() };
+  const lookup = { isAvailable: vi.fn(), open: vi.fn(), closeOpen: vi.fn() };
 
   const render = async (parameter: IParameterDef = param) => {
     const fixture = TestBed.createComponent(ParameterLookupButtonComponent);
@@ -95,5 +95,7 @@ describe('ParameterLookupButtonComponent', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(fixture.componentInstance.available()).toBe(true);
+    fixture.destroy();
+    expect(lookup.closeOpen).toHaveBeenCalled();
   });
 });

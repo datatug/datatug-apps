@@ -41,6 +41,24 @@ interface SchemaProbe {
   readonly primaryKey: readonly string[];
 }
 
+function untilAborted<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(
+      (value) => { signal.removeEventListener('abort', onAbort); resolve(value); },
+      (error: unknown) => { signal.removeEventListener('abort', onAbort); reject(error); },
+    );
+  });
+}
+
+function abortError(): Error {
+  const error = new Error('The lookup was cancelled.');
+  error.name = 'AbortError';
+  return error;
+}
+
 function refKey(ref: IProjectRef): string {
   return JSON.stringify([ref.storeId, ref.projectId, ref.spaceID ?? '', ref.projectApi ?? '', ref.branch ?? '']);
 }
@@ -136,8 +154,12 @@ export class PublicParameterLookupService {
     let entity = this.entities.get(key);
     if (!entity) {
       entity = firstValueFrom(this.assets.entity(ref, entityId))
-        .then((e) => e as unknown as LookupEntity)
-        .catch(() => undefined);
+        .then((e): LookupEntity => e)
+        .catch(() => {
+          // A transient read failure must not hide the button for the whole session.
+          this.entities.delete(key);
+          return undefined;
+        });
       this.entities.set(key, entity);
     }
     return entity;
@@ -174,12 +196,17 @@ export class PublicParameterLookupService {
     });
   }
 
+  /**
+   * The cached catalog probe of a collection. It runs on its own controller, not
+   * the first caller's, so a cancelled search never leaves later searches waiting
+   * on an aborted probe; each caller only stops waiting when its own signal aborts.
+   */
   private schema(ref: IProjectRef, source: PublicLookupSource, signal: AbortSignal): Promise<SchemaProbe> {
     const key = `${refKey(ref)}\u0000${source.connection.id}\u0000${source.collection}`;
     let probe = this.schemas.get(key);
     if (!probe) {
       probe = this.run(ref, source, LOOKUP_SCHEMA_SQL, [{ id: 'collection', type: 'string', isRequired: true }],
-        { collection: { type: 'string', value: source.collection } }, signal)
+        { collection: { type: 'string', value: source.collection } }, new AbortController().signal)
         .then((result) => {
           const rows = result.recordset.rows;
           const columns = rows.map((row) => ({ name: String(row[0]?.value ?? ''), type: String(row[1]?.value ?? '') }));
@@ -192,7 +219,7 @@ export class PublicParameterLookupService {
       probe.catch(() => this.schemas.delete(key));
       this.schemas.set(key, probe);
     }
-    return probe;
+    return untilAborted(probe, signal);
   }
 
   /** Why a source's fixture key cannot serve this parameter, or undefined when it can. */

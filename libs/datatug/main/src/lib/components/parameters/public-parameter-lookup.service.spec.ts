@@ -164,6 +164,22 @@ describe('PublicParameterLookupService', () => {
     expect((execute.mock.calls[0][0].definition.request as { text: string }).text).not.toContain('DROP');
   });
 
+  it('lets a newer search reuse a probe that an aborted search started', async () => {
+    const service = TestBed.inject(PublicParameterLookupService);
+    const sources = await service.sources(param, { projectRef: ref });
+    const provider = service.provider(param, { projectRef: ref }, sources, customer);
+    const first = new AbortController();
+    const older = provider.search(sources[0].id, 'b', first.signal);
+    first.abort();
+    await expect(older).rejects.toMatchObject({ name: 'AbortError' });
+    const page = await provider.search(sources[0].id, 'bo', new AbortController().signal);
+    expect(page.rows.length).toBe(50);
+    expect(execute.mock.calls.filter((c) => (c[0].definition.request as unknown as { text: string }).text.includes('pragma'))).toHaveLength(1);
+    const late = new AbortController();
+    late.abort();
+    await expect(provider.search(sources[0].id, 'x', late.signal)).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
   it('forgets a failed schema probe so Retry can succeed', async () => {
     const service = TestBed.inject(PublicParameterLookupService);
     const sources = await service.sources(param, { projectRef: ref });

@@ -190,12 +190,12 @@ describe('ParameterLookupComponent', () => {
     expect(status()).toBe('2 matches.');
   });
 
-  it('ignores an aborted search', async () => {
+  it('shows an abort it did not ask for as an error, never a blank dialog', async () => {
     const abort = new Error('aborted');
     abort.name = 'AbortError';
     search.mockRejectedValueOnce(abort);
     await create();
-    expect(fixture.componentInstance.error()).toBeUndefined();
+    expect(fixture.componentInstance.error()).toBe('The lookup could not read Customer.');
   });
 
   it('dismisses with the typed key on Select, Enter or double-click, and with nothing on Cancel', async () => {
