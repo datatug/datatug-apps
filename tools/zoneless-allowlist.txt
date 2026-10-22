@@ -25,4 +25,3 @@ libs/datatug/main/src/lib/queries/queries/queries-page.component.ts
 libs/datatug/main/src/lib/queries/query/page/query-page.component.ts
 libs/datatug/main/src/lib/menu/datatug-menu.component.ts
 libs/datatug/main/src/lib/pages/signed-in/env-db-table/foreign-key-card/foreign-key-card.component.ts
-libs/datatug/main/src/lib/queries/query/http-query/http-query-editor.component.ts

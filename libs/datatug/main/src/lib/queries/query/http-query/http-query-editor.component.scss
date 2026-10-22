@@ -1,0 +1,27 @@
+.http-request-line {
+  --padding-start: 8px;
+}
+
+.http-method {
+  min-width: 96px;
+  font-weight: 600;
+}
+
+.http-body-input {
+  font-family: var(--ion-font-family-monospace, ui-monospace, monospace);
+}
+
+.http-response-body {
+  margin: 0;
+  padding: 8px 16px;
+  max-height: 480px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: var(--ion-font-family-monospace, ui-monospace, monospace);
+  font-size: 0.85rem;
+}
+
+.http-run-error {
+  padding: 8px 16px;
+}
