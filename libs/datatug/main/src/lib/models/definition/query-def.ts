@@ -31,7 +31,9 @@ export interface IQueryDef extends IQueryItem {
   readonly comparison?: import('../../queries/query-comparison').QueryComparison;
   /** Store-assigned creation instant (RFC3339); drafts omit it until first save. */
   readonly createdAt?: string;
-  semanticModel?: import("../../queries/semantic-mapping").SemanticModel;
+  /** Descriptive Core metadata; server validation remains authoritative. */
+  readonly purpose?: string;
+  semanticModel?: import('../../queries/semantic-mapping').SemanticModel;
   request: IQueryRequest;
   /** Reviewed schema relationship pins retained by Git-backed query files. */
   relationshipBindings?: readonly IQueryRelationshipBinding[];
@@ -124,4 +126,6 @@ export interface ICredentials {
 }
 
 /** Persisted query records always include store-assigned creation metadata. */
-export interface ISavedQueryDef extends IQueryDef { readonly createdAt: string; }
+export interface ISavedQueryDef extends IQueryDef {
+  readonly createdAt: string;
+}
