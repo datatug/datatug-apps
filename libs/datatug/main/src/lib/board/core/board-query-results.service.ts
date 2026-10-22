@@ -102,11 +102,14 @@ export function cardResultScope(parts: {
 export function cardResultKey(parts: {
   queryId: string;
   revision?: string;
+  /** Anything else that versions the result when no revision exists (query definition, runtime). */
+  variant?: string;
   parameters?: Readonly<Record<string, unknown>>;
 }): string {
   return canonicalJson({
     queryId: parts.queryId,
     revision: parts.revision,
+    variant: parts.variant,
     parameters: parts.parameters ?? {},
   });
 }

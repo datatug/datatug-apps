@@ -165,9 +165,7 @@ const checkNumbers = (root: unknown): void => {
   numbers(root);
 };
 /** Admit raw numeric lexemes before JSON.parse can silently round a persisted definition. */
-export function parseHostedBoardDefinition(raw: string): Board {
-  if (new TextEncoder().encode(raw).length > 256 * 1024)
-    throw new Error('Board definition exceeds the read limit.');
+function assertExactNumericLexemes(raw: string): void {
   for (let i = 0; i < raw.length; i++) {
     if (raw[i] === '"') {
       for (i++; i < raw.length; i++) {
@@ -192,9 +190,22 @@ export function parseHostedBoardDefinition(raw: string): Board {
       i += token.length - 1;
     }
   }
+}
+/** Admit raw numeric lexemes before JSON.parse can silently round a persisted definition. */
+export function parseHostedBoardDefinition(raw: string): Board {
+  if (new TextEncoder().encode(raw).length > 256 * 1024)
+    throw new Error('Board definition exceeds the read limit.');
+  assertExactNumericLexemes(raw);
   const board = JSON.parse(raw) as Board;
   validateHostedBoardDefinition(board);
   return board;
+}
+/** Parses and validates a `card.json` body, with the same size and numeric-precision limits as boards. */
+export function parseProjectCard(raw: string): ProjectCard {
+  if (new TextEncoder().encode(raw).length > 256 * 1024)
+    throw new Error('Project card exceeds the read limit.');
+  assertExactNumericLexemes(raw);
+  return validateProjectCard(JSON.parse(raw));
 }
 /** Hosted definitions are the canonical Go board wire; never strip unsupported data. */
 export function validateHostedBoardDefinition(board: Board): void {

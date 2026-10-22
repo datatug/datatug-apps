@@ -78,6 +78,7 @@ export {
   validateHostedBoardDefinition,
   parseHostedBoardDefinition,
   validateProjectCard,
+  parseProjectCard,
   validateCardRef,
   editBoardDefinition,
   BoardDefinitionEdit,
