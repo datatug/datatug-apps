@@ -1,8 +1,9 @@
 import { provideZonelessChangeDetection } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { SneatAuthStateService, type ISneatAuthState } from '@sneat/auth-core';
-import { AnalyticsService } from '@sneat/core';
+import { USAGE_EVENT_SINK } from '@datatug/product-profiles';
 import { BehaviorSubject } from 'rxjs';
+import { DEMO_PROJECT_REF } from '@datatug/project-address';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
 import {
   NOOP_USAGE_ANALYTICS_SINK,
@@ -10,6 +11,7 @@ import {
   USAGE_ANALYTICS_SINK,
   UsageAnalyticsService,
   declaredUsageValue,
+  usageProject,
   type UsageEventName,
   type UsageEventParams,
 } from './usage-analytics';
@@ -64,7 +66,7 @@ describe('UsageAnalyticsService', () => {
     service.chapterCompleted(demo, 'find');
     service.walkthroughReset(demo);
     const base = {
-      project: 'github.com/datatug/datatug-demo-project',
+      project: 'demo',
       walkthrough_id: 'order-11045',
     };
     expect(sent).toEqual([
@@ -113,7 +115,7 @@ describe('UsageAnalyticsService', () => {
   it('drops an event whose identifier is free text or whose outcome is unknown', () => {
     const { service, sent } = setup();
     service.chapterEntered(demo, 'SELECT * FROM Customers');
-    service.stepEntered({ ...demo, project: '' }, 'find', 'lookup');
+    service.stepEntered(demo, 'find', 'look up');
     service.stepCompleted(demo, 'find', 'lookup', 'maybe' as never);
     service.signInPrompted('nonsense' as never);
     service.signInPrompted('walkthrough', demo, 'bad id');
@@ -152,7 +154,7 @@ describe('UsageAnalyticsService', () => {
     auth.next(signedIn);
     auth.next(signedIn);
     const params = {
-      project: 'github.com/datatug/datatug-demo-project',
+      project: 'demo',
       walkthrough_id: 'order-11045',
       chapter_id: 'incident',
     };
@@ -233,7 +235,7 @@ describe('UsageAnalyticsService', () => {
     expect(sent).toEqual([['source_reset', {}]]);
   });
 
-  it('sends through the shared AnalyticsService when the app provides one', () => {
+  it('sends through the app USAGE_EVENT_SINK when the app provides one', () => {
     const logEvent = vi.fn();
     TestBed.configureTestingModule({
       providers: [
@@ -242,15 +244,74 @@ describe('UsageAnalyticsService', () => {
           provide: SneatAuthStateService,
           useValue: { authState: new BehaviorSubject(anonymous) },
         },
-        { provide: AnalyticsService, useValue: { logEvent } },
+        { provide: USAGE_EVENT_SINK, useValue: { send: logEvent } },
       ],
     });
     TestBed.inject(UsageAnalyticsService).chapterEntered(demo, 'find');
     expect(logEvent).toHaveBeenCalledWith('walkthrough_chapter_entered', {
-      project: 'github.com/datatug/datatug-demo-project',
+      project: 'demo',
       walkthrough_id: 'order-11045',
       chapter_id: 'find',
     });
+  });
+
+  it('never sends the name or the declared ids of any project but the public demo', () => {
+    const { service, sent } = setup();
+    const other = {
+      project: 'github.com/acme/secret-repo',
+      walkthroughId: 'acme-billing-fix',
+      walkthroughVersion: 'v1',
+    };
+    service.chapterEntered(other, 'billing');
+    service.stepCompleted(other, 'billing', 'refund', 'completed');
+    service.signInPrompted('walkthrough', other, 'billing');
+    expect(sent).toEqual([
+      ['walkthrough_chapter_entered', { project: 'other' }],
+      ['walkthrough_step_completed', { project: 'other' }],
+      ['walkthrough_signin_prompted', { project: 'other' }],
+    ]);
+    expect(JSON.stringify(sent)).not.toMatch(/acme|secret|billing|refund/u);
+  });
+
+  it('records lookups, query run outcomes and evidence links with closed words only', () => {
+    const { service, sent } = setup();
+    const demoRef = {
+      storeId: 'github.com',
+      projectId: DEMO_PROJECT_REF.projectId,
+    };
+    const privateRef = { storeId: 'github.com', projectId: 'acme/secret-repo' };
+    service.lookupUsed(demoRef);
+    service.lookupUsed({ ...demoRef, storeId: 'github' });
+    service.lookupUsed({ ...demoRef, branch: 'feature' });
+    service.queryRunFinished('rows', demoRef);
+    service.queryRunFinished('error', privateRef);
+    service.queryRunFinished('SELECT 1' as never, demoRef);
+    service.evidenceLinkCopied('check-run', privateRef);
+    service.evidenceLinkCopied('row' as never, privateRef);
+    service.evidenceLinkOpened('sign-in', undefined);
+    service.evidenceLinkOpened('leaked' as never, undefined);
+    expect(sent).toEqual([
+      ['parameter_lookup_used', { project: 'demo' }],
+      ['parameter_lookup_used', { project: 'demo' }],
+      ['parameter_lookup_used', { project: 'other' }],
+      ['query_run_finished', { outcome: 'rows', project: 'demo' }],
+      ['query_run_finished', { outcome: 'error', project: 'other' }],
+      ['evidence_link_copied', { kind: 'check-run', project: 'other' }],
+      ['evidence_link_opened', { access: 'sign-in', project: 'other' }],
+    ]);
+  });
+
+  it('classifies only the public demo as demo', () => {
+    expect(usageProject('github.com/datatug/datatug-demo-project')).toBe(
+      'demo',
+    );
+    expect(usageProject('github.com/datatug/datatug-demo-project/x')).toBe(
+      'demo',
+    );
+    expect(usageProject('github.com/datatug/datatug-demo-project-fork')).toBe(
+      'other',
+    );
+    expect(usageProject(null)).toBe('other');
   });
 
   it('defaults to a sink that sends nothing', () => {

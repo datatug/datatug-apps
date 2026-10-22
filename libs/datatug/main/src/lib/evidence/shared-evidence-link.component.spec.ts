@@ -16,6 +16,7 @@ import { RetainedEvidenceViewerComponent } from './retained-evidence-viewer.comp
 import {
   PENDING_EVIDENCE_LINK_KEY,
   SharedEvidenceLinkComponent,
+  clearPendingEvidenceLinkOnSignOut,
 } from './shared-evidence-link.component';
 
 const ref = { storeId: 'firestore', spaceID: 'S1', projectId: 'p1' };
@@ -64,11 +65,14 @@ class LoginStub {}
 
 describe('SharedEvidenceLinkComponent', () => {
   let auth: BehaviorSubject<ISneatAuthState | undefined>;
-  let usage: { signInPrompted: ReturnType<typeof vi.fn> };
+  let usage: {
+    signInPrompted: ReturnType<typeof vi.fn>;
+    evidenceLinkOpened: ReturnType<typeof vi.fn>;
+  };
 
   async function open(url: string, state?: ISneatAuthState) {
     auth = new BehaviorSubject<ISneatAuthState | undefined>(state);
-    usage = { signInPrompted: vi.fn() };
+    usage = { signInPrompted: vi.fn(), evidenceLinkOpened: vi.fn() };
     TestBed.configureTestingModule({
       providers: [
         provideZonelessChangeDetection(),
@@ -108,6 +112,10 @@ describe('SharedEvidenceLinkComponent', () => {
     expect(text(harness)).toContain('Shared evidence');
     expect(text(harness)).toContain('Viewer demo check-run');
     expect(usage.signInPrompted).not.toHaveBeenCalled();
+    expect(usage.evidenceLinkOpened).toHaveBeenCalledExactlyOnceWith(
+      'open',
+      ref,
+    );
     const close = harness.routeNativeElement?.querySelector(
       'ion-button',
     ) as HTMLElement;
@@ -140,6 +148,10 @@ describe('SharedEvidenceLinkComponent', () => {
     const harness = await open(`${overview}#evidence=bm90LWEtbGluaw`, signedIn);
     expect(text(harness)).toContain("This evidence link can't be opened.");
     expect(text(harness)).not.toContain('Viewer');
+    expect(usage.evidenceLinkOpened).toHaveBeenCalledExactlyOnceWith(
+      'invalid',
+      ref,
+    );
   });
 
   it('asks an anonymous visitor to sign in, shows no content and keeps the link only in this tab', async () => {
@@ -151,6 +163,10 @@ describe('SharedEvidenceLinkComponent', () => {
     );
     harness.detectChanges();
     expect(usage.signInPrompted).toHaveBeenCalledOnce();
+    expect(usage.evidenceLinkOpened).toHaveBeenCalledExactlyOnceWith(
+      'sign-in',
+      ref,
+    );
     (
       harness.routeNativeElement?.querySelector('ion-button') as HTMLElement
     ).click();
@@ -201,16 +217,37 @@ describe('SharedEvidenceLinkComponent', () => {
     expect(TestBed.inject(Router).url).toBe(overview);
   });
 
-  it('forgets a kept link when the reader signs out', async () => {
-    const harness = await open(overview, signedIn);
-    sessionStorage.setItem(
-      PENDING_EVIDENCE_LINK_KEY,
-      JSON.stringify({ path: overview, fragment, createdAt: Date.now() }),
-    );
-    auth.next(anonymous);
-    harness.detectChanges();
-    await harness.fixture.whenStable();
+  it('forgets a kept link when the reader signs out, on any page', () => {
+    const state = new BehaviorSubject<ISneatAuthState | undefined>(undefined);
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: SneatAuthStateService, useValue: { authState: state } },
+      ],
+    });
+    TestBed.runInInjectionContext(clearPendingEvidenceLinkOnSignOut);
+    const keep = () =>
+      sessionStorage.setItem(PENDING_EVIDENCE_LINK_KEY, JSON.stringify({}));
+    keep();
+    state.next(anonymous);
+    expect(sessionStorage.getItem(PENDING_EVIDENCE_LINK_KEY)).not.toBeNull();
+    state.next(signedIn);
+    state.next({ status: 'authenticating' } as ISneatAuthState);
+    expect(sessionStorage.getItem(PENDING_EVIDENCE_LINK_KEY)).not.toBeNull();
+    state.next(anonymous);
     expect(sessionStorage.getItem(PENDING_EVIDENCE_LINK_KEY)).toBeNull();
+    keep();
+    state.next(anonymous);
+    expect(sessionStorage.getItem(PENDING_EVIDENCE_LINK_KEY)).not.toBeNull();
+  });
+
+  it('needs no auth service to be present', () => {
+    TestBed.configureTestingModule({
+      providers: [provideZonelessChangeDetection()],
+    });
+    expect(() =>
+      TestBed.runInInjectionContext(clearPendingEvidenceLinkOnSignOut),
+    ).not.toThrow();
   });
 
   it('still sends the visitor to sign in when tab storage is refused', async () => {

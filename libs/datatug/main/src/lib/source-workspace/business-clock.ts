@@ -84,6 +84,8 @@ export const BUSINESS_CLOCK_PAGE = new InjectionToken<BusinessClockPage>(
   { providedIn: 'root', factory: () => useDetectivePageContext() },
 );
 
+const MAX_CACHED_SCOPES = 16;
+
 /**
  * One shared read of every declared business clock for the current project page, so every open chip shows the
  * same value. A verified source receipt for this project and actor re-reads it; until the new read lands the
@@ -112,6 +114,12 @@ export class BusinessClockService {
   private readonly held = signal<
     { scope: string; clocks: readonly BusinessClockView[] } | undefined
   >(undefined);
+  /**
+   * Finished reads by scope, for this read generation: coming back to a project page (or opening another page of the
+   * same project) shows the clock without reading the source again. A source receipt starts a new generation.
+   */
+  private readonly cache = new Map<string, readonly BusinessClockView[]>();
+  private cachedGeneration = 0;
   readonly clocks: Signal<readonly BusinessClockView[]> = computed(() => {
     const held = this.held();
     return held && held.scope === this.scope() ? held.clocks : [];
@@ -132,7 +140,16 @@ export class BusinessClockService {
       });
     effect((cleanup) => {
       const scope = this.scope();
-      this.generation();
+      const generation = this.generation();
+      if (generation !== this.cachedGeneration) {
+        this.cache.clear();
+        this.cachedGeneration = generation;
+      }
+      const cached = this.cache.get(scope);
+      if (cached) {
+        this.held.set({ scope, clocks: cached });
+        return;
+      }
       const ref = page.ref(),
         actor = page.context()?.principal,
         identity = page.identity(),
@@ -161,12 +178,16 @@ export class BusinessClockService {
         ),
       ).then((results) => {
         if (abort.signal.aborted || this.destroy.destroyed) return;
-        this.held.set({
-          scope,
-          clocks: results.flatMap((result) =>
-            result.status === 'fulfilled' && result.value ? [result.value] : [],
-          ),
-        });
+        const clocks = results.flatMap((result) =>
+          result.status === 'fulfilled' && result.value ? [result.value] : [],
+        );
+        // A failed read is not kept: the next visit tries again.
+        if (results.every((result) => result.status === 'fulfilled')) {
+          if (this.cache.size >= MAX_CACHED_SCOPES)
+            this.cache.delete(this.cache.keys().next().value as string);
+          this.cache.set(scope, clocks);
+        }
+        this.held.set({ scope, clocks });
       });
     });
   }

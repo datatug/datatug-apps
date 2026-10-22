@@ -1,3 +1,4 @@
+import { USAGE_ANALYTICS_SINK } from '../analytics/usage-analytics';
 import { TestBed } from '@angular/core/testing';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject } from 'rxjs';
@@ -15,6 +16,8 @@ import { parseEvidenceFragment } from './evidence-link';
 import fixture from './testdata/backend-v044-retained.json';
 import sourceFixture from './testdata/source-operation.facade.go.json';
 
+const usageSent: [string, unknown][] = [];
+beforeEach(() => void (usageSent.length = 0));
 const ref = {
   storeId: 'firestore',
   spaceID: 'fixture-space',
@@ -46,6 +49,13 @@ async function render(
   TestBed.configureTestingModule({
     imports: [RetainedEvidenceViewerComponent],
     providers: [
+      {
+        provide: USAGE_ANALYTICS_SINK,
+        useValue: {
+          send: (name: string, params: unknown) =>
+            usageSent.push([name, params]),
+        },
+      },
       {
         provide: SOURCE_EVIDENCE_PRESENTERS,
         useValue: [shippingEvidencePresenter],
@@ -131,6 +141,10 @@ describe('Copy link on retained evidence', () => {
     expect(button.textContent).toContain('Copy link to this run');
     button.click();
     await vi.waitFor(() => expect(writeText).toHaveBeenCalled());
+    // Only the kind of link and demo/other are recorded, never the run.
+    expect(usageSent).toEqual([
+      ['evidence_link_copied', { kind: 'execution', project: 'other' }],
+    ]);
     const url = writeText.mock.calls[0][0] as string;
     expect(url).not.toContain('fixture-row');
     expect(parseEvidenceFragment(url.split('#')[1], ref)?.target).toEqual({

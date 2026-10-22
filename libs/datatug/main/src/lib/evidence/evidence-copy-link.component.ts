@@ -3,6 +3,7 @@ import {
   Component,
   computed,
   effect,
+  inject,
   input,
   signal,
 } from '@angular/core';
@@ -11,6 +12,7 @@ import { addIcons } from 'ionicons';
 import { linkOutline } from 'ionicons/icons';
 import type { IProjectRef } from '../core/project-context';
 import { evidenceLinkUrl, type EvidenceLinkTarget } from './evidence-link';
+import { UsageAnalyticsService } from '../analytics/usage-analytics';
 
 /**
  * Copy link for one retained run (evidence-records REQ:copyable-evidence-link). The link names the run only; whoever
@@ -72,6 +74,7 @@ export class EvidenceCopyLinkComponent {
   readonly environment = input('');
   readonly target = input<EvidenceLinkTarget>();
   readonly label = input('Copy link');
+  private readonly usage = inject(UsageAnalyticsService);
   protected readonly status = signal('');
   protected readonly manual = signal(false);
   protected readonly url = computed(() => {
@@ -94,6 +97,8 @@ export class EvidenceCopyLinkComponent {
   }
 
   protected async copy(link: string) {
+    const kind = this.target()?.kind;
+    if (kind) this.usage.evidenceLinkCopied(kind, this.projectRef());
     try {
       const clipboard = globalThis.navigator?.clipboard;
       if (!clipboard?.writeText) throw new Error('Clipboard unavailable');

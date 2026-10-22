@@ -1,6 +1,8 @@
 import type { AnalyticsConsent } from './analytics-consent';
 import {
   BANNER_TEXT,
+  BANNER_TEXT_WITH_USAGE,
+  bannerText,
   mountAnalyticsConsentBanner,
   PRIVACY_NOTICE_URL,
 } from './analytics-consent-banner';
@@ -44,6 +46,17 @@ describe('analytics consent banner', () => {
     );
   });
 
+  it('names PostHog and its anonymous usage events only where they run', () => {
+    expect(bannerText(false)).toBe(BANNER_TEXT);
+    expect(BANNER_TEXT).not.toContain('PostHog');
+    expect(bannerText(true)).toBe(BANNER_TEXT_WITH_USAGE);
+    const { consent } = fakeConsent();
+    mountAnalyticsConsentBanner(consent, document, window, bannerText(true));
+    expect((banner() as HTMLElement).querySelector('p')?.textContent).toBe(
+      BANNER_TEXT_WITH_USAGE + ' Privacy notice',
+    );
+  });
+
   it('is a labelled region with the contract text, a privacy link and two equal buttons', () => {
     const { consent } = fakeConsent();
     mountAnalyticsConsentBanner(consent, document, window);
@@ -51,7 +64,7 @@ describe('analytics consent banner', () => {
     expect(region.getAttribute('role')).toBe('region');
     expect(region.getAttribute('aria-label')).toBe('Analytics choice');
     expect(BANNER_TEXT).toBe(
-      "We'd like to use analytics (Google Analytics and PostHog) to count visits and see which pages help. They set cookies only if you accept.",
+      "We'd like to use Google Analytics to count visits and see which pages help. It sets cookies only if you accept.",
     );
     expect(region.querySelector('p')?.textContent).toBe(
       BANNER_TEXT + ' Privacy notice',

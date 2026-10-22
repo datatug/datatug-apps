@@ -10,9 +10,11 @@ import type { AnalyticsConsent } from './analytics-consent';
 import { ANALYTICS_CONSENT } from './analytics-consent.token';
 
 /**
- * The shared `AnalyticsService` (PostHog and, where configured, Firebase Analytics) behind the visitor's analytics
- * consent. Until the visitor accepts, nothing is created and every call is dropped, not queued: an event raised
- * before consent is never sent later. The backends are created on the first call made with consent.
+ * The shared `AnalyticsService` of DataTug behind the visitor's analytics consent, and anonymous. Until `granted()`,
+ * nothing is created and every call is dropped, not queued: an event raised before consent is never sent later.
+ * The backends are created on the first call made with consent. Usage analytics are never linked to a signed-in
+ * identity (public-demo REQ:demo-usage-analytics): `identify` (Sneat calls it on every sign-in) is never forwarded,
+ * and neither is `setCurrentScreen`; only events go through, and PostHog's `before_send` keeps the closed list.
  */
 export function consentGatedAnalytics(
   granted: () => boolean,
@@ -23,17 +25,21 @@ export function consentGatedAnalytics(
   return {
     logEvent: (name, params, options) =>
       live()?.logEvent(name, params, options),
-    identify: (userID, set, setOnce) => live()?.identify(userID, set, setOnce),
-    setCurrentScreen: (screen, options) =>
-      live()?.setCurrentScreen(screen, options),
-    // Forgetting an identity is always allowed, and only meaningful for backends that were started.
+    identify: () => undefined,
+    setCurrentScreen: () => undefined,
+    // Forgetting is always allowed (a fresh anonymous id), and only meaningful for backends that were started.
     loggedOut: () => inner?.loggedOut(),
   };
 }
 
-/** Wraps `provideSneatAnalytics(...)` so that its backends start only with consent. */
+/**
+ * Wraps `provideSneatAnalytics(...)` so that its backends start only with consent, and only once `ready()` (PostHog
+ * started by register-posthog.ts with the app's settings), so that Sneat's own PostHog loader never is the first to
+ * call `posthog.init`.
+ */
 export function provideConsentGatedAnalytics(
   sneatAnalytics: Provider,
+  ready: () => boolean = () => true,
 ): Provider {
   const original = sneatAnalytics as FactoryProvider;
   return {
@@ -41,7 +47,7 @@ export function provideConsentGatedAnalytics(
     deps: [ANALYTICS_CONSENT, Injector],
     useFactory: (consent: AnalyticsConsent, injector: Injector) =>
       consentGatedAnalytics(
-        () => consent.granted(),
+        () => consent.granted() && ready(),
         () =>
           runInInjectionContext(injector, () =>
             original.useFactory(

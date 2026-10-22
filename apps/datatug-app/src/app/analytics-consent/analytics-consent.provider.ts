@@ -18,7 +18,10 @@ import {
 import { NavigationEnd, Router } from '@angular/router';
 import { checkoutPrivacyActive } from '../checkout/checkout-privacy-state';
 import { createAnalyticsConsent, type AnalyticsEnv } from './analytics-consent';
-import { mountAnalyticsConsentBanner } from './analytics-consent-banner';
+import {
+  bannerText,
+  mountAnalyticsConsentBanner,
+} from './analytics-consent-banner';
 
 export function browserAnalyticsEnv(win: Window = window): AnalyticsEnv {
   return {
@@ -59,7 +62,12 @@ export function provideAnalyticsConsent(
       const consent = inject(ANALYTICS_CONSENT);
       consent.start();
       followConsentForPosthog(consent, posthog, posthogClient);
-      mountAnalyticsConsentBanner(consent, document, window);
+      mountAnalyticsConsentBanner(
+        consent,
+        document,
+        window,
+        bannerText(!!posthog),
+      );
       router.events.subscribe((event) => {
         if (event instanceof NavigationEnd) consent.pageView();
       });

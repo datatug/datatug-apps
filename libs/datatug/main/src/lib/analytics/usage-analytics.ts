@@ -1,52 +1,73 @@
 import { DestroyRef, Injectable, InjectionToken, inject } from '@angular/core';
+import { DEMO_PROJECT_REF } from '@datatug/project-address';
+import {
+  NOOP_USAGE_EVENT_SINK,
+  USAGE_EVENT_SINK,
+  type UsageEventName,
+  type UsageEventParams,
+  type UsageEventSink,
+} from '@datatug/product-profiles';
 import { SneatAuthStateService } from '@sneat/auth-core';
-import { AnalyticsService } from '@sneat/core';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
+import type { IProjectRef } from '../core/project-context';
 
 /**
  * Anonymous product-usage events (public-demo REQ:demo-usage-analytics, project-walkthroughs
- * REQ:walkthrough-analytics). Privacy is by construction: every event has a fixed name and a fixed
- * set of parameter keys, and each value is either an author-declared identifier (project address,
- * walkthrough/chapter/step ID) or one of a closed set of words. Nothing here takes a user ID,
- * a record key, a parameter or captured value, query text or a result value, so none can be sent.
- * Events go through the shared `AnalyticsService.logEvent`; the app gates that service on the visitor's analytics
- * consent, so nothing is sent before a grant and an event raised before it is dropped, not queued.
+ * REQ:walkthrough-analytics). Privacy is by construction: every event is on the closed list
+ * (`USAGE_EVENT_NAMES`, @datatug/product-profiles) and has a fixed set of parameter keys whose values are closed
+ * words. `project` is only `demo` (the public demo project) or `other`, never a repository or account name, and
+ * walkthrough, chapter and step ids are sent for the public demo only. Nothing here takes a user ID, a record key, a
+ * parameter or captured value, query text or a result value, so none can be sent, and nothing identifies the visitor.
+ * Events go to USAGE_EVENT_SINK: the app provides it only where a consented, anonymous backend runs, gated on the
+ * visitor's analytics consent, so nothing is sent before a grant and an event raised before it is dropped, not queued.
  */
-export type UsageEventName =
-  | 'walkthrough_chapter_entered'
-  | 'walkthrough_chapter_completed'
-  | 'walkthrough_step_entered'
-  | 'walkthrough_step_completed'
-  | 'walkthrough_signin_prompted'
-  | 'walkthrough_signin_completed'
-  | 'walkthrough_reset'
-  | 'signin_prompted'
-  | 'signin_completed'
-  | 'source_reset';
+export type {
+  UsageEventName,
+  UsageEventParams,
+} from '@datatug/product-profiles';
 
-export type UsageEventParams = Readonly<Record<string, string>>;
+/** Where usage events go: the app's USAGE_EVENT_SINK, else nowhere. */
+export type UsageAnalyticsSink = UsageEventSink;
 
-/** Where usage events go: the shared `AnalyticsService` when the app provides one, else nowhere. */
-export interface UsageAnalyticsSink {
-  send(name: UsageEventName, params: UsageEventParams): void;
-}
-
-export const NOOP_USAGE_ANALYTICS_SINK: UsageAnalyticsSink = {
-  send: () => undefined,
-};
+export const NOOP_USAGE_ANALYTICS_SINK: UsageAnalyticsSink =
+  NOOP_USAGE_EVENT_SINK;
 
 export const USAGE_ANALYTICS_SINK = new InjectionToken<UsageAnalyticsSink>(
   'usage analytics sink',
-  {
-    providedIn: 'root',
-    factory: () => {
-      const analytics = inject(AnalyticsService, { optional: true });
-      return analytics
-        ? { send: (name, params) => analytics.logEvent(name, params) }
-        : NOOP_USAGE_ANALYTICS_SINK;
-    },
-  },
+  { providedIn: 'root', factory: () => inject(USAGE_EVENT_SINK) },
 );
+
+/** The only values the `project` parameter takes. */
+export type UsageProject = 'demo' | 'other';
+
+/** The public demo project's address, as walkthroughs declare it. */
+const DEMO_PROJECT_ADDRESS =
+  /^github\.com\/datatug\/datatug-demo-project(?:\/|$)/u;
+
+/** `demo` for the public demo project (a ref or its declared address), `other` for anything else. */
+export function usageProject(
+  project: IProjectRef | string | undefined | null,
+): UsageProject {
+  if (typeof project === 'string')
+    return DEMO_PROJECT_ADDRESS.test(project) ? 'demo' : 'other';
+  // The public original only (its legacy `github` store id included): never a branch, a working copy or a shared copy.
+  return project &&
+    (project.storeId === DEMO_PROJECT_REF.storeId ||
+      project.storeId === 'github') &&
+    project.projectId === DEMO_PROJECT_REF.projectId &&
+    !project.spaceID &&
+    !project.projectApi &&
+    !project.branch
+    ? 'demo'
+    : 'other';
+}
+
+/** How a query run ended. */
+export type QueryRunOutcome = 'rows' | 'empty' | 'error' | 'cancelled';
+/** What an evidence link points at. */
+export type EvidenceLinkKind = 'execution' | 'check-run';
+/** What opening an evidence link led to. */
+export type EvidenceLinkAccess = 'open' | 'sign-in' | 'invalid';
 
 /** The public walkthrough an event belongs to. Only author-declared identifiers. */
 export interface WalkthroughAnalyticsContext {
@@ -74,8 +95,11 @@ export function declaredUsageValue(value: string): string {
 function contextParams(
   context: WalkthroughAnalyticsContext,
 ): Record<string, string> {
+  const project = usageProject(context.project);
+  // A walkthrough of any other project is counted, but its author-declared ids are never sent.
+  if (project !== 'demo') return { project };
   return {
-    project: declaredUsageValue(context.project),
+    project,
     walkthrough_id: declaredUsageValue(context.walkthroughId),
     ...(context.walkthroughVersion === undefined
       ? {}
@@ -127,7 +151,10 @@ export class UsageAnalyticsService {
 
   constructor() {
     const destroy = inject(DestroyRef);
-    const auth = inject(SneatAuthStateService).authState.subscribe((state) => {
+    // Optional: a page rendered without the auth state (tests, embeds) still records its events.
+    const auth = inject(SneatAuthStateService, {
+      optional: true,
+    })?.authState.subscribe((state) => {
       this.signedIn =
         state?.status === 'authenticated' &&
         !!state.user &&
@@ -140,7 +167,7 @@ export class UsageAnalyticsService {
       },
     );
     destroy.onDestroy(() => {
-      auth.unsubscribe();
+      auth?.unsubscribe();
       resets.unsubscribe();
     });
   }
@@ -190,6 +217,43 @@ export class UsageAnalyticsService {
         step_id: declaredUsageValue(stepId),
         outcome,
       };
+    });
+  }
+
+  /** A parameter value was picked with the lookup. */
+  lookupUsed(project: IProjectRef | undefined) {
+    this.emit('parameter_lookup_used', () => ({
+      project: usageProject(project),
+    }));
+  }
+
+  /** A query run ended; only the kind of outcome is recorded, never the query, its parameters or its rows. */
+  queryRunFinished(outcome: QueryRunOutcome, project: IProjectRef | undefined) {
+    this.emit('query_run_finished', () => {
+      if (!['rows', 'empty', 'error', 'cancelled'].includes(outcome))
+        throw new Error('Unknown query run outcome.');
+      return { outcome, project: usageProject(project) };
+    });
+  }
+
+  /** An evidence link was copied. */
+  evidenceLinkCopied(kind: EvidenceLinkKind, project: IProjectRef | undefined) {
+    this.emit('evidence_link_copied', () => {
+      if (kind !== 'execution' && kind !== 'check-run')
+        throw new Error('Unknown evidence link kind.');
+      return { kind, project: usageProject(project) };
+    });
+  }
+
+  /** An evidence link was opened, and what it led to. */
+  evidenceLinkOpened(
+    access: EvidenceLinkAccess,
+    project: IProjectRef | undefined,
+  ) {
+    this.emit('evidence_link_opened', () => {
+      if (!['open', 'sign-in', 'invalid'].includes(access))
+        throw new Error('Unknown evidence link access.');
+      return { access, project: usageProject(project) };
     });
   }
 
@@ -269,6 +333,9 @@ export class UsageAnalyticsService {
     let value: UsageEventParams;
     try {
       value = typeof params === 'function' ? params() : params;
+      // A walkthrough of any project but the public demo is counted, its author-declared ids never sent.
+      if (name.startsWith('walkthrough_') && value['project'] !== 'demo')
+        value = { project: 'other' };
       this.sink.send(name, value);
     } catch {
       return;

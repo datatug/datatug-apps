@@ -39,6 +39,23 @@ describe('Shipping working copy business clock', () => {
     expect(revision).toHaveBeenCalledWith(scope.projectRef);
   });
 
+  it('reads nothing for a project that cannot be a Shipping working copy', async () => {
+    const revision = vi.fn(() => of({ businessClock: '2018-05-20T10:05:00Z' }));
+    const registration = setup(revision as never);
+    for (const projectRef of [
+      { storeId: 'github.com', projectId: 'secret@acme' },
+      { ...scope.projectRef, branch: 'b1' },
+      { ...scope.projectRef, projectApi: 'https://api.example' },
+    ])
+      await expect(
+        registration.businessClock?.(
+          { ...scope, projectRef } as never,
+          new AbortController().signal,
+        ),
+      ).resolves.toBeUndefined();
+    expect(revision).not.toHaveBeenCalled();
+  });
+
   it('rejects when the current read fails or the caller aborts', async () => {
     const failing = setup((() =>
       throwError(() => new Error('denied'))) as never);

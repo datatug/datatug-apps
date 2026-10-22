@@ -64,10 +64,9 @@ describe('consentGatedAnalytics', () => {
     expect(inner.logEvent.mock.calls).toEqual([
       ['walkthrough_chapter_completed', { chapter_id: 'find' }, undefined],
     ]);
-    expect(inner.identify).toHaveBeenCalledWith('u1', { a: 1 }, { b: 2 });
-    expect(inner.setCurrentScreen).toHaveBeenCalledWith('home', {
-      global: true,
-    });
+    // Never linked to a signed-in identity, never a screen name.
+    expect(inner.identify).not.toHaveBeenCalled();
+    expect(inner.setCurrentScreen).not.toHaveBeenCalled();
     expect(inner.loggedOut).toHaveBeenCalledOnce();
     granted = false;
     analytics.logEvent('walkthrough_reset', {});
@@ -126,8 +125,35 @@ describe('provideConsentGatedAnalytics', () => {
         }),
       ],
     });
-    TestBed.inject(AnalyticsService).setCurrentScreen('x');
-    expect(inner.setCurrentScreen).toHaveBeenCalledWith('x', undefined);
+    TestBed.inject(AnalyticsService).logEvent('source_reset');
+    expect(inner.logEvent).toHaveBeenCalledWith(
+      'source_reset',
+      undefined,
+      undefined,
+    );
+  });
+
+  it('sends nothing, and creates no backend, until PostHog has been started by the app', () => {
+    const consent = fakeConsent(true);
+    const inner = backend();
+    const factory = vi.fn(() => inner);
+    let ready = false;
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        { provide: ANALYTICS_CONSENT, useValue: consent.consent },
+        provideConsentGatedAnalytics(
+          { provide: AnalyticsService, useFactory: factory },
+          () => ready,
+        ),
+      ],
+    });
+    const analytics = TestBed.inject(AnalyticsService);
+    analytics.logEvent('source_reset');
+    expect(factory).not.toHaveBeenCalled();
+    ready = true;
+    analytics.logEvent('source_reset');
+    expect(inner.logEvent).toHaveBeenCalledOnce();
   });
 });
 

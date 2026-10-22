@@ -623,6 +623,7 @@ import {
 } from '../../query-editor-state-service';
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
+import { UsageAnalyticsService } from '../../../analytics/usage-analytics';
 
 /** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
  * `confirmConflict()`'s own comment on why a confirmation is invalidated (not silently
@@ -1297,11 +1298,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const ref = this.project?.ref;
     if (!ref?.spaceID || !this.retainedQueryPending() || this.running()) return;
     try {
-      const native = this.retainedScope.capture(
-        ref,
-        undefined,
-        { environment: this.hostedEnvironment() },
-      );
+      const native = this.retainedScope.capture(ref, undefined, {
+        environment: this.hostedEnvironment(),
+      });
       const state = await firstValueFrom(
         this.detectiveClient
           .state({
@@ -2223,6 +2222,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.nativeParameterErrors().size > 0,
   );
   public readonly running = signal(false);
+  private readonly usage = inject(UsageAnalyticsService);
   public readonly federatedProgress = signal<
     FederatedQueryProgress | undefined
   >(undefined);
@@ -4287,14 +4287,23 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const cards = this.resultCellCards();
     if (!cards) return;
     const colId =
-      typeof event.column === 'string' ? event.column : event.column?.getColId();
+      typeof event.column === 'string'
+        ? event.column
+        : event.column?.getColId();
     const index = colId?.startsWith('result_') ? Number(colId.slice(7)) : NaN;
     const columns = this.displayedRecordset()?.columns;
     const node =
       event.rowIndex === null
         ? undefined
         : event.api.getDisplayedRowAtIndex(event.rowIndex);
-    if (!colId || !columns || !columns[index] || !node?.data || node.group || node.footer) {
+    if (
+      !colId ||
+      !columns ||
+      !columns[index] ||
+      !node?.data ||
+      node.group ||
+      node.footer
+    ) {
       cards.clear();
       return;
     }
@@ -6189,6 +6198,29 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   constructor() {
+    // public-demo REQ:demo-usage-analytics: when a run ends, only the kind of its outcome is recorded.
+    let wasRunning = false;
+    effect(() => {
+      const running = this.running();
+      untracked(() => {
+        if (wasRunning && !running) {
+          const result = this.runResult();
+          const rows =
+            result?.totalRows ?? result?.recordset?.rows?.length ?? 0;
+          this.usage.queryRunFinished(
+            this.runError()
+              ? 'error'
+              : !result
+                ? 'cancelled'
+                : rows > 0
+                  ? 'rows'
+                  : 'empty',
+            this.project?.ref,
+          );
+        }
+        wasRunning = running;
+      });
+    });
     this.retainedScope.changes$
       .pipe(takeUntil(this.destroyed))
       .subscribe(() => {
@@ -8599,11 +8631,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     let native: { actor: string; signal: AbortSignal };
     let intent: { operationId: string; payload: unknown } | undefined;
     try {
-      native = this.retainedScope.capture(
-        ref,
-        undefined,
-        { environment },
-      );
+      native = this.retainedScope.capture(ref, undefined, { environment });
       if (selection) {
         if (
           selection.environment !== environment ||

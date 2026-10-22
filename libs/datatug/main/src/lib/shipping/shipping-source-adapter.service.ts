@@ -46,6 +46,13 @@ export class ShippingSourceAdapterService {
     sourceId: SHIPPING_SOURCE,
     // The synthetic working copy's own time: workspace_state.business_clock, read under current rights.
     businessClock: async (scope, abort) => {
+      // Only a shared (Firestore) working copy can hold Shipping: no request for any other project.
+      if (
+        !isSharedProjectRef(scope.projectRef) ||
+        scope.projectRef.branch ||
+        scope.projectRef.projectApi
+      )
+        return undefined;
       const revision = await firstValueFrom(
         this.shipping
           .revision(scope.projectRef)

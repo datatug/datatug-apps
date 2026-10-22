@@ -1,6 +1,7 @@
 import {
   ChangeDetectionStrategy,
   Component,
+  DestroyRef,
   computed,
   effect,
   inject,
@@ -43,6 +44,26 @@ function storage(): Storage | undefined {
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Signing out, on any page, forgets the evidence link an anonymous visitor asked to open (REQ:shareable-evidence-links:
+ * "cleared on sign-out"). Run once per app from the DataTug routes' environment injector, which outlives every page.
+ */
+export function clearPendingEvidenceLinkOnSignOut(): void {
+  let signedIn = false;
+  const auth = inject(SneatAuthStateService, { optional: true });
+  if (!auth) return;
+  const subscription = auth.authState.subscribe((state) => {
+    const now =
+      state?.status === 'authenticated' &&
+      !!state.user?.uid &&
+      state.user.isAnonymous !== true;
+    if (signedIn && !now && state?.status !== 'authenticating')
+      storage()?.removeItem(PENDING_EVIDENCE_LINK_KEY);
+    if (state?.status !== 'authenticating') signedIn = now;
+  });
+  inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
 }
 
 /**
@@ -168,18 +189,18 @@ export class SharedEvidenceLinkComponent {
     return state.kind === 'open' ? state.link : undefined;
   });
   private promptedFor = '';
-  private wasSignedIn = false;
+  private reportedFor = '';
 
   constructor() {
     effect(() => {
       const state = this.state(),
         auth = this.authKind();
       untracked(() => {
-        if (auth === 'signed-in') this.wasSignedIn = true;
-        else if (auth === 'signed-out' && this.wasSignedIn) {
-          // Signing out forgets a link kept for this tab.
-          this.wasSignedIn = false;
-          storage()?.removeItem(PENDING_EVIDENCE_LINK_KEY);
+        // Signing out forgets a link kept for this tab: clearPendingEvidenceLinkOnSignOut, on every page.
+        const opened = this.openedFor(state);
+        if (opened && opened.key !== this.reportedFor) {
+          this.reportedFor = opened.key;
+          this.usage.evidenceLinkOpened(opened.access, this.projectRef());
         }
         if (state.kind === 'sign-in' && state.fragment !== this.promptedFor) {
           this.promptedFor = state.fragment;
@@ -189,6 +210,20 @@ export class SharedEvidenceLinkComponent {
           this.restorePending();
       });
     });
+  }
+
+  /** The link this state shows and what it led to, once per link; nothing while checking or without a link. */
+  private openedFor(
+    state: LinkState,
+  ): { key: string; access: 'open' | 'sign-in' | 'invalid' } | undefined {
+    const fragment = this.fragment() ?? '';
+    if (state.kind === 'open')
+      return { key: 'open:' + fragment, access: 'open' };
+    if (state.kind === 'sign-in')
+      return { key: 'sign-in:' + fragment, access: 'sign-in' };
+    if (state.kind === 'invalid')
+      return { key: 'invalid:' + fragment, access: 'invalid' };
+    return undefined;
   }
 
   private currentPath(): string {

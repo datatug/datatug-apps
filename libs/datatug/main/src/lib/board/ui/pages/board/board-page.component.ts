@@ -53,6 +53,7 @@ import {
   canonicalBoardQueryIds,
 } from '@datatug/board-models';
 import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
+import { UsageAnalyticsService } from '../../../../analytics/usage-analytics';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import {
@@ -113,7 +114,8 @@ interface TutorialStatus {
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
-  imports: [ChartSourceEditorComponent,
+  imports: [
+    ChartSourceEditorComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
     // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
@@ -164,6 +166,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router, { optional: true });
   private readonly lookupService = inject(ParameterLookupService);
+  private readonly usage = inject(UsageAnalyticsService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
   private readonly agentContext = inject(AgentContextService);
@@ -816,13 +819,23 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   tutorialSourceQueries(editor: TutorialEditor) {
-    const card = this.boardDef()?.rows?.flatMap((row) => row.cards ?? []).find((item) => item.id === editor.cardId);
+    const card = this.boardDef()
+      ?.rows?.flatMap((row) => row.cards ?? [])
+      .find((item) => item.id === editor.cardId);
     const widget = widgetAtTabPath(card?.widget, editor.path);
-    const sources = widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
-    return this.tutorialQueries().map((id) => ({ id, sourceId: sources.find((source) => source.queryId === id)?.id }));
+    const sources =
+      widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
+    return this.tutorialQueries().map((id) => ({
+      id,
+      sourceId: sources.find((source) => source.queryId === id)?.id,
+    }));
   }
   editTutorialSource(editor: TutorialEditor, edit: ChartSourceEdit): void {
-    this.editTutorial({ ...edit, cardId: editor.cardId, widgetPath: editor.path });
+    this.editTutorial({
+      ...edit,
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+    });
   }
 
   removeTutorialSource(editor: TutorialEditor, sourceId: string): void {
@@ -934,7 +947,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     });
   }
 
-
   ngOnInit() {
     try {
       this.defaultHref = location.pathname.split('/').slice(0, -1).join('/');
@@ -966,8 +978,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           if (
             equalProjectRef(ref, this.projectRef()) &&
             this.boardId() === boardId
-          )
+          ) {
+            this.usage.lookupUsed(ref);
             this.setParameterValue(p, v.value);
+          }
         },
         error: (err) =>
           this.errorLogger.logError(err, 'Failed to lookup parameter value'),

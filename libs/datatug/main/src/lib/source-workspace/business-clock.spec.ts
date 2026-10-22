@@ -240,6 +240,33 @@ describe('BusinessClockService and chip', () => {
     expect(fixture.nativeElement.textContent).not.toContain('UTC');
   });
 
+  it('reads a scope once: coming back to it shows the kept clock, a failed read is tried again', async () => {
+    setup([clockSource()]);
+    const fixture = await render();
+    const service = TestBed.inject(BusinessClockService);
+    await vi.waitFor(() => expect(service.clocks()).toHaveLength(1));
+    page.environment.set('other');
+    await vi.waitFor(() => expect(reads).toHaveLength(2));
+    page.environment.set('demo');
+    await fixture.whenStable();
+    expect(reads).toHaveLength(2);
+    expect(service.clocks()[0]?.text).toBe('20 May 2018 10:00 UTC');
+    answer = async () => {
+      throw new Error('denied');
+    };
+    page.environment.set('third');
+    await vi.waitFor(() => expect(reads).toHaveLength(3));
+    page.environment.set('demo');
+    page.environment.set('third');
+    await vi.waitFor(() => expect(reads).toHaveLength(4));
+    // Many scopes: the oldest kept reads make room.
+    answer = async () => ({ label: 'Demo clock', at: '2018-05-20T10:00:00Z' });
+    for (let index = 0; index < 18; index++) {
+      page.environment.set('env-' + index);
+      await vi.waitFor(() => expect(reads).toHaveLength(5 + index));
+    }
+  });
+
   it('clears at once on a scope change and drops the late answer of the old scope', async () => {
     setup([clockSource()]);
     let release!: () => void;
