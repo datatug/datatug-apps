@@ -127,7 +127,8 @@ export class ProjectEnvironmentStateService {
           !['github', 'github.com', 'firestore'].includes(ref.storeId) &&
           ref.projectApi !== 'cloud' &&
           ref.spaceID === undefined;
-        if (!local || error?.status !== 426) return throwError(() => error);
+        if (!local || !isPreContractAgent(error))
+          return throwError(() => error);
         const unsupported = of(true);
         return unsupported.pipe(
           switchMap((old) =>
@@ -197,3 +198,22 @@ const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
   ref.projectApi !== 'cloud' &&
   ref.spaceID === undefined &&
   isHostedReadRefused(error);
+
+/**
+ * A local agent that cannot serve `environment-state/1`: either it says so
+ * (426), or it predates the contract and its router has no such route at all.
+ * Released `datatug serve` agents answer the unmounted route with Go's plain
+ * text `404 page not found` and no CORS headers, so a browser sees it as an
+ * opaque failure (status 0) and only a same-origin caller sees the 404. An
+ * agent that implements the route and answers a structured 404 is still
+ * surfaced as an error, and so is an unreachable agent: the legacy read that
+ * follows fails too.
+ */
+const isPreContractAgent = (error: unknown): boolean => {
+  const failure = error as { status?: number; error?: unknown } | null;
+  return (
+    failure?.status === 426 ||
+    failure?.status === 0 ||
+    (failure?.status === 404 && typeof failure.error === 'string')
+  );
+};

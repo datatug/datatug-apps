@@ -166,8 +166,8 @@ const DEMO_DB_CATALOG_ID = 'chinook-local'; // .../environments/local/catalogs/c
  * table TYPE strings those URLs used to embed, e.g. "main.Album", are gone
  * with them — a table is now reached by its plain name, the way a user
  * actually clicks it). Walks the real click path: the project page's own
- * "Environments" overview tab -> the named environment row -> the catalog
- * row under
+ * "Project environments" strip -> the named environment shortcut -> the
+ * catalog row under
  * "Data connections" on the environment page -> the
  * catalog's own table list (EnvDbPageComponent, Task 17 items A.2/B.1 —
  * Tabulator grid, `[tabulator-field="name"]`). Leaves the caller on that
@@ -184,13 +184,13 @@ async function goToCatalogTables(
   envId: string,
   catalogId: string,
 ): Promise<void> {
-  await activePage(page)
-    .getByRole('button', { name: 'Environments', exact: true })
-    .click();
-
+  // The project overview lists each environment as a shortcut in its
+  // "Project environments" strip (no Environments tab to open first).
   const environment = activePage(page)
-    .getByTestId('overview-environment-item')
-    .filter({ hasText: new RegExp(envId, 'i') });
+    .getByRole('region', { name: 'Project environments' })
+    .getByRole('button', {
+      name: new RegExp(`^Open ${envId} environment$`, 'i'),
+    });
   await expect(environment).toBeVisible({ timeout: 15_000 });
   await environment.click();
 

@@ -79,6 +79,51 @@ describe('ProjectEnvironmentStateService scope', () => {
     ).rejects.toEqual({ status: 404 });
     expect(legacy).not.toHaveBeenCalled();
   });
+  it('does not disguise a structured 404 from a current agent as an old agent', async () => {
+    const failure = { status: 404, error: { error: { code: 'NOT_FOUND' } } };
+    api.environmentState.mockReturnValue(throwError(() => failure));
+    const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(ref, legacy),
+      ),
+    ).rejects.toBe(failure);
+    expect(legacy).not.toHaveBeenCalled();
+  });
+  it('keeps a released agent without the route readonly', async () => {
+    api.environmentState.mockReturnValue(
+      throwError(() => ({ status: 404, error: '404 page not found\n' })),
+    );
+    const result = await firstValueFrom(
+      TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
+        of([{ id: 'local', title: 'local' }]),
+      ),
+    );
+    expect(result.state).toBeUndefined();
+    expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
+    expect(result.reason).toContain('Update');
+  });
+  it('keeps a released agent readonly when its CORS-less 404 reaches the browser as status 0', async () => {
+    api.environmentState.mockReturnValue(throwError(() => ({ status: 0 })));
+    const result = await firstValueFrom(
+      TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
+        of([{ id: 'local', title: 'local' }]),
+      ),
+    );
+    expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
+    expect(result.reason).toContain('Update');
+  });
+  it('surfaces an unreachable agent: the legacy read fails too', async () => {
+    api.environmentState.mockReturnValue(throwError(() => ({ status: 0 })));
+    const down = { status: 0, message: 'down' };
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
+          throwError(() => down),
+        ),
+      ),
+    ).rejects.toBe(down);
+  });
   it('keeps explicit unsupported agents readonly', async () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 426 })));
     const result = await firstValueFrom(
