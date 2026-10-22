@@ -56,3 +56,7 @@ The fix, worked out in `libs/datatug/main/src/lib/pages/signed-in/project/projec
 `tools/check-zoneless-fields.mjs` (run via `pnpm run check:zoneless`, wired into CI's `build` job) statically scans every `*.component.ts` under `libs/**` and `apps/**` for exactly the bug shape above (a `this.<field>` write inside a tracked async callback, where `<field>` isn't declared as a signal) and fails the build if it finds one outside `tools/zoneless-allowlist.txt`. See that script's own file header for the detection rule, and its known limitations (it does not trace writes made by a method called from a callback, nor in-place mutation of a Record/array reachable from `this`).
 
 `tools/zoneless-allowlist.txt` is a temporary carve-out for components not yet converted — it must only ever shrink. Converting a file removes it from the list; a newly authored file must never be added to it.
+
+# Product architecture
+
+- Before adding or changing a DataTug screen, component or demo workflow, read [rule:datatug-ui-is-domain-neutral](https://github.com/datatug/backstage/blob/main/spec/rules/README.md).
