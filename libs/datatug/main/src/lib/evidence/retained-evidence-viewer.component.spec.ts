@@ -6,7 +6,10 @@ import { DatatugNavContextService } from '../services/nav/datatug-nav-context.se
 import { RetainedEvidenceViewerComponent } from './retained-evidence-viewer.component';
 import { RetainedEvidenceApiService } from './retained-evidence-api.service';
 import { readRetainedExecution } from './retained-open-contract';
-import { originalContractFixture } from './original-evidence.spec-helper';
+import {
+  originalContractFixture,
+  originalContractPin,
+} from './original-evidence.spec-helper';
 import fixture from './testdata/backend-v044-retained.json';
 const ref = {
   storeId: 'firestore',
@@ -30,6 +33,7 @@ describe('Retained evidence native cold-open presentation', () => {
       const value = await readRetainedExecution(
         {
           ...fixture.execution,
+          sourcePin: originalContractPin(),
           originalEvidence:
             original === 'available'
               ? originalContractFixture()
@@ -135,7 +139,11 @@ describe('Retained evidence native cold-open presentation', () => {
         user: { uid: 'current-reader' },
       });
       const value = await readRetainedExecution(
-        { ...fixture.execution, originalEvidence: originalContractFixture() },
+        {
+          ...fixture.execution,
+          sourcePin: originalContractPin(),
+          originalEvidence: originalContractFixture(),
+        },
         {
           projectRef: ref,
           environment: 'demo',

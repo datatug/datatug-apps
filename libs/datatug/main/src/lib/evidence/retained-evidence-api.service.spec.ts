@@ -10,7 +10,10 @@ import {
 } from '@sneat/datatug-semantic';
 import { datatugApiRealProviders } from '../services/base/datatug-api.test-helpers';
 import { RetainedEvidenceApiService } from './retained-evidence-api.service';
-import { originalContractFixture } from './original-evidence.spec-helper';
+import {
+  originalContractFixture,
+  originalContractPin,
+} from './original-evidence.spec-helper';
 import fixture from './testdata/backend-v044-retained.json';
 const scope = {
   projectRef: {
@@ -222,6 +225,7 @@ describe('Retained evidence real native HTTP reads', () => {
                 mode === 'malformed' ? null : originalContractFixture(),
             }),
       };
+      wire.sourcePin = originalContractPin();
       if (mode === 'pin-forgery') wire.sourcePin.revision.generation = 'other';
       const response: Record<string, unknown> = wire;
       if (mode === 'selected-event') {

@@ -1,3 +1,4 @@
+import type { RetainedSourcePin } from './retained-evidence-contract';
 import {
   decodeTypedValue,
   evidenceObject,
@@ -194,6 +195,7 @@ export function originalLogText(value: OriginalLog): string | undefined {
 export async function readOriginalEvidence(
   value: unknown,
   result: Result,
+  pin: RetainedSourcePin,
   expected?: RowEvidenceSelector,
 ): Promise<OriginalEvidence> {
   if (bytes(value) > 64 * 1024) return fail();
@@ -226,6 +228,14 @@ export async function readOriginalEvidence(
     };
   }
   if (raw['status'] !== 'available' || Object.keys(raw).length !== 5)
+    return fail();
+  if (
+    pin.revision.fixtureCommit !== '38a51dda39d988f2d2bcf23703bd1a969d49f4a3' ||
+    pin.revision.fixtureSHA256 !==
+      '73f0d871607ee5b24de68b5398c25806f556a3126a31e1865fee79b2881977e0' ||
+    pin.revision.schemaSHA256 !==
+      'df7cbb329274eb7b9365c6215ee5083359a43b9ae6f0ee6b3c5f61ef748bedd5'
+  )
     return fail();
   const selected = evidenceObject(raw['selection'], [
     'execution',
@@ -310,8 +320,23 @@ export async function readOriginalEvidence(
   )
     return fail();
   const originalLog = log(raw['log']);
+  // Closed source-owned 38a51dda profile; this is never a path resolver.
+  const artifacts: Readonly<Record<string, string>> = {
+    'base.jsonl': 'logs/base.jsonl',
+    'recovery-11045.jsonl': 'logs/recovery-11045.jsonl',
+    'recovery-11062.jsonl': 'logs/recovery-11062.jsonl',
+  };
+  const sourceArtifact = event['artifact'].value;
+  const admitted = pin.revision.artifacts.filter(
+    (x) => x.id === originalLog.artifact,
+  );
   if (
-    event['artifact'].value !== originalLog.artifact ||
+    typeof sourceArtifact !== 'string' ||
+    !Object.hasOwn(artifacts, sourceArtifact) ||
+    artifacts[sourceArtifact] !== originalLog.artifact ||
+    admitted.length !== 1 ||
+    admitted[0].sha256 !== originalLog.artifactSHA256 ||
+    admitted[0].bytes !== originalLog.artifactBytes ||
     event['artifact_sha256'].value !== originalLog.artifactSHA256 ||
     event['byte_start'].value !== String(originalLog.byteStart) ||
     event['byte_end'].value !== String(originalLog.byteEnd)

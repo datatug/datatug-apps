@@ -1,3 +1,5 @@
+import type { RetainedSourcePin } from './retained-evidence-contract';
+import type { OriginalLog } from './original-evidence-contract';
 import type { RowEvidenceSelector, TypedValue } from '@sneat/datatug-semantic';
 import type {
   OriginalEvidence,
@@ -33,7 +35,7 @@ export function originalContractFixture(): Extract<
         occurred_at: str('2026-10-22T12:00:00Z'),
         clock_domain: str('shipping'),
         precision_ms: int('1'),
-        artifact: str('logs/baseline.jsonl'),
+        artifact: str('base.jsonl'),
         byte_start: int('0'),
         byte_end: int(String(raw.length)),
         artifact_sha256: str(hash),
@@ -69,7 +71,7 @@ export function originalContractFixture(): Extract<
       make('partners', { partner_id: str('partner-1'), enabled: int('1') }),
     ],
     log: {
-      artifact: 'logs/baseline.jsonl',
+      artifact: 'logs/base.jsonl',
       artifactSHA256: hash,
       artifactBytes: raw.length,
       byteStart: 0,
@@ -80,4 +82,29 @@ export function originalContractFixture(): Extract<
       rawBase64: btoa(raw),
     },
   };
+}
+
+/** Synthetic wrapper pin for this CONTRACT ONLY extension. The checked-in
+ * backend-v044 fixture itself remains untouched and is not relabelled. */
+export function originalContractPin(
+  log: OriginalLog = originalContractFixture().log,
+): RetainedSourcePin {
+  return {
+    ...structuredClone(fixture.execution.sourcePin),
+    revision: {
+      ...structuredClone(fixture.execution.sourcePin.revision),
+      fixtureCommit: '38a51dda39d988f2d2bcf23703bd1a969d49f4a3',
+      fixtureSHA256:
+        '73f0d871607ee5b24de68b5398c25806f556a3126a31e1865fee79b2881977e0',
+      schemaSHA256:
+        'df7cbb329274eb7b9365c6215ee5083359a43b9ae6f0ee6b3c5f61ef748bedd5',
+      artifacts: [
+        {
+          id: log.artifact,
+          sha256: log.artifactSHA256,
+          bytes: log.artifactBytes,
+        },
+      ],
+    },
+  } as RetainedSourcePin;
 }

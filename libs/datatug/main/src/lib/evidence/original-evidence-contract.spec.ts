@@ -3,7 +3,10 @@ import {
   type RowEvidenceSelector,
 } from '@sneat/datatug-semantic';
 import fixture from './testdata/backend-v044-retained.json';
-import { originalContractFixture } from './original-evidence.spec-helper';
+import {
+  originalContractFixture,
+  originalContractPin,
+} from './original-evidence.spec-helper';
 import {
   readOriginalEvidence,
   originalLogText,
@@ -11,6 +14,7 @@ import {
 import { readRetainedExecution } from './retained-open-contract';
 const result = decodeResult(fixture.row.result);
 const selector = fixture.selector as RowEvidenceSelector;
+const pin = originalContractPin();
 const scope = {
   projectRef: {
     storeId: 'firestore',
@@ -25,7 +29,7 @@ const scope = {
 describe('Original evidence approved contract (contract-only extension, pending actual Backend parity)', () => {
   it('keeps exact CRLF bytes, integer schema, historical config and expired candidate', async () => {
     const wire = originalContractFixture();
-    const value = await readOriginalEvidence(wire, result, selector);
+    const value = await readOriginalEvidence(wire, result, pin, selector);
     expect(value).toEqual(wire);
     expect(originalLogText(wire.log)).toMatch(/}\r\n$/);
     expect(wire.records[3].key).toEqual({ type: 'integer', value: '17' });
@@ -176,7 +180,7 @@ describe('Original evidence approved contract (contract-only extension, pending 
         break;
     }
     await expect(
-      readOriginalEvidence(value, result, selector),
+      readOriginalEvidence(value, result, pin, selector),
     ).rejects.toThrow();
   });
   it.each(['missing_timestamp', 'invalid_timestamp'] as const)(
@@ -185,7 +189,7 @@ describe('Original evidence approved contract (contract-only extension, pending 
       const value = originalContractFixture();
       const log = { ...value.log, parseStatus };
       expect(
-        await readOriginalEvidence({ ...value, log }, result, selector),
+        await readOriginalEvidence({ ...value, log }, result, pin, selector),
       ).toHaveProperty('log.parseStatus', parseStatus);
     },
   );
@@ -217,10 +221,15 @@ describe('Original evidence approved contract (contract-only extension, pending 
       },
     });
     await expect(
-      readOriginalEvidence(bounded(16384), result, selector),
+      readOriginalEvidence(
+        bounded(16384),
+        result,
+        originalContractPin(bounded(16384).log),
+        selector,
+      ),
     ).resolves.toHaveProperty('log.byteEnd', 16384);
     await expect(
-      readOriginalEvidence(bounded(16385), result, selector),
+      readOriginalEvidence(bounded(16385), result, pin, selector),
     ).rejects.toThrow();
   });
   it('rejects originals for another manifest order even when the internal record chain is consistent', async () => {
@@ -238,7 +247,11 @@ describe('Original evidence approved contract (contract-only extension, pending 
     );
     await expect(
       readRetainedExecution(
-        { ...fixture.row, originalEvidence: { ...original, records } },
+        {
+          ...fixture.row,
+          sourcePin: pin,
+          originalEvidence: { ...original, records },
+        },
         scope,
         undefined,
         selector,
@@ -270,7 +283,7 @@ describe('Original evidence approved contract (contract-only extension, pending 
         value.records[5],
       ],
     };
-    const decoded = await readOriginalEvidence(within, result, selector);
+    const decoded = await readOriginalEvidence(within, result, pin, selector);
     expect(decoded).toHaveProperty('records.length', 21);
     expect(decoded).toHaveProperty('records.4.fields.valid_until.type', 'null');
     await expect(
@@ -280,6 +293,7 @@ describe('Original evidence approved contract (contract-only extension, pending 
           records: [...value.records.slice(0, 4), ...routes, value.records[5]],
         },
         result,
+        pin,
         selector,
       ),
     ).rejects.toThrow();
@@ -300,7 +314,7 @@ describe('Original evidence approved contract (contract-only extension, pending 
           },
     );
     await expect(
-      readOriginalEvidence({ ...value, records }, result, selector),
+      readOriginalEvidence({ ...value, records }, result, pin, selector),
     ).rejects.toThrow();
   });
   it.each([
@@ -321,7 +335,96 @@ describe('Original evidence approved contract (contract-only extension, pending 
       ? { version: 1, status: 'unavailable', reason: invalid }
       : { ...value, log: { ...value.log, parseStatus: invalid } };
     await expect(
-      readOriginalEvidence(wire, result, selector),
+      readOriginalEvidence(wire, result, pin, selector),
     ).rejects.toThrow();
   });
+  it.each([
+    'foreign-basename',
+    'prefixed-basename',
+    'foreign-path',
+    'hash',
+    'bytes',
+    'missing',
+    'duplicate',
+    'future-artifact',
+  ] as const)(
+    'rejects original artifact profile or pin mismatch: %s',
+    async (mode) => {
+      const original = originalContractFixture();
+      const admitted = structuredClone(pin);
+      const event = original.records[0];
+      let records = original.records;
+      let log = original.log;
+      if (
+        mode === 'foreign-basename' ||
+        mode === 'prefixed-basename' ||
+        mode === 'future-artifact'
+      ) {
+        const name =
+          mode === 'foreign-basename'
+            ? 'foreign.jsonl'
+            : mode === 'prefixed-basename'
+              ? 'logs/base.jsonl'
+              : 'future.jsonl';
+        records = [
+          {
+            ...event,
+            fields: {
+              ...event.fields,
+              artifact: { type: 'string', value: name },
+            },
+          },
+          ...original.records.slice(1),
+        ];
+        if (mode === 'future-artifact') {
+          log = { ...log, artifact: 'logs/future.jsonl' };
+          admitted.revision.artifacts = [
+            {
+              id: log.artifact,
+              sha256: log.artifactSHA256,
+              bytes: log.artifactBytes,
+            },
+          ];
+        }
+      } else if (mode === 'foreign-path')
+        log = { ...log, artifact: 'foreign/base.jsonl' };
+      else if (mode === 'hash')
+        admitted.revision.artifacts = [
+          { ...admitted.revision.artifacts[0], sha256: 'b'.repeat(64) },
+        ];
+      else if (mode === 'bytes')
+        admitted.revision.artifacts = [
+          { ...admitted.revision.artifacts[0], bytes: log.artifactBytes + 1 },
+        ];
+      else if (mode === 'missing') admitted.revision.artifacts = [];
+      else
+        admitted.revision.artifacts = [
+          ...admitted.revision.artifacts,
+          ...admitted.revision.artifacts,
+        ];
+      await expect(
+        readOriginalEvidence(
+          { ...original, records, log },
+          result,
+          admitted,
+          selector,
+        ),
+      ).rejects.toThrow();
+    },
+  );
+  it.each(['fixtureCommit', 'fixtureSHA256', 'schemaSHA256'] as const)(
+    'rejects an unrecognized original source profile: %s',
+    async (field) => {
+      const unknown = structuredClone(pin);
+      unknown.revision[field] = 'f'.repeat(field === 'fixtureCommit' ? 40 : 64);
+      await expect(
+        readOriginalEvidence(
+          originalContractFixture(),
+          result,
+          unknown,
+          selector,
+        ),
+      ).rejects.toThrow();
+    },
+  );
 });

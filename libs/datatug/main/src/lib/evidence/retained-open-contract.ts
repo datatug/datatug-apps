@@ -287,7 +287,12 @@ export async function readRetainedExecution(
   const originalEvidence =
     wire['originalEvidence'] === undefined
       ? undefined
-      : await readOriginalEvidence(wire['originalEvidence'], result, selected);
+      : await readOriginalEvidence(
+          wire['originalEvidence'],
+          result,
+          pin,
+          selected,
+        );
   if (
     originalEvidence?.status === 'available' &&
     !exact(
