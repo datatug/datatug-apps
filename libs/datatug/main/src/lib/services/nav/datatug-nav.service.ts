@@ -32,6 +32,7 @@ export type ProjectTopLevelPage =
   | 'demo-db-sandbox'
   | 'overview'
   | 'boards'
+  | 'cards'
   | 'dbmodels'
   | 'entities'
   | 'incidents'

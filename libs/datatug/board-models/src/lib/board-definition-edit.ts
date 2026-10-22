@@ -5,7 +5,7 @@ import type { BoardWidget } from './board-widget';
 import { validateBoardPresentation } from './board-presentation';
 import { validBoardParameterDefinitions } from './widget-parameter';
 import { applyBoardAction } from './tutorial-board';
-import type { ProjectCard } from './card';
+import type { BoardCardRef, ProjectCard } from './card';
 import { BOARD_WIDGET_NAME_FIELDS, BOARD_WIDGET_NAME_TEXT, CARD_ID_PATTERN } from './card';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -74,17 +74,30 @@ export function validateHostedWidget(value: BoardWidget, depth: number): void {
   parameters(value.data['parameters']);
   if (value.name === 'SQL') {
     const sql = value.data['sql'];
-    if (
-      !keys(value.data, ['title', 'parameters', 'sql']) ||
-      !record(sql) ||
-      !keys(sql, ['queryId', 'parameters', 'presentationFilter']) ||
-      typeof sql['queryId'] !== 'string' ||
-      !sql['queryId']
-    )
-      throw new Error(
-        'Choose a saved query; inline SQL is unavailable for hosted boards.',
-      );
-    bindings(sql['parameters'], 'Unsupported saved-query parameter binding.');
+    const source = value.data['source'];
+    if (source !== undefined) {
+      if (
+        sql !== undefined ||
+        !keys(value.data, ['title', 'parameters', 'source']) ||
+        !record(source) ||
+        !keys(source, ['parameter']) ||
+        typeof source['parameter'] !== 'string' ||
+        !source['parameter']
+      )
+        throw new Error('Unsupported parameter-sourced rows definition.');
+    } else {
+      if (
+        !keys(value.data, ['title', 'parameters', 'sql']) ||
+        !record(sql) ||
+        !keys(sql, ['queryId', 'parameters', 'presentationFilter']) ||
+        typeof sql['queryId'] !== 'string' ||
+        !sql['queryId']
+      )
+        throw new Error(
+          'Choose a saved query; inline SQL is unavailable for hosted boards.',
+        );
+      bindings(sql['parameters'], 'Unsupported saved-query parameter binding.');
+    }
   } else if (value.name === 'tabs') {
     if (
       !keys(value.data, ['title', 'parameters', 'tabs']) ||
@@ -296,7 +309,9 @@ export type BoardDefinitionEdit =
   | { type: 'add-query'; cardId: string; queryId: string; title: string }
   | { type: 'set-query'; cardId: string; queryId: string }
   | { type: 'bind-query'; cardId: string; parameterId: string; value?: unknown }
-  | { type: 'remove-card'; cardId: string };
+  | { type: 'remove-card'; cardId: string }
+  /** Turns an inline card into a reference to a project card ("Save as project card"). */
+  | { type: 'set-card-ref'; cardId: string; ref: BoardCardRef };
 /** Structured definition edits reuse canonical board validation and card actions. */
 export function editBoardDefinition(
   board: Board,
@@ -367,7 +382,15 @@ export function editBoardDefinition(
     } else throw new Error('Select a saved-query card.');
   } else if (edit.type === 'remove-card')
     next = applyBoardAction(board, board, edit);
-  else if (edit.type === 'bind-query') {
+  else if (edit.type === 'set-card-ref') {
+    const card = next.rows
+      ?.flatMap((row) => row.cards ?? [])
+      .find((item) => item.id === edit.cardId);
+    if (!card) throw new Error('Select a board card.');
+    validateCardRef(edit.ref);
+    delete card.widget;
+    card.ref = clone(edit.ref);
+  } else if (edit.type === 'bind-query') {
     const card = next.rows
       ?.flatMap((row) => row.cards ?? [])
       .find((item) => item.id === edit.cardId);

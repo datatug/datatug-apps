@@ -147,7 +147,7 @@ export class BoardWidgetComponent {
     this.presentationSelection?.value(this.chartWidgetDef()?.chart.selectionId),
   );
   readonly filteredPresentation = computed(() => {
-    const filter = this.sqlWidgetDef()?.sql.presentationFilter;
+    const filter = this.sqlWidgetDef()?.sql?.presentationFilter;
     return filterHeldOrders(
       this.result(),
       this.queryId() ?? '',
@@ -157,7 +157,7 @@ export class BoardWidgetComponent {
   });
   clearCountry(): void {
     this.presentationSelection?.clear(
-      this.sqlWidgetDef()?.sql.presentationFilter?.selectionId ??
+      this.sqlWidgetDef()?.sql?.presentationFilter?.selectionId ??
         this.chartWidgetDef()?.chart.selectionId,
     );
   }
@@ -248,8 +248,38 @@ export class BoardWidgetComponent {
     const source = this.fieldsWidgetDef()?.source;
     return !!source && 'parameter' in source;
   });
-  readonly cardQueryWidget = computed(() =>
-    ['SQL', 'chart', 'fields'].includes(this.widgetKind() ?? ''),
+  /** Id of the card parameter a grid (`SQL`) widget takes its rows from, if any. */
+  readonly sqlSourceParameter = computed(
+    () => this.sqlWidgetDef()?.source?.parameter,
+  );
+  /** Rows of a parameter-sourced grid: a `recordset` (array) or one `record`. */
+  readonly sqlParameterGrid = computed<
+    { columns: string[]; rows: unknown[][] } | undefined
+  >(() => {
+    const id = this.sqlSourceParameter();
+    if (!id) return undefined;
+    const value = this.parameterValues()[id];
+    const list = (Array.isArray(value) ? value : value ? [value] : []).filter(
+      (row): row is Record<string, unknown> =>
+        !!row && typeof row === 'object' && !Array.isArray(row),
+    );
+    const columns: string[] = [];
+    for (const row of list.slice(0, 200))
+      for (const key of Object.keys(row))
+        if (!columns.includes(key)) columns.push(key);
+    return {
+      columns,
+      rows: list.slice(0, 200).map((row) => columns.map((c) => row[c])),
+    };
+  });
+  /** Template switch key: parameter-sourced grids render without any query. */
+  readonly widgetCase = computed(() =>
+    this.sqlSourceParameter() ? 'SQL-parameter' : this.widgetDef()?.name,
+  );
+  readonly cardQueryWidget = computed(
+    () =>
+      !this.sqlSourceParameter() &&
+      ['SQL', 'chart', 'fields'].includes(this.widgetKind() ?? ''),
   );
   private readonly nativeRunLifetime = useNativeRunLifetime();
   private readonly retainedIntent = new RetainedRunIntent();
@@ -1565,6 +1595,14 @@ export class BoardWidgetComponent {
           ? undefined
           : 'This browser could not remember the selected query.',
       );
+  }
+
+  displayParameterCell(value: unknown): string {
+    return value === null || value === undefined
+      ? ''
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
   }
 
   displayCell(cell: { readonly value?: unknown }): string {

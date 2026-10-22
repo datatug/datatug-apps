@@ -4,7 +4,7 @@
   @if(retainedReviewed()){<ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="running()">Abandon original retry</ion-button>}
 }
 @let widget = widgetDef();
-@switch (widget?.name) {
+@switch (widgetCase()) {
   @case ('tabs') {
     <sneat-datatug-tabs-widget
       [level]="level() ?? 0"
@@ -239,6 +239,39 @@
           [loading]="running()"
           [error]="runError() ?? null"
         />
+      }
+    </div>
+  }
+  @case ('SQL-parameter') {
+    <div class="ion-padding card-widget" data-widget="SQL-parameter">
+      @if (sqlWidgetDef()?.title) {
+        <p>{{ sqlWidgetDef()?.title }}</p>
+      }
+      @if (sqlParameterGrid(); as grid) {
+        @if (!grid.rows.length) {
+          <p role="status">No data</p>
+        } @else {
+          <div class="board-result-scroll">
+            <table>
+              <thead>
+                <tr>
+                  @for (column of grid.columns; track column) {
+                    <th scope="col">{{ column }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of grid.rows; track $index) {
+                  <tr>
+                    @for (cell of row; track $index) {
+                      <td>{{ displayParameterCell(cell) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
       }
     </div>
   }

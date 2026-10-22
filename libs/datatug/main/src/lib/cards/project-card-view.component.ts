@@ -52,11 +52,8 @@ export function cardQueryIds(card: Pick<ProjectCard, 'widget'>): string[] {
  * Required parameters without a value show an inline form instead of
  * running any query; submitting emits {@link parameterValuesChange}.
  */
-// The selector is the one the cards pages and the cell side panel are written
-// against; the datatug- prefix matches the other shared datatug UI selectors.
 @Component({
-  // eslint-disable-next-line @angular-eslint/component-selector
-  selector: 'datatug-project-card-view',
+  selector: 'sneat-datatug-project-card-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, IonButton, IonInput, IonItem, IonToggle, BoardCardComponent],
   template: `

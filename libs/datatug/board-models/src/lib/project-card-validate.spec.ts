@@ -102,6 +102,35 @@ describe('validateProjectCard', () => {
   });
 });
 
+describe('parameter-sourced SQL grid widget', () => {
+  const withWidget = (widget: unknown) => ({ ...card(), widget });
+  it('admits source: {parameter} and presentation validation', () => {
+    const c = withWidget({
+      name: 'SQL',
+      data: { title: 'Orders', source: { parameter: 'orders' } },
+    });
+    expect(validateProjectCard(c).id).toBe('customer');
+    expect(() =>
+      validateBoardPresentation({
+        id: 'b',
+        title: 'B',
+        rows: [{ cards: [{ id: 'c', title: 'C', widget: (c as any).widget }] }],
+      } as Board),
+    ).not.toThrow();
+  });
+  it('rejects source together with sql, extra keys, or an empty parameter', () => {
+    for (const data of [
+      { source: { parameter: 'a' }, sql: { queryId: 'q' } },
+      { source: { parameter: 'a', extra: 1 } },
+      { source: { parameter: '' } },
+      { source: 'a' },
+    ])
+      expect(() =>
+        validateProjectCard(withWidget({ name: 'SQL', data })),
+      ).toThrow();
+  });
+});
+
 describe('validateHostedBoardDefinition with project cards', () => {
   const board = (cardOverride: Record<string, unknown>): Board =>
     ({

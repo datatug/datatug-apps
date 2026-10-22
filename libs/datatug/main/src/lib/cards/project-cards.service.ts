@@ -174,6 +174,16 @@ export class ProjectCardsService {
     );
   }
 
+  /** Whether cards of this project can be created and saved (the backend still decides on each write). */
+  canWrite(ref: IProjectRef): boolean {
+    return !isGithub(ref) && (isSharedProjectRef(ref) || this.isLocalAgent(ref));
+  }
+
+  /** Whether a card can be deleted: not for GitHub, qualified or hosted projects. */
+  canDelete(ref: IProjectRef): boolean {
+    return !isGithub(ref) && !isSharedProjectRef(ref) && this.isLocalAgent(ref);
+  }
+
   private cached<T>(
     map: Map<string, Observable<T>>,
     key: string,

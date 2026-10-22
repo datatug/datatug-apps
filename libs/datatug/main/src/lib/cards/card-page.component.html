@@ -1,0 +1,355 @@
+<ion-header>
+  <ion-toolbar>
+    <ion-buttons slot="start">
+      <ion-back-button [defaultHref]="ctx.href('cards')" />
+      <ion-menu-button />
+    </ion-buttons>
+    <sneat-datatug-page-title
+      [pageTitle]="isNew ? 'New card' : card().title || 'Card'"
+    />
+    <ion-buttons slot="end">
+      @if (!isNew && ctx.canDelete()) {
+        <ion-button
+          color="danger"
+          fill="clear"
+          data-action="delete"
+          [disabled]="saving() || loading()"
+          (click)="confirmDelete()"
+        >
+          <ion-icon slot="start" name="trash-outline" />
+          Delete
+        </ion-button>
+      }
+      @if (ctx.canWrite()) {
+        <ion-button
+          fill="solid"
+          data-action="save"
+          [disabled]="!canSubmit()"
+          (click)="save()"
+        >
+          {{ saving() ? 'Saving…' : 'Save' }}
+        </ion-button>
+      }
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-segment
+      [value]="tab()"
+      aria-label="Card editor view"
+      (ionChange)="tab.set($any($event).detail.value)"
+    >
+      <ion-segment-button value="build" data-tab="build">
+        <ion-label>Build</ion-label>
+      </ion-segment-button>
+      <ion-segment-button value="preview" data-tab="preview" class="seg-preview">
+        <ion-label>Preview</ion-label>
+      </ion-segment-button>
+      <ion-segment-button value="json" data-tab="json">
+        <ion-label>JSON</ion-label>
+      </ion-segment-button>
+    </ion-segment>
+  </ion-toolbar>
+</ion-header>
+
+<ion-content>
+  @if (ctx.needsEnvironment()) {
+    <div class="state" role="status">
+      <h2>Choose an environment</h2>
+      <p>
+        Cards of a shared project live in an environment. Add
+        <code>?environment=&lt;name&gt;</code> to the address.
+      </p>
+    </div>
+  } @else if (loading()) {
+    <div class="state" aria-label="Loading card">
+      <ion-skeleton-text [animated]="true" style="width: 40%" />
+      <ion-skeleton-text [animated]="true" style="width: 80%" />
+      <ion-skeleton-text [animated]="true" style="width: 60%" />
+    </div>
+  } @else if (notFound()) {
+    <div class="state">
+      <h2>Card not found</h2>
+      <p role="alert">There is no card "{{ cardId() }}" in this project.</p>
+      <ion-button [routerLink]="ctx.url(['cards'])">Back to cards</ion-button>
+    </div>
+  } @else if (loadError(); as message) {
+    <div class="state">
+      <p role="alert">{{ message }}</p>
+      <ion-button fill="outline" (click)="ionViewWillEnter()">Retry</ion-button>
+    </div>
+  } @else {
+    <div class="workspace">
+      <div class="editor" [class.off]="tab() === 'preview'">
+        @if (!ctx.canWrite()) {
+          <p class="notice" role="status">
+            Cards of this project are read-only here. You can still look at the
+            card and try it in the preview.
+          </p>
+        }
+        @if (saveError(); as message) {
+          <p class="notice error" role="alert" data-test="save-error">{{ message }}</p>
+        }
+        @if (savedNotice() && !dirty()) {
+          <p class="notice ok" role="status">Saved.</p>
+        }
+
+        @if (tab() === 'json') {
+          <section class="block" aria-labelledby="json-h">
+            <h3 id="json-h">Card JSON</h3>
+            <p class="hint">
+              The same card as the Build tab shows. Changes apply as soon as the
+              JSON is valid.
+            </p>
+            <textarea
+              class="json"
+              spellcheck="false"
+              aria-label="Card JSON"
+              aria-describedby="json-error"
+              data-field="json"
+              [attr.aria-invalid]="jsonError() ? 'true' : null"
+              [readOnly]="!ctx.canWrite()"
+              [value]="jsonText()"
+              (input)="onJson($any($event.target).value)"
+            ></textarea>
+            <p id="json-error" class="notice error" role="alert" [hidden]="!jsonError()">
+              {{ jsonError() }}
+            </p>
+          </section>
+        } @else {
+          @if (jsonError()) {
+            <p class="notice error" role="alert">
+              The JSON tab has an error, so this form shows the last valid card:
+              {{ jsonError() }}
+            </p>
+          }
+          @if (problem(); as message) {
+            <p class="notice warn" role="status" data-test="problem">
+              Not ready to save: {{ message }}
+            </p>
+          }
+
+          <section class="block" aria-labelledby="basics-h">
+            <h3 id="basics-h">Basics</h3>
+            <ion-input
+              label="Title"
+              labelPlacement="stacked"
+              fill="outline"
+              placeholder="Customer"
+              data-field="title"
+              [value]="card().title"
+              [disabled]="!ctx.canWrite()"
+              (ionInput)="setTitle(val($event))"
+            />
+            <ion-input
+              label="Id"
+              labelPlacement="stacked"
+              fill="outline"
+              data-field="id"
+              [helperText]="isNew ? 'Used in the card address and in dashboards. Letters, digits, - and _.' : 'The id of a saved card does not change.'"
+              [value]="card().id"
+              [disabled]="!ctx.canWrite() || !isNew"
+              (ionInput)="setId(val($event))"
+            />
+            <ion-textarea
+              label="Description"
+              labelPlacement="stacked"
+              fill="outline"
+              [autoGrow]="true"
+              [rows]="2"
+              placeholder="What this card shows and when to use it"
+              data-field="description"
+              [value]="card().description ?? ''"
+              [disabled]="!ctx.canWrite()"
+              (ionInput)="setDescription(val($event))"
+            />
+            <div>
+              <p class="label">Shown as</p>
+              <ion-segment
+                [value]="card().display ?? 'panel'"
+                aria-label="How the card shows beside a grid"
+                data-field="display"
+                [disabled]="!ctx.canWrite()"
+                (ionChange)="setDisplay(val($event))"
+              >
+                <ion-segment-button value="panel">
+                  <ion-label>Side panel</ion-label>
+                </ion-segment-button>
+                <ion-segment-button value="tooltip">
+                  <ion-label>Tooltip</ion-label>
+                </ion-segment-button>
+              </ion-segment>
+              <p class="hint">
+                A side panel sits next to the grid. A tooltip is a small popover
+                over the selected cell with the first tab only.
+              </p>
+            </div>
+          </section>
+
+          <section class="block" aria-labelledby="inputs-h">
+            <h3 id="inputs-h">Inputs</h3>
+            <p class="hint">
+              What the card needs to show its record, such as a customer id.
+              Rules fill an input from the cell a person selects.
+            </p>
+            <sneat-datatug-card-parameters-editor
+              [parameters]="parameters()"
+              [disabled]="!ctx.canWrite()"
+              (parametersChange)="setParameters($event)"
+            />
+          </section>
+
+          <section class="block" aria-labelledby="content-h">
+            <h3 id="content-h">Content</h3>
+            @if (tabs(); as tabList) {
+              @if (tabList.length === 1) {
+                <p class="hint">A card with one tab shows no tab strip.</p>
+              }
+              @for (t of tabList; track $index; let ti = $index) {
+                <div class="tab" [attr.data-tab-row]="ti">
+                  <div class="tab-head">
+                    <ion-input
+                      class="tab-title"
+                      label="Tab title"
+                      labelPlacement="stacked"
+                      fill="outline"
+                      data-field="tab-title"
+                      [value]="t.title"
+                      [disabled]="!ctx.canWrite()"
+                      (ionInput)="setTabTitle(ti, val($event))"
+                    />
+                    <div class="tools" role="group" [attr.aria-label]="'Tab ' + t.title + ' actions'">
+                      <ion-button fill="clear" size="small" aria-label="Move tab earlier" [disabled]="!ctx.canWrite() || ti === 0" (click)="moveTab(ti, -1)">
+                        <ion-icon slot="icon-only" name="arrow-up-outline" />
+                      </ion-button>
+                      <ion-button fill="clear" size="small" aria-label="Move tab later" [disabled]="!ctx.canWrite() || ti === tabList.length - 1" (click)="moveTab(ti, 1)">
+                        <ion-icon slot="icon-only" name="arrow-down-outline" />
+                      </ion-button>
+                      <ion-button fill="clear" size="small" color="danger" aria-label="Remove tab" data-action="remove-tab" [disabled]="!ctx.canWrite() || tabList.length === 1" (click)="removeTab(ti)">
+                        <ion-icon slot="icon-only" name="trash-outline" />
+                      </ion-button>
+                    </div>
+                  </div>
+                  @for (w of t.widgets; track $index; let wi = $index) {
+                    <div class="widget-row" [attr.data-widget-row]="wi">
+                      <div class="widget-head">
+                        <strong>{{ kindLabel(w) }}</strong>
+                        <span class="tools" role="group" [attr.aria-label]="kindLabel(w) + ' actions'">
+                          <ion-button fill="clear" size="small" aria-label="Move up" [disabled]="!ctx.canWrite() || wi === 0" (click)="moveWidget(ti, wi, -1)">
+                            <ion-icon slot="icon-only" name="arrow-up-outline" />
+                          </ion-button>
+                          <ion-button fill="clear" size="small" aria-label="Move down" [disabled]="!ctx.canWrite() || wi === t.widgets.length - 1" (click)="moveWidget(ti, wi, 1)">
+                            <ion-icon slot="icon-only" name="arrow-down-outline" />
+                          </ion-button>
+                          <ion-button fill="clear" size="small" color="danger" aria-label="Remove widget" data-action="remove-widget" [disabled]="!ctx.canWrite()" (click)="removeWidget(ti, wi)">
+                            <ion-icon slot="icon-only" name="trash-outline" />
+                          </ion-button>
+                        </span>
+                      </div>
+                      <sneat-datatug-card-widget-editor
+                        [widget]="w"
+                        [parameters]="parameters()"
+                        [queries]="queries()"
+                        [project]="ctx.ref()"
+                        [scopeIdentity]="scopeIdentity()"
+                        [disabled]="!ctx.canWrite()"
+                        (widgetChange)="setWidget(ti, wi, $event)"
+                      />
+                    </div>
+                  } @empty {
+                    <p class="hint">This tab is empty. Add a widget below.</p>
+                  }
+                  @if (ctx.canWrite()) {
+                    <div class="add-row" role="group" aria-label="Add a widget to this tab">
+                      @for (kind of addable; track kind) {
+                        <ion-button fill="outline" size="small" [attr.data-action]="'add-' + kind" (click)="addWidget(ti, kind)">
+                          <ion-icon slot="start" name="add-outline" />
+                          {{ kindLabels[kind] }}
+                        </ion-button>
+                      }
+                    </div>
+                  }
+                </div>
+              }
+              @if (ctx.canWrite()) {
+                <ion-button fill="outline" size="small" data-action="add-tab" (click)="addTab()">
+                  <ion-icon slot="start" name="add-outline" />
+                  Add tab
+                </ion-button>
+              }
+              @if (queriesError(); as message) {
+                <p class="hint" role="status">{{ message }}</p>
+              }
+            } @else {
+              <p class="notice warn" role="status">
+                The content of this card is a single {{ rootKind() || 'empty' }}
+                widget, so it has no tab form. Convert it to a tab to edit the
+                parts here, or edit the JSON tab.
+              </p>
+              @if (ctx.canWrite()) {
+                <ion-button fill="outline" size="small" data-action="convert" (click)="convertToTabs()">
+                  Convert to tabs
+                </ion-button>
+              }
+            }
+          </section>
+        }
+      </div>
+
+      <aside class="preview" [class.active]="tab() === 'preview'" aria-labelledby="preview-h">
+        <div class="preview-head">
+          <h3 id="preview-h">Preview</h3>
+          <ion-button fill="clear" size="small" aria-label="Refresh preview" data-action="refresh" (click)="refreshPreview()">
+            <ion-icon slot="icon-only" name="refresh-outline" />
+          </ion-button>
+        </div>
+        @if (previewCard(); as shown) {
+          @if (previewInputs().length) {
+            <div class="preview-inputs" role="group" aria-label="Try the card with a value">
+              @for (p of previewInputs(); track p.id) {
+                @if (p.multiline) {
+                  <ion-textarea
+                    [label]="(p.title || p.id) + ' (JSON)'"
+                    labelPlacement="stacked"
+                    fill="outline"
+                    [autoGrow]="true"
+                    [rows]="2"
+                    [attr.data-preview]="p.id"
+                    [errorText]="previewInputError()[p.id]"
+                    [class.ion-invalid]="!!previewInputError()[p.id]"
+                    [class.ion-touched]="true"
+                    [value]="previewText()[p.id]"
+                    (ionInput)="setPreviewText(p.id, val($event))"
+                  />
+                } @else {
+                  <ion-input
+                    [label]="p.title || p.id"
+                    labelPlacement="stacked"
+                    fill="outline"
+                    [attr.data-preview]="p.id"
+                    [value]="previewText()[p.id]"
+                    (ionInput)="setPreviewText(p.id, val($event))"
+                  />
+                }
+              }
+            </div>
+          }
+          <div class="preview-body">
+            <sneat-datatug-project-card-view
+              [card]="shown"
+              [parameterValues]="previewValues()"
+              [projectRef]="ctx.ref()"
+              [environment]="ctx.environment()"
+              [boardContext]="ctx.runContext()"
+              [cache]="cache"
+              [showHeader]="true"
+            />
+          </div>
+        } @else {
+          <p class="hint" role="status">
+            Fix the problem shown on the Build tab to see the preview.
+          </p>
+        }
+      </aside>
+    </div>
+  }
+</ion-content>

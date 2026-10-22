@@ -254,4 +254,34 @@ describe('BoardWidgetComponent in card mode', () => {
     };
     expect(request.parameters['id']).toEqual({ type: 'string', value: 'ALFKI' });
   });
+
+  it('renders a recordset parameter as a grid without running any query', async () => {
+    const el = render(
+      {
+        name: 'SQL',
+        data: { title: 'Orders', source: { parameter: 'orders' } },
+      },
+      {
+        orders: [
+          { Id: 1, Total: 10 },
+          { Id: 2, Total: 20 },
+        ],
+      },
+    );
+    await settle();
+    expect(el.querySelectorAll('thead th').length).toBe(2);
+    expect(el.querySelectorAll('tbody tr').length).toBe(2);
+    expect(el.textContent).toContain('Orders');
+    expect(run).not.toHaveBeenCalled();
+    expect(getQuery).not.toHaveBeenCalled();
+  });
+
+  it('shows No data for an empty recordset parameter', async () => {
+    const el = render(
+      { name: 'SQL', data: { source: { parameter: 'orders' } } },
+      { orders: [] },
+    );
+    await settle();
+    expect(el.textContent).toContain('No data');
+  });
 });
