@@ -4,6 +4,8 @@ import {
   type IHttpQueryRequest,
   QueryType,
 } from '../models/definition/query-def';
+import { savableHttpHeaders } from './http-credential-headers';
+import { httpMethodAllowsBody } from './http-request-rules';
 
 /** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
 export interface ProjectQueryWire {
@@ -11,11 +13,20 @@ export interface ProjectQueryWire {
   readonly folderPath: string;
   readonly id: string;
   readonly title?: string;
-  readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL;
+  readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL | QueryType.HTTP;
+  /** The query text; for an HTTP query, its URL. */
   readonly text: string;
+  /** The saved request of an HTTP query beyond its URL; never holds credentials. */
+  readonly http?: ProjectQueryHttpWire;
   readonly draft?: boolean;
   readonly connectionId?: string;
   readonly federation?: IQueryDef['federation'];
+}
+
+export interface ProjectQueryHttpWire {
+  readonly method?: string;
+  readonly headers?: readonly { readonly name: string; readonly value: string }[];
+  readonly body?: string;
 }
 
 export type ProjectQueryReadWire = Omit<ProjectQueryWire, 'type'> & {
@@ -82,10 +93,23 @@ export function toProjectQueryWire(
     'federation',
     'semanticModel',
   ]);
-  assertFields(query['request'], ['queryType', 'text']);
-  if (![QueryType.SQL, QueryType.TugQL, QueryType.DTQL].includes(query['request'].queryType))
+  const isHttp = query['request'].queryType === QueryType.HTTP;
+  assertFields(
+    query['request'],
+    isHttp
+      ? ['queryType', 'url', 'method', 'headers', 'body']
+      : ['queryType', 'text'],
+  );
+  if (
+    ![QueryType.SQL, QueryType.TugQL, QueryType.DTQL, QueryType.HTTP].includes(
+      query['request'].queryType,
+    )
+  )
     throw new UnsupportedQueryContractError();
-  const text = (query['request'] as ITextQueryRequest).text;
+  const httpRequest = isHttp ? (query['request'] as IHttpQueryRequest) : undefined;
+  const text = httpRequest
+    ? httpRequest.url
+    : (query['request'] as ITextQueryRequest).text;
   if (typeof text !== 'string') throw new UnsupportedQueryContractError();
   if (query.federation) {
     assertFields(query.federation, ['ovdbBaseUrl', 'tables', 'lookups']);
@@ -121,6 +145,7 @@ export function toProjectQueryWire(
     ...(query.title !== undefined ? { title: query.title } : {}),
     type: query['request'].queryType as ProjectQueryWire['type'],
     text,
+    ...(httpRequest ? { http: httpWire(httpRequest) } : {}),
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.connectionId !== undefined
       ? { connectionId: query.connectionId }
@@ -129,10 +154,24 @@ export function toProjectQueryWire(
   });
 }
 
+/** The saved part of an HTTP request: credential headers are stripped, never persisted. */
+function httpWire(request: IHttpQueryRequest): ProjectQueryHttpWire {
+  const headers = savableHttpHeaders(request.headers).map(
+    ({ name, value }) => ({ name, value }),
+  );
+  return {
+    method: request.method ?? 'GET',
+    ...(headers.length ? { headers } : {}),
+    ...(request.body && httpMethodAllowsBody(request.method)
+      ? { body: request.body }
+      : {}),
+  };
+}
+
 export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
   // Reads preserve legacy/richer metadata; save validates the entire definition separately.
   const metadata = { ...query };
-  for (const key of ['folderPath', 'id', 'title', 'type', 'text'])
+  for (const key of ['folderPath', 'id', 'title', 'type', 'text', 'http'])
     delete metadata[key];
   const request =
     query['request'] && typeof query['request'] === 'object'
@@ -148,7 +187,11 @@ export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
             ...request,
             queryType: QueryType.HTTP,
             url: query.text ?? request.url ?? '',
-            method: request.method ?? 'GET',
+            method: (query.http?.method || request.method || 'GET') as IHttpQueryRequest['method'],
+            ...(query.http?.headers?.length
+              ? { headers: query.http.headers }
+              : {}),
+            ...(query.http?.body ? { body: query.http.body } : {}),
           } as IHttpQueryRequest)
         : ({
             ...request,

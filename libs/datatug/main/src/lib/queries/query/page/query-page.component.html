@@ -25,7 +25,7 @@
       <ion-button
         class="query-action"
         slot="end"
-        [disabled]="semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery()"
+        [disabled]="semanticSaving() || queryState.isSaving || queryState.saveSupported === false || !canSaveQuery() || !!httpSaveProblem"
         [fill]="isChanged ? 'solid' : 'clear'"
         [color]="isChanged ? 'danger' : 'medium'"
         aria-label="Save changes"
@@ -530,7 +530,12 @@
   }
 
   @if (queryState.queryType === 'HTTP') {
-    <sneat-datatug-http-query-editor />
+    @if (httpRequest; as httpReq) {
+      <sneat-datatug-http-query-editor
+        [request]="httpReq"
+        (requestChange)="httpRequestChanged($event)"
+      />
+    }
   } @else if (isTextQueryWorkspace()) {
     @if (isTugqlAuthorJourney()) {
     @if (queryView() === 'compare') {
@@ -1341,7 +1346,7 @@
         }
       }
   </ng-template>
-  @if (!isTextQueryWorkspace()) {
+  @if (!isTextQueryWorkspace() && queryState.queryType !== 'HTTP') {
     <ion-card>
       <ng-container *ngTemplateOutlet="nativeParameters" />
       <ng-container *ngTemplateOutlet="executionRuntime" />
