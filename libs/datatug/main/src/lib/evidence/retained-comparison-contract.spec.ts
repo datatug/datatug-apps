@@ -225,6 +225,67 @@ describe('Actual Go retained comparison protocol', () => {
     );
     expect(opened.originalEvidence?.status).toBe('available');
   });
+  it('preserves the same canonical control name through frozen admission and cold input decoding', async () => {
+    // A decoder-composition name variant of actual Go data, not a new Go receipt
+    // or an assertion that a changed query's opaque revision can be client-hashed.
+    const live = structuredClone(httpFixture.run),
+      cold = structuredClone(httpFixture.execution);
+    const rename = (value: object) => {
+      const input = Object.getOwnPropertyDescriptor(
+        value,
+        'comparison_order_id',
+      );
+      if (!input) throw new Error('Missing fixture control');
+      Object.defineProperty(value, '__proto__', input);
+      Reflect.deleteProperty(value, 'comparison_order_id');
+    };
+    for (const value of [live.comparison, cold.comparison]) {
+      value.declaration.controlInput = '__proto__';
+      rename(value.inputs);
+    }
+    rename(cold.inputs);
+    cold.savedQuery.comparison.controlInput = '__proto__';
+    const parameter = cold.savedQuery.parameters.find(
+      (p) => p.id === 'comparison_order_id',
+    );
+    if (!parameter) throw new Error('Missing declared control');
+    parameter.id = '__proto__';
+    cold.savedQuery.text = cold.savedQuery.text.replaceAll(
+      'comparison_order_id',
+      '__proto__',
+    );
+    const frozen = frozenComparison(
+      cold.savedQuery as unknown as IQueryDef,
+      live.comparison.inputs,
+    );
+    expect(frozen?.controlInput).toBe('__proto__');
+    const admitted = await readRetainedQueryResponse(
+      live,
+      scope,
+      httpFixture.request.queryId,
+      { incidentRef: live.attachedIncidentRef },
+      {
+        declaration: decodeQueryComparison(frozen),
+        inputs: live.comparison.inputs,
+      },
+    );
+    const opened = await readRetainedExecution(
+      cold,
+      openScope,
+      live.result.execution,
+    );
+    expect(Object.keys(opened.inputs).sort()).toEqual([
+      '__proto__',
+      'order_id',
+    ]);
+    expect(Object.hasOwn(opened.inputs, '__proto__')).toBe(true);
+    expect(opened.inputs['__proto__']).toEqual({
+      type: 'integer',
+      value: '11038',
+    });
+    expect(opened.comparison).toEqual(admitted.comparison);
+    expect(opened.result).toEqual(admitted.result);
+  });
   it('opens actual control original while retaining affected scalar manifest, and cold reopens original declaration', async () => {
     const opened = await readRetainedExecution(
       httpFixture.open,

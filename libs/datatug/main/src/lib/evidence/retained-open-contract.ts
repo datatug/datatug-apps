@@ -204,7 +204,7 @@ export function readSelectedInputs(
   value: unknown,
 ): Readonly<Record<string, TypedValue>> {
   const wire = obj(value);
-  const inputs: Record<string, TypedValue> = {};
+  const inputs: Record<string, TypedValue> = Object.create(null);
   for (const [key, raw] of Object.entries(wire)) {
     txt(key);
     inputs[key] = decodeTypedValue(raw);
