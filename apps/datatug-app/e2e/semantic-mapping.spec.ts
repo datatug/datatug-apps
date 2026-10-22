@@ -100,34 +100,6 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await expect(page.getByTestId('query-save-state')).toContainText(
     'Saved on this device',
   );
-  // The Save button carries the save state: "Saved…" and disabled when clean,
-  // "Save" once there is a change (here a rename), then saved again.
-  const saveButton = activePage(page).locator('ion-button.query-save-button');
-  await expect(saveButton).toHaveAttribute('disabled', /.*/u);
-  await activePage(page).getByTestId('query-rename').click();
-  const renameAlert = page.locator('ion-alert').filter({ visible: true });
-  await renameAlert
-    .getByRole('textbox', { name: 'Query title' })
-    .fill('Invoices with meanings');
-  await renameAlert
-    .getByRole('button', { name: 'Rename', exact: true })
-    .click();
-  await expect(page.getByTestId('query-save-state')).toHaveText('Save');
-  await expect(saveButton).not.toHaveAttribute('disabled', /.*/u);
-  await expect(
-    activePage(page).getByRole('heading', {
-      level: 1,
-      name: 'Invoices with meanings',
-    }),
-  ).toBeVisible();
-  await saveButton.click();
-  await expect(page.getByTestId('query-save-state')).toContainText(
-    'Saved on this device',
-  );
-  await expect(page.getByTestId('query-save-announcement')).toContainText(
-    'Saved on this device',
-  );
-  await expect(saveButton).toHaveAttribute('disabled', /.*/u);
   await expect(
     page.getByRole('button', {
       name: 'Edit meaning of InvoiceId',
@@ -443,4 +415,33 @@ test('column meaning saves a complete personal copy, stays visible and survives 
       }),
     ).toContainText('Invoice · Shared reference');
   }
+  // Last, so its new revision does not touch the meaning checks above.
+  // The Save button carries the save state: "Saved…" and disabled when clean,
+  // "Save" once there is a change (here a rename), then saved again.
+  const saveButton = activePage(page).locator('ion-button.query-save-button');
+  await expect(saveButton).toHaveAttribute('disabled', /.*/u);
+  await activePage(page).getByTestId('query-rename').click();
+  const renameAlert = page.locator('ion-alert').filter({ visible: true });
+  await renameAlert
+    .getByRole('textbox', { name: 'Query title' })
+    .fill('Invoices with meanings');
+  await renameAlert
+    .getByRole('button', { name: 'Rename', exact: true })
+    .click();
+  await expect(page.getByTestId('query-save-state')).toHaveText('Save');
+  await expect(saveButton).not.toHaveAttribute('disabled', /.*/u);
+  await expect(
+    activePage(page).getByRole('heading', {
+      level: 1,
+      name: 'Invoices with meanings',
+    }),
+  ).toBeVisible();
+  await saveButton.click();
+  await expect(page.getByTestId('query-save-state')).toContainText(
+    'Saved on this device',
+  );
+  await expect(page.getByTestId('query-save-announcement')).toContainText(
+    'Saved on this device',
+  );
+  await expect(saveButton).toHaveAttribute('disabled', /.*/u);
 });

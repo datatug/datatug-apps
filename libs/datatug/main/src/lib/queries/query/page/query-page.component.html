@@ -21,7 +21,7 @@
          button itself, and read-only visitors see no authoring actions. -->
     @if (!isQueryReadOnly()) {
     <ion-buttons slot="end">
-      @if (!queryState.isNew && queryDef() && !isTugqlAuthorJourney()) {
+      @if (canRenameQuery()) {
         <ion-button class="query-action" data-testid="query-rename" fill="clear" color="medium" aria-label="Rename query" title="Rename"
           [disabled]="queryState.isSaving || queryState.saveSupported === false" (click)="renameQuery()">
           <ion-icon name="create-outline" slot="icon-only" />

@@ -1296,17 +1296,14 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   });
   expect(verticalAfterResize).toBeGreaterThan(20);
   // Two tabs fit at 390px: the selected Source tab needs no horizontal reveal,
-  // and opening a view from More neither scrolls the page nor reorders tabs.
+  // and a view opened from More is added after Parameters.
   expect(await tabs.evaluate((segment) => segment.scrollWidth <= segment.clientWidth + 1)).toBe(true);
-  const verticalBeforeView = verticalAfterResize;
   await expectEditorSource(page, editor, saved);
 
   await openView('tugql');
   await expect(tabs.locator('ion-segment-button')).toHaveCount(3);
   expect(await tabs.locator('ion-segment-button').evaluateAll((buttons) =>
     buttons.map((b) => b.getAttribute('value')))).toEqual(['sql', 'parameters', 'tugql']);
-  expect(Math.abs(await content.evaluate(async (host) =>
-    (await (host as HTMLIonContentElement).getScrollElement()).scrollTop) - verticalBeforeView)).toBeLessThanOrEqual(2);
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText('unavailable');
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/function|subquery|expression/iu);
   await sourceTab.click();

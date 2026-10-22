@@ -2802,6 +2802,29 @@ select i.InvoiceId
     expect(prepare).not.toHaveBeenCalled();
   });
 
+  it('carries the save state on the Save button, announces progress outside it, and renames from the header', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.queryState = {
+      ...component.queryState,
+      title: component.queryDef()?.title,
+      saveSupported: true,
+    };
+    expect(component.isChanged).toBe(false);
+    expect(component.saveButtonLabel()).toBe(component.querySaveState());
+    expect(component.saveButtonLabel()).not.toBe('Save');
+    expect(component.canRenameQuery()).toBe(true);
+    component.queryTitleChanged(
+      new CustomEvent('ionChange', { detail: { value: 'Renamed query' } }),
+    );
+    expect(component.queryState.title).toBe('Renamed query');
+    expect(component.isChanged).toBe(true);
+    expect(component.saveButtonLabel()).toBe('Save');
+    expect(component.saveAnnouncement()).toBe('');
+    component.queryState = { ...component.queryState, isSaving: true };
+    expect(component.saveButtonLabel()).toBe('Saving');
+    expect(component.saveAnnouncement()).toBe('Saving');
+  });
+
   it('applies the singleton admitted join immediately without outputs and undoes its source and binding together', async () => {
     component = await createTugQLAuthor(authorSource);
     component.queryState = {

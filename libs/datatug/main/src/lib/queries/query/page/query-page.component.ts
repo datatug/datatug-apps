@@ -2280,6 +2280,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
+  /** The header offers Rename wherever the page shows no title field (that
+   * field is only for naming a new or untitled saved SQL/DTQL query). */
+  public canRenameQuery(): boolean {
+    if (!this.queryDef() && !this.queryState.def) return false;
+    return (
+      this.isTugqlAuthorJourney() ||
+      (!this.queryState.isNew && !!this.queryState.title)
+    );
+  }
+
   /** Renames a saved query from the header (writers only). */
   public async renameQuery(): Promise<void> {
     const alert = await this.alertController.create({
