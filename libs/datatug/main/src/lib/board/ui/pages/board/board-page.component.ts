@@ -38,7 +38,7 @@ import {
   switchMap,
   takeUntil,
 } from 'rxjs/operators';
-import { EMPTY, Subject, combineLatest } from 'rxjs';
+import { BehaviorSubject, EMPTY, Subject, combineLatest } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   Board,
@@ -90,6 +90,9 @@ import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { tabKey } from '../../components/board-widget/nested-tab-path';
 import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
 import { isSharedProjectRef } from '../../../../core/project-context';
+import { isProjectItemNotFound } from '../../../../core/project-item-not-found.error';
+import { projectPageHref } from '../../../../nav/project-page-href';
+import { ErrorStateComponent } from '../../../../components/error-state/error-state.component';
 import { currentTutorialStep, tutorialSteps } from './tutorial-scenario';
 
 interface TutorialEditor {
@@ -118,6 +121,7 @@ interface TutorialStatus {
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
   imports: [ChartSourceEditorComponent,
+    ErrorStateComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
     // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
@@ -306,6 +310,10 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly choicesForBoard = computed(() =>
     this.choices.read(this.projectRef(), this.boardId() || undefined),
   );
+  private readonly reloadBoard = new BehaviorSubject(0);
+  retryLoad(): void {
+    this.reloadBoard.next(this.reloadBoard.value + 1);
+  }
   readonly readBoardForRun: BoardReadForRun = (ref, id) =>
     this.assets.board(ref, id);
 
@@ -360,6 +368,15 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly presentationReset = signal(0);
   readonly loading = signal(true);
   readonly loadError = signal<string | undefined>(undefined);
+  /** The saved board does not exist (a mistyped or deleted id): shown as not found, never as an empty board. */
+  readonly notFound = signal(false);
+  /** The failure behind `loadError`, kept so the error state can choose words for its kind. */
+  readonly loadFailure = signal<unknown>(undefined);
+  /** Specific guidance (update the local agent) that replaces the generic words for the failure. */
+  readonly loadGuidance = signal<string | undefined>(undefined);
+  /** The Boards list of this project, for the not-found and error states. */
+  readonly boardsHref = computed(() => projectPageHref(this.projectRef(), 'boards'));
+  readonly queriesHref = computed(() => projectPageHref(this.projectRef(), 'queries'));
 
   readonly parameters = signal<IParamWithDefAndValue[] | undefined>(undefined);
   readonly parameterErrors = signal<Readonly<Record<string, string>>>({});
@@ -430,14 +447,22 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         error: (err) =>
           this.errorLogger.logError(err, 'Failed to get current environment'),
       });
-    combineLatest([this.dataTugNavContext.currentProject, this.route.paramMap])
+    combineLatest([
+      this.dataTugNavContext.currentProject,
+      this.route.paramMap,
+      this.reloadBoard,
+    ])
       .pipe(
-        map(([project, params]) => ({
+        map(([project, params, attempt]) => ({
           ref: project?.ref,
           id: params.get(routingParamBoard),
+          attempt,
         })),
         distinctUntilChanged(
-          (a, b) => a.id === b.id && equalProjectRef(a.ref, b.ref),
+          (a, b) =>
+            a.id === b.id &&
+            a.attempt === b.attempt &&
+            equalProjectRef(a.ref, b.ref),
         ),
         switchMap(({ ref, id }) => {
           this.projectRef.set(ref);
@@ -455,6 +480,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
             parameters: {},
           }));
           this.loadError.set(undefined);
+          this.notFound.set(false);
+          this.loadFailure.set(undefined);
+          this.loadGuidance.set(undefined);
           this.favoriteError.set(undefined);
           this.loading.set(true);
           if (!ref || isSharedProjectRef(ref)) {
@@ -466,9 +494,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
             this.loadError.set('Board ID is missing.');
             return EMPTY;
           }
-          return this.assets.board(ref, id).pipe(
+          return this.assets.board(ref, id, undefined, { requireExisting: true }).pipe(
             catchError((err: unknown) => {
-              this.errorLogger.logError(err, 'Failed to get board');
+              if (isProjectItemNotFound(err)) {
+                this.notFound.set(true);
+                this.loading.set(false);
+                return EMPTY;
+              }
+              this.errorLogger.logError(err, 'Failed to get board', { show: false });
+              this.loadFailure.set(err);
+              this.loadGuidance.set(qualifiedLocalReadVersionGuidance(err) ?? undefined);
               this.loadError.set(
                 qualifiedLocalReadVersionGuidance(err) ??
                   'This board could not be loaded. Try opening it again from Boards.',

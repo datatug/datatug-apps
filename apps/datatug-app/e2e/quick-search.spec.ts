@@ -189,7 +189,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     'sneat-datatug-quick-search[data-search-view=tags]:not(.ion-page-hidden)',
   );
   await expect(
-    main.getByText('Quick Search is disabled.', { exact: false }),
+    main.getByText('no search index yet', { exact: false }),
   ).toBeVisible();
   await main
     .getByRole('button', { name: 'Index settings', exact: true })
@@ -313,7 +313,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     .getByRole('button', { name: 'Confirm disable and delete', exact: true })
     .click();
   await expect(
-    main.getByText('Quick Search is disabled.', { exact: false }),
+    main.getByText('no search index yet', { exact: false }),
   ).toBeVisible();
   expect(deletes).toBe(2);
   await page.setViewportSize({ width: 390, height: 844 });

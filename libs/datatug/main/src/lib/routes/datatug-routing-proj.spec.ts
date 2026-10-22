@@ -93,7 +93,9 @@ describe('datatugProjectRoutes', () => {
  */
 describe('datatugProjectRoutes — "query" route (S158, NG04002 regression)', () => {
   function findQueryRoute(): Route {
-    const route = datatugProjectRoutes.find((r) => r.path === 'query');
+    const route = datatugProjectRoutes.find(
+      (r) => r.path === 'query' && !r.canMatch,
+    );
     if (!route) {
       throw new Error('"query" route not found in datatugProjectRoutes');
     }

@@ -8,8 +8,14 @@ import { ShippingSourceAdapterService } from '../shipping/shipping-source-adapte
 
 /** Deployment composition only. Registrations supply no project/source grants. */
 export const SOURCE_ADAPTER_PROVIDERS: Provider[] = [
-  { provide: INCIDENT_RECOVERY_ADAPTERS, useFactory: () => [inject(ShippingResolutionAdapterService).registration] },
-  { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
+  {
+    provide: INCIDENT_RECOVERY_ADAPTERS,
+    useFactory: () => [inject(ShippingResolutionAdapterService).registration],
+  },
+  {
+    provide: SOURCE_EVIDENCE_PRESENTERS,
+    useValue: [shippingEvidencePresenter],
+  },
   {
     provide: SOURCE_ADAPTER_REGISTRATIONS,
     useFactory: () => [inject(ShippingSourceAdapterService).registration],

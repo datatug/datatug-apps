@@ -125,6 +125,8 @@ describe('BoardPage - currentProject navigation', () => {
     expect(getBoard).toHaveBeenCalledWith(
       { storeId: 's1', projectId: 'p1' },
       'b1',
+      undefined,
+      { requireExisting: true },
     );
     expect(logError).not.toHaveBeenCalled();
   });
@@ -282,6 +284,8 @@ describe('BoardPage switches board reads with the full project context', () => {
       2,
       { storeId: 'github.com', projectId: 'second@owner@' },
       'board1',
+      undefined,
+      { requireExisting: true },
     );
     fixture.destroy();
   });
@@ -419,6 +423,8 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
         branch: 'feature',
       },
       'board-1',
+      undefined,
+      { requireExisting: true },
     );
   });
 

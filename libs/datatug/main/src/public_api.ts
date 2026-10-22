@@ -37,6 +37,15 @@ export const loadDemoOvdbPage = () =>
 export const loadDemoLogsPage = () =>
   import('./lib/pages/demo-logs/demo-logs-page.component').then((m) => m.DemoLogsPageComponent);
 
+// The app-level 404 (datatug-app-routes.ts): any address no route answers, instead of NG04002 and the crash dialog.
+export const loadNotFoundPage = () =>
+  import('./lib/routes/project-not-found-page.component').then((m) => m.ProjectNotFoundPageComponent);
+
+export {
+  ErrorStateComponent,
+  type ErrorStateLink,
+} from './lib/components/error-state/error-state.component';
+
 // Project cards (spec/features/project-cards): storage service, standalone card view and the shared result cache.
 export {
   ProjectCardsService,

@@ -1,3 +1,4 @@
+import { ErrorStateComponent } from '../../../../components/error-state/error-state.component';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
 import {
   ChangeDetectionStrategy,
@@ -21,7 +22,7 @@ import { BoardReadForRun } from '../../../core/board-read-for-run';
   templateUrl: './board.component.html',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [BoardQueryResults, BoardPresentationSelection],
-  imports: [BoardRowComponent, IonGrid, IonRow, IonCol, IonText],
+  imports: [ErrorStateComponent, BoardRowComponent, IonGrid, IonRow, IonCol, IonText],
 })
 export class BoardComponent {
   private readonly selection = inject(BoardPresentationSelection);
