@@ -42,7 +42,10 @@ import {
 // inline script of the app concluded about the path (it cannot read every spelling of it the way the router does),
 // route 1 removes chat question parameters, keeping Quick Search q and every other parameter/fragment.
 // That holds for in-app navigations as well. A hand-off address (the project chat that arrived with a question) is
-// never seen here: the app's hand-off route takes it first.
+// never seen here: the app's hand-off route takes it first. When the browser put the question in the address itself
+// (the first navigation of the page, Back and Forward), the guard also takes it out of that address and its history
+// entry at once (stripQuestionFromBrowserAddress): the router writes the address only when the redirected
+// navigation commits, which can be seconds later.
 //
 // An address with an outlet group (`…/a(b)/-/queries`, a folder called `a(b)` pasted from GitHub, or
 // `…/chat(menu:x)`) is another address for the router than the one that was typed: its parser drops what follows the
@@ -102,13 +105,17 @@ export function urlTreeOfPath(
 /** The parameters that carry a visitor's question: the project chat's `msg`, and the old name of it, `q`. */
 const QUESTION_PARAMS = ['msg', 'q'];
 
+/** The parameters that carry a question at this address: Quick Search owns `q`, so there only `msg` is one. */
+function questionParamsOf(segments: readonly UrlSegment[], allowSearchQuery: boolean): readonly string[] {
+  const address = readShortGithubAddress(paths(segments));
+  return allowSearchQuery && address.kind === 'project' && address.parts.rest === '/quick-search' ? ['msg'] : QUESTION_PARAMS;
+}
+
 /**
  * The URL of this navigation without the visitor's question, in every other way as it was (path as typed, other
  * parameters, fragment); undefined when it has none, or when there is no navigation (a guard run outside one).
  */
-function withoutQuestion(router: Router, segments: readonly UrlSegment[], allowSearchQuery: boolean): UrlTree | undefined {
-  const address = readShortGithubAddress(paths(segments));
-  const questionParams = allowSearchQuery && address.kind === 'project' && address.parts.rest === '/quick-search' ? ['msg'] : QUESTION_PARAMS;
+function withoutQuestion(router: Router, questionParams: readonly string[]): UrlTree | undefined {
   const typed = router.getCurrentNavigation()?.extractedUrl;
   if (
     !typed ||
@@ -124,6 +131,68 @@ function withoutQuestion(router: Router, segments: readonly UrlSegment[], allowS
     ),
   );
   return new UrlTree(typed.root, kept, typed.fragment);
+}
+
+/** A query-string pair's key as the router reads it: `+` is a space, percent-decoded (as typed when it does not decode). */
+function keyOfPair(pair: string): string {
+  const raw = pair.split('=')[0].replace(/\+/g, ' ');
+  try {
+    return decodeURIComponent(raw);
+  } catch {
+    return raw;
+  }
+}
+
+/**
+ * Takes the visitor's question out of the browser's address at once, when that address is the one this navigation
+ * opens: the first navigation of the page, and Back and Forward, where the browser put it there, question and all.
+ * The redirect this guard returns does not do it soon enough: the router writes the address only when the
+ * navigation it redirects to commits, after the project check, the lazy project pages and their guards. Until then
+ * the question would stay in the address bar and in the history entry (seconds on a slow machine; the e2e spec's
+ * Back/Forward test failed on CI for this). This does not depend on when, or whether, the router commits.
+ *
+ * Only the question's parameters go: the path, every other parameter and the fragment stay as the browser has
+ * them, so the guard of the redirected navigation still reads the address as typed (an outlet group:
+ * urlHasOutletGroup). An in-app navigation never put the question in the address bar, and the entry it starts from
+ * is another page's: it is left alone, and the redirect alone keeps the question out (the router writes no address
+ * before it commits).
+ */
+function stripQuestionFromBrowserAddress(
+  router: Router,
+  location: Location,
+  questionParams: readonly string[],
+): void {
+  const typed = router.getCurrentNavigation()?.extractedUrl;
+  const shown = location.path(true);
+  if (
+    !typed ||
+    router.serializeUrl(router.parseUrl(shown)) !== router.serializeUrl(typed)
+  ) {
+    return;
+  }
+  const hashAt = shown.indexOf('#');
+  const beforeHash = hashAt < 0 ? shown : shown.slice(0, hashAt);
+  const fragment = hashAt < 0 ? '' : shown.slice(hashAt);
+  const queryAt = beforeHash.indexOf('?');
+  if (queryAt < 0) {
+    return;
+  }
+  const pairs = beforeHash.slice(queryAt + 1).split('&');
+  const kept = pairs.filter((pair) => !questionParams.includes(keyOfPair(pair)));
+  if (kept.length === pairs.length) {
+    return;
+  }
+  // The router reads `//project/…` as `/project/…`; to the History API it would be an address on another host.
+  const path = beforeHash.slice(0, queryAt).replace(/^\/{2,}/, '/');
+  try {
+    location.replaceState(
+      path + (kept.length > 0 ? `?${kept.join('&')}` : '') + fragment,
+      '',
+      location.getState(),
+    );
+  } catch {
+    // A browser that refuses (an exotic embedding) keeps the question until the router replaces the address.
+  }
 }
 
 /**
@@ -168,9 +237,12 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
   const router = inject(Router);
   // The question first, before anything is asked of GitHub: the address may be kept in the address bar for as long
   // as that takes.
-  const outletGroup = urlHasOutletGroup(router, inject(Location));
-  const stripped = withoutQuestion(router, segments, !outletGroup);
+  const location = inject(Location);
+  const outletGroup = urlHasOutletGroup(router, location);
+  const questionParams = questionParamsOf(segments, !outletGroup);
+  const stripped = withoutQuestion(router, questionParams);
   if (stripped) {
+    stripQuestionFromBrowserAddress(router, location, questionParams);
     return stripped;
   }
   const check = inject(GithubAddressCheck);
