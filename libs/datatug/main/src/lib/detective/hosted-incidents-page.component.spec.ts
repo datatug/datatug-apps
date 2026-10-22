@@ -12,40 +12,94 @@ import { DatatugNavContextService } from '../services/nav/datatug-nav-context.se
 import { DetectiveClientService } from './detective-client.service';
 import { HostedIncidentsPageComponent } from './hosted-incidents-page.component';
 
-const ref = { storeId: 'firestore', spaceID: 'private-space', projectId: 'private-project' };
+const ref = {
+  storeId: 'firestore',
+  spaceID: 'private-space',
+  projectId: 'private-project',
+};
 const incident = {
   ref: { storeId: 'detective-incidents-9c561d36', incidentId: 'INC-1' },
-  uid: 'INC-1', title: 'Order 11039 is missing', status: 'open',
-  description: 'Customer reported a missing order.', canonicalContext: {}, lastSeq: 1,
+  uid: 'INC-1',
+  title: 'Order 11039 is missing',
+  status: 'open',
+  description: 'Customer reported a missing order.',
+  canonicalContext: {},
+  lastSeq: 1,
 };
 const caseRecord = {
-  id: 'incident-case-1', title: 'Investigate Order 11039', status: 'active' as const,
-  version: 1, context: {}, incidentRefs: ['detective-incidents-9c561d36/INC-1'],
-  scenarioRefs: [], runRefs: [], evidence: [], findings: [], timeline: [],
+  id: 'incident-case-1',
+  title: 'Investigate Order 11039',
+  status: 'active' as const,
+  version: 1,
+  context: {},
+  incidentRefs: ['detective-incidents-9c561d36/INC-1'],
+  scenarioRefs: [],
+  runRefs: [],
+  evidence: [],
+  findings: [],
+  timeline: [],
 };
 
 describe('HostedIncidentsPageComponent', () => {
   const contextApi = { capabilities: vi.fn() };
   const client = {
-    state: vi.fn(), incidentEvents: vi.fn(), projectIncidents: vi.fn(), projectIncident: vi.fn(), incidentAction: vi.fn(),
+    state: vi.fn(),
+    incidentEvents: vi.fn(),
+    projectIncidents: vi.fn(),
+    projectIncident: vi.fn(),
+    incidentAction: vi.fn(),
   };
-  const router = { events: of(), navigate: vi.fn().mockResolvedValue(true), navigateByUrl: vi.fn().mockResolvedValue(true) };
+  const router = {
+    events: of(),
+    navigate: vi.fn().mockResolvedValue(true),
+    navigateByUrl: vi.fn().mockResolvedValue(true),
+  };
   let routeParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
   let queryParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
 
-  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref, draft = '', initialIncidents = [incident], initialEnvironments = ['demo']) {
+  async function mount(
+    mode: 'list' | 'new' | 'detail',
+    cases = [caseRecord],
+    requestedEnvironment = 'demo',
+    canWrite = true,
+    projectRef = ref,
+    draft = '',
+    initialIncidents = [incident],
+    initialEnvironments = ['demo'],
+  ) {
     const project = new BehaviorSubject({ ref: projectRef });
-    const authState = new BehaviorSubject({ status: 'authenticated', user: { uid: 'sarah' } });
-    client.incidentEvents.mockReturnValue(of({ events: [], nextAfterSeq: 1, hasMore: false }));
-    client.state.mockReturnValue(of({ environments: initialEnvironments, cases, capabilities: { canWrite } }));
-    client.projectIncidents.mockReturnValue(of({ incidents: initialIncidents }));
+    const authState = new BehaviorSubject({
+      status: 'authenticated',
+      user: { uid: 'sarah' },
+    });
+    client.incidentEvents.mockReturnValue(
+      of({ events: [], nextAfterSeq: 1, hasMore: false }),
+    );
+    client.state.mockReturnValue(
+      of({
+        environments: initialEnvironments,
+        cases,
+        capabilities: { canWrite },
+      }),
+    );
+    client.projectIncidents.mockReturnValue(
+      of({ incidents: initialIncidents }),
+    );
     client.projectIncident.mockReturnValue(of({ incident }));
     const data = { incidentMode: mode };
-    const params = convertToParamMap(mode === 'detail' ? {
-      incidentStoreId: incident.ref.storeId, incidentId: incident.ref.incidentId,
-    } : {});
+    const params = convertToParamMap(
+      mode === 'detail'
+        ? {
+            incidentStoreId: incident.ref.storeId,
+            incidentId: incident.ref.incidentId,
+          }
+        : {},
+    );
     routeParams$ = new BehaviorSubject(params);
-    const queryParams = convertToParamMap({ environment: requestedEnvironment, ...(draft ? { draft } : {}) });
+    const queryParams = convertToParamMap({
+      environment: requestedEnvironment,
+      ...(draft ? { draft } : {}),
+    });
     queryParams$ = new BehaviorSubject(queryParams);
     await TestBed.configureTestingModule({
       imports: [HostedIncidentsPageComponent],
@@ -53,18 +107,31 @@ describe('HostedIncidentsPageComponent', () => {
         { provide: DetectiveClientService, useValue: client },
         { provide: SessionContextApiService, useValue: contextApi },
         { provide: Router, useValue: router },
-        { provide: ActivatedRoute, useValue: {
-          snapshot: { data, paramMap: params, queryParamMap: queryParams },
-          data: of(data), paramMap: routeParams$.asObservable(), queryParamMap: queryParams$.asObservable(),
-        } },
-        { provide: DatatugNavContextService, useValue: {
-          currentProject: project.asObservable(), currentEnv: of(undefined),
-        } },
-        { provide: SneatAuthStateService, useValue: { authState: authState.asObservable() } },
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            snapshot: { data, paramMap: params, queryParamMap: queryParams },
+            data: of(data),
+            paramMap: routeParams$.asObservable(),
+            queryParamMap: queryParams$.asObservable(),
+          },
+        },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: project.asObservable(),
+            currentEnv: of(undefined),
+          },
+        },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: authState.asObservable() },
+        },
         { provide: AgentContextService, useValue: {} },
       ],
     }).compileComponents();
-    const fixture: ComponentFixture<HostedIncidentsPageComponent> = TestBed.createComponent(HostedIncidentsPageComponent);
+    const fixture: ComponentFixture<HostedIncidentsPageComponent> =
+      TestBed.createComponent(HostedIncidentsPageComponent);
     fixture.detectChanges();
     await Promise.resolve();
     await fixture.whenStable();
@@ -73,7 +140,9 @@ describe('HostedIncidentsPageComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
-    contextApi.capabilities.mockReset().mockResolvedValue({actorId:'sarah',subjects:[]});
+    contextApi.capabilities
+      .mockReset()
+      .mockResolvedValue({ actorId: 'sarah', subjects: [] });
     sessionStorage.clear();
     router.navigate.mockResolvedValue(true);
     router.navigateByUrl.mockResolvedValue(true);
@@ -83,41 +152,123 @@ describe('HostedIncidentsPageComponent', () => {
     vi.restoreAllMocks();
   });
 
-
-
-  it('gates parent Case and environment mutations while the real child owns an unresolved operation',async()=>{
-    const f=await mount('detail',[],'demo',true,ref,'',[incident],['demo','staging']);
-    await vi.waitFor(()=>expect(f.debugElement.query(By.directive(HostedIncidentConversationComponent))).not.toBeNull());
-    const child=f.debugElement.query(By.directive(HostedIncidentConversationComponent)).componentInstance as HostedIncidentConversationComponent;
-    const reply=new Subject<unknown>();client.incidentAction.mockReturnValue(reply.asObservable());
-    const conversation=child as unknown as {body:{set(value:string):void};send():Promise<void>};
-    conversation.body.set('Pending conversation write');const sending=conversation.send();
-    const parent=f.componentInstance as unknown as {startCase():Promise<void>;selectEnvironment(value:string):void;environment():string};
-    await parent.startCase();parent.selectEnvironment('staging');
-    expect(client.incidentAction).toHaveBeenCalledTimes(1);expect(parent.environment()).toBe('demo');
-    reply.error(new Error('Lost reply'));await sending;
+  it('gates parent Case and environment mutations while the real child owns an unresolved operation', async () => {
+    const f = await mount(
+      'detail',
+      [],
+      'demo',
+      true,
+      ref,
+      '',
+      [incident],
+      ['demo', 'staging'],
+    );
+    await vi.waitFor(() =>
+      expect(
+        f.debugElement.query(By.directive(HostedIncidentConversationComponent)),
+      ).not.toBeNull(),
+    );
+    const child = f.debugElement.query(
+      By.directive(HostedIncidentConversationComponent),
+    ).componentInstance as HostedIncidentConversationComponent;
+    const reply = new Subject<unknown>();
+    client.incidentAction.mockReturnValue(reply.asObservable());
+    const conversation = child as unknown as {
+      body: { set(value: string): void };
+      send(): Promise<void>;
+    };
+    conversation.body.set('Pending conversation write');
+    const sending = conversation.send();
+    const parent = f.componentInstance as unknown as {
+      startCase(): Promise<void>;
+      selectEnvironment(value: string): void;
+      environment(): string;
+    };
+    await parent.startCase();
+    parent.selectEnvironment('staging');
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);
+    expect(parent.environment()).toBe('demo');
+    reply.error(new Error('Lost reply'));
+    await sending;
     // An unresolved journal keeps the parent locked even after transport ends.
-    parent.selectEnvironment('staging');expect(parent.environment()).toBe('demo');
+    parent.selectEnvironment('staging');
+    expect(parent.environment()).toBe('demo');
     child.mutationBusy.emit(false);
-    parent.selectEnvironment('staging');expect(parent.environment()).toBe('staging');
+    parent.selectEnvironment('staging');
+    expect(parent.environment()).toBe('staging');
   });
 
-  it('F1 keeps parent mutations locked when the mounted child cannot read the shared retry slot',async()=>{
-    const key='datatug:incident-message:'+JSON.stringify([{kind:'cloud',storage:'firestore',spaceID:ref.spaceID,project:ref.projectId,principal:'sarah'},'demo',incident.ref]);
-    const bytes=JSON.stringify({operationId:'operation-retained-criterion',expectedSeq:1,action:{type:'criterion-finalize',incidentRef:caseRecord.incidentRefs[0],environment:'demo',expectedSeq:1,criterionVersion:1}});
-    sessionStorage.setItem(key,bytes);const read=sessionStorage.getItem.bind(sessionStorage);
-    const get=vi.spyOn(sessionStorage,'getItem').mockImplementation(name=>{if(name===key)throw new Error('read denied');return read(name);});
-    const write=vi.spyOn(sessionStorage,'setItem');
-    const f=await mount('detail',[],'demo',true,ref,'',[incident],['demo','staging']);
-    await vi.waitFor(()=>expect(f.debugElement.query(By.directive(HostedIncidentConversationComponent))).not.toBeNull());
-    await f.whenStable();const parent=f.componentInstance as unknown as {startCase():Promise<void>;selectEnvironment(value:string):void;environment():string};
-    await parent.startCase();parent.selectEnvironment('staging');
-    expect(client.incidentAction).not.toHaveBeenCalled();expect(parent.environment()).toBe('demo');expect(write).not.toHaveBeenCalled();expect(read(key)).toBe(bytes);
-    get.mockRestore(); sessionStorage.removeItem(key);
+  it('F1 keeps parent mutations locked when the mounted child cannot read the shared retry slot', async () => {
+    const key =
+      'datatug:incident-message:' +
+      JSON.stringify([
+        {
+          kind: 'cloud',
+          storage: 'firestore',
+          spaceID: ref.spaceID,
+          project: ref.projectId,
+          principal: 'sarah',
+        },
+        'demo',
+        incident.ref,
+      ]);
+    const bytes = JSON.stringify({
+      operationId: 'operation-retained-criterion',
+      expectedSeq: 1,
+      action: {
+        type: 'criterion-finalize',
+        incidentRef: caseRecord.incidentRefs[0],
+        environment: 'demo',
+        expectedSeq: 1,
+        criterionVersion: 1,
+      },
+    });
+    sessionStorage.setItem(key, bytes);
+    const read = sessionStorage.getItem.bind(sessionStorage);
+    const get = vi
+      .spyOn(sessionStorage, 'getItem')
+      .mockImplementation((name) => {
+        if (name === key) throw new Error('read denied');
+        return read(name);
+      });
+    const write = vi.spyOn(sessionStorage, 'setItem');
+    const f = await mount(
+      'detail',
+      [],
+      'demo',
+      true,
+      ref,
+      '',
+      [incident],
+      ['demo', 'staging'],
+    );
+    await vi.waitFor(() =>
+      expect(
+        f.debugElement.query(By.directive(HostedIncidentConversationComponent)),
+      ).not.toBeNull(),
+    );
+    await f.whenStable();
+    const parent = f.componentInstance as unknown as {
+      startCase(): Promise<void>;
+      selectEnvironment(value: string): void;
+      environment(): string;
+    };
+    await parent.startCase();
+    parent.selectEnvironment('staging');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    expect(parent.environment()).toBe('demo');
+    expect(write).not.toHaveBeenCalled();
+    expect(read(key)).toBe(bytes);
+    get.mockRestore();
+    sessionStorage.removeItem(key);
   });
   it('offers the shared landing only for an empty hosted list', async () => {
     const fixture = await mount('list', [], 'demo', true, ref, '', []);
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(
+        'Try a test incident',
+      ),
+    );
     expect(fixture.nativeElement.textContent).toContain('Report an incident');
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
@@ -231,11 +382,36 @@ describe('HostedIncidentsPageComponent', () => {
     page.description.set('Edited observation');
     client.incidentAction.mockReturnValue(of({ incident }));
     await page.create();
-    expect(client.incidentAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cloud' }), expect.objectContaining({ title: '[Test] Edited title', description: 'Edited observation', environment: 'demo' }), expect.any(String), expect.any(AbortSignal));
-    expect(router.navigate).toHaveBeenCalledWith([expect.stringContaining('/incidents/detective-incidents-9c561d36/INC-1')], { queryParams: { environment: 'demo' }, replaceUrl: true });
+    expect(client.incidentAction).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: 'cloud' }),
+      expect.objectContaining({
+        title: '[Test] Edited title',
+        description: 'Edited observation',
+        environment: 'demo',
+      }),
+      expect.any(String),
+      expect.any(AbortSignal),
+    );
+    expect(router.navigate).toHaveBeenCalledWith(
+      [
+        expect.stringContaining(
+          '/incidents/detective-incidents-9c561d36/INC-1',
+        ),
+      ],
+      { queryParams: { environment: 'demo' }, replaceUrl: true },
+    );
   });
   it('keeps the test-draft marker, explanation and edits when selecting another environment', async () => {
-    const fixture = await mount('new', [], 'demo', true, ref, 'test', [], ['demo', 'staging']);
+    const fixture = await mount(
+      'new',
+      [],
+      'demo',
+      true,
+      ref,
+      'test',
+      [],
+      ['demo', 'staging'],
+    );
     const page = fixture.componentInstance as unknown as {
       title: { set(value: string): void; (): string };
       description: { set(value: string): void; (): string };
@@ -243,7 +419,9 @@ describe('HostedIncidentsPageComponent', () => {
       selectEnvironment(value: string): void;
     };
     page.title.set('[Test] My edited delivery report');
-    page.description.set('An edited observation to keep while changing environment.');
+    page.description.set(
+      'An edited observation to keep while changing environment.',
+    );
     page.selectEnvironment('staging');
     expect(router.navigate).toHaveBeenCalledWith([], {
       relativeTo: TestBed.inject(ActivatedRoute),
@@ -252,14 +430,26 @@ describe('HostedIncidentsPageComponent', () => {
     });
     // Deliver the query emitted by real Router navigation, so the explanation
     // is checked after the route and environment state have both updated.
-    queryParams$.next(convertToParamMap(router.navigate.mock.calls.at(-1)?.[1]?.queryParams));
+    queryParams$.next(
+      convertToParamMap(router.navigate.mock.calls.at(-1)?.[1]?.queryParams),
+    );
     await fixture.whenStable();
     expect(page.environment()).toBe('staging');
     expect(page.title()).toBe('[Test] My edited delivery report');
-    expect(page.description()).toBe('An edited observation to keep while changing environment.');
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
-    expect(fixture.nativeElement.textContent).toContain('This is an editable example.');
-    expect(fixture.nativeElement.textContent).toContain('Choosing Create incident saves a real incident');
+    expect(page.description()).toBe(
+      'An edited observation to keep while changing environment.',
+    );
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(
+        'Try a test incident',
+      ),
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'This is an editable example.',
+    );
+    expect(fixture.nativeElement.textContent).toContain(
+      'Choosing Create incident saves a real incident',
+    );
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
@@ -279,27 +469,48 @@ describe('HostedIncidentsPageComponent', () => {
     expect(page.title()).toBe('');
     expect(page.description()).toBe('');
     page.title.set('Unsaved hosted report');
-    queryParams$.next(convertToParamMap({ environment: 'demo', draft: 'test' }));
+    queryParams$.next(
+      convertToParamMap({ environment: 'demo', draft: 'test' }),
+    );
     await fixture.whenStable();
     expect(page.title()).toBe('Unsaved hosted report');
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('lists private Incidents after the scoped backend responds, with a route to create', async () => {
-    const pending = new Subject<{ incidents: typeof incident[] }>();
+    const pending = new Subject<{ incidents: (typeof incident)[] }>();
     const fixture = await mount('list');
     client.projectIncidents.mockReturnValue(pending.asObservable());
     (fixture.componentInstance as unknown as { retryLoad(): void }).retryLoad();
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Loading Incidents'));
-    await vi.waitFor(() => expect(client.projectIncidents).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain('Loading Incidents'),
+    );
+    await vi.waitFor(() =>
+      expect(client.projectIncidents).toHaveBeenCalledTimes(2),
+    );
     pending.next({ incidents: [incident] });
     pending.complete();
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Order 11039 is missing'));
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(
+        'Order 11039 is missing',
+      ),
+    );
     expect(fixture.nativeElement.textContent).toContain('Create Incident');
-    expect(fixture.nativeElement.querySelector('ion-list h2')?.textContent).toBe('INC-1 — Order 11039 is missing');
-    expect(fixture.nativeElement.textContent).not.toContain(incident.ref.storeId);
-    expect((fixture.componentInstance as unknown as { detailHref(item: typeof incident): string }).detailHref(incident))
-      .toBe('/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1');
+    expect(
+      fixture.nativeElement.querySelector('ion-list h2')?.textContent,
+    ).toBe('INC-1 — Order 11039 is missing');
+    expect(fixture.nativeElement.textContent).not.toContain(
+      incident.ref.storeId,
+    );
+    expect(
+      (
+        fixture.componentInstance as unknown as {
+          detailHref(item: typeof incident): string;
+        }
+      ).detailHref(incident),
+    ).toBe(
+      '/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1',
+    );
   });
 
   it('creates an Incident without a Case, preserves the selected mapped integer input, and opens its returned full ref', async () => {
@@ -314,16 +525,39 @@ describe('HostedIncidentsPageComponent', () => {
     page.title.set('Order 11039 is missing');
     page.description.set('Customer reported a missing order.');
     // Owner-capability-shaped unit metadata; labels and canonical field come from the adapter, never page branches.
-    contextApi.capabilities.mockResolvedValue({actorId:'sarah', subjects:[{id:'shipping-order-id',label:'Order ID',type:'integer',shape:'scalar',scope:{environmentId:'demo',identityDomain:'unit-source'},subject:{conceptId:'shipping-order',fieldId:'order_id',fieldMappingRef:'unit-mapping'}}]});
-    await page.loadMappedInputs(); await fixture.whenStable();
-    const input = fixture.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent;
-    input.choose('shipping-order-id'); input.text.set('11045'); input.add();
+    contextApi.capabilities.mockResolvedValue({
+      actorId: 'sarah',
+      subjects: [
+        {
+          id: 'shipping-order-id',
+          label: 'Order ID',
+          type: 'integer',
+          shape: 'scalar',
+          scope: { environmentId: 'demo', identityDomain: 'unit-source' },
+          subject: {
+            conceptId: 'shipping-order',
+            fieldId: 'order_id',
+            fieldMappingRef: 'unit-mapping',
+          },
+        },
+      ],
+    });
+    await page.loadMappedInputs();
+    await fixture.whenStable();
+    const input = fixture.debugElement.query(
+      By.directive(MappedContextInputComponent),
+    ).componentInstance as MappedContextInputComponent;
+    input.choose('shipping-order-id');
+    input.text.set('11045');
+    input.add();
     await fixture.whenStable();
     await page.create();
     expect(client.incidentAction).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'cloud', project: 'private-project' }),
       expect.objectContaining({
-        type: 'create', environment: 'demo', title: 'Order 11039 is missing',
+        type: 'create',
+        environment: 'demo',
+        title: 'Order 11039 is missing',
         context: { order_id: { type: 'integer', value: '11045' } },
       }),
       expect.stringMatching(/^operation-/),
@@ -331,64 +565,180 @@ describe('HostedIncidentsPageComponent', () => {
     );
     expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('caseId');
     expect(router.navigate).toHaveBeenCalledWith(
-      ['/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1'],
+      [
+        '/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1',
+      ],
       { queryParams: { environment: 'demo' }, replaceUrl: true },
     );
   });
 
   it('uses a second neutral mapped subject and never displays a hardcoded business input', async () => {
-    client.incidentAction.mockReturnValue(of({incident,receipt:'saved'}));
-    contextApi.capabilities.mockResolvedValue({actorId:'sarah',subjects:[{id:'asset-key',label:'Asset key',type:'string',shape:'scalar',scope:{environmentId:'demo',identityDomain:'assets'},subject:{conceptId:'asset',fieldId:'asset_key',fieldMappingRef:'unit-asset-mapping'}},{id:'other-env',label:'Unavailable environment field',type:'integer',shape:'scalar',scope:{environmentId:'staging',identityDomain:'assets'},subject:{conceptId:'asset',fieldId:'foreign',fieldMappingRef:'unit-foreign-mapping'}}]});
-    const f=await mount('new',[]);
-    const page=f.componentInstance as unknown as {title:{set(value:string):void};loadMappedInputs():Promise<void>;create():Promise<void>};
+    client.incidentAction.mockReturnValue(of({ incident, receipt: 'saved' }));
+    contextApi.capabilities.mockResolvedValue({
+      actorId: 'sarah',
+      subjects: [
+        {
+          id: 'asset-key',
+          label: 'Asset key',
+          type: 'string',
+          shape: 'scalar',
+          scope: { environmentId: 'demo', identityDomain: 'assets' },
+          subject: {
+            conceptId: 'asset',
+            fieldId: 'asset_key',
+            fieldMappingRef: 'unit-asset-mapping',
+          },
+        },
+        {
+          id: 'other-env',
+          label: 'Unavailable environment field',
+          type: 'integer',
+          shape: 'scalar',
+          scope: { environmentId: 'staging', identityDomain: 'assets' },
+          subject: {
+            conceptId: 'asset',
+            fieldId: 'foreign',
+            fieldMappingRef: 'unit-foreign-mapping',
+          },
+        },
+      ],
+    });
+    const f = await mount('new', []);
+    const page = f.componentInstance as unknown as {
+      title: { set(value: string): void };
+      loadMappedInputs(): Promise<void>;
+      create(): Promise<void>;
+    };
     expect(f.nativeElement.textContent).not.toContain('Legacy OrderID');
     expect(f.nativeElement.querySelector('[aria-label="Order ID"]')).toBeNull();
-    await page.loadMappedInputs(); await f.whenStable();
-    const control=f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent;
-    expect(control.choices().map(item=>item.id)).toEqual(['asset-key']);
-    control.choose('asset-key');control.text.set('ASSET-A');control.add();page.title.set('Investigate asset');await page.create();
-    expect(client.incidentAction.mock.calls[0][1].context).toEqual({asset_key:{type:'string',value:'ASSET-A'}});
+    await page.loadMappedInputs();
+    await f.whenStable();
+    const control = f.debugElement.query(
+      By.directive(MappedContextInputComponent),
+    ).componentInstance as MappedContextInputComponent;
+    expect(control.choices().map((item) => item.id)).toEqual(['asset-key']);
+    control.choose('asset-key');
+    control.text.set('ASSET-A');
+    control.add();
+    page.title.set('Investigate asset');
+    await page.create();
+    expect(client.incidentAction.mock.calls[0][1].context).toEqual({
+      asset_key: { type: 'string', value: 'ASSET-A' },
+    });
   });
   it('keeps absent or denied mapping metadata explicit and creates no implicit business context', async () => {
-    const f=await mount('new',[]);
-    const page=f.componentInstance as unknown as {title:{set(value:string):void};loadMappedInputs():Promise<void>;create():Promise<void>};
-    await page.loadMappedInputs(); await f.whenStable();
+    const f = await mount('new', []);
+    const page = f.componentInstance as unknown as {
+      title: { set(value: string): void };
+      loadMappedInputs(): Promise<void>;
+      create(): Promise<void>;
+    };
+    await page.loadMappedInputs();
+    await f.whenStable();
     expect(client.incidentAction).not.toHaveBeenCalled();
-    expect((f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent).choices()).toEqual([]);
-    contextApi.capabilities.mockRejectedValue(new Error('Mapping access unavailable'));
-    await page.loadMappedInputs();await f.whenStable();expect(f.nativeElement.textContent).toContain('Mapping access unavailable');
-    client.incidentAction.mockReturnValue(of({incident,receipt:'saved'}));page.title.set('Context can be added later');await page.create();
-    expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('context');
+    expect(
+      (
+        f.debugElement.query(By.directive(MappedContextInputComponent))
+          .componentInstance as MappedContextInputComponent
+      ).choices(),
+    ).toEqual([]);
+    contextApi.capabilities.mockRejectedValue(
+      new Error('Mapping access unavailable'),
+    );
+    await page.loadMappedInputs();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain('Mapping access unavailable');
+    client.incidentAction.mockReturnValue(of({ incident, receipt: 'saved' }));
+    page.title.set('Context can be added later');
+    await page.create();
+    expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty(
+      'context',
+    );
   });
   it('denies ignored-abort late metadata after canceling the draft in the same project and environment', async () => {
-    const f=await mount('new',[]);
-    let finish:(value:unknown)=>void=()=>undefined;
-    contextApi.capabilities.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
-    const page=f.componentInstance as unknown as {loadMappedInputs():Promise<void>;cancelDraft():void};
-    const pending=page.loadMappedInputs();const signal=contextApi.capabilities.mock.calls[0][1] as AbortSignal;
-    page.cancelDraft();expect(signal.aborted).toBe(true);
-    finish({actorId:'sarah',subjects:[{id:'late',label:'Late field',type:'integer',shape:'scalar',scope:{environmentId:'demo',identityDomain:'late'},subject:{conceptId:'record',fieldId:'record_id',fieldMappingRef:'late'}}]});
-    await pending;await f.whenStable();
-    expect((f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent).choices()).toEqual([]);
+    const f = await mount('new', []);
+    let finish: (value: unknown) => void = () => undefined;
+    contextApi.capabilities.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const page = f.componentInstance as unknown as {
+      loadMappedInputs(): Promise<void>;
+      cancelDraft(): void;
+    };
+    const pending = page.loadMappedInputs();
+    const signal = contextApi.capabilities.mock.calls[0][1] as AbortSignal;
+    page.cancelDraft();
+    expect(signal.aborted).toBe(true);
+    finish({
+      actorId: 'sarah',
+      subjects: [
+        {
+          id: 'late',
+          label: 'Late field',
+          type: 'integer',
+          shape: 'scalar',
+          scope: { environmentId: 'demo', identityDomain: 'late' },
+          subject: {
+            conceptId: 'record',
+            fieldId: 'record_id',
+            fieldMappingRef: 'late',
+          },
+        },
+      ],
+    });
+    await pending;
+    await f.whenStable();
+    expect(
+      (
+        f.debugElement.query(By.directive(MappedContextInputComponent))
+          .componentInstance as MappedContextInputComponent
+      ).choices(),
+    ).toEqual([]);
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('cold-loads the exact non-Firestore IncidentRef, shows its linked Case, and starts a distinct Case', async () => {
-    client.incidentAction.mockReturnValue(of({ incident, case: { ...caseRecord, id: 'incident-new-case' }, receipt: 'started' }));
+    client.incidentAction.mockReturnValue(
+      of({
+        incident,
+        case: { ...caseRecord, id: 'incident-new-case' },
+        receipt: 'started',
+      }),
+    );
     const fixture = await mount('detail');
-    await vi.waitFor(() => expect(client.projectIncident).toHaveBeenCalledWith(
-      expect.objectContaining({ kind: 'cloud', project: 'private-project' }),
-      'demo', 'detective-incidents-9c561d36/INC-1',
-    ));
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Detective Case incident-case-1'));
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('INC-1 — Order 11039 is missing');
-    expect(fixture.nativeElement.textContent).not.toContain(incident.ref.storeId);
-    await (fixture.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    await vi.waitFor(() =>
+      expect(client.projectIncident).toHaveBeenCalledWith(
+        expect.objectContaining({ kind: 'cloud', project: 'private-project' }),
+        'demo',
+        'detective-incidents-9c561d36/INC-1',
+      ),
+    );
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(
+        'Detective Case incident-case-1',
+      ),
+    );
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe(
+      'INC-1 — Order 11039 is missing',
+    );
+    expect(fixture.nativeElement.textContent).not.toContain(
+      incident.ref.storeId,
+    );
+    await (
+      fixture.componentInstance as unknown as { startCase(): Promise<void> }
+    ).startCase();
     expect(client.incidentAction.mock.calls[0][1]).toMatchObject({
-      type: 'start-case', incidentRef: 'detective-incidents-9c561d36/INC-1',
-      environment: 'demo', case: { incidentRefs: [], version: 0 },
+      type: 'start-case',
+      incidentRef: 'detective-incidents-9c561d36/INC-1',
+      environment: 'demo',
+      case: { incidentRefs: [], version: 0 },
     });
-    expect(client.incidentAction.mock.calls[0][1].case.id).not.toBe(incident.ref.incidentId);
+    expect(client.incidentAction.mock.calls[0][1].case.id).not.toBe(
+      incident.ref.incidentId,
+    );
     expect(router.navigateByUrl).toHaveBeenCalledWith(
       '/space/private-space/store/firestore/project/private-project/detective/incident-new-case',
     );
@@ -396,17 +746,27 @@ describe('HostedIncidentsPageComponent', () => {
 
   it('accepts a fresh conversation projection without regressing title, status or context on an older replay', async () => {
     const fixture = await mount('detail', []);
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain(incident.title));
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(incident.title),
+    );
     const page = fixture.componentInstance as unknown as {
       updateConversationIncident(item: typeof incident): void;
       incident(): typeof incident;
     };
-    const current = {...incident, title: 'Current investigation', status: 'investigating', canonicalContext: {order: 11039}, lastSeq: 4};
+    const current = {
+      ...incident,
+      title: 'Current investigation',
+      status: 'investigating',
+      canonicalContext: { order: 11039 },
+      lastSeq: 4,
+    };
     page.updateConversationIncident(current);
-    page.updateConversationIncident({...incident, lastSeq: 2});
+    page.updateConversationIncident({ ...incident, lastSeq: 2 });
     expect(page.incident()).toEqual(current);
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain('Current investigation');
+    expect(fixture.nativeElement.querySelector('h1')?.textContent).toContain(
+      'Current investigation',
+    );
   });
 
   it('keeps the saved Incident available when navigation fails without sending a second create', async () => {
@@ -422,7 +782,11 @@ describe('HostedIncidentsPageComponent', () => {
     await page.create();
     await page.create();
     expect(client.incidentAction).toHaveBeenCalledTimes(1);
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Open saved Incident'));
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(
+        'Open saved Incident',
+      ),
+    );
     router.navigate.mockResolvedValue(true);
     await page.openSavedIncident();
     expect(client.incidentAction).toHaveBeenCalledTimes(1);
@@ -431,39 +795,68 @@ describe('HostedIncidentsPageComponent', () => {
 
   it('rejects an explicit unknown environment before reading or writing an Incident', async () => {
     const fixture = await mount('detail', [], 'other');
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Environment other is unavailable'));
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(
+        'Environment other is unavailable',
+      ),
+    );
     expect(client.projectIncident).not.toHaveBeenCalled();
     expect(fixture.nativeElement.textContent).toContain('Open Incidents list');
   });
 
   it('loads a second Incident ID in a reused detail component and discards the first record', async () => {
-    const second = { ...incident, ref: { ...incident.ref, incidentId: 'INC-2' }, title: 'Second Incident' };
+    const second = {
+      ...incident,
+      ref: { ...incident.ref, incidentId: 'INC-2' },
+      title: 'Second Incident',
+    };
     const fixture = await mount('detail', []);
-    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain(incident.title));
-    client.projectIncident.mockImplementation((_context, _environment, ref: string) =>
-      of({ incident: ref.endsWith('/INC-2') ? second : incident }));
-    routeParams$.next(convertToParamMap({
-      incidentStoreId: second.ref.storeId, incidentId: second.ref.incidentId,
-    }));
-    await vi.waitFor(() => expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe('INC-2 — Second Incident'));
-    expect(fixture.nativeElement.querySelector('h1')?.textContent).not.toContain('INC-1');
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.textContent).toContain(incident.title),
+    );
+    client.projectIncident.mockImplementation(
+      (_context, _environment, ref: string) =>
+        of({ incident: ref.endsWith('/INC-2') ? second : incident }),
+    );
+    routeParams$.next(
+      convertToParamMap({
+        incidentStoreId: second.ref.storeId,
+        incidentId: second.ref.incidentId,
+      }),
+    );
+    await vi.waitFor(() =>
+      expect(fixture.nativeElement.querySelector('h1')?.textContent).toBe(
+        'INC-2 — Second Incident',
+      ),
+    );
+    expect(
+      fixture.nativeElement.querySelector('h1')?.textContent,
+    ).not.toContain('INC-1');
     expect(fixture.nativeElement.textContent).not.toContain(incident.title);
     expect(client.projectIncident).toHaveBeenLastCalledWith(
-      expect.objectContaining({ kind: 'cloud' }), 'demo',
+      expect.objectContaining({ kind: 'cloud' }),
+      'demo',
       'detective-incidents-9c561d36/INC-2',
     );
   });
 
   it('keeps viewer Incidents readable while blocking create and start-case actions', async () => {
     const list = await mount('list', [], 'demo', false);
-    await vi.waitFor(() => expect(list.nativeElement.textContent).toContain('Order 11039 is missing'));
+    await vi.waitFor(() =>
+      expect(list.nativeElement.textContent).toContain(
+        'Order 11039 is missing',
+      ),
+    );
     expect(list.nativeElement.textContent).toContain('cannot create them');
     expect(list.nativeElement.textContent).not.toContain('Create Incident');
     list.destroy();
     TestBed.resetTestingModule();
 
     const newPage = await mount('new', [], 'demo', false);
-    const create = newPage.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    const create = newPage.componentInstance as unknown as {
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
     create.title.set('Viewer must not create');
     await create.create();
     expect(client.incidentAction).not.toHaveBeenCalled();
@@ -471,16 +864,29 @@ describe('HostedIncidentsPageComponent', () => {
     TestBed.resetTestingModule();
 
     const detail = await mount('detail', [], 'demo', false);
-    await vi.waitFor(() => expect(detail.nativeElement.textContent).toContain('Order 11039 is missing'));
-    expect(detail.nativeElement.textContent).toContain('cannot start a Detective Case');
-    await (detail.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    await vi.waitFor(() =>
+      expect(detail.nativeElement.textContent).toContain(
+        'Order 11039 is missing',
+      ),
+    );
+    expect(detail.nativeElement.textContent).toContain(
+      'cannot start a Detective Case',
+    );
+    await (
+      detail.componentInstance as unknown as { startCase(): Promise<void> }
+    ).startCase();
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('reuses an ambiguous create operation ID after remount, but changes it for changed text or project', async () => {
-    client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
+    client.incidentAction.mockReturnValue(
+      throwError(() => new Error('connection lost')),
+    );
     const first = await mount('new', []);
-    const firstPage = first.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    const firstPage = first.componentInstance as unknown as {
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
     firstPage.title.set('Order 11039 is missing');
     await firstPage.create();
     const originalId = client.incidentAction.mock.calls[0][2];
@@ -489,7 +895,10 @@ describe('HostedIncidentsPageComponent', () => {
     TestBed.resetTestingModule();
 
     const second = await mount('new', []);
-    const secondPage = second.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    const secondPage = second.componentInstance as unknown as {
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
     secondPage.title.set('Order 11039 is missing');
     await secondPage.create();
     expect(client.incidentAction.mock.calls[1][2]).toBe(originalId);
@@ -501,22 +910,34 @@ describe('HostedIncidentsPageComponent', () => {
     TestBed.resetTestingModule();
 
     const third = await mount('new', []);
-    const thirdPage = third.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    const thirdPage = third.componentInstance as unknown as {
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
     thirdPage.title.set('Order 11039 is missing');
     await thirdPage.create();
     expect(client.incidentAction.mock.calls[3][2]).toBe(originalId);
     third.destroy();
     TestBed.resetTestingModule();
 
-    const fourth = await mount('new', [], 'demo', true, { ...ref, projectId: 'another-project' });
-    const fourthPage = fourth.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    const fourth = await mount('new', [], 'demo', true, {
+      ...ref,
+      projectId: 'another-project',
+    });
+    const fourthPage = fourth.componentInstance as unknown as {
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
     fourthPage.title.set('Order 11039 is missing');
     await fourthPage.create();
     expect(client.incidentAction.mock.calls[4][2]).not.toBe(originalId);
   });
 
   it('holds the environment while a create is in flight', async () => {
-    const pending = new Subject<{ incident: typeof incident; receipt: string }>();
+    const pending = new Subject<{
+      incident: typeof incident;
+      receipt: string;
+    }>();
     client.incidentAction.mockReturnValue(pending.asObservable());
     const fixture = await mount('new', []);
     const page = fixture.componentInstance as unknown as {
@@ -527,7 +948,9 @@ describe('HostedIncidentsPageComponent', () => {
     };
     page.title.set('Order 11039 is missing');
     const saving = page.create();
-    await vi.waitFor(() => expect(client.incidentAction).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() =>
+      expect(client.incidentAction).toHaveBeenCalledTimes(1),
+    );
     page.selectEnvironment('other');
     expect(page.environment()).toBe('demo');
     expect(router.navigate).not.toHaveBeenCalled();
@@ -535,33 +958,56 @@ describe('HostedIncidentsPageComponent', () => {
     pending.complete();
     await saving;
     expect(router.navigate).toHaveBeenCalledWith(
-      expect.anything(), expect.objectContaining({ queryParams: { environment: 'demo' } }),
+      expect.anything(),
+      expect.objectContaining({ queryParams: { environment: 'demo' } }),
     );
   });
 
   it('retries a lost start-case response with the same Case and operation IDs after remount', async () => {
-    client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
+    client.incidentAction.mockReturnValue(
+      throwError(() => new Error('connection lost')),
+    );
     const first = await mount('detail', []);
-    await vi.waitFor(() => expect(first.nativeElement.textContent).toContain(incident.title));
-    await (first.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    await vi.waitFor(() =>
+      expect(first.nativeElement.textContent).toContain(incident.title),
+    );
+    await (
+      first.componentInstance as unknown as { startCase(): Promise<void> }
+    ).startCase();
     const firstAction = client.incidentAction.mock.calls[0][1];
     const firstOperation = client.incidentAction.mock.calls[0][2];
     first.destroy();
     TestBed.resetTestingModule();
 
-    client.incidentAction.mockReturnValue(of({ incident, case: { ...caseRecord, id: firstAction.case.id }, receipt: 'started' }));
+    client.incidentAction.mockReturnValue(
+      of({
+        incident,
+        case: { ...caseRecord, id: firstAction.case.id },
+        receipt: 'started',
+      }),
+    );
     const second = await mount('detail', []);
-    await vi.waitFor(() => expect(second.nativeElement.textContent).toContain(incident.title));
-    await (second.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
+    await vi.waitFor(() =>
+      expect(second.nativeElement.textContent).toContain(incident.title),
+    );
+    await (
+      second.componentInstance as unknown as { startCase(): Promise<void> }
+    ).startCase();
     expect(client.incidentAction.mock.calls[1][1]).toEqual(firstAction);
     expect(client.incidentAction.mock.calls[1][2]).toBe(firstOperation);
     second.destroy();
     TestBed.resetTestingModule();
 
     const third = await mount('detail', []);
-    await vi.waitFor(() => expect(third.nativeElement.textContent).toContain(incident.title));
-    await (third.componentInstance as unknown as { startCase(): Promise<void> }).startCase();
-    expect(client.incidentAction.mock.calls[2][1].case.id).not.toBe(firstAction.case.id);
+    await vi.waitFor(() =>
+      expect(third.nativeElement.textContent).toContain(incident.title),
+    );
+    await (
+      third.componentInstance as unknown as { startCase(): Promise<void> }
+    ).startCase();
+    expect(client.incidentAction.mock.calls[2][1].case.id).not.toBe(
+      firstAction.case.id,
+    );
     expect(client.incidentAction.mock.calls[2][2]).not.toBe(firstOperation);
   });
 
@@ -570,24 +1016,59 @@ describe('HostedIncidentsPageComponent', () => {
       if (key.startsWith('datatug:incident-message:')) return null;
       throw new Error('parent retry storage disabled');
     });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled'); });
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage disabled'); });
-    client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
+      throw new Error('storage disabled');
+    });
+    client.incidentAction.mockReturnValue(
+      throwError(() => new Error('connection lost')),
+    );
     const newPage = await mount('new', []);
-    const create = newPage.componentInstance as unknown as { title: { set(value: string): void }; create(): Promise<void> };
+    const create = newPage.componentInstance as unknown as {
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
     create.title.set('Order 11039 is missing');
     await create.create();
     await create.create();
-    expect(client.incidentAction.mock.calls[1][2]).toBe(client.incidentAction.mock.calls[0][2]);
+    expect(client.incidentAction.mock.calls[1][2]).toBe(
+      client.incidentAction.mock.calls[0][2],
+    );
     newPage.destroy();
     TestBed.resetTestingModule();
 
     const detail = await mount('detail', []);
-    await vi.waitFor(() => expect(detail.nativeElement.textContent).toContain(incident.title));
-    const start = detail.componentInstance as unknown as { startCase(): Promise<void> };
+    await vi.waitFor(() =>
+      expect(detail.nativeElement.textContent).toContain(incident.title),
+    );
+    const start = detail.componentInstance as unknown as {
+      startCase(): Promise<void>;
+    };
     await start.startCase();
     await start.startCase();
-    expect(client.incidentAction.mock.calls[3][2]).toBe(client.incidentAction.mock.calls[2][2]);
-    expect(client.incidentAction.mock.calls[3][1].case.id).toBe(client.incidentAction.mock.calls[2][1].case.id);
+    expect(client.incidentAction.mock.calls[3][2]).toBe(
+      client.incidentAction.mock.calls[2][2],
+    );
+    expect(client.incidentAction.mock.calls[3][1].case.id).toBe(
+      client.incidentAction.mock.calls[2][1].case.id,
+    );
   });
+});
+
+// vi.restoreAllMocks() does not undo a spy on a happy-dom Storage, and this suite shares one environment across spec
+// files: restore each spied Storage method explicitly, so that a mock never leaks into the next file.
+afterEach(() => {
+  for (const storage of [sessionStorage, localStorage])
+    for (const method of [
+      'getItem',
+      'setItem',
+      'removeItem',
+      'clear',
+      'key',
+    ] as const) {
+      const fn: unknown = storage[method];
+      if (vi.isMockFunction(fn)) fn.mockRestore();
+    }
 });

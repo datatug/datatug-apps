@@ -1,5 +1,12 @@
 import { webcrypto } from 'node:crypto';
-import { Component, input, output, signal, EnvironmentInjector, createEnvironmentInjector } from '@angular/core';
+import {
+  Component,
+  input,
+  output,
+  signal,
+  EnvironmentInjector,
+  createEnvironmentInjector,
+} from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
@@ -183,7 +190,10 @@ describe('Native physical inspection and durable mapping DOM', () => {
   afterEach(() => vi.unstubAllGlobals());
   async function mount() {
     const f = TestBed.createComponent(SemanticBrowserComponent);
-    const child = createEnvironmentInjector([NativeSemanticBrowserController], TestBed.inject(EnvironmentInjector));
+    const child = createEnvironmentInjector(
+      [NativeSemanticBrowserController],
+      TestBed.inject(EnvironmentInjector),
+    );
     const controller = child.get(NativeSemanticBrowserController);
     f.componentRef.onDestroy(() => child.destroy());
     controller.environments.set(['demo']);
@@ -201,10 +211,13 @@ describe('Native physical inspection and durable mapping DOM', () => {
       detectChanges: () => f.detectChanges(),
       whenStable: () => f.whenStable(),
       destroy: () => f.destroy(),
-      componentRef: { setInput: (key: 'environments' | 'canWrite', value: unknown) => {
-        if (key === 'environments') controller.environments.set(value as readonly string[]);
-        else controller.canWrite.set(value as boolean);
-      } },
+      componentRef: {
+        setInput: (key: 'environments' | 'canWrite', value: unknown) => {
+          if (key === 'environments')
+            controller.environments.set(value as readonly string[]);
+          else controller.canWrite.set(value as boolean);
+        },
+      },
     };
   }
   async function inspect(f: Awaited<ReturnType<typeof mount>>) {
@@ -863,4 +876,20 @@ describe('Native physical inspection and durable mapping DOM', () => {
     expect(f.componentInstance.pending()).toEqual(r);
     expect(api.addMapping).not.toHaveBeenCalled();
   });
+});
+
+// vi.restoreAllMocks() does not undo a spy on a happy-dom Storage, and this suite shares one environment across spec
+// files: restore each spied Storage method explicitly, so that a mock never leaks into the next file.
+afterEach(() => {
+  for (const storage of [sessionStorage, localStorage])
+    for (const method of [
+      'getItem',
+      'setItem',
+      'removeItem',
+      'clear',
+      'key',
+    ] as const) {
+      const fn: unknown = storage[method];
+      if (vi.isMockFunction(fn)) fn.mockRestore();
+    }
 });

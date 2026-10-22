@@ -216,10 +216,7 @@ describe('CloudLogsAuthRecoveryPageComponent', () => {
       }),
     ],
   ])('rejects %s pending storage', (_name, raw) => {
-    sessionStorage.setItem(
-      'datatug:google-cloud-logs:pending-return',
-      raw,
-    );
+    sessionStorage.setItem('datatug:google-cloud-logs:pending-return', raw);
 
     expect(takeCloudLogsOAuthReturn()).toBeUndefined();
   });
@@ -235,11 +232,11 @@ describe('CloudLogsAuthRecoveryPageComponent', () => {
       receipt: 'B'.repeat(43),
     });
     expect(preserveCloudLogsReturnForAuthRecovery()).toBe('saved');
-    const removeItem = vi.spyOn(sessionStorage, 'removeItem').mockImplementation(
-      () => {
+    const removeItem = vi
+      .spyOn(sessionStorage, 'removeItem')
+      .mockImplementation(() => {
         throw new Error('storage unavailable');
-      },
-    );
+      });
 
     expect(takeCloudLogsOAuthReturn()).toBeUndefined();
     removeItem.mockRestore();
@@ -341,4 +338,20 @@ describe('CloudLogsAuthRecoveryPageComponent', () => {
       vi.useRealTimers();
     }
   });
+});
+
+// vi.restoreAllMocks() does not undo a spy on a happy-dom Storage, and this suite shares one environment across spec
+// files: restore each spied Storage method explicitly, so that a mock never leaks into the next file.
+afterEach(() => {
+  for (const storage of [sessionStorage, localStorage])
+    for (const method of [
+      'getItem',
+      'setItem',
+      'removeItem',
+      'clear',
+      'key',
+    ] as const) {
+      const fn: unknown = storage[method];
+      if (vi.isMockFunction(fn)) fn.mockRestore();
+    }
 });
