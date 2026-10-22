@@ -220,17 +220,33 @@ describe('Native seven-route adapter and canonical entity snapshots', () => {
       ),
     ).rejects.toThrow();
   });
-  it('never interprets WIP or future Ready=true as Check closure proof', async () => {
+  it('rejects legacy Ready without actual definition and binding preflight', async () => {
     api.post.mockReturnValue(
       of({ queries: [], checks: [{ id: 'real-check', ready: true }] }),
     );
-    expect(
-      (
-        await TestBed.inject(NativeSemanticApiService).applicable(
-          selected,
-          new AbortController().signal,
-        )
-      ).available,
-    ).toBe(false);
+    await expect(
+      TestBed.inject(NativeSemanticApiService).applicable(
+        selected,
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow();
+  });
+  it('uses the unchanged fenced applicable route and aborts without accepting a late response', async () => {
+    const source = new Subject<unknown>(),
+      controller = new AbortController();
+    api.post.mockReturnValue(source);
+    const promise = TestBed.inject(NativeSemanticApiService).applicable(
+      selected,
+      controller.signal,
+    );
+    expect(api.post).toHaveBeenCalledWith(
+      'datatug/semantic/applicable',
+      selected,
+      { retryUnauthorizedOnce: false },
+    );
+    const rejected = expect(promise).rejects.toThrow();
+    controller.abort();
+    source.next({ queries: [], checks: [] });
+    await rejected;
   });
 });

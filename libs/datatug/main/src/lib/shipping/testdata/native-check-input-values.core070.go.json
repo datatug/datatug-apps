@@ -1,0 +1,63 @@
+{
+  "dateRange": {
+    "type": "range",
+    "start": {
+      "type": "date",
+      "value": "2018-05-20"
+    },
+    "end": {
+      "type": "date",
+      "value": "2018-05-21"
+    }
+  },
+  "datetimeRange": {
+    "type": "range",
+    "start": {
+      "type": "datetime",
+      "value": "2018-05-20T09:00:00.001Z"
+    },
+    "end": {
+      "type": "datetime",
+      "value": "2018-05-20T09:00:00.002Z"
+    }
+  },
+  "decimalRange": {
+    "type": "range",
+    "start": {
+      "type": "decimal",
+      "value": "1.0001"
+    },
+    "end": {
+      "type": "decimal",
+      "value": "2.0001"
+    }
+  },
+  "integerRange": {
+    "type": "range",
+    "start": {
+      "type": "integer",
+      "value": "9007199254740993"
+    },
+    "end": {
+      "type": "integer",
+      "value": "9007199254740994"
+    }
+  },
+  "scalar": {
+    "type": "integer",
+    "value": "9007199254740993"
+  },
+  "set": {
+    "type": "set",
+    "values": [
+      {
+        "type": "integer",
+        "value": "9007199254740993"
+      },
+      {
+        "type": "integer",
+        "value": "9007199254740994"
+      }
+    ]
+  }
+}

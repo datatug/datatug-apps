@@ -9,8 +9,8 @@ import {
   signal,
   untracked,
 } from '@angular/core';
-import { refreshOutline } from 'ionicons/icons';
-import { ActivatedRoute } from '@angular/router';
+import { refreshOutline, searchOutline } from 'ionicons/icons';
+import { ActivatedRoute, RouterLink } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
 import {
   IonButton,
@@ -32,6 +32,11 @@ import {
   matchesNativeSourceInvalidation,
 } from '../evidence/native-source-invalidation';
 import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
+import { projectPageHref } from '../nav/project-page-href';
+import {
+  NativeApplicable,
+  nativePreflightLabels,
+} from './native-check-preflight-contract';
 import { NativeSemanticApiService } from './native-semantic-api.service';
 import {
   NativeSchema,
@@ -56,6 +61,7 @@ import {
   selector: 'sneat-native-semantic-browser',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    RouterLink,
     IonButton,
     IonButtons,
     IonSelect,
@@ -112,6 +118,16 @@ import {
         flex-wrap: wrap;
         gap: 0.25rem;
       }
+      .check-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+      }
+      .check-list li {
+        padding-block: 0.65rem;
+        border-bottom: 1px solid var(--ion-color-light-shade);
+        overflow-wrap: anywhere;
+      }
       details {
         overflow-wrap: anywhere;
       }
@@ -130,6 +146,13 @@ import {
 })
 export class NativeSemanticBrowserComponent {
   readonly refreshIcon = refreshOutline;
+  readonly findChecksIcon = searchOutline;
+  readonly checkLabels = nativePreflightLabels;
+  readonly applicable = signal<NativeApplicable | undefined>(undefined);
+  readonly checksPending = signal(false);
+  readonly checksError = signal('');
+  private checksController?: AbortController;
+  private checksFence?: string;
   readonly environments = input<readonly string[]>([]);
   readonly canWrite = input(false);
   readonly page = useDetectivePageContext();
@@ -260,7 +283,17 @@ export class NativeSemanticBrowserComponent {
         current = this.environment();
       if (current && !envs.includes(current)) this.environment.set('');
     });
-    this.destroy.onDestroy(() => this.lifetime.abort());
+    effect(() => {
+      const current = this.checkFence();
+      untracked(() => {
+        if (this.checksFence !== undefined && current !== this.checksFence)
+          this.clearChecks();
+      });
+    });
+    this.destroy.onDestroy(() => {
+      this.clearChecks();
+      this.lifetime.abort();
+    });
   }
   private reset() {
     this.lifetime.abort();
@@ -275,7 +308,16 @@ export class NativeSemanticBrowserComponent {
     this.notice.set('');
     this.reviewed.set(false);
   }
+  private clearChecks() {
+    this.checksController?.abort();
+    this.checksController = undefined;
+    this.checksFence = undefined;
+    this.applicable.set(undefined);
+    this.checksPending.set(false);
+    this.checksError.set('');
+  }
   private clearCell() {
+    this.clearChecks();
     this.selected.set(undefined);
     this.resolution.set(undefined);
     this.related.set(undefined);
@@ -288,6 +330,7 @@ export class NativeSemanticBrowserComponent {
   }
   changeEnvironment(value: string) {
     if (!this.environments().includes(value)) return;
+    if (value !== this.environment()) this.reset();
     this.environment.set(value);
   }
   private live(signal: AbortSignal) {
@@ -464,6 +507,63 @@ export class NativeSemanticBrowserComponent {
       if (this.live(signal)) this.related.set(related);
     });
   }
+  private checkFence(): string {
+    return JSON.stringify([
+      this.page.identity(),
+      this.page.ref(),
+      this.selection(),
+      this.environment(),
+      this.selected(),
+      this.schema()?.schemaToken,
+      this.schema()?.source,
+      this.resolution(),
+      this.entity()?.revision,
+    ]);
+  }
+  checkHref(id: string): string {
+    return projectPageHref(this.page.ref(), ['checks', id]);
+  }
+  async findChecks() {
+    if (this.busy() || !this.selected() || this.restoring()) return;
+    this.clearChecks();
+    const controller = new AbortController();
+    this.checksController = controller;
+    this.checksPending.set(true);
+    await this.attempt(async (lifetime) => {
+      const abort = () => controller.abort();
+      lifetime.addEventListener('abort', abort, { once: true });
+      try {
+        if (lifetime.aborted) controller.abort();
+        const request = structuredClone(this.request()),
+          fence = this.checkFence();
+        this.checksFence = fence;
+        const result = await this.api.applicable(request, controller.signal);
+        if (
+          controller.signal.aborted ||
+          !this.live(lifetime) ||
+          this.checksController !== controller ||
+          fence !== this.checkFence()
+        )
+          return;
+        this.applicable.set(result);
+      } catch {
+        if (
+          !controller.signal.aborted &&
+          this.live(lifetime) &&
+          this.checksController === controller
+        )
+          this.checksError.set(
+            'Check suggestions are unavailable. Review the current context and try again.',
+          );
+      } finally {
+        lifetime.removeEventListener('abort', abort);
+        if (this.checksController === controller) {
+          this.checksPending.set(false);
+          this.checksController = undefined;
+        }
+      }
+    }, 'Finding checks…');
+  }
   async openRelated(lookup: NativeLookup) {
     await this.attempt(async (signal) => {
       if (
@@ -524,6 +624,7 @@ export class NativeSemanticBrowserComponent {
   }
   async save() {
     if (!this.saveAllowed()) return;
+    this.clearChecks();
     const scope = this.journalScope(),
       entity = this.entity();
     if (!scope || !entity?.revision) return;

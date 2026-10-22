@@ -1,10 +1,15 @@
 import { webcrypto } from 'node:crypto';
 import { Component, input, output, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
-import { ActivatedRoute, convertToParamMap } from '@angular/router';
+import {
+  ActivatedRoute,
+  convertToParamMap,
+  provideRouter,
+} from '@angular/router';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
 import { NativeSemanticBrowserComponent } from './native-semantic-browser.component';
+import preflightFixture from './testdata/native-check-applicable.go.json';
 import { NativeSemanticApiService } from './native-semantic-api.service';
 import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
 import { DetectiveClientService } from '../detective/detective-client.service';
@@ -98,6 +103,7 @@ describe('Native physical inspection and durable mapping DOM', () => {
     related: vi.fn(),
     relatedRows: vi.fn(),
     addMapping: vi.fn(),
+    applicable: vi.fn(),
   };
   const assets = { entities: vi.fn(), entity: vi.fn() };
   const detective = { linkedIncidents: vi.fn() };
@@ -138,6 +144,7 @@ describe('Native physical inspection and durable mapping DOM', () => {
     Object.values(assets).forEach((f) => f.mockReset());
     detective.linkedIncidents.mockReset();
     api.schema.mockResolvedValue(schema);
+    api.applicable.mockResolvedValue(preflightFixture.response);
     api.browse.mockResolvedValue(rows);
     api.resolve.mockResolvedValue({
       column: 'request_id',
@@ -159,6 +166,7 @@ describe('Native physical inspection and durable mapping DOM', () => {
     TestBed.configureTestingModule({
       imports: [NativeSemanticBrowserComponent],
       providers: [
+        provideRouter([]),
         { provide: NativeSemanticApiService, useValue: api },
         { provide: ProjectAssetsApiService, useValue: assets },
         { provide: DetectiveClientService, useValue: detective },
@@ -206,6 +214,202 @@ describe('Native physical inspection and durable mapping DOM', () => {
     expect(f.nativeElement.textContent).toContain('Applicable Checks');
     expect(api.addMapping).not.toHaveBeenCalled();
   });
+  it('finds checks only on explicit action and renders asynchronous binding-only labels plus ordinary environment-preserving links', async () => {
+    const f = await mount();
+    await inspect(f);
+    expect(api.applicable).not.toHaveBeenCalled();
+    let finish: (v: unknown) => void = () => undefined;
+    api.applicable.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const button = Array.from(
+      f.nativeElement.querySelectorAll('ion-button'),
+    ).find((el) =>
+      (el as HTMLElement).textContent?.includes('Find checks'),
+    ) as HTMLElement;
+    button.click();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain(
+      'Finding checks for the current selection',
+    );
+    expect(api.applicable).toHaveBeenCalledOnce();
+    expect(api.applicable.mock.calls[0][0]).toMatchObject({
+      spaceID: 'space',
+      projectId: 'training',
+      environment: 'demo',
+      sourceId: 'shipping-working-copy',
+      selection: { rowToken, column: 'request_id' },
+      evidence: choice().choice.evidence,
+    });
+    finish(preflightFixture.response);
+    await vi.waitFor(() =>
+      expect(f.componentInstance.checksPending()).toBe(false),
+    );
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain('Request received');
+    expect(f.nativeElement.textContent).toContain('Inputs ready');
+    expect(f.nativeElement.textContent).toContain('Needs input');
+    expect(f.nativeElement.textContent).toContain('Needs row data');
+    const open = Array.from(
+      f.nativeElement.querySelectorAll('ion-button'),
+    ).find((el) =>
+      (el as HTMLElement).textContent?.includes('Open Check'),
+    ) as HTMLElement;
+    expect(open.getAttribute('href')).toContain(
+      '/checks/preflight-need-range?environment=demo',
+    );
+    expect(open.getAttribute('href')).not.toContain('11045');
+    expect(f.nativeElement.querySelector('[color="success"]')).toBeNull();
+    expect(f.nativeElement.textContent).not.toContain('Run Check');
+  });
+  it('retires Check binding proof when a mapping save begins, including uncertain delivery', async () => {
+    const f = await mount();
+    await prepare(f);
+    await f.componentInstance.findChecks();
+    expect(f.componentInstance.applicable()?.checks.length).toBe(5);
+    await f.componentInstance.save();
+    expect(f.componentInstance.pending()).toBeDefined();
+    expect(f.componentInstance.applicable()).toBeUndefined();
+  });
+  it('rejects an immediate stale response before reactive cancellation has run', async () => {
+    const f = await mount();
+    await inspect(f);
+    let finish: (v: unknown) => void = () => undefined;
+    api.applicable.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const pending = f.componentInstance.findChecks();
+    f.componentInstance.selected.set({
+      schemaToken: token,
+      collection: 'current_routes',
+      column: 'other_column',
+      rowToken,
+    });
+    finish(preflightFixture.response);
+    await pending;
+    expect(f.componentInstance.applicable()).toBeUndefined();
+  });
+  it('shows empty, unavailable and error states without hiding the current cell', async () => {
+    const f = await mount();
+    await inspect(f);
+    api.applicable.mockResolvedValue({ queries: [], checks: [] });
+    await f.componentInstance.findChecks();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain(
+      'No applicable Checks were offered',
+    );
+    api.applicable.mockResolvedValue({
+      queries: [],
+      checks: [
+        {
+          ...preflightFixture.response.checks[0],
+          preflight: {
+            state: 'invalid/unavailable-definition',
+            checkId: 'child',
+          },
+        },
+      ],
+    });
+    await f.componentInstance.findChecks();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain(
+      'The saved definition or its dependencies are unavailable',
+    );
+    api.applicable.mockRejectedValue(
+      new Error('sensitive provider diagnostic'),
+    );
+    await f.componentInstance.findChecks();
+    await f.whenStable();
+    expect(f.nativeElement.textContent).toContain(
+      'Check suggestions are unavailable',
+    );
+    expect(f.nativeElement.textContent).not.toContain(
+      'sensitive provider diagnostic',
+    );
+    expect(f.componentInstance.selected()?.rowToken).toBe(rowToken);
+  });
+  it.each([
+    'identity',
+    'context',
+    'source',
+    'selection',
+    'meaning',
+    'entity',
+    'environment',
+  ])(
+    'clears and refuses a late ignored-abort Check response after %s changes',
+    async (change) => {
+      const f = await mount();
+      await inspect(f);
+      await f.componentInstance.findChecks();
+      expect(f.componentInstance.applicable()?.checks.length).toBe(5);
+      let finish: (v: unknown) => void = () => undefined;
+      api.applicable.mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const pending = f.componentInstance.findChecks();
+      const signal = api.applicable.mock.calls.at(-1)?.[1] as AbortSignal;
+      switch (change) {
+        case 'identity':
+          actor.set('maya');
+          changes.next(identity());
+          break;
+        case 'context':
+          await f.componentInstance.chooseContext(undefined);
+          break;
+        case 'source':
+          f.componentInstance.schema.set({
+            ...schema,
+            source: { ...schema.source, generation: 'g2' },
+          });
+          break;
+        case 'selection':
+          f.componentInstance.selected.set({
+            schemaToken: token,
+            collection: 'current_routes',
+            column: 'request_id',
+            rowToken: 'f'.repeat(64),
+          });
+          break;
+        case 'meaning':
+          f.componentInstance.resolution.set({
+            column: 'request_id',
+            value: { type: 'string', value: 'request-11045' },
+            entity: 'Other',
+            field: 'id',
+            provenance: 'declared',
+          });
+          break;
+        case 'entity':
+          f.componentInstance.entity.set({
+            entity,
+            revision: 'entity1-' + 'f'.repeat(64),
+          });
+          break;
+        case 'environment':
+          f.componentRef.setInput('environments', ['demo', 'other']);
+          f.componentInstance.changeEnvironment('other');
+          break;
+      }
+      await f.whenStable();
+      expect(signal.aborted).toBe(true);
+      expect(f.componentInstance.applicable()).toBeUndefined();
+      expect(f.componentInstance.checksPending()).toBe(false);
+      finish(preflightFixture.response);
+      await pending;
+      await f.whenStable();
+      expect(f.componentInstance.applicable()).toBeUndefined();
+    },
+  );
   it('keeps a declared mapping readable without offering or dispatching a fresh mapping', async () => {
     api.resolve.mockResolvedValue({
       column: 'request_id',
