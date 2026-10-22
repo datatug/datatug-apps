@@ -233,16 +233,19 @@ export class ProjectPageComponent
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
+  protected readonly environmentFailure = signal<unknown>(undefined);
   protected readonly environmentError = signal(false);
   protected readonly environmentErrorMessage = signal<string | undefined>(
     undefined,
   );
   protected readonly boards = signal<IProjBoard[] | undefined>(undefined);
+  protected readonly boardFailure = signal<unknown>(undefined);
   protected readonly boardError = signal(false);
   protected readonly boardErrorMessage = signal<string | undefined>(undefined);
   protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
     undefined,
   );
+  protected readonly entityFailure = signal<unknown>(undefined);
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
@@ -295,10 +298,13 @@ export class ProjectPageComponent
       this.boards.set(undefined);
       this.environmentError.set(false);
       this.environmentErrorMessage.set(undefined);
+      this.environmentFailure.set(undefined);
       this.entityError.set(false);
       this.entityErrorMessage.set(undefined);
+      this.entityFailure.set(undefined);
       this.boardError.set(false);
       this.boardErrorMessage.set(undefined);
+      this.boardFailure.set(undefined);
       // These fixed-asset reads use the complete project ref so branch and
       // connection selectors stay aligned. Shared Space asset shortcuts remain
       // excluded because that API does not expose these asset collections.
@@ -318,13 +324,14 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.environmentError.set(true);
+              this.environmentFailure.set(error);
               this.environmentErrorMessage.set(
-                qualifiedLocalReadVersionGuidance(error) ??
-                  'Environments could not be loaded. Refresh to try again.',
+                qualifiedLocalReadVersionGuidance(error) ?? undefined,
               );
               this.errorLogger.logError(
                 error,
                 'Failed to load overview environments',
+                { show: false },
               );
               return of(undefined);
             }),
@@ -336,13 +343,14 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.boardError.set(true);
+              this.boardFailure.set(error);
               this.boardErrorMessage.set(
-                qualifiedLocalReadVersionGuidance(error) ??
-                  'Boards could not be loaded. Refresh to try again.',
+                qualifiedLocalReadVersionGuidance(error) ?? undefined,
               );
               this.errorLogger.logError(
                 error,
                 'Failed to load overview boards',
+                { show: false },
               );
               return of(undefined);
             }),
@@ -354,13 +362,14 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.entityError.set(true);
+              this.entityFailure.set(error);
               this.entityErrorMessage.set(
-                qualifiedLocalReadVersionGuidance(error) ??
-                  'Entities could not be loaded. Refresh to try again.',
+                qualifiedLocalReadVersionGuidance(error) ?? undefined,
               );
               this.errorLogger.logError(
                 error,
                 'Failed to load overview entities',
+                { show: false },
               );
               return of(undefined);
             }),
@@ -393,7 +402,9 @@ export class ProjectPageComponent
             if (!equalProjectRef(this.project()?.ref, ref)) return;
             this.onProjectSummaryChanged(ref, undefined);
             this.metadataFailure.set(error);
-            this.metadataGuidance.set(qualifiedLocalReadVersionGuidance(error) ?? undefined);
+            this.metadataGuidance.set(
+              qualifiedLocalReadVersionGuidance(error) ?? undefined,
+            );
             this.metadataReadError.set(
               qualifiedLocalReadVersionGuidance(error) ??
                 'Project details could not be loaded. Check access and refresh to try again.',

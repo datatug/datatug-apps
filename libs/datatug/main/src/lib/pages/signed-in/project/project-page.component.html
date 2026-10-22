@@ -90,12 +90,14 @@
           branch.
         </p>
       } @else if (environmentError()) {
-        <p role="alert">
-          {{
-            environmentErrorMessage() ||
-              'Environments could not be loaded. Refresh to try again.'
-          }}
-        </p>
+        <sneat-datatug-error-state
+          compact
+          what="the environments"
+          [error]="environmentFailure()"
+          [hint]="environmentErrorMessage()"
+          [retryable]="true"
+          (retry)="retryMetadata()"
+        />
       } @else if (environments(); as items) {
         <div class="environment-strip">
           @for (environment of items; track environment.id) {
@@ -223,12 +225,14 @@
       <ion-card
         ><ion-list>
           @if (boardError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                boardErrorMessage() ||
-                  'Boards could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
+            <sneat-datatug-error-state
+              compact
+              what="the boards"
+              [error]="boardFailure()"
+              [hint]="boardErrorMessage()"
+              [retryable]="true"
+              (retry)="retryMetadata()"
+            />
           } @else if (boards(); as items) {
             @for (board of items; track board.id) {
               <ion-item button detail (click)="goBoard(board)"
@@ -286,12 +290,14 @@
       <ion-card>
         <ion-list>
           @if (entityError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                entityErrorMessage() ||
-                  'Entities could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
+            <sneat-datatug-error-state
+              compact
+              what="the entities"
+              [error]="entityFailure()"
+              [hint]="entityErrorMessage()"
+              [retryable]="true"
+              (retry)="retryMetadata()"
+            />
           } @else if (entities(); as items) {
             @for (entity of items; track entity.id) {
               <ion-item

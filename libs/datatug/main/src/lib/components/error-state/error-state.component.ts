@@ -1,4 +1,5 @@
 import {
+  booleanAttribute,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -37,7 +38,12 @@ export interface ErrorStateLink {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonButton, IonIcon, RouterLink],
   template: `
-    <section class="error-state" role="alert" [attr.data-error-kind]="kind()">
+    <section
+      class="error-state"
+      [class.compact]="compact()"
+      role="alert"
+      [attr.data-error-kind]="kind()"
+    >
       <span class="error-state-icon" aria-hidden="true"
         ><ion-icon
           [name]="
@@ -97,6 +103,12 @@ export interface ErrorStateLink {
       max-width: 480px;
       margin: 0 auto;
     }
+    .error-state.compact {
+      padding: 12px 8px;
+    }
+    .error-state.compact .error-state-icon {
+      display: none;
+    }
     .error-state-icon {
       display: inline-flex;
       align-items: center;
@@ -141,6 +153,8 @@ export class ErrorStateComponent {
   readonly what = input('this page');
   /** The look of the icon when the words are given explicitly (a 404 is `not-found`). */
   readonly kindHint = input<ErrorKind>();
+  /** A smaller block for a failed section inside a page: no big icon, less padding. */
+  readonly compact = input(false, { transform: booleanAttribute });
   readonly title = input<string>();
   readonly hint = input<string>();
   readonly links = input<readonly ErrorStateLink[]>([]);

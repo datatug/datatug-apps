@@ -927,6 +927,7 @@ describe('ProjectPage overview lists', () => {
     expect(logError).toHaveBeenCalledWith(
       expect.any(Error),
       'Failed to load overview entities',
+      { show: false },
     );
   });
 

@@ -3,14 +3,6 @@ import { provideRouter } from '@angular/router';
 import { ErrorStateComponent } from './error-state.component';
 
 describe('ErrorStateComponent', () => {
-  function render(setup: (c: ErrorStateComponent) => void) {
-    TestBed.configureTestingModule({ providers: [provideRouter([])] });
-    const fixture = TestBed.createComponent(ErrorStateComponent);
-    setup(fixture.componentInstance);
-    fixture.detectChanges();
-    return fixture.nativeElement as HTMLElement;
-  }
-
   it('shows words, never the raw error, and keeps details collapsed with a reference', () => {
     const fixture = TestBed.configureTestingModule({
       providers: [provideRouter([])],
@@ -30,9 +22,19 @@ describe('ErrorStateComponent', () => {
     expect(details?.textContent).toMatch(/Reference/);
   });
 
-  it('offers one explicit link and no Retry when told so', () => {
-    const el = render(() => undefined);
+  it('renders explicit words with one link and no Retry or Details', () => {
+    TestBed.configureTestingModule({ providers: [provideRouter([])] });
+    const fixture = TestBed.createComponent(ErrorStateComponent);
+    fixture.componentRef.setInput('title', 'This page does not exist');
+    fixture.componentRef.setInput('hint', 'Start again.');
+    fixture.componentRef.setInput('retryable', false);
+    fixture.componentRef.setInput('links', [{ label: 'Go home', href: '/' }]);
+    fixture.detectChanges();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('h2')?.textContent).toContain('does not exist');
     expect(el.querySelector('details')).toBeNull();
-    expect(el.querySelectorAll('ion-button').length).toBe(0);
+    const buttons = el.querySelectorAll('ion-button');
+    expect(buttons.length).toBe(1);
+    expect(buttons[0].textContent).toContain('Go home');
   });
 });
