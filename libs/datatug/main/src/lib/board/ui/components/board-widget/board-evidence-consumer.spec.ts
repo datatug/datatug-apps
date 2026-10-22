@@ -1,3 +1,4 @@
+import coreComparison from '../../../../queries/testdata/core-v070-query-comparison.json';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PLATFORM_ID, signal } from '@angular/core';
@@ -127,6 +128,7 @@ describe('canonical Board evidence-chart consumer', () => {
   async function mount(
     data: ChartWidgetDef,
     profile: 'datatug' | 'dashboardius' = 'datatug',
+    comparative = false,
   ) {
     const run = vi.fn(),
       auth = new BehaviorSubject({
@@ -151,6 +153,7 @@ describe('canonical Board evidence-chart consumer', () => {
                   text: 'select actual_saved_query',
                 },
                 connectionId: 'shipping',
+                ...(comparative ? { comparison: coreComparison.comparison } : {}),
                 recordsets: [],
               }),
           },
@@ -242,6 +245,17 @@ describe('canonical Board evidence-chart consumer', () => {
       }
     },
   );
+  it('keeps declared comparisons unavailable without retained pair admission while exposing the exact held table', async () => {
+    const data = charts[0], { fixture, snapshot, run } = await mount(data, 'datatug', true);
+    const result = await held();
+    snapshot.set({ queryId: data.sources[0].queryId, result, identity: fixture.componentInstance.executionIdentity(), evidenceIdentity: identity });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.preparedEvidence()).toBeNull();
+    expect(fixture.componentInstance.evidenceError()).toContain('verified comparison');
+    expect(fixture.nativeElement.querySelector('sneat-datatug-held-result-presentation')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('request-row');
+    expect(run).not.toHaveBeenCalled();
+  });
   it.each([
     { environment: 'other', securityContextId: 'original' },
     { environment: 'demo', securityContextId: 'replacement' },

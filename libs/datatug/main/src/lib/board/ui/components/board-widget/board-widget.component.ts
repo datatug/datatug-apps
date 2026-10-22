@@ -672,6 +672,10 @@ export class BoardWidgetComponent {
       this.evidenceError.set(null);
       this.preparingEvidence.set(false);
       if (!chart || !this.evidenceKind() || !result || running) return;
+      if (Object.hasOwn(this.definition() ?? {}, 'comparison')) {
+        this.evidenceError.set('Comparison chart unavailable. This result has no verified comparison; source rows remain available.');
+        return;
+      }
       const identity = held?.evidenceIdentity;
       if (!identity || !held) {
         this.evidenceError.set(

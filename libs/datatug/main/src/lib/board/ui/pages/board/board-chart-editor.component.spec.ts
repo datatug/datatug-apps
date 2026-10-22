@@ -222,3 +222,56 @@ describe('structured chart definition DOM', () => {
     ).toBeNull();
   });
 });
+
+it('loads and saves explicit elapsed anchor mapping and removes it when choosing calendar time', async () => {
+  const query = definition();
+  query.recordsets?.[0].columns.push({ name: 'anchor', type: 'integer' });
+  await TestBed.configureTestingModule({
+    imports: [BoardChartEditorComponent],
+    providers: [
+      { provide: QueriesService, useValue: { getQuery: () => of(query) } },
+    ],
+  }).compileComponents();
+  const fixture = TestBed.createComponent(BoardChartEditorComponent);
+  fixture.componentRef.setInput('project', {
+    storeId: 'github.com',
+    projectId: 'o/r',
+  });
+  fixture.componentRef.setInput('queries', [{ id: 'shipping/events' }]);
+  const mapping = Object.fromEntries(
+    fields.timeline.map((role) => [role, role]),
+  );
+  fixture.componentRef.setInput('card', {
+    id: 'milestones',
+    widget: {
+      name: 'chart',
+      data: {
+        sources: [{ id: 'events', queryId: 'shipping/events' }],
+        chart: {
+          type: 'timeline',
+          selectionId: 'events',
+          timeline: { ...mapping, timeMode: 'elapsed', anchorColumn: 'anchor' },
+        },
+      },
+    },
+  });
+  await fixture.whenStable();
+  const select = fixture.nativeElement.querySelector(
+    'select[aria-label="Time axis"]',
+  ) as HTMLSelectElement;
+  expect(select.value).toBe('elapsed');
+  expect(fixture.componentInstance.fields()).toContain('anchorColumn');
+  const saved: ChartWidgetDef[] = [];
+  fixture.componentInstance.definition.subscribe((value) => saved.push(value));
+  fixture.componentInstance.apply();
+  expect(saved[0].chart).toMatchObject({
+    timeline: { timeMode: 'elapsed', anchorColumn: 'anchor' },
+  });
+  select.value = 'absolute';
+  select.dispatchEvent(new Event('change'));
+  await fixture.whenStable();
+  fixture.componentInstance.apply();
+  expect(saved[1].chart).not.toHaveProperty('timeline.anchorColumn');
+  expect(saved[1].chart).not.toHaveProperty('timeline.timeMode');
+  fixture.destroy();
+});

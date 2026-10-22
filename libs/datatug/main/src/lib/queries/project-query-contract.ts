@@ -1,3 +1,4 @@
+import { validateQueryComparison } from './query-comparison';
 import {
   type IQueryDef,
   type ITextQueryRequest,
@@ -7,6 +8,9 @@ import {
 
 /** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
 export interface ProjectQueryWire {
+  readonly comparison?: IQueryDef['comparison'];
+  readonly parameters?: IQueryDef['parameters'];
+  readonly recordsets?: IQueryDef['recordsets'];
   readonly semanticModel?: IQueryDef["semanticModel"];
   readonly folderPath: string;
   readonly id: string;
@@ -18,7 +22,7 @@ export interface ProjectQueryWire {
   readonly federation?: IQueryDef['federation'];
 }
 
-export type ProjectQueryReadWire = Omit<ProjectQueryWire, 'type'> & {
+export type ProjectQueryReadWire = Omit<ProjectQueryWire, 'type' | 'comparison' | 'parameters' | 'recordsets'> & {
   readonly type: QueryType;
   readonly [key: string]: unknown;
 };
@@ -71,6 +75,11 @@ export function toProjectQueryWire(
   query: IQueryDef,
   location = query.id,
 ): ProjectQueryWire {
+  validateQueryComparison(query);
+  if (query.comparison && query.parameters?.some((parameter) =>
+    'defaultValue' in parameter && typeof parameter.defaultValue === 'number' &&
+    parameter.type === 'integer' && !Number.isSafeInteger(parameter.defaultValue)))
+    throw new UnsupportedQueryContractError();
   assertFields(query, [
     'id',
     'title',
@@ -81,6 +90,8 @@ export function toProjectQueryWire(
     'connectionId',
     'federation',
     'semanticModel',
+    'comparison',
+    ...(query.comparison ? ['parameters', 'recordsets'] : []),
   ]);
   assertFields(query['request'], ['queryType', 'text']);
   if (![QueryType.SQL, QueryType.TugQL, QueryType.DTQL].includes(query['request'].queryType))
@@ -115,6 +126,7 @@ export function toProjectQueryWire(
   )
     throw new UnsupportedQueryContractError();
   return structuredClone({
+    ...(query.comparison ? { comparison: query.comparison, parameters: query.parameters, recordsets: query.recordsets } : {}),
     ...(query.semanticModel ? { semanticModel: query.semanticModel } : {}),
     folderPath,
     id,
@@ -158,5 +170,6 @@ export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.federation ? { federation: query.federation } : {}),
   };
+  validateQueryComparison(mapped);
   return structuredClone(mapped);
 }

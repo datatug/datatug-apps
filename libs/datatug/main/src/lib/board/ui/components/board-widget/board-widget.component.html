@@ -168,6 +168,9 @@
           "
           (inspect)="inspectHeldEvidence($event)"
         />
+        @if (evidenceError() && result()) {
+          <sneat-datatug-held-result-presentation [embedded]="true" [result]="result() ?? null" defaultView="grid" />
+        }
         @if (inspectedEvidence(); as selection) {
           <sneat-datatug-retained-evidence-viewer
             [projectRef]="projectRef()"

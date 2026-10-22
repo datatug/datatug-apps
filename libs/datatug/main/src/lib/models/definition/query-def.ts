@@ -28,6 +28,7 @@ export interface IQueryFolderContext extends IQueryFolder {
 
 // Defines user's query
 export interface IQueryDef extends IQueryItem {
+  readonly comparison?: import('../../queries/query-comparison').QueryComparison;
   /** Store-assigned creation instant (RFC3339); drafts omit it until first save. */
   readonly createdAt?: string;
   semanticModel?: import("../../queries/semantic-mapping").SemanticModel;

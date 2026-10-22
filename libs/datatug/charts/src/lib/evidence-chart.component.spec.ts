@@ -90,6 +90,7 @@ describe('shared three-kind evidence leaf', () => {
     fixture.componentRef.setInput('data', prepared('timeline'));
     await fixture.whenStable();
     expect(fixture.nativeElement.querySelectorAll('tbody tr')).toHaveLength(1);
+    expect(fixture.nativeElement.querySelector('[aria-label="Timeline status legend"]')?.textContent).toContain('Pass · ◆ Fail · ○ Unknown');
     expect(fixture.nativeElement.textContent).toContain('NULL');
     expect(fixture.nativeElement.textContent).toContain(
       '<script>unsafe</script>',
@@ -289,4 +290,42 @@ describe('shared three-kind evidence leaf', () => {
       )[0].data,
     ).toEqual([0]);
   });
+});
+
+it('uses numeric elapsed coordinates and status shapes while retaining calendar facts/equal-time points', () => {
+  const base = prepared('timeline');
+  const data: PreparedEvidenceChart = {
+    ...base,
+    timeMode: 'elapsed',
+    rows: ['pass', 'fail', 'unknown'].map((status, index) => ({
+      ...base.rows[0],
+      index,
+      status,
+      elapsedMs: 1000,
+      start: '2018-05-20T10:05:00Z',
+      end: '2018-05-20T10:05:01Z',
+      anchorIdentity: 'observed-start',
+    })),
+  };
+  const option = evidenceChartOption(data);
+  expect(option['xAxis']).toMatchObject({
+    type: 'value',
+    name: 'Elapsed (ms)',
+    min: 0,
+  });
+  const series = option['series'] as {
+    data: { value: unknown[]; symbol: string; name: string }[];
+  }[];
+  expect(series[0].data).toHaveLength(3);
+  expect(series[0].data.map((point) => point.value[0])).toEqual([
+    1000, 1000, 1000,
+  ]);
+  expect(series[0].data.map((point) => point.symbol)).toEqual([
+    'circle',
+    'diamond',
+    'emptyCircle',
+  ]);
+  expect(series[0].data[0].name).toContain('2018-05-20T10:05:00Z');
+  expect(series[0].data[0].name).not.toContain('1970');
+  expect(base.rows[0]).not.toHaveProperty('elapsedMs');
 });
