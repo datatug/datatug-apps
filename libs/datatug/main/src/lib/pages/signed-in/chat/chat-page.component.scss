@@ -18,7 +18,7 @@
 .chat-status-bar,
 .workspace-action-summary,
 .storage-warning {
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
 }
 
 .chat-status-bar {
@@ -78,7 +78,7 @@
   margin-top: 0.4rem;
 
   summary {
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
     cursor: pointer;
     font-size: 0.85rem;
   }

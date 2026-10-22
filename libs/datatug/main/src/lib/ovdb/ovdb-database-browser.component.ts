@@ -211,14 +211,14 @@ addIcons({ addOutline, ellipsisVertical });
     .ovdb-grid th, .ovdb-grid td { border-bottom: 1px solid var(--ion-color-light-shade); padding: 4px 8px; text-align: left; white-space: nowrap; max-width: 24em; overflow: hidden; text-overflow: ellipsis; }
     .ovdb-grid tbody tr { cursor: pointer; }
     .ovdb-grid tbody tr:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
-    .ovdb-null { color: var(--ion-color-medium); font-style: italic; }
+    .ovdb-null { color: var(--dt-text-muted); font-style: italic; }
     .ovdb-grid tr.selected { background: var(--ion-color-primary-tint); color: var(--ion-color-primary-contrast); }
     .ovdb-error { color: var(--ion-color-danger); }
     .ovdb-grid th.ovdb-num, .ovdb-grid td.ovdb-num { text-align: right; font-variant-numeric: tabular-nums; }
-    .ovdb-subtitle { margin: 4px 0 0; color: var(--ion-color-medium); font-size: 14px; }
+    .ovdb-subtitle { margin: 4px 0 0; color: var(--dt-text-muted); font-size: 14px; }
     /* The source status is a flat row, not a card: the page header already names the database. */
     .ovdb-source { margin: 12px 16px 0; }
-    .ovdb-source-menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ion-color-medium); font-size: 20px; cursor: pointer; }
+    .ovdb-source-menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--dt-text-muted); font-size: 20px; cursor: pointer; }
     .ovdb-source-menu-toggle:hover { background: var(--ion-color-light-tint); }
     .ovdb-source-menu-toggle:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
     .ovdb-source-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }

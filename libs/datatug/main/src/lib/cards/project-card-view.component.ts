@@ -118,7 +118,7 @@ export { cardQueryIds };
       }
       .card-description {
         margin: 0.25rem 0 0;
-        color: var(--ion-color-medium);
+        color: var(--dt-text-muted);
       }
       .card-inputs {
         padding: 0.5rem 1rem;

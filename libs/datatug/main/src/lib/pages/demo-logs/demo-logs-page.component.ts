@@ -202,7 +202,7 @@ function friendlyLogError(error: unknown, fallback: string): string {
     .evidence-page { max-width: 1120px; margin: 0 auto; padding: 20px 16px 64px; color: var(--ion-text-color); }
     .evidence-heading { border-left: 4px solid var(--ion-color-primary); padding-left: 20px; margin-bottom: 18px; }
     .evidence-heading a { display: inline-block; margin-right: 16px; }
-    .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; color: var(--ion-color-medium); }
+    .eyebrow { text-transform: uppercase; letter-spacing: .12em; font-size: 12px; font-weight: 700; color: var(--dt-text-muted); }
     h1 { font-size: clamp(24px, 4vw, 40px); margin: 6px 0 10px; overflow-wrap: anywhere; }
     .evidence-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; background: var(--ion-card-background, white); padding: 16px; border-radius: 12px; margin-bottom: 16px; }
     .source-settings { grid-column: 1 / -1; border-top: 1px solid var(--ion-color-light-shade); padding-top: 8px; }
@@ -213,7 +213,7 @@ function friendlyLogError(error: unknown, fallback: string): string {
     .untimed input { min-height: auto; }
     input, select, button { font: inherit; min-height: 38px; border: 1px solid var(--ion-color-medium-tint); border-radius: 6px; padding: 6px 9px; background: var(--ion-background-color, white); color: var(--ion-text-color); min-width: 0; }
     button { cursor: pointer; } button:focus-visible, a:focus-visible { outline: 3px solid var(--ion-color-primary); outline-offset: 2px; }
-    .filter-note { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--ion-color-medium); }
+    .filter-note { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--dt-text-muted); }
     .log-grid { display: block; width: 100%; min-width: 0; }
     .log-grid.fixed-height { height: 420px; }
     .entry-details { padding: 4px 16px 18px; border-top: 1px solid var(--ion-color-light-shade); }

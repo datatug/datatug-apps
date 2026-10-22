@@ -67,12 +67,12 @@ sneat-author-source-inspector,
 
 .author-preview-heading p {
   margin: 0.25rem 0 0;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.8rem;
 }
 
 .copy-status {
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
 }
 
 .copy-status {
@@ -121,7 +121,7 @@ sneat-author-source-inspector,
 
 .author-binding-note {
   margin: 0.55rem 0 0;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.82rem;
   line-height: 1.55;
 }
@@ -137,7 +137,7 @@ sneat-author-source-inspector,
   align-items: center;
   gap: 0.5rem;
   padding: 0.6rem 0.75rem;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.8rem;
   line-height: 1.4;
 }

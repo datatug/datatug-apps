@@ -170,7 +170,7 @@ const SEGMENT_MAX = 3;
         margin: 0;
         padding: 0.25rem 0;
         font-size: 0.8rem;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;

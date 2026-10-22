@@ -84,7 +84,7 @@ import type { IndependentBars } from './independent-bars';
     }
     .missing {
       grid-column: 2/4;
-      color: var(--ion-color-medium, #555);
+      color: var(--dt-text-muted, #555);
     }
   `,
 })

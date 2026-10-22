@@ -1,6 +1,6 @@
 :host {
   display: block;
-  --muted: var(--ion-color-step-600, #666);
+  --muted: var(--dt-text-muted);
   --edge: var(--ion-border-color, var(--ion-color-step-150, #d7d8da));
 }
 

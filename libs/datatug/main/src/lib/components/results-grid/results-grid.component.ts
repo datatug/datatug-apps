@@ -424,7 +424,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       padding: 0.3rem 0.5rem;
     }
     .dt-rg-count {
-      color: var(--ion-color-medium, #666);
+      color: var(--dt-text-muted, #666);
       flex: 1 1 auto;
       font-size: 0.8rem;
     }
@@ -435,7 +435,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       min-width: 0;
     }
     .dt-rg-status {
-      color: var(--ion-color-medium, #666);
+      color: var(--dt-text-muted, #666);
       flex: 1 0 100%;
       font-size: 0.8rem;
     }
@@ -522,7 +522,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       min-height: 0;
     }
     sneat-datatug-results-grid .dt-rg-null {
-      color: var(--ion-color-medium, #888);
+      color: var(--dt-text-muted, #888);
       font-style: italic;
       opacity: 0.6;
     }
@@ -536,7 +536,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       font-size: 0.85em;
     }
     sneat-datatug-results-grid .dt-rg-row-number {
-      color: var(--ion-color-medium, #888);
+      color: var(--dt-text-muted, #888);
     }
     /* A short number needs no 16px gutters: the row-number column fits its digits at about 45px instead of 61px. */
     sneat-datatug-results-grid .ag-header-cell.dt-rg-row-number-header,

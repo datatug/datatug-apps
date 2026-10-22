@@ -222,7 +222,7 @@ function previewQueries(
       }
       .query-limit {
         margin: 0 16px 12px;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
         font-size: 0.875rem;
       }
     `,

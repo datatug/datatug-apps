@@ -414,7 +414,7 @@ import {
         padding: 20px;
       }
       .scope {
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
         overflow-wrap: anywhere;
       }
       .filters {
