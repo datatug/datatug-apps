@@ -2,7 +2,8 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
 import { ErrorLogger, STORE_ID_GITHUB_COM } from '@sneat/core';
-import { map, of, Subject } from 'rxjs';
+import { map, of, Subject, throwError } from 'rxjs';
+import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
 
 import { ServersPageComponent } from './servers-page.component';
 import { ProjectDatabaseSourcesComponent } from './project-database-sources.component';
@@ -83,6 +84,116 @@ describe('ServersPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+});
+
+describe('ServersPage signed-out public GitHub declarations', () => {
+  it('lists Northwind from connections/*.json when the authenticated catalogue API refuses', async () => {
+    const connectionCatalog = vi.fn(() => throwError(() => ({ status: 401 })));
+    const files: Record<string, string> = {
+      'connections/demo-db.json': JSON.stringify({
+        connections: [
+          {
+            id: 'northwind-sqlite',
+            dataset: 'northwind',
+            storage: 'sqlite',
+            readiness: 'public-api',
+            environments: ['dev'],
+          },
+          {
+            id: 'northwind-postgresql',
+            dataset: 'northwind',
+            storage: 'postgresql',
+            readiness: 'public-api',
+            environments: ['dev', 'QA'],
+          },
+        ],
+      }),
+      'connections/shipping.json': JSON.stringify({ connections: [] }),
+    };
+    await TestBed.configureTestingModule({
+      imports: [ServersPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current$: of({
+              storeId: STORE_ID_GITHUB_COM,
+              projectId: 'datatug-demo-project@datatug@demo-project-1',
+            }),
+          },
+        },
+        provideMockErrorLogger(),
+        { provide: ModalController, useValue: { create: vi.fn() } },
+        { provide: NavController, useValue: { navigateForward: vi.fn() } },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers: vi.fn(() => of([])),
+            deleteDbServer: vi.fn(),
+          },
+        },
+        {
+          provide: EnvironmentService,
+          useValue: {
+            listEnvironments: vi.fn(() => of([{ id: 'dev' }, { id: 'QA' }])),
+          },
+        },
+        noopProjectServiceProvider,
+        { provide: ProjectQueryApiService, useValue: { connectionCatalog } },
+        {
+          provide: GithubProjectReaderService,
+          useValue: {
+            listDirectory: vi.fn(() =>
+              of([
+                {
+                  name: 'demo-db.json',
+                  path: 'x/connections/demo-db.json',
+                  type: 'file',
+                },
+                {
+                  name: 'shipping.json',
+                  path: 'x/connections/shipping.json',
+                  type: 'file',
+                },
+                {
+                  name: 'notes.md',
+                  path: 'x/connections/notes.md',
+                  type: 'file',
+                },
+              ]),
+            ),
+            getRawText: vi.fn((_project: string, path: string) =>
+              of(files[path]),
+            ),
+          },
+        },
+      ],
+    })
+      .overrideComponent(ServersPageComponent, {
+        set: {
+          imports: [ProjectDatabaseSourcesComponent],
+          schemas: [CUSTOM_ELEMENTS_SCHEMA],
+          providers: [],
+        },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(ServersPageComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    fixture.detectChanges();
+
+    const row = fixture.nativeElement.querySelector(
+      '[data-testid="database-database:northwind"]',
+    );
+    expect(row?.innerHTML).toContain('northwind-sqlite');
+    expect(row?.innerHTML).toContain('northwind-postgresql');
+    expect(row?.innerHTML).toContain('SQLite');
+    expect(row?.innerHTML).toContain('PostgreSQL');
+    expect(fixture.nativeElement.innerHTML).not.toContain(
+      'could not be loaded',
+    );
   });
 });
 
@@ -1115,7 +1226,9 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
     expect(dbTabBadgeText()).toBe('0');
     expect(html()).toContain('Total: 0 databases');
     expect(
-      fixture.nativeElement.querySelector('[data-testid^="database-database:"]'),
+      fixture.nativeElement.querySelector(
+        '[data-testid^="database-database:"]',
+      ),
     ).toBeNull();
   });
 
