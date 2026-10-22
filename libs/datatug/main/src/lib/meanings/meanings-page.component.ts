@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import { isCanonicalPublicDemo } from '../detective/public-scenario-catalog';
 import { NewProjectService } from '../project/new-project/new-project.service';
 import { resolveDemoProjectCopySource } from '../project/new-project/github-project-copy-source';
@@ -91,6 +92,7 @@ import type {
     `,
   ],
   imports: [
+    BusinessClockChipComponent,
     ReactiveFormsModule,
     RouterLink,
     IonBackButton,

@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from './business-clock-chip.component';
 import { NgComponentOutlet } from '@angular/common';
 import { RetainedEvidenceViewerComponent } from '../evidence/retained-evidence-viewer.component';
 import {
@@ -41,6 +42,7 @@ import {
   selector: 'sneat-source-workspace-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BusinessClockChipComponent,
     RouterLink,
     NgComponentOutlet,
     RetainedEvidenceViewerComponent,
@@ -94,9 +96,10 @@ import {
   `,
   template: `<ion-header
       ><ion-toolbar
-        ><ion-title>{{ view()?.title || 'Source' }}</ion-title></ion-toolbar
-      ></ion-header
-    >
+        ><ion-title
+          >{{ view()?.title || 'Source'
+          }}<sneat-datatug-business-clock /></ion-title></ion-toolbar
+    ></ion-header>
     <ion-content class="ion-padding">
       <a [routerLink]="overviewHref()">Back to project overview</a>
       @if (view(); as current) {

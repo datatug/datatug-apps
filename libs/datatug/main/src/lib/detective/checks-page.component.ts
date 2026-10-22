@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
@@ -115,6 +116,7 @@ interface QueryInputRow extends CheckInput {
   styleUrl: './detective-pages.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BusinessClockChipComponent,
     SessionDetectiveRunComponent,
     EvidenceSharePanelComponent,
     CommonModule,

@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -71,6 +72,7 @@ import {
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BusinessClockChipComponent,
     FormsModule,
     RouterLink,
     IonHeader,
@@ -101,7 +103,7 @@ import {
               : schemaDetail
                 ? 'Schema metadata'
                 : 'Quick Search'
-        }}</ion-title
+        }}<sneat-datatug-business-clock /></ion-title
         ><ion-buttons slot="end">
           @if (!discovery && !schemaDetail && !checkDetail()) {
             <ion-button (click)="settings.set(!settings())"

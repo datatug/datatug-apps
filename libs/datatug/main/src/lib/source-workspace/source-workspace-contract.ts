@@ -123,6 +123,13 @@ export interface SourceWorkspaceController {
   sourceChanged?(): boolean;
   destroy(): void;
 }
+/** heterogeneous-sources REQ:source-business-clock: the source's own "now", never the wall clock. */
+export interface SourceBusinessClock {
+  /** Visitor-facing name chosen by the source, e.g. "Demo clock". */
+  readonly label: string;
+  /** One RFC 3339 instant ending in `Z`. */
+  readonly at: string;
+}
 export interface SourceAdapterRegistration {
   readonly sourceId: string;
   /** Read-only owner discovery. Metadata selects a source; only current owner reads establish availability. */
@@ -132,6 +139,11 @@ export interface SourceAdapterRegistration {
   ): Promise<
     { readonly title: string; readonly description?: string } | undefined
   >;
+  /** Optional read-only business clock under the viewer's current rights. Undefined: no clock. */
+  businessClock?(
+    scope: SourceUiScope,
+    signal: AbortSignal,
+  ): Promise<SourceBusinessClock | undefined>;
   /** A fresh instance for this host lifetime. Creation may read, never mutate a source. */
   create(scope: SourceUiScope, signal: AbortSignal): SourceWorkspaceController;
 }

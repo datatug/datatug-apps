@@ -5,13 +5,22 @@ import { shippingEvidencePresenter } from '../shipping/shipping-evidence-present
 import { inject, type Provider } from '@angular/core';
 import { SOURCE_ADAPTER_REGISTRATIONS } from '../source-workspace/source-workspace-contract';
 import { ShippingSourceAdapterService } from '../shipping/shipping-source-adapter.service';
+import { BusinessClockService } from '../source-workspace/business-clock';
 
 /** Deployment composition only. Registrations supply no project/source grants. */
 export const SOURCE_ADAPTER_PROVIDERS: Provider[] = [
-  { provide: INCIDENT_RECOVERY_ADAPTERS, useFactory: () => [inject(ShippingResolutionAdapterService).registration] },
-  { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
+  {
+    provide: INCIDENT_RECOVERY_ADAPTERS,
+    useFactory: () => [inject(ShippingResolutionAdapterService).registration],
+  },
+  {
+    provide: SOURCE_EVIDENCE_PRESENTERS,
+    useValue: [shippingEvidencePresenter],
+  },
   {
     provide: SOURCE_ADAPTER_REGISTRATIONS,
     useFactory: () => [inject(ShippingSourceAdapterService).registration],
   },
+  // One shared business-clock read for every page under these routes.
+  BusinessClockService,
 ];
