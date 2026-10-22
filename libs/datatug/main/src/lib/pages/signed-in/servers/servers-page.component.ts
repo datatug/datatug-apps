@@ -706,7 +706,13 @@ export class ServersPageComponent implements OnDestroy {
     this.environments.set(undefined);
     this.environmentsError.set(undefined);
     const environments$ = isGithubStoreId(target.storeId)
-      ? this.environmentService.listEnvironments(target)
+      ? this.environmentService
+          .listEnvironments(target)
+          .pipe(
+            switchMap((environments) =>
+              this.withGithubCatalogs(target, environments),
+            ),
+          )
       : this.projectService
           .getFull(target)
           .pipe(map((full) => full.environments || []));
@@ -786,6 +792,52 @@ export class ServersPageComponent implements OnDestroy {
         isHostedReadRefused(error)
           ? this.readGithubConnections(target)
           : throwError(() => error),
+      ),
+    );
+  }
+
+  /**
+   * The shared environment list deliberately carries no connection data, so a
+   * public GitHub project's registered catalogs (each environment's
+   * `dbServers[].catalogs`) are read here from the same repository reader,
+   * keeping only the driver, location and catalog names this page lists. The
+   * reader caches each file per commit, so this adds no request for files the
+   * environment list already read. An environment the hosted API already
+   * returned with servers is kept as it is.
+   */
+  private withGithubCatalogs(
+    target: IProjectRef,
+    environments: IEnvironmentFull[],
+  ): Observable<IEnvironmentFull[]> {
+    if (!environments.length) return of(environments);
+    return forkJoin(
+      environments.map((environment) =>
+        environment.dbServers || environment.dbServer
+          ? of(environment)
+          : this.githubReader
+              .getEnvironmentSummary(target.projectId, environment.id)
+              .pipe(
+                map(
+                  (summary): IEnvironmentFull => ({
+                    ...environment,
+                    dbServers: (summary.dbServers ?? []).map((server) => ({
+                      id: server.id,
+                      driver: server.driver,
+                      host: server.host,
+                      ...(server.port !== undefined
+                        ? { port: server.port }
+                        : {}),
+                      ...(server.path !== undefined
+                        ? { path: server.path }
+                        : {}),
+                      catalogs: server.catalogs,
+                    })),
+                  }),
+                ),
+                // A missing or unreadable file only loses that environment's
+                // catalog rows, never the environment list itself.
+                catchError(() => of(environment)),
+              ),
       ),
     );
   }

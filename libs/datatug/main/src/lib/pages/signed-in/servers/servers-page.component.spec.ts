@@ -101,6 +101,7 @@ describe('ServersPage signed-out public GitHub declarations', () => {
     storeId?: string;
     apiError: unknown;
     files: Record<string, string>;
+    summaries?: Record<string, unknown>;
   }) {
     const connectionCatalog = vi.fn(() => throwError(() => options.apiError));
     const listDirectory = vi.fn(() =>
@@ -149,6 +150,11 @@ describe('ServersPage signed-out public GitHub declarations', () => {
             listDirectory,
             getRawText: vi.fn((_project: string, path: string) =>
               of(options.files[path]),
+            ),
+            getEnvironmentSummary: vi.fn((_project: string, id: string) =>
+              options.summaries?.[id]
+                ? of(options.summaries[id])
+                : throwError(() => new Error(`no ${id}.env.json`)),
             ),
           },
         },
@@ -202,6 +208,33 @@ describe('ServersPage signed-out public GitHub declarations', () => {
       expect(view.html).not.toContain('could not be loaded');
     },
   );
+
+  it("lists a public GitHub project's registered catalogs from its environment files", async () => {
+    const view = await render({
+      apiError: SneatApiNotAuthenticatedError,
+      files: {},
+      summaries: {
+        dev: {
+          id: 'dev',
+          title: 'dev',
+          editionConnections: ['private'],
+          dbServers: [
+            {
+              id: 'sqlite3:chinook',
+              driver: 'sqlite3',
+              host: '',
+              path: 'chinook.sqlite',
+              catalogs: ['chinook'],
+            },
+          ],
+        },
+      },
+    });
+    expect(view.row('chinook')).toContain('Registered catalog');
+    expect(view.row('chinook')).toContain('sqlite3');
+    expect(view.html).not.toContain('private');
+    expect(view.html).not.toContain('Environments could not be loaded');
+  });
 
   it.each([{ status: 500 }, { status: 0 }, new Error('boom')])(
     'keeps the error banner and does not read the repository when the API fails with %o',
