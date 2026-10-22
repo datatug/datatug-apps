@@ -41,40 +41,49 @@ p.firebase-emulator-warning {
   // Secondary text. Ionic's `--ion-color-medium` is ~3:1 on white and ~5:1 on
   // the dark surfaces; this one is >= 6:1 on both. Use it for any muted text.
   --dt-text-muted: #5b5e66;
-  // Panel palette for self-styled panels (board tutorial, held results): light values; dark values below.
-  --dt-p-accent: #30557a;
-  --dt-p-axis: #6f8098;
-  --dt-p-border: #dce5ef;
-  --dt-p-ctl-bg: #f6f9fc;
-  --dt-p-ctl-border: #a9bad0;
-  --dt-p-ctl-hover: #eaf1fa;
-  --dt-p-error: #a61b1b;
-  --dt-p-faint: #f8fafc;
-  --dt-p-fg: #17213a;
-  --dt-p-input-border: #ced9e7;
-  --dt-p-label: #34455c;
-  --dt-p-link: #174b7c;
-  --dt-p-muted: #43536a;
-  --dt-p-muted2: #596b84;
-  --dt-p-notice-bg: #fff6e8;
-  --dt-p-notice-edge: #a95f00;
-  --dt-p-notice-fg: #573500;
-  --dt-p-ok-bg: #d9f4ef;
-  --dt-p-ok-fg: #145750;
-  --dt-p-row: #e7edf4;
-  --dt-p-soft: #edf1f6;
-  --dt-p-subtle: #f3f7fb;
-  --dt-p-surface: #fff;
-  --dt-p-track: #e8eff7;
-  --dt-p-tut-border: #c8d9e9;
-  --dt-p-tut-dash: #97b3d1;
-  --dt-p-tut-edge: #356393;
-  --dt-p-tut-hover: #e4f0fc;
-  --dt-p-tut-input: #7b99b8;
-  --dt-p-tut-line: #d6e2ee;
-  --dt-p-tut-panel: #f5f9fd;
-  --dt-p-tut-row: #e5edf4;
-  --dt-p-tut-sub: #465b72;
+  --fb-ok-bg: #e9f5ed;
+  --fb-err-bg: #fff0ee;
+  --fb-err-fg: #932d24;
+  --fb-unk-bg: #fff4da;
+  --fb-unk-fg: #73500d;
+  --fb-ok-fg: inherit;
+  // Panel palette `--p-*` for self-styled panels (board tutorial, held results; short names keep component styles
+  // inside their size budget): s surface, f text, b border, m/m2 muted, l label, a accent, k link, u subtle, r row,
+  // e error, cb/cg/ch control border/fill/hover, nb/nf/ne notice, ob/of ok, t track, fa faint, ib input border,
+  // tp/tb/ts/te/tl/tr/td/ti/th tutorial panel parts, x axis, o soft. Light values here; dark values below.
+  --p-a: #30557a;
+  --p-x: #6f8098;
+  --p-b: #dce5ef;
+  --p-cg: #f6f9fc;
+  --p-cb: #a9bad0;
+  --p-ch: #eaf1fa;
+  --p-e: #a61b1b;
+  --p-fa: #f8fafc;
+  --p-f: #17213a;
+  --p-ib: #ced9e7;
+  --p-l: #34455c;
+  --p-k: #174b7c;
+  --p-m: #43536a;
+  --p-m2: #596b84;
+  --p-nb: #fff6e8;
+  --p-ne: #a95f00;
+  --p-nf: #573500;
+  --p-ob: #d9f4ef;
+  --p-of: #145750;
+  --p-r: #e7edf4;
+  --p-o: #edf1f6;
+  --p-u: #f3f7fb;
+  --p-s: #fff;
+  --p-t: #e8eff7;
+  --p-tb: #c8d9e9;
+  --p-td: #97b3d1;
+  --p-te: #356393;
+  --p-th: #e4f0fc;
+  --p-ti: #7b99b8;
+  --p-tl: #d6e2ee;
+  --p-tp: #f5f9fd;
+  --p-tr: #e5edf4;
+  --p-ts: #465b72;
 }
 
 html,
@@ -86,39 +95,45 @@ ion-split-pane {
 .ion-palette-dark {
   color-scheme: dark;
   --dt-text-muted: #b8bac2;
-  --dt-p-accent: #9cc8f5;
-  --dt-p-axis: #8d9bb0;
-  --dt-p-border: #3d4048;
-  --dt-p-ctl-bg: #2a2c31;
-  --dt-p-ctl-border: #5a5f6a;
-  --dt-p-ctl-hover: #34373d;
-  --dt-p-error: #ff8a8a;
-  --dt-p-faint: #26282c;
-  --dt-p-fg: #f2f2f2;
-  --dt-p-input-border: #4a4f5a;
-  --dt-p-label: #d0d2d8;
-  --dt-p-link: #9cc8f5;
-  --dt-p-muted: #b8bac2;
-  --dt-p-muted2: #b8bac2;
-  --dt-p-notice-bg: #3a2e12;
-  --dt-p-notice-edge: #e0a040;
-  --dt-p-notice-fg: #ffd9a0;
-  --dt-p-ok-bg: #123a35;
-  --dt-p-ok-fg: #7fe0d2;
-  --dt-p-row: #34373d;
-  --dt-p-soft: #2a2c31;
-  --dt-p-subtle: #26282c;
-  --dt-p-surface: var(--ion-card-background, #1e1e1e);
-  --dt-p-track: #34373d;
-  --dt-p-tut-border: #3d4048;
-  --dt-p-tut-dash: #5a6f88;
-  --dt-p-tut-edge: #6f9fd0;
-  --dt-p-tut-hover: #34425a;
-  --dt-p-tut-input: #6b7e96;
-  --dt-p-tut-line: #3d4048;
-  --dt-p-tut-panel: #25282d;
-  --dt-p-tut-row: #34373d;
-  --dt-p-tut-sub: #b8bac2;
+  --fb-ok-bg: #14301f;
+  --fb-err-bg: #3d1a17;
+  --fb-err-fg: #ffb4ab;
+  --fb-unk-bg: #3a2e12;
+  --fb-unk-fg: #ffd9a0;
+  --fb-ok-fg: #d7f2df;
+  --p-a: #9cc8f5;
+  --p-x: #8d9bb0;
+  --p-b: #3d4048;
+  --p-cg: #2a2c31;
+  --p-cb: #7c828f;
+  --p-ch: #34373d;
+  --p-e: #ff8a8a;
+  --p-fa: #26282c;
+  --p-f: #f2f2f2;
+  --p-ib: #4a4f5a;
+  --p-l: #d0d2d8;
+  --p-k: #9cc8f5;
+  --p-m: #b8bac2;
+  --p-m2: #b8bac2;
+  --p-nb: #3a2e12;
+  --p-ne: #e0a040;
+  --p-nf: #ffd9a0;
+  --p-ob: #123a35;
+  --p-of: #7fe0d2;
+  --p-r: #34373d;
+  --p-o: #2a2c31;
+  --p-u: #26282c;
+  --p-s: var(--ion-card-background, #1e1e1e);
+  --p-t: #34373d;
+  --p-tb: #3d4048;
+  --p-td: #5a6f88;
+  --p-te: #6f9fd0;
+  --p-th: #34425a;
+  --p-ti: #6b7e96;
+  --p-tl: #3d4048;
+  --p-tp: #25282d;
+  --p-tr: #34373d;
+  --p-ts: #b8bac2;
 }
 
 // Padding-less grid for page layout (`.ion-grid-layout`): the grid, its rows
@@ -198,9 +213,6 @@ ion-item ion-buttons[slot='end'] {
   --ion-background-color: #121212;
   --ion-color-dark: #f8fafc;
   --ion-color-dark-shade: #e2e8f0;
-  --ion-color-step-50: #1e1e1e;
-  --ion-color-step-100: #2a2a2a;
-  --ion-color-step-150: #363636;
   --tugql-keyword: #93c5fd;
   --tugql-parameter: #d8b4fe;
   --tugql-string: #86efac;
@@ -1021,7 +1033,53 @@ ion-app:not(.compact-header-mode) .shell-adopted-menu {
 }
 
 // A plain solid ion-button in a toolbar paints with the toolbar's contrast colour (white), a bright block in dark.
-.ion-palette-dark ion-toolbar ion-button[fill='solid']:not([color]) {
-  --background: #2a2c31 !important;
-  --color: #f2f2f2 !important;
+// Styled through ::part so hover/active keep working, with a visible edge against the dark toolbar.
+.ion-palette-dark ion-toolbar ion-button[fill='solid']:not([color])::part(native) {
+  background: #2f3238;
+  color: #f2f2f2;
+  border: 1px solid #7c828f;
+}
+.ion-palette-dark ion-toolbar ion-button[fill='solid']:not([color]):hover::part(native) {
+  background: #3d4148;
+}
+
+// Native selects keep a light fill in dark unless styled.
+.ion-palette-dark select {
+  background-color: #2a2c31;
+  color: #f2f2f2;
+  border: 1px solid #7c828f;
+  border-radius: 0.4rem;
+}
+
+// Home "Other ways": the agent illustration tile is a light gradient with dark ink; in dark it becomes a dark tile
+// with light ink (the terminal preview is dark in both themes). Global, to stay inside the component style budget.
+.ion-palette-dark sneat-datatug-platform-block {
+  .agent-preview {
+    background: linear-gradient(110deg, #1e1e1e 15%, #25282d 100%);
+  }
+
+  .terminal-preview {
+    background: linear-gradient(145deg, #1b2230, #20283a 75%);
+  }
+
+  .agent-art {
+    mix-blend-mode: screen;
+    filter: grayscale(1) invert(1);
+  }
+
+  .agent-illustration-copy {
+    color: #f2f2f2;
+  }
+
+  .agent-kicker {
+    color: #9cc8f5;
+  }
+
+  .preview {
+    border-bottom-color: #3d4048;
+
+    figcaption {
+      color: #b8bac2;
+    }
+  }
 }

@@ -84,15 +84,16 @@
   margin: 12px 10px;
   padding: 10px 12px;
   border-radius: 7px;
-  background: #e9f5ed;
+  background: var(--fb-ok-bg);
+  color: var(--fb-ok-fg);
 }
 .feedback.error {
-  background: #fff0ee;
-  color: #932d24;
+  background: var(--fb-err-bg);
+  color: var(--fb-err-fg);
 }
 .feedback.unknown {
-  background: #fff4da;
-  color: #73500d;
+  background: var(--fb-unk-bg);
+  color: var(--fb-unk-fg);
 }
 #detective-check-run-result:focus {
   outline: 2px solid var(--ion-color-primary, #2763a5);
@@ -316,20 +317,5 @@
   .check-detail-selected-outcome {
     white-space: normal;
     text-align: end;
-  }
-}
-
-// Feedback banners hard-code light tints; keep them readable in dark.
-.ion-palette-dark {
-  .feedback {
-    background: #14301f;
-  }
-  .feedback.error {
-    background: #3d1a17;
-    color: #ffb4ab;
-  }
-  .feedback.unknown {
-    background: #3a2e12;
-    color: #ffd9a0;
   }
 }

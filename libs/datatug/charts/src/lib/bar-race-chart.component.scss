@@ -6,12 +6,12 @@
 }
 :host-context(.ion-palette-dark) {
   --br-surface: var(--ion-card-background, #1e1e1e); --br-fg: #f2f2f2; --br-border: #3d4048; --br-accent: #9cc8f5; --br-muted: #b8bac2; --br-label: #d0d2d8;
-  --br-ctl-border: #5a5f6a; --br-ctl-bg: #2a2c31; --br-ctl-hover: #34373d; --br-link: #9cc8f5; --br-subtle: #26282c; --br-row: #34373d;
+  --br-ctl-border: #7c828f; --br-ctl-bg: #2a2c31; --br-ctl-hover: #34373d; --br-link: #9cc8f5; --br-subtle: #26282c; --br-row: #34373d;
   --br-error: #ff8a8a; --br-notice-bg: #3a2e12; --br-notice-fg: #ffd9a0; --br-notice-edge: #e0a040;
   --br-grid: #3d4048;
 }
 /* The ECharts SVG is built outside Angular's view: CSS fill/stroke beat its presentation attributes. */
-.plot ::ng-deep svg text { fill: var(--br-muted); }
+:host-context(.ion-palette-dark) .plot ::ng-deep svg text { fill: var(--br-muted); }
 :host-context(.ion-palette-dark) .plot ::ng-deep svg path[stroke="#dbdee4" i], :host-context(.ion-palette-dark) .plot ::ng-deep svg path[stroke="#E0E6F1" i] { stroke: var(--br-grid); }
 :host { display: block; min-width: 0; color: var(--br-fg); }
 .race { box-sizing: border-box; width: 100%; padding: clamp(1rem, 2vw, 1.5rem); border: 1px solid var(--br-border); border-radius: .75rem; background: var(--br-surface); }

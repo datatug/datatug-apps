@@ -2,10 +2,10 @@
   box-sizing: border-box;
   margin: 0.75rem 1rem 1rem;
   padding: clamp(1rem, 2vw, 1.5rem);
-  border: 1px solid var(--dt-p-tut-border, #c8d9e9);
+  border: 1px solid var(--p-tb);
   border-radius: 1rem;
-  background: var(--dt-p-tut-panel, #f5f9fd);
-  color: var(--dt-p-fg, #17213a);
+  background: var(--p-tp);
+  color: var(--p-f);
 }
 .tutorial-heading {
   display: flex;
@@ -16,7 +16,7 @@
 }
 .tutorial-heading p {
   margin: 0.3rem 0 0;
-  color: var(--dt-p-tut-sub, #465b72);
+  color: var(--p-ts);
 }
 .tutorial-eyebrow {
   font-size: 0.72rem;
@@ -39,7 +39,7 @@
 }
 .tutorial-about summary {
   cursor: pointer;
-  color: var(--dt-p-link, #174b7c);
+  color: var(--p-k);
 }
 :host-context(.ion-palette-dark) .tutorial-about summary {
   color: #9cc8f5;
@@ -52,17 +52,17 @@
 .tutorial-start {
   min-height: 44px;
   padding: 0.45rem 0.8rem;
-  border: 1px solid var(--dt-p-tut-edge, #356393);
+  border: 1px solid var(--p-te);
   border-radius: 0.5rem;
-  background: var(--dt-p-surface, #fff);
-  color: var(--dt-p-link, #174b7c);
+  background: var(--p-s);
+  color: var(--p-k);
   font: inherit;
   font-weight: 650;
   cursor: pointer;
 }
 .tutorial-panel button:hover:not(:disabled),
 .tutorial-start:hover {
-  background: var(--dt-p-tut-hover, #e4f0fc);
+  background: var(--p-th);
 }
 .tutorial-panel button:disabled {
   cursor: default;
@@ -107,9 +107,9 @@ h1[data-board-page-heading]:focus-visible,
 .tutorial-free > div {
   min-width: 0;
   padding: 0.75rem;
-  border: 1px solid var(--dt-p-tut-line, #d6e2ee);
+  border: 1px solid var(--p-tl);
   border-radius: 0.7rem;
-  background: var(--dt-p-surface, #fff);
+  background: var(--p-s);
 }
 .tutorial-free h3 {
   margin: 0 0 0.5rem;
@@ -121,7 +121,7 @@ h1[data-board-page-heading]:focus-visible,
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.45rem 0;
-  border-top: 1px solid var(--dt-p-tut-row, #e5edf4);
+  border-top: 1px solid var(--p-tr);
 }
 .tutorial-card-action span {
   overflow-wrap: anywhere;
@@ -129,22 +129,22 @@ h1[data-board-page-heading]:focus-visible,
 .tutorial-step {
   margin-block: 1rem;
   padding: 1rem;
-  border-left: 4px solid var(--dt-p-tut-edge, #356393);
-  background: var(--dt-p-surface, #fff);
+  border-left: 4px solid var(--p-te);
+  background: var(--p-s);
 }
 .tutorial-step h3 {
   margin: 0.2rem 0;
 }
 .tutorial-canvas {
   padding: clamp(1rem, 4vw, 2rem);
-  border: 2px dashed var(--dt-p-tut-dash, #97b3d1);
+  border: 2px dashed var(--p-td);
   border-radius: 0.8rem;
-  background: var(--dt-p-surface, #fff);
+  background: var(--p-s);
   overflow-wrap: anywhere;
 }
 .tutorial-canvas-icon {
   font-size: 2.5rem;
-  color: var(--dt-p-tut-edge, #356393);
+  color: var(--p-te);
 }
 .tutorial-editors {
   display: grid;
@@ -154,9 +154,9 @@ h1[data-board-page-heading]:focus-visible,
 .tutorial-editors fieldset {
   min-width: 0;
   padding: 1rem;
-  border: 1px solid var(--dt-p-tut-dash, #97b3d1);
+  border: 1px solid var(--p-td);
   border-radius: 0.7rem;
-  background: var(--dt-p-surface, #fff);
+  background: var(--p-s);
 }
 .tutorial-editors legend {
   max-width: 100%;
@@ -176,10 +176,10 @@ h1[data-board-page-heading]:focus-visible,
   min-width: 0;
   min-height: 44px;
   padding: 0.45rem;
-  border: 1px solid var(--dt-p-tut-input, #7b99b8);
+  border: 1px solid var(--p-ti);
   border-radius: 0.4rem;
-  background: var(--dt-p-surface, #fff);
-  color: var(--dt-p-fg, #17213a);
+  background: var(--p-s);
+  color: var(--p-f);
   font: inherit;
 }
 .tutorial-editors input:focus-visible,
@@ -188,7 +188,7 @@ h1[data-board-page-heading]:focus-visible,
   outline-offset: 2px;
 }
 .tutorial-tab-editor {
-  border-bottom: 1px solid var(--dt-p-tut-line, #d6e2ee);
+  border-bottom: 1px solid var(--p-tl);
   padding-block: 0.75rem;
 }
 .tutorial-editors p {
@@ -248,4 +248,7 @@ h1[data-board-page-heading]:focus-visible,
   background: #2a2c31;
   border-color: #6f9fd0;
   color: #cfe5fb;
+}
+:host-context(.ion-palette-dark) .tutorial-start:hover {
+  background: #3d4148;
 }

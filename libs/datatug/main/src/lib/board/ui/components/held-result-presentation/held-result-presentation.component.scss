@@ -1,12 +1,12 @@
 :host {
   display: block;
   min-width: 0;
-  color: var(--dt-p-fg, #17213a);
+  color: var(--p-f);
 }
 .result {
-  border: 1px solid var(--dt-p-border, #dce5ef);
+  border: 1px solid var(--p-b);
   border-radius: 0.75rem;
-  background: var(--dt-p-surface, #fff);
+  background: var(--p-s);
   overflow: hidden;
 }
 .summary,
@@ -25,12 +25,12 @@
 }
 .summary p,
 .table-head span {
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   font-size: 0.85rem;
   white-space: nowrap;
 }
 .eyebrow {
-  color: var(--dt-p-accent, #30557a);
+  color: var(--p-a);
   font-size: 0.7rem;
   letter-spacing: 0.16em;
   font-weight: 750;
@@ -39,18 +39,18 @@
 .notice {
   margin: 1rem 1.5rem 0;
   padding: 0.75rem 1rem;
-  border-left: 3px solid var(--dt-p-notice-edge, #a95f00);
+  border-left: 3px solid var(--p-ne);
   border-radius: 4px;
-  background: var(--dt-p-notice-bg, #fff6e8);
-  color: var(--dt-p-notice-fg, #573500);
+  background: var(--p-nb);
+  color: var(--p-nf);
 }
 .state {
   padding: 1.5rem;
   margin: 0;
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
 }
 .error {
-  color: var(--dt-p-error, #a61b1b);
+  color: var(--p-e);
 }
 .chart-head {
   padding-top: 1.4rem;
@@ -61,9 +61,9 @@
   gap: 0.25rem;
   margin: 1rem 1.5rem 0;
   padding: 0.2rem;
-  border: 1px solid var(--dt-p-ctl-border, #a9bad0);
+  border: 1px solid var(--p-cb);
   border-radius: 9px;
-  background: var(--dt-p-subtle, #f3f7fb);
+  background: var(--p-u);
 }
 .view-switch button {
   min-height: 2.75rem;
@@ -71,16 +71,16 @@
   border-radius: 6px;
   padding: 0.4rem 0.85rem;
   background: transparent;
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   cursor: pointer;
 }
 .view-switch button[aria-pressed='true'] {
-  background: var(--dt-p-ok-bg, #d9f4ef);
-  color: var(--dt-p-ok-fg, #145750);
+  background: var(--p-ob);
+  color: var(--p-of);
 }
 .chart-head p {
   margin: 0;
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   font-size: 0.84rem;
   font-weight: 650;
   text-transform: uppercase;
@@ -90,20 +90,23 @@
   display: flex;
   align-items: center;
   gap: 0.6rem;
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   font-size: 0.8rem;
 }
 select,
 button {
   font: inherit;
 }
-select {
+select,
+.pagination button {
   min-height: 2.75rem;
   border-radius: 7px;
+  border: 1px solid var(--p-cb);
+  color: var(--p-f);
+  background: var(--p-cg);
+}
+select {
   padding: 0.35rem 0.55rem;
-  border: 1px solid var(--dt-p-ctl-border, #a9bad0);
-  color: var(--dt-p-fg, #17213a);
-  background: var(--dt-p-ctl-bg, #f6f9fc);
 }
 .bars {
   list-style: none;
@@ -132,7 +135,7 @@ select {
 }
 .bars button:hover,
 .bars button:focus-visible {
-  background: var(--dt-p-ctl-hover, #eaf1fa);
+  background: var(--p-ch);
 }
 .bar-label {
   overflow: hidden;
@@ -144,7 +147,7 @@ select {
   display: block;
   height: 1.05rem;
   border-radius: 4px;
-  background: var(--dt-p-track, #e8eff7);
+  background: var(--p-t);
   overflow: hidden;
 }
 .bar-fill {
@@ -159,7 +162,7 @@ select {
   text-align: right;
 }
 .empty {
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   padding: 0.6rem 0;
 }
 .table-head {
@@ -175,7 +178,7 @@ select {
   overflow: auto;
   max-height: 25rem;
   margin: 0.8rem 1.5rem 0;
-  border: 1px solid var(--dt-p-border, #dce5ef);
+  border: 1px solid var(--p-b);
   border-radius: 10px;
 }
 table {
@@ -187,12 +190,12 @@ table {
 caption {
   text-align: left;
   padding: 0.55rem 0.8rem;
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
 }
 th,
 td {
   padding: 0.65rem 0.8rem;
-  border-top: 1px solid var(--dt-p-row, #e7edf4);
+  border-top: 1px solid var(--p-r);
   text-align: left;
   max-width: 20rem;
   overflow-wrap: anywhere;
@@ -200,26 +203,26 @@ td {
 thead th {
   position: sticky;
   top: 0;
-  background: var(--dt-p-subtle, #f3f7fb);
-  color: var(--dt-p-label, #34455c);
+  background: var(--p-u);
+  color: var(--p-l);
   font-weight: 650;
 }
 tbody tr:nth-child(even) {
-  background: var(--dt-p-faint, #f8fafc);
+  background: var(--p-fa);
 }
 tbody tr.selected {
-  background: var(--dt-p-ok-bg, #d9f4ef);
+  background: var(--p-ob);
 }
 tbody th button {
   min-height: 2.75rem;
   border: 0;
   background: transparent;
-  color: var(--dt-p-ok-fg, #145750);
+  color: var(--p-of);
   text-decoration: underline;
   cursor: pointer;
 }
 .null {
-  color: var(--dt-p-muted2, #596b84);
+  color: var(--p-m2);
 }
 .pagination {
   display: flex;
@@ -230,11 +233,6 @@ tbody th button {
   font-size: 0.82rem;
 }
 .pagination button {
-  min-height: 2.75rem;
-  border: 1px solid var(--dt-p-ctl-border, #a9bad0);
-  border-radius: 7px;
-  background: var(--dt-p-ctl-bg, #f6f9fc);
-  color: var(--dt-p-fg, #17213a);
   padding: 0.35rem 0.65rem;
   cursor: pointer;
 }
@@ -246,20 +244,20 @@ tbody th button {
   margin: 0.3rem 1.5rem 1.5rem;
   padding: 1rem;
   border-radius: 10px;
-  background: var(--dt-p-ctl-bg, #f6f9fc);
+  background: var(--p-cg);
 }
 .source-details {
   margin: 1rem 1.5rem 1.5rem;
-  border-top: 1px solid var(--dt-p-border, #dce5ef);
+  border-top: 1px solid var(--p-b);
   padding-top: 0.8rem;
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   font-size: 0.8rem;
 }
 .source-details summary {
   min-height: 2.75rem;
   padding-block: 0.6rem;
   cursor: pointer;
-  color: var(--dt-p-ok-fg, #145750);
+  color: var(--p-of);
   font-weight: 650;
 }
 .source-details dl,
@@ -269,7 +267,7 @@ tbody th button {
   gap: 0.6rem 1rem;
 }
 .source-details dt {
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
 }
 .source-details dd {
   margin: 0.2rem 0 0;
@@ -279,7 +277,7 @@ tbody th button {
   margin: 0.5rem 0 0;
 }
 .inspection dt {
-  color: var(--dt-p-muted, #43536a);
+  color: var(--p-m);
   font-size: 0.73rem;
 }
 .inspection dd {
@@ -351,7 +349,7 @@ select:focus-visible {
   text-align: left;
   background: var(--ion-background-color, #fff);
   color: var(--ion-text-color, #17243b);
-  border: 1px solid var(--dt-p-input-border, #ced9e7);
+  border: 1px solid var(--p-ib);
   border-radius: 0.6rem;
   padding: 0.65rem;
   cursor: pointer;
@@ -374,7 +372,7 @@ select:focus-visible {
 .grouped-measure .bar-track {
   position: relative;
   height: 0.8rem;
-  background: var(--dt-p-soft, #edf1f6);
+  background: var(--p-o);
 }
 .grouped-measure .bar-fill {
   position: absolute;
@@ -390,7 +388,7 @@ select:focus-visible {
 .grouped-measure .zero-line {
   position: absolute;
   height: 100%;
-  border-left: 1px solid var(--dt-p-axis, #6f8098);
+  border-left: 1px solid var(--p-x);
   z-index: 1;
 }
 

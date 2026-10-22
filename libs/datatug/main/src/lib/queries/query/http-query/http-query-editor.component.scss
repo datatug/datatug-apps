@@ -28,7 +28,7 @@
 
 .http-params {
   padding: 4px 16px 12px;
-  border-bottom: 1px solid var(--ion-border-color, var(--ion-color-step-150, #e0e0e0));
+  border-bottom: 1px solid var(--ion-border-color, var(--ion-background-color-step-150, #e0e0e0));
 }
 
 .http-params-head {
@@ -53,7 +53,7 @@
 
 .http-param {
   padding: 8px 0;
-  border-top: 1px solid var(--ion-border-color, var(--ion-color-step-100, #eee));
+  border-top: 1px solid var(--ion-border-color, var(--ion-background-color-step-100, #eee));
 
   &:first-of-type {
     border-top: none;
@@ -108,7 +108,7 @@
   border-radius: 999px;
   font-size: 0.72rem;
   line-height: 1.4;
-  background: var(--ion-color-step-100, rgba(127, 127, 127, 0.15));
+  background: var(--ion-background-color-step-100, rgba(127, 127, 127, 0.15));
   color: var(--ion-text-color);
 
   &[data-source='row'] {
@@ -136,7 +136,7 @@
   margin-top: 8px;
   padding: 8px;
   border-radius: 6px;
-  background: var(--ion-color-step-50, rgba(127, 127, 127, 0.08));
+  background: var(--ion-background-color-step-50, rgba(127, 127, 127, 0.08));
   font-size: 0.8rem;
 
   code {
