@@ -1,0 +1,88 @@
+{
+  "request": {
+    "spaceID": "project_space",
+    "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+    "environment": "demo",
+    "reference": {
+      "storeId": "firestore",
+      "spaceID": "project_space",
+      "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+      "sourceId": "shipping-working-copy",
+      "receiptActorId": "project_actor",
+      "operationId": "initialize",
+      "requestSHA256": "e9f18333a449877a79a490aba8deb5ae07a0d06be92585ebd61defd87cdb97b0",
+      "result": {
+        "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+        "revision": 1,
+        "sha256": "fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25"
+      }
+    }
+  },
+  "discovery": {
+    "operations": [
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "project_space",
+          "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "project_actor",
+          "operationId": "initialize",
+          "requestSHA256": "e9f18333a449877a79a490aba8deb5ae07a0d06be92585ebd61defd87cdb97b0",
+          "result": {
+            "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+            "revision": 1,
+            "sha256": "fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25"
+          }
+        },
+        "action": "initialize",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      }
+    ]
+  },
+  "open": {
+    "reference": {
+      "storeId": "firestore",
+      "spaceID": "project_space",
+      "projectId": "detective-demo-a8bed8b25382b9518b1b4f7d",
+      "sourceId": "shipping-working-copy",
+      "receiptActorId": "project_actor",
+      "operationId": "initialize",
+      "requestSHA256": "e9f18333a449877a79a490aba8deb5ae07a0d06be92585ebd61defd87cdb97b0",
+      "result": {
+        "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+        "revision": 1,
+        "sha256": "fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25"
+      }
+    },
+    "receipt": {
+      "operationId": "initialize",
+      "actorId": "project_actor",
+      "requestSHA256": "e9f18333a449877a79a490aba8deb5ae07a0d06be92585ebd61defd87cdb97b0",
+      "action": "initialize",
+      "outcome": "applied",
+      "revision": {
+        "generation": "g-997ea21a790b9aa72dd3ca0ebedd088d",
+        "revision": 1,
+        "sha256": "fdcc1de79807e3ce2d0a0c49245907338f2128c46f11dc0a1f2e7b53679bdd25",
+        "fixtureCommit": "38a51dda39d988f2d2bcf23703bd1a969d49f4a3",
+        "fixtureSHA256": "73f0d871607ee5b24de68b5398c25806f556a3126a31e1865fee79b2881977e0",
+        "schemaSHA256": "df7cbb329274eb7b9365c6215ee5083359a43b9ae6f0ee6b3c5f61ef748bedd5",
+        "configuration": 17,
+        "businessClock": "2018-05-20T10:00:00Z",
+        "bytes": 110592,
+        "artifacts": [
+          {
+            "id": "logs/base.jsonl",
+            "sha256": "5814c09c2821dcf5fb7c313d4416fadd71f62519ab8aafe01de0ac6e6a4db65e",
+            "bytes": 6873
+          }
+        ],
+        "actorId": "project_actor",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      "acceptedAt": "2026-10-21T12:00:00Z"
+    }
+  }
+}

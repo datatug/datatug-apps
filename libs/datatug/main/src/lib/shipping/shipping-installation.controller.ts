@@ -1,7 +1,7 @@
+import { SOURCE_UI_SCOPE } from '../source-workspace/source-workspace-contract';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  ChangeDetectionStrategy,
-  Component,
+  Injectable,
   DestroyRef,
   computed,
   effect,
@@ -10,8 +10,8 @@ import {
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { Router, RouterLink } from '@angular/router';
-import { IonButton, IonSpinner } from '@ionic/angular';
+import { Router } from '@angular/router';
+
 import {
   Subject,
   distinctUntilChanged,
@@ -38,103 +38,9 @@ interface InstallationJournal {
   intent: ShippingComponentIntent;
   phase: 'uncertain' | 'acknowledged' | 'conflict';
 }
-@Component({
-  selector: 'sneat-shipping-component-installer',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IonButton, IonSpinner],
-  template: `<section aria-labelledby="shipping-component-title">
-    <h2 id="shipping-component-title">Shipping investigation content</h2>
-    <p>
-      Prepare this content before the investigation. Adds eight saved queries,
-      the Request received Check, Order and ShippingRequest entities, and the
-      Shipping board in environment demo. Existing definitions are never
-      overwritten.
-    </p>
-    @if (loading()) {
-      <p role="status">
-        <ion-spinner name="lines-small" /> Checking current installation…
-      </p>
-    }
-    @if (journalInvalid()) {
-      <p role="alert">
-        The saved installation operation could not be verified. No new operation
-        will be sent.
-      </p>
-    }
-    @if (error()) {
-      <p role="alert">{{ error() }}</p>
-    }
-    @if (state()?.installation; as installed) {
-      <p role="status">Shipping content is installed.</p>
-      <p>
-        <a [routerLink]="href(['board', installed.boardIds[0]])"
-          >Open shipping board</a
-        >
-        ·
-        <a [routerLink]="href(['query', 'shipping/request-receipt'])"
-          >Open Request received query</a
-        >
-        ·
-        <a [routerLink]="href(['checks', installed.checkIds[0]])"
-          >Open Request received Check</a
-        >
-      </p>
-    }
-    @if (pending(); as original) {
-      @if (original.phase === 'conflict') {
-        <p>
-          The server refused this operation. Review the current installation and
-          any existing definitions. No replacement operation will be sent
-          automatically.
-        </p>
-        @if (state()?.exists === false && currentAuthorized()) {
-          <ion-button
-            (click)="reviewConflict()"
-            [disabled]="busy() || loading()"
-          >
-            Reviewed conflict; prepare new install
-          </ion-button>
-        }
-      } @else if (original.phase === 'acknowledged') {
-        <p role="status">
-          The installation was acknowledged. Confirm its current state before
-          opening content.
-        </p>
-      } @else {
-        <p role="status">
-          Installation has not been confirmed. A previous attempt may have
-          completed. Retry keeps the original operation and component version.
-        </p>
-        <ion-button
-          (click)="send()"
-          [disabled]="busy() || loading() || !currentAuthorized()"
-          >Retry original installation</ion-button
-        >
-      }
-    } @else if (state()?.exists === false) {
-      <p>No shipping component is installed.</p>
-      <ion-button
-        (click)="install()"
-        [disabled]="
-          busy() || loading() || !currentAuthorized() || journalInvalid()
-        "
-        >Install shipping content</ion-button
-      >
-    }
-    @if (busy()) {
-      <p role="status">
-        <ion-spinner name="lines-small" /> Waiting for installation…
-      </p>
-    }
-    <ion-button
-      fill="clear"
-      (click)="refresh()"
-      [disabled]="busy() || loading()"
-      >Refresh installation</ion-button
-    >
-  </section>`,
-})
-export class ShippingComponentInstallerComponent {
+@Injectable()
+export class ShippingInstallationController {
+  private readonly sourceScope = inject(SOURCE_UI_SCOPE, { optional: true });
   readonly page = useDetectivePageContext();
   private readonly api = inject(ShippingComponentApiService);
   private readonly router = inject(Router);
@@ -150,6 +56,8 @@ export class ShippingComponentInstallerComponent {
   private readonly authorizedFor = signal<string | undefined>(undefined);
   readonly currentAuthorized = computed(
     () =>
+      (!this.sourceScope?.environment ||
+        this.sourceScope.environment === 'demo') &&
       !!this.page.context()?.principal &&
       this.authorizedFor() === this.page.identity(),
   );
@@ -239,6 +147,10 @@ export class ShippingComponentInstallerComponent {
         'The saved installation operation could not be verified. No installation was sent.',
       );
     }
+  }
+  invalidateReadState() {
+    this.state.set(undefined);
+    this.authorizedFor.set(undefined);
   }
   async refresh() {
     const ref = this.page.ref(),

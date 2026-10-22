@@ -89,3 +89,18 @@ th {
   clip-path: inset(50%);
   white-space: nowrap;
 }
+
+:host {
+  display: block;
+  min-width: 0;
+  container: datatug-board-header / inline-size;
+}
+
+.widget-header {
+  --min-height: 3rem;
+}
+@container datatug-board-header (max-width: 42rem) {
+  .header-action-text {
+    display: none;
+  }
+}

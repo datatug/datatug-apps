@@ -207,3 +207,36 @@ h1[data-board-page-heading]:focus-visible,
     flex: 1 1 auto;
   }
 }
+
+.board-parameters {
+  margin: 0.75rem 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  align-items: start;
+}
+.parameter-help {
+  flex-basis: 100%;
+  margin: 0;
+  color: var(--ion-color-medium-shade);
+  font-size: 0.85rem;
+}
+.board-parameter {
+  flex: 0 1 22rem;
+  min-width: 0;
+  max-width: 100%;
+}
+.board-parameter ion-item {
+  --padding-start: 0;
+  --inner-padding-end: 0;
+}
+.board-parameter ion-input {
+  --padding-top: 0.5rem;
+  --padding-bottom: 0.5rem;
+}
+.board-parameter ion-input::part(label) {
+  white-space: nowrap;
+  flex: 0 0 auto;
+  width: auto;
+  margin-inline-end: 0.75rem;
+}

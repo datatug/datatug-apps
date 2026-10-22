@@ -7,9 +7,18 @@ import {
   computed,
   effect,
   signal,
+  viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
-import { IonButton, IonCard, IonItem, IonLabel, IonSkeletonText } from '@ionic/angular';
+import {
+  IonButton,
+  IonButtons,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonSkeletonText,
+  IonToolbar,
+} from '@ionic/angular';
 import { Subject } from 'rxjs';
 import {
   BoardCard,
@@ -55,10 +64,12 @@ export class BoardCardTabService {
   providers: [BoardCardTabService],
   imports: [
     IonButton,
+    IonButtons,
     IonCard,
-    IonItem,
-    IonLabel,
+    IonCardHeader,
+    IonCardTitle,
     IonSkeletonText,
+    IonToolbar,
     NgTemplateOutlet,
     BoardWidgetComponent,
   ],
@@ -70,6 +81,22 @@ export class BoardCardTabService {
   },
   styles: [
     `
+      ion-card {
+        container: datatug-board-header / inline-size;
+      }
+      ion-card-header {
+        padding: 0;
+      }
+      ion-toolbar {
+        --min-height: 3rem;
+        --padding-start: 1rem;
+        --padding-end: 0.5rem;
+      }
+      ion-card-title {
+        font-size: 1rem;
+        padding-block: 0.65rem;
+        overflow-wrap: anywhere;
+      }
       .tutorial-card-guide {
         margin: 0.75rem;
         padding: 1rem;
@@ -133,6 +160,17 @@ export class BoardCardComponent {
   readonly bare = input(false);
   /** A shared result cache for this card; dashboards fall back to their own. */
   readonly resultCache = input<BoardQueryResults>();
+
+  /** The inline widget (absent for a card reference); its title and actions fill the card header. */
+  readonly widget = viewChild<BoardWidgetComponent>('widget');
+  /** The card header title: the cell title, else the referenced card's, else the widget's. */
+  readonly headerTitle = computed(
+    () =>
+      this.boarCardDef()?.title ||
+      this.refReady()?.title ||
+      this.widget()?.displayTitle() ||
+      '',
+  );
 
   private readonly cards = inject(ProjectCardsService);
   readonly refDef = computed(() => this.boarCardDef()?.ref);

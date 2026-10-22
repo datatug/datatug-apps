@@ -1,3 +1,6 @@
+import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
+import type { ChartSourceEdit } from '@datatug/board-models';
+import { widgetAtTabPath } from '../../components/board-widget/nested-tab-path';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
   Component,
@@ -17,7 +20,6 @@ import {
   IonBackButton,
   IonButton,
   IonButtons,
-  IonCard,
   IonCol,
   IonContent,
   IonGrid,
@@ -25,7 +27,6 @@ import {
   IonIcon,
   IonInput,
   IonItem,
-  IonLabel,
   IonMenuButton,
   IonRow,
   IonToolbar,
@@ -57,6 +58,7 @@ import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import {
   IProjectRef,
   equalProjectRef,
+  isLocalProjectRef,
   projectRefToString,
 } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
@@ -111,7 +113,7 @@ interface TutorialStatus {
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
-  imports: [
+  imports: [ChartSourceEditorComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
     // (`DatatugServicesUnsortedModule`) and, transitively, `StoreApiService`
@@ -143,8 +145,6 @@ interface TutorialStatus {
     IonCol,
     IonButton,
     IonIcon,
-    IonLabel,
-    IonCard,
     IonItem,
     IonInput,
     BoardComponent,
@@ -352,9 +352,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const ref = this.projectRef();
-      const local =
-        ref?.projectApi === 'local' &&
-        !['github', 'github.com', 'firestore'].includes(ref.storeId);
+      const local = isLocalProjectRef(ref);
       const hosted = ref?.storeId === 'firestore' && !!ref.spaceID;
       const securityContextId = local
         ? this.agentContext
@@ -717,16 +715,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     );
   }
 
-  explainSourceLimit(index: number): void {
-    const target = this.element.nativeElement.querySelector<HTMLElement>(
-      `#source-composition-limit-${index}`,
-    );
-    this.tutorialAnnouncement.set(
-      target?.textContent?.trim() ?? 'Source composition is unavailable.',
-    );
-    target?.focus();
-  }
-
   editTutorial(action: BoardSessionAction): void {
     const session = this.tutorialSession;
     if (!session || !this.tutorialActive()) return;
@@ -825,6 +813,16 @@ export class BoardPageComponent implements OnInit, OnDestroy {
       widgetPath: editor.path,
       spec,
     });
+  }
+
+  tutorialSourceQueries(editor: TutorialEditor) {
+    const card = this.boardDef()?.rows?.flatMap((row) => row.cards ?? []).find((item) => item.id === editor.cardId);
+    const widget = widgetAtTabPath(card?.widget, editor.path);
+    const sources = widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
+    return this.tutorialQueries().map((id) => ({ id, sourceId: sources.find((source) => source.queryId === id)?.id }));
+  }
+  editTutorialSource(editor: TutorialEditor, edit: ChartSourceEdit): void {
+    this.editTutorial({ ...edit, cardId: editor.cardId, widgetPath: editor.path });
   }
 
   removeTutorialSource(editor: TutorialEditor, sourceId: string): void {

@@ -1,3 +1,5 @@
+import { ProjectEnvironmentStateService } from './project-environment-state.service';
+import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { Injectable, inject } from '@angular/core';
 import {
   Observable,
@@ -75,6 +77,7 @@ function safeEnvironmentPresentation(
 @Injectable({ providedIn: 'root' })
 export class ProjectAssetsReadService {
   private readonly api = inject(ProjectQueryApiService);
+  private readonly environmentState = inject(ProjectEnvironmentStateService);
   private readonly hosted = inject(ProjectAssetsApiService);
   private readonly project = inject(ProjectService);
   private readonly github = inject(GithubProjectReaderService);
@@ -255,6 +258,12 @@ export class ProjectAssetsReadService {
   }
 
   environments(ref: IProjectRef): Observable<IEnvironmentFull[]> {
+    return this.environmentState
+      .watch(ref, () => this.legacyEnvironments(ref))
+      .pipe(map((view) => view.items));
+  }
+
+  legacyEnvironments(ref: IProjectRef): Observable<IEnvironmentFull[]> {
     const invalid = this.invalidTransport(ref);
     if (invalid) return invalid;
     if (this.isUnsupported(ref))
@@ -290,6 +299,7 @@ export class ProjectAssetsReadService {
                 };
               }),
             ),
+            map((items) => resolveEnvironmentOrder(items).items),
           ),
         ),
       );
@@ -297,7 +307,15 @@ export class ProjectAssetsReadService {
     if (this.isUnqualifiedLocal(ref))
       return this.project
         .getFull(ref)
-        .pipe(map((project) => project.environments ?? []));
+        .pipe(
+          map(
+            (project) =>
+              resolveEnvironmentOrder(
+                project.environments ?? [],
+                project.environmentOrder,
+              ).items,
+          ),
+        );
     return this.api.environments<IEnvironmentFull[]>(ref);
   }
 }

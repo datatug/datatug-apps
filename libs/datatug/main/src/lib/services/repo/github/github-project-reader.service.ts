@@ -160,6 +160,7 @@ export interface IGithubWireQueryItem {
   readonly createdAt?: string;
   tags?: string[];
   semanticModel?: IQueryDef['semanticModel'];
+  comparison?: IQueryDef['comparison'];
   targets?: IQueryDef['targets'];
   id: string;
   title?: string;
@@ -1511,6 +1512,7 @@ export class GithubProjectReaderService {
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
                 : {}),
+              ...(def && Object.hasOwn(def, 'comparison') ? { comparison: def.comparison } : {}),
               targets: def?.targets,
               parameters: def?.parameters,
               relationshipBindings: def?.relationshipBindings,
@@ -1610,6 +1612,7 @@ export class GithubProjectReaderService {
                   ...(def?.semanticModel
                     ? { semanticModel: def.semanticModel }
                     : {}),
+                  ...(def && Object.hasOwn(def, 'comparison') ? { comparison: def.comparison } : {}),
                   targets: def?.targets,
                   parameters: def?.parameters,
                   relationshipBindings: def?.relationshipBindings,

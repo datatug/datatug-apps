@@ -1,3 +1,4 @@
+import { DEMO_LOG_SOURCE_ADAPTER, type DemoLogSourceAdapter } from './demo-log-source-adapter';
 import { Component, input, output } from '@angular/core';
 import { AgGridAngular } from 'ag-grid-angular';
 import { TestBed } from '@angular/core/testing';
@@ -49,7 +50,7 @@ const malformedEvidence = {
   },
 };
 
-async function setup(queryRecords: readonly OvdbRow[] = [evidence]) {
+async function setup(queryRecords: readonly OvdbRow[] = [evidence], adapter?: DemoLogSourceAdapter) {
   const requests: Array<{ url: string; method: string; body?: string; authorization?: string }> = [];
   const orderParams = new BehaviorSubject(convertToParamMap({ order: '11039' }));
   const route = { snapshot: { queryParamMap: orderParams.value }, queryParamMap: orderParams.asObservable() };
@@ -65,7 +66,7 @@ async function setup(queryRecords: readonly OvdbRow[] = [evidence]) {
   });
   await TestBed.configureTestingModule({
     imports: [DemoLogsPageComponent],
-    providers: [provideRouter([]), {
+    providers: [...(adapter ? [{ provide: DEMO_LOG_SOURCE_ADAPTER, useValue: adapter }] : []), provideRouter([]), {
       provide: ActivatedRoute,
       useValue: route,
     }],
@@ -99,22 +100,45 @@ describe('DemoLogsPageComponent', () => {
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
   });
 
+  it('renders independent registered source labels and exact identifier mapping without business inference', async () => {
+    const adapter: DemoLogSourceAdapter = {
+      defaults: { baseUrl: 'http://127.0.0.1:6832', databaseId: 'northwind_evidence', collection: 'fulfillment_events', identifier: 'sample-7', from: '2018-04-21T09:12:00Z', to: '2018-04-21T09:14:00Z' },
+      identifier: { label: 'Sample ID', field: 'sample_id', queryParam: 'sample' },
+      detailFields: [{ label: 'Sample', field: 'sample_id' }],
+      heading: () => ({ eyebrow: 'Registered samples', title: 'Calibration observations', description: 'Actual selected source configuration' }),
+      relatedRecord: () => undefined,
+      originalLabel: () => 'Original sample entry',
+    };
+    const { fixture, requests, el } = await setup([{ ...evidence, data: { ...evidence.data, sample_id: 'sample-7' } }], adapter);
+    expect(el.querySelector('h1')?.textContent).toBe('Calibration observations');
+    expect(el.textContent).toContain('Sample ID');
+    expect(el.textContent).not.toContain('Order ID');
+    expect(el.textContent).not.toContain('Northwind investigation');
+    const query = JSON.parse(requests.at(-1)?.body ?? '{}');
+    expect(query.where).toContainEqual({ field: 'sample_id', op: '==', value: 'sample-7' });
+    expect(query.where.some((field: { field: string }) => field.field === 'order_id')).toBe(false);
+    (el.querySelector('.grid-entry') as HTMLButtonElement).click();
+    fixture.detectChanges();
+    expect(el.querySelector('.entry-details')?.textContent).toContain('Original sample entry');
+    expect(el.querySelector('a[href*="record="]')).toBeNull();
+  });
+
   it('explains that identity filters still exclude malformed entries and can be cleared', async () => {
     const { fixture, requests, el } = await setup([malformedEvidence]);
     const component = fixture.componentInstance;
     expect(component.includeUntimed()).toBe(false);
-    expect(component.orderId()).toBe('11039');
+    expect(component.identifier()).toBe('11039');
 
     component.includeUntimed.set(true);
     fixture.detectChanges();
-    expect(el.textContent).toContain('Order, correlation, and severity filters still apply.');
+    expect(el.textContent).toContain('Identifier, correlation, and severity filters still apply.');
     expect(el.textContent).toContain('Malformed entries may not contain those fields.');
     expect(el.textContent).toContain('select All severity');
     const initialQuery = JSON.parse(requests.at(-1)?.body ?? '{}') as { where: Array<{ field: string; value: string }> };
     expect(initialQuery.where).toContainEqual({ field: 'order_id', op: '==', value: '11039' });
 
     (el.querySelector('button[type="button"]') as HTMLButtonElement).click();
-    expect(component.orderId()).toBe('');
+    expect(component.identifier()).toBe('');
     expect(component.correlationId()).toBe('');
     await component.load();
     await fixture.whenStable();
@@ -154,7 +178,7 @@ describe('DemoLogsPageComponent', () => {
 
   it('labels results from the applied source and keeps record links tied to returned evidence', async () => {
     const { fixture, el } = await setup();
-    fixture.componentInstance.orderId.set('11040');
+    fixture.componentInstance.identifier.set('11040');
     fixture.detectChanges();
     expect(el.querySelector('h1')?.textContent).toContain('11039');
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
@@ -162,7 +186,7 @@ describe('DemoLogsPageComponent', () => {
     fixture.detectChanges();
     expect(el.querySelectorAll('a[href*="record=11039"]').length).toBe(2);
 
-    fixture.componentInstance.applied.set({ baseUrl: 'http://127.0.0.1:6832', databaseId: 'cloud_owned', collection: 'entries', orderId: '11039' });
+    fixture.componentInstance.applied.set({ baseUrl: 'http://127.0.0.1:6832', databaseId: 'cloud_owned', collection: 'entries', identifier: '11039' });
     fixture.componentInstance.rows.set([{ ...evidence, data: { ...evidence.data, parser: 'google-cloud-logging' } }]);
     fixture.detectChanges();
     expect(el.querySelector('h1')?.textContent).toBe('Log evidence timeline');
@@ -170,7 +194,7 @@ describe('DemoLogsPageComponent', () => {
     expect(el.querySelector('a[href*="record=11039"]')).toBeNull();
     expect(el.querySelector('.entry-details h3')?.textContent).toContain('SDK reconstruction');
 
-    fixture.componentInstance.applied.set({ baseUrl: 'http://127.0.0.1:6832', databaseId: 'northwind_evidence', collection: 'carrier_events', orderId: '' });
+    fixture.componentInstance.applied.set({ baseUrl: 'http://127.0.0.1:6832', databaseId: 'northwind_evidence', collection: 'carrier_events', identifier: '' });
     fixture.detectChanges();
     expect(el.querySelector('h1')?.textContent).toBe('Northwind order evidence');
     expect(el.querySelector('a[href*="record=11039"]')).not.toBeNull();
@@ -196,7 +220,7 @@ describe('DemoLogsPageComponent', () => {
       orderParams.next(route.snapshot.queryParamMap);
       return true;
     });
-    fixture.componentInstance.orderId.set('11041');
+    fixture.componentInstance.identifier.set('11041');
     await fixture.componentInstance.load(new Event('submit'));
     await vi.waitFor(async () => {
       await fixture.whenStable();
@@ -205,6 +229,6 @@ describe('DemoLogsPageComponent', () => {
       expect(requests.filter((request) => request.method === 'POST')).toHaveLength(3);
     });
     expect(navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: { order: '11041' }, queryParamsHandling: 'merge' }));
-    expect(fixture.componentInstance.applied()?.orderId).toBe('11041');
+    expect(fixture.componentInstance.applied()?.identifier).toBe('11041');
   });
 });

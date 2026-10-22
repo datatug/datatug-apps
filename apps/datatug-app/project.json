@@ -370,6 +370,16 @@
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.hosted-incidents.config.ts --forbid-only"
       }
+    },
+    "e2e-showcase-independent": {
+      "executor": "nx:run-commands",
+      "cache": false,
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-showcase-exploration"
+      ],
+      "options": {
+        "command": "playwright test -c apps/datatug-app/playwright.showcase-exploration.config.ts showcase-independent-sources.spec.ts --forbid-only"
+      }
     }
   }
 }

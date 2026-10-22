@@ -1,134 +1,317 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
-import { ComponentFixture, TestBed } from '@angular/core/testing';
+import goldens from '../../../models/definition/environment-receipts.golden.json';
+import {
+  EnvironmentOperationRecoveryService,
+  PendingEnvironmentOperation,
+} from '../../../services/project/environment-operation-recovery.service';
+import {
+  Component,
+  CUSTOM_ELEMENTS_SCHEMA,
+  ElementRef,
+  inject,
+} from '@angular/core';
+import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
-import { of } from 'rxjs';
-
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { EnvironmentsPageComponent } from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
-import { ProjectService } from '../../../services/project/project.service';
-import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
+import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
+import { ProjectEnvironmentStateService } from '../../../services/project/project-environment-state.service';
+import {
+  EnvironmentState,
+  EnvironmentOperationResult,
+} from '../../../models/definition/environment-state';
+import { EnvironmentWrite } from '../../../models/definition/environment-receipt';
+import { IEnvironmentFull } from '../../../models/definition/environments';
 
-describe('EnvironmentsPage', () => {
-  let component: EnvironmentsPageComponent;
-  let fixture: ComponentFixture<EnvironmentsPageComponent>;
+interface EnvironmentPageTestPort {
+  recoveryReady(): boolean;
+  editing(): boolean;
+  message(): string;
+  draft: { set(environments: readonly IEnvironmentFull[]): void };
+  manage(): void;
+  submit(kind: 'create' | 'order'): Promise<void>;
+  retry(): Promise<void>;
+  name: string;
+  readonly unresolved: boolean;
+}
+function requiredGolden(kind: EnvironmentOperationResult['kind']) {
+  const fixture = goldens.find(
+    (item) => item.transport === 'cli' && item.receipt.kind === kind,
+  );
+  if (!fixture) throw new Error(`Missing CLI golden for ${kind}`);
+  return {
+    before: fixture.before as unknown as EnvironmentState,
+    after: fixture.after as unknown as EnvironmentState,
+    request: fixture.request as EnvironmentWrite,
+    receipt: fixture.receipt as EnvironmentOperationResult,
+  };
+}
 
+const focusEnvironmentInput = vi.fn();
+const readyEnvironmentInput = vi.fn();
+@Component({
+  selector: 'sneat-environment-test-name-input',
+  template: '<input aria-label="Environment name" />',
+})
+class EnvironmentNameInputStub {
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
+  async getInputElement(): Promise<HTMLInputElement> {
+    readyEnvironmentInput();
+    await Promise.resolve();
+    const input = this.host.nativeElement.querySelector('input');
+    if (!input) throw new Error('Native input is not rendered');
+    return input;
+  }
+  async setFocus(): Promise<void> {
+    focusEnvironmentInput();
+    this.host.nativeElement.querySelector('input')?.focus();
+  }
+}
+
+const ref = { storeId: 'localhost:18989', projectId: 'demo' };
+const state: EnvironmentState = {
+  contract: 'environment-state/1',
+  scope: { ...ref, authorityId: 'agent' },
+  scopeBinding: 'a'.repeat(64),
+  environments: [
+    { id: 'prod', title: 'prod' },
+    { id: 'local', title: 'local' },
+  ],
+  savedOrder: ['prod', 'local'],
+  order: ['prod', 'local'],
+  revision: 'r1',
+  needsRepair: false,
+  capabilities: {
+    canReadOrder: true,
+    canWriteOrder: true,
+    canCreateEnvironment: true,
+  },
+};
+
+describe('Environments management', () => {
+  const project = new BehaviorSubject({ ref });
+  const response = new Subject<{
+    state: EnvironmentState;
+    items: EnvironmentState['environments'];
+  }>();
+  const nav = { goEnvironment: vi.fn() };
+  let stored: PendingEnvironmentOperation | undefined;
+  const recovery = {
+    read: vi.fn(async () => stored),
+    reserve: vi.fn(async (operation: PendingEnvironmentOperation) => {
+      stored = operation;
+    }),
+    attempt: vi.fn(async (operation: PendingEnvironmentOperation) => {
+      stored = { ...operation, attempts: operation.attempts + 1 };
+      return stored;
+    }),
+    remove: vi.fn(async () => {
+      stored = undefined;
+    }),
+  };
+  const api = {
+    view: vi.fn(() => response),
+    changed: vi.fn(),
+    mutation: vi.fn<ProjectEnvironmentStateService['mutation']>(() => ({
+      scope: state.scope,
+      ifRevision: 'r1',
+      operationId: 'op',
+    })),
+    save: vi.fn<ProjectEnvironmentStateService['save']>(),
+    create: vi.fn<ProjectEnvironmentStateService['create']>(),
+    read: vi.fn<ProjectEnvironmentStateService['read']>(),
+    status: vi.fn<ProjectEnvironmentStateService['status']>(),
+  };
   beforeEach(async () => {
-    Object.defineProperty(window, 'history', {
-      value: { ...window.history, state: { projSummary: undefined } },
-      writable: true,
-      configurable: true,
-    });
+    vi.clearAllMocks();
+    stored = undefined;
     await TestBed.configureTestingModule({
       imports: [EnvironmentsPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
+          useValue: { currentProject: project },
+        },
+        {
+          provide: SneatAuthStateService,
           useValue: {
-            currentProject: of(undefined),
-            currentEnv: of(undefined),
+            authState: of({ status: 'authenticated', user: { uid: 'u1' } }),
           },
         },
-        // `EnvironmentsPageComponent` fetches its environments list via
-        // `ProjectService.getFull()`, not `project?.environments` (Task 17
-        // item B.1, S121 — see the component's own doc comment on
-        // `environments`): `currentProject` above emits `undefined` in this
-        // describe block, so `loadEnvironments()` never actually runs, but
-        // the component now injects `ProjectService` unconditionally and
-        // `TestBed` needs a provider for it regardless.
         {
-          provide: ProjectService,
-          useValue: { getFull: vi.fn(() => of({ environments: [] })) },
+          provide: ProjectAssetsReadService,
+          useValue: { legacyEnvironments: vi.fn() },
         },
-        // GitHub-store branch (`loadEnvironments()`) reads through
-        // `EnvironmentService.listEnvironments()` instead — see this
-        // component's own doc comment. `currentProject` above emits
-        // `undefined`, so `loadEnvironments()` never actually runs here
-        // either, but `TestBed` needs a provider regardless (now
-        // unconditionally injected).
-        {
-          provide: EnvironmentService,
-          useValue: { listEnvironments: vi.fn(() => of([])) },
-        },
+        { provide: ProjectEnvironmentStateService, useValue: api },
+        { provide: EnvironmentOperationRecoveryService, useValue: recovery },
+        { provide: DatatugNavService, useValue: nav },
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
       ],
     })
       .overrideComponent(EnvironmentsPageComponent, {
         set: {
           imports: [],
-          template: '',
           schemas: [CUSTOM_ELEMENTS_SCHEMA],
-          providers: [],
+          template: `@for (environment of environments(); track environment.id) { <button data-testid="environment-list-item" (click)="goEnvironment(environment)">{{presentation(environment).label}} {{presentation(environment).safetyLabel}}</button> }`,
         },
       })
       .compileComponents();
-
-    fixture = TestBed.createComponent(EnvironmentsPageComponent);
-    component = fixture.componentInstance;
   });
-
-  it('should create', () => {
-    expect(component).toBeTruthy();
-  });
-});
-
-describe('EnvironmentsPage metadata', () => {
-  it('renders late metadata, retains IDs in navigation, and cancels a replaced project', async () => {
-    const { BehaviorSubject, Subject } = await import('rxjs');
-    const project = { ref: { storeId: 'github.com', projectId: 'r@o@' } };
-    const currentProject = new BehaviorSubject<
-      import('../../../nav/nav-models').IProjectContext
-    >(project);
-    const first = new Subject<
-      import('../../../models/definition/environments').IEnvironmentFull[]
-    >();
-    const next = new Subject<
-      import('../../../models/definition/environments').IEnvironmentFull[]
-    >();
-    const goEnvironment = vi.fn();
-    const navToken = (await import('../../../services/nav/datatug-nav.service'))
-      .DatatugNavService;
-    const listEnvironments = vi
-      .fn()
-      .mockReturnValueOnce(first)
-      .mockReturnValueOnce(next);
-    await TestBed.configureTestingModule({
-      imports: [EnvironmentsPageComponent],
-      providers: [
-        { provide: DatatugNavContextService, useValue: { currentProject } },
-        { provide: ProjectService, useValue: {} },
-        { provide: EnvironmentService, useValue: { listEnvironments } },
-        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
-        { provide: navToken, useValue: { goEnvironment } },
-      ],
-    })
-      .overrideComponent(EnvironmentsPageComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
-      })
-      .compileComponents();
+  it('focuses the inline creation input after Angular render and Ionic native-input readiness', async () => {
+    await TestBed.overrideComponent(EnvironmentsPageComponent, {
+      set: {
+        imports: [EnvironmentNameInputStub],
+        template: `<button (click)="add()">Add environment</button>@if (creating()) { <sneat-environment-test-name-input #nameInput /> }`,
+      },
+    }).compileComponents();
+    focusEnvironmentInput.mockClear();
+    readyEnvironmentInput.mockClear();
     const fixture = TestBed.createComponent(EnvironmentsPageComponent);
     fixture.detectChanges();
-    const env = {
-      id: 'live-a',
-      title: 'live-a',
-      presentation: { label: 'Production', tone: 'danger' as const },
-    };
-    first.next([env]);
+    response.next({ state, items: state.environments });
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Production');
-    expect(fixture.nativeElement.textContent).toContain('High caution');
-    fixture.nativeElement
-      .querySelector('[data-testid="environment-list-item"]')
-      .click();
-    expect(goEnvironment).toHaveBeenCalledWith(project, env);
-    currentProject.next({
-      ref: { storeId: 'github.com', projectId: 'r@o@', branch: 'release' },
+    expect(fixture.nativeElement.querySelector('input')).toBeNull();
+    fixture.nativeElement.querySelector('button').click();
+    await fixture.whenStable();
+    expect(readyEnvironmentInput).toHaveBeenCalledOnce();
+    expect(focusEnvironmentInput).toHaveBeenCalledOnce();
+    expect(document.activeElement).toBe(
+      fixture.nativeElement.querySelector('input'),
+    );
+  });
+  it('repaints asynchronously and preserves canonical custom order with compact safety metadata', async () => {
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    fixture.detectChanges();
+    response.next({
+      state,
+      items: [
+        {
+          id: 'prod',
+          title: 'prod',
+          presentation: { label: 'Production', tone: 'danger' },
+        },
+        { id: 'local', title: 'local' },
+      ],
     });
-    first.next([env]);
-    next.next([{ id: 'qa', title: 'Quality assurance' }]);
     await fixture.whenStable();
-    expect(fixture.nativeElement.textContent).toContain('Quality assurance');
-    expect(fixture.nativeElement.textContent).not.toContain('Production');
+    const rows = fixture.nativeElement.querySelectorAll(
+      '[data-testid="environment-list-item"]',
+    );
+    expect(rows[0].textContent).toContain('Production');
+    expect(rows[0].textContent).toContain('High caution');
+    expect(rows[0].getAttribute('color')).toBeNull();
+    expect(fixture.nativeElement.querySelectorAll('ion-card h2')).toHaveLength(
+      0,
+    );
+    rows[0].click();
+    expect(nav.goEnvironment).toHaveBeenCalledWith(
+      { ref },
+      expect.objectContaining({ id: 'prod', title: 'prod' }),
+    );
+  });
+  it('retains the exact operation after a lost save response and verifies real Go proof before closing', async () => {
+    const golden = requiredGolden('save-environment-order');
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
+    api.mutation.mockReturnValue(golden.request);
+    api.read.mockReturnValue(of(golden.before));
+    response.next({
+      state: golden.before,
+      items: golden.before.environments,
+    });
+    await vi.waitFor(() => expect(page.recoveryReady()).toBe(true));
+    page.manage();
+    if (!('environmentOrder' in golden.request))
+      throw new Error('Order golden must contain environmentOrder');
+    page.draft.set(
+      golden.request.environmentOrder.map((id) => {
+        const environment = golden.before.environments.find(
+          (row) => row.id === id,
+        );
+        if (!environment)
+          throw new Error(`Golden order references missing environment ${id}`);
+        return environment;
+      }),
+    );
+    api.save.mockReturnValue(throwError(() => ({ status: 0 })));
+    api.status.mockReturnValue(of({ ...golden.receipt, status: 'pending' }));
+    await page.submit('order');
+    expect(page.editing()).toBe(true);
+    const original = api.save.mock.calls[0][1];
+    if (!stored) throw new Error('Lost-response operation was not retained');
+    expect(stored.request).toEqual(original);
+    api.save.mockReturnValue(of(golden.receipt));
+    api.read.mockReturnValue(of(golden.after));
+    api.status.mockReturnValue(of(golden.receipt));
+    await page.retry();
+    expect(api.save.mock.calls[1][1]).toEqual(original);
+    expect(page.editing()).toBe(false);
+    expect(page.message()).toBe('Order saved.');
+    expect(stored).toBeUndefined();
+  });
+  it('blocks fresh mutations when recovery storage cannot be read', async () => {
+    recovery.read.mockRejectedValueOnce(new Error('storage denied'));
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
+    response.next({ state, items: state.environments });
+    await vi.waitFor(() => expect(page.message()).toContain('storage'));
+    page.name = 'Fresh';
+    await page.submit('create');
+    expect(api.create).not.toHaveBeenCalled();
+    expect(page.recoveryReady()).toBe(false);
+  });
+  it('restores unresolved create before offering another mutation after route reentry', async () => {
+    const golden = requiredGolden('create-environment');
+    stored = {
+      version: 1,
+      actor: golden.before.scopeBinding,
+      project: ref,
+      before: golden.before,
+      request: golden.request,
+      attempts: 1,
+    };
+    api.read.mockReturnValue(of(golden.before));
+    api.status.mockReturnValue(of({ ...golden.receipt, status: 'pending' }));
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
+    response.next({
+      state: golden.before,
+      items: golden.before.environments,
+    });
+    await vi.waitFor(() => expect(page.message()).toContain('unresolved'));
+    if (!('name' in golden.request))
+      throw new Error('Create golden must contain name');
+    expect(page.name).toBe(golden.request.name);
+    expect(page.unresolved).toBe(true);
+    await page.submit('create');
+    expect(api.create).not.toHaveBeenCalled();
+  });
+  it('does not allow mutations without the corresponding current capability', () => {
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
+    response.next({
+      state: {
+        ...state,
+        capabilities: {
+          canReadOrder: true,
+          canWriteOrder: false,
+          canCreateEnvironment: false,
+        },
+      },
+      items: state.environments,
+    });
+    page.name = 'New';
+    page.submit('create');
+    page.submit('order');
+    expect(api.create).not.toHaveBeenCalled();
+    expect(api.save).not.toHaveBeenCalled();
   });
 });

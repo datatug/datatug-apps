@@ -10,23 +10,38 @@
         "
       />
     </ion-buttons>
-    <ion-title><h1 class="project-title">{{ projectTitle() }}</h1></ion-title>
+    <ion-title
+      ><h1 class="project-title">{{ projectTitle() }}</h1></ion-title
+    >
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
-  <form class="overview-quick-search ph-no-capture" role="search" (submit)="submitQuickSearch($event)">
+  <form
+    class="overview-quick-search ph-no-capture"
+    role="search"
+    (submit)="submitQuickSearch($event)"
+  >
     <label for="project-quick-search">Quick Search</label>
     <div>
-      <input id="project-quick-search" class="ph-no-capture ph-mask sentry-mask" data-sentry-mask type="search" name="q" placeholder="Search tables, columns, queries, tags…" [value]="quickSearchQuery()" (input)="updateQuickSearch($event)" />
-      <button type="submit" [disabled]="!quickSearchQuery().trim() || !project()?.ref">Search</button>
+      <input
+        id="project-quick-search"
+        class="ph-no-capture ph-mask sentry-mask"
+        data-sentry-mask
+        type="search"
+        name="q"
+        placeholder="Search tables, columns, queries, tags…"
+        [value]="quickSearchQuery()"
+        (input)="updateQuickSearch($event)"
+      />
+      <button
+        type="submit"
+        [disabled]="!quickSearchQuery().trim() || !project()?.ref"
+      >
+        Search
+      </button>
     </div>
   </form>
-  @if (shippingHref(); as href) {
-    <ion-item [routerLink]="href" detail="true"
-      ><ion-label>Shipping training workspace</ion-label></ion-item
-    >
-  }
   @if (projectMetadata().length) {
     <p class="project-context-meta" aria-label="Project connection details">
       @for (item of projectMetadata(); track item) {
@@ -42,7 +57,8 @@
   }
   @if (metadataState() === 'unavailable' && !metadataReadError()) {
     <p class="project-metadata-unavailable" role="status">
-      Project details are unavailable. Showing the project identity from its address.
+      Project details are unavailable. Showing the project identity from its
+      address.
     </p>
   }
   @if (metadataReadError(); as error) {
@@ -55,7 +71,13 @@
 
   @if (!project()?.ref?.spaceID) {
     <section class="overview-environments" aria-label="Project environments">
-      <h2>Environments</h2>
+      <button
+        type="button"
+        class="environment-label"
+        (click)="goEnvironments()"
+      >
+        Environments:
+      </button>
       @if (projectItemsUnsupported()) {
         <p role="status">
           Environment shortcuts are unavailable for this project connection or
@@ -74,6 +96,12 @@
             <button
               type="button"
               class="environment-shortcut"
+              [class.environment-danger]="
+                environmentPresentation(environment).tone === 'danger'
+              "
+              [class.environment-warning]="
+                environmentPresentation(environment).tone === 'warning'
+              "
               (click)="goEnvironment(environment)"
               [attr.aria-label]="
                 'Open ' +
@@ -115,13 +143,21 @@
           type="button"
           [class.active]="activeTab() === tab.id"
           [attr.aria-label]="tab.label"
-          [attr.aria-description]="tab.id === 'queries' && queryCount() !== undefined ? queryCount() + ' queries' : null"
+          [attr.aria-description]="
+            tab.id === 'queries' && queryCount() !== undefined
+              ? queryCount() + ' queries'
+              : null
+          "
           [attr.aria-pressed]="activeTab() === tab.id"
           (click)="selectTab(tab.id)"
         >
           {{ tab.label }}
           @if (tab.id === 'queries' && queryCount() !== undefined) {
-            <ion-chip class="overview-tab-count" [attr.aria-label]="queryCount() + ' queries'">{{ queryCount() }}</ion-chip>
+            <ion-chip
+              class="overview-tab-count"
+              [attr.aria-label]="queryCount() + ' queries'"
+              >{{ queryCount() }}</ion-chip
+            >
           }
         </button>
       }
@@ -190,7 +226,12 @@
           } @else if (boards(); as items) {
             @for (board of items; track board.id) {
               <ion-item button detail (click)="goBoard(board)"
-                ><ion-icon name="easel-outline" slot="start" color="medium" aria-hidden="true" />
+                ><ion-icon
+                  name="easel-outline"
+                  slot="start"
+                  color="medium"
+                  aria-hidden="true"
+                />
                 <ion-label>{{ board.title || board.id }}</ion-label></ion-item
               >
             } @empty {
@@ -207,8 +248,12 @@
       >
     }
   } @else if (activeTab() === 'queries') {
-    <sneat-datatug-project-queries-preview [querySource]="querySource()" [projectRef]="project()?.ref" />
+    <sneat-datatug-project-queries-preview
+      [querySource]="querySource()"
+      [projectRef]="project()?.ref"
+    />
   } @else if (activeTab() === 'databases') {
+    <sneat-source-entries />
     @if (projectItemsUnsupported()) {
       <ion-card
         ><ion-card-content role="status"
@@ -222,66 +267,6 @@
       <sneat-datatug-project-database-servers-preview
         [projectRef]="project()?.ref"
       />
-    }
-  } @else if (activeTab() === 'environments') {
-    @if (projectAssetsUnsupported()) {
-      <ion-card
-        ><ion-card-content role="status"
-          >Environments are unavailable for this project connection or
-          branch.</ion-card-content
-        ></ion-card
-      >
-    } @else {
-      <ion-card>
-        <ion-list>
-          @if (environmentError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                environmentErrorMessage() ||
-                  'Environments could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
-          } @else if (environments(); as items) {
-            @for (environment of items; track environment.id) {
-              <ion-item
-                button
-                detail
-                (click)="goEnvironment(environment)"
-                data-testid="overview-environment-item"
-              >
-                <ion-icon
-                  slot="start"
-                  [icon]="environmentPresentation(environment).icon"
-                  aria-hidden="true"
-                />
-                <ion-label
-                  ><h3>{{ environmentPresentation(environment).label }}</h3>
-                  @if (
-                    environmentPresentation(environment).label !==
-                    environment.id
-                  ) {
-                    <p>Environment ID: {{ environment.id }}</p>
-                  }
-                  @if (
-                    environmentPresentation(environment).safetyLabel;
-                    as safety
-                  ) {
-                    <p>{{ safety }}</p>
-                  }
-                </ion-label>
-              </ion-item>
-            } @empty {
-              <ion-item
-                ><ion-label
-                  >No environments have been configured yet.</ion-label
-                ></ion-item
-              >
-            }
-          } @else {
-            <ion-item><ion-label>Loading environments…</ion-label></ion-item>
-          }
-        </ion-list>
-      </ion-card>
     }
   } @else {
     @if (projectAssetsUnsupported()) {
@@ -309,7 +294,12 @@
                 (click)="goEntity(entity)"
                 data-testid="overview-entity-item"
               >
-                <ion-icon name="book-outline" slot="start" color="medium" aria-hidden="true" />
+                <ion-icon
+                  name="book-outline"
+                  slot="start"
+                  color="medium"
+                  aria-hidden="true"
+                />
                 <ion-label>{{ entity.dbo?.title || entity.id }}</ion-label>
               </ion-item>
             } @empty {

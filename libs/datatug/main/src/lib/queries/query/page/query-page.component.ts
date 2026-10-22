@@ -1298,12 +1298,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       const native = this.retainedScope.capture(
         ref,
         undefined,
-        this.queryDef()?.connectionId === 'shipping-working-copy'
-          ? {
-              sourceId: 'shipping-working-copy',
-              environment: this.hostedEnvironment(),
-            }
-          : undefined,
+        { environment: this.hostedEnvironment() },
       );
       const state = await firstValueFrom(
         this.detectiveClient
@@ -8605,9 +8600,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       native = this.retainedScope.capture(
         ref,
         undefined,
-        selection || definition.connectionId === 'shipping-working-copy'
-          ? { sourceId: 'shipping-working-copy', environment }
-          : undefined,
+        { environment },
       );
       if (selection) {
         if (

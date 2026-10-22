@@ -465,49 +465,11 @@
                         /></label>
                       }
                     }
-                    <h4>Independent source bindings</h4>
-                    @for (source of chart.sources; track source.id) {
-                      <p>
-                        <strong>{{ source.id }}</strong> · {{ source.queryId }}
-                      </p>
-                      @for (
-                        binding of source.parameters ?? [];
-                        track binding.id
-                      ) {
-                        <p>
-                          {{ binding.id }} ←
-                          {{
-                            binding.boardParameterId || 'saved constant/default'
-                          }}
-                        </p>
-                      }
-                      <button
-                        type="button"
-                        [disabled]="chart.sources.length === 1"
-                        (click)="removeTutorialSource(editor, source.id)"
-                      >
-                        Remove source {{ source.id }}
-                      </button>
-                    }
-                    <button
-                      type="button"
-                      aria-disabled="true"
-                      (click)="explainSourceLimit(editorIndex)"
-                      [attr.aria-describedby]="
-                        'source-composition-limit-' + editorIndex
-                      "
-                    >
-                      Add another source (unavailable)
-                    </button>
-                    <p
-                      [id]="'source-composition-limit-' + editorIndex"
-                      tabindex="-1"
-                    >
-                      A second source is unavailable until separate execution
-                      and composition are supported. Use a separate saved-query
-                      tab for independent inspection; missing provider rights
-                      keep a source chart-ineligible.
-                    </p>
+                    <sneat-datatug-chart-source-editor
+                      [definition]="chart"
+                      [queries]="tutorialSourceQueries(editor)"
+                      (edit)="editTutorialSource(editor, $event)"
+                    />
                   }
                 </fieldset>
               }
@@ -518,54 +480,58 @@
     }
 
     @if (boardDef() && parameters()?.length) {
-      <ion-card>
+      <section class="board-parameters" aria-label="Board parameters">
         @if (lookupUnavailable()) {
-          <p class="ion-padding" role="status">
+          <p class="parameter-help" role="status">
             Lookup is unavailable for this project connection or branch. Enter
             parameter values manually.
           </p>
         }
-        <p class="ion-padding">
-          Parameter changes clear previous results. Run or refresh a card to use
-          the new values.
+        <p class="parameter-help">
+          Change a value, then run or refresh a card. Previous results are cleared.
         </p>
         @for (p of parameters(); track p.def.id) {
-          <ion-item [title]="'@' + p.def.id">
-            <ion-label color="medium">{{ p.def.title || p.def.id }}</ion-label>
-            <ion-input
-              [placeholder]="p.def.type"
-              [value]="parameterText(p)"
-              [attr.aria-invalid]="parameterErrors()[p.def.id] ? 'true' : null"
-              [attr.aria-describedby]="
-                parameterErrors()[p.def.id]
-                  ? 'board-parameter-error-' + p.def.id
-                  : null
-              "
-              (ionInput)="setParameterValue(p, $event.detail.value)"
-            />
-            <ion-buttons slot="end">
-              @if (p.def.lookup && !lookupUnavailable()) {
-                <ion-button
-                  color="medium"
-                  [title]="p.def.lookup.sql"
-                  (click)="lookup(p)"
-                >
-                  <ion-icon name="list-outline" />
-                </ion-button>
-              }
-            </ion-buttons>
-          </ion-item>
-          @if (parameterErrors()[p.def.id]; as error) {
-            <p
-              role="alert"
-              class="ion-padding-horizontal"
-              [id]="'board-parameter-error-' + p.def.id"
-            >
-              {{ error }}
-            </p>
-          }
+          <div class="board-parameter">
+            <ion-item [title]="'@' + p.def.id">
+              <ion-input
+                [label]="p.def.title || p.def.id"
+                [labelPlacement]="'fixed'"
+                [placeholder]="p.def.type"
+                [value]="parameterText(p)"
+                [attr.aria-invalid]="
+                  parameterErrors()[p.def.id] ? 'true' : null
+                "
+                [attr.aria-describedby]="
+                  parameterErrors()[p.def.id]
+                    ? 'board-parameter-error-' + p.def.id
+                    : null
+                "
+                (ionInput)="setParameterValue(p, $event.detail.value)"
+              />
+              <ion-buttons slot="end">
+                @if (p.def.lookup && !lookupUnavailable()) {
+                  <ion-button
+                    color="medium"
+                    [title]="p.def.lookup.sql"
+                    (click)="lookup(p)"
+                  >
+                    <ion-icon name="list-outline" />
+                  </ion-button>
+                }
+              </ion-buttons>
+            </ion-item>
+            @if (parameterErrors()[p.def.id]; as error) {
+              <p
+                role="alert"
+                class="ion-padding-horizontal"
+                [id]="'board-parameter-error-' + p.def.id"
+              >
+                {{ error }}
+              </p>
+            }
+          </div>
         }
-      </ion-card>
+      </section>
     }
 
     @if (

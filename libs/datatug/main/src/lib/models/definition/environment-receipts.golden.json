@@ -1,0 +1,358 @@
+[
+  {
+    "transport": "cli",
+    "after": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "local",
+        "projectId": "p",
+        "authorityId": "authority-A"
+      },
+      "scopeBinding": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6",
+      "environments": [
+        {
+          "id": "dev",
+          "title": "DEV <>&"
+        }
+      ],
+      "savedOrder": null,
+      "order": [
+        "dev"
+      ],
+      "needsRepair": false,
+      "revision": "environment-revision/1.56d30339a850caeaeab317ce754eaee11818441a16b6c6ddb7ecde670a49d739",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "before": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "local",
+        "projectId": "p",
+        "authorityId": "authority-A"
+      },
+      "scopeBinding": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6",
+      "environments": [],
+      "savedOrder": null,
+      "order": [],
+      "needsRepair": false,
+      "revision": "environment-revision/1.cdd568a9d99f04356eddfa1f2ca537ce2dc13391ca6b09a800c7ea6961c9f09c",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "receipt": {
+      "operationId": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6.00000001-1234-4123-8123-123456789abc",
+      "kind": "create-environment",
+      "payloadDigest": "3557e40021ce09977a1859e74adb521225610f511e78c3621366d1d8ca1d88ac",
+      "acceptedAt": "2026-10-21T13:38:31.230748Z",
+      "replayUntil": "2026-10-28T13:38:31.230748Z",
+      "environmentId": "dev",
+      "afterStateDigest": "aa0748f60931e228a7bbf586bca00b0aa24db47f7f0dc2ad7b3461bfbb9bd8ae",
+      "status": "committed"
+    },
+    "request": {
+      "scope": {
+        "storeId": "local",
+        "projectId": "p",
+        "authorityId": "authority-A"
+      },
+      "ifRevision": "environment-revision/1.cdd568a9d99f04356eddfa1f2ca537ce2dc13391ca6b09a800c7ea6961c9f09c",
+      "operationId": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6.00000001-1234-4123-8123-123456789abc",
+      "name": "DEV <>& "
+    }
+  },
+  {
+    "transport": "cli",
+    "after": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "local",
+        "projectId": "p",
+        "authorityId": "authority-A"
+      },
+      "scopeBinding": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6",
+      "environments": [
+        {
+          "id": "dev",
+          "title": "DEV <>&"
+        },
+        {
+          "id": "qa",
+          "title": "QA"
+        },
+        {
+          "id": "prod",
+          "title": "PROD"
+        }
+      ],
+      "savedOrder": [
+        "prod",
+        "qa",
+        "dev"
+      ],
+      "order": [
+        "prod",
+        "qa",
+        "dev"
+      ],
+      "needsRepair": false,
+      "revision": "environment-revision/1.696afb5422b748476a9dcf710c69ded590a95801ad6baccb550b95d1974152bd",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "before": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "local",
+        "projectId": "p",
+        "authorityId": "authority-A"
+      },
+      "scopeBinding": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6",
+      "environments": [
+        {
+          "id": "dev",
+          "title": "DEV <>&"
+        },
+        {
+          "id": "qa",
+          "title": "QA"
+        },
+        {
+          "id": "prod",
+          "title": "PROD"
+        }
+      ],
+      "savedOrder": null,
+      "order": [
+        "dev",
+        "qa",
+        "prod"
+      ],
+      "needsRepair": false,
+      "revision": "environment-revision/1.3d41547c4923669f6be506098a103f6c8197a7a91e1c874795d184b117eff962",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "receipt": {
+      "operationId": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6.99999999-1234-4123-8123-123456789abc",
+      "kind": "save-environment-order",
+      "payloadDigest": "01aa48aaadc077601b881530c4c0279d2b5e8a3a324843175d59627532647d96",
+      "acceptedAt": "2026-10-21T13:38:31.766009Z",
+      "replayUntil": "2026-10-28T13:38:31.766009Z",
+      "environmentOrder": [
+        "prod",
+        "qa",
+        "dev"
+      ],
+      "afterStateDigest": "258ea3443ed576199064c58a94ab935e159f0887a422d07156d1bfc8d4b43002",
+      "status": "committed"
+    },
+    "request": {
+      "scope": {
+        "storeId": "local",
+        "projectId": "p",
+        "authorityId": "authority-A"
+      },
+      "ifRevision": "environment-revision/1.3d41547c4923669f6be506098a103f6c8197a7a91e1c874795d184b117eff962",
+      "operationId": "f659e610c3270451146f07f701422fa51baf98b1a2a2e87607e08c55768bafd6.99999999-1234-4123-8123-123456789abc",
+      "environmentOrder": [
+        "prod",
+        "qa",
+        "dev"
+      ]
+    }
+  },
+  {
+    "transport": "backend",
+    "after": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "firestore",
+        "projectId": "project-1",
+        "spaceID": "space",
+        "authorityId": "datatug-cloud:spaces/1"
+      },
+      "scopeBinding": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201",
+      "environments": [
+        {
+          "id": "dev",
+          "title": "DEV <>&"
+        }
+      ],
+      "savedOrder": null,
+      "order": [
+        "dev"
+      ],
+      "needsRepair": false,
+      "revision": "environment-revision/1:783ae0e5fa1ee0f3f3b1f3dabb58b79de6208baed3c2dfbfe16f70c8666d7388",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "before": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "firestore",
+        "projectId": "project-1",
+        "spaceID": "space",
+        "authorityId": "datatug-cloud:spaces/1"
+      },
+      "scopeBinding": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201",
+      "environments": [],
+      "savedOrder": null,
+      "order": [],
+      "needsRepair": false,
+      "revision": "environment-revision/1:88b29ff3d10a3c04ba56286c43fcabeee1166e32d3aba02007b0165cfc24ce19",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "receipt": {
+      "operationId": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201.00000001-1234-4123-8123-123456789abc",
+      "kind": "create-environment",
+      "payloadDigest": "94e0ed1e82cc0041f688c3883156804613ca222e8352ed8370156f01911e5d51",
+      "acceptedAt": "2026-10-06T13:00:00Z",
+      "replayUntil": "2026-10-13T13:00:00Z",
+      "environmentId": "dev",
+      "afterStateDigest": "aa0748f60931e228a7bbf586bca00b0aa24db47f7f0dc2ad7b3461bfbb9bd8ae",
+      "status": "committed"
+    },
+    "request": {
+      "scope": {
+        "storeId": "firestore",
+        "projectId": "project-1",
+        "spaceID": "space",
+        "authorityId": "datatug-cloud:spaces/1"
+      },
+      "ifRevision": "environment-revision/1:88b29ff3d10a3c04ba56286c43fcabeee1166e32d3aba02007b0165cfc24ce19",
+      "operationId": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201.00000001-1234-4123-8123-123456789abc",
+      "name": "DEV <>& "
+    }
+  },
+  {
+    "transport": "backend",
+    "after": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "firestore",
+        "projectId": "project-1",
+        "spaceID": "space",
+        "authorityId": "datatug-cloud:spaces/1"
+      },
+      "scopeBinding": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201",
+      "environments": [
+        {
+          "id": "dev",
+          "title": "DEV <>&"
+        },
+        {
+          "id": "qa",
+          "title": "QA"
+        },
+        {
+          "id": "prod",
+          "title": "PROD"
+        }
+      ],
+      "savedOrder": [
+        "prod",
+        "qa",
+        "dev"
+      ],
+      "order": [
+        "prod",
+        "qa",
+        "dev"
+      ],
+      "needsRepair": false,
+      "revision": "environment-revision/1:d20737a99075f67852defb8f2cda2f996a7c07b638a11950e4bbf822cfdcbdf2",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "before": {
+      "contract": "environment-state/1",
+      "scope": {
+        "storeId": "firestore",
+        "projectId": "project-1",
+        "spaceID": "space",
+        "authorityId": "datatug-cloud:spaces/1"
+      },
+      "scopeBinding": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201",
+      "environments": [
+        {
+          "id": "dev",
+          "title": "DEV <>&"
+        },
+        {
+          "id": "qa",
+          "title": "QA"
+        },
+        {
+          "id": "prod",
+          "title": "PROD"
+        }
+      ],
+      "savedOrder": null,
+      "order": [
+        "dev",
+        "qa",
+        "prod"
+      ],
+      "needsRepair": false,
+      "revision": "environment-revision/1:ad27d758a8276db3dfaf415fbc0878b9f974745a442482c54319f9a454ff74fa",
+      "capabilities": {
+        "canReadOrder": true,
+        "canWriteOrder": true,
+        "canCreateEnvironment": true
+      }
+    },
+    "receipt": {
+      "operationId": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201.99999999-1234-4123-8123-123456789abc",
+      "kind": "save-environment-order",
+      "payloadDigest": "737207219ae25fb525fa4d09486a18d34f579ca73d9a965831084af719451a82",
+      "acceptedAt": "2026-10-06T13:00:00Z",
+      "replayUntil": "2026-10-13T13:00:00Z",
+      "environmentOrder": [
+        "prod",
+        "qa",
+        "dev"
+      ],
+      "afterStateDigest": "258ea3443ed576199064c58a94ab935e159f0887a422d07156d1bfc8d4b43002",
+      "status": "committed"
+    },
+    "request": {
+      "scope": {
+        "storeId": "firestore",
+        "projectId": "project-1",
+        "spaceID": "space",
+        "authorityId": "datatug-cloud:spaces/1"
+      },
+      "ifRevision": "environment-revision/1:ad27d758a8276db3dfaf415fbc0878b9f974745a442482c54319f9a454ff74fa",
+      "operationId": "3b5a7be4e4f801074733f9241b99ee6c421e6a237afd52ce83b0b5c2be76c201.99999999-1234-4123-8123-123456789abc",
+      "environmentOrder": [
+        "prod",
+        "qa",
+        "dev"
+      ]
+    }
+  }
+]
