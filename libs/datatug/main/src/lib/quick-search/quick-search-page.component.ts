@@ -1122,16 +1122,13 @@ export class QuickSearchPageComponent {
     const ref = this.project();
     if (!ref || this.mutationBusy()) return;
     const before = this.status();
-    const hadResults = this.searched();
     this.invalidateSearch();
     this.status.update((status) =>
       status ? { ...status, state: 'deleting' } : status,
     );
-    this.mutate(this.api.disable(ref), () => {
-      // Roll the optimistic state back; the status reload is authoritative.
-      this.status.set(before);
-      if (hadResults) this.autoSearch();
-    });
+    // Roll back only the optimistic status. Re-running search here would race
+    // the failure alert: a typed search error replaces it in the alert region.
+    this.mutate(this.api.disable(ref), () => this.status.set(before));
   }
   private mutate(
     operation: ReturnType<QuickSearchApiService['disable']>,

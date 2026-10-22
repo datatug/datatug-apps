@@ -741,7 +741,7 @@ describe('Quick Search consent and async state', () => {
         'No matches for “Nothing”',
       );
     });
-    it('rolls back a failed disable and re-runs the cleared search', async () => {
+    it('rolls back a failed disable and keeps its failure alert', async () => {
       withQuery('Customers');
       api.search.mockReturnValue(
         of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
@@ -750,12 +750,13 @@ describe('Quick Search consent and async state', () => {
       const fixture = TestBed.createComponent(QuickSearchPageComponent),
         page = fixture.componentInstance;
       await fixture.whenStable();
+      const searches = api.search.mock.calls.length;
       page.disable();
       expect(page.status()?.state).toBe('ready');
-      expect(api.search).toHaveBeenCalledTimes(2);
-      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+      expect(api.search).toHaveBeenCalledTimes(searches);
       expect(page.mutationBusy()).toBe(false);
       expect(page.error()).not.toBe('');
+      expect(page.problem()).toBeUndefined();
     });
     it('reloads status when the provider cannot confirm an operation', () => {
       api.refresh.mockReturnValue(
