@@ -1567,7 +1567,11 @@ test.describe('an address that the router reads another way than the inline scri
       await expect
         .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
         .toBe('/project/github.com/acme/demo/queries');
-      await page.waitForTimeout(1500);
+      // The router rewrites the address once its navigation ends, which a loaded CI runner can delay: wait for the
+      // end state instead of a fixed time.
+      await expect
+        .poll(() => hasMarker(page.url()), { timeout: 15_000 })
+        .toBe(false);
       expect(new URL(page.url()).searchParams.get('x')).toBe('1');
       const state = await page.evaluate(() => ({
         title: document.title,
@@ -1665,8 +1669,11 @@ test.describe('an address that the router reads another way than the inline scri
     await expect
       .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
       .toBe('/project/github.com/acme/demo/queries');
-    await page.waitForTimeout(1500);
-    expect(new URL(page.url()).searchParams.has('msg')).toBe(false);
+    // The router replaces the address once its redirected navigation ends (its lazy chunks loaded), which a loaded
+    // CI runner can delay well past a fixed wait: poll for the end state.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('msg'), { timeout: 15_000 })
+      .toBe(false);
     expect(new URL(page.url()).searchParams.get('x')).toBe('1');
     const entries = await page.evaluate(() =>
       (
