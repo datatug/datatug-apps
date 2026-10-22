@@ -89,4 +89,63 @@ describe('ProjectEnvironmentStateService scope', () => {
     expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
     expect(result.reason).toContain('Update');
   });
+
+  describe('anonymous GitHub fallback', () => {
+    const githubRef = {
+      storeId: 'github.com',
+      projectId: 'demo@datatug@demo-project-1',
+    };
+    const legacyItems = [{ id: 'dev' }] as never[];
+
+    it.each([
+      [
+        'no Firebase ID token',
+        new Error('User is not authenticated yet - no Firebase ID token'),
+      ],
+      ['a 401', { status: 401 }],
+    ])(
+      'reads the public repository anonymously after %s',
+      async (_name, error) => {
+        api.environmentState.mockReturnValue(throwError(() => error));
+        const legacy = vi.fn(() => of(legacyItems));
+        const result = await firstValueFrom(
+          TestBed.inject(ProjectEnvironmentStateService).view(
+            githubRef,
+            legacy,
+          ),
+        );
+        expect(legacy).toHaveBeenCalledOnce();
+        expect(result.items).toEqual(legacyItems);
+        expect(result.state).toBeUndefined();
+      },
+    );
+
+    it('still fails for a GitHub store on any other error', async () => {
+      api.environmentState.mockReturnValue(throwError(() => ({ status: 500 })));
+      const legacy = vi.fn(() => of(legacyItems));
+      await expect(
+        firstValueFrom(
+          TestBed.inject(ProjectEnvironmentStateService).view(
+            githubRef,
+            legacy,
+          ),
+        ),
+      ).rejects.toEqual({ status: 500 });
+      expect(legacy).not.toHaveBeenCalled();
+    });
+
+    it('does not fall back for a shared Space or cloud project', async () => {
+      api.environmentState.mockReturnValue(throwError(() => ({ status: 401 })));
+      const legacy = vi.fn(() => of(legacyItems));
+      await expect(
+        firstValueFrom(
+          TestBed.inject(ProjectEnvironmentStateService).view(
+            { ...githubRef, spaceID: 's1' },
+            legacy,
+          ),
+        ),
+      ).rejects.toEqual({ status: 401 });
+      expect(legacy).not.toHaveBeenCalled();
+    });
+  });
 });

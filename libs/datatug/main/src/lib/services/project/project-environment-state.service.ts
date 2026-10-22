@@ -28,7 +28,14 @@ import { ProjectQueryApiService } from './project-query-api.service';
 
 type EnvironmentReadResult =
   | { status: 'pending' | 'unavailable' }
-  | { status: 'ready'; view: { state?: EnvironmentState; items: IEnvironmentFull[]; reason?: string } };
+  | {
+      status: 'ready';
+      view: {
+        state?: EnvironmentState;
+        items: IEnvironmentFull[];
+        reason?: string;
+      };
+    };
 
 @Injectable({ providedIn: 'root' })
 export class ProjectEnvironmentStateService {
@@ -58,7 +65,9 @@ export class ProjectEnvironmentStateService {
       switchMap(() =>
         defer(() => this.view(ref, legacy)).pipe(
           map((view): EnvironmentReadResult => ({ status: 'ready', view })),
-          catchError(() => of<EnvironmentReadResult>({ status: 'unavailable' })),
+          catchError(() =>
+            of<EnvironmentReadResult>({ status: 'unavailable' }),
+          ),
           startWith<EnvironmentReadResult>({ status: 'pending' }),
         ),
       ),
@@ -116,6 +125,19 @@ export class ProjectEnvironmentStateService {
     return this.read(ref).pipe(
       map((state) => ({ state, items: [...state.environments] })),
       catchError((error) => {
+        // A public GitHub project keeps its environments as plain files in the repository, which anyone can read.
+        // When the visitor is signed out (no token, or a 401), read them anonymously instead of showing nothing.
+        const publicGithub =
+          ['github', 'github.com'].includes(ref.storeId) &&
+          ref.projectApi !== 'cloud' &&
+          ref.spaceID === undefined;
+        if (publicGithub && isSignedOutFailure(error))
+          return legacy().pipe(
+            map((items) => ({
+              items,
+              reason: 'Sign in to create environments or manage shared order.',
+            })),
+          );
         const local =
           !['github', 'github.com', 'firestore'].includes(ref.storeId) &&
           ref.projectApi !== 'cloud' &&
@@ -183,4 +205,17 @@ export class ProjectEnvironmentStateService {
       },
     );
   }
+}
+
+/** A request that failed only because nobody is signed in: a 401, or the auth layer having no ID token yet. */
+function isSignedOutFailure(error: unknown): boolean {
+  const { status, message } = (error ?? {}) as {
+    status?: unknown;
+    message?: unknown;
+  };
+  return (
+    status === 401 ||
+    (typeof message === 'string' &&
+      /not authenticated|no firebase id token/i.test(message))
+  );
 }
