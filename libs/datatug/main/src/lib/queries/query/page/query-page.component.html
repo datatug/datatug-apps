@@ -534,6 +534,10 @@
       <sneat-datatug-http-query-editor
         [request]="httpReq"
         (requestChange)="httpRequestChanged($event)"
+        [parameters]="httpParameters"
+        (parametersChange)="httpParametersChanged($event)"
+        [rowBinding]="httpRowBinding()"
+        [bagEntries]="httpBagEntries()"
       />
     }
   } @else if (isTextQueryWorkspace()) {
@@ -1050,6 +1054,11 @@
                 <ion-note [id]="parameterDetailsPrefix + '-hint-' + $index">{{ nativeParameterHint(parameter) }}</ion-note>
                 </div>
                 <ion-buttons slot="end">
+                  @if (nativeParameterSupported(parameter)) {
+                    <sneat-datatug-parameter-lookup-button [parameter]="parameter" [context]="parameterLookupContext()"
+                      [currentValue]="nativeParameterValue(parameter.id)" [disabled]="running() || !!queryState.isSaving"
+                      (picked)="onNativeParameterPicked(parameter, $event)" />
+                  }
                   @if (nativeParameterValue(parameter.id) !== '') {
                     <ion-button fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
                       (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" slot="icon-only" /></ion-button>
@@ -1406,7 +1415,21 @@
       }
     </ul>
   }
-  @if (!demoDraftRecovery() && runError(); as error) {
+  @if (!demoDraftRecovery() && localOvdbNeeded(); as needed) {
+    <ion-card data-testid="local-ovdb-needed">
+      <ion-card-content>
+        <p>
+          <strong>This query reads a local OVDB server</strong> at
+          {{ needed.baseUrl }} (databases {{ needed.databases.join(', ') }}),
+          and none is running on this computer. Start one, then run the query
+          again. The project's README names the manifest for each database.
+        </p>
+        <pre class="local-ovdb-command">{{ needed.command }}</pre>
+        <ion-button size="small" fill="outline" (click)="copyLocalOvdbCommand(needed.command)">Copy command</ion-button>
+        @if (localOvdbCopyStatus()) { <span role="status">{{ localOvdbCopyStatus() }}</span> }
+      </ion-card-content>
+    </ion-card>
+  } @else if (!demoDraftRecovery() && runError(); as error) {
     <ion-card color="danger">
       <ion-card-content>
         {{ error }}
@@ -1883,6 +1906,11 @@
       }
       </div>
     </div>
+    <sneat-datatug-http-row-action
+      [project]="project"
+      [row]="httpActionRow()"
+      [checkedRows]="httpCheckedRows()"
+    />
     @if (resultChartUnavailableText(); as chartUnavailable) {
       <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }

@@ -2987,6 +2987,27 @@ select (
     expect(component.canChoosePublicSqliteSource()).toBe(true);
   });
 
+  it('shows the local-OVDB card, not the generic offline copy, when a local federation run fails with a real fetch TypeError', async () => {
+    component = await createComponent();
+    component.queryDef.set({
+      ...queryDef,
+      federation: {
+        ovdbBaseUrl: 'http://127.0.0.1:50501',
+        tables: [{ name: 'Invoice', database: 'orders', fields: ['id'] }],
+      },
+    } as IQueryDef);
+    const scope = { project: 'p', environment: 'e', securityContextId: 's' };
+    vi.spyOn(TestBed.inject(InvestigationContextService), 'isCurrentScope').mockReturnValue(true);
+    (component as unknown as {
+      handleRunError(err: unknown, request: unknown, scope: unknown): void;
+    }).handleRunError(new TypeError('Failed to fetch'), { mode: 'live' }, scope);
+    expect(component.runError()).not.toMatch(/failed to fetch/i);
+    expect(component.localOvdbNeeded()).toMatchObject({ baseUrl: 'http://127.0.0.1:50501', databases: ['orders'] });
+    // A later, unrelated error replaces the text: the card must go.
+    component.runError.set('Save this query before running its hosted revision.');
+    expect(component.localOvdbNeeded()).toBeUndefined();
+  });
+
   it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {
     component = await createComponent();
     component.project = {
@@ -11230,6 +11251,25 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     component.clearNativeParameter('AlbumId');
     expect(component.nativeParameterError('AlbumId')).toBeUndefined();
     expect(component.effectiveBindings()).toEqual([]);
+  });
+
+  it('fills a native parameter from the lookup as an ordinary manual binding labelled "from lookup" (parameter-lookup AC pick-returns-typed-key)', async () => {
+    const customer: IParameterDef = { id: 'AlbumId', type: 'integer', isRequired: true, meta: { entity: 'Album', field: 'ID' } };
+    component = await createComponent({ ...legacySqlDef, parameters: [customer] });
+    const context = component.parameterLookupContext();
+    expect(component.parameterLookupContext()).toBe(context);
+    expect(context.hostConnectionId).toBe(legacySqlDef.connectionId);
+    component.onNativeParameterPicked(customer, { value: 7, key: { type: 'integer', value: '7' } });
+    expect(component.nativeParameterValue('AlbumId')).toBe('7');
+    expect(component.nativeParameterHint(customer)).toBe('integer · Required · from lookup');
+    expect(component.effectiveBindings()).toMatchObject([{ parameterId: 'AlbumId', value: { type: 'integer', value: '7' }, origin: 'user' }]);
+    component.setNativeParameterInput(customer, '8');
+    expect(component.nativeParameterHint(customer)).not.toContain('from lookup');
+    component.onNativeParameterPicked(customer, { value: 9, key: { type: 'integer', value: '9' } });
+    component.clearNativeParameter('AlbumId');
+    expect(component.nativeParameterHint(customer)).not.toContain('from lookup');
+    component.onNativeParameterPicked(customer, { value: '012', key: { type: 'string', value: '012' } });
+    expect(component.nativeParameterHint(customer)).not.toContain('from lookup');
   });
 
   it('blocks direct Run for invalid optional SQL input before agent dispatch and accepts lossless signed integers', async () => {

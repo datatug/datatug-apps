@@ -12,13 +12,15 @@ import { BehaviorSubject, Subject, map, of } from 'rxjs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BoardPageComponent } from './board-page.component';
 import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
-import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { BoardCardComponent } from '../../components/board-card/board-card.component';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { IProjectRef } from '../../../../core/project-context';
+import { restoreStorageSpies } from '../../../../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 // This fixture exercises tutorial layout/focus, while the real BoardCard still
 // consumes the widget's public title and projected-header contract.
@@ -117,10 +119,6 @@ describe('BoardPage same-route tutorial overlay', () => {
         },
         { provide: ActivatedRoute, useValue: route },
         { provide: Router, useValue: { navigate } },
-        {
-          provide: ParameterLookupService,
-          useValue: { lookupParameterValue: vi.fn() },
-        },
         {
           provide: DatatugNavContextService,
           useValue: {

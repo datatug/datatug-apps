@@ -5,7 +5,12 @@ import {
   QueryType,
   type IHttpQueryRequest,
 } from '../../../models/definition/query-def';
-import { HttpQueryEditorComponent } from './http-query-editor.component';
+import {
+  HttpQueryEditorComponent,
+  parseDefault,
+} from './http-query-editor.component';
+import type { IParameterDef } from '../../../models/definition/parameter';
+import type { HttpRowBinding } from '../../http-parameter-binding';
 import {
   BrowserFetchFailedError,
   HttpRunService,
@@ -63,6 +68,13 @@ describe('HttpQueryEditorComponent', () => {
         { provide: HttpRunService, useValue: { run } },
       ],
     });
+  });
+
+  afterEach(() => {
+    // The shared suite reuses one window per worker: leave no component or storage behind.
+    fixture?.destroy();
+    TestBed.resetTestingModule();
+    sessionStorage.clear();
   });
 
   it('emits requestChange for method, URL, body and header edits', async () => {
@@ -143,7 +155,7 @@ describe('HttpQueryEditorComponent', () => {
     await (protectedApi()['run']() as Promise<void>);
     fixture.detectChanges();
     await fixture.whenStable();
-    expect(run).toHaveBeenCalledWith(baseRequest, 'server');
+    expect(run).toHaveBeenCalledWith(baseRequest, 'server', undefined);
     expect(el().querySelector('.http-status')?.textContent).toBe('200 OK');
     expect(el().querySelector('.http-duration')?.textContent).toBe('12 ms');
     expect(el().querySelector('.http-size')?.textContent).toBe('18 B');
@@ -171,7 +183,7 @@ describe('HttpQueryEditorComponent', () => {
     retry.click();
     await fixture.whenStable();
     fixture.detectChanges();
-    expect(run).toHaveBeenLastCalledWith(baseRequest, 'server');
+    expect(run).toHaveBeenLastCalledWith(baseRequest, 'server', undefined);
     expect(el().querySelector('.http-status')?.textContent).toBe('200 OK');
     expect(text()).not.toContain('CORS');
   });
@@ -310,5 +322,173 @@ describe('HttpQueryEditorComponent', () => {
     );
     protectedApi()['setParam'](1, { name: 'c' });
     expect(emitted.at(-1)?.url).toBe('https://x.test/a?b=1&c=v');
+  });
+
+  describe('parameters (http-query-parameters)', () => {
+    const carrier: IHttpQueryRequest = {
+      queryType: QueryType.HTTP,
+      url: 'https://carrier.demodb.dev/v1/bookings?request_id={request_id}',
+      method: 'GET',
+    };
+    const requestId: IParameterDef = {
+      id: 'request_id',
+      type: 'string',
+      isRequired: true,
+      meta: { entity: 'ShippingRequest', field: 'id' },
+    };
+    let declared: IParameterDef[][];
+
+    async function createWith(
+      request: IHttpQueryRequest,
+      parameters: IParameterDef[],
+      row?: HttpRowBinding,
+    ) {
+      fixture = TestBed.createComponent(HttpQueryEditorComponent);
+      fixture.componentRef.setInput('request', request);
+      fixture.componentRef.setInput('parameters', parameters);
+      if (row) fixture.componentRef.setInput('rowBinding', row);
+      declared = [];
+      fixture.componentInstance.parametersChange.subscribe((p) => declared.push(p));
+      fixture.detectChanges();
+      await fixture.whenStable();
+    }
+
+    it('warns without blocking on a legacy {name} and declares it on request (AC legacy-query-unchanged)', async () => {
+      await createWith(carrier, []);
+      expect(text().replace(/\s+/g, ' ')).toContain('{request_id} looks like a parameter');
+      expect((el().querySelector('ion-button[color="primary"]') as HTMLElement & { disabled: boolean }).disabled).toBe(false);
+      protectedApi()['declareAll']();
+      expect(declared).toEqual([[{ id: 'request_id', type: 'string', isRequired: true }]]);
+    });
+
+    it('binds from the row, labels the source and previews the final URL (AC row-binds-parameters)', async () => {
+      run.mockResolvedValue(okResult());
+      await createWith(carrier, [requestId], {
+        columns: [{ name: 'request_id' }, { name: 'status' }],
+        values: ['request-11038', 'received'],
+        label: 'requests row 1',
+      });
+      expect(text()).toContain('Bound from requests row 1');
+      expect(el().querySelector('.http-origin')?.textContent?.trim()).toBe('row');
+      expect(el().querySelector('.http-preview-url')?.textContent).toContain(
+        'GET https://carrier.demodb.dev/v1/bookings?request_id=request-11038',
+      );
+      await (protectedApi()['run']() as Promise<void>);
+      const [, via, template] = run.mock.lastCall as [unknown, string, { values: object; record: object[] }];
+      expect(via).toBe('browser');
+      expect(template.values).toEqual({ request_id: 'request-11038' });
+      expect(template.record).toEqual([{ id: 'request_id', source: 'row', value: 'request-11038' }]);
+    });
+
+    it('takes the context bag, lets a picked column win and marks each substituted segment', async () => {
+      fixture = TestBed.createComponent(HttpQueryEditorComponent);
+      fixture.componentRef.setInput('request', carrier);
+      fixture.componentRef.setInput('parameters', [requestId]);
+      fixture.componentRef.setInput('bagEntries', [
+        { entity: 'ShippingRequest', field: 'id', kind: 'scalar', value: 'bag-1' },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(el().querySelector('.http-origin')?.textContent?.trim()).toBe('context bag');
+      const seg = el().querySelector('.http-preview-url mark') as HTMLElement;
+      expect(seg.firstChild?.textContent).toBe('bag-1');
+      expect(seg.querySelector('.http-seg-tag')?.textContent).toBe('context bag');
+      expect(seg.getAttribute('data-source')).toBe('bag');
+      fixture.componentRef.setInput('rowBinding', {
+        columns: [{ name: 'a' }, { name: 'b' }],
+        values: ['x', 'picked'],
+      });
+      fixture.detectChanges();
+      protectedApi()['pickColumn']('request_id', new CustomEvent('ionChange', { detail: { value: 'b' } }));
+      fixture.detectChanges();
+      expect(el().querySelector('.http-preview-url mark')?.firstChild?.textContent).toBe('picked');
+    });
+
+    it('keeps the browser from saving a credential and refuses a placeholder in the host', async () => {
+      await createWith(
+        { ...carrier, headers: [{ name: 'Authorization', value: 'Bearer {token}' }] },
+        [requestId, { id: 'token', type: 'string', isRequired: true, isCredential: true }],
+      );
+      const input = el().querySelector('.http-param[data-param="token"] ion-input') as HTMLElement;
+      expect(input.getAttribute('autocomplete')).toBe('new-password');
+      fixture.componentRef.setInput('request', { ...carrier, url: 'https://{host}.demodb.dev/v1' });
+      fixture.detectChanges();
+      expect(text()).toContain("can't be in the web address's host");
+    });
+
+    it('blocks the run with an inline problem when a required value is missing (AC required-missing)', async () => {
+      await createWith(carrier, [requestId]);
+      expect(el().querySelector('.http-param-error')?.textContent).toContain('{request_id} needs a value');
+      await (protectedApi()['run']() as Promise<void>);
+      expect(run).not.toHaveBeenCalled();
+    });
+
+    it('a typed value wins over the row (AC precedence-and-required)', async () => {
+      await createWith(carrier, [requestId], { columns: [{ name: 'request_id' }], values: ['from-row'] });
+      protectedApi()['setTypedValue']('request_id', ionEvent('typed-1'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(el().querySelector('.http-origin')?.textContent?.trim()).toBe('typed');
+    });
+
+    it('refuses to save an unused declaration and flags it (AC mismatch-blocks-save)', async () => {
+      await createWith(carrier, [requestId, { id: 'region', type: 'string', isRequired: true }]);
+      expect(el().querySelector('.http-template-problem')?.textContent).toContain('region');
+      expect(el().querySelector('.http-param-unused')).not.toBeNull();
+    });
+
+    it('notes CLI incompatibility for POST or header placeholders (AC cli-warning-in-editor)', async () => {
+      await createWith(carrier, [requestId]);
+      expect(text().replace(/\s+/g, ' ')).not.toContain('The DataTug CLI runs only');
+      await createWith({ ...carrier, method: 'POST' }, [requestId]);
+      expect(text().replace(/\s+/g, ' ')).toContain('The DataTug CLI runs only');
+    });
+
+    it('masks a credential header in the preview (AC preview-masks-credentials)', async () => {
+      await createWith(
+        { ...carrier, headers: [{ name: 'Authorization', value: 'Bearer {token}' }] },
+        [requestId, { id: 'token', type: 'string', isRequired: true, isCredential: true }],
+        { columns: [{ name: 'request_id' }, { name: 'token' }], values: ['r1', 'row-token'] },
+      );
+      protectedApi()['setTypedValue']('token', ionEvent('s3cr3t'));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      const preview = el().querySelector('.http-preview')?.textContent ?? '';
+      expect(preview).toContain('Authorization: ••••••');
+      expect(preview).not.toContain('s3cr3t');
+      expect(text()).toContain('only a typed value is used');
+    });
+
+    it('edits declarations: type, required, default, meaning, credential, remove', async () => {
+      await createWith(carrier, [requestId]);
+      protectedApi()['setParameterType']('request_id', new CustomEvent('ionChange', { detail: { value: 'integer' } }));
+      protectedApi()['setRequired']('request_id', new CustomEvent('ionChange', { detail: { checked: false } }));
+      protectedApi()['setDefault']('request_id', ionEvent('7'));
+      protectedApi()['setMeta']('request_id', ionEvent('Order.id'));
+      protectedApi()['setMeta']('request_id', ionEvent(''));
+      protectedApi()['setCredential']('request_id', new CustomEvent('ionChange', { detail: { checked: true } }));
+      protectedApi()['setCredential']('request_id', new CustomEvent('ionChange', { detail: { checked: false } }));
+      protectedApi()['removeParameter']('request_id');
+      expect(declared.map((d) => d[0] ?? null)).toEqual([
+        { id: 'request_id', type: 'integer', isRequired: true, meta: requestId.meta },
+        { ...requestId, isRequired: false },
+        { ...requestId, defaultValue: '7' },
+        { ...requestId, meta: { entity: 'Order', field: 'id' } },
+        { id: 'request_id', type: 'string', isRequired: true },
+        { id: 'request_id', type: 'string', isRequired: true, isCredential: true },
+        requestId,
+        null,
+      ]);
+    });
+  });
+
+  it('parses defaults by type', () => {
+    expect(parseDefault('integer', '7')).toBe(7);
+    expect(parseDefault('number', 'x')).toBe('x');
+    expect(parseDefault('boolean', 'true')).toBe(true);
+    expect(parseDefault('boolean', 'false')).toBe(false);
+    expect(parseDefault('boolean', 'maybe')).toBe('maybe');
+    expect(parseDefault('date', '2026-01-01')).toBe('2026-01-01');
+    expect(parseDefault('string', '')).toBeUndefined();
   });
 });

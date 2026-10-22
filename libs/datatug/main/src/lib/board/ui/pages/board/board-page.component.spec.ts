@@ -9,7 +9,6 @@ import { of, Subject, throwError } from 'rxjs';
 
 import { BoardPageComponent } from './board-page.component';
 import { ProjectAssetsReadService } from '../../../../services/project/project-assets-read.service';
-import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
@@ -36,10 +35,6 @@ describe('BoardPage', () => {
             paramMap: of({ get: () => null }),
             snapshot: { paramMap: { get: () => null } },
           },
-        },
-        {
-          provide: ParameterLookupService,
-          useValue: { lookupParameterValue: vi.fn() },
         },
         {
           provide: DatatugNavContextService,
@@ -99,10 +94,6 @@ describe('BoardPage - currentProject navigation', () => {
           },
         },
         {
-          provide: ParameterLookupService,
-          useValue: { lookupParameterValue: vi.fn() },
-        },
-        {
           provide: DatatugNavContextService,
           useValue: {
             currentProject: of({
@@ -134,6 +125,8 @@ describe('BoardPage - currentProject navigation', () => {
     expect(getBoard).toHaveBeenCalledWith(
       { storeId: 's1', projectId: 'p1' },
       'b1',
+      undefined,
+      { requireExisting: true },
     );
     expect(logError).not.toHaveBeenCalled();
   });
@@ -167,10 +160,6 @@ describe('BoardPage - qualified read errors', () => {
             }),
             snapshot: { paramMap: { get: () => 'b1' } },
           },
-        },
-        {
-          provide: ParameterLookupService,
-          useValue: { lookupParameterValue: vi.fn() },
         },
         {
           provide: DatatugNavContextService,
@@ -249,10 +238,6 @@ describe('BoardPage switches board reads with the full project context', () => {
           },
         },
         {
-          provide: ParameterLookupService,
-          useValue: { lookupParameterValue: vi.fn() },
-        },
-        {
           provide: DatatugNavContextService,
           useValue: {
             currentProject: projects.asObservable(),
@@ -299,6 +284,8 @@ describe('BoardPage switches board reads with the full project context', () => {
       2,
       { storeId: 'github.com', projectId: 'second@owner@' },
       'board1',
+      undefined,
+      { requireExisting: true },
     );
     fixture.destroy();
   });
@@ -349,10 +336,6 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
             paramMap: of({ get: () => 'board-1' }),
             snapshot: { paramMap: { get: () => null } },
           },
-        },
-        {
-          provide: ParameterLookupService,
-          useValue: { lookupParameterValue: vi.fn() },
         },
         {
           provide: DatatugNavContextService,
@@ -440,6 +423,8 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
         branch: 'feature',
       },
       'board-1',
+      undefined,
+      { requireExisting: true },
     );
   });
 
@@ -471,12 +456,11 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       'Enter parameter values manually.',
     );
     expect(fixture.nativeElement.querySelector('ion-input')).not.toBeNull();
-    const parameter = fixture.componentInstance.parameters()?.[0];
-    if (!parameter) throw new Error('Expected board parameter');
-    fixture.componentInstance.lookup(parameter);
+    // The explicit lookup's agent is withheld, so its pick button never appears.
+    expect(fixture.componentInstance.lookupContext().explicitAgent).toBeUndefined();
     expect(
-      TestBed.inject(ParameterLookupService).lookupParameterValue,
-    ).not.toHaveBeenCalled();
+      fixture.nativeElement.querySelector('[data-testid="parameter-lookup-button"]'),
+    ).toBeNull();
   });
   it('publishes manually entered local board parameters as typed execution context and removes invalid values', async () => {
     fixture.detectChanges();
@@ -528,9 +512,6 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       date: { type: 'date', value: '2026-10-16' },
       country: { type: 'string', value: 'France' },
     });
-    expect(
-      TestBed.inject(ParameterLookupService).lookupParameterValue,
-    ).not.toHaveBeenCalled();
     const validContext = fixture.componentInstance.boardContext();
     enter('integer', '1.5');
     enter('date', '2026-02-30');
@@ -580,7 +561,6 @@ describe('BoardPage local agent context', () => {
         { provide: DATATUG_AGENT_BASE_URL, useValue: 'about:blank' },
         { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
         { provide: ProjectAssetsReadService, useValue: { board: vi.fn(() => of(undefined)) } },
-        { provide: ParameterLookupService, useValue: { lookupParameterValue: vi.fn() } },
         { provide: QueryParamsService, useValue: { setQueryParameter: vi.fn() } },
         { provide: ActivatedRoute, useValue: { queryParamMap: of({ get: () => null }), paramMap: of({ get: () => 'board' }), snapshot: { paramMap: { get: () => null } } } },
         { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() } },

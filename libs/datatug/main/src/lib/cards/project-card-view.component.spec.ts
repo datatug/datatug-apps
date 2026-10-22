@@ -124,6 +124,23 @@ describe('ProjectCardViewComponent', () => {
   const text = (f: ComponentFixture<unknown> = fixture): string =>
     f.nativeElement.textContent ?? '';
 
+  it('fills an input from the lookup, marks it "from lookup", and drops the mark on a hand edit', async () => {
+    fixture.componentRef.setInput('card', queryCard());
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('environment', 'dev');
+    await settle();
+    const view = fixture.componentInstance;
+    expect(view.lookupContext()).toEqual({ projectRef: ref, environment: 'dev' });
+    expect(view.draftText('customerId')).toBeUndefined();
+    view.onLookupPicked('customerId', { value: 'BOTTM', key: { type: 'string', value: 'BOTTM' } });
+    expect(view.draft()['customerId']).toBe('BOTTM');
+    expect(view.draftText('customerId')).toBe('BOTTM');
+    expect(view.lookupPicked()).toEqual({ customerId: true });
+    view.setDraft('customerId', 'BOTT');
+    expect(view.lookupPicked()).toEqual({});
+    expect(view.asParameterDef({ id: 'x', type: 'string' }).id).toBe('x');
+  });
+
   it('renders a card through board-card with its parameter bound (AC customer-card)', async () => {
     fixture.componentRef.setInput('card', queryCard());
     fixture.componentRef.setInput('projectRef', ref);

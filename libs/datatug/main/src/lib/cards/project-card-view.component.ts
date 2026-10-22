@@ -20,6 +20,12 @@ import type { IProjectRef } from '../core/project-context';
 import type { IBoardContext } from '../models/definition/board/board';
 import { cardQueryIds } from './card-model';
 import { cardBoardContext, isBlankValue, missingRequired } from './card-parameters';
+import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../components/parameters/parameter-lookup.service';
+import type { IParameterDef } from '../models/definition/parameter';
 
 export { cardQueryIds };
 
@@ -34,7 +40,7 @@ export { cardQueryIds };
 @Component({
   selector: 'sneat-datatug-project-card-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, IonButton, IonInput, IonItem, IonToggle, BoardCardComponent],
+  imports: [FormsModule, IonButton, IonInput, IonItem, IonToggle, BoardCardComponent, ParameterLookupButtonComponent],
   template: `
     @if (showHeader()) {
       <header class="card-header">
@@ -67,7 +73,15 @@ export { cardQueryIds };
                 [type]="numeric(param.type) ? 'number' : 'text'"
                 [attr.data-parameter]="param.id"
                 [value]="draft()[param.id] ?? ''"
+                [helperText]="lookupPicked()[param.id] ? 'from lookup' : undefined"
                 (ionInput)="setDraft(param.id, $any($event).detail.value)"
+              />
+              <sneat-datatug-parameter-lookup-button
+                slot="end"
+                [parameter]="asParameterDef(param)"
+                [context]="lookupContext()"
+                [currentValue]="draftText(param.id)"
+                (picked)="onLookupPicked(param.id, $event)"
               />
             </ion-item>
           }
@@ -132,6 +146,13 @@ export class ProjectCardViewComponent {
   readonly draft = signal<Record<string, unknown>>({});
   readonly formError = signal<string | undefined>(undefined);
   readonly generation = signal(0);
+  /** Inputs whose value was picked in the lookup ("from lookup"); a hand edit clears the mark. */
+  readonly lookupPicked = signal<Readonly<Record<string, true>>>({});
+  /** Where the input pickers look up values (parameter-lookup REQ:runtime-execution); cards have no host source. */
+  readonly lookupContext = computed<ParameterLookupHost>(() => {
+    const environment = this.environment() ?? this.boardContext()?.environment;
+    return { projectRef: this.projectRef(), ...(environment ? { environment } : {}) };
+  });
 
   /** The supplied values compared by content, so an equal object does not look like new input. */
   private readonly suppliedKey = computed(() =>
@@ -165,6 +186,7 @@ export class ProjectCardViewComponent {
       untracked(() => {
         this.entered.set({});
         this.draft.set({});
+        this.lookupPicked.set({});
         this.formError.set(undefined);
       });
     });
@@ -176,6 +198,27 @@ export class ProjectCardViewComponent {
 
   setDraft(id: string, value: unknown): void {
     this.draft.update((d) => ({ ...d, [id]: value }));
+    if (this.lookupPicked()[id])
+      this.lookupPicked.update((picked) => {
+        const next = { ...picked };
+        delete next[id];
+        return next;
+      });
+  }
+
+  onLookupPicked(id: string, pick: ParameterLookupPick): void {
+    this.setDraft(id, pick.value);
+    this.lookupPicked.update((picked) => ({ ...picked, [id]: true }));
+  }
+
+  draftText(id: string): string | undefined {
+    const value = this.draft()[id];
+    return value === undefined || value === null ? undefined : String(value);
+  }
+
+  /** Card parameters share the Core ParameterDef shape the picker reads. */
+  asParameterDef(param: object): IParameterDef {
+    return param as IParameterDef;
   }
 
   submit(): void {

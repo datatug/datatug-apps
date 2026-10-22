@@ -10,6 +10,7 @@ import {
 import {
   QueryType,
   type IHttpQueryRequest,
+  type IQueryDef,
   type ISqlQueryRequest,
 } from '../models/definition/query-def';
 import type {
@@ -193,4 +194,28 @@ it('preserves legacy request-specific fields on read and refuses a lossy write',
     custom: true,
   });
   expect(() => toProjectQueryWire(def)).toThrow(UnsupportedQueryContractError);
+});
+
+it('saves and reads back HTTP query parameters, refusing unknown parameter fields', () => {
+  const def = {
+    id: 'carrier-status',
+    title: 'Carrier',
+    request: {
+      queryType: QueryType.HTTP,
+      url: 'https://carrier.demodb.dev/v1/bookings?request_id={request_id}',
+      method: 'GET',
+    },
+    parameters: [
+      { id: 'request_id', type: 'string', isRequired: true, meta: { entity: 'ShippingRequest', field: 'id' } },
+    ],
+  } as IQueryDef;
+  const wire = toProjectQueryWire(def, 'shipping/carrier-status');
+  expect(wire.parameters).toEqual(def.parameters);
+  expect(fromProjectQueryWire(asReadWire(wire)).parameters).toEqual(def.parameters);
+  expect(() =>
+    toProjectQueryWire(
+      { ...def, parameters: [{ ...(def.parameters as NonNullable<IQueryDef['parameters']>)[0], lookup: { db: 'x', sql: 'y', keyFields: [] } }] },
+      'shipping/carrier-status',
+    ),
+  ).toThrow(UnsupportedQueryContractError);
 });

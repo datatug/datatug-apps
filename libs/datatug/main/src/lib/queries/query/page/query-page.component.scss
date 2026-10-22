@@ -294,3 +294,12 @@
     border-color: Highlight;
   }
 }
+
+.local-ovdb-command {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  padding: 12px;
+  border-radius: 6px;
+  background: var(--ion-color-light);
+  color: var(--ion-text-color);
+}

@@ -29,4 +29,10 @@ describe('JsonTableComponent', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
+
+  it('treats booleans as simple values so true and false render', () => {
+    expect(component.isSimpleType(true)).toBe(true);
+    expect(component.isSimpleType(false)).toBe(true);
+    expect(component.isSimpleType({})).toBe(false);
+  });
 });

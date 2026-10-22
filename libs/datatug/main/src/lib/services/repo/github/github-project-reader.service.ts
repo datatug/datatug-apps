@@ -1526,6 +1526,51 @@ export class GithubProjectReaderService {
     ).pipe(map((items) => items.sort((a, b) => a.id.localeCompare(b.id))));
   }
 
+  /** The tree entry of the definition file of query `id` (bare or folder-qualified), if the project has one. */
+  private static findQueryEntry(
+    tree: readonly { readonly type: string; readonly path: string }[],
+    queriesPrefix: string,
+    id: string,
+  ): { readonly type: string; readonly path: string } | undefined {
+    const wantsFolder = id.includes('/');
+    const wantFolderName = wantsFolder ? id.slice(0, id.lastIndexOf('/')) : '';
+    const wantBareId = wantsFolder ? id.slice(id.lastIndexOf('/') + 1) : id;
+    return tree.find((e) => {
+      if (e.type !== 'blob' || !e.path.startsWith(queriesPrefix)) {
+        return false;
+      }
+      const relFromQueries = e.path.slice(queriesPrefix.length);
+      const slashIdx = relFromQueries.lastIndexOf('/');
+      const folderName =
+        slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
+      const fileName =
+        slashIdx === -1 ? relFromQueries : relFromQueries.slice(slashIdx + 1);
+      if (!GithubProjectReaderService.isQueryDefFile(fileName)) {
+        return false;
+      }
+      const bareId = GithubProjectReaderService.defFileBareId(fileName);
+      return wantsFolder
+        ? folderName === wantFolderName && bareId === wantBareId
+        : bareId === wantBareId;
+    });
+  }
+
+  /** Whether the project has a saved query `id`, from the cached tree (no file is read). */
+  public hasQuery(projectId: string, id: string): Observable<boolean> {
+    return this.getTree(projectId).pipe(
+      map((tree) => {
+        const { folder } = parseGithubProjectId(projectId);
+        return (
+          GithubProjectReaderService.findQueryEntry(
+            tree,
+            folder ? `${folder}/queries/` : 'queries/',
+            id,
+          ) !== undefined
+        );
+      }),
+    );
+  }
+
   /**
    * One query's full definition, body included — `id` may be bare
    * (`"customer-invoices"`) or folder-qualified (`"customers/customer-invoices"`,
@@ -1541,32 +1586,11 @@ export class GithubProjectReaderService {
       switchMap((tree) => {
         const { folder } = parseGithubProjectId(projectId);
         const queriesPrefix = folder ? `${folder}/queries/` : 'queries/';
-        const wantsFolder = id.includes('/');
-        const wantFolderName = wantsFolder
-          ? id.slice(0, id.lastIndexOf('/'))
-          : '';
-        const wantBareId = wantsFolder ? id.slice(id.lastIndexOf('/') + 1) : id;
-
-        const match = tree.find((e) => {
-          if (e.type !== 'blob' || !e.path.startsWith(queriesPrefix)) {
-            return false;
-          }
-          const relFromQueries = e.path.slice(queriesPrefix.length);
-          const slashIdx = relFromQueries.lastIndexOf('/');
-          const folderName =
-            slashIdx === -1 ? '' : relFromQueries.slice(0, slashIdx);
-          const fileName =
-            slashIdx === -1
-              ? relFromQueries
-              : relFromQueries.slice(slashIdx + 1);
-          if (!GithubProjectReaderService.isQueryDefFile(fileName)) {
-            return false;
-          }
-          const bareId = GithubProjectReaderService.defFileBareId(fileName);
-          return wantsFolder
-            ? folderName === wantFolderName && bareId === wantBareId
-            : bareId === wantBareId;
-        });
+        const match = GithubProjectReaderService.findQueryEntry(
+          tree,
+          queriesPrefix,
+          id,
+        );
 
         if (!match) {
           return throwError(
