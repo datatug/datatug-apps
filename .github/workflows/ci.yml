@@ -892,15 +892,18 @@ jobs:
           chmod +x "$RUNNER_TEMP/datatug-bin/datatug"
           echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
-      # Public repo (datatug/datatug-demo-project), main branch — the demo
+      # Public repo (datatug/datatug-demo-project), at a pinned commit — the demo
       # project the journey suite drives the agent against. Same nested-path
       # reasoning as datatug-apps checkout above.
-      - name: Checkout datatug-demo-project (main)
+      - name: Checkout datatug-demo-project (pinned)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          # Pinned like the browser lanes: an unpinned `main` let a demo fixture
+          # change (Customer became the Northwind customer, 533aaab) break this
+          # required check on every open PR. Bump deliberately with the specs.
+          ref: 3c43fa3d3094bce5a33e2964d9a52a7f9dd7295e
           path: datatug-demo-project
 
       - name: Authenticate private Core artifact verification
@@ -1051,12 +1054,15 @@ jobs:
           chmod +x "$RUNNER_TEMP/datatug-bin/datatug"
           echo "DATATUG_BIN=$RUNNER_TEMP/datatug-bin/datatug" >> "$GITHUB_ENV"
 
-      - name: Checkout datatug-demo-project (main)
+      - name: Checkout datatug-demo-project (pinned)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
         with:
           repository: datatug/datatug-demo-project
-          ref: main
+          # Pinned like the browser lanes: an unpinned `main` let a demo fixture
+          # change (Customer became the Northwind customer, 533aaab) break this
+          # required check on every open PR. Bump deliberately with the specs.
+          ref: 3c43fa3d3094bce5a33e2964d9a52a7f9dd7295e
           path: datatug-demo-project
 
       - name: Authenticate private Core artifact verification
