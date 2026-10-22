@@ -70,6 +70,13 @@ describe('HttpQueryEditorComponent', () => {
     });
   });
 
+  afterEach(() => {
+    // The shared suite reuses one window per worker: leave no component or storage behind.
+    fixture?.destroy();
+    TestBed.resetTestingModule();
+    sessionStorage.clear();
+  });
+
   it('emits requestChange for method, URL, body and header edits', async () => {
     await create({ ...baseRequest, method: 'POST' });
     protectedApi()['onMethod'](

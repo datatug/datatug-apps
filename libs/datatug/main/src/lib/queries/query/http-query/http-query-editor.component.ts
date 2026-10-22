@@ -408,6 +408,14 @@ export class HttpQueryEditorComponent {
     });
   }
 
+  protected segmentLabel(s: PreviewSegment): string {
+    return s.source ? this.sourceLabel[s.source] : '';
+  }
+
+  protected segmentTitle(s: PreviewSegment): string {
+    return s.id ? this.braced(s.id) + ' from ' + this.segmentLabel(s) : '';
+  }
+
   protected braced(id: string): string {
     return '{' + id + '}';
   }

@@ -250,8 +250,8 @@
                   <mark
                     class="http-seg"
                     [attr.data-source]="s.source"
-                    [attr.title]="braced(s.id) + ' from ' + sourceLabel[s.source]"
-                    >{{ s.text }}<sup class="http-seg-tag">{{ sourceLabel[s.source] }}</sup></mark
+                    [attr.title]="segmentTitle(s)"
+                    >{{ s.text }}<sup class="http-seg-tag">{{ segmentLabel(s) }}</sup></mark
                   >
                 } @else {<ng-container>{{ s.text }}</ng-container>}
               }
