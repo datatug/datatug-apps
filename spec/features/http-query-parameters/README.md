@@ -22,7 +22,11 @@ HTTP queries are sent literally (see [HTTP Query Editor](../http-query-editor/RE
 
 Worked example used throughout: `GET https://carrier.example/v1/shipments?order_ref={order_id}&as_of={as_of}`, where `order_id` and `as_of` come from a selected row of another query. The feature is generic and is not tied to any demo project.
 
-The shared placeholder contract is the one the CLI already implements through dalgo2http (`datatug-cli/pkg/httpsource/params.go:11` and `:49-59`; `dal-go/dalgo2http` `descriptor.go:120`, `request.go:29-62`, `config.go:186-199`). This feature extends it from the URL to headers and body and does not change what the URL means, so no saved query needs migrating.
+The shared placeholder contract is the one the CLI already implements through dalgo2http. Evidence version is the CLI's pinned dalgo2http v0.2.1 (`datatug-cli/go.mod:30`): placeholder expression `descriptor.go:115`, rendering and escaping `request.go:35-70`, missing-value error `request.go:45`, config validation `config.go:159-190`; on the CLI side `pkg/httpsource/params.go:11` and `:41-59`. dalgo2http v0.4.0 (the latest) differs only in line numbers (`descriptor.go:120`, `request.go:29-86`). This feature extends the URL contract to headers and body and does not change what a URL template means: literal queries without placeholders keep working unchanged in both the CLI and the web app.
+
+Saved shape (existing, unchanged): `text` is the URL template, which the file store writes to the `<id>.query.http` sidecar; the `http` block (`method`, `headers`, `body`) and `parameters` are saved in `<id>.query.json`. The CLI reads only the sidecar URL (`datatug-cli/pkg/httpsource/load.go:97-105`) plus `parameters` from the JSON, and never sees `method`, `headers` or `body`.
+
+The web rules below are NEW and stricter than the CLI's: no placeholders in host, userinfo or fragment, and `.`/`..` path values rejected. The CLI classifies a placeholder with `strings.Contains` on the text before the first `?` (`params.go:41`) and does not check these.
 
 ### Placeholder contract
 
@@ -32,17 +36,25 @@ A placeholder is `{name}` where `name` matches `[a-zA-Z0-9_]+` (the dalgo2http a
 
 #### REQ: placeholder-semantics
 
-Substitution is a single pass over the template: substituted text is never rescanned, so a value containing `{other}` is inserted literally. A placeholder with no resolved value fails the run with a missing-value error naming the parameter (the dalgo2http `ErrMissingParam` behavior, `request.go:53-56`); it is never sent empty or left as `{name}`. Every placeholder in the template appears in the query's declared parameters, and every declared parameter appears as a placeholder in at least one position; the CLI already rejects both mismatches (`params.go:41-59`) and the web app MUST apply the same rule on save. Extra declared query-string parameters are NOT appended automatically (the dalgo2http append behavior at `request.go:77-86` is unreachable from the CLI because of the same rule, and is not adopted).
+Substitution is a single pass over the template: substituted text is never rescanned, so a value containing `{other}` is inserted literally. A placeholder with a value that cannot be resolved follows `declare-parameters` (`isRequired`); a missing required value fails the run naming the parameter (dalgo2http `ErrMissingParam`, `request.go:45`) and is never sent empty or as `{name}`. Every placeholder appears in the declared parameters and every declared parameter appears as a placeholder in at least one position; the CLI already rejects both mismatches (`params.go:41-59`) and the web app MUST apply the same rule on save. Declared parameters absent from the template are NOT appended as extra query pairs (dalgo2http appends them, `request.go:61-69` in v0.2.1, `61-77` in v0.4.0, but that path is unreachable from the CLI because of the same rule, and is not adopted).
+
+The web substituter preserves the author's query-pair order and the template's text outside placeholders, and only encodes substituted values. dalgo2http instead ends with `parsed.RawQuery = q.Encode()` (`request.go:70` in v0.2.1, `:78` in v0.4.0), which sorts keys and re-encodes the whole query; the CLI and web requests are therefore equivalent (same method, scheme, host, path and query parameters as a multiset), not byte-identical.
 
 #### REQ: legacy-literal-braces
 
-A saved HTTP query with no declared parameters keeps running literally, byte for byte, as today. When such a query's template contains a `{name}` placeholder, the editor MUST warn, without blocking save or run, that it looks like a placeholder and offer to declare it. Once a query declares at least one parameter, the rules of `placeholder-semantics` are strict and blocking.
+A saved HTTP query with no declared parameters keeps running literally as today. When such a query's template contains a `{name}` placeholder, the editor MUST warn, without blocking save or run, that it looks like a placeholder and offer to declare it. Once a query declares at least one parameter, the rules of `placeholder-semantics` are strict and blocking.
+
+#### REQ: params-table-placeholders
+
+The editor's Params table (`params-synced-with-url` in [HTTP Query Editor](../http-query-editor/README.md)) lists and edits the template's literal query-string pairs, and a value may be or contain a `{name}` placeholder. Reading the URL into rows and rewriting rows into the URL MUST preserve every `{name}` placeholder verbatim and MUST NOT percent-encode its braces or name, including after edits to other rows (today's `encodePart` in `http-url-params.ts` keeps `{`, `}` and `/`; the preserved form is `{name}` only and `{{name}}` is just literal text). The Params table is not the Parameters section: Params are URL query text that may reference placeholders, while Parameters (`declare-parameters`) hold declarations, defaults, meaning and run-time values. A placeholder typed in a Params row is added to the template and flagged until declared.
 
 ### Declaring parameters
 
 #### REQ: declare-parameters
 
-An HTTP query MAY declare `QueryDef.Parameters` using the existing `ParameterDef` shape (`id`, `type`, `title`, `defaultValue`, `isRequired`, `meta`) with these rules: `id` is the placeholder name and matches the placeholder syntax; ids are unique; `type` is one of `string`, `integer`, `number`, `boolean`, `bit`, `date`, `datetime`; `isMultiValue`, `lookup`, `minLength` and `maxLength` are rejected on HTTP queries in this version; `defaultValue` must match `type` per the existing `ParameterDef.Validate`. `isRequired` defaults to false; a parameter that is neither required nor defaulted and has no value at run time is a missing value (`placeholder-semantics`). The editor shows a Parameters section that lists every placeholder found in the template, lets the user add the declaration with one action, and flags declared-but-unused parameters.
+An HTTP query MAY declare `QueryDef.Parameters` using the existing `ParameterDef` shape (`id`, `type`, `title`, `defaultValue`, `isRequired`, `meta`) with these rules: `id` is the placeholder name and matches the placeholder syntax; ids are unique; `type` is one of `string`, `integer`, `number`, `boolean`, `bit`, `date`, `datetime`; `isMultiValue`, `lookup`, `minLength` and `maxLength` are rejected on HTTP queries in this version; `defaultValue` must match `type` per the existing `ParameterDef.Validate`.
+
+`isRequired` means: required (true) means a missing value, after the precedence of `binding-sources` including the default, is a run error. Not required (false, the default) means an absent value substitutes `defaultValue`; with no default, a placeholder that is a whole query value (`name={p}`) removes that query pair from the request, and a not-required parameter with no default whose placeholder sits in a path segment, header value, body, or a query value fragment (`ref=ord-{p}`) is rejected on save, because dropping it would change the request's shape. The editor shows a Parameters section that lists every placeholder found in the template, adds the declaration with one action, and flags declared-but-unused parameters.
 
 #### REQ: parameter-meta
 
@@ -74,7 +86,7 @@ A bound value is coerced to the parameter's `type` before substitution, and a va
 
 #### REQ: encoding-per-position
 
-Values are encoded for the position they land in: a URL path segment uses `url.PathEscape` semantics (so `/` becomes `%2F`) and a value of exactly `.` or `..` is rejected; a URL query value uses `url.QueryEscape` semantics (the CLI behavior, `request.go:57-60`); a header value is inserted as is after the line-break check below; a body is substituted per `body-substitution`. Position is decided by where the placeholder sits in the template, so the query-string/path split matches `params.go:30-33` except that a placeholder before the first `?` and inside the authority is rejected by `placeholder-syntax`.
+Values are encoded for the position they land in: a URL path segment uses `url.PathEscape` semantics (so `/` becomes `%2F`) and a value of exactly `.` or `..` is rejected; a URL query value uses `url.QueryEscape` semantics (the CLI behavior, `request.go:57-60`); a header value is inserted as is after the line-break check below; a body is substituted per `body-substitution`. Position is decided by where the placeholder sits in the template, with the path/query split at the first `?` as in the CLI (`params.go:30-33`).
 
 #### REQ: header-injection
 
@@ -82,11 +94,15 @@ After substitution, a header value containing CR, LF or NUL is a run error namin
 
 #### REQ: body-substitution
 
-When the request's `Content-Type` is JSON (`application/json` or `+json`) or the trimmed body starts with `{` or `[`, the body is treated as JSON text: a placeholder inside a JSON string literal receives the value JSON-string-escaped without added quotes; a placeholder outside any string literal is allowed only for `integer`, `number`, `boolean` and `bit` parameters and is inserted as a JSON literal; a `string`, `date` or `datetime` parameter outside a string literal is rejected. A value therefore can never add, close or reorder JSON structure. For `application/x-www-form-urlencoded` a value uses query-value escaping. Any other body is text and the value is inserted as is. A body placeholder in a method that carries no body is rejected on save.
+Body mode is decided by the request's `Content-Type` header: JSON when it is `application/json` or ends in `+json`; form when it is `application/x-www-form-urlencoded`; otherwise text. There is no sniffing of the body.
+
+JSON mode. A scanner walks the template tracking whether it is inside a string literal, honoring backslash escapes (`\"` and `\\`), and finds every placeholder with its context. A placeholder inside a string literal receives the value JSON-string-escaped (`"`, `\`, control characters, without added quotes). A placeholder in a value position outside any string (for example `{"qty":{qty}}`) is allowed only for `integer`, `number`, `boolean` and `bit` parameters and is substituted as a JSON literal (`NaN` and infinities are rejected, `bit` becomes `0` or `1`); a `string`, `date` or `datetime` parameter there is rejected. A placeholder inside an object key, or anywhere that is not a value position, is rejected. A value can therefore never add, close or reorder JSON structure. Invalid JSON surrounding the placeholders is rejected on save in JSON mode.
+
+Form mode: each value uses query-value escaping. Text mode: the value is inserted verbatim, and CR and LF are allowed in the body only (never in headers). A body placeholder on a method that carries no body (GET, HEAD, OPTIONS) is rejected on save.
 
 #### REQ: credentials-run-time-only
 
-Saved templates and `defaultValue` fields pass the existing embedded-secret screen (`embeddedCredentialReasonWithoutDSN`) and credential headers are still never saved (`credential-headers-unsaved`). A placeholder in the URL userinfo is rejected. A credential header (per `isCredentialHTTPHeader`) may use a placeholder only in the session-only editor value, and its parameters accept a typed value only: a value bound from a row, board or the context bag is refused for a credential header so that data cannot flow into authentication. Parameter values are not written to run logs or query history with the credential header's resolved value; history keeps parameter ids and sources, and values only for non-credential parameters.
+Saved templates and `defaultValue` fields pass the existing embedded-secret screen (`embeddedCredentialReasonWithoutDSN`), and credential headers are still never saved (`credential-headers-unsaved`). A placeholder in the URL userinfo is rejected. A credential header (per `isCredentialHTTPHeader`) may use a placeholder only in the session-only editor value. A parameter used in a credential header MUST NOT be used in any other position (URL, other header, body), so a credential value cannot leak elsewhere, and it takes typed run-time values only: it can have no `defaultValue`, and values from a row, a board binding or the context bag are refused. History and run logs never contain a credential parameter's value; they keep parameter ids and sources, and values only for non-credential parameters.
 
 #### REQ: substitution-location
 
@@ -98,11 +114,13 @@ Substitution is performed by one shared implementation with the same results in 
 
 #### REQ: cli-parity
 
-The CLI keeps its GET-only, URL-only behavior and its current placeholder, escaping and error semantics unchanged. An HTTP query that uses placeholders in headers or the body, or a method other than GET, is valid in the web app and is reported by the CLI as unsupported for that query (never run with unsubstituted placeholders). A query whose placeholders sit only in the URL path or query values and whose method is GET runs identically in the CLI and the web app for the same values.
+Today the CLI runs only the URL template as a GET, with `parameters` from the query JSON; it never reads `method`, `headers` or `body`. A query whose placeholders sit only in URL path or query values and whose method is GET therefore produces an equivalent request (same method, scheme, host, path and query parameters as a multiset) in the CLI and the web app for the same values. The CLI rejecting queries that use header or body placeholders or a method other than GET is a REQUIRED NEW CLI CHANGE, tracked as a separate datatug-cli task and not part of this spec's web delivery; the CLI's current behavior is unchanged until it ships. Until then the web editor MUST warn, non-blocking, when a query uses features the CLI cannot run (non-GET method, headers, body, or placeholders outside the URL), saying the CLI would run only the URL as GET.
 
 #### REQ: preview
 
 The editor shows the resolved request (final URL, header values with credential values masked, body) for the current values before and after a run, marks each substituted segment with its source, and keeps the template as the only saved form.
+
+
 
 ### Out of scope / later
 
@@ -120,7 +138,7 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 
 **Given** a GET query `https://carrier.example/v1/shipments?order_ref={order_id}&as_of={as_of}` with parameters `order_id` and `as_of`
 **When** it runs from the web app and from the CLI with `order_id=A/1 2` and `as_of=2026-03-04`
-**Then** both send `https://carrier.example/v1/shipments?order_ref=A%2F1+2&as_of=2026-03-04`.
+**Then** both send equivalent requests: same method, scheme, host and path, and the query parameters `order_ref=A/1 2` and `as_of=2026-03-04` as a multiset (comparison parses the query, so pair order and the encoding of `/` do not matter); the web request keeps the template's pair order.
 
 ### AC: mismatch-blocks-save (verifies REQ:placeholder-semantics, REQ:declare-parameters)
 
@@ -202,7 +220,7 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 
 ### AC: cli-rejects-non-url-placeholders (verifies REQ:cli-parity)
 
-**Given** a saved POST query with a body placeholder
+**Given** the future datatug-cli change tracked by `cli-parity` has shipped (this AC cannot pass before it) and a saved POST query with a body placeholder
 **When** the CLI loads it
 **Then** it reports the query unsupported and sends nothing with an unsubstituted placeholder.
 
@@ -218,11 +236,126 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 **When** the user opens New card
 **Then** the "HTTP request" card type is still not offered as a working type and `HTTPRequest` is unchanged.
 
+### AC: cli-warning-in-editor (verifies REQ:cli-parity)
+
+**Given** a query with method POST, or a header or body placeholder
+**When** the user opens it
+**Then** a non-blocking note says the CLI would run only the URL as GET.
+
+### AC: params-table-keeps-placeholders (verifies REQ:params-table-placeholders)
+
+**Given** the URL `https://x.test/a?ref={order_id}&k=1`
+**When** the user changes `k` to `2` in the Params table
+**Then** the URL is `https://x.test/a?ref={order_id}&k=2` with the braces unencoded, and typing `{note}` in a new row's value leaves it as `{note}` flagged as undeclared.
+
+### AC: not-required-semantics (verifies REQ:declare-parameters)
+
+**Given** `https://x.test/r?a={a}&b={b}` with `a` not required with no default, and `b` not required with default `7`
+**When** the user runs with no values
+**Then** the request is `https://x.test/r?b=7`; and given `a` placed in a path segment or in `x-{a}` with no default, save is refused.
+
+### AC: required-missing (verifies REQ:declare-parameters, REQ:placeholder-semantics)
+
+**Given** a required parameter with no value and no default
+**When** the user runs
+**Then** the run is blocked naming the parameter and nothing is sent.
+
+### AC: json-string-body (verifies REQ:body-substitution)
+
+**Given** `Content-Type: application/json` and body `{"ref":"{order_id}"}`
+**When** `order_id` is `a"b\c`
+**Then** the body is `{"ref":"a\"b\\c"}`.
+
+### AC: json-bare-number-body (verifies REQ:body-substitution)
+
+**Given** JSON mode, body `{"qty":{qty}}` and `qty` of type `integer` with value `3`, then `number` with value `NaN`
+**When** the user runs
+**Then** the first sends `{"qty":3}` and the second is rejected.
+
+### AC: json-key-rejected (verifies REQ:body-substitution)
+
+**Given** JSON mode and body `{"{k}":1}`
+**When** the user saves
+**Then** save is refused naming the object-key position.
+
+### AC: form-body (verifies REQ:body-substitution)
+
+**Given** `Content-Type: application/x-www-form-urlencoded` and body `a={v}`
+**When** `v` is `x y&z`
+**Then** the body is `a=x+y%26z`.
+
+### AC: text-body (verifies REQ:body-substitution)
+
+**Given** `Content-Type: text/plain` and body `note: {n}`
+**When** `n` contains a line break
+**Then** it is inserted verbatim in the body, while the same value in a header is rejected.
+
+### AC: body-with-get-rejected (verifies REQ:body-substitution)
+
+**Given** method GET and a body containing `{p}`
+**When** the user saves
+**Then** save is refused.
+
+### AC: credential-parameter-isolated (verifies REQ:credentials-run-time-only)
+
+**Given** parameter `token` used in `Authorization: Bearer {token}` and also in the URL, or given a `defaultValue`
+**When** the user saves
+**Then** save is refused; and with `token` used only in the credential header, a row, board or bag value is refused and a typed run-time value is accepted.
+
+### AC: history-redaction (verifies REQ:credentials-run-time-only)
+
+**Given** a run with a typed credential parameter and a row-bound `order_id`
+**When** the run is recorded in history or logs
+**Then** the record holds both parameter ids and sources, the value of `order_id`, and no credential value.
+
+### AC: server-rejects-bad-template-input (verifies REQ:server-template-endpoint)
+
+**Given** a template-mode request
+**When** a placeholder has no supplied value, or a supplied id has no placeholder, or a value does not match its declared type
+**Then** the server returns 400 naming the parameter and makes no outbound request.
+
+### AC: body-limit-after-substitution (verifies REQ:server-template-endpoint)
+
+**Given** a template body just under 256 KiB
+**When** substitution makes the body exceed 256 KiB
+**Then** the server rejects the request and sends nothing.
+
+### AC: precedence-order (verifies REQ:binding-sources)
+
+**Given** one parameter with a typed value, a row value, a board binding, a bag entry and a default
+**When** sources are removed one by one from the top
+**Then** the used value follows typed, row, board, bag, default in that order.
+
+### AC: null-column-missing (verifies REQ:row-binding)
+
+**Given** a bound row whose column for a required parameter is null
+**When** the user runs
+**Then** the parameter is a missing value and the run is blocked.
+
+### AC: set-bag-entry-ignored (verifies REQ:context-bag-binding)
+
+**Given** a bag entry matching the parameter's `meta` whose value is a set
+**When** the user runs
+**Then** the entry is ignored and the next source, or a missing value, applies.
+
+### AC: datetime-and-bit-rendering (verifies REQ:parameter-meta, REQ:type-coercion)
+
+**Given** a `datetime` parameter with value `2026-03-04T23:30:00+02:00` and a `bit` parameter with value `true`
+**When** they are substituted
+**Then** the datetime renders `2026-03-04T21:30:00Z` and the bit renders `1`.
+
+### AC: column-name-binding (verifies REQ:row-binding)
+
+**Given** a row with a column `order_id` that has no meaning mapping, and parameter `order_id` with no `meta`
+**When** the user runs from that row
+**Then** the parameter binds from the column by case-insensitive name and the run panel shows source "row".
+
 ## Open Questions
 
 - **Run once per selected row (fan-out)?** Recommend no for v1 (`multi-row-selection` rejects it); revisit with multi-value parameters and a per-row result table.
 - **Should the CLI also run header/body placeholders and non-GET methods?** Recommend no; dalgo2http is read-only GET-only by design, so the CLI reports such queries unsupported.
 - **Literal braces escape (`{{`/`\{`)?** Recommend none; the identifier-only expression makes JSON bodies safe, and an escape would diverge from dalgo2http.
+- **Per-query origin pin / allowlist (only send to the saved query's origin)?** Recommend yes; the host is fixed by the template since host placeholders are forbidden, so this is already implied; confirm.
 - **Should a placeholder be allowed in the host for per-tenant APIs?** Recommend no (SSRF); use a different saved query per host.
 
 ---
