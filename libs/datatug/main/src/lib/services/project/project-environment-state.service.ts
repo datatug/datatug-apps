@@ -154,15 +154,19 @@ export class ProjectEnvironmentStateService {
                 'Update the local DataTug agent to create environments or manage shared order.',
             })),
           );
-        if (isPreContractAgent(error)) return readOnly();
-        // A released agent's unmounted route has no CORS headers, so the browser
-        // reports only status 0. Treat it as pre-contract only when the same
-        // agent answers its own agent-info: an unreachable agent (or any other
-        // network failure) keeps its real error.
-        if ((error as { status?: number } | null)?.status === 0)
+        // The agent explicitly says it cannot serve the contract (426): no further check.
+        if ((error as { status?: number } | null)?.status === 426)
+          return readOnly();
+        // A released agent's unmounted route answers with Go's plain text 404, which a browser reports as status 0
+        // (no CORS headers). Either is treated as pre-contract only when the same agent answers its own agent-info
+        // with a version that predates the contract. An unreachable agent, a current agent whose handler fails, or
+        // any other network failure keeps its real error.
+        if (isPreContractSignal(error))
           return this.api.agentInfo(ref).pipe(
             catchError(() => throwError(() => error)),
-            switchMap(() => readOnly()),
+            switchMap((info) =>
+              isPreContractVersion(info) ? readOnly() : throwError(() => error),
+            ),
           );
         return throwError(() => error);
       }),
@@ -221,18 +225,34 @@ const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
   ref.spaceID === undefined &&
   isHostedReadRefused(error);
 
+/** The last agent release that predates the `environment-state/1` contract. */
+const LAST_PRE_CONTRACT_VERSION = [0, 107, 0] as const;
+
 /**
- * A local agent that says it cannot serve `environment-state/1` (426), or
- * predates the contract: its router answers the unmounted route with Go's plain
- * text `404 page not found`. An agent that implements the route and answers a
- * structured 404 is still surfaced as an error. (A browser sees that plain 404
- * as status 0, because it has no CORS headers: `view()` confirms those against
- * the agent's own agent-info first.)
+ * The signals of a local agent that may predate the contract: its router answers the unmounted route with Go's plain
+ * text `404 page not found`, which a browser sees as status 0 because it has no CORS headers. An agent that
+ * implements the route and answers a structured 404 is still surfaced as an error.
  */
-const isPreContractAgent = (error: unknown): boolean => {
+const isPreContractSignal = (error: unknown): boolean => {
   const failure = error as { status?: number; error?: unknown } | null;
   return (
-    failure?.status === 426 ||
+    failure?.status === 0 ||
     (failure?.status === 404 && typeof failure.error === 'string')
   );
+};
+
+/** True when `/agent-info` reports a version of 0.107.0 or earlier; false for a newer or an unreadable version. */
+export const isPreContractVersion = (info: unknown): boolean => {
+  const version = (info as { version?: unknown } | null)?.version;
+  const match =
+    typeof version === 'string'
+      ? /^v?(\d+)\.(\d+)\.(\d+)/.exec(version)
+      : null;
+  if (!match) return false;
+  const parts = [Number(match[1]), Number(match[2]), Number(match[3])];
+  for (let i = 0; i < 3; i++) {
+    if (parts[i] !== LAST_PRE_CONTRACT_VERSION[i])
+      return parts[i] < LAST_PRE_CONTRACT_VERSION[i];
+  }
+  return true;
 };

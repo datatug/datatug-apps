@@ -2,7 +2,10 @@ import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError } from 'rxjs';
-import { ProjectEnvironmentStateService } from './project-environment-state.service';
+import {
+  isPreContractVersion,
+  ProjectEnvironmentStateService,
+} from './project-environment-state.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 
 const ref = {
@@ -130,6 +133,38 @@ describe('ProjectEnvironmentStateService scope', () => {
     ).rejects.toBe(failure);
     expect(legacy).not.toHaveBeenCalled();
   });
+  it.each([
+    ['status 0', { status: 0, message: 'Unknown Error' }],
+    ['a plain-text 404', { status: 404, error: '404 page not found\n' }],
+  ])('surfaces %s from a current agent (newer than 0.107.0) instead of calling it old', async (_name, failure) => {
+    api.environmentState.mockReturnValue(throwError(() => failure));
+    api.agentInfo.mockReturnValue(of({ version: '0.108.0' }));
+    const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(ref, legacy),
+      ),
+    ).rejects.toBe(failure);
+    expect(legacy).not.toHaveBeenCalled();
+  });
+  it('treats a plain-text 404 as pre-contract only up to 0.107.0', async () => {
+    api.environmentState.mockReturnValue(
+      throwError(() => ({ status: 404, error: '404 page not found\n' })),
+    );
+    api.agentInfo.mockReturnValue(of({ version: '0.107.0' }));
+    const result = await firstValueFrom(
+      TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
+        of([{ id: 'local', title: 'local' }]),
+      ),
+    );
+    expect(result.reason).toContain('Update');
+  });
+  it.each([['0.78.0', true], ['v0.107.0', true], ['0.107.1', false], ['0.108.0', false], ['1.0.0', false], [undefined, false], ['dev', false]])(
+    'isPreContractVersion(%s) is %s',
+    (version, expected) => {
+      expect(isPreContractVersion({ version })).toBe(expected);
+    },
+  );
   it('surfaces a failed legacy read of a reachable agent', async () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 0 })));
     const down = { status: 0, message: 'down' };
