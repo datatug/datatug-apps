@@ -61,3 +61,4 @@ export {
   cardResultScope,
   canonicalJson,
 } from './lib/board/core/board-query-results.service';
+export * from './lib/analytics/usage-analytics';

@@ -44,6 +44,7 @@ import {
 } from './app/checkout/business-checkout-config';
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { provideAnalyticsConsent } from './app/analytics-consent/analytics-consent.provider';
+import { provideConsentGatedAnalytics } from './app/analytics-consent/consent-gated-analytics';
 import { routes } from './app/datatug-app-routes';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { configureAgGrid } from '@datatug/ag-grid';
@@ -62,7 +63,6 @@ import {
   withoutDataTugTracking,
 } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
-import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
 import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
 import {
@@ -104,9 +104,7 @@ const datatugAppEnvironmentConfig = {
 
 captureCliChatCapability();
 
-if (datatugAppEnvironmentConfig.posthog) {
-  registerPosthog(datatugAppEnvironmentConfig.posthog);
-}
+// PostHog starts only with the visitor's analytics consent: provideAnalyticsConsent below follows the choice.
 
 // Hand the build-time AG Grid license key (possibly empty) to the lazy loader. No AG Grid code runs or loads at
 // startup: each grid-hosting chunk awaits ensureAgGrid() itself.
@@ -143,6 +141,7 @@ bootstrapApplication(DatatugAppComponent, {
         datatugGoogleAnalyticsMeasurementId,
         productProfile,
       ),
+      datatugAppEnvironmentConfig.posthog,
     ),
     provideIonicAngular(),
     provideAnimationsAsync(),
@@ -210,7 +209,10 @@ bootstrapApplication(DatatugAppComponent, {
     // GitHub token — see github-redirect-capture.ts.
     provideGithubRedirectCapture(),
     provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig),
-    provideSneatAnalytics(datatugAppEnvironmentConfig),
+    // The shared AnalyticsService (PostHog, Firebase Analytics) sends nothing without the same consent.
+    provideConsentGatedAnalytics(
+      provideSneatAnalytics(datatugAppEnvironmentConfig),
+    ),
     TopMenuService,
     TelegramAuthService,
     {

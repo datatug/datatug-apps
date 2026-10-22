@@ -4,8 +4,11 @@ import { provideZonelessChangeDetection } from '@angular/core';
 import { ANALYTICS_CONSENT_KEY } from './analytics-consent';
 import {
   browserAnalyticsEnv,
+  POSTHOG_CONSENT_CLIENT,
   provideAnalyticsConsent,
 } from './analytics-consent.provider';
+import { ANALYTICS_CONSENT } from './analytics-consent.token';
+import type { PosthogConsentClient } from './consent-gated-analytics';
 
 const target = window as unknown as Record<string, unknown>;
 
@@ -105,5 +108,72 @@ describe('provideAnalyticsConsent', () => {
     expect(document.querySelector('.datatug-analytics-consent')).not.toBeNull();
     expect(target['dataLayer']).toBeUndefined();
     spy.mockRestore();
+  });
+});
+
+describe('PostHog behind the same consent', () => {
+  function posthogClient() {
+    let started = false;
+    return {
+      start: vi.fn(() => {
+        started = true;
+      }),
+      started: () => started,
+      pause: vi.fn(),
+      resume: vi.fn(),
+    } satisfies PosthogConsentClient;
+  }
+  function setupWithPosthog(client: PosthogConsentClient) {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        provideRouter([{ path: '**', children: [] }]),
+        provideAnalyticsConsent(
+          'G-DESWRP39RY',
+          { token: 'public-fixture' },
+          client,
+        ),
+      ],
+    });
+    return TestBed.inject(Router);
+  }
+  function nonLocalHost() {
+    return vi.spyOn(window, 'location', 'get').mockReturnValue({
+      hostname: 'datatug.app',
+      origin: 'https://datatug.app',
+      pathname: '/',
+    } as Location);
+  }
+
+  it('uses the real PostHog switches by default', () => {
+    expect(POSTHOG_CONSENT_CLIENT.started()).toBe(false);
+    expect(typeof POSTHOG_CONSENT_CLIENT.start).toBe('function');
+    expect(typeof POSTHOG_CONSENT_CLIENT.pause).toBe('function');
+    expect(typeof POSTHOG_CONSENT_CLIENT.resume).toBe('function');
+  });
+
+  it('does not start PostHog before the visitor chooses, and starts it on Accept', async () => {
+    const spy = nonLocalHost();
+    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => node);
+    const client = posthogClient();
+    const router = setupWithPosthog(client);
+    await router.navigateByUrl('/');
+    expect(client.start).not.toHaveBeenCalled();
+    TestBed.inject(ANALYTICS_CONSENT).choose('granted');
+    spy.mockRestore();
+    expect(client.start).toHaveBeenCalledExactlyOnceWith({
+      token: 'public-fixture',
+    });
+    vi.restoreAllMocks();
+  });
+
+  it('never starts PostHog after a stored rejection', async () => {
+    const spy = nonLocalHost();
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'denied');
+    const client = posthogClient();
+    const router = setupWithPosthog(client);
+    await router.navigateByUrl('/');
+    spy.mockRestore();
+    expect(client.start).not.toHaveBeenCalled();
   });
 });

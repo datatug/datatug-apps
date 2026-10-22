@@ -63,6 +63,11 @@ export interface AnalyticsConsent {
   choose(choice: AnalyticsChoice): void;
   /** A route finished navigating (the first included): reports the page when GA is on. */
   pageView(): void;
+  /**
+   * Analytics may run on this page (a measurement id, not checkout, not localhost) and the visitor accepted. The one
+   * gate for every analytics backend: GA here, PostHog and the shared `AnalyticsService` events too.
+   */
+  granted(): boolean;
   /** Called whenever the choice or the banner's visibility may have changed. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
   /** Applies a stored grant and starts following the choice of other tabs. */
@@ -272,6 +277,7 @@ export function createAnalyticsConsent(
       if (enabled) sendPageView();
       notify();
     },
+    granted: () => allowed() && choice() === 'granted',
     subscribe(listener) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
