@@ -1,5 +1,38 @@
+import { execFileSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { expect, test } from './helpers/demodb-guard';
+import { installFakeGithub } from './helpers/fake-github';
 import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
+
+/** A one-commit demo project that declares only the loopback evidence source (connections/log-sources.json). */
+function demoProjectDeclaringLoopbackLogs(): { dir: string; dispose: () => void } {
+  const dir = mkdtempSync(join(tmpdir(), 'datatug-log-sources-'));
+  const project = join(dir, 'demo-project-1');
+  mkdirSync(join(project, 'connections'), { recursive: true });
+  writeFileSync(join(project, 'datatug-project.json'), JSON.stringify({ id: 'datatug-demo-project', title: 'Log sources fixture' }));
+  writeFileSync(join(project, 'connections/log-sources.json'), JSON.stringify({
+    format: 'datatug-log-sources/v1',
+    sources: [{
+      id: 'northwind-local', title: 'Northwind evidence (local agent)', synthetic: true,
+      database: 'http://127.0.0.1:6832/v1/databases/northwind_evidence',
+      collections: [{ id: 'fulfillment_events', title: 'Fulfillment events' }],
+      fields: {
+        timestamp: 'timestamp', severity: 'severity', service: 'service', origin: 'source', message: 'message',
+        correlation: 'correlation_id', reference: 'source_ref', raw: 'raw', parser: 'parser',
+        parseStatus: 'parse_status', structured: 'fields_json',
+      },
+      identifiers: [{ field: 'order_id', label: 'Order ID', param: 'order', type: 'string' }],
+      window: { from: '2018-04-21T09:12:00Z', to: '2018-04-21T09:14:00Z' },
+      records: [],
+    }],
+  }));
+  execFileSync('git', ['-C', dir, 'init', '--quiet']);
+  execFileSync('git', ['-C', dir, 'add', '-A']);
+  execFileSync('git', ['-C', dir, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test', 'commit', '--quiet', '-m', 'log sources']);
+  return { dir, dispose: () => rmSync(dir, { recursive: true, force: true }) };
+}
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
 const password = 'local-cloud-logs-fixture-password';
@@ -23,6 +56,10 @@ test('malformed demo log entries explain and clear retained identifier filters',
   page,
 }) => {
   const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const fixture = demoProjectDeclaringLoopbackLogs();
+  test.info().attach('log-sources-fixture', { body: fixture.dir });
+  await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: fixture.dir }]);
+  page.on('close', fixture.dispose);
   await page.route(
     'http://127.0.0.1:6832/v1/databases/northwind_evidence',
     async (route) => {
@@ -70,7 +107,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
       });
     },
   );
-  await page.goto('/demo/logs?order=11039');
+  await page.goto('/demo/logs?source=northwind-local&order=11039');
   await expect(
     page.getByRole('status').filter({ hasText: 'No entries matched' }),
   ).toBeVisible();
@@ -78,7 +115,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
     .getByRole('checkbox', { name: /Include untimed or malformed entries/ })
     .check();
   await expect(
-    page.getByText(/Order, correlation, and severity filters still apply/),
+    page.getByText(/Order ID, correlation, severity filters still apply/),
   ).toBeVisible();
   await expect(
     page.getByText(/Malformed entries may not contain those fields/),
@@ -92,7 +129,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
     .getByRole('button', { name: 'Clear identifier and correlation filters' })
     .click();
   await page.getByRole('button', { name: 'Find evidence' }).click();
-  await expect(page).toHaveURL(/\/demo\/logs\?order=$/);
+  await expect(page).toHaveURL(/\/demo\/logs\?source=northwind-local&collection=fulfillment_events&from=[^&]*&to=[^&]*&order=$/);
   await expect.poll(() => requests.length).toBeGreaterThan(1);
   const where = (requests.at(-1)?.body?.['where'] ?? []) as Array<{
     field: string;

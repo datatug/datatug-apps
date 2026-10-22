@@ -33,6 +33,7 @@ import { OvdbConfirmService } from './ovdb-confirm.service';
 import { displayOvdbValue, ovdbFormFields, type OvdbDisplayValue } from './ovdb-record-form';
 import { getOvdbRecord, ovdbCreateKeyField, OVDB_PAGE_SIZE, describeOvdbError, listOvdbRows, resetOvdbDatabase, type OvdbRow } from './ovdb-records';
 import { ovdbCollectionSchema } from './ovdb-connection';
+import type { RelatedLogEvidenceLink } from '../pages/demo-logs/log-source-declarations';
 
 @Component({
   selector: 'sneat-datatug-ovdb-database-browser',
@@ -164,8 +165,8 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           (created)="recordCreated($event)" (cancelled)="creating.set(false)"
         />
       } @else if (selected(); as row) {
-        @if (relatedEvidenceTarget(); as link) {
-          <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="link.queryParams">Related log evidence</ion-button>
+        @for (link of relatedEvidenceTargets(); track link.label) {
+          <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="link.queryParams">{{ link.label }}</ion-button>
         }
         <sneat-datatug-ovdb-record-editor
           [connection]="liveConnection()"
@@ -196,14 +197,17 @@ export class OvdbDatabaseBrowserComponent {
   readonly basePath = input.required<readonly string[]>();
   readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
-  /** Optional explicit mapping supplied by a demo/project, never inferred from the OVDB engine. */
-  readonly relatedEvidence = input<{ readonly collection: string; readonly field: string; readonly path: string; readonly queryParam: string } | undefined>();
-  protected readonly relatedEvidenceTarget = computed(() => {
-    const link = this.relatedEvidence(), row = this.selected();
-    if (!link || !row || this.table() !== link.collection ||
-      typeof link.queryParam !== 'string' || !link.queryParam ||
-      row.data[link.field] === null || row.data[link.field] === undefined) return undefined;
-    return { path: link.path, queryParams: { [link.queryParam]: row.data[link.field] } };
+  /** Explicit record → evidence links declared by a project (log-source-declarations.ts), never inferred from the OVDB engine. */
+  readonly relatedEvidence = input<readonly RelatedLogEvidenceLink[]>([]);
+  protected readonly relatedEvidenceTargets = computed(() => {
+    const row = this.selected();
+    if (!row) return [];
+    return this.relatedEvidence().flatMap((link) => {
+      const value = row.data[link.field];
+      if (this.table() !== link.collection || typeof link.queryParam !== 'string' || !link.queryParam ||
+        value === null || value === undefined || value === '') return [];
+      return [{ path: link.path, label: link.label ?? 'Related log evidence', queryParams: { ...link.queryParams, [link.queryParam]: String(value) } }];
+    });
   });
   /** Deep-linked record id. Local keyed sources may load it beyond the first grid page. */
   readonly focusRecordId = input<string | undefined>();
