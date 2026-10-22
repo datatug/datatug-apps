@@ -26,8 +26,13 @@ const fx = createDispatchFixtures();
 
 
 describe('HTTP row action: which row is offered', () => {
+  const originalHistory = Object.getOwnPropertyDescriptor(window, 'history');
   beforeEach(() => {
     Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, writable: true, configurable: true });
+  });
+  afterEach(() => {
+    // The shared suite reuses one window per worker: put the real history back.
+    if (originalHistory) Object.defineProperty(window, 'history', originalHistory);
   });
 
   async function create() {

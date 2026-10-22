@@ -27,6 +27,9 @@ import {
   takeBusinessGithubContinuation,
 } from './business-github-continuation';
 import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
+import { restoreStorageSpies } from '../../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.

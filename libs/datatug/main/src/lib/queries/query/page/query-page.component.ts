@@ -4370,7 +4370,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
     // The grid's checkboxes select rows for export and copy. The Current row is the focused or clicked row, never
-    // the checked ones, so a selection change only keeps the api.
+    // the checked ones, so a selection change keeps the api. It also tells the HTTP row action which row to offer.
     this.syncHttpCheckedRow(event.api);
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
