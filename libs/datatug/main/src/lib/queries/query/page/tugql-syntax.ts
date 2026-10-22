@@ -259,8 +259,8 @@ const syntaxTheme = EditorView.theme({
   '.cm-line': { padding: '0 0.75rem' },
   '.cm-activeLine, .cm-activeLineGutter': { backgroundColor: 'transparent' },
   '&.cm-focused .cm-activeLine, &.cm-focused .cm-activeLineGutter': {
-    backgroundColor:
-      'color-mix(in srgb, var(--ion-color-primary, #1d4ed8) 5%, transparent)',
+    // rgba, not color-mix(): contrast checks read the computed colour.
+    backgroundColor: 'var(--tugql-active-line, rgba(29, 78, 216, 0.05))',
   },
   '.tugql-token-keyword': {
     color: 'var(--tugql-keyword, #174f91)',

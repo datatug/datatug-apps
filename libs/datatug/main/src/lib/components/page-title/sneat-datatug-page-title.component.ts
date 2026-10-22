@@ -53,6 +53,9 @@ export class SneatDatatugPageTitleComponent {
   public readonly pageTitle = input.required<string>();
   /** Optional second line, for example the source a query reads. */
   public readonly subtitle = input<string>();
+  /** Marks the title as the page's level-1 heading, for a page that has no
+   * other title (the query page). */
+  public readonly heading = input(false);
 
   private readonly currentProject = toSignal(this.navContext.currentProject, {
     initialValue: undefined,
