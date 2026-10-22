@@ -80,6 +80,7 @@ export interface EvidenceShareSelection {
       @if (incidentRef()) {
         <sneat-datatug-applied-evidence-selector
           [mode]="mode()"
+          [sourceId]="sourceId()"
           [projectRef]="page.ref()"
           [actor]="actor()"
           [environment]="environment()"
@@ -97,6 +98,7 @@ export interface EvidenceShareSelection {
 })
 export class EvidenceSharePanelComponent {
   readonly mode = input<'share' | 'inspect'>('share');
+  readonly sourceId = input<string>();
   readonly environment = input('');
   readonly caseId = input<string>();
   readonly disabled = input(false);
@@ -122,7 +124,7 @@ export class EvidenceSharePanelComponent {
             this.page.ref(),
             this.page.context()?.principal || '',
             {
-              sourceId: 'shipping-working-copy',
+              sourceId: this.sourceId() || event.sourceId,
               environment: this.environment(),
             },
           )
@@ -130,6 +132,7 @@ export class EvidenceSharePanelComponent {
           this.clear();
       });
     effect(() => {
+      this.sourceId();
       this.environment();
       this.caseId();
       this.clear();

@@ -1,3 +1,4 @@
+import { SOURCE_EVIDENCE_PRESENTERS, sourceEvidencePresenter } from '../evidence/source-evidence-presentation';
 import { AppliedEvidenceSelectorComponent } from '../evidence/applied-evidence-selector.component';
 import type { AppliedEvidenceChoice } from '../evidence/applied-evidence';
 import type { HostedCriterionAction } from './hosted-linkage.models';
@@ -664,6 +665,7 @@ export class HostedIncidentConversationComponent {
   protected readonly retainedTarget = signal<ArtifactRef | undefined>(
     undefined,
   );
+  private readonly sourcePresenters = inject(SOURCE_EVIDENCE_PRESENTERS);
   protected canOpenRetained(ref: IncidentArtifactRef): boolean {
     try {
       const value = decodeEvidenceArtifactRef(ref);
@@ -674,7 +676,7 @@ export class HostedIncidentConversationComponent {
           value.sourceOperation.spaceID === c.spaceID &&
           value.sourceOperation.projectId === c.project &&
           value.sourceOperation.receiptActorId === c.principal &&
-          value.sourceOperation.sourceId === 'shipping-working-copy'
+          !!sourceEvidencePresenter(this.sourcePresenters, value.sourceOperation.sourceId)
         );
       return value.kind === 'execution'
         ? value.execution.storeId === c.storage &&

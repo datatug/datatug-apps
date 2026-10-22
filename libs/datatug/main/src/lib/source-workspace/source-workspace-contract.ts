@@ -22,6 +22,7 @@ export interface SourceDetails {
   readonly summary?: string;
   readonly sections: readonly {
     readonly title: string;
+    readonly collapsed?: boolean;
     readonly facts: readonly SourceFact[];
   }[];
 }
