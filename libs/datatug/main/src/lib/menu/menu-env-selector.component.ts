@@ -22,6 +22,7 @@ import {
 } from '@ionic/angular';
 import { RouterLink } from '@angular/router';
 import { projectPageHref } from '../nav/project-page-href';
+import { isSignedOut } from '../services/project/hosted-read-refused';
 import { IProjectContext } from '../nav/nav-models';
 import { IProjEnv } from '../models/definition/project';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
@@ -75,14 +76,9 @@ export class MenuEnvSelectorComponent implements OnChanges {
               environments.map(({ id, title }) => ({ id, title })),
             ),
             catchError((error: unknown) => {
-              // Signed out, there is nothing to list: stay quiet instead of raising a toast.
-              const message =
-                (error as { message?: unknown } | null)?.message ?? error;
-              if (
-                !/not authenticated yet|no Firebase ID token/i.test(
-                  String(message),
-                )
-              ) {
+              // A background sidebar read: the selector simply offers no environments, and the page in view shows its
+              // own designed error state, so this must not raise a second toast over it. Signed out, nothing to log.
+              if (!isSignedOut(error)) {
                 this.errorLogger.logError(
                   error,
                   'Failed to list project environments',

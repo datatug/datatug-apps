@@ -3,7 +3,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { IProjectRef } from '../core/project-context';
 import { ErrorLogger } from '@sneat/core';
-import { of, Subject } from 'rxjs';
+import { of, Subject, throwError } from 'rxjs';
 
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
@@ -193,5 +193,44 @@ describe('MenuEnvSelectorComponent', () => {
 
     expect(clearCurrentEnvironment).toHaveBeenCalledOnce();
     expect(goProject).toHaveBeenCalledWith(project);
+  });
+
+  it('logs a failed sidebar environment read without a toast and offers no environments', async () => {
+    const failure = { status: 0 };
+    const logError = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [MenuEnvSelectorComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        {
+          provide: ErrorLogger,
+          useValue: { logError, logErrorHandler: vi.fn() },
+        },
+        { provide: DatatugNavContextService, useValue: {} },
+        { provide: DatatugNavService, useValue: {} },
+        {
+          provide: EnvironmentService,
+          useValue: {
+            listEnvironments: vi.fn(() => throwError(() => failure)),
+          },
+        },
+      ],
+    })
+      .overrideComponent(MenuEnvSelectorComponent, {
+        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+      })
+      .compileComponents();
+    const fixture = TestBed.createComponent(MenuEnvSelectorComponent);
+    fixture.componentRef.setInput('project', {
+      ref: { projectId: 'demo', storeId: 'localhost:8989' },
+    });
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.environments()).toEqual([]);
+    expect(logError).toHaveBeenCalledWith(
+      failure,
+      'Failed to list project environments',
+      { show: false },
+    );
   });
 });

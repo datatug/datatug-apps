@@ -25,10 +25,18 @@ import {
 } from '../../models/definition/environment-state';
 import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { ProjectQueryApiService } from './project-query-api.service';
+import { isHostedReadRefused, isSignedOut } from './hosted-read-refused';
 
 type EnvironmentReadResult =
   | { status: 'pending' | 'unavailable' }
-  | { status: 'ready'; view: { state?: EnvironmentState; items: IEnvironmentFull[]; reason?: string } };
+  | {
+      status: 'ready';
+      view: {
+        state?: EnvironmentState;
+        items: IEnvironmentFull[];
+        reason?: string;
+      };
+    };
 
 @Injectable({ providedIn: 'root' })
 export class ProjectEnvironmentStateService {
@@ -58,7 +66,9 @@ export class ProjectEnvironmentStateService {
       switchMap(() =>
         defer(() => this.view(ref, legacy)).pipe(
           map((view): EnvironmentReadResult => ({ status: 'ready', view })),
-          catchError(() => of<EnvironmentReadResult>({ status: 'unavailable' })),
+          catchError(() =>
+            of<EnvironmentReadResult>({ status: 'unavailable' }),
+          ),
           startWith<EnvironmentReadResult>({ status: 'pending' }),
         ),
       ),
@@ -116,25 +126,45 @@ export class ProjectEnvironmentStateService {
     return this.read(ref).pipe(
       map((state) => ({ state, items: [...state.environments] })),
       catchError((error) => {
+        if (isPublicGithubRead(ref, error))
+          // A signed-out visitor (or one the hosted API refuses) can still read
+          // a public GitHub project's environments straight from the
+          // repository, exactly as the other public project pages do. There is
+          // no verified state, so management stays unavailable. A private or
+          // missing repository fails that anonymous read too, and the error
+          // surfaces instead of an empty list.
+          return legacy().pipe(
+            map((items) => ({
+              items,
+              reason: isSignedOut(error)
+                ? 'Sign in to create environments or manage shared order.'
+                : 'These environments are read from the public repository. Managing them needs access to this project in DataTug.',
+            })),
+          );
         const local =
           !['github', 'github.com', 'firestore'].includes(ref.storeId) &&
           ref.projectApi !== 'cloud' &&
           ref.spaceID === undefined;
-        if (!local || error?.status !== 426) return throwError(() => error);
-        const unsupported = of(true);
-        return unsupported.pipe(
-          switchMap((old) =>
-            old
-              ? legacy().pipe(
-                  map((items) => ({
-                    items,
-                    reason:
-                      'Update the local DataTug agent to create environments or manage shared order.',
-                  })),
-                )
-              : throwError(() => error),
-          ),
-        );
+        if (!local) return throwError(() => error);
+        const readOnly = () =>
+          legacy().pipe(
+            map((items) => ({
+              items,
+              reason:
+                'Update the local DataTug agent to create environments or manage shared order.',
+            })),
+          );
+        if (isPreContractAgent(error)) return readOnly();
+        // A released agent's unmounted route has no CORS headers, so the browser
+        // reports only status 0. Treat it as pre-contract only when the same
+        // agent answers its own agent-info: an unreachable agent (or any other
+        // network failure) keeps its real error.
+        if ((error as { status?: number } | null)?.status === 0)
+          return this.api.agentInfo(ref).pipe(
+            catchError(() => throwError(() => error)),
+            switchMap(() => readOnly()),
+          );
+        return throwError(() => error);
       }),
     );
   }
@@ -184,3 +214,25 @@ export class ProjectEnvironmentStateService {
     );
   }
 }
+
+const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
+  ['github', 'github.com'].includes(ref.storeId) &&
+  ref.projectApi !== 'cloud' &&
+  ref.spaceID === undefined &&
+  isHostedReadRefused(error);
+
+/**
+ * A local agent that says it cannot serve `environment-state/1` (426), or
+ * predates the contract: its router answers the unmounted route with Go's plain
+ * text `404 page not found`. An agent that implements the route and answers a
+ * structured 404 is still surfaced as an error. (A browser sees that plain 404
+ * as status 0, because it has no CORS headers: `view()` confirms those against
+ * the agent's own agent-info first.)
+ */
+const isPreContractAgent = (error: unknown): boolean => {
+  const failure = error as { status?: number; error?: unknown } | null;
+  return (
+    failure?.status === 426 ||
+    (failure?.status === 404 && typeof failure.error === 'string')
+  );
+};

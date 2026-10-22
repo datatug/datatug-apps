@@ -45,7 +45,13 @@ bytes and the real SQLite worker executes them. The standalone `/demo/sqlite`
 import and comparison baseline still use their declared public URLs, served
 from the same checked-in bundled bytes only in focused browser journeys.
 Other live dataset checks and demo checkouts remain independent of this
-browser catalog pin.
+browser catalog pin. The independent chart sources journey
+(`showcase-independent-sources.spec.ts`) needs the per-database customer
+queries that this pin predates, so the app job runs it afterwards through
+`datatug-app:e2e-showcase-independent` against its paired Demo revision
+`2692f1c09d35dc384313dba9444c6635de0f8c68`. The real-agent journey and card-link
+jobs check the demo project out at their own pinned commit; bump each pin
+deliberately together with the specs that read it.
 
 ## Project Meanings acceptance
 

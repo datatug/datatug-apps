@@ -90,6 +90,14 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       return route.fulfill({ json: [] });
     if (path.endsWith('/queries/all_queries'))
       return route.fulfill({ json: { id: '~', folders: [], items: [] } });
+    // Like every released `datatug serve`, this agent has no
+    // environment-state/1 route: Go's router answers it with a plain-text 404.
+    if (path.endsWith('/environments/state'))
+      return route.fulfill({
+        status: 404,
+        contentType: 'text/plain; charset=utf-8',
+        body: '404 page not found\n',
+      });
     return route.fulfill({ json: {} });
   });
   await page.route('**/v0/datatug/project/quick-search/**', async (route) => {

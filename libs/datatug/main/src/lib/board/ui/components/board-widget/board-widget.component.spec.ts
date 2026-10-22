@@ -1865,6 +1865,14 @@ describe('BoardWidgetComponent', () => {
     run.mockResolvedValueOnce(secondSnapshot.result);
     await second.run();
     expect(second.runError()).toBeUndefined();
+    // Inside a card the chart's own disclosure stays; only an exact repeat of the card title is dropped.
+    fixture.componentRef.setInput('embedded', true);
+    fixture.componentRef.setInput('cardTitle', 'Countries');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chart-disclosure')?.textContent).toBe(data.title);
+    fixture.componentRef.setInput('cardTitle', data.title);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('.chart-disclosure')).toBeNull();
   });
 
 });

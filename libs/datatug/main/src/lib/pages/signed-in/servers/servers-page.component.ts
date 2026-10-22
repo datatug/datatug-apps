@@ -53,6 +53,7 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
+import { isHostedReadRefused } from '../../../services/project/hosted-read-refused';
 import {
   ProjectDatabaseGroup,
   ProjectDatabaseSourcesComponent,
@@ -705,7 +706,13 @@ export class ServersPageComponent implements OnDestroy {
     this.environments.set(undefined);
     this.environmentsError.set(undefined);
     const environments$ = isGithubStoreId(target.storeId)
-      ? this.environmentService.listEnvironments(target)
+      ? this.environmentService
+          .listEnvironments(target)
+          .pipe(
+            switchMap((environments) =>
+              this.withGithubCatalogs(target, environments),
+            ),
+          )
       : this.projectService
           .getFull(target)
           .pipe(map((full) => full.environments || []));
@@ -765,7 +772,8 @@ export class ServersPageComponent implements OnDestroy {
   }
 
   /**
-   * The authenticated catalogue API answers 401 to a signed-out visitor, which
+   * The authenticated catalogue API refuses a signed-out visitor (the client
+   * rejects before sending, or the API answers 401), which
    * hid every declared connection (e.g. the public demo's Northwind) behind
    * "could not be loaded". A GitHub project's `connections/*.json` files are
    * ordinary repository files, so when the API refuses (401/403) or has no
@@ -781,9 +789,55 @@ export class ServersPageComponent implements OnDestroy {
     if (!isGithubStoreId(target.storeId)) return api$;
     return api$.pipe(
       catchError((error: unknown) =>
-        isCatalogueUnavailable(error)
+        isHostedReadRefused(error)
           ? this.readGithubConnections(target)
           : throwError(() => error),
+      ),
+    );
+  }
+
+  /**
+   * The shared environment list deliberately carries no connection data, so a
+   * public GitHub project's registered catalogs (each environment's
+   * `dbServers[].catalogs`) are read here from the same repository reader,
+   * keeping only the driver, location and catalog names this page lists. The
+   * reader caches each file per commit, so this adds no request for files the
+   * environment list already read. An environment the hosted API already
+   * returned with servers is kept as it is.
+   */
+  private withGithubCatalogs(
+    target: IProjectRef,
+    environments: IEnvironmentFull[],
+  ): Observable<IEnvironmentFull[]> {
+    if (!environments.length) return of(environments);
+    return forkJoin(
+      environments.map((environment) =>
+        environment.dbServers || environment.dbServer
+          ? of(environment)
+          : this.githubReader
+              .getEnvironmentSummary(target.projectId, environment.id)
+              .pipe(
+                map(
+                  (summary): IEnvironmentFull => ({
+                    ...environment,
+                    dbServers: (summary.dbServers ?? []).map((server) => ({
+                      id: server.id,
+                      driver: server.driver,
+                      host: server.host,
+                      ...(server.port !== undefined
+                        ? { port: server.port }
+                        : {}),
+                      ...(server.path !== undefined
+                        ? { path: server.path }
+                        : {}),
+                      catalogs: server.catalogs,
+                    })),
+                  }),
+                ),
+                // A missing or unreadable file only loses that environment's
+                // catalog rows, never the environment list itself.
+                catchError(() => of(environment)),
+              ),
       ),
     );
   }
@@ -844,9 +898,6 @@ export class ServersPageComponent implements OnDestroy {
     this.catalogError.set(undefined);
   }
 }
-
-const isCatalogueUnavailable = (error: unknown): boolean =>
-  [401, 403, 404].includes((error as { status?: number } | null)?.status ?? 0);
 
 const serverId = (dbServer: IDbServer): string => serverKey(dbServer);
 
