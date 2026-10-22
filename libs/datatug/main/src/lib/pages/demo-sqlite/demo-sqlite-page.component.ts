@@ -1,3 +1,4 @@
+import { demoLogEvidenceMapping } from '../demo-logs/demo-log-source-adapter';
 import { ProjectCopyOfferComponent } from '../../project/new-project/project-copy-offer.component';
 // /demo/sqlite/:dataset — "Explore SQLite in DataTug" from a DemoDB.dev database page.
 //
@@ -205,7 +206,7 @@ const installLabels: Record<DemoDbInstallStep, string> = {
                 [basePath]="basePath()"
                 [table]="tableParam()"
                 [focusRecordId]="focusRecordId()"
-                [relatedEvidence]="entry()?.dataset === 'northwind' ? northwindLogMapping : undefined"
+                [relatedEvidence]="relatedLogEvidence()"
                 [statusText]="persistent() ? 'Local copy ready' : 'Local copy (memory only)'"
                 [resetNote]="resetNote()"
               />
@@ -253,7 +254,7 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
       return value && /^\d{1,10}$/.test(value) ? value : undefined;
     })() },
   );
-  protected readonly northwindLogMapping = { collection: 'Orders', field: 'OrderID', path: '/demo/logs' } as const;
+  protected readonly relatedLogEvidence = computed(() => demoLogEvidenceMapping(this.entry()?.dataset));
   protected readonly entry = computed<DemoSqliteCatalogEntry | undefined>(() => findDemoSqliteDataset(this.datasetParam()));
   protected readonly session = signal<LocalDemoDbSession | undefined>(undefined);
   protected readonly state = computed<LocalDemoDbState>(() => this.session()?.state() ?? { kind: 'checking' });

@@ -89,7 +89,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
     ]),
   });
   await page
-    .getByRole('button', { name: 'Clear order and correlation filters' })
+    .getByRole('button', { name: 'Clear identifier and correlation filters' })
     .click();
   await page.getByRole('button', { name: 'Find evidence' }).click();
   await expect(page).toHaveURL(/\/demo\/logs\?order=$/);

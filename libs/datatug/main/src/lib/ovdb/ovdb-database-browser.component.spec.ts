@@ -1,7 +1,8 @@
 import { TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { OvdbRecordEditorComponent } from '../pages/signed-in/env-db-table/ovdb-record-editor/ovdb-record-editor.component';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router, RouterLink } from '@angular/router';
+import { demoLogEvidenceMapping } from '../pages/demo-logs/demo-log-source-adapter';
 import { describe, expect, it, vi } from 'vitest';
 import { demoSqliteCatalog } from '../queries/demo-sqlite-catalog';
 import { localOvdbFetchFor, MemorySqliteDatabase } from '../demo-sqlite/local-demodb.spec-helper';
@@ -42,6 +43,33 @@ async function setup(table?: string, options: {
 }
 
 describe('OvdbDatabaseBrowserComponent', () => {
+  it.each([
+    ['Orders', 'OrderID', 11045, 'order'],
+    ['Samples', 'SampleKey', 'sample A&B/7', 'sample'],
+  ] as const)('carries the exact selected %s record through its source-owned query key', async (collection, field, value, queryParam) => {
+    const database = new MemorySqliteDatabase({ tables: { [collection]: {
+      columns: [{ name: field, declaredType: typeof value === 'number' ? 'INTEGER' : 'TEXT', notNull: true, primaryKeyPosition: 1 }],
+      primaryKey: [field], foreignKeys: [],
+    } } }, () => ({ [collection]: [{ [field]: value }] }));
+    const { fixture, q, settle } = await setup(collection, { database });
+    fixture.componentRef.setInput('relatedEvidence', collection === 'Orders'
+      ? demoLogEvidenceMapping('northwind')
+      : { collection, field, path: '/demo/logs', queryParam });
+    await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
+    q('row-0')?.click(); await settle();
+    const link = fixture.debugElement.queryAll(By.directive(RouterLink)).find(item => item.nativeElement.textContent.trim() === 'Related log evidence');
+    expect(link).toBeDefined();
+    const directive = link?.injector.get(RouterLink);
+    if (!directive?.urlTree) throw new Error('Missing rendered related evidence target');
+    const url = new URL(TestBed.inject(Router).serializeUrl(directive.urlTree), 'https://example.test');
+    expect(url.pathname).toBe('/demo/logs');
+    expect([...url.searchParams.keys()]).toEqual([queryParam]);
+    expect(url.searchParams.get(queryParam)).toBe(String(value));
+    fixture.componentRef.setInput('relatedEvidence', { collection, field, path: '/demo/logs' });
+    await settle();
+    expect(fixture.debugElement.queryAll(By.directive(RouterLink)).some(item => item.nativeElement.textContent.trim() === 'Related log evidence')).toBe(false);
+  });
+
   it('creates a typed record, selects it, keeps duplicate errors in the form, and resets', async () => {
     const { fixture, q, settle, local, component } = await setup('Artist');
     await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
