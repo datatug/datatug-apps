@@ -137,9 +137,13 @@ export class BoardQueryResults implements OnDestroy {
   private readonly now: () => number;
   private readonly partition: boolean;
 
+  // Constructor injection on purpose: the cache is also built directly with
+  // `new BoardQueryResults(options)` (project-scoped factory, tests), where
+  // `inject()` has no injection context.
   constructor(
     @Optional()
     @Inject(BOARD_QUERY_RESULTS_OPTIONS)
+    // eslint-disable-next-line @angular-eslint/prefer-inject
     options?: BoardQueryResultsOptions | null,
   ) {
     this.maxEntries = options?.maxEntries ?? 12;

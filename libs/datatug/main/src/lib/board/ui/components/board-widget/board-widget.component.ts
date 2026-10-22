@@ -244,9 +244,10 @@ export class BoardWidgetComponent {
             : String(source[f.column]),
     }));
   });
-  readonly fieldsSourceIsParameter = computed(
-    () => !!this.fieldsWidgetDef()?.source && 'parameter' in this.fieldsWidgetDef()!.source,
-  );
+  readonly fieldsSourceIsParameter = computed(() => {
+    const source = this.fieldsWidgetDef()?.source;
+    return !!source && 'parameter' in source;
+  });
   readonly cardQueryWidget = computed(() =>
     ['SQL', 'chart', 'fields'].includes(this.widgetKind() ?? ''),
   );

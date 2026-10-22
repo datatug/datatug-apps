@@ -54,4 +54,19 @@ describe('nested tab path', () => {
       widgetAtTabPath(leaf, Array(MAX_NESTED_TAB_DEPTH + 1).fill('id:a')),
     ).toBeUndefined();
   });
+
+  it('selects a stacked widget by position after its tab key', () => {
+    const a: BoardWidget = { name: 'text', data: { markdown: 'a' } };
+    const b: BoardWidget = { name: 'text', data: { markdown: 'b' } };
+    const widget: BoardWidget = {
+      name: 'tabs',
+      data: { tabs: [{ id: 'one', title: 'One', widgets: [a, b] }, { id: 'two', title: 'Two', widget: leaf }] },
+    };
+    expect(widgetAtTabPath(widget, ['id:one', 'w:0'])).toBe(a);
+    expect(widgetAtTabPath(widget, ['id:one', 'w:1'])).toBe(b);
+    expect(widgetAtTabPath(widget, ['id:one', 'w:2'])).toBeUndefined();
+    expect(widgetAtTabPath(widget, ['id:two', 'w:0'])).toBeUndefined();
+    expect(widgetAtTabPath(widget, ['w:0'])).toBeUndefined();
+    expect(widgetAtTabPath(widget, ['id:two'])).toBe(leaf);
+  });
 });

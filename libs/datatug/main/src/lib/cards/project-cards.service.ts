@@ -222,6 +222,8 @@ export class ProjectCardsService {
     };
     if (isSharedProjectRef(ref))
       return this.hosted.cards(ref, environment || '').pipe(map(normalise));
+    if (ref.projectApi !== undefined)
+      return this.qualified.cards<unknown>(ref).pipe(map(normalise));
     if (isGithub(ref)) return this.githubList(ref);
     if (this.isLocalAgent(ref))
       return this.store
@@ -336,6 +338,8 @@ export class ProjectCardsService {
         ),
         map((snapshot) => snapshot.card),
       );
+    if (ref.projectApi !== undefined)
+      return notFound(this.qualified.card<unknown>(ref, id)).pipe(map(checked));
     if (isGithub(ref))
       return defer(() => of(githubProjectAddressForRef(ref))).pipe(
         switchMap((project) => this.githubRead(project, id)),

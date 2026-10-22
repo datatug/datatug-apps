@@ -1,8 +1,11 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- negative tests mutate untyped JSON */
 import {
+  parseProjectCard,
   validateHostedBoardDefinition,
   validateProjectCard,
 } from './board-definition-edit';
 import { Board } from './board';
+import { validateBoardPresentation } from './board-presentation';
 
 const sql = (queryId = 'customers/by-id') => ({
   name: 'SQL',
@@ -134,5 +137,28 @@ describe('validateHostedBoardDefinition with project cards', () => {
     const b = board({ widget: sql() });
     b.parameters = [{ id: 'p', type: 'string', match: [{ column: 'a' }] } as never];
     expect(() => validateHostedBoardDefinition(b)).toThrow();
+  });
+});
+
+describe('parseProjectCard and presentation of widgets[]', () => {
+  it('parses a card body and rejects unsafe number lexemes', () => {
+    expect(parseProjectCard(JSON.stringify(card())).id).toBe('customer');
+    const raw = JSON.stringify(card()).replace('"isRequired":true', '"isRequired":true,"maxLength":9007199254740993');
+    expect(() => parseProjectCard(raw)).toThrow('numeric precision');
+    expect(() => parseProjectCard('x'.repeat(300 * 1024))).toThrow('read limit');
+  });
+  it('checks charts inside widgets[] for duplicate selection producers', () => {
+    const chart = (id: string) => ({
+      name: 'chart',
+      data: {
+        sources: [{ id: 's', queryId: 'q' }],
+        chart: { type: 'bar', categoryColumn: 'a', valueColumn: 'b', selectionId: id },
+      },
+    });
+    const board = (widgets: unknown[]) => ({
+      rows: [{ cards: [{ widget: { name: 'tabs', data: { tabs: [{ title: 't', widgets }] } } }] }],
+    });
+    expect(validateBoardPresentation(board([chart('x'), chart('y')]))).toEqual(['x', 'y']);
+    expect(() => validateBoardPresentation(board([chart('x'), chart('x')]))).toThrow();
   });
 });

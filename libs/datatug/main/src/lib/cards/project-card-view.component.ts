@@ -22,16 +22,19 @@ export function cardQueryIds(card: Pick<ProjectCard, 'widget'>): string[] {
   const ids = new Set<string>();
   const visit = (widget: unknown, depth = 0): void => {
     if (!widget || typeof widget !== 'object' || depth > 8) return;
-    const { name, data } = widget as { name?: string; data?: any };
-    if (name === 'SQL' && typeof data?.sql?.queryId === 'string')
-      ids.add(data.sql.queryId);
-    else if (name === 'fields' && typeof data?.source?.queryId === 'string')
-      ids.add(data.source.queryId);
-    else if (name === 'chart' && Array.isArray(data?.sources))
-      for (const s of data.sources)
+    const { name, data } = widget as {
+      name?: string;
+      data?: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+    };
+    if (name === 'SQL' && typeof data?.['sql']?.queryId === 'string')
+      ids.add(data['sql'].queryId);
+    else if (name === 'fields' && typeof data?.['source']?.queryId === 'string')
+      ids.add(data['source'].queryId);
+    else if (name === 'chart' && Array.isArray(data?.['sources']))
+      for (const s of data['sources'])
         if (typeof s?.queryId === 'string') ids.add(s.queryId);
-    if (name === 'tabs' && Array.isArray(data?.tabs))
-      for (const tab of data.tabs) {
+    if (name === 'tabs' && Array.isArray(data?.['tabs']))
+      for (const tab of data['tabs']) {
         visit(tab?.widget, depth + 1);
         if (Array.isArray(tab?.widgets))
           for (const w of tab.widgets) visit(w, depth + 1);
@@ -49,7 +52,10 @@ export function cardQueryIds(card: Pick<ProjectCard, 'widget'>): string[] {
  * Required parameters without a value show an inline form instead of
  * running any query; submitting emits {@link parameterValuesChange}.
  */
+// The selector is the one the cards pages and the cell side panel are written
+// against; the datatug- prefix matches the other shared datatug UI selectors.
 @Component({
+  // eslint-disable-next-line @angular-eslint/component-selector
   selector: 'datatug-project-card-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, IonButton, IonInput, IonItem, IonToggle, BoardCardComponent],
