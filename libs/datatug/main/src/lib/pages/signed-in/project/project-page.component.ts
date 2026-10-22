@@ -72,11 +72,21 @@ import { ErrorStateComponent } from '../../../components/error-state/error-state
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
+import {
+  isHostedReadRefused,
+  isSignedOut,
+} from '../../../services/project/hosted-read-refused';
 
-/** A read that failed only because nobody is signed in: a quiet "sign in" note, not a toast. */
-function signedOutReadFailure(error: unknown): boolean {
-  const message = (error as { message?: unknown } | null)?.message ?? error;
-  return /not authenticated yet|no Firebase ID token/i.test(String(message));
+/**
+ * The words for a read the hosted API declined to answer, before the shared friendly mapping sees it: signed out gets
+ * a quiet "sign in" note, a refused actor or a missing resource (403/404) says access is needed. Undefined for any
+ * other failure, which the error state words itself.
+ */
+function refusedReadHint(error: unknown, what: string): string | undefined {
+  if (isSignedOut(error)) return `Sign in to see ${what}.`;
+  if (isHostedReadRefused(error))
+    return `Seeing ${what} needs access to this project in DataTug.`;
+  return undefined;
 }
 
 @Component({
@@ -341,11 +351,9 @@ export class ProjectPageComponent
               this.environmentFailure.set(error);
               this.environmentErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  (signedOutReadFailure(error)
-                    ? 'Sign in to see environments.'
-                    : undefined),
+                  refusedReadHint(error, 'environments'),
               );
-              if (!signedOutReadFailure(error)) {
+              if (!isSignedOut(error)) {
                 this.errorLogger.logError(
                   error,
                   'Failed to load overview environments',
@@ -365,11 +373,9 @@ export class ProjectPageComponent
               this.boardFailure.set(error);
               this.boardErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  (signedOutReadFailure(error)
-                    ? 'Sign in to see boards.'
-                    : undefined),
+                  refusedReadHint(error, 'boards'),
               );
-              if (!signedOutReadFailure(error)) {
+              if (!isSignedOut(error)) {
                 this.errorLogger.logError(
                   error,
                   'Failed to load overview boards',
@@ -389,11 +395,9 @@ export class ProjectPageComponent
               this.entityFailure.set(error);
               this.entityErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  (signedOutReadFailure(error)
-                    ? 'Sign in to see entities.'
-                    : undefined),
+                  refusedReadHint(error, 'entities'),
               );
-              if (!signedOutReadFailure(error)) {
+              if (!isSignedOut(error)) {
                 this.errorLogger.logError(
                   error,
                   'Failed to load overview entities',

@@ -931,6 +931,41 @@ describe('ProjectPage overview lists', () => {
     );
   });
 
+  it.each([
+    ['a 401', { status: 401 }, 'Sign in to see environments.', false],
+    ['a 403', { status: 403 }, 'Seeing environments needs access to this project in DataTug.', true],
+    ['an outage', { status: 503 }, undefined, true],
+  ])('words %s on the overview environments read before the shared mapping, and logs only real failures', async (_name, error, hint, logged) => {
+    const logError = vi.fn();
+    await TestBed.configureTestingModule({
+      imports: [ProjectPageComponent],
+      schemas: [CUSTOM_ELEMENTS_SCHEMA],
+      providers: [
+        ...baseProviders({ logError, watchProjectSummary: vi.fn(() => of()) }),
+        {
+          provide: ProjectAssetsReadService,
+          useValue: {
+            boards: vi.fn(() => of([])),
+            environments: vi.fn(() => throwError(() => error)),
+            entities: vi.fn(() => of([])),
+          },
+        },
+      ],
+    })
+      .overrideComponent(ProjectPageComponent, {
+        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+      })
+      .compileComponents();
+    const page = TestBed.createComponent(ProjectPageComponent)
+      .componentInstance as unknown as {
+      setProjRef(ref: { storeId: string; projectId: string }): void;
+      environmentErrorMessage: { (): string | undefined };
+    };
+    page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
+    expect(page.environmentErrorMessage()).toBe(hint);
+    expect(logError.mock.calls.some(([, what]) => what === 'Failed to load overview environments')).toBe(logged);
+  });
+
   it('drops delayed data from the previous project and navigates using the current project', async () => {
     const oldEnvironments = new Subject<{ id: string; title: string }[]>();
     const oldEntities = new Subject<{ id: string; title: string }[]>();
