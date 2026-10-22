@@ -130,6 +130,14 @@ export class BoardCardTabService {
         outline: 3px solid #2563eb;
         outline-offset: 2px;
       }
+      .visually-hidden {
+        position: absolute;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+        clip-path: inset(50%);
+        white-space: nowrap;
+      }
     `,
   ],
 })

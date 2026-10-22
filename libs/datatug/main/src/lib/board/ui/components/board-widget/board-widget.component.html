@@ -158,9 +158,11 @@
   @case ('chart') {
     <div class="ion-padding">
       <div class="chart-heading">
-        @if (cardMode() && chartWidgetDef()?.title) {
-          <!-- Card mode has no header toolbar, so the chart keeps its title in the body. -->
-          <p>{{ chartWidgetDef()?.title }}</p>
+        @if (cardMode() && chartWidgetDef()?.title; as title) {
+          <!-- Card mode has no header toolbar; repeat the chart title only when the card title differs. -->
+          @if (title !== cardTitle()) {
+            <p>{{ title }}</p>
+          }
         }
         @if (chartWidgetDef()?.chart?.type === 'bar-race') {
           <div
@@ -202,10 +204,34 @@
           <p role="alert">{{ error }}</p>
         }
       }
-      @if (cardMode() && runError() && !running()) {
-        <ion-button size="small" fill="outline" (click)="retry()"
-          >Retry</ion-button
-        >
+      @if (cardMode() && !independent()) {
+        <!-- Card mode has no header toolbar, so the chart keeps its run and open actions in the body. Independent charts run their sources separately and have neither. -->
+        <div class="card-chart-actions">
+          <ion-button
+            size="small"
+            fill="outline"
+            color="medium"
+            [disabled]="
+              running() ||
+              definitionLoading() ||
+              !definition() ||
+              !!unsupportedReason()
+            "
+            [attr.aria-label]="primaryActionLabel() + ' · ' + displayTitle()"
+            (click)="runError() ? retry() : run()"
+            >{{ primaryActionLabel() }}</ion-button
+          >
+          @if (queryUrlTree(); as tree) {
+            <ion-button
+              size="small"
+              fill="clear"
+              color="medium"
+              [routerLink]="tree"
+              [attr.aria-label]="'Open saved query · ' + displayTitle()"
+              >Open saved query</ion-button
+            >
+          }
+        </div>
       }
       @if (comparisonCaption(); as caption) { <p class="comparison-caption">{{ displayTitle() }} · {{ caption }}</p> }
       @if (evidenceKind()) {
@@ -324,9 +350,11 @@
   @case ('SQL') {
     <div class="ion-padding">
       @if (cardMode()) {
-        <!-- Card mode has no header toolbar: the title stays in the body and runs start by themselves. -->
-        @if (sqlWidgetDef()?.title) {
-          <p>{{ sqlWidgetDef()?.title }}</p>
+        <!-- Card mode has no header toolbar: a title that differs from the card's stays in the body and runs start by themselves. -->
+        @if (sqlWidgetDef()?.title; as title) {
+          @if (title !== cardTitle()) {
+            <p>{{ title }}</p>
+          }
         }
         @if (definitionLoading() || running()) {
           <ion-skeleton-text [animated]="true" style="width: 80%" />
