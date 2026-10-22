@@ -11,6 +11,23 @@ import type {
   IHttpHeader,
   IHttpQueryRequest,
 } from '../../../models/definition/query-def';
+import {
+  httpTemplatePlaceholders,
+  substituteHttpTemplate,
+  type HttpParameterDecl,
+} from '../../http-template';
+import type { HttpRunParameterRecord } from '../../http-parameter-binding';
+
+/**
+ * The declared parameters of a parameterised HTTP query and the resolved,
+ * coerced value of each for this run (http-query-parameters REQ:substitution-location).
+ */
+export interface IHttpRunTemplate {
+  readonly parameters: readonly (HttpParameterDecl & { readonly type: string })[];
+  readonly values: Readonly<Record<string, string>>;
+  /** What history keeps of the run's parameters: no credential values. */
+  readonly record?: readonly HttpRunParameterRecord[];
+}
 
 export type HttpRunVia = 'browser' | 'server';
 
@@ -24,6 +41,8 @@ export interface IHttpRunResult {
   readonly truncated: boolean;
   readonly sizeBytes: number;
   readonly durationMs: number;
+  /** Parameter ids, sources and non-credential values of a parameterised run. */
+  readonly parameters?: readonly HttpRunParameterRecord[];
 }
 
 /** The fetch call failed before any response (network error, CORS block, abort). */
@@ -100,6 +119,49 @@ function serverErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'DataTug server error.';
 }
 
+function templateOf(request: IHttpQueryRequest) {
+  const method = (request.method ?? 'GET').toUpperCase();
+  return {
+    method,
+    url: request.url,
+    headers: runnableHeaders(request),
+    body: methodTakesBody(method) ? (request.body ?? '') : '',
+  };
+}
+
+/** The request with every placeholder substituted (the browser run). Throws a ServerRunFailedError naming the parameter. */
+export function substitutedRequest(
+  request: IHttpQueryRequest,
+  template: IHttpRunTemplate,
+): IHttpQueryRequest {
+  try {
+    const out = substituteHttpTemplate(
+      templateOf(request),
+      template.parameters,
+      template.values,
+    );
+    return {
+      ...request,
+      url: out.url,
+      headers: out.headers ?? [],
+      ...(out.body !== undefined ? { body: out.body } : {}),
+    };
+  } catch (e) {
+    throw new ServerRunFailedError(e instanceof Error ? e.message : 'The request template is not valid.');
+  }
+}
+
+/** Template-mode parameters: only those the sent request uses, with their coerced text. */
+function serverParameters(
+  runRequest: ReturnType<typeof templateOf>,
+  template: IHttpRunTemplate,
+): { id: string; type: string; value: string }[] {
+  const used = new Set(httpTemplatePlaceholders(runRequest).map((p) => p.name));
+  return template.parameters
+    .filter((p) => used.has(p.id))
+    .map((p) => ({ id: p.id, type: p.type, value: template.values[p.id] ?? '' }));
+}
+
 /**
  * Runs an HTTP query either from the browser (`fetch`) or through the DataTug
  * server proxy (`POST datatug/http/run`). Run headers may carry credentials:
@@ -109,10 +171,18 @@ function serverErrorMessage(error: unknown): string {
 export class HttpRunService {
   private readonly api = inject(DatatugApiService);
 
-  run(request: IHttpQueryRequest, via: HttpRunVia): Promise<IHttpRunResult> {
-    return via === 'server'
-      ? this.runViaServer(request)
-      : this.runViaBrowser(request);
+  async run(
+    request: IHttpQueryRequest,
+    via: HttpRunVia,
+    template?: IHttpRunTemplate,
+  ): Promise<IHttpRunResult> {
+    const result =
+      via === 'server'
+        ? await this.runViaServer(request, template)
+        : await this.runViaBrowser(
+            template ? substitutedRequest(request, template) : request,
+          );
+    return template?.record ? { ...result, parameters: template.record } : result;
   }
 
   async runViaBrowser(request: IHttpQueryRequest): Promise<IHttpRunResult> {
@@ -158,18 +228,32 @@ export class HttpRunService {
     };
   }
 
-  async runViaServer(request: IHttpQueryRequest): Promise<IHttpRunResult> {
-    assertRunnableUrl(request.url);
+  /**
+   * Runs through the DataTug server. A parameterised request goes in template
+   * mode: the server substitutes it itself and checks the FINAL URL.
+   */
+  async runViaServer(
+    request: IHttpQueryRequest,
+    template?: IHttpRunTemplate,
+  ): Promise<IHttpRunResult> {
+    if (template) assertRunnableUrl(substitutedRequest(request, template).url);
+    else assertRunnableUrl(request.url);
     const method = (request.method ?? 'GET').toUpperCase();
+    const runRequest = {
+      method,
+      url: request.url.trim(),
+      headers: runnableHeaders(request),
+      body: methodTakesBody(method) ? (request.body ?? '') : '',
+    };
     let response: IServerRunResponse;
     try {
       response = await firstValueFrom(
-        this.api.post<IServerRunResponse>('datatug/http/run', {
-          method,
-          url: request.url.trim(),
-          headers: runnableHeaders(request),
-          body: methodTakesBody(method) ? (request.body ?? '') : '',
-        }),
+        this.api.post<IServerRunResponse>(
+          'datatug/http/run',
+          template
+            ? { ...runRequest, parameters: serverParameters(runRequest, template) }
+            : runRequest,
+        ),
       );
     } catch (e) {
       throw new ServerRunFailedError(serverErrorMessage(e));

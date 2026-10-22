@@ -182,4 +182,62 @@ describe('HttpRunService', () => {
       'blocked target',
     );
   });
+
+  describe('parameterised runs (http-query-parameters)', () => {
+    const tmplRequest: IHttpQueryRequest = {
+      queryType: QueryType.HTTP,
+      url: 'https://carrier.demodb.dev/v1/bookings?request_id={request_id}',
+      method: 'GET',
+      headers: [{ name: 'Authorization', value: 'Bearer {token}' }],
+    };
+    const template = {
+      parameters: [
+        { id: 'request_id', type: 'string', isRequired: true },
+        { id: 'token', type: 'string', isRequired: true, isCredential: true },
+        { id: 'unused_cred', type: 'string', isRequired: true, isCredential: true },
+      ],
+      values: { request_id: 'request 11038', token: 's3', unused_cred: 'x' },
+      record: [{ id: 'request_id', source: 'row' as const, value: 'request 11038' }, { id: 'token', source: 'typed' as const }],
+    };
+
+    it('substitutes in the browser and keeps the redacted record', async () => {
+      const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const result = await service.run(tmplRequest, 'browser', template);
+      const [url, init] = fetchMock.mock.calls[0];
+      expect(url).toBe('https://carrier.demodb.dev/v1/bookings?request_id=request+11038');
+      expect((init.headers as Headers).get('authorization')).toBe('Bearer s3');
+      expect(result.parameters).toEqual(template.record);
+    });
+
+    it('sends the template and used parameters to the server (template mode)', async () => {
+      post.mockReturnValue(of({ status: 200, body: '' }));
+      await service.run(tmplRequest, 'server', template);
+      const [path, payload] = post.mock.calls[0];
+      expect(path).toBe('datatug/http/run');
+      expect(payload).toEqual({
+        method: 'GET',
+        url: tmplRequest.url,
+        headers: [{ name: 'Authorization', value: 'Bearer {token}' }],
+        body: '',
+        parameters: [
+          { id: 'request_id', type: 'string', value: 'request 11038' },
+          { id: 'token', type: 'string', value: 's3' },
+        ],
+      });
+    });
+
+    it('fails before sending when substitution fails', async () => {
+      const fetchMock = vi.fn();
+      vi.stubGlobal('fetch', fetchMock);
+      await expect(
+        service.run({ ...tmplRequest, url: 'http://{request_id}/' }, 'browser', template),
+      ).rejects.toBeInstanceOf(ServerRunFailedError);
+      await expect(
+        service.run({ ...tmplRequest, url: 'http://{request_id}/' }, 'server', template),
+      ).rejects.toBeInstanceOf(ServerRunFailedError);
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(post).not.toHaveBeenCalled();
+    });
+  });
 });

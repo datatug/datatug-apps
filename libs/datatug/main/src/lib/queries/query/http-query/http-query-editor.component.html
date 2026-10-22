@@ -63,6 +63,169 @@
       >
     </ion-item>
   }
+  @if (legacyPlaceholders().length) {
+    <ion-item lines="none" class="http-legacy-note">
+      <ion-icon slot="start" name="information-circle-outline" color="medium" />
+      <ion-note class="ion-text-wrap http-note-text"
+        >{{ legacyPlaceholders().map(braced).join(', ') }} looks like a
+        parameter. Until you declare it, the request is sent exactly as
+        typed.</ion-note
+      >
+      <ion-button slot="end" fill="outline" size="small" (click)="declareAll()"
+        >Declare</ion-button
+      >
+    </ion-item>
+  }
+  @if (hasParameters()) {
+    <section class="http-params" aria-label="Parameters">
+      <div class="http-params-head">
+        <h3>Parameters</h3>
+        <span class="http-params-hint">{{
+          rowBinding()?.label
+            ? 'Bound from ' + rowBinding()!.label
+            : 'Typed value, then row, board, context bag, default'
+        }}</span>
+      </div>
+      @for (p of parameters(); track p.id) {
+        <div
+          class="http-param"
+          [class.http-param-unused]="unusedIds().has(p.id)"
+          [attr.data-param]="p.id"
+        >
+          <div class="http-param-line">
+            <code class="http-param-id">{{ braced(p.id) }}</code>
+            @if (p.isCredential) {
+              <ion-icon
+                name="lock-closed-outline"
+                color="warning"
+                aria-label="Credential: typed for each run, never saved or recorded"
+              />
+            }
+            <ion-select
+              class="http-param-type"
+              aria-label="Type of {{ p.id }}"
+              interface="popover"
+              [value]="p.type"
+              (ionChange)="setParameterType(p.id, $event)"
+            >
+              @for (t of parameterTypes; track t) {
+                <ion-select-option [value]="t">{{ t }}</ion-select-option>
+              }
+            </ion-select>
+            <ion-toggle
+              class="http-param-required"
+              labelPlacement="end"
+              [checked]="!!p.isRequired"
+              [disabled]="!!p.isCredential"
+              (ionChange)="setRequired(p.id, $event)"
+              >Required</ion-toggle
+            >
+            <ion-button
+              class="http-param-remove"
+              fill="clear"
+              color="medium"
+              size="small"
+              aria-label="Remove parameter {{ p.id }}"
+              (click)="removeParameter(p.id)"
+            >
+              <ion-icon slot="icon-only" name="close-outline" />
+            </ion-button>
+          </div>
+          <div class="http-param-fields">
+            <ion-input
+              class="http-param-value"
+              fill="outline"
+              labelPlacement="stacked"
+              [label]="p.isCredential ? 'Value (typed each run)' : 'Value for this run'"
+              [type]="p.isCredential ? 'password' : 'text'"
+              [placeholder]="resolvedById().get(p.id)?.rendered ?? ''"
+              [value]="typedValues()[p.id] ?? ''"
+              (ionInput)="setTypedValue(p.id, $event)"
+            />
+            @if (!p.isCredential) {
+              <ion-input
+                class="http-param-default"
+                fill="outline"
+                labelPlacement="stacked"
+                label="Default"
+                [value]="defaultText(p)"
+                (ionInput)="setDefault(p.id, $event)"
+              />
+              <ion-input
+                class="http-param-meta"
+                fill="outline"
+                labelPlacement="stacked"
+                label="Meaning (Entity.field)"
+                placeholder="Order.id"
+                [value]="metaText(p)"
+                (ionInput)="setMeta(p.id, $event)"
+              />
+            }
+          </div>
+          <div class="http-param-status">
+            @if (resolvedById().get(p.id); as r) {
+              @if (r.source) {
+                <span class="http-origin" [attr.data-source]="r.source">{{
+                  sourceLabel[r.source]
+                }}</span>
+                <span class="http-origin-value">{{ valueHint(p) }}</span>
+              }
+              @if (r.error) {
+                <span class="http-param-error" role="alert">{{ r.error }}</span>
+              }
+              @if (r.refused?.length) {
+                <span class="http-param-refused"
+                  >Not taken from {{ r.refused!.join(', ') }}: credentials are typed.</span
+                >
+              }
+            }
+            @if (unusedIds().has(p.id)) {
+              <span class="http-param-error">Not used in the request.</span>
+            }
+          </div>
+        </div>
+      }
+      @for (id of undeclared(); track id) {
+        <div class="http-param http-param-undeclared">
+          <div class="http-param-line">
+            <code class="http-param-id">{{ braced(id) }}</code>
+            <span class="http-param-error">used but not declared</span>
+            <ion-button size="small" fill="outline" (click)="declare(id)"
+              >Declare</ion-button
+            >
+          </div>
+        </div>
+      }
+      @if (templateProblem(); as problem) {
+        <p class="http-template-problem" role="alert">{{ problem }}</p>
+      }
+      @if (preview(); as pv) {
+        @if (pv.error) {
+          <p class="http-template-problem" role="alert">{{ pv.error }}</p>
+        } @else {
+          <div class="http-preview" aria-label="Resolved request">
+            <span class="http-preview-label">Sends</span>
+            <code class="http-preview-url">{{ method() }} {{ pv.url }}</code>
+            @for (h of pv.headers; track $index) {
+              <code class="http-preview-header">{{ h.name }}: {{ h.value }}</code>
+            }
+            @if (pv.body) {
+              <code class="http-preview-body">{{ pv.body }}</code>
+            }
+          </div>
+        }
+      }
+    </section>
+  }
+  @if (cliIncompatible()) {
+    <ion-item lines="none" class="http-cli-note">
+      <ion-icon slot="start" name="warning-outline" color="medium" />
+      <ion-note class="ion-text-wrap http-note-text"
+        >The DataTug CLI runs only this query's URL, as a GET: the method,
+        headers and body are used in the web app only.</ion-note
+      >
+    </ion-item>
+  }
   <ion-segment
     aria-label="Request section"
     [value]="requestTab()"
@@ -243,6 +406,30 @@
         >
       }
     </ion-item>
+    @if (response.parameters?.length) {
+      <ion-item lines="full" class="http-run-record">
+        <div class="http-run-record-items">
+            @for (rp of response.parameters; track rp.id; let last = $last) {
+              <span
+                >{{ rp.id }}
+                @if (rp.value !== undefined) {
+                  = {{ rp.value }}
+                } @else {
+                  (hidden)
+                }
+                @if (rp.source) {
+                  <span class="http-origin" [attr.data-source]="rp.source">{{
+                    sourceLabel[rp.source]
+                  }}</span>
+                }
+                @if (!last) {
+                  ·
+                }
+              </span>
+            }
+        </div>
+      </ion-item>
+    }
     <ion-segment
       aria-label="Response section"
       [value]="responseTab()"

@@ -534,6 +534,9 @@
       <sneat-datatug-http-query-editor
         [request]="httpReq"
         (requestChange)="httpRequestChanged($event)"
+        [parameters]="httpParameters"
+        (parametersChange)="httpParametersChanged($event)"
+        [rowBinding]="httpRowBinding()"
       />
     }
   } @else if (isTextQueryWorkspace()) {
@@ -1883,6 +1886,11 @@
       }
       </div>
     </div>
+    <sneat-datatug-http-row-action
+      [project]="project"
+      [row]="httpActionRow()"
+      [checkedRows]="httpCheckedRows()"
+    />
     @if (resultChartUnavailableText(); as chartUnavailable) {
       <p class="ion-padding-horizontal" role="status" data-testid="chart-unavailable">{{ chartUnavailable }}</p>
     }

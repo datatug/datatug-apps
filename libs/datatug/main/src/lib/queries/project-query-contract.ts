@@ -21,6 +21,8 @@ export interface ProjectQueryWire {
   readonly draft?: boolean;
   readonly connectionId?: string;
   readonly federation?: IQueryDef['federation'];
+  /** Declared parameters of an HTTP query (http-query-parameters). */
+  readonly parameters?: IQueryDef['parameters'];
 }
 
 export interface ProjectQueryHttpWire {
@@ -92,8 +94,11 @@ export function toProjectQueryWire(
     'connectionId',
     'federation',
     'semanticModel',
+    ...(query['request'].queryType === QueryType.HTTP ? ['parameters'] : []),
   ]);
   const isHttp = query['request'].queryType === QueryType.HTTP;
+  for (const p of (isHttp ? query.parameters : undefined) ?? [])
+    assertFields(p, ['id', 'type', 'title', 'defaultValue', 'isRequired', 'isCredential', 'meta']);
   assertFields(
     query['request'],
     isHttp
@@ -146,6 +151,9 @@ export function toProjectQueryWire(
     type: query['request'].queryType as ProjectQueryWire['type'],
     text,
     ...(httpRequest ? { http: httpWire(httpRequest) } : {}),
+    ...(httpRequest && query.parameters?.length
+      ? { parameters: query.parameters }
+      : {}),
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.connectionId !== undefined
       ? { connectionId: query.connectionId }

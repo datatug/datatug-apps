@@ -9,6 +9,13 @@ export interface IParameterDef {
   readonly minLength?: number;
   readonly isRequired?: boolean;
   readonly isMultiValue?: boolean;
+  /** Used when no source supplies a value (HTTP query parameters). */
+  readonly defaultValue?: ParameterValue;
+  /**
+   * An HTTP query parameter used only in credential headers: required, no
+   * default, typed for each run and never recorded (Core `isCredential`).
+   */
+  readonly isCredential?: boolean;
   readonly meta?: IEntityFieldRef;
   readonly lookup?: IParameterLookup;
 }

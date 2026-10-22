@@ -51,6 +51,8 @@ export interface IQueryState extends IQueryStateDto {
   readonly request?: IQueryRequest;
   /** Draft source configuration; kept separate from `def` until saved. */
   readonly federation?: IQueryDef['federation'];
+  /** Edited parameter declarations of an HTTP query; undefined = unchanged from `def`. */
+  readonly parameters?: IQueryDef['parameters'];
   /** Draft project source binding; empty string explicitly clears one. */
   readonly connectionId?: string;
   /** Visible TugQL author bindings kept with the shared unsaved editor draft. */
