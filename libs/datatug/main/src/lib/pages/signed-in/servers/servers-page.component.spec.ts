@@ -14,6 +14,7 @@ import { EnvironmentService } from '../../../services/unsorted/environment.servi
 import { IProjectRef } from '../../../core/project-context';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { IProjDbServerSummary } from '../../../models/definition/apis/database';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 // Every describe block below provides these two — `EnvironmentService` and
 // `ProjectService` — because the constructor unconditionally calls
@@ -51,13 +52,7 @@ describe('ServersPage', () => {
             setCurrent: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,
@@ -699,13 +694,7 @@ describe('ServersPage replaces "Loading..." once DB servers arrive (zoneless)', 
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: ProjectContextService, useValue: projectContextServiceMock },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,
@@ -805,13 +794,7 @@ describe("ServersPage clears the delete button's disabled state once deletion co
             setCurrent: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,
@@ -1049,13 +1032,7 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
             setCurrent: vi.fn(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ModalController, useValue: { create: vi.fn() } },
         {
           provide: NavController,

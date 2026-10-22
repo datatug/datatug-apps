@@ -1,11 +1,11 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
 import { EnvSelectorComponent } from './env-selector.component';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { IProjectContext } from '../../../../nav/nav-models';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 describe('EnvSelectorComponent', () => {
   let component: EnvSelectorComponent;
@@ -16,13 +16,7 @@ describe('EnvSelectorComponent', () => {
       imports: [EnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -83,13 +77,7 @@ describe('EnvSelectorComponent renders the current project/env once they arrive 
       imports: [EnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {

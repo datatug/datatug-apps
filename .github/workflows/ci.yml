@@ -289,7 +289,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
@@ -466,7 +466,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} -- --project=chromium
+          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream -- --project=chromium
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -568,7 +568,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -664,7 +664,7 @@ jobs:
       # prints per-host counts). The edited-copy Board -> Query acceptance uses the exact pinned Chinook bytes at its admitted
       # URL (WebKit's default context has no OPFS, so it asserts the in-memory behaviour). The 126.8 MB AdventureWorks
       # download is opt-in (DATATUG_E2E_ADVENTUREWORKS=1) and not run here. The same target also runs
-      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, plus a check that the DemoDB registry
+      # demo-sqlite-datasets.spec.ts (one smoke journey per catalog dataset, in Chromium, plus a check that the DemoDB registry
       # at demodb.dev and the DataTug catalog agree) and demo-sqlite-journey.spec.ts (DemoDB page -> CTA -> DataTug
       # /demo/sqlite/<dataset>, with the datatug.app origin mapped to this build and the committed DemoDB pages). The live-site
       # check is the manual workflow demodb-live-smoke.yml.
@@ -675,7 +675,7 @@ jobs:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
           test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = '7c67575a8313d67ecae364c1dd7164ee85c48ae0'
-          pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -755,7 +755,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}

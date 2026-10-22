@@ -31,6 +31,7 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { ProjectService } from '../../../services/project/project.service';
 import { AgentService } from '../../../services/repo/agent.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 @Component({ selector: 'sneat-datatug-sql', standalone: true, template: '' })
 class SqlEditorHostStub {
@@ -90,13 +91,7 @@ describe('EnvDbTablePage', () => {
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: activatedRouteStub(),
@@ -656,13 +651,7 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: routeStubWithDb('chinook-local'),
@@ -749,13 +738,7 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: routeStubWithDb('chinook-local'),
@@ -862,13 +845,7 @@ describe('EnvDbTablePage — table page states the applied limitations (J4)', ()
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: routeStubWithDb('chinook-local'),
@@ -990,13 +967,7 @@ describe('EnvDbTablePage — semantic columns wait for the security-context scop
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: activatedRouteStub(),
@@ -1089,13 +1060,7 @@ describe('EnvDbTablePage dependency injection', () => {
       imports: [EnvDbTablePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {

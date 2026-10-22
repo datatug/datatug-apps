@@ -10,6 +10,17 @@ For a group of related changes, keep them on one integration branch and PR. Run 
 
 There is no scheduled (nightly) CI run. Push, PR, and merge-group CI runs the offline browser and real-agent lanes and their deploy gate requires them together with build and unit tests; the one live-API test is `e2e-postgres-ovdb.yml` (below). Focused tests still run during development. Do not skip the required build, test, or coverage gates.
 
+## Keeping the suites fast
+
+Unit tests (`datatug-main`, `datatug-semantic`) share one module graph per worker (`isolate: false`, `moduleSharing` in `vite.config.base.ts`): Angular, Ionic and the app's modules are evaluated once per worker instead of once per spec file, which used to be most of the suite's run time. Two consequences for spec authors:
+
+- A spec file that calls `vi.mock`, `vi.doMock`, `vi.doUnmock` or `vi.resetModules` is found automatically and runs isolated, in the separate `test-isolated` target that `test` depends on. It is slower, so prefer TestBed providers, injected fakes and `vi.stubGlobal` over module mocks. `test-focused` runs any chosen files isolated, as before.
+- Every file starts from a clean set of shared globals: real timers, no stubbed globals or envs, no active spies, empty storage, the real `window.history` at `/`, and an empty body (`resetSharedGlobals` in `libs/testing`). Any other global a spec replaces (a `window` property, a prototype method) must be restored by that spec.
+
+Shared test doubles live in `libs/datatug/main/src/lib/testing/` (for example `provideMockErrorLogger()`); reuse them instead of copying a mock into each spec. Domain fixtures stay in `*.spec-helper.ts` files next to the code they serve.
+
+Browser lanes run their tests in parallel workers unless the tests share state that cannot be partitioned. Wait for the event an assertion depends on (a request, `networkidle`, a visible element) instead of `waitForTimeout`. Run a behaviour once in the browser where it can differ, and once elsewhere; for example, the per-dataset DemoDB matrix runs in Chromium only, while the OPFS and in-memory storage paths run in all three browsers.
+
 ## SpecScore status-only CI path
 
 CI starts with a dependency-free classifier and its fixture tests. It permits the cheap path only when the entire exact Git tree difference consists of status fields in existing SpecScore Idea, Feature, or Plan Markdown files and the corresponding status cells in their indexes. The classifier compares every other byte, rejects additions, deletions, renames, mode changes, binaries, and unknown revisions, and runs `specscore spec lint` before any application job can report success.

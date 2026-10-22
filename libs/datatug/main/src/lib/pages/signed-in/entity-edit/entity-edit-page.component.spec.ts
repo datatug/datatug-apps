@@ -2,7 +2,6 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { PopoverController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 import { of, Subject } from 'rxjs';
 
 import { EntityEditPageComponent } from './entity-edit-page.component';
@@ -10,6 +9,7 @@ import { DatatugNavContextService } from '../../../services/nav/datatug-nav-cont
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { IProjectContext } from '../../../nav/nav-models';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('EntityEditPage', () => {
   let component: EntityEditPageComponent;
@@ -20,13 +20,7 @@ describe('EntityEditPage', () => {
       imports: [EntityEditPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -94,13 +88,7 @@ describe('EntityEditPage re-targets the back button once the project arrives (zo
       imports: [EntityEditPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {

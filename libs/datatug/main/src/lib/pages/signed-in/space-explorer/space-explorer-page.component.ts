@@ -26,7 +26,7 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
-import { catchError, defer, map, of, switchMap } from 'rxjs';
+import { catchError, defer, map, of, startWith, switchMap } from 'rxjs';
 import { routingParamSpaceId } from '../../../core/datatug-routing-params';
 import {
   IExploreCollectionItem,
@@ -116,10 +116,14 @@ export class SpaceExplorerPageComponent {
     if (sub.length === 2 && sub[0] === 'ext') {
       return [...KNOWN_MODULE_COLLECTIONS];
     }
-    if (sub.length === 1 && sub[0] === 'ext') {
-      return [...KNOWN_EXT_MODULES];
-    }
     return [];
+  });
+
+  /** Well-known module doc ids to open from the `ext` collection. A module doc often exists only as the parent
+   * of its collections, so the listing above it can be empty. */
+  protected readonly suggestedDocs = computed<string[]>(() => {
+    const sub = this.subPath();
+    return sub.length === 1 && sub[0] === 'ext' ? [...KNOWN_EXT_MODULES] : [];
   });
 
   protected readonly customSegment = signal('');
@@ -130,8 +134,13 @@ export class SpaceExplorerPageComponent {
   protected readonly currentDoc = toSignal<IExploreDoc | undefined>(
     this.pathSegments$.pipe(
       switchMap((segments) => {
+        if (segments.length % 2 !== 0) {
+          return of(undefined);
+        }
+        // Only the stream of the current node kind clears the error: the other one runs second and would wipe an
+        // error this one has just set synchronously, leaving a spinner that never stops.
         this.error.set(undefined);
-        if (segments.length % 2 !== 0 || !segments[1]) {
+        if (!segments[1]) {
           return of(undefined);
         }
         // `defer()` so a synchronous throw inside the SDK call (e.g. an
@@ -139,6 +148,8 @@ export class SpaceExplorerPageComponent {
         // whole `toSignal` subscription (which would leave the page dead
         // until a full reload).
         return defer(() => this.explorer.watchDocument$(segments)).pipe(
+          // Show loading, not the previous document, until this one arrives.
+          startWith(undefined),
           catchError((err) => {
             this.error.set(errorMessage(err));
             return of(undefined);
@@ -153,12 +164,13 @@ export class SpaceExplorerPageComponent {
   >(
     this.pathSegments$.pipe(
       switchMap((segments) => {
-        this.error.set(undefined);
         if (segments.length % 2 !== 1) {
           return of(undefined);
         }
+        this.error.set(undefined);
         // See the `defer()` comment on `currentDoc` above.
         return defer(() => this.explorer.watchCollection$(segments)).pipe(
+          startWith(undefined),
           catchError((err) => {
             this.error.set(errorMessage(err));
             return of(undefined);

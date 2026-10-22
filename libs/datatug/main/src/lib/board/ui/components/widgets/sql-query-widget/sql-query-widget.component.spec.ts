@@ -1,9 +1,9 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 
 import { SqlQueryWidgetComponent } from './sql-query-widget.component';
 import { BoardCardTabService } from '../../board-card/board-card.component';
+import { provideMockErrorLogger } from '../../../../../testing/error-logger.spec-helper';
 
 describe('SqlQueryWidgetComponent', () => {
   let component: SqlQueryWidgetComponent;
@@ -15,13 +15,7 @@ describe('SqlQueryWidgetComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         BoardCardTabService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     })
       .overrideComponent(SqlQueryWidgetComponent, {

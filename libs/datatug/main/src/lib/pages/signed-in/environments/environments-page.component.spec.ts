@@ -7,6 +7,7 @@ import { EnvironmentsPageComponent } from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../../../services/project/project.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('EnvironmentsPage', () => {
   let component: EnvironmentsPageComponent;
@@ -22,13 +23,7 @@ describe('EnvironmentsPage', () => {
       imports: [EnvironmentsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {

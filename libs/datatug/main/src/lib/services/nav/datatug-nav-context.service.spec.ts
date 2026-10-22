@@ -15,6 +15,7 @@ import { AppContextService } from '../../core/services/app-context.service';
 import { ProjectContextService } from '../project/project-context.service';
 import { ProjectService } from '../project/project.service';
 import { EnvironmentService } from '../unsorted/environment.service';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('project Incident routes with the real router and navigation context', () => {
   @Component({ selector: 'sneat-incident-route-test', template: '' })
@@ -68,13 +69,7 @@ describe('project Incident routes with the real router and navigation context', 
           provide: EnvironmentService,
           useValue: { getEnvSummary: vi.fn(() => NEVER) },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);
@@ -242,13 +237,7 @@ describe('DatatugNavContextService', () => {
           useValue: { watchProjectSummary: vi.fn(), getFull: vi.fn() },
         },
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     });
     service = TestBed.inject(DatatugNavContextService);
@@ -304,13 +293,7 @@ describe('DatatugNavContextService — environment persists across a reload with
           provide: EnvironmentService,
           useValue: { getEnvSummary: vi.fn(() => of(undefined)) },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     });
     return TestBed.inject(DatatugNavContextService);
@@ -891,13 +874,7 @@ describe('Space-scoped navigation metadata lifecycle', () => {
         { provide: Router, useValue: { events: NEVER } },
         { provide: ProjectService, useValue: { watchProjectSummary: watch } },
         { provide: EnvironmentService, useValue: env },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);
@@ -970,13 +947,7 @@ describe('DatatugNavContextService — the stored-result page', () => {
           provide: EnvironmentService,
           useValue: { getEnvSummary: vi.fn(() => of(undefined)) },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     });
     const service = TestBed.inject(DatatugNavContextService);

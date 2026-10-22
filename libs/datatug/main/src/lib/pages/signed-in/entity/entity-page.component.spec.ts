@@ -3,7 +3,6 @@ import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
 import { ActivatedRoute } from '@angular/router';
 import { HttpClient } from '@angular/common/http';
-import { ErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
 import { DataGridComponent } from '@sneat/datagrid';
 import { BehaviorSubject, of, Subject } from 'rxjs';
@@ -12,6 +11,7 @@ import { EntityPageComponent } from './entity-page.component';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { parseProjectUrl } from '../../../nav/nav-models';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('EntityPage', () => {
   let component: EntityPageComponent;
@@ -35,13 +35,7 @@ describe('EntityPage', () => {
             snapshot: { paramMap: { get: () => null } },
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: EntityService,
           useValue: { getEntity: vi.fn(), getAllEntities: vi.fn() },
@@ -95,13 +89,7 @@ describe('EntityPage renders the real source grid', () => {
             queryParamMap: of({ get: () => null }),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: EntityService,
           useValue: {
@@ -224,13 +212,7 @@ describe('EntityPage source preview states (zoneless)', () => {
             snapshot: { paramMap: { get: () => null } },
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: EntityService,
           useValue: {

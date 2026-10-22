@@ -21,8 +21,9 @@ export default defineConfig({
     'demo-sqlite-journey.spec.ts',
   ],
   outputDir: '../../coverage/apps/datatug-app-demo-sqlite-e2e/results',
+  // Files run in parallel (Playwright's default worker count); the tests of one file keep their order. Every
+  // test owns a browser context, so OPFS, Web Locks and the copy's worker are never shared between workers.
   fullyParallel: false,
-  workers: 1,
   retries: LIVE ? 0 : process.env['CI'] ? 1 : 0,
   maxFailures: LIVE ? 1 : 0,
   globalSetup: './e2e/helpers/demodb-fixtures-setup.ts',

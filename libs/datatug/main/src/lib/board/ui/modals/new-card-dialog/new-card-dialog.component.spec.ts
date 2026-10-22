@@ -1,9 +1,9 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 
 import { NewCardDialogComponent } from './new-card-dialog.component';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 describe('NewCardDialogComponent', () => {
   let component: NewCardDialogComponent;
@@ -14,13 +14,7 @@ describe('NewCardDialogComponent', () => {
       imports: [NewCardDialogComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ModalController,
           useValue: {

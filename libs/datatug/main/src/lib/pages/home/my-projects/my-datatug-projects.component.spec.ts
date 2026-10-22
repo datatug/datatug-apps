@@ -1,6 +1,5 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { Subject, of } from 'rxjs';
 import { Router } from '@angular/router';
@@ -10,6 +9,7 @@ import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugUserService } from '../../../services/base/datatug-user-service';
 import { NewProjectService } from '../../../project/new-project/new-project.service';
 import { DetectiveClientService } from '../../../detective/detective-client.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('MyProjectsComponent', () => {
   let component: MyDatatugProjectsComponent;
@@ -33,13 +33,7 @@ describe('MyProjectsComponent', () => {
       imports: [MyDatatugProjectsComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: DatatugNavService, useValue: { goProject: vi.fn() } },
         { provide: Router, useValue: router },
         {
