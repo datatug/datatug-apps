@@ -1,3 +1,4 @@
+import { isIncidentResolution, resolutionMatchesCriterion } from '../incidents/resolution-proof';
 import { decodeIncidentEvent } from '../incidents/incident-client.service';
 import {
   isIncidentResolutionCriterion,
@@ -55,6 +56,7 @@ export function validateHostedCriterionView(
           'notes',
           'lastSeq',
           'resolutionCriterion',
+          'resolution',
         ].includes(k),
     ) ||
     JSON.stringify(view).length > 131072 ||
@@ -73,6 +75,8 @@ export function validateHostedCriterionView(
     )
       throw new Error('The current resolution criterion is unavailable.');
   }
+  if (Object.hasOwn(view, 'resolution') && (!isIncidentResolution(view.resolution) || !view.resolutionCriterion || !resolutionMatchesCriterion(view.resolution, view.resolutionCriterion) || view.status !== 'resolved')) throw new Error('The current Incident resolution proof is unavailable.');
+
 }
 export function validateHostedCriterionEvent(
   event: IncidentEvent,
@@ -80,7 +84,12 @@ export function validateHostedCriterionEvent(
   context: Cloud,
   environment: string,
 ): void {
-  if (!criterionObject(event) || !['incident.created','incident.status','incident.outcome','incident.merged','note.added','context.fact.added','context.fact.promoted','context.fact.rejected','compare.run','incident.criterion-set'].includes(event.type)) throw new Error('Unsupported Incident history event.');
+  if (!criterionObject(event) || !['incident.created','incident.status','incident.outcome','incident.merged','note.added','context.fact.added','context.fact.promoted','context.fact.rejected','compare.run','incident.criterion-set','incident.resolved'].includes(event.type)) throw new Error('Unsupported Incident history event.');
+  if (event.type === 'incident.resolved') {
+    decodeIncidentEvent(event);
+    if (!isIncidentResolution(event.payload) || `${event.incident.storeId}/${event.incident.incidentId}` !== ref || event.payload.proof.scope.project.storeId !== context.storage || event.payload.proof.scope.project.projectId !== context.project || event.payload.proof.scope.project.environment !== environment) throw new Error('Resolution history is unavailable.');
+    return;
+  }
   if (event.type !== 'incident.criterion-set') return;
   decodeIncidentEvent(event);
   if (

@@ -1,3 +1,5 @@
+import { INCIDENT_RECOVERY_ADAPTERS } from '../detective/incident-recovery-adapter';
+import { ShippingResolutionAdapterService } from '../shipping/shipping-resolution-adapter.service';
 import { SOURCE_EVIDENCE_PRESENTERS } from '../evidence/source-evidence-presentation';
 import { shippingEvidencePresenter } from '../shipping/shipping-evidence-presenter';
 import { inject, type Provider } from '@angular/core';
@@ -6,6 +8,7 @@ import { ShippingSourceAdapterService } from '../shipping/shipping-source-adapte
 
 /** Deployment composition only. Registrations supply no project/source grants. */
 export const SOURCE_ADAPTER_PROVIDERS: Provider[] = [
+  { provide: INCIDENT_RECOVERY_ADAPTERS, useFactory: () => [inject(ShippingResolutionAdapterService).registration] },
   { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
   {
     provide: SOURCE_ADAPTER_REGISTRATIONS,

@@ -1,8 +1,10 @@
+import { IncidentResolvePanelComponent } from './incident-resolve-panel.component';
+import { isHostedResolveAction, validateHostedResolveScope, validateHostedResolveSuccess } from './hosted-resolve-contract';
 import { SOURCE_EVIDENCE_PRESENTERS, sourceEvidencePresenter } from '../evidence/source-evidence-presentation';
 import { AppliedEvidenceSelectorComponent } from '../evidence/applied-evidence-selector.component';
 import type { AppliedEvidenceChoice } from '../evidence/applied-evidence';
-import type { HostedCriterionAction } from './hosted-linkage.models';
-import type { IncidentResolutionCriterion } from '../incidents/models';
+import type { HostedCriterionAction, HostedResolveAction } from './hosted-linkage.models';
+import type { IncidentResolutionCriterion, IncidentResolution } from '../incidents/models';
 import {
   validateHostedCriterionSuccess,
   validateHostedCriterionView,
@@ -40,7 +42,6 @@ import {
 import { RouterLink } from '@angular/router';
 import {
   IonButton,
-  IonButtons,
   IonIcon,
   IonInput,
   IonItem,
@@ -75,7 +76,7 @@ import {
   isIncidentNotePresentation,
   isPendingIncidentOperation,
   type PendingIncidentOperation,
-  type PendingCriterion,
+  type PendingIncidentAction,
 } from './incident-message-presentation';
 import type { IncidentCharacterID } from '../incidents/models';
 import type { IncidentMessagePresentationCapability } from './hosted-linkage.models';
@@ -109,6 +110,8 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
       font-weight: 600;
     }
     .section-actions {
+      display: flex;
+      align-items: center;
       margin-inline-start: auto;
       flex-wrap: wrap;
       justify-content: flex-end;
@@ -121,6 +124,8 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
       margin-block: 1rem;
       min-width: 0;
     }
+    .resolve-action { min-height: 44px; }
+    .resolve-action[hidden] { display: none; }
     .criterion-details {
       overflow-wrap: anywhere;
     }
@@ -140,8 +145,8 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
     }
   `,
   imports: [
-    IonButtons,
     AppliedEvidenceSelectorComponent,
+    IncidentResolvePanelComponent,
     IonIcon,
     IonInput,
     RetainedEvidenceViewerComponent,
@@ -158,7 +163,7 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
     <section class="incident-conversation" aria-label="Incident conversation">
       <header class="conversation-header">
         <h2>Conversation</h2>
-        <ion-buttons class="section-actions" slot="end">
+        <div class="section-actions">
           <ion-button
             size="small"
             fill="clear"
@@ -182,15 +187,16 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
               >Resolution criterion</span
             ></ion-button
           >
-        </ion-buttons>
+        </div>
       </header>
       @if (criterionOpen() || criterion()) {
         <section class="criterion" aria-label="Resolution criterion">
           <header class="conversation-header criterion-header">
             <h3>Resolution criterion</h3>
-            <ion-buttons class="section-actions" slot="end">
+            <div class="section-actions">
               @if (criterion(); as c) {
                 @if (c.finalized) {
+                    <ion-button [hidden]="!!resolution() || incidentStatus() === 'resolved'" class="resolve-action" fill="clear" [disabled]="mutationBlocked()" (click)="resolveOpen.set(!resolveOpen())" [attr.aria-expanded]="resolveOpen()" aria-label="Review Incident resolution"><ion-icon [name]="resolveOpen() ? 'close-outline' : 'checkmark-outline'" aria-hidden="true" />{{ resolveOpen() ? 'Close resolution' : 'Resolve…' }}</ion-button>
                   <ion-button
                     size="small"
                     fill="clear"
@@ -249,7 +255,7 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
                   ></ion-button
                 >
               }
-            </ion-buttons>
+            </div>
           </header>
           @if (criterion(); as c) {
             <p>
@@ -355,8 +361,7 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
           }
           @if (pending()?.action) {
             <p role="status">
-              A criterion operation is retained. Review its history or retry the
-              exact original intent.
+              An Incident operation is retained. Review its history or retry the exact original intent.
             </p>
             <ion-button
               size="small"
@@ -369,8 +374,17 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
                 pendingReview()
               "
               (click)="retryCriterion()"
-              >Retry criterion operation</ion-button
+              >{{ pending()?.action?.type === 'resolve' ? 'Retry original Resolve' : 'Retry criterion operation' }}</ion-button
             >
+          }
+          @if (criterion()?.finalized && !canWrite() && !resolution()) { <p role="status">Resolving this Incident requires current write access.</p> }
+          @if (resolveOpen() || resolution()) {
+          <sneat-incident-resolve-panel
+            [context]="context()" [projectRef]="projectRef()" [environment]="environment()"
+            [incidentRef]="incidentRef().storeId + '/' + incidentRef().incidentId" [expectedSeq]="lastSeq()"
+            [criterion]="criterion()" [resolved]="resolution()" [incidentStatus]="incidentStatus()"
+            [canWrite]="canWrite()" [disabled]="mutationBlocked()" (prepared)="prepareResolve($event)"
+            (openEvidence)="retainedTarget.set($event)" />
           }
         </section>
       }
@@ -644,6 +658,9 @@ export class HostedIncidentConversationComponent {
   protected readonly criterion = signal<
     IncidentResolutionCriterion | undefined
   >(undefined);
+  protected readonly resolveOpen = signal(false);
+  protected readonly resolution = signal<IncidentResolution | undefined>(undefined);
+  protected readonly incidentStatus = signal('');
   protected readonly criterionOpen = signal(false);
   protected readonly finalizeReview = signal(false);
   protected readonly criterionCheckID = signal('');
@@ -714,6 +731,9 @@ export class HostedIncidentConversationComponent {
     this.nativeLifetime.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
       ++this.requestGeneration;
       this.criterion.set(undefined);
+      this.resolution.set(undefined);
+      this.resolveOpen.set(false);
+      this.incidentStatus.set('');
       this.criterionOpen.set(false);
       this.finalizeReview.set(false);
       this.criterionChoice.set(undefined);
@@ -791,6 +811,9 @@ export class HostedIncidentConversationComponent {
   private readonly reset = effect(() => {
     const identity = this.identity();
     this.criterion.set(undefined);
+      this.resolution.set(undefined);
+      this.resolveOpen.set(false);
+      this.incidentStatus.set('');
     this.criterionOpen.set(false);
     this.finalizeReview.set(false);
     this.criterionChoice.set(undefined);
@@ -958,7 +981,7 @@ export class HostedIncidentConversationComponent {
         );
         if (
           event.type === 'note.added' ||
-          event.type === 'incident.criterion-set'
+          event.type === 'incident.criterion-set' || event.type === 'incident.resolved'
         )
           merged.set(event.id, event);
       }
@@ -967,6 +990,8 @@ export class HostedIncidentConversationComponent {
       this.hasMore.set(page.hasMore);
       if (detail.incident.lastSeq >= this.lastSeq()) {
         this.criterion.set(detail.incident.resolutionCriterion);
+        this.resolution.set(detail.incident.resolution);
+        this.incidentStatus.set(detail.incident.status);
         this.incidentUpdated.emit(detail.incident);
       }
       this.lastSeq.set(
@@ -981,6 +1006,9 @@ export class HostedIncidentConversationComponent {
     } catch (error) {
       if (this.current(identity, generation)) {
         this.criterion.set(undefined);
+      this.resolution.set(undefined);
+      this.resolveOpen.set(false);
+      this.incidentStatus.set('');
         this.events.set([]);
         this.hasMore.set(false);
         this.readError.set(detectiveErrorMessage(error, true));
@@ -1270,7 +1298,7 @@ export class HostedIncidentConversationComponent {
         result.event.incident.storeId !== ref.storeId ||
         result.event.incident.incidentId !== ref.incidentId ||
         result.event.type !==
-          (pending.action ? 'incident.criterion-set' : 'note.added') ||
+          (pending.action?.type === 'resolve' ? 'incident.resolved' : pending.action ? 'incident.criterion-set' : 'note.added') ||
         result.event.actor.kind !== 'human' ||
         result.event.actor.id !== context.principal ||
         result.event.actor.via !== 'web' ||
@@ -1285,8 +1313,9 @@ export class HostedIncidentConversationComponent {
         );
       if (pending.action) {
         if (result.receipt !== pending.operationId)
-          throw new Error('The exact criterion receipt is unavailable.');
-        validateHostedCriterionSuccess(result, pending.action, context);
+          throw new Error('The exact Incident operation receipt is unavailable.');
+        if (pending.action.type === 'resolve') validateHostedResolveSuccess(result, pending.action, context, pending.operationId);
+        else validateHostedCriterionSuccess(result, pending.action, context);
       }
       this.pending.set(undefined);
       if (!pending.action) {
@@ -1295,8 +1324,11 @@ export class HostedIncidentConversationComponent {
         this.checkID.set('');
         this.posted.set(true);
       } else {
-        if (result.incident.lastSeq >= this.lastSeq())
+        if (result.incident.lastSeq >= this.lastSeq()) {
           this.criterion.set(result.incident.resolutionCriterion);
+          this.resolution.set(result.incident.resolution);
+          this.incidentStatus.set(result.incident.status);
+        }
         this.finalizeReview.set(false);
         this.criterionOpen.set(false);
       }
@@ -1306,12 +1338,12 @@ export class HostedIncidentConversationComponent {
           pending.action &&
           sessionStorage.getItem(this.storageKey(identity)) !== null
         )
-          throw new Error('The criterion retry remains in storage.');
+          throw new Error('The Incident retry remains in storage.');
       } catch {
         if (pending.action) {
           this.pending.set(pending);
           this.sendError.set(
-            'The criterion was saved, but its local retry could not be retired. Retry the exact operation or review and abandon it locally.',
+            'The Incident operation was saved, but its local retry could not be retired. Retry the exact operation or review and abandon it locally.',
           );
         }
         /* The exact server receipt is confirmed; a retained criterion still blocks competing writes. */
@@ -1344,6 +1376,10 @@ export class HostedIncidentConversationComponent {
           [401, 403].includes(error.status)
         ) {
           this.events.set([]);
+          this.criterion.set(undefined);
+          this.resolution.set(undefined);
+          this.incidentStatus.set('');
+          this.resolveOpen.set(false);
           this.ready.set(false);
         }
       }
@@ -1383,7 +1419,7 @@ export class HostedIncidentConversationComponent {
       );
       return;
     }
-    await this.prepareCriterion({
+    await this.prepareIncidentAction({
       type: 'criterion-draft',
       incidentRef: `${this.incidentRef().storeId}/${this.incidentRef().incidentId}`,
       environment: this.environment(),
@@ -1405,7 +1441,7 @@ export class HostedIncidentConversationComponent {
       criterion.finalized
     )
       return;
-    await this.prepareCriterion({
+    await this.prepareIncidentAction({
       type: 'criterion-finalize',
       incidentRef: `${this.incidentRef().storeId}/${this.incidentRef().incidentId}`,
       environment: this.environment(),
@@ -1413,14 +1449,25 @@ export class HostedIncidentConversationComponent {
       criterionVersion: criterion.version,
     });
   }
-  private async prepareCriterion(action: HostedCriterionAction): Promise<void> {
-    const pending: PendingCriterion = {
+  protected async prepareResolve(action: HostedResolveAction): Promise<void> {
+    const c = this.criterion();
+    if (this.mutationBlocked() || !c?.finalized || this.resolution() || this.incidentStatus() === 'resolved') return;
+    if (!isHostedResolveAction(action) || action.incidentRef !== `${this.incidentRef().storeId}/${this.incidentRef().incidentId}` || action.environment !== this.environment() || action.expectedSeq !== this.lastSeq() || action.criterionVersion !== c.version || action.run.checkId !== c.checkID || action.run.checkVersion !== c.checkVersion || action.recovery.sourceId !== c.scope.sourceID || action.recovery.result.generation !== c.scope.generation) {
+      this.sendError.set('The criterion or conversation changed. Select current evidence and review again.');
+      return;
+    }
+    try { validateHostedResolveScope(action, this.context()); }
+    catch { this.sendError.set('The selected Resolve scope is unavailable.'); return; }
+    await this.prepareIncidentAction(action);
+  }
+  private async prepareIncidentAction(action: HostedCriterionAction | HostedResolveAction): Promise<void> {
+    const pending: PendingIncidentAction = {
       operationId: detectiveOperationId(),
       expectedSeq: action.expectedSeq,
       action: structuredClone(action),
     };
     if (!isPendingIncidentOperation(pending)) {
-      this.sendError.set('The selected criterion intent is invalid.');
+      this.sendError.set('The selected Incident intent is invalid.');
       return;
     }
     try {
@@ -1432,13 +1479,13 @@ export class HostedIncidentConversationComponent {
         this.pendingStorageUnreadable = true;
         this.invalidPending.set(true);
         throw new Error(
-          'The shared retry slot is unreadable. Restore access and review before saving a criterion.',
+          'The shared retry slot is unreadable. Restore access and review before saving an Incident operation.',
         );
       }
       if (prior !== null) {
         this.invalidPending.set(true);
         throw new Error(
-          'An existing saved operation must be reviewed before saving a criterion.',
+          'An existing saved operation must be reviewed before saving an Incident operation.',
         );
       }
       const bytes = JSON.stringify(pending);
@@ -1447,7 +1494,7 @@ export class HostedIncidentConversationComponent {
       sessionStorage.setItem(key, bytes);
       if (sessionStorage.getItem(key) !== bytes)
         throw new Error(
-          'Browser storage did not retain the exact criterion intent.',
+          'Browser storage did not retain the exact Incident intent.',
         );
       this.mutationBusy.emit(true);
       this.pending.set(pending);
@@ -1455,7 +1502,7 @@ export class HostedIncidentConversationComponent {
       this.sendError.set(
         error instanceof Error
           ? error.message
-          : 'Durable criterion retry storage is unavailable.',
+          : 'Durable Incident retry storage is unavailable.',
       );
       return;
     }
@@ -1487,7 +1534,7 @@ export class HostedIncidentConversationComponent {
     try {
       if (sessionStorage.getItem(this.storageKey()) !== JSON.stringify(pending))
         throw new Error(
-          'The saved criterion intent is unavailable or changed.',
+          'The saved Incident intent is unavailable or changed.',
         );
       const lifetime = this.nativeLifetime.capture(
         this.projectRef(),
