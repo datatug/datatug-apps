@@ -75,9 +75,13 @@ export class MenuEnvSelectorComponent implements OnChanges {
               environments.map(({ id, title }) => ({ id, title })),
             ),
             catchError((error: unknown) => {
+              // A background sidebar read: the selector simply offers no
+              // environments, and the page in view shows its own designed
+              // error state, so this must not raise a second toast over it.
               this.errorLogger.logError(
                 error,
                 'Failed to list project environments',
+                { show: false },
               );
               return of([] as IProjEnv[]);
             }),
