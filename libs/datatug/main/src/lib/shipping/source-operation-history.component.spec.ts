@@ -95,7 +95,13 @@ describe('explicit source history discovery and receipt selection', () => {
       reference: { ...item.reference, operationId: 'forged' },
     });
     expect(f.componentInstance.target()).toBeUndefined();
-    f.componentInstance.open(item);
+    f.componentInstance.openActivity('not-offered');
+    expect(f.componentInstance.target()).toBeUndefined();
+    const openButton = (
+      f.nativeElement as HTMLElement
+    ).querySelector<HTMLElement>('sneat-activity-list li ion-button');
+    expect(openButton?.textContent).toContain('Open receipt');
+    openButton?.click();
     await f.whenStable();
     expect(f.componentInstance.target()).toEqual({
       kind: 'source-operation',
