@@ -11,9 +11,7 @@ import { decodeIncidentEvent } from '../incidents/incident-client.service';
 import { isHostedResolveAction } from './hosted-resolve-contract';
 import type { HostedResolveAction } from './hosted-linkage.models';
 import wire from './testdata/backend-resolve-complete.http.go.json';
-import { restoreStorageSpies } from '../restore-storage-spies.spec-helper';
 
-afterEach(restoreStorageSpies);
 
 // Exact source projections/history and proof bytes; only the unit success receipt echoes the UI-generated operation ID.
 const request = wire.request;

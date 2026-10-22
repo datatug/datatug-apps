@@ -24,9 +24,7 @@ import {
   NativeMapping,
   encodeMappingJournal,
 } from './native-semantic-contract';
-import { restoreStorageSpies } from '../restore-storage-spies.spec-helper';
 
-afterEach(restoreStorageSpies);
 const page = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../detective/detective-page-context', () => ({
   useDetectivePageContext: () => page.current,
