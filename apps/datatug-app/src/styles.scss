@@ -917,7 +917,7 @@ datatug-cli-chat-page {
 // per-page ion-menu-button bars would double it — hide the page-level ones
 // while the compact header is shown.
 //
-// One header per page (founder, 2026-10-22): a routed page that has an `ion-header` of its own
+// One header per page, at every width (founder, 2026-10-22): a routed page that has an `ion-header` of its own
 // (other than Home's, which yields to the shell) is its single header on narrow layouts. The shell's
 // compact bar is hidden for it, the page's own menu button is shown again, and page-toolbar-adoption.ts
 // adds Sign in (and a menu button where the toolbar has none) to the page's toolbar. A toolbar with
@@ -942,7 +942,8 @@ ion-app.compact-header-mode:has(#{$page-owns-header}) {
   }
 }
 
-// Adopted toolbar extras only exist for the narrow layout.
-ion-app:not(.compact-header-mode) .shell-adopted {
+// Sign in is adopted at every width (the side panel's own "Please sign in" is not in the page header);
+// the adopted menu button only where the side panel is hidden.
+ion-app:not(.compact-header-mode) .shell-adopted-menu {
   display: none;
 }

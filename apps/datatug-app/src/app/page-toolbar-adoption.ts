@@ -6,7 +6,7 @@
 // header: the shell hides its compact bar (see `styles.scss`, "One header per page") and this class
 // puts back what that bar carried, into the page's own toolbar:
 //
-//   - Sign in, while signed out (the side panel that also offers it is hidden on narrow layouts);
+//   - Sign in, while signed out, at every width (narrow layouts hide the side panel that also offers it);
 //   - a menu button, when the toolbar has none (a page that has its own `ion-menu-button` keeps it).
 //
 // Pages without an `ion-header` of their own (and Home, whose header yields to the shell's) keep the
