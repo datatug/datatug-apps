@@ -325,6 +325,15 @@ export function withUsageConsent(
     }
   }
 
+  function writeUsage(next: AnalyticsChoice): void {
+    try {
+      env.storage().setItem(usageKey, next);
+      memory = undefined;
+    } catch {
+      memory = next;
+    }
+  }
+
   const usageAllowed = () =>
     usageEnabled &&
     !env.checkoutActive() &&
@@ -342,20 +351,22 @@ export function withUsageConsent(
     bannerVisible: () =>
       ga.bannerVisible() || (usageAllowed() && usageChoice() === undefined),
     choose(next) {
-      if (usageEnabled) {
-        try {
-          env.storage().setItem(usageKey, next);
-          memory = undefined;
-        } catch {
-          memory = next;
-        }
-      }
+      if (usageEnabled) writeUsage(next);
       // GA applies its own key and tells every subscriber, this one's included.
       ga.choose(next);
     },
     pageView: ga.pageView,
-    granted: () =>
-      usageAllowed() && usageChoice() === 'granted' && ga.choice() !== 'denied',
+    granted: () => {
+      // A no on the shared key (the site's withdrawal button included) withdraws usage analytics for good: a later
+      // Google Analytics yes there never brings PostHog back, only a new yes in this app does.
+      if (
+        usageEnabled &&
+        ga.choice() === 'denied' &&
+        usageChoice() === 'granted'
+      )
+        writeUsage('denied');
+      return usageAllowed() && usageChoice() === 'granted';
+    },
     subscribe(listener) {
       listeners.add(listener);
       const unsubscribe = ga.subscribe(listener);

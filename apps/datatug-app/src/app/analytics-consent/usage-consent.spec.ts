@@ -79,9 +79,12 @@ describe('withUsageConsent', () => {
       [ANALYTICS_CONSENT_KEY]: 'denied',
       [USAGE_ANALYTICS_CONSENT_KEY]: 'granted',
     };
-    expect(
-      withUsageConsent(fakeGa(stored), env(stored).env, true).granted(),
-    ).toBe(false);
+    const consent = withUsageConsent(fakeGa(stored), env(stored).env, true);
+    expect(consent.granted()).toBe(false);
+    // A later Google Analytics yes on the site never brings PostHog back.
+    expect(stored[USAGE_ANALYTICS_CONSENT_KEY]).toBe('denied');
+    stored[ANALYTICS_CONSENT_KEY] = 'granted';
+    expect(consent.granted()).toBe(false);
   });
 
   it('is off on localhost, during checkout and where usage analytics are not configured', () => {
