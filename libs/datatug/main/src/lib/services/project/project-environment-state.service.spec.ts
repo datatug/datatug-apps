@@ -136,23 +136,71 @@ describe('ProjectEnvironmentStateService scope', () => {
     expect(result.reason).toContain('Update');
   });
   const github = { storeId: 'github.com', projectId: 'datatug/demo' };
+  const signIn = 'Sign in to create environments or manage shared order.';
   it.each([
-    ['a signed-out visitor', SneatApiNotAuthenticatedError],
-    ['a refused visitor', { status: 401 }],
-    ['a forbidden visitor', { status: 403 }],
-    ['a project the hosted API does not know', { status: 404 }],
+    [
+      'github.com',
+      'a signed-out visitor',
+      SneatApiNotAuthenticatedError,
+      signIn,
+    ],
+    ['github', 'a signed-out visitor', SneatApiNotAuthenticatedError, signIn],
+    ['github.com', 'a refused visitor', { status: 401 }, signIn],
+    ['github.com', 'a forbidden visitor', { status: 403 }, undefined],
+    [
+      'github.com',
+      'a project the hosted API does not know',
+      { status: 404 },
+      undefined,
+    ],
   ])(
-    'reads a public GitHub project directly for %s, without management state',
-    async (_, error) => {
+    'reads a public %s project directly for %s, without management state',
+    async (storeId, _, error, reason) => {
       api.environmentState.mockReturnValue(throwError(() => error));
       const legacy = vi.fn(() => of([{ id: 'dev', title: 'dev' }]));
       const result = await firstValueFrom(
-        TestBed.inject(ProjectEnvironmentStateService).view(github, legacy),
+        TestBed.inject(ProjectEnvironmentStateService).view(
+          { ...github, storeId },
+          legacy,
+        ),
       );
-      expect(result).toEqual({ items: [{ id: 'dev', title: 'dev' }] });
+      expect(result).toEqual({
+        items: [{ id: 'dev', title: 'dev' }],
+        ...(reason ? { reason } : {}),
+      });
+      expect(result.state).toBeUndefined();
       expect(legacy).toHaveBeenCalledTimes(1);
     },
   );
+  it.each([{ status: 403 }, { status: 404 }, SneatApiNotAuthenticatedError])(
+    'surfaces a private or missing repository instead of an empty list (%s)',
+    async (error) => {
+      api.environmentState.mockReturnValue(throwError(() => error));
+      const notFound = { status: 404, message: 'Not Found' };
+      await expect(
+        firstValueFrom(
+          TestBed.inject(ProjectEnvironmentStateService).view(github, () =>
+            throwError(() => notFound),
+          ),
+        ),
+      ).rejects.toBe(notFound);
+    },
+  );
+  it('does not read a shared Space GitHub project from the repository', async () => {
+    api.environmentState.mockReturnValue(
+      throwError(() => SneatApiNotAuthenticatedError),
+    );
+    const legacy = vi.fn(() => of([]));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(
+          { ...github, spaceID: 's1' },
+          legacy,
+        ),
+      ),
+    ).rejects.toBe(SneatApiNotAuthenticatedError);
+    expect(legacy).not.toHaveBeenCalled();
+  });
   it('still surfaces an outage of the hosted API for a GitHub project', async () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 500 })));
     const legacy = vi.fn(() => of([]));

@@ -9,5 +9,10 @@ import { SneatApiNotAuthenticatedError } from '@sneat/api';
  * other failure (outage, network, malformed response) is a real error.
  */
 export const isHostedReadRefused = (error: unknown): boolean =>
+  isSignedOut(error) ||
+  [403, 404].includes((error as { status?: number } | null)?.status ?? 0);
+
+/** The read failed only because nobody is signed in (no ID token, or a 401). */
+export const isSignedOut = (error: unknown): boolean =>
   error === SneatApiNotAuthenticatedError ||
-  [401, 403, 404].includes((error as { status?: number } | null)?.status ?? 0);
+  (error as { status?: number } | null)?.status === 401;
