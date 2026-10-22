@@ -116,6 +116,8 @@ export default defineConfig({
         'showcase-live-measurement.spec.ts',
         'showcase-routing-ab.spec.ts',
         'query-grid-enterprise.spec.ts',
+        // Runs against its paired Demo revision in its own CI step.
+        'showcase-independent-sources.spec.ts',
         'journey/**',
       ],
       use: { ...devices['Desktop Chrome'], launchOptions: demodbChromiumLaunch },

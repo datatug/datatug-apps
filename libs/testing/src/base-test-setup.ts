@@ -4,6 +4,7 @@ import '@analogjs/vitest-angular/setup-snapshots';
 import '@analogjs/vitest-angular/setup-serializers';
 import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
 import { getTestBed } from '@angular/core/testing';
+import { restoreStorageSpies } from './storage-spies';
 
 export function setupAngularTestingEnvironment() {
   // setupTestBed initialises the test environment once per process, behind a global flag. When spec files share
@@ -283,23 +284,6 @@ export function resetSharedGlobals() {
   window.localStorage?.clear();
   window.sessionStorage?.clear();
   document.body.innerHTML = '';
-}
-
-/**
- * `vi.restoreAllMocks()` does not undo `vi.spyOn(sessionStorage, 'getItem')`: happy-dom's Storage is a Proxy that
- * keeps the spied method as an own property, so a spec that made storage throw left it throwing for every later file
- * in the worker. Restoring each storage spy directly gives the next file real storage again.
- */
-function restoreStorageSpies(storage: Storage | undefined) {
-  if (!storage) {
-    return;
-  }
-  for (const method of ['getItem', 'setItem', 'removeItem', 'clear', 'key'] as const) {
-    const candidate = (storage as unknown as Record<string, unknown>)[method];
-    if (vi.isMockFunction(candidate)) {
-      candidate.mockRestore();
-    }
-  }
 }
 
 export function setupBaseTestEnvironment() {

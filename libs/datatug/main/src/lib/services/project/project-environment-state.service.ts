@@ -134,36 +134,37 @@ export class ProjectEnvironmentStateService {
           // missing repository fails that anonymous read too, and the error
           // surfaces instead of an empty list.
           return legacy().pipe(
-            map((items) =>
-              isSignedOut(error)
-                ? {
-                    items,
-                    reason:
-                      'Sign in to create environments or manage shared order.',
-                  }
-                : { items },
-            ),
+            map((items) => ({
+              items,
+              reason: isSignedOut(error)
+                ? 'Sign in to create environments or manage shared order.'
+                : 'These environments are read from the public repository. Managing them needs access to this project in DataTug.',
+            })),
           );
         const local =
           !['github', 'github.com', 'firestore'].includes(ref.storeId) &&
           ref.projectApi !== 'cloud' &&
           ref.spaceID === undefined;
-        if (!local || !isPreContractAgent(error))
-          return throwError(() => error);
-        const unsupported = of(true);
-        return unsupported.pipe(
-          switchMap((old) =>
-            old
-              ? legacy().pipe(
-                  map((items) => ({
-                    items,
-                    reason:
-                      'Update the local DataTug agent to create environments or manage shared order.',
-                  })),
-                )
-              : throwError(() => error),
-          ),
-        );
+        if (!local) return throwError(() => error);
+        const readOnly = () =>
+          legacy().pipe(
+            map((items) => ({
+              items,
+              reason:
+                'Update the local DataTug agent to create environments or manage shared order.',
+            })),
+          );
+        if (isPreContractAgent(error)) return readOnly();
+        // A released agent's unmounted route has no CORS headers, so the browser
+        // reports only status 0. Treat it as pre-contract only when the same
+        // agent answers its own agent-info: an unreachable agent (or any other
+        // network failure) keeps its real error.
+        if ((error as { status?: number } | null)?.status === 0)
+          return this.api.agentInfo(ref).pipe(
+            catchError(() => throwError(() => error)),
+            switchMap(() => readOnly()),
+          );
+        return throwError(() => error);
       }),
     );
   }
@@ -221,20 +222,17 @@ const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
   isHostedReadRefused(error);
 
 /**
- * A local agent that cannot serve `environment-state/1`: either it says so
- * (426), or it predates the contract and its router has no such route at all.
- * Released `datatug serve` agents answer the unmounted route with Go's plain
- * text `404 page not found` and no CORS headers, so a browser sees it as an
- * opaque failure (status 0) and only a same-origin caller sees the 404. An
- * agent that implements the route and answers a structured 404 is still
- * surfaced as an error, and so is an unreachable agent: the legacy read that
- * follows fails too.
+ * A local agent that says it cannot serve `environment-state/1` (426), or
+ * predates the contract: its router answers the unmounted route with Go's plain
+ * text `404 page not found`. An agent that implements the route and answers a
+ * structured 404 is still surfaced as an error. (A browser sees that plain 404
+ * as status 0, because it has no CORS headers: `view()` confirms those against
+ * the agent's own agent-info first.)
  */
 const isPreContractAgent = (error: unknown): boolean => {
   const failure = error as { status?: number; error?: unknown } | null;
   return (
     failure?.status === 426 ||
-    failure?.status === 0 ||
     (failure?.status === 404 && typeof failure.error === 'string')
   );
 };

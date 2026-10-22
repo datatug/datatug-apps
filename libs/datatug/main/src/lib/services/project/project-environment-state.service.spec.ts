@@ -38,6 +38,7 @@ describe('ProjectEnvironmentStateService scope', () => {
       projectId: 'demo',
       projectApi: 'local',
     })),
+    agentInfo: vi.fn(() => of({ version: '0.78.0' })),
   };
   beforeEach(() => {
     vi.clearAllMocks();
@@ -103,17 +104,33 @@ describe('ProjectEnvironmentStateService scope', () => {
     expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
     expect(result.reason).toContain('Update');
   });
-  it('keeps a released agent readonly when its CORS-less 404 reaches the browser as status 0', async () => {
+  it('keeps a reachable released agent readonly when its CORS-less 404 reaches the browser as status 0', async () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 0 })));
     const result = await firstValueFrom(
       TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
         of([{ id: 'local', title: 'local' }]),
       ),
     );
+    expect(api.agentInfo).toHaveBeenCalledWith(ref);
     expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
     expect(result.reason).toContain('Update');
   });
-  it('surfaces an unreachable agent: the legacy read fails too', async () => {
+  it('surfaces the real network error when the agent does not answer agent-info either', async () => {
+    const failure = {
+      status: 0,
+      message: 'Http failure response: 0 Unknown Error',
+    };
+    api.environmentState.mockReturnValue(throwError(() => failure));
+    api.agentInfo.mockReturnValueOnce(throwError(() => ({ status: 0 })));
+    const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(ref, legacy),
+      ),
+    ).rejects.toBe(failure);
+    expect(legacy).not.toHaveBeenCalled();
+  });
+  it('surfaces a failed legacy read of a reachable agent', async () => {
     api.environmentState.mockReturnValue(throwError(() => ({ status: 0 })));
     const down = { status: 0, message: 'down' };
     await expect(
@@ -137,6 +154,8 @@ describe('ProjectEnvironmentStateService scope', () => {
   });
   const github = { storeId: 'github.com', projectId: 'datatug/demo' };
   const signIn = 'Sign in to create environments or manage shared order.';
+  const noAccess =
+    'These environments are read from the public repository. Managing them needs access to this project in DataTug.';
   it.each([
     [
       'github.com',
@@ -146,12 +165,12 @@ describe('ProjectEnvironmentStateService scope', () => {
     ],
     ['github', 'a signed-out visitor', SneatApiNotAuthenticatedError, signIn],
     ['github.com', 'a refused visitor', { status: 401 }, signIn],
-    ['github.com', 'a forbidden visitor', { status: 403 }, undefined],
+    ['github.com', 'a forbidden visitor', { status: 403 }, noAccess],
     [
       'github.com',
       'a project the hosted API does not know',
       { status: 404 },
-      undefined,
+      noAccess,
     ],
   ])(
     'reads a public %s project directly for %s, without management state',
@@ -164,10 +183,7 @@ describe('ProjectEnvironmentStateService scope', () => {
           legacy,
         ),
       );
-      expect(result).toEqual({
-        items: [{ id: 'dev', title: 'dev' }],
-        ...(reason ? { reason } : {}),
-      });
+      expect(result).toEqual({ items: [{ id: 'dev', title: 'dev' }], reason });
       expect(result.state).toBeUndefined();
       expect(legacy).toHaveBeenCalledTimes(1);
     },

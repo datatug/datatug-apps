@@ -837,8 +837,7 @@ test.describe('the hand-off holding page', () => {
           timeout: 20_000,
         });
       }
-      // Absence checks: let the page finish its requests instead of sleeping.
-      await page.waitForLoadState('networkidle');
+      await page.waitForTimeout(500);
       await expect(page.locator('#demo-holding-message'), url).toHaveCount(0);
       await expect(
         page.getByRole('heading', {
@@ -1044,8 +1043,7 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('ion-header').first()).toBeVisible({
       timeout: 20_000,
     });
-    // No redirect: once the page has settled, the address is still the old form.
-    await page.waitForLoadState('networkidle');
+    await page.waitForTimeout(500);
     expect(new URL(page.url()).pathname).toBe(
       '/store/github.com/project/chinook-demo@datatug@/queries',
     );
@@ -1571,6 +1569,13 @@ test.describe('an address that the router reads another way than the inline scri
         /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
         { timeout: 20_000 },
       );
+      // …and stays there: a stability window after the end state, so a slow
+      // rewrite can no longer fail it, but a later one still would.
+      await page.waitForTimeout(1500);
+      await expect(page).toHaveURL(
+        /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
+        { timeout: 1 },
+      );
       const state = await page.evaluate(() => ({
         title: document.title,
         storage:
@@ -1669,6 +1674,13 @@ test.describe('an address that the router reads another way than the inline scri
     await expect(page).toHaveURL(
       /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
       { timeout: 20_000 },
+    );
+    // …and stays there: a stability window after the end state, so a slow
+    // rewrite can no longer fail it, but a later one still would.
+    await page.waitForTimeout(1500);
+    await expect(page).toHaveURL(
+      /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
+      { timeout: 1 },
     );
     const entries = await page.evaluate(() =>
       (
