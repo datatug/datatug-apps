@@ -63,6 +63,10 @@ export type EvidenceChartSpec =
       readonly timing: TimingChartSpec;
     };
 export interface HeldEvidenceIdentity {
+  readonly comparison?: {
+    readonly members: readonly TypedValue[];
+    readonly projection: Readonly<Record<'memberColumn' | 'observationColumn' | 'laneColumn' | 'eventColumn' | 'sequenceColumn' | 'timeColumn' | 'clockDomainColumn' | 'precisionColumn' | 'statusColumn' | 'anchorColumn', string>>;
+  };
   /** Expected held context, never a grant of authorization. */
   readonly execution?: ExecutionRef;
   readonly scope: EvidenceScope;
@@ -326,6 +330,29 @@ export async function prepareEvidenceChart(
     evidence.rowKeyColumn !== spec.timing.rowKeyColumn
   )
     throw new Error('Timing row identity mismatch');
+  const comparison = expectedIdentity.comparison;
+  if (comparison) {
+    const p = comparison.projection;
+    if (!evidence || evidence.rowKeyColumn !== p.observationColumn || comparison.members.length !== 2 ||
+        evidenceKey(comparison.members[0]) === evidenceKey(comparison.members[1]))
+      throw new Error('Comparison observation identity is unavailable');
+    if (spec.type === 'timeline') {
+      for (const role of ['laneColumn', 'eventColumn', 'sequenceColumn', 'timeColumn', 'clockDomainColumn', 'precisionColumn', 'statusColumn', 'anchorColumn'] as const)
+        if (spec.timeline[role] !== p[role]) throw new Error('Timeline mappings differ from the retained comparison');
+      if (evidence.rows.length !== result.recordset.rows.length || evidence.rows.some(row => row.slots[spec.timeline.evidenceRefColumn]?.state !== 'available'))
+        throw new Error('Comparison row Inspect evidence is unavailable');
+    }
+    const seen = new Set<string>(), lanes = new Map<string, string>();
+    for (const row of result.recordset.rows) {
+      const member = row[names.indexOf(p.memberColumn)], lane = row[names.indexOf(p.laneColumn)];
+      if (!member || !lane || lane.type !== 'string') throw new Error('Comparison lane membership is unavailable');
+      const key = evidenceKey(member);
+      if (!comparison.members.some(m => evidenceKey(m) === key) || (lanes.has(lane.value) && lanes.get(lane.value) !== key))
+        throw new Error('Comparison lane belongs to a different member');
+      seen.add(key); lanes.set(lane.value, key);
+    }
+    if (comparison.members.some(m => !seen.has(evidenceKey(m)))) throw new Error('Comparison control or primary has no observed data');
+  }
   const requireTypes = (
     columns: readonly string[],
     types: readonly string[],

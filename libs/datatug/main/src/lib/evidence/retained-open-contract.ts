@@ -1,3 +1,6 @@
+import { readRetainedComparison, comparisonSelectedMember, sameComparisonValue, type RetainedComparison } from './retained-comparison-contract';
+import { frozenComparison } from './retained-comparison-contract';
+import type { IQueryDef } from '../models/definition/query-def';
 import {
   readOriginalEvidence,
   type OriginalEvidence,
@@ -64,6 +67,7 @@ export interface RetainedOpenScope extends RetainedEvidenceScope {
   readonly nativeProjectId: string;
 }
 export interface RetainedExecutionView {
+  readonly comparison?: RetainedComparison;
   readonly originalEvidence?: OriginalEvidence;
   readonly result: Result;
   readonly inputs: Readonly<Record<string, TypedValue>>;
@@ -216,6 +220,7 @@ export async function readRetainedExecution(
   if (new TextEncoder().encode(JSON.stringify(value)).length > 512 * 1024)
     throw new Error('Retained response exceeds its read bound.');
   const wire = obj(value, [
+    'comparison',
     'inputs',
     'manifest',
     'savedQuery',
@@ -268,6 +273,14 @@ export async function readRetainedExecution(
     )
   )
     throw new Error('Retained selected input mismatch.');
+  const declaration = frozenComparison(query as unknown as IQueryDef, inputs);
+  if (declaration) {
+    if (Object.keys(manifest.inputs).length !== 1 || !manifest.inputs['order_id']) throw new Error('Comparison primary manifest is unavailable.');
+  }
+  if (!declaration && wire['comparison'] !== undefined) throw new Error('Unexpected retained comparison.');
+  const comparison = readRetainedComparison(wire['comparison'], {
+    queryId, queryRevision: txt(wire['queryRevision']), manifestRef: manifest.ref, result, declaration, inputs, primary: manifest.inputs['order_id'],
+  });
   if (result.rowEvidence) {
     const sidecar = await verifyRowEvidence(result.rowEvidence, result);
     if (
@@ -295,13 +308,14 @@ export async function readRetainedExecution(
         );
   if (
     originalEvidence?.status === 'available' &&
-    !exact(
+    !sameComparisonValue(
       originalEvidence.records[2].fields['order_id'],
-      manifest.inputs['order_id'],
+      comparison ? comparisonSelectedMember(comparison, result, originalEvidence.selection) : manifest.inputs['order_id'],
     )
   )
     throw new Error('Original order does not match the admitted manifest.');
   return {
+    ...(comparison ? { comparison } : {}),
     ...(originalEvidence ? { originalEvidence } : {}),
     result,
     inputs,

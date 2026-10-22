@@ -1,3 +1,6 @@
+import comparisonWire from '../../../../evidence/testdata/comparison-http.go.json';
+import { readRetainedQueryResponse, heldEvidenceIdentity } from '../../../../evidence/retained-evidence-contract';
+import { decodeQueryComparison } from '../../../../queries/query-comparison';
 import coreComparison from '../../../../queries/testdata/core-v070-query-comparison.json';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -245,6 +248,45 @@ describe('canonical Board evidence-chart consumer', () => {
       }
     },
   );
+  it.each(['datatug','dashboardius'] as const)('renders admitted aliased pair caption and exact Inspect under %s',async profile=>{
+    const p=comparisonWire.run.comparison.declaration.projection;
+    const data={...charts[0], title:'Request processing', sources:[{...charts[0].sources[0],queryId:comparisonWire.request.queryId}], chart:{type:'timeline' as const, selectionId:'actual-comparison', timeline:{laneColumn:p.laneColumn,eventColumn:p.eventColumn,sequenceColumn:p.sequenceColumn,timeColumn:p.timeColumn,clockDomainColumn:p.clockDomainColumn,precisionColumn:p.precisionColumn,statusColumn:p.statusColumn,anchorColumn:p.anchorColumn,timeMode:'elapsed' as const,evidenceRefColumn:'evidence_ref'}}};
+    const {fixture,snapshot,run}=await mount(data,profile,true);
+    const scope={projectRef:{storeId:'firestore',spaceID:comparisonWire.request.spaceID,projectId:comparisonWire.request.project},environment:comparisonWire.request.environment,actor:'actor'};
+    fixture.componentRef.setInput('projectRef',scope.projectRef);
+    const response=await readRetainedQueryResponse(comparisonWire.run,scope,comparisonWire.request.queryId,{incidentRef:comparisonWire.run.attachedIncidentRef},{declaration:decodeQueryComparison(comparisonWire.request.comparison),inputs:comparisonWire.request.inputs});
+    snapshot.set({queryId:comparisonWire.request.queryId,result:response.result,identity:fixture.componentInstance.executionIdentity(),evidenceIdentity:heldEvidenceIdentity(response,scope)});
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('Request processing · 11038 vs 11045');
+    expect(fixture.componentInstance.evidenceError()).toBeNull();
+    await vi.waitFor(()=>expect(fixture.componentInstance.preparedEvidence()?.rows.length).toBe(9));
+    await fixture.whenStable();
+    expect(run).not.toHaveBeenCalled();
+  });
+  it.each(['missing-control','missing-start','wrong-mapping'] as const)('keeps the exact held table when comparison presentation has %s',async mode=>{
+    const wire=structuredClone(comparisonWire.run),p=wire.comparison.declaration.projection;
+    const names=wire.result.recordset.columns.map(c=>c.name);
+    if(mode==='missing-control'){
+      wire.result.recordset.rows=wire.result.recordset.rows.filter(row=>row[names.indexOf(p.memberColumn)].value==='11045');
+      const keys=wire.result.recordset.rows.map(row=>row[names.indexOf(p.observationColumn)].value);
+      wire.result.rowEvidence.rows=wire.result.rowEvidence.rows.filter(row=>keys.includes(row.rowKey.value));
+    }
+    if(mode==='missing-start')for(const row of wire.result.recordset.rows)row[names.indexOf(p.anchorColumn)].value='0';
+    wire.result.rowEvidence.recordsetFingerprint=await recordsetFingerprint(wire.result.recordset as Result['recordset']);
+    const data={...charts[0],title:'Request processing',sources:[{...charts[0].sources[0],queryId:comparisonWire.request.queryId}],chart:{type:'timeline' as const,selectionId:'held-unavailable',timeline:{laneColumn:p.laneColumn,eventColumn:mode==='wrong-mapping'?'artifact':p.eventColumn,sequenceColumn:p.sequenceColumn,timeColumn:p.timeColumn,clockDomainColumn:p.clockDomainColumn,precisionColumn:p.precisionColumn,statusColumn:p.statusColumn,anchorColumn:p.anchorColumn,timeMode:'elapsed' as const,evidenceRefColumn:'evidence_ref'}}};
+    const {fixture,snapshot,run}=await mount(data,'datatug',true);
+    const scope={projectRef:{storeId:'firestore',spaceID:comparisonWire.request.spaceID,projectId:comparisonWire.request.project},environment:comparisonWire.request.environment,actor:'actor'};
+    fixture.componentRef.setInput('projectRef',scope.projectRef);
+    const response=await readRetainedQueryResponse(wire,scope,comparisonWire.request.queryId,{incidentRef:wire.attachedIncidentRef},{declaration:decodeQueryComparison(comparisonWire.request.comparison),inputs:comparisonWire.request.inputs});
+    snapshot.set({queryId:comparisonWire.request.queryId,result:response.result,identity:fixture.componentInstance.executionIdentity(),evidenceIdentity:heldEvidenceIdentity(response,scope)});
+    await vi.waitFor(()=>expect(fixture.componentInstance.evidenceError()).toMatch(mode==='missing-control'?/no observed data/:mode==='missing-start'?/No observed start/:/mappings/));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.preparedEvidence()).toBeNull();
+    expect(fixture.nativeElement.querySelector('sneat-datatug-held-result-presentation')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('attempt-11045-1-e4');
+    expect(fixture.componentInstance.result()?.recordset.rows).toEqual(wire.result.recordset.rows);
+    expect(run).not.toHaveBeenCalled();
+  });
   it('keeps declared comparisons unavailable without retained pair admission while exposing the exact held table', async () => {
     const data = charts[0], { fixture, snapshot, run } = await mount(data, 'datatug', true);
     const result = await held();

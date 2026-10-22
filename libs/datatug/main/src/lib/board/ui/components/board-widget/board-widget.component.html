@@ -156,6 +156,7 @@
           <p role="alert">{{ error }}</p>
         }
       }
+      @if (comparisonCaption(); as caption) { <p class="comparison-caption">{{ displayTitle() }} · {{ caption }}</p> }
       @if (evidenceKind()) {
         <datatug-evidence-chart
           [data]="preparedEvidence()"
