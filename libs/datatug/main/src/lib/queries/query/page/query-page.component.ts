@@ -1,3 +1,4 @@
+import { friendlyError, redactErrorText } from '@datatug/friendly-error';
 import {
   prepareLocalMeaningSave,
   type LocalMeaningSaveSnapshot,
@@ -10399,8 +10400,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       return;
     }
-    this.runError.set(envelope?.error.message ?? this.extractErrorMessage(err));
-    this.errorLogger.logError(err, 'Failed to run query');
+    this.runError.set(this.runFailureText(err, envelope?.error.message));
+    // The card above is this failure's one place on the page: no toast on top of it.
+    this.errorLogger.logError(err, 'Failed to run query', { show: false });
   }
 
   /** Renders an RFC3339 instant (`ResultProvenance.observedAt`, `AvailableSnapshot.
@@ -10436,6 +10438,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return rounded < 1000
       ? `${rounded === 0 && milliseconds > 0 ? '<1' : rounded} ms`
       : `${(rounded / 1000).toFixed(1)} s`;
+  }
+
+  /**
+   * What the run-error card says. The database's own message about the SQL (a syntax error, a missing column) is the
+   * point of the card, so it stays, with addresses, paths, secrets and the like removed. Every other failure (an
+   * outage, a lost connection, a missing sign-in) is worded by the shared mapping and never echoes the raw message,
+   * which for an HTTP failure carries the request address.
+   */
+  private runFailureText(err: unknown, databaseMessage?: string): string {
+    const friendly = friendlyError(err, 'the query');
+    const isOutage = err instanceof HttpErrorResponse && (err.status === 0 || err.status >= 500);
+    if (databaseMessage && !isOutage) {
+      return redactErrorText(databaseMessage) || 'The query could not be run.';
+    }
+    if (friendly.kind === 'unknown') {
+      return redactErrorText(this.extractErrorMessage(err)) || 'The query could not be run.';
+    }
+    return `${friendly.title}. ${friendly.hint}`;
   }
 
   private extractErrorMessage(err: unknown): string {

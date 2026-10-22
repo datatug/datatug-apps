@@ -1,12 +1,15 @@
 import { Injectable, inject } from '@angular/core';
-import { AlertController, ToastController } from '@ionic/angular';
-import { captureException } from '@sentry/angular';
+import { AlertController } from '@ionic/angular/alert-controller';
+import { ToastController } from '@ionic/angular/toast-controller';
+import { captureException, withScope } from '@sentry/angular';
 import { ErrorLogger, IErrorLogger, ILogErrorOptions } from '@sneat/core';
 import { ERROR_LOGGER_DEFAULTS } from '@sneat/logging';
 import {
   errorReport,
   friendlyError,
-  isExpectedError,
+  isPageLevelError,
+  markReported,
+  reportLevelOf,
   type FriendlyError,
 } from '@datatug/friendly-error';
 
@@ -33,12 +36,21 @@ export class DatatugErrorLogger implements IErrorLogger {
   ): void => {
     console.error(`logError: ${message || 'Error'}:`, e);
     if (typeof window === 'undefined' || e === true || e === false) return;
-    const expected = isExpectedError(e);
-    const report = options?.report ?? this.defaults?.report ?? !expected;
+    const level = reportLevelOf(e);
+    const report = options?.report ?? this.defaults?.report ?? level !== 'none';
     if (report && window.location.hostname !== 'localhost') {
       try {
-        if (message) captureException(message, { originalException: e });
-        else captureException(e);
+        // The visitor-facing reference travels with the event, so what is read out can be looked up. An expected
+        // failure (an outage, a timeout, a lost connection) is a warning: it tells the team about the service
+        // without being a crash, and never opens the report dialog.
+        const reference = markReported(e);
+        withScope((scope) => {
+          scope.setLevel(level === 'error' ? 'error' : 'warning');
+          scope.setTag('reference', reference);
+          scope.setTag('expected', String(level !== 'error'));
+          if (message) captureException(message, { originalException: e });
+          else captureException(e);
+        });
       } catch (ex) {
         console.error('Sentry failed to capture an error', ex);
       }
@@ -46,20 +58,16 @@ export class DatatugErrorLogger implements IErrorLogger {
     const denied = /permission-denied|PERMISSION_DENIED/.test(
       `${(e as { code?: unknown })?.code ?? ''} ${(e as { message?: unknown })?.message ?? ''}`,
     );
-    // A rate limit or a missing sign-in is a page-level condition: the page shows its own designed state with a
-    // Retry, so a toast on top of it would only say the same thing twice.
-    const pageLevel = ['rate-limit', 'unauthenticated'].includes(
-      friendlyError(e, 'this').kind,
-    );
-    if (
+    // A missing item, a limit or a missing sign-in is page-level: the page shows its own designed state with its one
+    // action, so a toast on top would only say the same thing twice.
+    const toast =
       options?.show ??
-      (denied || pageLevel ? false : (this.defaults?.show ?? true))
-    )
-      this.showError(e, options?.showDuration);
+      (denied || isPageLevelError(e) ? false : (this.defaults?.show ?? true));
+    if (toast) this.showError(e, options?.showDuration);
   };
 
   showError(e: unknown, duration?: number): void {
-    const error = friendlyError(e, 'this');
+    const error = friendlyError(e, 'that');
     void this.toasts
       ?.create({
         header: error.title,
@@ -80,7 +88,10 @@ export class DatatugErrorLogger implements IErrorLogger {
   private async showDetails(error: FriendlyError): Promise<void> {
     const alert = await this.alerts?.create({
       header: 'Error details',
-      message: `Code ${error.code}\nReference ${error.reference}`,
+      subHeader: `Code ${error.code}`,
+      message: error.reported
+        ? `Reference ${error.reference}`
+        : 'This one was not sent to the team.',
       buttons: [
         {
           text: 'Copy',

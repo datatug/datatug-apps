@@ -114,7 +114,6 @@ function previewQueries(
           compact
           what="the queries"
           [error]="failure()"
-          [retryable]="true"
           (retry)="retry()"
         />
       } @else if (state() === 'empty') {

@@ -61,12 +61,19 @@
       address.
     </p>
   }
-  @if (metadataReadError(); as error) {
+  @if (everythingFailed()) {
+    <!-- Every read failed (a rate limit, an outage): one state with one action, not a Retry per section. -->
+    <sneat-datatug-error-state
+      what="this project"
+      [error]="boardFailure()"
+      [hint]="boardErrorMessage()"
+      (retry)="retryMetadata()"
+    />
+  } @else if (metadataReadError(); as error) {
     <sneat-datatug-error-state
       what="the project details"
       [error]="metadataFailure()"
       [hint]="metadataGuidance()"
-      [retryable]="true"
       (retry)="retryMetadata()"
     />
   }
@@ -75,7 +82,7 @@
     <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
   }
 
-  @if (!project()?.ref?.spaceID) {
+  @if (!project()?.ref?.spaceID && !everythingFailed()) {
     <section class="overview-environments" aria-label="Project environments">
       <button
         type="button"
@@ -95,7 +102,6 @@
           what="the environments"
           [error]="environmentFailure()"
           [hint]="environmentErrorMessage()"
-          [retryable]="true"
           (retry)="retryMetadata()"
         />
       } @else if (environments(); as items) {
@@ -190,7 +196,9 @@
   <!--							 (itemClick)="goEntity($event)"-->
   <!--							 (cardTitleClick)="goProjFolder(Entity)"/>-->
 
-  @if (project()?.ref?.spaceID) {
+  @if (everythingFailed()) {
+    <!-- shown above -->
+  } @else if (project()?.ref?.spaceID) {
     <ion-card>
       <ion-item><ion-label>Shared project</ion-label></ion-item>
       @if (metadataState() === 'available') {
@@ -230,7 +238,6 @@
               what="the boards"
               [error]="boardFailure()"
               [hint]="boardErrorMessage()"
-              [retryable]="true"
               (retry)="retryMetadata()"
             />
           } @else if (boards(); as items) {
@@ -295,7 +302,6 @@
               what="the entities"
               [error]="entityFailure()"
               [hint]="entityErrorMessage()"
-              [retryable]="true"
               (retry)="retryMetadata()"
             />
           } @else if (entities(); as items) {

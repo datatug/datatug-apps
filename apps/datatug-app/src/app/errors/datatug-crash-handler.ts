@@ -1,7 +1,11 @@
 import { ErrorHandler } from '@angular/core';
-import { createErrorHandler } from '@sentry/angular';
+import { createErrorHandler, withScope } from '@sentry/angular';
 import { ChunkLoadErrorHandler } from '@sneat/logging';
-import { isExpectedError } from '@datatug/friendly-error';
+import {
+  isExpectedError,
+  markReported,
+  reportLevelOf,
+} from '@datatug/friendly-error';
 
 /**
  * The dialog text for a genuine crash. Name and email are optional: the form opens with neutral values the visitor
@@ -38,7 +42,14 @@ export class DatatugCrashHandler implements ErrorHandler {
       console.warn('Navigation did not match any route.');
       return;
     }
-    (isExpectedError(error) ? this.quiet : this.crash).handleError(error);
+    const expected = isExpectedError(error);
+    // The reference is shown to the visitor only once the event is on its way, and travels with it as a tag.
+    const reference = markReported(error);
+    withScope((scope) => {
+      scope.setTag('reference', reference);
+      scope.setLevel(reportLevelOf(error) === 'error' ? 'error' : 'warning');
+      (expected ? this.quiet : this.crash).handleError(error);
+    });
   }
 }
 

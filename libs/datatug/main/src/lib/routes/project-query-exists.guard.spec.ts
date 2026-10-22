@@ -35,7 +35,7 @@ describe('savedQueryIsMissing', () => {
       new UrlSegment('not-exist', {}),
     ];
     return TestBed.runInInjectionContext(
-      () => savedQueryIsMissing({} as never, segments) as Promise<boolean>,
+      () => savedQueryIsMissing({} as never, segments, {} as never) as Promise<boolean>,
     );
   }
 

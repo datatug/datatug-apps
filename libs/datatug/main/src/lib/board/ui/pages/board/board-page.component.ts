@@ -346,6 +346,8 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   readonly notFound = signal(false);
   /** The failure behind `loadError`, kept so the error state can choose words for its kind. */
   readonly loadFailure = signal<unknown>(undefined);
+  /** Specific guidance (update the local agent) that replaces the generic words for the failure. */
+  readonly loadGuidance = signal<string | undefined>(undefined);
   /** The Boards list of this project, for the not-found and error states. */
   readonly boardsHref = computed(() => projectPageHref(this.projectRef(), 'boards'));
   readonly queriesHref = computed(() => projectPageHref(this.projectRef(), 'queries'));
@@ -453,6 +455,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.loadError.set(undefined);
           this.notFound.set(false);
           this.loadFailure.set(undefined);
+          this.loadGuidance.set(undefined);
           this.favoriteError.set(undefined);
           this.loading.set(true);
           if (!ref || isSharedProjectRef(ref)) {
@@ -471,8 +474,9 @@ export class BoardPageComponent implements OnInit, OnDestroy {
                 this.loading.set(false);
                 return EMPTY;
               }
-              this.errorLogger.logError(err, 'Failed to get board');
+              this.errorLogger.logError(err, 'Failed to get board', { show: false });
               this.loadFailure.set(err);
+              this.loadGuidance.set(qualifiedLocalReadVersionGuidance(err) ?? undefined);
               this.loadError.set(
                 qualifiedLocalReadVersionGuidance(err) ??
                   'This board could not be loaded. Try opening it again from Boards.',

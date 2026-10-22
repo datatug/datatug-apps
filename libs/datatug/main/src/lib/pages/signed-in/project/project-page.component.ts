@@ -240,6 +240,14 @@ export class ProjectPageComponent
   );
   protected readonly boards = signal<IProjBoard[] | undefined>(undefined);
   protected readonly boardFailure = signal<unknown>(undefined);
+  /** All the overview reads failed together (a rate limit, an outage): the page shows one state, not one per section. */
+  protected readonly everythingFailed = computed(
+    () =>
+      !this.project()?.ref?.spaceID &&
+      this.environmentError() &&
+      this.boardError() &&
+      this.entityError(),
+  );
   protected readonly boardError = signal(false);
   protected readonly boardErrorMessage = signal<string | undefined>(undefined);
   protected readonly entities = signal<IRecord<IEntity>[] | undefined>(

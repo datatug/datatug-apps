@@ -1,5 +1,8 @@
 import {
+  afterNextRender,
   booleanAttribute,
+  ElementRef,
+  viewChild,
   ChangeDetectionStrategy,
   Component,
   computed,
@@ -30,7 +33,8 @@ export interface ErrorStateLink {
 }
 
 /**
- * One place that says what happened, what to do next, and offers Retry. It takes either a failure (`error`, turned
+ * One place that says what happened, what to do next, and offers one recovery action: Retry when trying again can
+ * help, Sign in when only signing in can, or the links it is given. It takes either a failure (`error`, turned
  * into words by {@link friendlyError}) or explicit `title`/`hint` text. It never prints a URL or the raw error.
  */
 @Component({
@@ -41,7 +45,8 @@ export interface ErrorStateLink {
     <section
       class="error-state"
       [class.compact]="compact()"
-      role="alert"
+      [attr.role]="compact() ? 'status' : null"
+      [attr.aria-live]="compact() ? 'polite' : null"
       [attr.data-error-kind]="kind()"
     >
       <span class="error-state-icon" aria-hidden="true"
@@ -56,14 +61,20 @@ export interface ErrorStateLink {
                   : 'alert-circle-outline'
           "
       /></span>
-      <h2>{{ resolvedTitle() }}</h2>
-      <p>{{ resolvedHint() }}</p>
+      <!-- A page-level failure is announced once, as an alert, and takes focus; a section inside a page is a polite status. -->
+      <div class="error-state-words" [attr.role]="compact() ? null : 'alert'">
+        <h2 #title tabindex="-1">{{ resolvedTitle() }}</h2>
+        <p>{{ resolvedHint() }}</p>
+      </div>
       <div class="error-state-actions">
         @if (canRetry()) {
           <ion-button (click)="retry.emit()">
             <ion-icon slot="start" name="refresh-outline" />
             Retry
           </ion-button>
+        }
+        @if (signInAction()) {
+          <ion-button routerLink="/login">Sign in</ion-button>
         }
         @for (link of links(); track link.href; let first = $first) {
           <ion-button
@@ -77,7 +88,10 @@ export interface ErrorStateLink {
         <details class="error-state-details">
           <summary>Details</summary>
           <p>
-            Code {{ f.code }} · Reference {{ f.reference }}
+            Code {{ f.code }}
+            @if (f.reported) {
+              · Reference {{ f.reference }}
+            }
             @if (f.detail) {
               <br />{{ f.detail }}
             }
@@ -122,6 +136,9 @@ export interface ErrorStateLink {
     .error-state-icon ion-icon {
       font-size: 36px;
       color: var(--ion-color-medium-shade);
+    }
+    .error-state h2:focus {
+      outline: none;
     }
     .error-state h2 {
       margin: 0;
@@ -183,6 +200,12 @@ export class ErrorStateComponent {
     () => this.retryable() ?? this.friendly()?.retryable ?? false,
   );
 
+  /** A failure that only signing in can fix offers Sign in, not a Retry that cannot help. */
+  protected readonly signInAction = computed(
+    () => this.kind() === 'unauthenticated' && this.links().length === 0,
+  );
+  private readonly titleElement = viewChild<ElementRef<HTMLElement>>('title');
+
   protected readonly copied = signal(false);
 
   protected async copyDetails(error: FriendlyError): Promise<void> {
@@ -195,6 +218,10 @@ export class ErrorStateComponent {
   }
 
   constructor() {
+    // A page-level state takes focus, so a screen reader reads it and a keyboard user starts from its action.
+    afterNextRender(() => {
+      if (!this.compact()) this.titleElement()?.nativeElement.focus();
+    });
     addIcons({
       alertCircleOutline,
       cloudOfflineOutline,
