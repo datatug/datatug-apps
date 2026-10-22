@@ -1,4 +1,6 @@
 import { expect, test } from './helpers/demodb-guard';
+import { installFakeGithub } from './helpers/fake-github';
+import { demoProjectDeclaringLogs } from './helpers/log-sources-fixture';
 import { SIGN_IN_BUTTON } from './helpers/sign-in-button';
 
 const email = `cloud-logs-${crypto.randomUUID()}@example.test`;
@@ -23,6 +25,10 @@ test('malformed demo log entries explain and clear retained identifier filters',
   page,
 }) => {
   const requests: Array<{ url: string; body?: Record<string, unknown> }> = [];
+  const fixture = demoProjectDeclaringLogs();
+  test.info().attach('log-sources-fixture', { body: fixture.dir });
+  await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: fixture.dir }]);
+  page.on('close', fixture.dispose);
   await page.route(
     'http://127.0.0.1:6832/v1/databases/northwind_evidence',
     async (route) => {
@@ -70,7 +76,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
       });
     },
   );
-  await page.goto('/demo/logs?order=11039');
+  await page.goto('/demo/logs?source=northwind-local&order=11039');
   await expect(
     page.getByRole('status').filter({ hasText: 'No entries matched' }),
   ).toBeVisible();
@@ -78,7 +84,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
     .getByRole('checkbox', { name: /Include untimed or malformed entries/ })
     .check();
   await expect(
-    page.getByText(/Identifier, correlation, and severity filters still apply/),
+    page.getByText(/Order ID, correlation, severity filters still apply/),
   ).toBeVisible();
   await expect(
     page.getByText(/Malformed entries may not contain those fields/),
@@ -92,7 +98,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
     .getByRole('button', { name: 'Clear identifier and correlation filters' })
     .click();
   await page.getByRole('button', { name: 'Find evidence' }).click();
-  await expect(page).toHaveURL(/\/demo\/logs\?order=$/);
+  await expect(page).toHaveURL(/\/demo\/logs\?source=northwind-local&collection=fulfillment_events&from=[^&]*&to=[^&]*&order=$/);
   await expect.poll(() => requests.length).toBeGreaterThan(1);
   const where = (requests.at(-1)?.body?.['where'] ?? []) as Array<{
     field: string;
@@ -574,4 +580,55 @@ test('signed-in user connects, queries, removes a view and revokes the Google gr
   expect(calls.map((call) => call.path)).toContain(
     '/v0/datatug/me/log-connections',
   );
+});
+
+test.describe('hosted origin (REQ:logs-read-in-place)', () => {
+  const HOSTED = 'https://hosted.datatug.test';
+
+  /** Serves the app under a non-loopback origin, so the page behaves as it does on datatug.app. */
+  async function openHosted(page: import('@playwright/test').Page, baseURL: string) {
+    const fixture = demoProjectDeclaringLogs({ withShipping: true });
+    page.on('close', fixture.dispose);
+    await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: fixture.dir }]);
+    const local: string[] = [];
+    page.on('request', (request) => {
+      if (/^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])[:/]/.test(request.url())) local.push(request.url());
+    });
+    await page.route('https://ovdb.demodb.dev/**', async (route) => {
+      const url = route.request().url();
+      if (url.endsWith('/query')) {
+        await route.fulfill({ status: 200, json: { records: [] } });
+      } else {
+        await route.fulfill({ status: 200, json: { id: 'shipping-logs', collections: ['baseline'], capabilities: { query: true, write: false, read: true } } });
+      }
+    });
+    await page.route(`${HOSTED}/**`, async (route) => {
+      const url = new URL(route.request().url());
+      const response = await route.fetch({ url: `${baseURL}${url.pathname}${url.search}` });
+      await route.fulfill({ response });
+    });
+    return local;
+  }
+
+  for (const path of [
+    '/demo/logs?source=shipping-logs&order=11045',
+    '/demo/logs?source=northwind-local&order=11039',
+    '/demo/logs',
+  ]) {
+    test(`${path} sends no request to the visitor's machine`, async ({ page, baseURL }) => {
+      const local = await openHosted(page, baseURL as string);
+      const picker = page.getByLabel('Log source');
+      await page.goto(`${HOSTED}${path}`);
+      await expect(page.locator('main.evidence-page')).toBeVisible({ timeout: 30_000 });
+      await expect(page.getByRole('status').or(page.getByRole('alert')).first()).toBeVisible({ timeout: 30_000 });
+      if (path.includes('northwind-local')) {
+        await expect(page.getByRole('alert')).toContainText('hosted app does not read it');
+      } else {
+        await expect(picker.locator('option')).toHaveText(['Shipping logs']);
+      }
+      await expect(page.getByText('local agent')).toHaveCount(0);
+      await expect(page.locator('details.source-settings')).toHaveCount(0);
+      expect(local).toEqual([]);
+    });
+  }
 });

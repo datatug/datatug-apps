@@ -1,4 +1,6 @@
-import { demoLogEvidenceMapping } from '../demo-logs/demo-log-source-adapter';
+import { LogSourceCatalogService } from '../demo-logs/log-source-catalog.service';
+import { relatedLogEvidenceLinks, type LogSource } from '../demo-logs/log-source-declarations';
+import { demoDbOvdbDatabaseUrl } from '../../queries/demodb-ovdb';
 import { ProjectCopyOfferComponent } from '../../project/new-project/project-copy-offer.component';
 // /demo/sqlite/:dataset — "Explore SQLite in DataTug" from a DemoDB.dev database page.
 //
@@ -272,7 +274,14 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
       return value && /^\d{1,10}$/.test(value) ? value : undefined;
     })() },
   );
-  protected readonly relatedLogEvidence = computed(() => demoLogEvidenceMapping(this.entry()?.dataset));
+  private readonly logSourceCatalog = inject(LogSourceCatalogService);
+  /** Declared log sources, read only once a table is open: record → logs links are optional, so a failed read shows none. */
+  private readonly logSources = signal<readonly LogSource[]>([]);
+  protected readonly relatedLogEvidence = computed(() => {
+    const dataset = this.entry()?.dataset;
+    // A browser copy of a DemoDB dataset is identified by the OVDB database it was published as.
+    return dataset ? relatedLogEvidenceLinks(this.logSources(), demoDbOvdbDatabaseUrl(dataset), this.tableParam()) : [];
+  });
   protected readonly entry = computed<DemoSqliteCatalogEntry | undefined>(() => findDemoSqliteDataset(this.datasetParam()));
   protected readonly session = signal<LocalDemoDbSession | undefined>(undefined);
   protected readonly state = computed<LocalDemoDbState>(() => this.session()?.state() ?? { kind: 'checking' });
@@ -331,6 +340,10 @@ export class DemoSqlitePageComponent implements ViewWillEnter {
   });
 
   constructor() {
+    effect(() => {
+      if (!this.entry() || !this.tableParam() || this.logSources().length) return;
+      this.logSourceCatalog.sources().then((sources) => this.logSources.set(sources), () => undefined);
+    });
     // One session per dataset; changing only the table keeps it.
     effect(() => {
       const entry = this.entry();

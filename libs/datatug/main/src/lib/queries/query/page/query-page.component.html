@@ -1415,7 +1415,21 @@
       }
     </ul>
   }
-  @if (!demoDraftRecovery() && runError(); as error) {
+  @if (!demoDraftRecovery() && localOvdbNeeded(); as needed) {
+    <ion-card data-testid="local-ovdb-needed">
+      <ion-card-content>
+        <p>
+          <strong>This query reads a local OVDB server</strong> at
+          {{ needed.baseUrl }} (databases {{ needed.databases.join(', ') }}),
+          and none is running on this computer. Start one, then run the query
+          again. The project's README names the manifest for each database.
+        </p>
+        <pre class="local-ovdb-command">{{ needed.command }}</pre>
+        <ion-button size="small" fill="outline" (click)="copyLocalOvdbCommand(needed.command)">Copy command</ion-button>
+        @if (localOvdbCopyStatus()) { <span role="status">{{ localOvdbCopyStatus() }}</span> }
+      </ion-card-content>
+    </ion-card>
+  } @else if (!demoDraftRecovery() && runError(); as error) {
     <ion-card color="danger">
       <ion-card-content>
         {{ error }}

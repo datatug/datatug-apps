@@ -1,4 +1,6 @@
 import { expect, test } from './helpers/demodb-guard';
+import { installFakeGithub } from './helpers/fake-github';
+import { demoProjectDeclaringLogs } from './helpers/log-sources-fixture';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -183,6 +185,10 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
   });
 
   test.beforeEach(async ({ page }) => {
+    // The public demo project declares no loopback source, so this local journey declares it itself.
+    const declared = demoProjectDeclaringLogs();
+    page.on('close', declared.dispose);
+    await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: declared.dir }]);
     if (adapterPort !== 6832) {
       await page.route('http://127.0.0.1:6832/**', async route => {
         const response = await route.fetch({ url: route.request().url().replace('http://127.0.0.1:6832', adapterOrigin) });
@@ -198,11 +204,11 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     expect(response.ok()).toBe(true);
     expect(await response.text()).toContain('northwind_evidence');
 
-    await page.goto('/demo/logs?order=11039');
+    await page.goto('/demo/logs?source=northwind-local&order=11039');
     await expect(
       page.getByRole('heading', {
         level: 1,
-        name: 'Why did order 11039 remain unshipped?',
+        name: 'Fulfillment events · Order ID 11039',
       }),
     ).toBeVisible();
     await expect(
@@ -230,7 +236,7 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     await expect(errorDetails).toContainText(
       'northwind_evidence:fulfillment_events:',
     );
-    await expect(errorDetails).toContainText('Original file entry');
+    await expect(errorDetails).toContainText('Original entry');
     await expect(errorDetails.locator('pre').first()).toContainText(
       'retryable',
     );
@@ -276,9 +282,8 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
     await expect(page.locator('.log-grid')).toContainText('retry_budget=0');
 
     await severity.selectOption('');
-    const sourceSettings = page.locator('details.source-settings');
-    await sourceSettings.locator('summary').click();
-    await sourceSettings.getByLabel('Collection').fill('carrier_events');
+    const collection = page.getByRole('combobox', { name: 'Collection' });
+    await collection.selectOption('carrier_events');
     await page.getByRole('button', { name: 'Find evidence' }).click();
     await expect(page.locator('.log-grid .ag-row')).toHaveCount(2);
     await page
@@ -289,48 +294,40 @@ test.describe('Northwind order log investigation with the real local OVDB adapte
       'at CarrierClient.createLabel(CarrierClient.java:91)',
     );
 
-    await sourceSettings.getByLabel('Collection').fill('fulfillment_events');
+    await collection.selectOption('fulfillment_events');
     await page.getByLabel('Order ID').fill('11040');
     await page.getByRole('button', { name: 'Find evidence' }).click();
-    await expect(page).toHaveURL(/\/demo\/logs\?order=11040$/);
+    await expect(page).toHaveURL(/[?&]collection=fulfillment_events&.*order=11040$/);
     await expect(
-      page.getByRole('heading', { level: 1, name: 'Order 11040 evidence' }),
+      page.getByRole('heading', { level: 1, name: 'Fulfillment events · Order ID 11040' }),
     ).toBeVisible();
     await expect(page.locator('.log-grid .ag-row')).toHaveCount(1);
 
     await page.getByLabel('Order ID').fill('99999');
     await page.getByRole('button', { name: 'Find evidence' }).click();
-    await expect(page).toHaveURL(/\/demo\/logs\?order=99999$/);
+    await expect(page).toHaveURL(/[?&]order=99999$/);
     await expect(page.getByRole('status')).toContainText(
       'No entries matched this bounded query.',
     );
   });
 
-  test('follows the selected order record URL and browser back returns to the same order timeline', async ({
+  test('keeps the declared source in the URL and browser back returns to the same order timeline', async ({
     page,
   }) => {
-    await page.goto('/demo/logs?order=11039');
+    await page.goto('/demo/logs?source=northwind-local&order=11039');
     await expect(page.locator('.log-grid .ag-row')).toHaveCount(6);
+    // The loopback source declares no record links: none is offered.
+    await expect(page.getByRole('link', { name: /^Open .* record/ })).toHaveCount(0);
 
-    const orderLink = page.getByRole('link', { name: 'Open the order record' });
-    await expect(orderLink).toHaveAttribute(
-      'href',
-      '/demo/sqlite/northwind/table/Orders?record=11039',
-    );
-    await orderLink.click();
-    await expect(page).toHaveURL(
-      /\/demo\/sqlite\/northwind\/table\/Orders\?record=11039$/,
-    );
+    await page.getByLabel('Order ID').fill('11040');
+    await page.getByRole('button', { name: 'Find evidence' }).click();
+    await expect(page).toHaveURL(/source=northwind-local.*order=11040$/);
+    await expect(page.locator('.log-grid .ag-row')).toHaveCount(1);
 
-    // This asserts the record link and route only. The browser SQLite fixture
-    // is a separately pinned public download and is not part of this test.
     await page.goBack({ waitUntil: 'commit' });
-    await expect(page).toHaveURL(/\/demo\/logs\?order=11039$/);
+    await expect(page).toHaveURL(/\/demo\/logs\?source=northwind-local&order=11039$/);
     await expect(
-      page.getByRole('heading', {
-        level: 1,
-        name: 'Why did order 11039 remain unshipped?',
-      }),
+      page.getByRole('heading', { level: 1, name: 'Fulfillment events · Order ID 11039' }),
     ).toBeVisible();
     await expect(page.locator('.log-grid .ag-row')).toHaveCount(6);
   });

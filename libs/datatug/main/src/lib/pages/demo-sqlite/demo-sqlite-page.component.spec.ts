@@ -1,4 +1,6 @@
 import { ErrorLogger } from '@sneat/core';
+import { LogSourceCatalogService } from '../demo-logs/log-source-catalog.service';
+import { declaredShippingLogs } from '../demo-logs/log-source-declarations.spec-helper';
 import { TestBed } from '@angular/core/testing';
 import { ActivatedRoute, convertToParamMap, provideRouter, type Params } from '@angular/router';
 import { BehaviorSubject } from 'rxjs';
@@ -28,6 +30,7 @@ async function setup(params: Params, environment: LocalDemoDbEnvironment = fakeE
       { provide: LOCAL_DEMODB_RUNTIME_LOADER, useValue: loader },
       { provide: LOCAL_DEMODB_ENVIRONMENT, useValue: environment },
       { provide: OvdbConfirmService, useValue: { confirm: vi.fn(async () => true) } },
+      { provide: LogSourceCatalogService, useValue: { sources: async () => declaredShippingLogs } },
     ],
   }).compileComponents();
   const fixture = TestBed.createComponent(DemoSqlitePageComponent);
