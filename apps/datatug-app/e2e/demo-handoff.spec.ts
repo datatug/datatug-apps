@@ -1432,15 +1432,18 @@ test.describe('a question on a project address that is not a hand-off address is
       );
       await reported;
 
-      const url = new URL(page.url());
-      expect(url.searchParams.has('msg')).toBe(false);
-      expect(url.searchParams.has('q')).toBe(false);
+      // The app rewrites the address after it has rendered: wait for the end state, not a fixed time.
+      const url = () => new URL(page.url());
+      await expect.poll(() => url().searchParams.has('msg')).toBe(false);
+      await expect.poll(() => url().searchParams.has('q')).toBe(false);
       // Only an ordinary project page keeps unrelated query keys. Nested chat is now a hand-off,
       // and the exact old repository root redirects to the shared project; both clear the query.
-      expect(url.searchParams.get('x')).toBe(path.endsWith('/queries') ? '1' : null);
+      await expect
+        .poll(() => url().searchParams.get('x'))
+        .toBe(path.endsWith('/queries') ? '1' : null);
       // The queries page and hand-off capture clear the fragment; the old root alias also
       // redirects to the shared project without carrying the fragment forward.
-      expect(url.hash).toBe('');
+      await expect.poll(() => url().hash).toBe('');
       expect(page.url()).not.toContain(MARKER);
       await expectDiagnosticsWithoutOptionalTracking(page, external);
       const leaked = external.filter((request) =>
