@@ -75,11 +75,20 @@ export class MenuEnvSelectorComponent implements OnChanges {
               environments.map(({ id, title }) => ({ id, title })),
             ),
             catchError((error: unknown) => {
-              this.errorLogger.logError(
-                error,
-                'Failed to list project environments',
-                { show: false },
-              );
+              // Signed out, there is nothing to list: stay quiet instead of raising a toast.
+              const message =
+                (error as { message?: unknown } | null)?.message ?? error;
+              if (
+                !/not authenticated yet|no Firebase ID token/i.test(
+                  String(message),
+                )
+              ) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to list project environments',
+                  { show: false },
+                );
+              }
               return of([] as IProjEnv[]);
             }),
           );

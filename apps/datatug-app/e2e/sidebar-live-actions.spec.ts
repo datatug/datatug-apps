@@ -20,7 +20,7 @@ test('project sidebar offers active queries and a working saved-query path at wi
     await page.goto(project);
     const menu = page.locator('sneat-datatug-project-menu');
     if (width < 992) {
-      await page.locator('ion-menu-button.app-level-menu-button').click();
+      await page.locator('ion-menu-button.app-level-menu-button:visible').click();
     }
     await expect(menu).toBeVisible();
     await expect(
