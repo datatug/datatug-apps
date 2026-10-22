@@ -62,7 +62,7 @@
 }
 .editor-block,
 .validator-editor {
-  border: 1px solid var(--ion-color-step-200, #dae2e9);
+  border: 1px solid var(--ion-background-color-step-200, #dae2e9);
   border-radius: 9px;
   padding: 12px;
   margin: 12px 0;
@@ -84,15 +84,16 @@
   margin: 12px 10px;
   padding: 10px 12px;
   border-radius: 7px;
-  background: #e9f5ed;
+  background: var(--fb-ok-bg);
+  color: var(--fb-ok-fg);
 }
 .feedback.error {
-  background: #fff0ee;
-  color: #932d24;
+  background: var(--fb-err-bg);
+  color: var(--fb-err-fg);
 }
 .feedback.unknown {
-  background: #fff4da;
-  color: #73500d;
+  background: var(--fb-unk-bg);
+  color: var(--fb-unk-fg);
 }
 #detective-check-run-result:focus {
   outline: 2px solid var(--ion-color-primary, #2763a5);
@@ -179,7 +180,7 @@
   --inner-padding-end: 0;
 }
 .check-detail-definition-list .check-detail-step {
-  --background: var(--ion-color-step-50, #f7f9fb);
+  --background: var(--ion-background-color-step-50, #f7f9fb);
 }
 .check-detail-definition-list .check-detail-step h3 {
   margin: 0;
@@ -190,7 +191,7 @@
   margin: 0;
 }
 .check-detail-definition-list .check-detail-validator {
-  border-inline-start: 3px solid var(--ion-color-step-300, #c8d1da);
+  border-inline-start: 3px solid var(--ion-background-color-step-300, #c8d1da);
   --padding-start: 9px;
 }
 .check-detail-execution {
@@ -218,7 +219,7 @@
   outline-offset: 2px;
 }
 .check-detail-execution[open] summary {
-  border-bottom: 1px solid var(--ion-color-step-200, #dae2e9);
+  border-bottom: 1px solid var(--ion-background-color-step-200, #dae2e9);
   background: rgba(var(--ion-color-primary-rgb, 39, 99, 165), 0.045);
 }
 .check-detail-execution-body {

@@ -34,7 +34,7 @@
     position: sticky;
     top: 0.5rem;
     padding-left: 1.5rem;
-    border-left: 1px solid var(--ion-color-step-150, #d9d9d9);
+    border-left: 1px solid var(--ion-background-color-step-150, #d9d9d9);
   }
   .editor.off {
     display: block;
@@ -48,7 +48,7 @@
   gap: 0.75rem;
   padding-bottom: 1.5rem;
   margin-bottom: 1.5rem;
-  border-bottom: 1px solid var(--ion-color-step-150, #d9d9d9);
+  border-bottom: 1px solid var(--ion-background-color-step-150, #d9d9d9);
 }
 .block:last-child {
   border-bottom: 0;
@@ -71,7 +71,7 @@ h3 {
   margin: 0 0 1rem;
   padding: 0.5rem 0.75rem;
   border-left: 3px solid var(--ion-color-medium);
-  background: var(--ion-color-step-50, #f2f2f2);
+  background: var(--ion-background-color-step-50, #f2f2f2);
   font-size: 0.9rem;
 }
 .notice.error {
@@ -106,7 +106,7 @@ h3 {
   display: grid;
   gap: 0.5rem;
   padding: 0.5rem 0 0.75rem;
-  border-top: 1px dashed var(--ion-color-step-250, #c8c8c8);
+  border-top: 1px dashed var(--ion-background-color-step-250, #c8c8c8);
 }
 .widget-head {
   display: flex;
@@ -129,7 +129,7 @@ h3 {
   tab-size: 2;
   color: var(--ion-text-color);
   background: var(--ion-background-color);
-  border: 1px solid var(--ion-color-step-250, #c8c8c8);
+  border: 1px solid var(--ion-background-color-step-250, #c8c8c8);
   border-radius: 6px;
   resize: vertical;
 }
@@ -148,7 +148,7 @@ h3 {
   margin-bottom: 0.75rem;
 }
 .preview-body {
-  border-top: 1px solid var(--ion-color-step-150, #d9d9d9);
+  border-top: 1px solid var(--ion-background-color-step-150, #d9d9d9);
   padding-top: 0.5rem;
 }
 

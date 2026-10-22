@@ -71,3 +71,10 @@ ion-item-divider h3 {
   margin: 0;
   font-size: 0.85rem;
 }
+
+// The pencil sketches are dark line art on white paper, drawn with multiply; on a dark surface invert them
+// to light lines (screen drops the now-black paper).
+:host-context(.ion-palette-dark) .storage-visual {
+  mix-blend-mode: screen;
+  filter: grayscale(1) invert(1);
+}
