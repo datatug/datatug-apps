@@ -316,12 +316,13 @@ export class CardPageComponent {
     // The preview follows the last valid card, after a short pause.
     effect((onCleanup) => {
       const card = this.finished();
-      const valid = !this.problem() || this.isIdOnlyProblem();
-      // Reading the preview here must not make the effect depend on what it writes.
-      const first = untracked(() => this.previewCard() === undefined);
+      const target = !this.problem() || this.isIdOnlyProblem() ? card : undefined;
+      // Tracked on purpose: whatever resets the preview, the effect brings it back to the card being edited.
+      const shown = this.previewCard();
+      if (shown === target) return;
       const timer = setTimeout(
-        () => this.previewCard.set(valid ? card : undefined),
-        first ? 0 : PREVIEW_DEBOUNCE_MS,
+        () => this.previewCard.set(target),
+        shown === undefined ? 0 : PREVIEW_DEBOUNCE_MS,
       );
       onCleanup(() => clearTimeout(timer));
     });
@@ -362,7 +363,6 @@ export class CardPageComponent {
     this.jsonText.set(JSON.stringify(card, null, 2));
     this.jsonError.set(undefined);
     this.previewText.set({});
-    this.previewCard.set(undefined);
   }
 
   private refreshAutoId(): void {

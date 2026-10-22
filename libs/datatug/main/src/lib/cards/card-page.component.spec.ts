@@ -495,6 +495,26 @@ describe('CardPageComponent', () => {
       expect((input as never as { errorText: string }).errorText).toBe('Enter valid JSON.');
     });
 
+    it('previews a read-only card loaded after the first render, also when entering the page re-reads the same card', async () => {
+      const load = new Subject<ProjectCard>();
+      await create({
+        params: { cardId: 'customer' },
+        canWrite: false,
+        canDelete: false,
+        service: { getCard: vi.fn(() => load) },
+      });
+      load.next(saved);
+      await fixture.whenStable();
+      // Ionic calls ionViewWillEnter on entry: the card is read again and arrives as the same object
+      fixture.componentInstance.ionViewWillEnter();
+      await fixture.whenStable();
+      load.next(saved);
+      await new Promise((r) => setTimeout(r, 380));
+      await fixture.whenStable();
+      expect(q('.view')?.textContent).toContain('view customer');
+      expect(allText(el())).not.toContain('Fix the problem');
+    });
+
     it('waits for the card to be valid before previewing', async () => {
       await create({ data: { newCard: true } });
       await settleTimers();
