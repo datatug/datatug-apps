@@ -294,3 +294,86 @@ export function createAnalyticsConsent(
     },
   };
 }
+
+/**
+ * The app's own consent for anonymous usage analytics (PostHog), public-demo REQ:demo-usage-analytics. Distinct from
+ * {@link ANALYTICS_CONSENT_KEY}, which the landing site's Google Analytics banner also writes: a yes there names only
+ * Google Analytics, so it never starts PostHog here. Only the app's banner, whose text names PostHog, writes this key.
+ */
+export const USAGE_ANALYTICS_CONSENT_KEY = 'datatug.usage-analytics-consent.v1';
+
+/**
+ * Google Analytics consent (`ga`, shared with the landing site) plus the app-only usage consent. `granted()` is the
+ * usage gate (PostHog and usage events): it needs this app's own yes, and a no on either key (a withdrawal on the site
+ * included) keeps it off. The banner shows while either choice is open; one answer records both. Without usage
+ * analytics configured (`usageEnabled` false) it is `ga` unchanged, except that `granted()` is never true.
+ */
+export function withUsageConsent(
+  ga: AnalyticsConsent,
+  env: Pick<AnalyticsEnv, 'storage' | 'location' | 'checkoutActive' | 'window'>,
+  usageEnabled: boolean,
+): AnalyticsConsent {
+  const listeners = new Set<() => void>();
+  let memory: AnalyticsChoice | undefined;
+
+  function usageChoice(): AnalyticsChoice | undefined {
+    try {
+      return (
+        parseChoice(env.storage().getItem(USAGE_ANALYTICS_CONSENT_KEY)) ??
+        memory
+      );
+    } catch {
+      return memory;
+    }
+  }
+
+  const usageAllowed = () =>
+    usageEnabled &&
+    !env.checkoutActive() &&
+    !LOCAL_HOSTS.has(env.location().hostname);
+
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  const onStorage = (event: { key: string | null }) => {
+    if (event.key === null || event.key === USAGE_ANALYTICS_CONSENT_KEY)
+      notify();
+  };
+
+  return {
+    choice: ga.choice,
+    bannerVisible: () =>
+      ga.bannerVisible() || (usageAllowed() && usageChoice() === undefined),
+    choose(next) {
+      if (usageEnabled) {
+        try {
+          env.storage().setItem(USAGE_ANALYTICS_CONSENT_KEY, next);
+          memory = undefined;
+        } catch {
+          memory = next;
+        }
+      }
+      // GA applies its own key and tells every subscriber, this one's included.
+      ga.choose(next);
+    },
+    pageView: ga.pageView,
+    granted: () =>
+      usageAllowed() && usageChoice() === 'granted' && ga.choice() !== 'denied',
+    subscribe(listener) {
+      listeners.add(listener);
+      const unsubscribe = ga.subscribe(listener);
+      return () => {
+        listeners.delete(listener);
+        unsubscribe();
+      };
+    },
+    start() {
+      env.window.addEventListener('storage', onStorage);
+      ga.start();
+    },
+    stop() {
+      env.window.removeEventListener('storage', onStorage);
+      ga.stop();
+    },
+  };
+}

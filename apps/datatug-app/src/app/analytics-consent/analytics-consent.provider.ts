@@ -17,7 +17,11 @@ import {
 } from './consent-gated-analytics';
 import { NavigationEnd, Router } from '@angular/router';
 import { checkoutPrivacyActive } from '../checkout/checkout-privacy-state';
-import { createAnalyticsConsent, type AnalyticsEnv } from './analytics-consent';
+import {
+  createAnalyticsConsent,
+  withUsageConsent,
+  type AnalyticsEnv,
+} from './analytics-consent';
 import {
   bannerText,
   mountAnalyticsConsentBanner,
@@ -54,8 +58,15 @@ export function provideAnalyticsConsent(
   return makeEnvironmentProviders([
     {
       provide: ANALYTICS_CONSENT,
-      useFactory: () =>
-        createAnalyticsConsent(browserAnalyticsEnv(), measurementId),
+      // PostHog never follows the site's Google Analytics key: it has its own (withUsageConsent).
+      useFactory: () => {
+        const env = browserAnalyticsEnv();
+        return withUsageConsent(
+          createAnalyticsConsent(env, measurementId),
+          env,
+          !!posthog,
+        );
+      },
     },
     provideAppInitializer(() => {
       const router = inject(Router);

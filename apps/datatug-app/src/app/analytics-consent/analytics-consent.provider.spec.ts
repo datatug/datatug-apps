@@ -1,7 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
 import { provideZonelessChangeDetection } from '@angular/core';
-import { ANALYTICS_CONSENT_KEY } from './analytics-consent';
+import {
+  ANALYTICS_CONSENT_KEY,
+  USAGE_ANALYTICS_CONSENT_KEY,
+} from './analytics-consent';
 import {
   browserAnalyticsEnv,
   POSTHOG_CONSENT_CLIENT,
@@ -165,6 +168,28 @@ describe('PostHog behind the same consent', () => {
       token: 'public-fixture',
     });
     vi.restoreAllMocks();
+  });
+
+  it("never starts PostHog on the landing site's Google Analytics yes, only on the app's own", async () => {
+    const spy = nonLocalHost();
+    vi.spyOn(document.head, 'appendChild').mockImplementation((node) => node);
+    // The website banner (Google Analytics only) wrote the shared key.
+    localStorage.setItem(ANALYTICS_CONSENT_KEY, 'granted');
+    const client = posthogClient();
+    const router = setupWithPosthog(client);
+    await router.navigateByUrl('/');
+    const consent = TestBed.inject(ANALYTICS_CONSENT);
+    expect(client.start).not.toHaveBeenCalled();
+    expect(consent.granted()).toBe(false);
+    // The app asks again: its banner names PostHog.
+    expect(consent.bannerVisible()).toBe(true);
+    expect(localStorage.getItem(USAGE_ANALYTICS_CONSENT_KEY)).toBeNull();
+    consent.choose('granted');
+    expect(localStorage.getItem(USAGE_ANALYTICS_CONSENT_KEY)).toBe('granted');
+    expect(client.start).toHaveBeenCalledOnce();
+    spy.mockRestore();
+    vi.restoreAllMocks();
+    localStorage.clear();
   });
 
   it('never starts PostHog after a stored rejection', async () => {
