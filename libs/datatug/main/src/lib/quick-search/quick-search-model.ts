@@ -72,6 +72,7 @@ export type SearchProblem =
   | 'premium'
   | 'denied'
   | 'conflict'
+  | 'rateLimited'
   | 'unavailable'
   | 'failed';
 /**
@@ -100,11 +101,14 @@ export function classifySearchError(error: unknown): SearchProblem {
       return 'denied';
     case 'operation_in_progress':
       return 'conflict';
+    case 'quick_search_rate_limited':
+      return 'rateLimited';
     case 'search_unavailable':
     case 'provider_unavailable':
       return 'unavailable';
   }
   if (failure?.status === 403) return 'denied';
+  if (failure?.status === 429) return 'rateLimited';
   if (failure?.status === 503) return 'unavailable';
   return 'failed';
 }

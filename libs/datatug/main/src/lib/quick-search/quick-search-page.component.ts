@@ -394,6 +394,12 @@ import {
               >Retry search</ion-button
             >
           }
+          @case ('rateLimited') {
+            <p role="alert">Too many searches — try again in a moment.</p>
+            <ion-button fill="clear" (click)="search()"
+              >Retry search</ion-button
+            >
+          }
           @case ('unavailable') {
             <p role="alert">
               Search is temporarily unavailable. Try again in a moment.
@@ -666,6 +672,8 @@ export class QuickSearchPageComponent {
   private generation = 0;
   /** Guards status loads only, so status and search never cancel each other. */
   private statusGeneration = 0;
+  /** Guards metadata previews only. */
+  private previewGeneration = 0;
   private readonly authReady = signal(false);
   private statusRequest?: Subscription;
   private readonly authKey = signal<string | undefined>(undefined);
@@ -770,6 +778,7 @@ export class QuickSearchPageComponent {
     });
     this.destroy.onDestroy(() => {
       this.generation++;
+      this.previewGeneration++;
       this.statusGeneration++;
       this.request?.unsubscribe();
       this.statusRequest?.unsubscribe();
@@ -800,6 +809,7 @@ export class QuickSearchPageComponent {
   }
   invalidateSearch() {
     this.generation++;
+    this.previewGeneration++;
     this.request?.unsubscribe();
     this.items.set([]);
     this.busy.set(false);
@@ -938,8 +948,8 @@ export class QuickSearchPageComponent {
   async preview() {
     const ref = this.project();
     if (!ref || this.checkDetail()) return;
-    const generation = ++this.generation;
-    this.request?.unsubscribe();
+    // Own counter: a preview never cancels an in-flight search, and vice versa.
+    const generation = ++this.previewGeneration;
     this.busy.set(true);
     this.snapshot.set(undefined);
     this.error.set('');
@@ -949,21 +959,26 @@ export class QuickSearchPageComponent {
             this.api.preview(ref, this.environmentId()).pipe(timeout(15000)),
           )
         : await this.snapshots.preview(ref, this.environmentId());
-      if (generation === this.generation) this.snapshot.set(snapshot);
+      if (generation === this.previewGeneration) this.snapshot.set(snapshot);
     } catch {
-      if (generation === this.generation)
+      if (generation === this.previewGeneration)
         this.error.set(
           'Could not read selected metadata. No metadata was uploaded.',
         );
     } finally {
-      if (generation === this.generation) this.busy.set(false);
+      // Stay busy while a search or index operation is still in flight.
+      if (
+        generation === this.previewGeneration &&
+        this.request?.closed !== false
+      )
+        this.busy.set(false);
     }
   }
   async schemaPreview() {
     const preview = this.preview();
-    const generation = this.generation;
+    const generation = this.previewGeneration;
     await preview;
-    if (generation !== this.generation) return;
+    if (generation !== this.previewGeneration) return;
     const model = this.schemaModel();
     this.items.set(
       (this.snapshot()?.documents || []).filter(

@@ -152,6 +152,8 @@ describe('classifySearchError', () => {
     [body(503, 'search_unavailable'), 'unavailable'],
     [body(403, undefined), 'denied'],
     [body(503, undefined), 'unavailable'],
+    [body(429, { code: 'quick_search_rate_limited' }), 'rateLimited'],
+    [body(429, undefined), 'rateLimited'],
     [body(400, 'invalid_request'), 'failed'],
     [new Error('boom'), 'failed'],
     [undefined, 'failed'],
