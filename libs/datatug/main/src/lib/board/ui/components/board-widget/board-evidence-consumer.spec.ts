@@ -242,9 +242,14 @@ describe('canonical Board evidence-chart consumer', () => {
       }
     },
   );
-  it('refuses missing expected source identity, forged sidecars, and immediately fences changed runtime context', async () => {
+  it.each([
+    { environment: 'other', securityContextId: 'original' },
+    { environment: 'demo', securityContextId: 'replacement' },
+    { environment: 'demo' },
+  ])('refuses missing expected source identity, forged sidecars, and fences context change %j', async (context) => {
     const data = charts[1],
       { fixture, snapshot, run } = await mount(data);
+    fixture.componentRef.setInput('boardContext', { environment: 'demo', securityContextId: 'original' });
     const result = await held();
     const write = (value: Result, expected?: HeldEvidenceIdentity) =>
       snapshot.set({
@@ -286,7 +291,7 @@ describe('canonical Board evidence-chart consumer', () => {
     if (!selection) throw new Error('fixture');
     const emit = vi.fn();
     fixture.componentInstance.inspectEvidence.subscribe(emit);
-    fixture.componentRef.setInput('boardContext', { environment: 'other' });
+    fixture.componentRef.setInput('boardContext', context);
     fixture.componentInstance.inspectHeldEvidence(selection);
     expect(emit).not.toHaveBeenCalled();
     fixture.detectChanges();

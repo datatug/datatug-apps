@@ -1,3 +1,6 @@
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { AgentContextService, DATATUG_AGENT_BASE_URL } from '@sneat/datatug-semantic';
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
@@ -580,5 +583,64 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
     await fixture.whenStable();
     expect(fixture.componentInstance.boardContext().parameters).toEqual({});
     expect(fixture.componentInstance.parameterErrors()).toEqual({});
+  });
+});
+
+
+describe('BoardPage local agent context', () => {
+  it('uses the route agent identity reactively and clears it outside that local scope', async () => {
+    const project = new Subject<IProjectContext | undefined>();
+    await TestBed.configureTestingModule({
+      imports: [BoardPageComponent],
+      providers: [
+        provideHttpClient(), provideHttpClientTesting(),
+        { provide: DATATUG_AGENT_BASE_URL, useValue: 'about:blank' },
+        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        { provide: ProjectAssetsReadService, useValue: { board: vi.fn(() => of(undefined)) } },
+        { provide: ParameterLookupService, useValue: { lookupParameterValue: vi.fn() } },
+        { provide: QueryParamsService, useValue: { setQueryParameter: vi.fn() } },
+        { provide: ActivatedRoute, useValue: { queryParamMap: of({ get: () => null }), paramMap: of({ get: () => 'board' }), snapshot: { paramMap: { get: () => null } } } },
+        { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() } },
+      ],
+    }).overrideComponent(BoardPageComponent, {
+      set: { imports: [], providers: [], template: '<output>{{boardContext().securityContextId}}</output>' },
+    }).compileComponents();
+    const fixture = TestBed.createComponent(BoardPageComponent);
+    const http = TestBed.inject(HttpTestingController);
+    const agent = TestBed.inject(AgentContextService);
+    fixture.detectChanges();
+    const ref = { storeId: 'http-127.0.0.1:18989', projectId: 'demo' };
+    project.next({ ref });
+    await fixture.whenStable();
+    const info = { version: '1', principal: { id: 'local-reader', roles: [], groups: [] }, securityContextId: 'connected-context-1', projects: [{ id: 'demo' }], capabilities: { protectedQueries: true, opaqueReadOnly: false } };
+    const url = 'http://127.0.0.1:18989/datatug';
+    http.expectOne(url + '/agent-info').flush(info);
+    await fixture.whenStable();
+    expect(fixture.componentInstance.boardContext().executionTarget).toEqual({ kind: 'local-agent', agentStoreId: ref.storeId });
+    expect(fixture.nativeElement.textContent).toContain('connected-context-1');
+    const previous = fixture.componentInstance.boardContext();
+    agent.refresh(url).subscribe();
+    http.expectOne(url + '/agent-info').flush({ ...info, securityContextId: 'connected-context-2' });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.boardContext()).not.toBe(previous);
+    expect(fixture.nativeElement.textContent).toContain('connected-context-2');
+    expect(fixture.nativeElement.textContent).not.toContain('connected-context-1');
+    for (const other of [
+      { storeId: 'github.com', projectId: 'o/r' },
+      { storeId: 'github.com', projectId: 'o/r', projectApi: 'cloud' as const, branch: 'main' },
+      { storeId: 'firestore', projectId: 'demo', spaceID: 'space' },
+      { storeId: 'firestore', projectId: 'demo' },
+    ]) {
+      project.next({ ref: other });
+      await fixture.whenStable();
+      expect(fixture.componentInstance.boardContext().securityContextId).toBeUndefined();
+      expect(fixture.nativeElement.textContent).not.toContain('connected-context');
+    }
+    project.next(undefined);
+    await fixture.whenStable();
+    expect(fixture.componentInstance.boardContext().securityContextId).toBeUndefined();
+    expect(fixture.componentInstance.boardContext().executionTarget).toBeUndefined();
+    http.verify();
+    fixture.destroy();
   });
 });

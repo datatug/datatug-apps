@@ -58,6 +58,7 @@ import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import {
   IProjectRef,
   equalProjectRef,
+  isLocalProjectRef,
   projectRefToString,
 } from '../../../../core/project-context';
 import { QueryParamsService } from '../../../../core/services/QueryParamsService';
@@ -351,9 +352,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   constructor() {
     effect(() => {
       const ref = this.projectRef();
-      const local =
-        ref?.projectApi === 'local' &&
-        !['github', 'github.com', 'firestore'].includes(ref.storeId);
+      const local = isLocalProjectRef(ref);
       const hosted = ref?.storeId === 'firestore' && !!ref.spaceID;
       const securityContextId = local
         ? this.agentContext
