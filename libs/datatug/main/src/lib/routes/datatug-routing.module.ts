@@ -324,17 +324,27 @@ export const datatugRoutes: Routes = [
       },
       { path: 'board', pathMatch: 'full', redirectTo: 'boards' },
       {
-        path: 'cards/new', data: { newCard: true },
-        loadComponent: () => import('../cards/card-page.component').then((m) => m.CardPageComponent),
+        path: 'cards/new',
+        data: { newCard: true },
+        loadComponent: () =>
+          import('../cards/card-page.component').then(
+            (m) => m.CardPageComponent,
+          ),
       },
       {
         path: 'card/:cardId',
-        loadComponent: () => import('../cards/card-page.component').then((m) => m.CardPageComponent),
+        loadComponent: () =>
+          import('../cards/card-page.component').then(
+            (m) => m.CardPageComponent,
+          ),
       },
       { path: 'card', pathMatch: 'full', redirectTo: 'cards' },
       {
         path: 'cards',
-        loadComponent: () => import('../cards/cards-page.component').then((m) => m.CardsPageComponent),
+        loadComponent: () =>
+          import('../cards/cards-page.component').then(
+            (m) => m.CardsPageComponent,
+          ),
       },
       {
         path: 'boards',

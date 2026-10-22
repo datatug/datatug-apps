@@ -1,3 +1,4 @@
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { TitleCasePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { CUSTOM_ELEMENTS_SCHEMA, Provider } from '@angular/core';
@@ -40,7 +41,12 @@ function baseProviders(
 ): Provider[] {
   const paramMap = convertToParamMap(routeParams);
   return [
-    { provide: QueriesService, useValue: { getQueriesFolder: vi.fn(() => of({ id: '~', items: [], folders: [] })) } },
+    {
+      provide: QueriesService,
+      useValue: {
+        getQueriesFolder: vi.fn(() => of({ id: '~', items: [], folders: [] })),
+      },
+    },
     {
       provide: ErrorLogger,
       useValue: {
@@ -161,21 +167,37 @@ describe('ProjectPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
-  it('submits the overview query to Quick Search while preserving project qualifiers',()=>{
-    const page=component as unknown as {setProjRef(ref: {storeId:string;projectId:string;projectApi:'cloud';branch:string}):void};
-    page.setProjRef({storeId:'github.com',projectId:'repo@owner@',projectApi:'cloud',branch:'main'});
+  it('submits the overview query to Quick Search while preserving project qualifiers', () => {
+    const page = component as unknown as {
+      setProjRef(ref: {
+        storeId: string;
+        projectId: string;
+        projectApi: 'cloud';
+        branch: string;
+      }): void;
+    };
+    page.setProjRef({
+      storeId: 'github.com',
+      projectId: 'repo@owner@',
+      projectApi: 'cloud',
+      branch: 'main',
+    });
     component.quickSearchQuery.set(' Customers ');
-    const event=new Event('submit',{cancelable:true});component.submitQuickSearch(event);
+    const event = new Event('submit', { cancelable: true });
+    component.submitQuickSearch(event);
     expect(event.defaultPrevented).toBe(true);
-    const router=TestBed.inject(Router),navigate=vi.mocked(router.navigateByUrl);
+    const router = TestBed.inject(Router),
+      navigate = vi.mocked(router.navigateByUrl);
     expect(navigate).toHaveBeenCalledOnce();
-    expect(router.serializeUrl(navigate.mock.calls[0][0] as never)).toBe('/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customers');
+    expect(router.serializeUrl(navigate.mock.calls[0][0] as never)).toBe(
+      '/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customers',
+    );
   });
-  it('does not navigate with an empty overview query',()=>{
-    component.quickSearchQuery.set('  ');component.submitQuickSearch(new Event('submit'));
+  it('does not navigate with an empty overview query', () => {
+    component.quickSearchQuery.set('  ');
+    component.submitQuickSearch(new Event('submit'));
     expect(TestBed.inject(Router).navigateByUrl).not.toHaveBeenCalled();
   });
-
 
   it('offers the private sandbox route only for the canonical DemoDB project', () => {
     const page = component as unknown as {
@@ -481,23 +503,45 @@ describe('ProjectPage rendering a local-agent store project', () => {
   it('updates the query count on another tab and cancels stale project counts', async () => {
     const fixture = await createPage('localhost:8989');
     fixture.detectChanges();
-    const get = TestBed.inject(QueriesService).getQueriesFolder as ReturnType<typeof vi.fn>;
+    const get = TestBed.inject(QueriesService).getQueriesFolder as ReturnType<
+      typeof vi.fn
+    >;
     const first = new Subject<unknown>();
     const second = new Subject<unknown>();
     get.mockReturnValueOnce(first).mockReturnValueOnce(second);
-    const page = fixture.componentInstance as unknown as { setProjRef: (ref: { storeId: string; projectId: string }) => void };
+    const page = fixture.componentInstance as unknown as {
+      setProjRef: (ref: { storeId: string; projectId: string }) => void;
+    };
     page.setProjRef({ storeId: 'localhost:8989', projectId: 'first' });
-    first.next({ id: '~', items: [{ id: 'a' }], folders: [{ id: 'nested', items: [{ id: 'b' }] }] });
+    first.next({
+      id: '~',
+      items: [{ id: 'a' }],
+      folders: [{ id: 'nested', items: [{ id: 'b' }] }],
+    });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')?.textContent?.trim()).toBe('2');
-    expect(fixture.nativeElement.querySelector('sneat-datatug-project-queries-preview')).toBeNull();
+    expect(
+      fixture.nativeElement
+        .querySelector('.overview-tabs ion-chip')
+        ?.textContent?.trim(),
+    ).toBe('2');
+    expect(
+      fixture.nativeElement.querySelector(
+        'sneat-datatug-project-queries-preview',
+      ),
+    ).toBeNull();
     page.setProjRef({ storeId: 'localhost:8989', projectId: 'second' });
     first.next({ id: '~', items: [{ id: 'stale' }] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')).toBeNull();
+    expect(
+      fixture.nativeElement.querySelector('.overview-tabs ion-chip'),
+    ).toBeNull();
     second.next({ id: '~', items: [] });
     await fixture.whenStable();
-    expect(fixture.nativeElement.querySelector('.overview-tabs ion-chip')?.textContent?.trim()).toBe('0');
+    expect(
+      fixture.nativeElement
+        .querySelector('.overview-tabs ion-chip')
+        ?.textContent?.trim(),
+    ).toBe('0');
   });
 
   it('uses sandbox setup copy for an existing signed-in session', async () => {
@@ -814,7 +858,7 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
       })
         .overrideComponent(ProjectPageComponent, {
           set: {
-            imports: [RouterLink],
+            imports: [RouterLink, ErrorStateComponent],
             schemas: [CUSTOM_ELEMENTS_SCHEMA],
             providers: [],
           },
@@ -834,7 +878,7 @@ describe('ProjectPage commits the title once it arrives asynchronously (zoneless
       } else {
         expect(
           fixture.nativeElement.querySelector('[role="alert"]')?.textContent,
-        ).toContain('Project details could not be loaded');
+        ).toContain('Something went wrong');
       }
     },
   );

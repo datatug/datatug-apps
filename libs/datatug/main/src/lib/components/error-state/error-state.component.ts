@@ -16,7 +16,12 @@ import {
   refreshOutline,
   searchOutline,
 } from 'ionicons/icons';
-import { errorReport, friendlyError, FriendlyError } from './friendly-error';
+import {
+  errorReport,
+  friendlyError,
+  type ErrorKind,
+  type FriendlyError,
+} from '@datatug/friendly-error';
 
 export interface ErrorStateLink {
   readonly label: string;
@@ -134,6 +139,8 @@ export class ErrorStateComponent {
   readonly error = input<unknown>();
   /** What was being loaded, in lower case ("this board"), used in the words made from `error`. */
   readonly what = input('this page');
+  /** The look of the icon when the words are given explicitly (a 404 is `not-found`). */
+  readonly kindHint = input<ErrorKind>();
   readonly title = input<string>();
   readonly hint = input<string>();
   readonly links = input<readonly ErrorStateLink[]>([]);
@@ -142,9 +149,13 @@ export class ErrorStateComponent {
   readonly retry = output<void>();
 
   protected readonly friendly = computed<FriendlyError | undefined>(() =>
-    this.error() === undefined ? undefined : friendlyError(this.error(), this.what()),
+    this.error() === undefined
+      ? undefined
+      : friendlyError(this.error(), this.what()),
   );
-  protected readonly kind = computed(() => this.friendly()?.kind ?? 'unknown');
+  protected readonly kind = computed(
+    () => this.kindHint() ?? this.friendly()?.kind ?? 'unknown',
+  );
   protected readonly resolvedTitle = computed(
     () => this.title() ?? this.friendly()?.title ?? 'Something went wrong',
   );

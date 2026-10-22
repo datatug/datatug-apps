@@ -1,7 +1,7 @@
 import { ErrorHandler } from '@angular/core';
 import { createErrorHandler } from '@sentry/angular';
 import { ChunkLoadErrorHandler } from '@sneat/logging';
-import { isExpectedError } from '@sneat/datatug-main';
+import { isExpectedError } from '@datatug/friendly-error';
 
 /**
  * The dialog text for a genuine crash. Name and email are optional: the form opens with neutral values the visitor

@@ -35,6 +35,7 @@
     "@datatug/charts": "*",
     "@datatug/product-profiles": "*",
     "@datatug/ag-grid": "*",
+    "@datatug/friendly-error": "*",
     "@datatug/project-address": "*",
     "@sneat/auth-core": "0.27.38",
     "@sneat/auth-models": "0.27.38",

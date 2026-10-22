@@ -78,6 +78,7 @@ export class MenuEnvSelectorComponent implements OnChanges {
               this.errorLogger.logError(
                 error,
                 'Failed to list project environments',
+                { show: false },
               );
               return of([] as IProjEnv[]);
             }),

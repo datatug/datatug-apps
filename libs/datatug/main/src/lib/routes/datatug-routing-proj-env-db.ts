@@ -15,22 +15,30 @@ export const datatugProjEnvDbRoutes: Routes = [
   {
     path: 'table/:' + routingParamTableType + '/records',
     loadComponent: () =>
-      import('../agent-links/table-records/table-records.page').then((m) => m.TableRecordsPageComponent),
+      import('../agent-links/table-records/table-records.page').then(
+        (m) => m.TableRecordsPageComponent,
+      ),
   },
   {
     path: 'table/:' + routingParamTableType + '/record',
     loadComponent: () =>
-      import('../agent-links/table-record/table-record.page').then((m) => m.TableRecordPageComponent),
+      import('../agent-links/table-record/table-record.page').then(
+        (m) => m.TableRecordPageComponent,
+      ),
   },
   {
     path: 'view/:' + routingParamTableType + '/records',
     loadComponent: () =>
-      import('../agent-links/table-records/table-records.page').then((m) => m.TableRecordsPageComponent),
+      import('../agent-links/table-records/table-records.page').then(
+        (m) => m.TableRecordsPageComponent,
+      ),
   },
   {
     path: 'view/:' + routingParamTableType + '/record',
     loadComponent: () =>
-      import('../agent-links/table-record/table-record.page').then((m) => m.TableRecordPageComponent),
+      import('../agent-links/table-record/table-record.page').then(
+        (m) => m.TableRecordPageComponent,
+      ),
   },
   {
     path: 'table/:' + routingParamTableType,

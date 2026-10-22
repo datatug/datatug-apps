@@ -67,7 +67,10 @@ describe('redactErrorText', () => {
 describe('friendlyError', () => {
   it('says "Sign in to see this" for a 401, without the address', () => {
     const e = friendlyError(
-      { status: 401, url: 'https://api.datatug.app/p?token=ghp_abcdefghijklmnop1234' },
+      {
+        status: 401,
+        url: 'https://api.datatug.app/p?token=ghp_abcdefghijklmnop1234',
+      },
       'this board',
       'ref12345',
     );
@@ -80,11 +83,12 @@ describe('friendlyError', () => {
     expectNoLeak(`${e.title} ${e.hint} ${e.detail} ${errorReport(e)}`);
   });
 
-  it("names the service, and says to run `datatug serve`, for a loopback failure", () => {
+  it('names the service, and says to run `datatug serve`, for a loopback failure', () => {
     const e = friendlyError({
       status: 0,
       url: 'http://127.0.0.1:50501/v1/databases/countries/dtql?key=abc',
-      message: 'Http failure response for http://127.0.0.1:50501/v1: 0 Unknown Error',
+      message:
+        'Http failure response for http://127.0.0.1:50501/v1: 0 Unknown Error',
     });
     expect(e.title).toBe("Can't reach the local DataTug agent");
     expect(e.hint).toContain('datatug serve');
@@ -96,7 +100,8 @@ describe('friendlyError', () => {
     const e = friendlyError({
       status: 0,
       url: '//github.com:undefined/datatug/x',
-      message: 'Http failure response for //github.com:undefined/datatug/x: 0 Unknown Error',
+      message:
+        'Http failure response for //github.com:undefined/datatug/x: 0 Unknown Error',
     });
     expect(e.title).toBe("Can't reach GitHub");
     expectNoLeak(`${e.title} ${e.hint} ${e.detail}`);
@@ -113,14 +118,18 @@ describe('friendlyError', () => {
 
   it('maps 403, 404, timeout and 5xx', () => {
     expect(friendlyError({ status: 403 }).title).toBe("You don't have access");
-    expect(friendlyError({ status: 404 }, 'this board').title).toBe('Not found');
+    expect(friendlyError({ status: 404 }, 'this board').title).toBe(
+      'Not found',
+    );
     expect(friendlyError(new Error('Request timed out')).kind).toBe('timeout');
     expect(friendlyError({ status: 503 }).code).toBe('HTTP-503');
   });
 
   it('treats a routing miss as expected and an unknown error as a crash', () => {
     expect(
-      isExpectedError(new Error("NG04002: Cannot match any routes. URL Segment: 'nope'")),
+      isExpectedError(
+        new Error("NG04002: Cannot match any routes. URL Segment: 'nope'"),
+      ),
     ).toBe(true);
     const unknown = friendlyError(
       new TypeError('x is not a function at https://datatug.app/main.js?v=1'),

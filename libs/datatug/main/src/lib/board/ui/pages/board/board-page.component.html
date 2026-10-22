@@ -16,11 +16,9 @@
       <sneat-datatug-error-state
         title="This board does not exist"
         hint="The link may be mistyped, or the board was renamed or deleted. Open it from the list of boards."
+        kindHint="not-found"
         [retryable]="false"
-        [links]="[
-          { label: 'Boards', href: boardsHref() },
-          { label: 'Queries', href: queriesHref() },
-        ]"
+        [links]="[{ label: 'Go to Boards', href: boardsHref() }]"
       />
     } @else {
     <ion-grid>

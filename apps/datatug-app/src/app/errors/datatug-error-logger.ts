@@ -8,7 +8,7 @@ import {
   friendlyError,
   isExpectedError,
   type FriendlyError,
-} from '@sneat/datatug-main';
+} from '@datatug/friendly-error';
 
 /**
  * The app's `ErrorLogger`. The toast says what failed and what to do in plain words (never an address, a status
@@ -46,7 +46,15 @@ export class DatatugErrorLogger implements IErrorLogger {
     const denied = /permission-denied|PERMISSION_DENIED/.test(
       `${(e as { code?: unknown })?.code ?? ''} ${(e as { message?: unknown })?.message ?? ''}`,
     );
-    if (options?.show ?? (denied ? false : (this.defaults?.show ?? true)))
+    // A rate limit or a missing sign-in is a page-level condition: the page shows its own designed state with a
+    // Retry, so a toast on top of it would only say the same thing twice.
+    const pageLevel = ['rate-limit', 'unauthenticated'].includes(
+      friendlyError(e, 'this').kind,
+    );
+    if (
+      options?.show ??
+      (denied || pageLevel ? false : (this.defaults?.show ?? true))
+    )
       this.showError(e, options?.showDuration);
   };
 

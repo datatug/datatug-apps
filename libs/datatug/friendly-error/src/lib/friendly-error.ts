@@ -81,7 +81,10 @@ export function serviceNameOf(url: string): string {
     host = /^(?:https?:)?\/\/([^/:?#\s]+)/i.exec(url)?.[1] ?? '';
   }
   host = host.toLowerCase();
-  if (/(^|\.)github(usercontent)?\.com$/.test(host) || host === 'cdn.jsdelivr.net')
+  if (
+    /(^|\.)github(usercontent)?\.com$/.test(host) ||
+    host === 'cdn.jsdelivr.net'
+  )
     return 'GitHub';
   if (/(^|\.)demodb\.dev$/.test(host)) return 'the DemoDB service';
   if (/(^|\.)openvaultdb\.com$/.test(host)) return 'the OpenVaultDB service';
@@ -102,17 +105,27 @@ export function redactErrorText(text: string): string {
   out = out
     // Any URL, including a protocol-relative one such as `//github.com:undefined/…`, with its path and query.
     .replace(/(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s'"<>)]+/gi, '[address]')
-    .replace(/\b(?:localhost|[\w-]+\.(?:local|internal|lan|corp))(?::\d+)?\b/gi, '[address]')
+    .replace(
+      /\b(?:localhost|[\w-]+\.(?:local|internal|lan|corp))(?::\d+)?\b/gi,
+      '[address]',
+    )
     .replace(/\b\d{1,3}(?:\.\d{1,3}){3}(?::\d+)?\b/g, '[address]')
     .replace(/\[?(?:[0-9a-f]{0,4}:){2,7}[0-9a-f]{0,4}\]?/gi, '[address]')
     .replace(/\bBearer\s+\S+/gi, 'Bearer [hidden]')
-    .replace(/\b(?:gh[pousr]_|github_pat_|sk-|xox[bpa]-|AIza|eyJ)[\w-]{8,}/g, '[hidden]')
-    .replace(/\b(token|key|secret|password|authorization|code)=\S+/gi, '$1=[hidden]')
+    .replace(
+      /\b(?:gh[pousr]_|github_pat_|sk-|xox[bpa]-|AIza|eyJ)[\w-]{8,}/g,
+      '[hidden]',
+    )
+    .replace(
+      /\b(token|key|secret|password|authorization|code)=\S+/gi,
+      '$1=[hidden]',
+    )
     .replace(/[A-Za-z0-9_-]{32,}/g, '[hidden]')
     .replace(/\b(?:undefined|null)\b/gi, '')
     .replace(/\s+/g, ' ')
     .trim();
-  if (out.length > MAX_DETAIL) out = `${out.slice(0, MAX_DETAIL - 1).trimEnd()}…`;
+  if (out.length > MAX_DETAIL)
+    out = `${out.slice(0, MAX_DETAIL - 1).trimEnd()}…`;
   return out;
 }
 
@@ -125,7 +138,8 @@ export function isGithubRateLimit(error: unknown): boolean {
   const text = rawTextOf(error);
   return (
     /rate limit|secondary rate/i.test(text) ||
-    ((status === 429 || status === 403) && serviceNameOf(urlOf(error)) === 'GitHub')
+    ((status === 429 || status === 403) &&
+      serviceNameOf(urlOf(error)) === 'GitHub')
   );
 }
 
@@ -141,7 +155,10 @@ export function newErrorReference(): string {
   }
 }
 
-type Parts = Pick<FriendlyError, 'title' | 'hint' | 'retryable' | 'kind' | 'expected' | 'code'>;
+type Parts = Pick<
+  FriendlyError,
+  'title' | 'hint' | 'retryable' | 'kind' | 'expected' | 'code'
+>;
 
 function classify(error: unknown, what: string): Parts {
   const status = statusOf(error);
@@ -228,7 +245,9 @@ function classify(error: unknown, what: string): Parts {
   }
   if (
     status === 0 ||
-    /failed to fetch|networkerror|network request failed|load failed|unknown error|cors|net::|did not answer/i.test(text)
+    /failed to fetch|networkerror|network request failed|load failed|unknown error|cors|net::|did not answer/i.test(
+      text,
+    )
   ) {
     return {
       kind: 'offline',
@@ -281,9 +300,7 @@ export function friendlyError(
   return {
     ...parts,
     reference,
-    detail: redactErrorText(
-      parts.kind === 'unknown' ? rawTextOf(error) : '',
-    ),
+    detail: redactErrorText(parts.kind === 'unknown' ? rawTextOf(error) : ''),
   };
 }
 

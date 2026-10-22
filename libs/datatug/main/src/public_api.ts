@@ -45,13 +45,6 @@ export {
   ErrorStateComponent,
   type ErrorStateLink,
 } from './lib/components/error-state/error-state.component';
-export {
-  friendlyError,
-  isExpectedError,
-  redactErrorText,
-  errorReport,
-  type FriendlyError,
-} from './lib/components/error-state/friendly-error';
 
 // Project cards (spec/features/project-cards): storage service, standalone card view and the shared result cache.
 export {

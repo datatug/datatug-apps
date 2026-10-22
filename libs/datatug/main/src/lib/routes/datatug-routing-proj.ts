@@ -303,6 +303,23 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    // A saved query the project does not have (a cold load of a mistyped or deleted query address): a friendly
+    // "query not found" instead of an empty editor. The guard is false whenever there is any doubt.
+    path: 'query',
+    canMatch: [savedQueryIsMissing],
+    data: { what: 'query' },
+    children: [
+      {
+        path: '**',
+        data: { what: 'query' },
+        loadComponent: () =>
+          import('./project-not-found-page.component').then(
+            (m) => m.ProjectNotFoundPageComponent,
+          ),
+      },
+    ],
+  },
+  {
     // S158 (NG04002 on the founder's own reported URL, production build
     // ed66c71) — a query id can be folder-qualified (`artists/artists_with_
     // albums`, datatug-cli#219) and `DatatugNavService.goQuery()` already

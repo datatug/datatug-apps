@@ -46,17 +46,24 @@ import { projectPageHref } from '../nav/project-page-href';
           <ion-menu-button />
           <ion-back-button [defaultHref]="ref() ? boardsHref() : '/'" />
         </ion-buttons>
-        <ion-title>{{ isQuery ? 'Query not found' : 'Page not found' }}</ion-title>
+        <ion-title>{{
+          isQuery ? 'Query not found' : 'Page not found'
+        }}</ion-title>
       </ion-toolbar>
     </ion-header>
     <ion-content>
       <sneat-datatug-error-state
-        [title]="isQuery ? 'This query does not exist' : 'This page does not exist'"
+        [title]="
+          isQuery ? 'This query does not exist' : 'This page does not exist'
+        "
         [hint]="
           isQuery
             ? 'The link may be mistyped, or the query was renamed or deleted. Open it from the list of queries.'
-            : 'The link may be mistyped or out of date. Continue from the boards or the saved queries of this project.'
+            : ref()
+              ? 'The link may be mistyped or out of date. Continue from the boards of this project.'
+              : 'The link may be mistyped or out of date. Start again from the home page.'
         "
+        kindHint="not-found"
         [retryable]="false"
         [links]="links()"
       />
@@ -66,7 +73,7 @@ import { projectPageHref } from '../nav/project-page-href';
 export class ProjectNotFoundPageComponent {
   private readonly route = inject(ActivatedRoute);
   protected readonly isQuery = this.route.snapshot.data['what'] === 'query';
-  private readonly ref = computed(() => {
+  protected readonly ref = computed(() => {
     const params: Record<string, string> = {};
     for (const snapshot of this.route.snapshot.pathFromRoot)
       Object.assign(params, snapshot.params);
@@ -77,8 +84,9 @@ export class ProjectNotFoundPageComponent {
   protected readonly links = computed(() =>
     this.ref()
       ? [
-          { label: 'Boards', href: this.boardsHref() },
-          { label: 'Queries', href: this.queriesHref() },
+          this.isQuery
+            ? { label: 'Go to Queries', href: this.queriesHref() }
+            : { label: 'Go to Boards', href: this.boardsHref() },
         ]
       : [{ label: 'Go to the home page', href: '/' }],
   );
