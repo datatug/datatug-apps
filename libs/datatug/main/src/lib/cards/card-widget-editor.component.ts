@@ -309,13 +309,13 @@ export class CardWidgetEditorComponent {
       (p) => p.type !== 'record' && p.type !== 'recordset',
     ),
   );
-  protected readonly rowInputs = computed(() =>
-    this.parameters().filter((p) =>
-      this.widget().name === 'fields'
-        ? p.type === 'record' || p.type === 'recordset'
-        : p.type === 'recordset' || p.type === 'record',
-    ),
-  );
+  /** Inputs that can carry rows, the kind this widget reads best first. */
+  protected readonly rowInputs = computed(() => {
+    const preferred = this.widget().name === 'fields' ? 'record' : 'recordset';
+    return this.parameters()
+      .filter((p) => p.type === 'record' || p.type === 'recordset')
+      .sort((a, b) => Number(b.type === preferred) - Number(a.type === preferred));
+  });
   protected readonly queryParameters = computed(() => {
     const src = this.source();
     if (src?.kind !== 'query') return [];

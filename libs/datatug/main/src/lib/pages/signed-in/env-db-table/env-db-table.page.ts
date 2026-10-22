@@ -54,6 +54,12 @@ import {
   SemanticColumnMapping,
   SemanticSelection,
 } from '@sneat/datatug-semantic';
+import type { IProjectRef } from '../../../core/project-context';
+import { buildCellIdentity } from '../../../cards/card-model';
+import { CardLookupService } from '../../../cards/card-lookup.service';
+import { cardRunContext } from '../../../cards/cards-context';
+import { CellCardPanelComponent } from '../../../cards/cell-card-panel.component';
+import { CellCardPopoverComponent } from '../../../cards/cell-card-popover.component';
 import { addIcons } from 'ionicons';
 import { helpCircleOutline, pricetag } from 'ionicons/icons';
 import {
@@ -109,7 +115,10 @@ addIcons({ pricetag, helpCircleOutline });
   selector: 'sneat-datatug-env-db-table',
   templateUrl: './env-db-table.page.html',
   styleUrls: ['./env-db-table.page.scss'],
+  providers: [CardLookupService],
   imports: [
+    CellCardPanelComponent,
+    CellCardPopoverComponent,
     // `DatatugNavContextService` (injected directly below), and
     // `ProjectContextService`/`AppContextService`/`EnvironmentService`/
     // `ProjectService` (reached transitively through it, and `ProjectService`
@@ -186,6 +195,8 @@ export class EnvDbTablePageComponent implements OnDestroy {
   private readonly investigationContext = inject(InvestigationContextService);
   private readonly router = inject(Router);
   private readonly injector = inject(Injector);
+  /** Project cards that fit the selected cell (spec REQ: cell-to-card). */
+  protected readonly cardLookup = inject(CardLookupService);
 
   project?: IProjectContext;
   envId?: string;
@@ -201,6 +212,13 @@ export class EnvDbTablePageComponent implements OnDestroy {
   );
   public readonly selection = signal<SemanticSelection | undefined>(undefined);
   public readonly hasSelection = computed(() => !!this.selection());
+  // Signal mirrors of `project` / `envId` (plain fields written from subscriptions) for the card lookup.
+  private readonly cardRef = signal<IProjectRef | undefined>(undefined);
+  private readonly cardEnv = signal<string | undefined>(undefined);
+  /** The side pane shows for a semantic selection, a matching project card, or both. */
+  public readonly paneOpen = computed(
+    () => this.hasSelection() || this.cardLookup.panelOpen(),
+  );
 
   public tab: 'grid' | 'record' | 'columns' | 'keys' | 'references' = 'grid';
 
@@ -251,6 +269,13 @@ export class EnvDbTablePageComponent implements OnDestroy {
   private readonly destroyed = new Subject<void>();
 
   constructor() {
+    this.cardLookup.use({
+      ref: this.cardRef,
+      environment: this.cardEnv,
+      runContext: computed(() =>
+        cardRunContext(this.cardRef(), this.cardEnv(), this.agentContext),
+      ),
+    });
     const route = this.route;
     // const projectTracker = new ProjectTracker(this.destroyed, route);
     try {
@@ -280,6 +305,7 @@ export class EnvDbTablePageComponent implements OnDestroy {
         this.tab = 'columns';
       }
       this.envId = paramMap.get(routingParamEnvironmentId) || undefined;
+      this.cardEnv.set(this.envId);
       this.dbId = paramMap.get(routingParamDbCatalogId) || undefined;
       if (this.envId && this.dbId && this.project) {
         this.tableNavParams = {
@@ -299,6 +325,7 @@ export class EnvDbTablePageComponent implements OnDestroy {
           );
           try {
             this.project = currentProject;
+            this.cardRef.set(currentProject?.ref);
           } catch (e) {
             this.errorLogger.logError(e, 'Failed to process current project');
           }
@@ -567,12 +594,12 @@ from ${this.tableFromClause(currentTable)}`;
   public onGridRowClick = (event: Event, row: unknown): void => {
     try {
       const target = event.target as HTMLElement | null;
-      const field = target
-        ?.closest('[tabulator-field]')
-        ?.getAttribute('tabulator-field');
+      const cellElement = target?.closest('[tabulator-field]') ?? null;
+      const field = cellElement?.getAttribute('tabulator-field');
       if (!field) {
         return;
       }
+      this.selectCardCell(field, row, cellElement);
       const mapping = this.semanticColumns().find((m) => m.column === field);
       if (!mapping) {
         this.selection.set(undefined);
@@ -614,6 +641,35 @@ from ${this.tableFromClause(currentTable)}`;
 
   public closeContextPanel(): void {
     this.selection.set(undefined);
+    this.cardLookup.dismiss();
+  }
+
+  /** Looks up project cards for the clicked cell: physical table and column, plus the meaning
+   * from the semantic mapping, else from the foreign key the column belongs to. */
+  private selectCardCell(
+    field: string,
+    row: unknown,
+    cellElement: Element | null,
+  ): void {
+    const data = (
+      row as { getData?: () => Record<string, unknown> } | undefined
+    )?.getData?.();
+    const mapping = this.semanticColumns().find((m) => m.column === field);
+    const rect = cellElement?.getBoundingClientRect();
+    this.cardLookup.select({
+      identity: buildCellIdentity({
+        schema: this.table?.schema || undefined,
+        table: this.table?.name,
+        column: field,
+        semantic: mapping
+          ? { entity: mapping.entity, field: mapping.field }
+          : undefined,
+        foreignKeys: this.table?.meta?.foreignKeys,
+      }),
+      value: data?.[field],
+      row: data,
+      anchor: rect ? { x: rect.left, y: rect.bottom } : undefined,
+    });
   }
 
   /** Context panel's (openQuery) — this library deliberately doesn't depend on

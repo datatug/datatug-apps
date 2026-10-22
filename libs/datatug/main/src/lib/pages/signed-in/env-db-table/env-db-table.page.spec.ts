@@ -1,3 +1,5 @@
+import { CardLookupService } from '../../../cards/card-lookup.service';
+import { ProjectCardsService } from '../../../cards/project-cards.service';
 import {
   Component,
   CUSTOM_ELEMENTS_SCHEMA,
@@ -82,6 +84,15 @@ function activatedRouteStub() {
   };
 }
 
+// The page provides its own CardLookupService; these specs replace the component's providers.
+const cardTestProviders = [
+  CardLookupService,
+  {
+    provide: ProjectCardsService,
+    useValue: { listCards: vi.fn(() => of([])), getCard: vi.fn() },
+  },
+];
+
 describe('EnvDbTablePage', () => {
   let component: EnvDbTablePageComponent;
   let fixture: ComponentFixture<EnvDbTablePageComponent>;
@@ -124,6 +135,7 @@ describe('EnvDbTablePage', () => {
           useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
         },
         { provide: AgentContextService, useValue: agentContextStub() },
+        ...cardTestProviders,
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -299,6 +311,7 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
         },
         { provide: Router, useValue: routerMock },
         { provide: AgentContextService, useValue: agentContextStub() },
+        ...cardTestProviders,
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -445,6 +458,72 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
     component.onGridRowClick(event, row);
 
     expect(component.selection()).toBeUndefined();
+  });
+
+  describe('project cards for the clicked cell', () => {
+    const lookupOf = (c: EnvDbTablePageComponent) =>
+      (c as unknown as { cardLookup: CardLookupService }).cardLookup;
+
+    it('looks cards up by physical table and column with the meaning from the semantic mapping', async () => {
+      component = await createComponent([
+        { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      ]);
+      const cellEl = document.createElement('div');
+      cellEl.setAttribute('tabulator-field', 'CustomerId');
+      const row = { getData: () => ({ CustomerId: 5, Name: 'Ann' }) };
+
+      component.onGridRowClick({ target: cellEl } as unknown as Event, row);
+
+      const cell = lookupOf(component).cell();
+      expect(cell?.identity).toEqual({
+        table: `${component.table?.schema}.${component.table?.name}`,
+        column: 'CustomerId',
+        entity: { entity: 'Customer', field: 'ID' },
+      });
+      expect(cell?.value).toBe(5);
+      expect(cell?.row).toEqual({ CustomerId: 5, Name: 'Ann' });
+    });
+
+    it('takes the meaning from the foreign key when the column has no semantic mapping', async () => {
+      component = await createComponent([]);
+      const meta = table.meta;
+      if (!meta) throw new Error('Expected the fixture table metadata');
+      component.table = {
+        ...table,
+        meta: {
+          ...meta,
+          foreignKeys: [
+            {
+              name: 'FK_Customer_Country',
+              columns: ['CountryId'],
+              refTable: { schema: 'main', name: 'Country' },
+            },
+          ],
+        },
+      };
+      const cellEl = document.createElement('div');
+      cellEl.setAttribute('tabulator-field', 'CountryId');
+      component.onGridRowClick(
+        { target: cellEl } as unknown as Event,
+        { getData: () => ({ CountryId: 7 }) },
+      );
+      expect(component.selection()).toBeUndefined();
+      expect(lookupOf(component).cell()?.identity.entity).toEqual({
+        entity: 'Country',
+        field: 'CountryId',
+      });
+    });
+
+    it('opens the side pane for a matching card even without a semantic selection, and closing hides it', async () => {
+      component = await createComponent([]);
+      const lookup = lookupOf(component);
+      expect(component.paneOpen()).toBe(false);
+      lookup.resolvedCell.set({ identity: { column: 'x' }, value: 1 });
+      lookup.matches.set([{ card: { id: 'c', title: 'C' }, parameterId: 'p', rank: 4 }]);
+      expect(component.paneOpen()).toBe(true);
+      component.closeContextPanel();
+      expect(component.paneOpen()).toBe(false);
+    });
   });
 
   it('closeContextPanel clears the selection', async () => {
@@ -684,6 +763,7 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
           useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
         },
         { provide: AgentContextService, useValue: agentContextStub() },
+        ...cardTestProviders,
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -771,6 +851,7 @@ describe('EnvDbTablePage — row fetch fires without table.meta', () => {
           useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
         },
         { provide: AgentContextService, useValue: agentContextStub() },
+        ...cardTestProviders,
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -878,6 +959,7 @@ describe('EnvDbTablePage — table page states the applied limitations (J4)', ()
           useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
         },
         { provide: AgentContextService, useValue: agentContextStub() },
+        ...cardTestProviders,
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -1003,6 +1085,7 @@ describe('EnvDbTablePage — semantic columns wait for the security-context scop
           useValue: { navigate: vi.fn(() => Promise.resolve(true)) },
         },
         { provide: AgentContextService, useValue: agentContext },
+        ...cardTestProviders,
       ],
     })
       .overrideComponent(EnvDbTablePageComponent, {
@@ -1086,6 +1169,8 @@ describe('EnvDbTablePage dependency injection', () => {
         },
         { provide: HttpClient, useValue: { get: vi.fn(() => of({})) } },
         { provide: Firestore, useValue: {} },
+        // Component-level providers are not in play for `new` in an injection context.
+        ...cardTestProviders,
       ],
     });
   });

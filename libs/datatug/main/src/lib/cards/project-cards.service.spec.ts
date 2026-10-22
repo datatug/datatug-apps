@@ -313,3 +313,29 @@ describe('validBrief', () => {
     expect(validBrief({ id: 'a b' })).toBeUndefined();
   });
 });
+
+describe('ProjectCardsService: write capabilities', () => {
+  let service: ProjectCardsService;
+  beforeEach(() => {
+    TestBed.configureTestingModule({
+      providers: [provideHttpClient(), provideHttpClientTesting()],
+    });
+    service = TestBed.inject(ProjectCardsService);
+  });
+  it('writes and deletes on a local agent', () => {
+    expect(service.canWrite(local)).toBe(true);
+    expect(service.canDelete(local)).toBe(true);
+  });
+  it('writes but cannot delete in a shared cloud project', () => {
+    expect(service.canWrite(hostedRef)).toBe(true);
+    expect(service.canDelete(hostedRef)).toBe(false);
+  });
+  it('is read-only for GitHub and qualified projects', () => {
+    const github: IProjectRef = { storeId: 'github.com', projectId: 'a@b@' };
+    const qualified: IProjectRef = { ...local, projectApi: 'cloud' };
+    for (const ref of [github, qualified]) {
+      expect(service.canWrite(ref)).toBe(false);
+      expect(service.canDelete(ref)).toBe(false);
+    }
+  });
+});

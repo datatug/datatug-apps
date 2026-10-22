@@ -192,6 +192,16 @@
 .result-author-data-enabled.result-author-data-collapsed {
   grid-template-columns: minmax(0, 1fr);
 }
+/* A matching project card opens beside the results; in the text workspace it sits under them. */
+.result-author-data:not(.result-author-data-enabled):has(.cell-card-open) {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem);
+  gap: 0.75rem;
+  align-items: start;
+}
+.result-author-data-enabled > .result-card-pane {
+  grid-column: 1 / -1;
+}
 .author-current-row-toggle {
   display: flex;
   justify-content: flex-end;

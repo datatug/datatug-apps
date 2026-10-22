@@ -124,6 +124,7 @@ const isScalar = (type: string): boolean =>
             size="small"
             color="danger"
             [disabled]="disabled()"
+            data-action="remove-parameter"
             [attr.aria-label]="'Remove input ' + (param.id || i + 1)"
             (click)="remove(i)"
           >
@@ -218,6 +219,7 @@ const isScalar = (type: string): boolean =>
                   color="medium"
                   [disabled]="disabled()"
                   aria-label="Remove rule"
+                  data-action="remove-rule"
                   (click)="removeRule(i, r)"
                 >
                   <ion-icon slot="icon-only" name="trash-outline" />

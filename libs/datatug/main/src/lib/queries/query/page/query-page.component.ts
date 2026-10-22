@@ -67,6 +67,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { IEnvironmentFull } from '../../../models/definition/environments';
+import { ResultCellCardsComponent } from '../../../cards/result-cell-cards.component';
 import { ProjectService } from '../../../services/project/project.service';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 import { ConfiguredPublicDataSourcesService } from '../../public-data/configured-public-data-sources.service';
@@ -91,6 +92,7 @@ import {
   inject,
   signal,
   untracked,
+  viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
@@ -804,6 +806,7 @@ let queryParameterEditorId = 0;
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    ResultCellCardsComponent,
     SemanticMappingDialogComponent,
     GitHubReauthorizationBannerComponent,
     EvidenceSharePanelComponent,
@@ -4250,9 +4253,48 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorResultGridApi = event.api;
   }
 
+  /** Project cards for the selected result cell (spec REQ: cell-to-card). */
+  private readonly resultCellCards = viewChild(ResultCellCardsComponent);
+
+  private openCardsForFocusedCell(
+    event: CellFocusedEvent<QueryResultGridRow>,
+  ): void {
+    const cards = this.resultCellCards();
+    if (!cards) return;
+    const colId =
+      typeof event.column === 'string' ? event.column : event.column?.getColId();
+    const index = colId?.startsWith('result_') ? Number(colId.slice(7)) : NaN;
+    const columns = this.displayedRecordset()?.columns;
+    const node =
+      event.rowIndex === null
+        ? undefined
+        : event.api.getDisplayedRowAtIndex(event.rowIndex);
+    if (!colId || !columns || !columns[index] || !node?.data || node.group || node.footer) {
+      cards.clear();
+      return;
+    }
+    const data = node.data;
+    const row = Object.fromEntries(
+      columns.map((c, i) => [c.name, data[`result_${i}`]]),
+    );
+    // The focus class lands after this event; anchor the tooltip on the next frame.
+    requestAnimationFrame(() => {
+      const rect = document
+        .querySelector('.result-grid-viewport .ag-cell-focus')
+        ?.getBoundingClientRect();
+      cards.focusCell({
+        identity: { column: columns[index].name },
+        value: data[colId],
+        row,
+        anchor: rect ? { x: rect.left, y: rect.bottom } : undefined,
+      });
+    });
+  }
+
   public authorResultCellFocused(
     event: CellFocusedEvent<QueryResultGridRow>,
   ): void {
+    this.openCardsForFocusedCell(event);
     if (!this.isTextQueryWorkspace() || event.rowIndex === null) return;
     this.authorResultGridApi = event.api;
     const node = event.api.getDisplayedRowAtIndex(event.rowIndex);
