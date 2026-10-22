@@ -300,7 +300,7 @@
             <p>{{ reason }}</p>
           }
         }
-        <ion-toolbar class="tables-toolbar">
+        <ion-toolbar class="tables-toolbar checks-toolbar">
           <h4 slot="start">Applicable Checks</h4>
           <ion-buttons slot="end">
             <ion-button
@@ -312,7 +312,7 @@
             </ion-button>
           </ion-buttons>
         </ion-toolbar>
-        <p>
+        <p class="checks-intro">
           Binding availability only. This does not predict a Check result or
           grant permission to run.
         </p>
@@ -324,21 +324,29 @@
           <ul class="check-list" aria-label="Check suggestions">
             @for (check of suggestions.checks; track check.id) {
               <li>
-                <strong>{{ check.title }}</strong>
-                <p>{{ check.id }} · version {{ check.revision }}</p>
-                <p>
-                  {{ checkLabels[check.preflight.state].label }} ·
-                  {{ checkLabels[check.preflight.state].detail }}
+                <div class="check-heading">
+                  <strong class="check-title">{{ check.title }}</strong>
+                  <span class="check-state">{{
+                    checkLabels[check.preflight.state].label
+                  }}</span>
+                  <ion-buttons slot="end">
+                    <ion-button
+                      fill="clear"
+                      size="small"
+                      [routerLink]="checkHref(check.id)"
+                      [queryParams]="{ environment: environment() }"
+                      >Open Check</ion-button
+                    >
+                  </ion-buttons>
+                </div>
+                <p class="check-meta">
+                  {{ check.id }} · version {{ check.revision }}
                 </p>
-                <ion-button
-                  fill="clear"
-                  size="small"
-                  [routerLink]="checkHref(check.id)"
-                  [queryParams]="{ environment: environment() }"
-                  >Open Check</ion-button
-                >
-                <details>
-                  <summary>Binding preflight details</summary>
+                <details class="check-details">
+                  <summary>Binding details</summary>
+                  @if (check.preflight.state !== 'input-bindable') {
+                    <p>{{ checkLabels[check.preflight.state].detail }}</p>
+                  }
                   <p>Definition SHA-256 {{ check.definitionDigest }}</p>
                   <p>
                     Check {{ check.preflight.checkId }}
