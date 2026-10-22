@@ -5,6 +5,7 @@ import {
   columnKeyKind,
   isMeaningLookupParameter,
   isScalarLookupParameter,
+  humanizeName,
   matchesNamePattern,
   resolveParameterMeaning,
   likeContainsPattern,
@@ -150,13 +151,23 @@ describe('parameter lookup model', () => {
     });
   });
 
+  it('humanises schema and field names for column headers', () => {
+    expect(humanizeName('CompanyName')).toBe('Company name');
+    expect(humanizeName('CustomerID')).toBe('Customer ID');
+    expect(humanizeName('ship_city')).toBe('Ship city');
+    expect(humanizeName('HTTPStatusCode')).toBe('HTTP status code');
+    expect(humanizeName('northwind')).toBe('Northwind');
+    expect(humanizeName('OVDB')).toBe('OVDB');
+    expect(humanizeName('  ')).toBe('');
+  });
+
   it('infers up to three labelled display columns: mapped fields, then text columns', () => {
     const key = { source: 'northwind', collection: 'Customers', keyColumn: 'CustomerID' };
     expect(lookupDisplayColumns({ ...customer, display: undefined }, key, schema)).toEqual({
       columns: [
         { column: 'CompanyName', field: 'CompanyName', label: 'Company' },
         { column: 'City', field: 'City', label: 'City' },
-        { column: 'ContactName', label: 'ContactName' },
+        { column: 'ContactName', label: 'Contact name' },
       ],
       inferred: true,
     });

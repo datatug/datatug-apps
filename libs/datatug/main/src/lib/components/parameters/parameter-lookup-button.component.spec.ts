@@ -9,7 +9,7 @@ import { ErrorLogger } from '@sneat/core';
 const param: IParameterDef = { id: 'CustomerID', title: 'Customer', type: 'string', meta: { entity: 'Customer', field: 'ID' } };
 
 describe('ParameterLookupButtonComponent', () => {
-  const lookup = { availability: vi.fn(), open: vi.fn(), closeOpen: vi.fn() };
+  const lookup = { availability: vi.fn(), open: vi.fn(), dispose: vi.fn() };
   const yes = { available: true, inferred: false };
   const no = { available: false, inferred: false };
 
@@ -69,6 +69,7 @@ describe('ParameterLookupButtonComponent', () => {
     fixture.componentRef.setInput('parameter', { ...param, type: 'integer' });
     await fixture.componentInstance.open();
     expect(picks).toHaveLength(1);
+    expect(TestBed.inject(ErrorLogger).logError).toHaveBeenCalledWith(expect.any(Error), 'Parameter lookup pick dropped', { show: false });
   });
 
   it('logs a failure to open and ignores a second click while open', async () => {
@@ -105,6 +106,6 @@ describe('ParameterLookupButtonComponent', () => {
     await fixture.whenStable();
     expect(fixture.componentInstance.available()).toBe(true);
     fixture.destroy();
-    expect(lookup.closeOpen).toHaveBeenCalled();
+    expect(lookup.dispose).toHaveBeenCalled();
   });
 });

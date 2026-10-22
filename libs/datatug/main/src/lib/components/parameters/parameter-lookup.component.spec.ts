@@ -94,6 +94,9 @@ describe('ParameterLookupComponent', () => {
     const firstSignal = search.mock.calls.at(-1)?.[2] as AbortSignal;
     fixture.componentInstance.onFilter('  bott ');
     expect(firstSignal.aborted).toBe(true);
+    fixture.detectChanges();
+    // The previous rows stay, dimmed, but the status speaks only of the search in flight.
+    expect(status()).toBe('Searching Customers…');
     await Promise.resolve();
     first.resolve(page({ rows: [[s('STALE'), s('Stale')], [s('STALE2'), s('Stale 2')]] }));
     await fixture.whenStable();
@@ -152,6 +155,32 @@ describe('ParameterLookupComponent', () => {
     }, undefined, 'BOTTM');
     expect(search).toHaveBeenCalledWith('nw', '', expect.any(AbortSignal));
     expect(fixture.componentInstance.selectedIndex()).toBe(1);
+  });
+
+  it('scrolls the preselected current value into view', async () => {
+    const scrolled: Element[] = [];
+    const original = HTMLElement.prototype.scrollIntoView;
+    HTMLElement.prototype.scrollIntoView = function (this: Element) { scrolled.push(this); };
+    try {
+      await create({}, undefined, 'BOTTM');
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const rows = scrolled.filter((el) => el.getAttribute('data-testid') === 'parameter-lookup-row');
+      expect(rows.length).toBeGreaterThan(0);
+      expect(rows.every((row) => row.textContent?.includes('BOTTM'))).toBe(true);
+    } finally {
+      HTMLElement.prototype.scrollIntoView = original;
+    }
+  });
+
+  it('hides the guessed-columns note when no rows are shown', async () => {
+    search.mockResolvedValueOnce(page({ rows: [], inferredNote: 'Columns guessed: declare display on entity Customer to choose them.' }));
+    await create();
+    expect(text()).not.toContain('Columns guessed');
+  });
+
+  it('shows how the meaning was found when it was guessed', async () => {
+    await create({ meaningNote: 'Meaning guessed from the name ShipCustomerID: Customer.ID. Declare meta on this parameter to confirm it.' });
+    expect(text()).toContain('Meaning guessed from the name ShipCustomerID');
   });
 
   it('explains empty, limited, unavailable, inferred and limitation states', async () => {

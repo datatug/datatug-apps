@@ -206,7 +206,7 @@ export function lookupDisplayColumns(
     const column = f && columnOf(f);
     if (f && column) {
       chosen.add(column);
-      declared.push({ column, field: f.id, label: f.title || f.id });
+      declared.push({ column, field: f.id, label: f.title || humanizeName(f.id) });
     }
   }
   if (declared.length) return { columns: declared, inferred: false };
@@ -216,16 +216,36 @@ export function lookupDisplayColumns(
     const column = columnOf(f);
     if (column) {
       chosen.add(column);
-      inferred.push({ column, field: f.id, label: f.title || f.id });
+      inferred.push({ column, field: f.id, label: f.title || humanizeName(f.id) });
     }
   }
   for (const c of schemaColumns) {
     if (inferred.length === MAX_INFERRED_DISPLAY) break;
     if (chosen.has(c.name) || columnKeyKind(c.type) !== 'string') continue;
     chosen.add(c.name);
-    inferred.push({ column: c.name, label: c.name });
+    inferred.push({ column: c.name, label: humanizeName(c.name) });
   }
   return { columns: inferred, inferred: inferred.length > 0 };
+}
+
+/**
+ * A schema or field name in the visitor's words: `CompanyName` → "Company name",
+ * `CustomerID` → "Customer ID", `ship_city` → "Ship city". Acronyms keep their case.
+ */
+export function humanizeName(name: string): string {
+  const words = name
+    .replace(/[_\s-]+/g, ' ')
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1 $2')
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+  return words
+    .map((word, i) => {
+      if (word.length > 1 && /^[A-Z0-9]+$/.test(word)) return word;
+      return i === 0 ? word[0].toUpperCase() + word.slice(1).toLowerCase() : word.toLowerCase();
+    })
+    .join(' ');
 }
 
 /** Double-quotes an SQLite identifier. Callers pass only names found in the fixture's own catalog. */

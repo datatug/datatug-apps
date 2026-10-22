@@ -80,7 +80,7 @@ export class ParameterLookupButtonComponent {
 
   constructor() {
     // A dialog must not outlive the input it fills (for example, the board navigated away).
-    inject(DestroyRef).onDestroy(() => this.lookup.closeOpen());
+    inject(DestroyRef).onDestroy(() => this.lookup.dispose());
     effect(() => {
       const parameter = this.parameter();
       const host = this.context();
@@ -106,6 +106,7 @@ export class ParameterLookupButtonComponent {
       if (result) {
         const checked = pickedParameterValue(parameter, result.value);
         if ('value' in checked) this.picked.emit({ value: checked.value, key: result.value });
+        else this.injector.get<IErrorLogger>(ErrorLogger).logError(new Error(checked.error), 'Parameter lookup pick dropped', { show: false });
       }
     } catch (e) {
       this.injector.get<IErrorLogger>(ErrorLogger).logError(e, 'Failed to open the parameter lookup');

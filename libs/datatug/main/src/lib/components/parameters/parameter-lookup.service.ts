@@ -7,6 +7,7 @@ import { ParameterLookupComponent } from './parameter-lookup.component';
 import {
   EXPLICIT_LOOKUP_MAX_ROWS,
   LOOKUP_PAGE_SIZE,
+  humanizeName,
   isScalarLookupParameter,
   rawCellToTypedValue,
   rowMatchesFilter,
@@ -70,9 +71,16 @@ export class ParameterLookupService {
     return { available: sources.length > 0, inferred: sources[0]?.meaning.provenance === 'inferred' };
   }
 
-  /** Opens the dialog; resolves with the picked key, or undefined when cancelled or unavailable. */
   /** The open dialog, so a host that goes away can close it ({@link closeOpen}). */
   private openModal?: HTMLIonModalElement;
+  /** Set when the host went away: a dialog still being prepared must not open over a gone page. */
+  private disposed = false;
+
+  /** The host is gone: close an open dialog and never open one that is still being prepared. */
+  dispose(): void {
+    this.disposed = true;
+    this.closeOpen();
+  }
 
   /** Closes a dialog this service opened and is still showing. */
   closeOpen(): void {
@@ -80,21 +88,33 @@ export class ParameterLookupService {
     this.openModal = undefined;
   }
 
+  /** Opens the dialog; resolves with the picked key, or undefined when cancelled or unavailable. */
   async open(parameter: IParameterDef, host: ParameterLookupHost, currentValue?: string): Promise<ParameterLookupResult | undefined> {
+    if (this.disposed) return undefined;
     const provider = await this.provider(parameter, host);
     if (!provider) return undefined;
-    const modal = await this.modal.create({
-      component: ParameterLookupComponent,
-      componentProps: { parameter, provider, currentValue },
-      cssClass: 'parameter-lookup-modal',
-    });
-    this.openModal = modal;
-    await modal.present();
-    // present() resolves after the enter animation, when the overlay no longer moves focus itself.
-    void (modal.querySelector?.('ion-searchbar') as HTMLIonSearchbarElement | null)?.setFocus?.();
-    const { data, role } = await modal.onWillDismiss<ParameterLookupResult>();
-    if (this.openModal === modal) this.openModal = undefined;
-    return role === 'select' && data?.value ? data : undefined;
+    if (this.disposed) {
+      provider.dispose?.();
+      return undefined;
+    }
+    try {
+      const modal = await this.modal.create({
+        component: ParameterLookupComponent,
+        componentProps: { parameter, provider, currentValue },
+        cssClass: 'parameter-lookup-modal',
+      });
+      if (this.disposed) return undefined;
+      this.openModal = modal;
+      await modal.present();
+      // present() resolves after the enter animation, when the overlay no longer moves focus itself.
+      void (modal.querySelector?.('ion-searchbar') as HTMLIonSearchbarElement | null)?.setFocus?.();
+      const { data, role } = await modal.onWillDismiss<ParameterLookupResult>();
+      if (this.openModal === modal) this.openModal = undefined;
+      return role === 'select' && data?.value ? data : undefined;
+    } finally {
+      // The dialog's fixture and SQLite worker live only as long as the dialog.
+      provider.dispose?.();
+    }
   }
 
   private async provider(parameter: IParameterDef, host: ParameterLookupHost): Promise<ParameterLookupProvider | undefined> {
@@ -146,8 +166,8 @@ export class ParameterLookupService {
         return {
           collection: label,
           columns: [
-            { name: keyField, label: keyField, key: true },
-            ...others.map((c) => ({ name: c, label: c, key: false })),
+            { name: keyField, label: humanizeName(keyField), key: true },
+            ...others.map((c) => ({ name: c, label: humanizeName(c), key: false })),
           ],
           rows: matched.slice(0, LOOKUP_PAGE_SIZE),
           limited: matched.length > LOOKUP_PAGE_SIZE || scanLimited,

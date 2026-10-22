@@ -56,6 +56,8 @@ export interface ParameterLookupProvider {
    * primary key really is the mapped column).
    */
   prepare?(signal: AbortSignal): Promise<ParameterLookupPreparation>;
+  /** Releases what the dialog held (for example its SQLite worker); called once the dialog is gone. */
+  dispose?(): void;
 }
 
 export interface ParameterLookupPreparation {

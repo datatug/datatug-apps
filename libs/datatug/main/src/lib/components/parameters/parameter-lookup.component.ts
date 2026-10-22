@@ -125,6 +125,7 @@ export class ParameterLookupComponent
   readonly noUsableSource = signal<string | undefined>(undefined);
 
   private readonly pendingTasks = inject(PendingTasks);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private controller?: AbortController;
   private generation = 0;
 
@@ -148,7 +149,8 @@ export class ParameterLookupComponent
     const none = this.noUsableSource();
     if (none) return none;
     if (this.needsSource()) return `Choose where to look up ${this.subject()}.`;
-    if (this.loading() && !this.page()) return `Searching ${this.collection()}…`;
+    // While a newer filter loads, the old rows stay (dimmed) but their status must not speak for the new filter.
+    if (this.loading()) return `Searching ${this.collection()}…`;
     const error = this.error();
     if (error) return error;
     const page = this.page();
@@ -260,6 +262,7 @@ export class ParameterLookupComponent
         ? -1
         : page.rows.findIndex((row) => lookupCellText(row[0]) === current);
       this.selectedIndex.set(index >= 0 ? index : undefined);
+      if (index >= 0) this.scrollRowIntoView(index);
     } catch (e) {
       if (generation !== this.generation) return;
       // Only this search's own cancellation is silent; any other abort is a failure to show.
@@ -272,6 +275,14 @@ export class ParameterLookupComponent
       if (generation === this.generation) this.loading.set(false);
       done();
     }
+  }
+
+  /** Brings the preselected current value into view once its row has rendered. */
+  private scrollRowIntoView(index: number): void {
+    setTimeout(() => {
+      const row = this.host.nativeElement.querySelectorAll<HTMLElement>('[data-testid="parameter-lookup-row"]')[index];
+      row?.scrollIntoView?.({ block: 'nearest' });
+    }, 0);
   }
 
   onSelectionChange(value: unknown): void {

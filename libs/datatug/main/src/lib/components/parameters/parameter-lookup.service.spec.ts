@@ -104,6 +104,38 @@ describe('ParameterLookupService', () => {
     expect(await opening).toBeUndefined();
   });
 
+  it('never opens a dialog for a host that went away while it was being prepared', async () => {
+    const service = TestBed.inject(ParameterLookupService);
+    const providerDispose = vi.fn();
+    publicLookup.provider.mockReturnValue({ subject: 'Customer', sources: [], search: vi.fn(), dispose: providerDispose });
+    let release!: (v: unknown) => void;
+    publicLookup.sources.mockReturnValueOnce(new Promise((r) => { release = r; }));
+    const opening = service.open(meaning, { projectRef: ref });
+    service.dispose();
+    release([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'declared' } }]);
+    expect(await opening).toBeUndefined();
+    expect(create).not.toHaveBeenCalled();
+    expect(providerDispose).toHaveBeenCalledTimes(1);
+    expect(await service.open(meaning, { projectRef: ref })).toBeUndefined();
+  });
+
+  it('does not present a dialog created after the host went away, and releases the provider after a dialog', async () => {
+    const service = TestBed.inject(ParameterLookupService);
+    const providerDispose = vi.fn();
+    publicLookup.provider.mockReturnValue({ subject: 'Customer', sources: [], search: vi.fn(), dispose: providerDispose });
+    publicLookup.sources.mockResolvedValue([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'declared' } }]);
+    await service.open(meaning, { projectRef: ref });
+    expect(providerDispose).toHaveBeenCalledTimes(1);
+    const present = vi.fn();
+    create.mockImplementationOnce(() => {
+      service.dispose();
+      return Promise.resolve({ present, dismiss: vi.fn(), onWillDismiss: vi.fn() });
+    });
+    expect(await service.open(meaning, { projectRef: ref })).toBeUndefined();
+    expect(present).not.toHaveBeenCalled();
+    expect(providerDispose).toHaveBeenCalledTimes(2);
+  });
+
   it('opens nothing when no provider applies', async () => {
     const service = TestBed.inject(ParameterLookupService);
     expect(await service.open(meaning, { projectRef: ref })).toBeUndefined();

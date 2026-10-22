@@ -110,16 +110,7 @@ export class QueryDispatchService {
   private async connectionDeclaration(request: Pick<QueryDispatchRequest, 'projectRef' | 'definition' | 'environment' | 'signal'>): Promise<QueryConnectionDescriptor | undefined> {
     const connectionId = request.definition.connectionId;
     if (!connectionId) return undefined;
-    const source = usesProjectApi(request.projectRef)
-      ? this.projectApi.connectionCatalog<{ readonly connections?: readonly QueryConnectionDescriptor[] }>(request.projectRef)
-      : this.github.getRawJson<{ readonly connections?: readonly QueryConnectionDescriptor[] }>(
-          githubProjectAddressForRef(request.projectRef), 'connections/demo-db.json');
-    if (request.signal?.aborted) throw abortError();
-    const catalog = await firstValueFrom((request.signal
-      ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
-      : source).pipe(timeout({ first: 10_000 })));
-    if (request.signal?.aborted) throw abortError();
-    const matches = catalog?.connections?.filter((item) => item.id === connectionId) ?? [];
+    const matches = (await this.connectionCatalog(request)).filter((item) => item.id === connectionId);
     if (matches.length !== 1) throw new QueryDispatchError('The saved query connection is missing or ambiguous in this project.');
     const declaration = matches[0];
     const environment = request.environment ?? (declaration.storage === 'sqlite' && declaration.browserFixture &&

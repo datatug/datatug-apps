@@ -1,5 +1,6 @@
 import { TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { BehaviorSubject, of, throwError } from 'rxjs';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import { PublicParameterLookupService, isPublicBrowserProject } from './public-parameter-lookup.service';
 import { QueryDispatchService } from '../../queries/query-dispatch.service';
@@ -37,6 +38,7 @@ describe('PublicParameterLookupService', () => {
   let entity: ReturnType<typeof vi.fn>;
   let entities: ReturnType<typeof vi.fn>;
   let schemaRows: [string, string, number][];
+  let authState: BehaviorSubject<{ status: string; user?: { uid: string } }>;
 
   beforeEach(() => {
     schemaRows = [['CustomerID', 'nchar(5)', 1], ['CompanyName', 'nvarchar(40)', 0], ['ContactName', 'nvarchar(30)', 0]];
@@ -52,6 +54,7 @@ describe('PublicParameterLookupService', () => {
       });
     });
     connectionCatalog = vi.fn(() => Promise.resolve(catalog));
+    authState = new BehaviorSubject<{ status: string; user?: { uid: string } }>({ status: 'notAuthenticated' });
     entity = vi.fn(() => of(customer));
     entities = vi.fn(() => of([{ id: 'Customer' }]));
     TestBed.configureTestingModule({
@@ -59,6 +62,7 @@ describe('PublicParameterLookupService', () => {
         PublicParameterLookupService,
         { provide: QueryDispatchService, useValue: { execute, connectionCatalog } },
         { provide: ProjectAssetsReadService, useValue: { entity, entities } },
+        { provide: SneatAuthStateService, useValue: { authState } },
       ],
     });
   });
@@ -114,6 +118,23 @@ describe('PublicParameterLookupService', () => {
     expect(await service.meaning(ref, bare)).toBeUndefined();
     entities.mockReturnValueOnce(of(undefined));
     expect(await service.meaning(ref, bare)).toBeUndefined();
+    entities.mockReturnValueOnce(of(Array.from({ length: 101 }, (_, n) => ({ id: `E${n}` }))));
+    expect(await service.meaning(ref, bare)).toBeUndefined();
+    expect(entities).toHaveBeenCalledTimes(3);
+  });
+
+  it('fails closed, uncached, when one entity read fails', async () => {
+    const keyed = (id: string, value: string) => ({ id, fields: [{ id: 'ID', type: 'string', isKeyField: true, namePatterns: [{ type: 'exact', value }] }] });
+    entities.mockReturnValue(of([{ id: 'Customer' }, { id: 'Account' }]));
+    let accountFails = true;
+    entity.mockImplementation((_ref: unknown, id: string) =>
+      id === 'Account' && accountFails ? throwError(() => new Error('503')) : of(keyed(id, 'ShipCustomerID')));
+    const service = TestBed.inject(PublicParameterLookupService);
+    const bare: IParameterDef = { id: 'ShipCustomerID', type: 'string' };
+    // Account also matches; with its read failed, Customer alone must not win.
+    expect(await service.meaning(ref, bare)).toBeUndefined();
+    accountFails = false;
+    expect(await service.meaning(ref, bare)).toBeUndefined();
     expect(entities).toHaveBeenCalledTimes(2);
   });
 
@@ -152,14 +173,21 @@ describe('PublicParameterLookupService', () => {
     await expect(provider.search('nope', '', signal)).rejects.toThrow('Unknown lookup source.');
   });
 
-  it('labels guessed display columns', async () => {
+  it('labels guessed display columns for signed-in authors only, in human words', async () => {
     const service = TestBed.inject(PublicParameterLookupService);
     const bare = { id: 'Customer', fields: [customer.fields[0]] };
     entity.mockReturnValue(of(bare));
     const sources = await service.sources(param, { projectRef: ref });
-    const page = await service.provider(param, { projectRef: ref }, sources, bare).search(sources[0].id, '', new AbortController().signal);
-    expect(page.columns.map((c) => c.name)).toEqual(['CustomerID', 'CompanyName', 'ContactName']);
-    expect(page.inferredNote).toBe('Columns guessed: declare display on entity Customer to choose them.');
+    const provider = service.provider(param, { projectRef: ref }, sources, bare);
+    expect(provider.sourceNote).toBe('Northwind sample, pinned · read in your browser.');
+    const anonymous = await provider.search(sources[0].id, '', new AbortController().signal);
+    expect(anonymous.columns.map((c) => c.name)).toEqual(['CustomerID', 'CompanyName', 'ContactName']);
+    expect(anonymous.columns.map((c) => c.label)).toEqual(['Customer ID', 'Company name', 'Contact name']);
+    expect(anonymous.inferredNote).toBeUndefined();
+    authState.next({ status: 'authenticated', user: { uid: 'u1' } });
+    const author = await provider.search(sources[0].id, '', new AbortController().signal);
+    expect(author.inferredNote).toBe('Columns guessed: declare display on entity Customer to choose them.');
+    provider.dispose?.();
   });
 
   it.each([

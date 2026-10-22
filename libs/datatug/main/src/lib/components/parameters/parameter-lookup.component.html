@@ -62,8 +62,8 @@
   @if (meaningNote(); as note) {
     <ion-note class="lookup-note" data-testid="lookup-meaning-note">{{ note }}</ion-note>
   }
-  @if (page()?.inferredNote; as note) {
-    <ion-note class="lookup-note">{{ note }}</ion-note>
+  @if (rows().length && page()?.inferredNote; as note) {
+    <ion-note class="lookup-note" data-testid="lookup-inferred-note">{{ note }}</ion-note>
   }
   @for (limitation of page()?.limitations ?? []; track $index) {
     <ion-note class="lookup-note" color="warning">{{ limitation }}</ion-note>

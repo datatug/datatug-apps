@@ -1,16 +1,20 @@
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom } from 'rxjs';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { firstValueFrom, of } from 'rxjs';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IProjectRef } from '../../core/project-context';
 import type { IParameterDef } from '../../models/definition/parameter';
 import { QueryType, type IQueryDef, type ITextQueryRequest } from '../../models/definition/query-def';
 import { QueryDispatchService } from '../../queries/query-dispatch.service';
+import { BrowserSqliteSession } from '../../queries/browser-sqlite-query.service';
 import { serverOwnsSourceAdmission, type QueryConnectionDescriptor } from '../../queries/query-dispatch';
 import { ProjectAssetsReadService } from '../../services/project/project-assets-read.service';
 import {
   LOOKUP_PAGE_SIZE,
   LOOKUP_SCHEMA_SQL,
   columnKeyKind,
+  humanizeName,
   isScalarLookupParameter,
   lookupCandidates,
   lookupConnection,
@@ -88,7 +92,12 @@ export class PublicParameterLookupService {
   private readonly dispatch = inject(QueryDispatchService);
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly entities = new Map<string, Promise<LookupEntity | undefined>>();
-  private readonly allEntities = new Map<string, Promise<readonly (LookupEntity | undefined)[]>>();
+  // The guessed-columns note is for authors: anonymous visitors never see it.
+  private readonly authState = toSignal(
+    inject(SneatAuthStateService, { optional: true })?.authState ?? of({ status: 'notAuthenticated' as const }),
+    { initialValue: undefined },
+  );
+  private readonly allEntities = new Map<string, Promise<readonly LookupEntity[] | undefined>>();
   private readonly catalogs = new Map<string, Promise<readonly QueryConnectionDescriptor[]>>();
   private readonly schemas = new Map<string, Promise<SchemaProbe>>();
 
@@ -99,7 +108,9 @@ export class PublicParameterLookupService {
    */
   async meaning(ref: IProjectRef, parameter: IParameterDef): Promise<ParameterMeaning | undefined> {
     if (parameter.meta?.entity && parameter.meta.field) return resolveParameterMeaning([], parameter);
-    return resolveParameterMeaning(await this.projectEntities(ref), parameter);
+    const entities = await this.projectEntities(ref);
+    // An incomplete entity set could hide a second match and turn an ambiguous name into a guess.
+    return entities ? resolveParameterMeaning(entities, parameter) : undefined;
   }
 
   /** The eligible sources of a parameter; empty means no pick button. Never downloads a fixture. */
@@ -132,6 +143,8 @@ export class PublicParameterLookupService {
   /** A dialog provider over already-resolved sources. */
   provider(parameter: IParameterDef, context: ParameterLookupContext, sources: readonly PublicLookupSource[], entity: LookupEntity | undefined): ParameterLookupProvider {
     const ref = context.projectRef as IProjectRef;
+    // One fixture download and one SQLite worker for the whole dialog.
+    const session = new BrowserSqliteSession();
     const hostSources = sources.filter((s) => !!context.hostConnectionId && s.connection.id === context.hostConnectionId);
     const preselected = sources.length === 1
       ? sources[0].id
@@ -140,7 +153,7 @@ export class PublicParameterLookupService {
       subject: entity?.title || parameter.meta?.entity || parameter.title || parameter.id,
       sources: sources.map((s) => ({ id: s.id, label: `${s.collection} · ${s.source}` })),
       preselectedSourceId: preselected,
-      sourceNote: 'Read from the pinned public sample in your browser.',
+      sourceNote: `${[...new Set(sources.map((s) => humanizeName(s.connection.dataset || s.source)))].join(', ')} sample, pinned · read in your browser.`,
       ...(sources[0]?.meaning.provenance === 'inferred' ? {
         meaningNote: `Meaning guessed from the name ${parameter.id}: ${sources[0].meaning.entity}.${sources[0].meaning.field}. Declare meta on this parameter to confirm it.`,
       } : {}),
@@ -149,7 +162,7 @@ export class PublicParameterLookupService {
         prepare: async (signal: AbortSignal) => {
           const checks = await Promise.all(sources.map(async (source) => ({
             source,
-            problem: this.keyProblem(parameter, source, await this.schema(ref, source, signal)),
+            problem: this.keyProblem(parameter, source, await this.schema(ref, source, session, signal)),
           })));
           const usable = checks.filter((c) => !c.problem).map((c) => c.source);
           const preselectedUsable = usable.length === 1
@@ -165,8 +178,9 @@ export class PublicParameterLookupService {
       search: (sourceId, filter, signal) => {
         const source = sources.find((s) => s.id === sourceId);
         if (!source) return Promise.reject(new Error('Unknown lookup source.'));
-        return this.search(ref, parameter, entity ?? {}, source, filter, signal);
+        return this.search(ref, parameter, entity ?? {}, source, session, filter, signal);
       },
+      dispose: () => session.close(),
     };
   }
 
@@ -188,18 +202,25 @@ export class PublicParameterLookupService {
   }
 
   /**
-   * Every entity declaration of the project (at most 100), read once per
-   * project, for name-pattern inference. A failed listing yields none.
+   * Every entity declaration of the project, read once per project, for
+   * name-pattern inference. Undefined, and not cached, when the set is
+   * incomplete: a failed listing, a failed or empty entity read, or more than
+   * 100 entities. Inference then fails closed (REQ:inferred-parameter-meaning).
    */
-  private projectEntities(ref: IProjectRef): Promise<readonly (LookupEntity | undefined)[]> {
+  private projectEntities(ref: IProjectRef): Promise<readonly LookupEntity[] | undefined> {
     const key = refKey(ref);
     let all = this.allEntities.get(key);
     if (!all) {
       all = firstValueFrom(this.assets.entities(ref))
-        .then((briefs) => Promise.all((briefs ?? []).slice(0, 100).map((b) => this.entity(ref, b.id))))
+        .then(async (briefs) => {
+          if (!briefs || briefs.length > 100) throw new Error('The entity set cannot be read completely.');
+          const entities = await Promise.all(briefs.map((b) => this.entity(ref, b.id)));
+          if (entities.some((e) => !e)) throw new Error('An entity declaration could not be read.');
+          return entities as LookupEntity[];
+        })
         .catch(() => {
           this.allEntities.delete(key);
-          return [];
+          return undefined;
         });
       this.allEntities.set(key, all);
     }
@@ -219,7 +240,7 @@ export class PublicParameterLookupService {
     return catalog;
   }
 
-  private async run(ref: IProjectRef, source: PublicLookupSource, sql: string, parameters: IQueryDef['parameters'], values: Record<string, TypedValue>, signal: AbortSignal) {
+  private async run(ref: IProjectRef, source: PublicLookupSource, session: BrowserSqliteSession, sql: string, parameters: IQueryDef['parameters'], values: Record<string, TypedValue>, signal: AbortSignal) {
     const definition: IQueryDef = {
       id: 'parameter-lookup',
       title: 'Parameter lookup',
@@ -233,6 +254,7 @@ export class PublicParameterLookupService {
       target: { kind: 'browser-sqlite' },
       ...(source.environment ? { environment: source.environment } : {}),
       ...(Object.keys(values).length ? { parameters: values } : {}),
+      browserSqliteSession: session,
       signal,
     });
   }
@@ -242,11 +264,11 @@ export class PublicParameterLookupService {
    * the first caller's, so a cancelled search never leaves later searches waiting
    * on an aborted probe; each caller only stops waiting when its own signal aborts.
    */
-  private schema(ref: IProjectRef, source: PublicLookupSource, signal: AbortSignal): Promise<SchemaProbe> {
+  private schema(ref: IProjectRef, source: PublicLookupSource, session: BrowserSqliteSession, signal: AbortSignal): Promise<SchemaProbe> {
     const key = `${refKey(ref)}\u0000${source.connection.id}\u0000${source.collection}`;
     let probe = this.schemas.get(key);
     if (!probe) {
-      probe = this.run(ref, source, LOOKUP_SCHEMA_SQL, [{ id: 'collection', type: 'string', isRequired: true }],
+      probe = this.run(ref, source, session, LOOKUP_SCHEMA_SQL, [{ id: 'collection', type: 'string', isRequired: true }],
         { collection: { type: 'string', value: source.collection } }, new AbortController().signal)
         .then((result) => {
           const rows = result.recordset.rows;
@@ -275,8 +297,8 @@ export class PublicParameterLookupService {
     return undefined;
   }
 
-  private async search(ref: IProjectRef, parameter: IParameterDef, entity: LookupEntity, source: PublicLookupSource, filter: string, signal: AbortSignal): Promise<ParameterLookupPage> {
-    const schema = await this.schema(ref, source, signal);
+  private async search(ref: IProjectRef, parameter: IParameterDef, entity: LookupEntity, source: PublicLookupSource, session: BrowserSqliteSession, filter: string, signal: AbortSignal): Promise<ParameterLookupPage> {
+    const schema = await this.schema(ref, source, session, signal);
     const collection = source.collection;
     const problem = this.keyProblem(parameter, source, schema);
     if (problem) return {
@@ -285,18 +307,18 @@ export class PublicParameterLookupService {
     };
     const display = lookupDisplayColumns(entity, source, schema.columns);
     const { sql, parameters, values } = lookupRowsSql(collection, source.keyColumn, display.columns.map((c) => c.column), filter);
-    const result = await this.run(ref, source, sql, parameters, values, signal);
+    const result = await this.run(ref, source, session, sql, parameters, values, signal);
     const rows = result.recordset.rows;
     const entityLabel = entity.id || parameter.meta?.entity || 'this entity';
     return {
       collection,
       columns: [
-        { name: source.keyColumn, label: source.keyColumn, key: true },
+        { name: source.keyColumn, label: humanizeName(source.keyColumn), key: true },
         ...display.columns.map((c) => ({ name: c.column, label: c.label, key: false })),
       ],
       rows: rows.slice(0, LOOKUP_PAGE_SIZE),
       limited: rows.length > LOOKUP_PAGE_SIZE,
-      ...(display.inferred ? { inferredNote: `Columns guessed: declare display on entity ${entityLabel} to choose them.` } : {}),
+      ...(display.inferred && this.authState()?.status === 'authenticated' ? { inferredNote: `Columns guessed: declare display on entity ${entityLabel} to choose them.` } : {}),
       // Only limitations that change what the list shows; chart-rights notes do not apply to a pick list.
       ...(result.limitations?.some((l) => l.rowsFiltered || l.hiddenColumns?.length)
         ? { limitations: result.limitations.filter((l) => l.rowsFiltered || l.hiddenColumns?.length).map((l) => l.policy) }
