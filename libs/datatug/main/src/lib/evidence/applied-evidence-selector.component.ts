@@ -112,6 +112,7 @@ import {
 })
 export class AppliedEvidenceSelectorComponent {
   readonly mode = input<'share' | 'inspect'>('share');
+  readonly sourceId = input<string>();
   readonly projectRef = input<IProjectRef>();
   readonly actor = input('');
   readonly environment = input('');
@@ -145,7 +146,7 @@ export class AppliedEvidenceSelectorComponent {
             this.projectRef(),
             this.actor(),
             {
-              sourceId: 'shipping-working-copy',
+              sourceId: this.sourceId() || event.sourceId,
               environment: this.environment(),
             },
           )
@@ -155,6 +156,7 @@ export class AppliedEvidenceSelectorComponent {
     effect(() => {
       this.projectRef();
       this.actor();
+      this.sourceId();
       this.environment();
       this.incidentRef();
       this.caseId();

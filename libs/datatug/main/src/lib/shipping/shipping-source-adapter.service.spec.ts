@@ -1,3 +1,5 @@
+import type { SemanticBrowserModel } from '../semantic-browser/semantic-browser-model';
+import { SOURCE_EVIDENCE_PRESENTERS } from '../evidence/source-evidence-presentation';
 import { DatatugApiService } from '../services/base/datatug-api.service';
 import { HttpErrorResponse } from '@angular/common/http';
 import { Component, input, signal } from '@angular/core';
@@ -212,6 +214,39 @@ describe('actual source adapter with neutral production route and owner discover
       'private owner failure',
     );
   });
+  it('composes the generic browser with the actual route Case context and the frozen host environment', async () => {
+    detective.state.mockReturnValue(
+      of({
+        capabilities: { canRead: true, canWrite: true },
+        environments: ['demo', 'other'],
+      }),
+    );
+    const created = vi.spyOn(
+      TestBed.inject(ShippingSourceAdapterService),
+      'create',
+    );
+    const h = await RouterTestingHarness.create();
+    await h.navigateByUrl(
+      `${base}/sources/shipping-working-copy?environment=demo&caseId=existing-case`,
+      SourceWorkspacePageComponent,
+    );
+    await h.fixture.whenStable();
+    const browser = created.mock.results[0].value.view().browser;
+    expect(browser).toBeDefined();
+    const model = browser?.inputs['model'] as SemanticBrowserModel;
+    expect(model.caseId()).toBe('existing-case');
+    expect(model.environments()).toEqual(['demo']);
+    model.changeEnvironment('other');
+    expect(model.environment()).toBe('');
+    expect(
+      h.routeNativeElement?.querySelector('sneat-semantic-browser'),
+    ).not.toBeNull();
+    expect(
+      h.routeNativeElement?.querySelector('sneat-native-semantic-browser'),
+    ).toBeNull();
+    expect(api.action).not.toHaveBeenCalled();
+    expect(api.publish).not.toHaveBeenCalled();
+  });
   it.each([false, true])(
     'disables publication replacement after restoring a different-environment uncertain journal (other enabled=%s)',
     async (enabled) => {
@@ -397,7 +432,7 @@ describe('actual source adapter with neutral production route and owner discover
       h.routeNativeElement?.querySelector('.source-actions ion-button'),
     ).toBeNull();
     expect(
-      h.routeNativeElement?.querySelector('sneat-native-semantic-browser'),
+      h.routeNativeElement?.querySelector('sneat-semantic-browser'),
     ).toBeNull();
   });
   it('opens only explicitly discovered actual Go receipt refs through existing retained evidence composition', async () => {
@@ -433,6 +468,9 @@ describe('production module adapter composition', () => {
     expect(TestBed.inject(SOURCE_ADAPTER_REGISTRATIONS)).toEqual([
       registration,
     ]);
+    expect(
+      TestBed.inject(SOURCE_EVIDENCE_PRESENTERS).map((item) => item.sourceId),
+    ).toEqual(['shipping-working-copy']);
     expect(registration.create).not.toHaveBeenCalled();
   });
 });

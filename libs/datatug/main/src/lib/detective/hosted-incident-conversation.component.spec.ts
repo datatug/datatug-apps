@@ -1,3 +1,5 @@
+import { SOURCE_EVIDENCE_PRESENTERS } from '../evidence/source-evidence-presentation';
+import { shippingEvidencePresenter } from '../shipping/shipping-evidence-presenter';
 import { AgentContextService } from '@sneat/datatug-semantic';
 import criterionFixture from './testdata/backend-criterion-v069.json';
 import type { AppliedEvidenceChoice, AppliedEvidenceRequest } from '../evidence/applied-evidence';
@@ -63,7 +65,7 @@ describe('HostedIncidentConversationComponent', () => {
   async function mount() {
     await TestBed.configureTestingModule({
       imports: [HostedIncidentConversationComponent],
-      providers: [
+      providers: [ { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
         provideRouter([]),
         { provide: AgentContextService, useValue: {} },
         { provide: SneatAuthStateService, useValue: { authState: new BehaviorSubject({status: 'authenticated', user: {uid: 'sarah'}}) } },
@@ -112,10 +114,11 @@ describe('HostedIncidentConversationComponent', () => {
     f.componentInstance as unknown as Page;
   it('offers typed current-account source receipt opening from cold Incident history without a fabricated URL or cross-account opener', async () => {
     const reference = {...sourceOperationFixture.request.reference, spaceID:context.spaceID, projectId:context.project, receiptActorId:context.principal};
-    history = {events:[{...message(2),refs:[{kind:'source-operation',sourceOperation:reference}]},{...message(3),refs:[{kind:'source-operation',sourceOperation:{...reference,operationId:'other-operation',receiptActorId:'other-account'}}]}],nextAfterSeq:3,hasMore:false};
+    history = {events:[{...message(2),refs:[{kind:'source-operation',sourceOperation:reference}]},{...message(3),refs:[{kind:'source-operation',sourceOperation:{...reference,operationId:'other-operation',receiptActorId:'other-account'}}]},{...message(4),refs:[{kind:'source-operation',sourceOperation:{...reference,operationId:'unsupported-operation',sourceId:'unregistered-source'}}]}],nextAfterSeq:4,hasMore:false};
     const f = await mount();
     await vi.waitFor(() => expect(f.nativeElement.textContent).toContain('Source operation: source-op-replay · Open actual retained receipt'));
     expect(f.nativeElement.textContent).toContain('Source operation: other-operation · No supported evidence view');
+    expect(f.nativeElement.textContent).toContain('Source operation: unsupported-operation · No supported evidence view');
     expect(f.nativeElement.querySelectorAll('a')).toHaveLength(0);
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
