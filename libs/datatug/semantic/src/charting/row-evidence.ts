@@ -24,7 +24,26 @@ export interface EvidenceArtifactRef extends EvidenceProjectRef {
   readonly id: string;
   readonly folder?: string;
 }
+/** Published Core SourceOperationRef: an immutable receipt lookup, never a grant. */
+export interface SourceOperationRef {
+  readonly storeId: string;
+  readonly spaceID: string;
+  readonly projectId: string;
+  readonly sourceId: string;
+  readonly receiptActorId: string;
+  readonly operationId: string;
+  readonly requestSHA256: string;
+  readonly result: {
+    readonly generation: string;
+    readonly revision: number;
+    readonly sha256: string;
+  };
+}
 export type ArtifactRef =
+  | {
+      readonly kind: 'source-operation';
+      readonly sourceOperation: SourceOperationRef;
+    }
   | {
       readonly kind: 'execution' | 'snapshot';
       readonly execution: ExecutionRef;
@@ -151,15 +170,17 @@ export function decodeEvidenceArtifactRef(v: unknown): ArtifactRef {
             kind === 'fact' ||
             kind === 'annotation'
           ? 'artifact'
-          : kind === 'check-run'
-            ? 'checkRun'
-            : kind === 'incident'
-              ? 'incident'
-              : kind === 'project'
-                ? 'project'
-                : kind === 'compare'
-                  ? 'comparison'
-                  : '';
+          : kind === 'source-operation'
+            ? 'sourceOperation'
+            : kind === 'check-run'
+              ? 'checkRun'
+              : kind === 'incident'
+                ? 'incident'
+                : kind === 'project'
+                  ? 'project'
+                  : kind === 'compare'
+                    ? 'comparison'
+                    : '';
   if (!field) throw new Error('Unsupported artifact kind');
   evidenceObject(o, ['kind', field]);
   const value = o[field];
@@ -189,6 +210,57 @@ export function decodeEvidenceArtifactRef(v: unknown): ArtifactRef {
         comparison: {
           left: execution(c['left']),
           right: execution(c['right']),
+        },
+      };
+    }
+    case 'source-operation': {
+      const c = evidenceObject(value, [
+        'storeId',
+        'spaceID',
+        'projectId',
+        'sourceId',
+        'receiptActorId',
+        'operationId',
+        'requestSHA256',
+        'result',
+      ]);
+      const pointer = evidenceObject(c['result'], [
+        'generation',
+        'revision',
+        'sha256',
+      ]);
+      const identity = (v: unknown): string => {
+        const text = segment(v);
+        if (new TextEncoder().encode(text).length > 256)
+          throw new Error('Source operation identity exceeds its bound');
+        return text;
+      };
+      const hash = (v: unknown): string => {
+        const text = evidenceText(v);
+        if (!/^[a-f0-9]{64}$/u.test(text))
+          throw new Error('Invalid source operation digest');
+        return text;
+      };
+      if (
+        !Number.isSafeInteger(pointer['revision']) ||
+        Number(pointer['revision']) < 1
+      )
+        throw new Error('Invalid source operation revision');
+      return {
+        kind,
+        sourceOperation: {
+          storeId: identity(c['storeId']),
+          spaceID: identity(c['spaceID']),
+          projectId: identity(c['projectId']),
+          sourceId: identity(c['sourceId']),
+          receiptActorId: identity(c['receiptActorId']),
+          operationId: identity(c['operationId']),
+          requestSHA256: hash(c['requestSHA256']),
+          result: {
+            generation: identity(pointer['generation']),
+            revision: pointer['revision'] as number,
+            sha256: hash(pointer['sha256']),
+          },
         },
       };
     }

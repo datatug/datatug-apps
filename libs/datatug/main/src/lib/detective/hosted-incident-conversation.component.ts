@@ -414,7 +414,9 @@ type CloudContext = Extract<DetectiveRequestContext, { kind: 'cloud' }>;
                 } @else if (canOpenRetained(ref)) {
                   <ion-button fill="clear" (click)="openRetained(ref)"
                     >{{ evidenceLabel(ref) }} · Open actual retained
-                    run</ion-button
+                    {{
+                      ref.kind === 'source-operation' ? 'receipt' : 'run'
+                    }}</ion-button
                   >
                 } @else {
                   <p>{{ evidenceLabel(ref) }} · No supported evidence view</p>
@@ -666,6 +668,14 @@ export class HostedIncidentConversationComponent {
     try {
       const value = decodeEvidenceArtifactRef(ref);
       const c = this.context();
+      if (value.kind === 'source-operation')
+        return (
+          value.sourceOperation.storeId === c.storage &&
+          value.sourceOperation.spaceID === c.spaceID &&
+          value.sourceOperation.projectId === c.project &&
+          value.sourceOperation.receiptActorId === c.principal &&
+          value.sourceOperation.sourceId === 'shipping-working-copy'
+        );
       return value.kind === 'execution'
         ? value.execution.storeId === c.storage &&
             value.execution.projectId === c.project
@@ -1491,6 +1501,8 @@ export class HostedIncidentConversationComponent {
     return { storeId: c.storage, spaceID: c.spaceID, projectId: c.project };
   });
   protected evidenceLabel(ref: IncidentArtifactRef): string {
+    if (ref.kind === 'source-operation')
+      return `Source operation: ${ref.sourceOperation?.operationId || 'unavailable'}`;
     return ref.kind === 'check-run'
       ? `Check run: ${ref.checkRun?.checkId || 'unavailable'} · version ${ref.checkRun?.checkVersion || 'unavailable'} · ${ref.checkRun?.runId || 'unavailable'}`
       : ref.kind === 'check'

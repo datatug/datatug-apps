@@ -5,7 +5,10 @@ import {
   HttpParams,
 } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
-import { decodeTypedValue } from '@sneat/datatug-semantic';
+import {
+  decodeTypedValue,
+  decodeEvidenceArtifactRef,
+} from '@sneat/datatug-semantic';
 import { Observable, catchError, map, of } from 'rxjs';
 import { buildAgentUrl } from '../services/repo/agent-url';
 import {
@@ -217,7 +220,9 @@ function decodeIncidentStreamItem(value: unknown): IncidentStreamItem {
   return { cursor: value['cursor'], event };
 }
 
-export function decodeIncidentEvent(value: unknown): IncidentStreamItem['event'] {
+export function decodeIncidentEvent(
+  value: unknown,
+): IncidentStreamItem['event'] {
   const event = value;
   if (
     !isRecord(event) ||
@@ -488,7 +493,8 @@ function decodeIncident(value: unknown): IncidentDetail {
       sameIncidentRef(ref, incident['mergedInto'])) ||
     !optionalProjectRefs(incident['projects']) ||
     !optionalParticipants(incident['participants']) ||
-    ('resolutionCriterion' in incident && !isIncidentResolutionCriterion(incident['resolutionCriterion'])) ||
+    ('resolutionCriterion' in incident &&
+      !isIncidentResolutionCriterion(incident['resolutionCriterion'])) ||
     !isContextView(incident['canonicalContext']) ||
     !optionalContextPromotions(incident['contextPromotions']) ||
     !optionalContextRejections(incident['contextRejections']) ||
@@ -962,6 +968,13 @@ function optionalArtifactRefs(value: unknown): boolean {
 }
 
 function isArtifactRef(value: unknown): boolean {
+  if (isRecord(value) && value['kind'] === 'source-operation') {
+    try {
+      return decodeEvidenceArtifactRef(value).kind === 'source-operation';
+    } catch {
+      return false;
+    }
+  }
   if (
     !isRecord(value) ||
     !hasOnlyKeys(value, [

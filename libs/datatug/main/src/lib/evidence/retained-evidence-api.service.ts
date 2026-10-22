@@ -23,6 +23,14 @@ import {
 } from '../session-context/session-context-contract';
 import { DatatugApiService } from '../services/base/datatug-api.service';
 import { SessionContextApiService } from '../session-context/session-context-api.service';
+import {
+  readSourceOperation,
+  readSourceOperationHistory,
+  sourceOperationReference,
+  validateSourceOperationScope,
+  type RetainedSourceOperationView,
+  type SourceOperationSummary,
+} from './source-operation-contract';
 export interface NativeEvidenceMapping {
   readonly scope: SessionScope;
   readonly subject: ContextSubject;
@@ -72,12 +80,71 @@ export class RetainedEvidenceApiService {
       nativeProjectId: capabilities.projectId,
     };
   }
+  async sourceOperations(
+    scope: RetainedEvidenceScope,
+    signal: AbortSignal,
+  ): Promise<SourceOperationSummary[]> {
+    validateSourceOperationScope(scope);
+    signal.throwIfAborted();
+    const captured = structuredClone(scope);
+    const wire = await firstValueFrom(
+      this.api
+        .get<unknown>(
+          'datatug/shipping/source-operations',
+          evidenceScopeParams(captured.projectRef, captured.environment),
+        )
+        .pipe(takeUntil(fromEvent(signal, 'abort'))),
+    );
+    signal.throwIfAborted();
+    return readSourceOperationHistory(wire, captured);
+  }
+  read(
+    scope: RetainedEvidenceScope,
+    target: Extract<ArtifactRef, { kind: 'source-operation' }>,
+    signal: AbortSignal,
+  ): Promise<RetainedSourceOperationView>;
+  read(
+    scope: RetainedEvidenceScope,
+    target: Exclude<ArtifactRef, { kind: 'source-operation' }>,
+    signal: AbortSignal,
+  ): Promise<RetainedExecutionView | RetainedCheckView>;
+  read(
+    scope: RetainedEvidenceScope,
+    target: ArtifactRef,
+    signal: AbortSignal,
+  ): Promise<
+    RetainedExecutionView | RetainedCheckView | RetainedSourceOperationView
+  >;
   async read(
     scope: RetainedEvidenceScope,
     target: ArtifactRef,
     signal: AbortSignal,
-  ): Promise<RetainedExecutionView | RetainedCheckView> {
+  ): Promise<
+    RetainedExecutionView | RetainedCheckView | RetainedSourceOperationView
+  > {
     const ref = decodeEvidenceArtifactRef(target);
+    if (ref.kind === 'source-operation') {
+      const captured = structuredClone(scope),
+        reference = sourceOperationReference(ref.sourceOperation);
+      validateSourceOperationScope(captured, reference);
+      signal.throwIfAborted();
+      const wire = await firstValueFrom(
+        this.api
+          .post<unknown>(
+            'datatug/shipping/source-operation/open',
+            {
+              spaceID: captured.projectRef.spaceID,
+              projectId: captured.projectRef.projectId,
+              environment: captured.environment,
+              reference,
+            },
+            { retryUnauthorizedOnce: false },
+          )
+          .pipe(takeUntil(fromEvent(signal, 'abort'))),
+      );
+      signal.throwIfAborted();
+      return readSourceOperation(wire, captured, reference);
+    }
     let params = evidenceScopeParams(scope.projectRef, scope.environment),
       path: string;
     if (ref.kind === 'execution') {
