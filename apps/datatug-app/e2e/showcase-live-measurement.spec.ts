@@ -434,7 +434,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
     ledger.phase('refresh', 1, { comparison: 1 });
     const beforeRefresh = ledger.summary().queryAttempts;
     await paired
-      .getByRole('button', { name: 'Refresh chart', exact: true })
+      .getByRole('button', { name: /^Refresh chart · / })
       .click();
     await expect
       .poll(() => ledger.summary().queryAttempts)

@@ -20,7 +20,7 @@ const renderedBoard = (page: Page) =>
   });
 const cardTitles = (page: Page) =>
   page
-    .locator('sneat-datatug-board-card > ion-card > ion-item ion-label')
+    .locator('sneat-datatug-board-card > ion-card > ion-card-header ion-card-title')
     .allTextContents();
 
 async function changeStep(

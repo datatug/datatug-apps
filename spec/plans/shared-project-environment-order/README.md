@@ -168,7 +168,15 @@ that operation's actor. No tokens or receipt internals enter public summaries.
 | 503 TEMPORARILY_UNAVAILABLE | state/status unavailable; retain unresolved draft if write was sent |
 
 Current supported deployments must implement all routes. 426 cannot hide a
-missing implementation on a current supported store. Do not infer write access
+missing implementation on a current supported store. Local agents released
+before this contract (every `datatug serve` up to v0.107.0) cannot answer 426:
+their router returns a plain-text `404 page not found` with no CORS headers, so
+a browser sees status 0. The client treats exactly that as the 426 case (update
+reason, read-only legacy list): a plain-text 404, or status 0 only when the
+same agent still answers `/agent-info`. A structured 404, an unreachable agent
+and every other failure keep their real error. A public GitHub project whose
+hosted read is refused (signed out, 401, 403, 404) reads its environments from
+the repository, read-only, with a sign-in or access reason. Do not infer write access
 from billing, Firestore readability, query-save capability or a nonempty list.
 Recheck write permission even on replay; a revoked actor cannot use a receipt
 to bypass current authorization. Browser Firestore access remains read-only.
