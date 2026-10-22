@@ -88,29 +88,29 @@ describe('ServersPage', () => {
 });
 
 describe('ServersPage signed-out public GitHub declarations', () => {
-  it('lists Northwind from connections/*.json when the authenticated catalogue API refuses', async () => {
-    const connectionCatalog = vi.fn(() => throwError(() => ({ status: 401 })));
-    const files: Record<string, string> = {
-      'connections/demo-db.json': JSON.stringify({
-        connections: [
-          {
-            id: 'northwind-sqlite',
-            dataset: 'northwind',
-            storage: 'sqlite',
-            readiness: 'public-api',
-            environments: ['dev'],
-          },
-          {
-            id: 'northwind-postgresql',
-            dataset: 'northwind',
-            storage: 'postgresql',
-            readiness: 'public-api',
-            environments: ['dev', 'QA'],
-          },
-        ],
-      }),
-      'connections/shipping.json': JSON.stringify({ connections: [] }),
-    };
+  const conn = (id: string, dataset: string, storage: string) => ({
+    id,
+    dataset,
+    storage,
+    readiness: 'public-api',
+    environments: ['dev'],
+  });
+
+  async function render(options: {
+    storeId?: string;
+    apiError: unknown;
+    files: Record<string, string>;
+  }) {
+    const connectionCatalog = vi.fn(() => throwError(() => options.apiError));
+    const listDirectory = vi.fn(() =>
+      of(
+        [...Object.keys(options.files), 'connections/notes.md'].map((path) => ({
+          name: path.split('/').pop() as string,
+          path: `x/${path}`,
+          type: 'file' as const,
+        })),
+      ),
+    );
     await TestBed.configureTestingModule({
       imports: [ServersPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -119,7 +119,7 @@ describe('ServersPage signed-out public GitHub declarations', () => {
           provide: ProjectContextService,
           useValue: {
             current$: of({
-              storeId: STORE_ID_GITHUB_COM,
+              storeId: options.storeId ?? STORE_ID_GITHUB_COM,
               projectId: 'datatug-demo-project@datatug@demo-project-1',
             }),
           },
@@ -145,27 +145,9 @@ describe('ServersPage signed-out public GitHub declarations', () => {
         {
           provide: GithubProjectReaderService,
           useValue: {
-            listDirectory: vi.fn(() =>
-              of([
-                {
-                  name: 'demo-db.json',
-                  path: 'x/connections/demo-db.json',
-                  type: 'file',
-                },
-                {
-                  name: 'shipping.json',
-                  path: 'x/connections/shipping.json',
-                  type: 'file',
-                },
-                {
-                  name: 'notes.md',
-                  path: 'x/connections/notes.md',
-                  type: 'file',
-                },
-              ]),
-            ),
+            listDirectory,
             getRawText: vi.fn((_project: string, path: string) =>
-              of(files[path]),
+              of(options.files[path]),
             ),
           },
         },
@@ -183,17 +165,96 @@ describe('ServersPage signed-out public GitHub declarations', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.detectChanges();
+    const html = fixture.nativeElement.innerHTML as string;
+    return {
+      html,
+      listDirectory,
+      row: (dataset: string) =>
+        fixture.nativeElement.querySelector(
+          `[data-testid="database-database:${dataset}"]`,
+        )?.innerHTML as string | undefined,
+    };
+  }
 
-    const row = fixture.nativeElement.querySelector(
-      '[data-testid="database-database:northwind"]',
+  it.each([401, 403, 404])(
+    'lists Northwind from connections/*.json when the catalogue API answers %s',
+    async (status) => {
+      const view = await render({
+        apiError: { status },
+        files: {
+          'connections/demo-db.json': JSON.stringify({
+            connections: [
+              conn('northwind-sqlite', 'northwind', 'sqlite'),
+              conn('northwind-postgresql', 'northwind', 'postgresql'),
+            ],
+          }),
+          'connections/shipping.json': JSON.stringify({ connections: [] }),
+        },
+      });
+      expect(view.row('northwind')).toContain('northwind-sqlite');
+      expect(view.row('northwind')).toContain('northwind-postgresql');
+      expect(view.html).not.toContain('could not be loaded');
+    },
+  );
+
+  it.each([{ status: 500 }, { status: 0 }, new Error('boom')])(
+    'keeps the error banner and does not read the repository when the API fails with %o',
+    async (apiError) => {
+      const view = await render({
+        apiError,
+        files: {
+          'connections/demo-db.json': JSON.stringify({
+            connections: [conn('northwind-sqlite', 'northwind', 'sqlite')],
+          }),
+        },
+      });
+      expect(view.listDirectory).not.toHaveBeenCalled();
+      expect(view.row('northwind')).toBeUndefined();
+      expect(view.html).toContain(
+        'Database connection declarations could not be loaded.',
+      );
+    },
+  );
+
+  it('never falls back for a non-GitHub store', async () => {
+    const view = await render({
+      storeId: 'http://agent',
+      apiError: { status: 401 },
+      files: {},
+    });
+    expect(view.listDirectory).not.toHaveBeenCalled();
+    expect(view.html).toContain(
+      'Database connection declarations could not be loaded.',
     );
-    expect(row?.innerHTML).toContain('northwind-sqlite');
-    expect(row?.innerHTML).toContain('northwind-postgresql');
-    expect(row?.innerHTML).toContain('SQLite');
-    expect(row?.innerHTML).toContain('PostgreSQL');
-    expect(fixture.nativeElement.innerHTML).not.toContain(
-      'could not be loaded',
-    );
+  });
+
+  it('dedupes connections by id (first sorted file wins) and skips a malformed file', async () => {
+    const view = await render({
+      apiError: { status: 401 },
+      files: {
+        'connections/a.json': JSON.stringify({
+          connections: [conn('northwind-sqlite', 'northwind', 'sqlite')],
+        }),
+        'connections/b.json': '{ not json',
+        'connections/c.json': JSON.stringify({
+          connections: [
+            conn('northwind-sqlite', 'pubs', 'sqlite'),
+            conn('pubs-sqlite', 'pubs', 'sqlite'),
+          ],
+        }),
+      },
+    });
+    const northwind = view.row('northwind') ?? '';
+    expect(northwind.match(/data-instance-key/g)).toHaveLength(1);
+    expect(view.row('pubs')).toContain('pubs-sqlite');
+    expect(view.row('pubs')?.match(/data-instance-key/g)).toHaveLength(1);
+    expect(view.html).not.toContain('could not be loaded');
+  });
+
+  it('shows an empty project, not an error, when the connections folder has no files', async () => {
+    const view = await render({ apiError: { status: 401 }, files: {} });
+    expect(view.html).not.toContain('could not be loaded');
+    expect(view.row('northwind')).toBeUndefined();
   });
 });
 

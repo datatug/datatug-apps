@@ -23,7 +23,7 @@ import {
   ModalController,
   NavController,
 } from '@ionic/angular';
-import { Observable, Subject, forkJoin, of } from 'rxjs';
+import { Observable, Subject, forkJoin, of, throwError } from 'rxjs';
 import { catchError, map, switchMap, takeUntil } from 'rxjs/operators';
 import {
   ErrorLogger,
@@ -768,8 +768,10 @@ export class ServersPageComponent implements OnDestroy {
    * The authenticated catalogue API answers 401 to a signed-out visitor, which
    * hid every declared connection (e.g. the public demo's Northwind) behind
    * "could not be loaded". A GitHub project's `connections/*.json` files are
-   * ordinary repository files, so when the API read fails fall back to the
-   * same browser-direct repository reader the other public pages use.
+   * ordinary repository files, so when the API refuses (401/403) or has no
+   * such catalogue (404) fall back to the same browser-direct repository
+   * reader the other public pages use. Any other failure (outage, network,
+   * malformed response) is still surfaced as the error banner.
    */
   private connectionCatalog(
     target: IProjectRef,
@@ -777,7 +779,13 @@ export class ServersPageComponent implements OnDestroy {
     const api$ =
       this.projectQueries.connectionCatalog<ProjectConnectionCatalog>(target);
     if (!isGithubStoreId(target.storeId)) return api$;
-    return api$.pipe(catchError(() => this.readGithubConnections(target)));
+    return api$.pipe(
+      catchError((error: unknown) =>
+        isCatalogueUnavailable(error)
+          ? this.readGithubConnections(target)
+          : throwError(() => error),
+      ),
+    );
   }
 
   private readGithubConnections(
@@ -802,13 +810,27 @@ export class ServersPageComponent implements OnDestroy {
             )
           : of([] as (string | undefined)[]),
       ),
-      map((texts) => ({
-        connections: texts.flatMap((text) => {
-          if (!text) return [];
-          const parsed = JSON.parse(text) as ProjectConnectionCatalog;
-          return parsed.connections ?? [];
-        }),
-      })),
+      map((texts) => {
+        // Files are read in sorted-name order; the first declaration of an
+        // id wins. A file that is not valid JSON is skipped, not fatal.
+        const byId = new Map<string, ProjectConnectionSource>();
+        const anonymous: ProjectConnectionSource[] = [];
+        for (const text of texts) {
+          if (!text) continue;
+          let parsed: ProjectConnectionCatalog;
+          try {
+            parsed = JSON.parse(text) as ProjectConnectionCatalog;
+          } catch {
+            continue;
+          }
+          for (const connection of parsed?.connections ?? []) {
+            if (connection.id === undefined) anonymous.push(connection);
+            else if (!byId.has(connection.id))
+              byId.set(connection.id, connection);
+          }
+        }
+        return { connections: [...byId.values(), ...anonymous] };
+      }),
     );
   }
 
@@ -822,6 +844,9 @@ export class ServersPageComponent implements OnDestroy {
     this.catalogError.set(undefined);
   }
 }
+
+const isCatalogueUnavailable = (error: unknown): boolean =>
+  [401, 403, 404].includes((error as { status?: number } | null)?.status ?? 0);
 
 const serverId = (dbServer: IDbServer): string => serverKey(dbServer);
 
