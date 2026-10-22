@@ -837,7 +837,8 @@ test.describe('the hand-off holding page', () => {
           timeout: 20_000,
         });
       }
-      await page.waitForTimeout(500);
+      // Absence checks: let the page finish its requests instead of sleeping.
+      await page.waitForLoadState('networkidle');
       await expect(page.locator('#demo-holding-message'), url).toHaveCount(0);
       await expect(
         page.getByRole('heading', {
@@ -1043,7 +1044,8 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('ion-header').first()).toBeVisible({
       timeout: 20_000,
     });
-    await page.waitForTimeout(500);
+    // No redirect: once the page has settled, the address is still the old form.
+    await page.waitForLoadState('networkidle');
     expect(new URL(page.url()).pathname).toBe(
       '/store/github.com/project/chinook-demo@datatug@/queries',
     );
@@ -1564,11 +1566,11 @@ test.describe('an address that the router reads another way than the inline scri
       await expect(page.locator('ion-header').first()).toBeVisible({
         timeout: 20_000,
       });
-      await expect
-        .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
-        .toBe('/project/github.com/acme/demo/queries');
-      await page.waitForTimeout(1500);
-      expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+      // Wait for the redirect's end state, not a fixed time: the canonical path, keeping x=1.
+      await expect(page).toHaveURL(
+        /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
+        { timeout: 20_000 },
+      );
       const state = await page.evaluate(() => ({
         title: document.title,
         storage:
@@ -1662,12 +1664,12 @@ test.describe('an address that the router reads another way than the inline scri
       },
       MARKER,
     );
-    await expect
-      .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
-      .toBe('/project/github.com/acme/demo/queries');
-    await page.waitForTimeout(1500);
-    expect(new URL(page.url()).searchParams.has('msg')).toBe(false);
-    expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+    // The router rewrites the address after the navigation: wait for its end state
+    // (no msg, x=1 kept), not a fixed time.
+    await expect(page).toHaveURL(
+      /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
+      { timeout: 20_000 },
+    );
     const entries = await page.evaluate(() =>
       (
         window as unknown as { navigation: { entries: () => { url: string }[] } }
