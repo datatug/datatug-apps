@@ -9,7 +9,7 @@ import { BoardChoicesService } from '../board/core/board-choices.service';
 import { SneatApiAuthTokenBridge } from '@sneat/api';
 import { DatatugApiBaseUrl } from '@sneat/datatug-semantic';
 import type { ProjectCard } from '@datatug/board-models';
-import { firstValueFrom, of } from 'rxjs';
+import { firstValueFrom, Observable, of } from 'rxjs';
 import { IProjectRef } from '../core/project-context';
 import { ProjectQueryApiService } from '../services/project/project-query-api.service';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
@@ -278,11 +278,12 @@ describe('ProjectCardsService: GitHub reader (read-only)', () => {
   });
 
   it('refuses every write', async () => {
-    for (const call of [
+    const calls: Observable<unknown>[] = [
       service.createCard(ghRef, customer),
       service.saveCard(ghRef, customer),
       service.deleteCard(ghRef, 'customer'),
-    ])
+    ];
+    for (const call of calls)
       await expect(firstValueFrom(call)).rejects.toThrow(GITHUB_READ_ONLY_MESSAGE);
   });
 });
