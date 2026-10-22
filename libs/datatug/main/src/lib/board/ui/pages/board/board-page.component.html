@@ -481,7 +481,7 @@
 
     @if (boardDef() && parameters()?.length) {
       <section class="board-parameters" aria-label="Board parameters">
-        @if (lookupUnavailable()) {
+        @if (explicitLookupUnavailable()) {
           <p class="parameter-help" role="status">
             Lookup is unavailable for this project connection or branch. Enter
             parameter values manually.
@@ -498,6 +498,7 @@
                 [labelPlacement]="'fixed'"
                 [placeholder]="p.def.type"
                 [value]="parameterText(p)"
+                [helperText]="lookupOrigins()[p.def.id] ? 'from lookup' : undefined"
                 [attr.aria-invalid]="
                   parameterErrors()[p.def.id] ? 'true' : null
                 "
@@ -506,18 +507,15 @@
                     ? 'board-parameter-error-' + p.def.id
                     : null
                 "
-                (ionInput)="setParameterValue(p, $event.detail.value)"
+                (ionInput)="onParameterInput(p, $event.detail.value)"
               />
               <ion-buttons slot="end">
-                @if (p.def.lookup && !lookupUnavailable()) {
-                  <ion-button
-                    color="medium"
-                    [title]="p.def.lookup.sql"
-                    (click)="lookup(p)"
-                  >
-                    <ion-icon name="list-outline" />
-                  </ion-button>
-                }
+                <sneat-datatug-parameter-lookup-button
+                  [parameter]="p.def"
+                  [context]="lookupContext()"
+                  [currentValue]="parameterText(p)"
+                  (picked)="onLookupPicked(p, $event)"
+                />
               </ion-buttons>
             </ion-item>
             @if (parameterErrors()[p.def.id]; as error) {

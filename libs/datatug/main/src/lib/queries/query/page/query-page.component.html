@@ -1050,6 +1050,11 @@
                 <ion-note [id]="parameterDetailsPrefix + '-hint-' + $index">{{ nativeParameterHint(parameter) }}</ion-note>
                 </div>
                 <ion-buttons slot="end">
+                  @if (nativeParameterSupported(parameter)) {
+                    <sneat-datatug-parameter-lookup-button [parameter]="parameter" [context]="parameterLookupContext()"
+                      [currentValue]="nativeParameterValue(parameter.id)" [disabled]="running() || !!queryState.isSaving"
+                      (picked)="onNativeParameterPicked(parameter, $event)" />
+                  }
                   @if (nativeParameterValue(parameter.id) !== '') {
                     <ion-button fill="clear" title="Clear this binding" [attr.aria-label]="'Clear ' + parameter.id"
                       (click)="clearNativeParameter(parameter.id)"><ion-icon name="close-outline" slot="icon-only" /></ion-button>
