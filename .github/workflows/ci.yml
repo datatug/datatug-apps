@@ -289,7 +289,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-checkout --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
@@ -466,7 +466,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} -- --project=chromium
+          pnpm nx affected --target=e2e --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream -- --project=chromium
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -568,7 +568,7 @@ jobs:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
-          pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-query-mobile --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -675,7 +675,7 @@ jobs:
           DATATUG_E2E_GITHUB_FAKE: ${{ github.workspace }}/datatug-demo-project
         run: |
           test "$(git -C "$DATATUG_E2E_GITHUB_FAKE" rev-parse HEAD)" = '7c67575a8313d67ecae364c1dd7164ee85c48ae0'
-          pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-demo-sqlite --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Save DemoDB fixtures
         if: ${{ always() && needs.preflight.outputs.mode == 'full' && steps.demodb-fixtures.outputs.cache-hit != 'true' && hashFiles('tmp/demodb-fixtures/.complete') != '' }}
@@ -755,7 +755,7 @@ jobs:
         env:
           GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
         run: |
-          pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }}
+          pnpm nx affected --target=e2e-demo-handoff --parallel=1 --base=${{ env.NX_BASE }} --outputStyle=stream
 
       - name: Print DemoDB request report
         if: ${{ always() && needs.preflight.outputs.mode == 'full' }}
