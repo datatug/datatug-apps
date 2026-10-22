@@ -14,7 +14,7 @@ import { ChangeDetectionStrategy, Component } from '@angular/core';
     :host {
       display: block;
       padding: 8px 16px;
-      border-top: 1px solid var(--ion-border-color, var(--ion-color-light-shade));
+      border-top: 1px solid var(--ion-color-step-150, var(--ion-color-medium-tint));
       color: var(--ion-color-medium);
       font-size: 13px;
     }

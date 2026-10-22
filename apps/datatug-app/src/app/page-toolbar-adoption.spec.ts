@@ -56,4 +56,18 @@ describe('PageToolbarAdoption', () => {
     expect(outlet.textContent).not.toContain('Sign in');
     adoption.stop();
   });
+
+  it('puts the menu at the end of a toolbar with a back button, and keeps it off checkout pages\' Sign in', async () => {
+    const { injector, appRef } = setup('notAuthenticated');
+    const outlet = outletWith('<datatug-checkout-page><ion-header><ion-toolbar><ion-buttons slot="start"><ion-menu-button></ion-menu-button><ion-back-button></ion-back-button></ion-buttons></ion-toolbar></ion-header></datatug-checkout-page>');
+    const adoption = new PageToolbarAdoption(outlet, injector, appRef);
+    adoption.adopt();
+    appRef.tick();
+    await appRef.whenStable();
+    const adopted = outlet.querySelector('ion-buttons.shell-adopted-menu');
+    expect(adopted?.getAttribute('slot')).toBe('end');
+    expect(adopted?.querySelector('ion-menu-button.app-level-menu-button')).not.toBeNull();
+    expect(outlet.textContent).not.toContain('Sign in');
+    adoption.stop();
+  });
 });

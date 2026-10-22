@@ -34,6 +34,7 @@ import {
   IonCardTitle,
   IonContent,
   IonHeader,
+  IonIcon,
   IonItem,
   IonLabel,
   IonList,
@@ -43,6 +44,8 @@ import {
   IonTitle,
   IonToolbar,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { arrowBackOutline } from 'ionicons/icons';
 import { map } from 'rxjs';
 import {
   DEMO_POSTGRESQL_LABEL,
@@ -62,6 +65,8 @@ type OpenState =
   | { readonly kind: 'failed'; readonly message: string }
   | { readonly kind: 'ready'; readonly connection: OvdbConnection };
 
+addIcons({ arrowBackOutline });
+
 @Component({
   selector: 'sneat-datatug-demo-ovdb-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -76,6 +81,7 @@ type OpenState =
     IonCardTitle,
     IonContent,
     IonHeader,
+    IonIcon,
     IonItem,
     IonLabel,
     IonList,
@@ -87,15 +93,20 @@ type OpenState =
     OvdbDatabaseBrowserComponent,
   ],
   styles: `
-    /* The back button leads to the table list: say so where there is room, keep the arrow only on a phone. */
-    @media (max-width: 575px) { .back-to-tables::part(text) { display: none; } }
+    /* The back link leads to the table list: say so where there is room, keep the arrow only on a phone. */
+    @media (max-width: 575px) { .back-to-tables .back-label { display: none; } .back-to-tables ion-icon { margin: 0; } }
   `,
   template: `
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-menu-button />
-          <ion-back-button class="back-to-tables" [defaultHref]="backHref()" [text]="tableParam() ? 'All tables' : undefined" />
+          <!-- Both stay in the toolbar (one is hidden): the link leads to the table list whatever page the user came from. -->
+          <ion-button class="page-back-link back-to-tables" [class.ion-hide]="!tableParam()" data-testid="back-to-tables" aria-label="All tables" [routerLink]="backHref()" routerDirection="back">
+            <ion-icon slot="start" name="arrow-back-outline" />
+            <span class="back-label">All tables</span>
+          </ion-button>
+          <ion-back-button [class.ion-hide]="!!tableParam()" [defaultHref]="backHref()" />
         </ion-buttons>
         <ion-title>{{
           entry()

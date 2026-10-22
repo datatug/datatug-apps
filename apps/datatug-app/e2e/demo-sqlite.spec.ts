@@ -385,7 +385,7 @@ test.describe('Chinook as a local SQLite copy', () => {
 
     // The follower writes; the leader sees it.
     await editName(follower, 'Accept', 'Accept (follower edit)');
-    await page.getByRole('button', { name: 'All tables' }).click();
+    await page.getByRole('link', { name: 'All tables' }).click();
     await page.getByTestId('table-Artist').click();
     await expect(nameCell(page, 'Accept (follower edit)')).toBeVisible();
 

@@ -72,6 +72,12 @@ import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
 
+/** A read that failed only because nobody is signed in: a quiet "sign in" note, not a toast. */
+function signedOutReadFailure(error: unknown): boolean {
+  const message = (error as { message?: unknown } | null)?.message ?? error;
+  return /not authenticated yet|no Firebase ID token/i.test(String(message));
+}
+
 @Component({
   selector: 'sneat-datatug-project',
   templateUrl: './project-page.component.html',
@@ -314,12 +320,16 @@ export class ProjectPageComponent
               this.environmentError.set(true);
               this.environmentErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Environments could not be loaded. Refresh to try again.',
+                  (signedOutReadFailure(error)
+                    ? 'Sign in to see environments.'
+                    : 'Environments could not be loaded. Refresh to try again.'),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview environments',
-              );
+              if (!signedOutReadFailure(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview environments',
+                );
+              }
               return of(undefined);
             }),
           )
@@ -332,12 +342,16 @@ export class ProjectPageComponent
               this.boardError.set(true);
               this.boardErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Boards could not be loaded. Refresh to try again.',
+                  (signedOutReadFailure(error)
+                    ? 'Sign in to see boards.'
+                    : 'Boards could not be loaded. Refresh to try again.'),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview boards',
-              );
+              if (!signedOutReadFailure(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview boards',
+                );
+              }
               return of(undefined);
             }),
           )
@@ -350,12 +364,16 @@ export class ProjectPageComponent
               this.entityError.set(true);
               this.entityErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Entities could not be loaded. Refresh to try again.',
+                  (signedOutReadFailure(error)
+                    ? 'Sign in to see entities.'
+                    : 'Entities could not be loaded. Refresh to try again.'),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview entities',
-              );
+              if (!signedOutReadFailure(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview entities',
+                );
+              }
               return of(undefined);
             }),
           )

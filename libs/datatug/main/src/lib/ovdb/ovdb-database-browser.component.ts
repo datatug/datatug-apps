@@ -75,20 +75,19 @@ addIcons({ addOutline, ellipsisVertical });
           </p>
         </div>
         @if (caps().reset || hasSourceActions()) {
-          <ion-button
+          <button
+            type="button"
             data-testid="source-menu"
             class="ovdb-source-menu-toggle"
-            fill="clear"
-            color="medium"
-            size="small"
             aria-label="More actions for this database"
+            aria-haspopup="true"
             aria-controls="ovdb-source-menu"
             [attr.aria-expanded]="menuOpen()"
             (click)="menuOpen.set(!menuOpen())"
             (keydown.escape)="menuOpen.set(false)"
           >
-            <ion-icon slot="icon-only" name="ellipsis-vertical" />
-          </ion-button>
+            <ion-icon name="ellipsis-vertical" aria-hidden="true" />
+          </button>
         }
       </div>
       @if (menuOpen() && (caps().reset || hasSourceActions())) {
@@ -218,6 +217,9 @@ addIcons({ addOutline, ellipsisVertical });
     .ovdb-subtitle { margin: 4px 0 0; color: var(--ion-color-medium); font-size: 14px; }
     /* The source status is a flat row, not a card: the page header already names the database. */
     .ovdb-source { margin: 12px 16px 0; }
+    .ovdb-source-menu-toggle { flex: none; display: inline-flex; align-items: center; justify-content: center; width: 44px; height: 44px; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--ion-color-medium); font-size: 20px; cursor: pointer; }
+    .ovdb-source-menu-toggle:hover { background: var(--ion-color-light-tint); }
+    .ovdb-source-menu-toggle:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
     .ovdb-source-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
     .ovdb-source-summary { min-width: 0; }
     .ovdb-source-summary .ovdb-subtitle { margin: 0; }
@@ -297,6 +299,28 @@ export class OvdbDatabaseBrowserComponent {
     }
     return numeric;
   });
+  /**
+   * Fixed scale per fractional numeric column that declares none (SQLite REAL, Postgres float): the most fraction
+   * digits among the loaded rows, so `51.3` and `32.38` line up as `51.30` and `32.38`. Display only; capped at 6.
+   */
+  protected readonly displayScales = computed<ReadonlyMap<string, number>>(() => {
+    const scales = new Map<string, number>();
+    const numeric = this.numericColumns();
+    for (const column of this.columns()) {
+      if (!numeric.has(column)) continue;
+      let max = 0;
+      let allNumbers = true;
+      for (const row of this.rows() ?? []) {
+        const value = row.data[column];
+        if (value === null || value === undefined) continue;
+        if (typeof value !== 'number') { allNumbers = false; break; }
+        if (Number.isInteger(value) || !Number.isFinite(value)) continue;
+        max = Math.max(max, Math.min(6, (String(value).split('.')[1] ?? '').length));
+      }
+      if (allNumbers && max > 0) scales.set(column, max);
+    }
+    return scales;
+  });
   protected readonly columns = computed(() => {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
@@ -331,6 +355,10 @@ export class OvdbDatabaseBrowserComponent {
     const table = this.table();
     const schema = table ? ovdbCollectionSchema(this.liveConnection().descriptor, table) : undefined;
     const field = ovdbFormFields(schema, { [column]: value }).find((f) => f.name === column);
+    const scale = this.displayScales().get(column);
+    if (field && scale !== undefined && field.scale === undefined && typeof value === 'number') {
+      return displayOvdbValue({ kind: 'decimal', scale }, value);
+    }
     return field ? displayOvdbValue(field, value) : { text: String(value ?? ''), kind: value === null || value === undefined ? 'null' : 'value' };
   }
 

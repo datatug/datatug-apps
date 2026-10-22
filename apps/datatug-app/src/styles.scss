@@ -921,7 +921,7 @@ datatug-cli-chat-page {
 // (other than Home's, which yields to the shell) is its single header on narrow layouts. The shell's
 // compact bar is hidden for it, the page's own menu button is shown again, and page-toolbar-adoption.ts
 // adds Sign in (and a menu button where the toolbar has none) to the page's toolbar. A toolbar with
-// a visible back button shows that instead of the menu: "menu or back".
+// a back button keeps the menu too, at the end.
 $page-owns-header: 'ion-router-outlet > .ion-page:not(.ion-page-hidden) ion-header:not(.home-header)';
 
 ion-app.compact-header-mode:not(:has(#{$page-owns-header})) ion-menu-button:not(.app-level-menu-button) {
@@ -936,8 +936,9 @@ ion-app.compact-header-mode:has(#{$page-owns-header}) {
     top: 0;
     height: 100%;
   }
-  ion-toolbar:has(ion-back-button.show-back-button) ion-menu-button,
-  ion-toolbar:has(ion-back-button.show-back-button) .shell-adopted-menu {
+  // Back on the left, menu at the end (page-toolbar-adoption.ts mounts the end-slot menu): the page's own
+  // start-slot menu button would sit next to the back button, so it yields.
+  ion-toolbar:has(ion-back-button, .page-back-link) ion-menu-button:not(.app-level-menu-button) {
     display: none;
   }
 }

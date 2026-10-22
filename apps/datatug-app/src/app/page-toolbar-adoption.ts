@@ -34,6 +34,13 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 /** A page header that yields to the shell's compact header instead of replacing it (Home). */
 export const SHELL_OWNED_HEADER_CLASS = 'home-header';
 
+/** Checkout and subscription pages run their own sign-in step; a second Sign in in their header would compete with it. */
+export const NO_SIGN_IN_SELECTOR =
+  'datatug-checkout-page, datatug-business-checkout-page, datatug-checkout-load-error, datatug-subscription-settings-page';
+
+/** A back affordance in a page toolbar: Ionic's back button, or a plain link marked `page-back-link`. */
+export const BACK_SELECTOR = 'ion-back-button, .page-back-link';
+
 @Component({
   selector: 'sneat-datatug-adopted-sign-in',
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -123,10 +130,16 @@ export class PageToolbarAdoption {
 
   #adoptToolbar(toolbar: Element): readonly ComponentRef<unknown>[] {
     const refs: ComponentRef<unknown>[] = [];
-    if (!toolbar.querySelector('ion-menu-button')) {
-      refs.push(this.#mount(AdoptedMenuButtonComponent, toolbar, 'start', 'shell-adopted-menu'));
+    if (toolbar.querySelector(BACK_SELECTOR)) {
+      // Back on the left, menu at the end: below the side-panel breakpoint the menu is the only way to the
+      // project navigation, so a back button must not displace it (the page's own menu button is hidden).
+      refs.push(this.#mount(AdoptedMenuButtonComponent, toolbar, 'end', 'shell-adopted-menu'));
+    } else {
+      const own = toolbar.querySelector('ion-menu-button');
+      if (own) own.classList.add('app-level-menu-button');
+      else refs.push(this.#mount(AdoptedMenuButtonComponent, toolbar, 'start', 'shell-adopted-menu'));
     }
-    if (!/sign in/i.test(toolbar.textContent ?? '')) {
+    if (!toolbar.closest(NO_SIGN_IN_SELECTOR) && !/sign in/i.test(toolbar.textContent ?? '')) {
       refs.push(this.#mount(AdoptedSignInComponent, toolbar, 'end', 'shell-adopted'));
     }
     return refs;
