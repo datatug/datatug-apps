@@ -158,7 +158,8 @@ import {
         display: inline-flex;
         align-items: center;
         gap: 0.3rem;
-        font-size: 0.78rem;
+        color: var(--ion-text-color);
+        font-size: 0.85rem;
         font-weight: 500;
         line-height: 1.4;
       }
@@ -175,15 +176,20 @@ import {
         justify-self: end;
       }
       .check-heading ion-button {
+        --color: var(--ion-text-color);
         --padding-start: 0.35rem;
         --padding-end: 0.35rem;
         margin: 0;
         min-height: 1.75rem;
-        font-size: 0.78rem;
+        font-size: 0.85rem;
+      }
+      .check-heading ion-button::part(native) {
+        text-decoration: underline;
+        text-underline-offset: 0.18em;
       }
       .check-meta {
         margin: 0.1rem 0 0.2rem;
-        color: var(--ion-color-medium-shade);
+        color: var(--ion-text-color-step-350, var(--ion-text-color));
         font-size: 0.78rem;
         line-height: 1.4;
       }
