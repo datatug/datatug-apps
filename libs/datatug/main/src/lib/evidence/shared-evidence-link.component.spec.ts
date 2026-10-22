@@ -224,4 +224,27 @@ describe('SharedEvidenceLinkComponent', () => {
     await harness.fixture.whenStable();
     expect(TestBed.inject(Router).url).toContain('/login?returnTo=');
   });
+
+  it('works without tab storage at all (blocked site data)', async () => {
+    const original = Object.getOwnPropertyDescriptor(window, 'sessionStorage');
+    Object.defineProperty(window, 'sessionStorage', {
+      configurable: true,
+      get() {
+        throw new Error('SecurityError');
+      },
+    });
+    try {
+      const harness = await open(`${overview}#${fragment}`, anonymous);
+      (
+        harness.routeNativeElement?.querySelector('ion-button') as HTMLElement
+      ).click();
+      await harness.fixture.whenStable();
+      expect(TestBed.inject(Router).url).toContain('/login?returnTo=');
+      TestBed.resetTestingModule();
+      await open(overview, signedIn);
+      expect(TestBed.inject(Router).url).toBe(overview);
+    } finally {
+      if (original) Object.defineProperty(window, 'sessionStorage', original);
+    }
+  });
 });

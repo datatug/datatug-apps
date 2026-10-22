@@ -77,7 +77,7 @@ export class EvidenceCopyLinkComponent {
   protected readonly url = computed(() => {
     const target = this.target();
     return target
-      ? evidenceLinkUrl(globalThis.location?.origin ?? '', this.projectRef(), {
+      ? evidenceLinkUrl(globalThis.location.origin, this.projectRef(), {
           environment: this.environment(),
           target,
         })

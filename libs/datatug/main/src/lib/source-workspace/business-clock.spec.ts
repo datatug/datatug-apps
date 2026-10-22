@@ -1,5 +1,9 @@
 import { provideZonelessChangeDetection, signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import { AgentContextService } from '@sneat/datatug-semantic';
+import { of } from 'rxjs';
+import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import type { IProjectRef } from '../core/project-context';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
 import {
@@ -318,5 +322,31 @@ describe('chip outside the project routes', () => {
       fixture.nativeElement.querySelector('[role="status"]'),
     ).not.toBeNull();
     expect(fixture.nativeElement.querySelector('.clock')).toBeNull();
+  });
+});
+
+describe('default page scope', () => {
+  afterEach(() => TestBed.resetTestingModule());
+  it('reads the current project route through the shared page context', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        provideZonelessChangeDetection(),
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of(undefined),
+            currentEnv: of(undefined),
+          },
+        },
+        {
+          provide: SneatAuthStateService,
+          useValue: { authState: of(undefined) },
+        },
+        { provide: AgentContextService, useValue: {} },
+      ],
+    });
+    const page = TestBed.inject(BUSINESS_CLOCK_PAGE);
+    expect(page.ref()).toBeUndefined();
+    expect(page.identity()).toBeUndefined();
   });
 });

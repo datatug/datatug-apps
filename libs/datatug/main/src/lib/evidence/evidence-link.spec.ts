@@ -211,6 +211,7 @@ describe('evidence links', () => {
   it.each([
     'evidence=',
     'evidence=***',
+    'evidence=A',
     'evidence=' + 'A'.repeat(2049),
     'evidence=' + btoa('not json'),
     'evidence=' + btoa('\xff\xfe'),

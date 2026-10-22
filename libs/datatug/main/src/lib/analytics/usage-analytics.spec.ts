@@ -47,6 +47,7 @@ function setup(initial: ISneatAuthState = anonymous) {
 
 afterEach(() => {
   TestBed.resetTestingModule();
+  vi.unstubAllGlobals();
   sessionStorage.clear();
   vi.restoreAllMocks();
 });
@@ -202,14 +203,13 @@ describe('UsageAnalyticsService', () => {
   });
 
   it('keeps the pending prompt in memory when session storage is refused', () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+    const refuse = () => {
       throw new Error('blocked');
-    });
-    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
-      throw new Error('blocked');
-    });
-    vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => {
-      throw new Error('blocked');
+    };
+    vi.stubGlobal('sessionStorage', {
+      getItem: refuse,
+      setItem: refuse,
+      removeItem: refuse,
     });
     const { service, auth, sent } = setup();
     service.signInPrompted('evidence-link');
