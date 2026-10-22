@@ -430,7 +430,8 @@ export class HttpQueryEditorComponent {
 
   protected removeParameter(id: string): void {
     this.emitParameters(this.parameters().filter((p) => p.id !== id));
-    const { [id]: _removed, ...rest } = this.typedValues();
+    const rest = { ...this.typedValues() };
+    delete rest[id];
     this.typedValues.set(rest);
   }
 

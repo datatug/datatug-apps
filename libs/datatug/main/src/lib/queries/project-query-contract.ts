@@ -28,8 +28,6 @@ export interface ProjectQueryWire extends ProjectQueryMetadataWire {
   readonly draft?: boolean;
   readonly connectionId?: string;
   readonly federation?: IQueryDef['federation'];
-  /** Declared parameters of an HTTP query (http-query-parameters). */
-  readonly parameters?: IQueryDef['parameters'];
 }
 
 export interface ProjectQueryHttpWire {
@@ -177,9 +175,6 @@ export function toProjectQueryWire(
     type: query['request'].queryType as ProjectQueryWire['type'],
     text,
     ...(httpRequest ? { http: httpWire(httpRequest) } : {}),
-    ...(httpRequest && query.parameters?.length
-      ? { parameters: query.parameters }
-      : {}),
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.connectionId !== undefined
       ? { connectionId: query.connectionId }

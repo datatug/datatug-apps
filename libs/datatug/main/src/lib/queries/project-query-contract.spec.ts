@@ -214,7 +214,7 @@ it('saves and reads back HTTP query parameters, refusing unknown parameter field
   expect(fromProjectQueryWire(asReadWire(wire)).parameters).toEqual(def.parameters);
   expect(() =>
     toProjectQueryWire(
-      { ...def, parameters: [{ ...def.parameters![0], lookup: { db: 'x', sql: 'y', keyFields: [] } }] },
+      { ...def, parameters: [{ ...(def.parameters as NonNullable<IQueryDef['parameters']>)[0], lookup: { db: 'x', sql: 'y', keyFields: [] } }] },
       'shipping/carrier-status',
     ),
   ).toThrow(UnsupportedQueryContractError);
