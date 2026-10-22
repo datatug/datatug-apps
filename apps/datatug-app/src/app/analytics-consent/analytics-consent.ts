@@ -312,16 +312,14 @@ export function withUsageConsent(
   ga: AnalyticsConsent,
   env: Pick<AnalyticsEnv, 'storage' | 'location' | 'checkoutActive' | 'window'>,
   usageEnabled: boolean,
+  usageKey: string = USAGE_ANALYTICS_CONSENT_KEY,
 ): AnalyticsConsent {
   const listeners = new Set<() => void>();
   let memory: AnalyticsChoice | undefined;
 
   function usageChoice(): AnalyticsChoice | undefined {
     try {
-      return (
-        parseChoice(env.storage().getItem(USAGE_ANALYTICS_CONSENT_KEY)) ??
-        memory
-      );
+      return parseChoice(env.storage().getItem(usageKey)) ?? memory;
     } catch {
       return memory;
     }
@@ -336,8 +334,7 @@ export function withUsageConsent(
     for (const listener of [...listeners]) listener();
   };
   const onStorage = (event: { key: string | null }) => {
-    if (event.key === null || event.key === USAGE_ANALYTICS_CONSENT_KEY)
-      notify();
+    if (event.key === null || event.key === usageKey) notify();
   };
 
   return {
@@ -347,7 +344,7 @@ export function withUsageConsent(
     choose(next) {
       if (usageEnabled) {
         try {
-          env.storage().setItem(USAGE_ANALYTICS_CONSENT_KEY, next);
+          env.storage().setItem(usageKey, next);
           memory = undefined;
         } catch {
           memory = next;

@@ -54,6 +54,7 @@ export function provideAnalyticsConsent(
   measurementId: string | undefined,
   posthog?: IPosthogSettings,
   posthogClient: PosthogConsentClient = POSTHOG_CONSENT_CLIENT,
+  options: { usageConsentKey?: string; bannerCopy?: string } = {},
 ) {
   return makeEnvironmentProviders([
     {
@@ -65,6 +66,7 @@ export function provideAnalyticsConsent(
           createAnalyticsConsent(env, measurementId),
           env,
           !!posthog,
+          options.usageConsentKey,
         );
       },
     },
@@ -77,7 +79,7 @@ export function provideAnalyticsConsent(
         consent,
         document,
         window,
-        bannerText(!!posthog),
+        options.bannerCopy ?? bannerText(!!posthog),
       );
       router.events.subscribe((event) => {
         if (event instanceof NavigationEnd) consent.pageView();

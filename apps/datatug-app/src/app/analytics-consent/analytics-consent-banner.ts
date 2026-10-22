@@ -8,6 +8,10 @@ export const BANNER_TEXT =
 export const BANNER_TEXT_WITH_USAGE =
   "We'd like to use Google Analytics and PostHog to count visits and anonymous steps, such as which demo pages are opened and whether a query run worked. Never your account, repository names, queries or results. They set cookies only if you accept.";
 
+/** Incidentius (app.incidentius.com): PostHog is the only analytics tool there. */
+export const BANNER_TEXT_USAGE_ONLY =
+  "We'd like to use PostHog to count anonymous steps, such as which pages are opened and whether a query run worked. Never your account, repository names, queries or results. It sets cookies only if you accept.";
+
 /** The banner names exactly the tools that run after a yes. */
 export function bannerText(usagePosthog: boolean): string {
   return usagePosthog ? BANNER_TEXT_WITH_USAGE : BANNER_TEXT;

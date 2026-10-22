@@ -56,8 +56,8 @@ import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analyti
 import { provideAnalyticsConsent } from './app/analytics-consent/analytics-consent.provider';
 import { provideConsentGatedAnalytics } from './app/analytics-consent/consent-gated-analytics';
 import { provideUsageEvents } from './app/analytics-consent/usage-events.provider';
-import { anonymousUsagePosthog } from './app/telemetry/usage-privacy';
-import { posthogStarted, registerPosthog } from './register-posthog';
+import { posthogStarted } from './register-posthog';
+import { BANNER_TEXT_USAGE_ONLY } from './app/analytics-consent/analytics-consent-banner';
 import { notFoundRoute, routes } from './app/datatug-app-routes';
 import { provideDatatugErrorLogger } from './app/errors/datatug-error-logger';
 import { datatugErrorHandler } from './app/errors/datatug-crash-handler';
@@ -77,6 +77,8 @@ import {
 import {
   dataTugGoogleAnalyticsId,
   isDataTugProfile,
+  usageConsentKey,
+  withAnonymousUsageTracking,
   withoutDataTugTracking,
 } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
@@ -104,18 +106,14 @@ const productProfile = {
   queryProfile: new URLSearchParams(location.search).get('profile'),
 };
 const dataTugProfile = isDataTugProfile(productProfile);
-const withoutSharedTracking = withoutDataTugTracking(
-  environmentConfig,
+// Every profile: anonymous usage PostHog behind its own consent, no shared GA or Firebase Analytics, never identified.
+// DataTug uses its own PostHog project (off while datatugUsagePosthog is unset); Incidentius keeps its key, shared
+// with sneat.app for now.
+const trackedEnvironmentConfig = withAnonymousUsageTracking(
+  withoutDataTugTracking(environmentConfig, productProfile),
   productProfile,
+  datatugUsagePosthog,
 );
-// DataTug: only its own PostHog project, anonymous and behind consent (public-demo REQ:demo-usage-analytics); off
-// while datatugUsagePosthog is unset. Any other profile (Incidentius) keeps its PostHog as before.
-const trackedEnvironmentConfig = dataTugProfile
-  ? {
-      ...withoutSharedTracking,
-      posthog: anonymousUsagePosthog(datatugUsagePosthog),
-    }
-  : withoutSharedTracking;
 // REQ:ui-no-context-telemetry (claude-mod-web-links): no fragment, key, row or loopback agent request data reaches
 // PostHog or Sentry, whichever code starts them.
 const datatugAppEnvironmentConfig = {
@@ -130,11 +128,7 @@ const datatugAppEnvironmentConfig = {
 
 captureCliChatCapability();
 
-// DataTug: PostHog starts only with the visitor's analytics consent (provideAnalyticsConsent below follows the
-// choice). Incidentius has no consent banner and keeps PostHog as it ran before the DataTug consent work.
-if (!dataTugProfile && datatugAppEnvironmentConfig.posthog) {
-  registerPosthog(datatugAppEnvironmentConfig.posthog);
-}
+// PostHog starts only with the visitor's consent, on every profile: provideAnalyticsConsent below follows it.
 
 // Hand the build-time AG Grid license key (possibly empty) to the lazy loader. No AG Grid code runs or loads at
 // startup: each grid-hosting chunk awaits ensureAgGrid() itself.
@@ -171,9 +165,15 @@ bootstrapApplication(DatatugAppComponent, {
         datatugGoogleAnalyticsMeasurementId,
         productProfile,
       ),
-      dataTugProfile ? datatugAppEnvironmentConfig.posthog : undefined,
+      datatugAppEnvironmentConfig.posthog,
+      undefined,
+      {
+        usageConsentKey: usageConsentKey(productProfile),
+        // Incidentius runs no Google Analytics: its banner names PostHog only.
+        ...(dataTugProfile ? {} : { bannerCopy: BANNER_TEXT_USAGE_ONLY }),
+      },
     ),
-    ...(dataTugProfile ? [provideUsageEvents()] : []),
+    provideUsageEvents(),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },
@@ -242,12 +242,10 @@ bootstrapApplication(DatatugAppComponent, {
     provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig),
     // DataTug: the shared AnalyticsService sends nothing without the same consent, never identifies, and starts no
     // PostHog of its own (register-posthog.ts is the one init, with the app's scrubber).
-    dataTugProfile
-      ? provideConsentGatedAnalytics(
-          provideSneatAnalytics(datatugAppEnvironmentConfig),
-          posthogStarted,
-        )
-      : provideSneatAnalytics(datatugAppEnvironmentConfig),
+    provideConsentGatedAnalytics(
+      provideSneatAnalytics(datatugAppEnvironmentConfig),
+      posthogStarted,
+    ),
     TopMenuService,
     TelegramAuthService,
     {

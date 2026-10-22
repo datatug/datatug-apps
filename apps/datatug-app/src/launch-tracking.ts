@@ -1,4 +1,6 @@
-import type { IEnvironmentConfig } from '@sneat/core';
+import type { IEnvironmentConfig, IPosthogSettings } from '@sneat/core';
+import { anonymousUsagePosthog } from './app/telemetry/usage-privacy';
+import { USAGE_ANALYTICS_CONSENT_KEY } from './app/analytics-consent/analytics-consent';
 import {
   resolveProductProfileId,
   type ResolveProductProfileInput,
@@ -37,4 +39,37 @@ export function dataTugGoogleAnalyticsId(
   return resolveProductProfileId(profile) === 'datatug'
     ? measurementId
     : undefined;
+}
+
+/**
+ * Every profile's analytics under the same constraints (public-demo REQ:demo-usage-analytics; founder 2026-10-22 "Fix
+ * incidentius"): no shared Sneat GA or Firebase Analytics, and PostHog only as anonymous usage analytics behind
+ * consent. DataTug uses its own project (`dataTugPosthog`, off until configured); any other profile (Incidentius)
+ * keeps its configured PostHog key, which is still the project shared with sneat.app.
+ */
+export function withAnonymousUsageTracking(
+  config: IEnvironmentConfig,
+  profile: ResolveProductProfileInput,
+  dataTugPosthog: IPosthogSettings | undefined,
+): IEnvironmentConfig {
+  return {
+    ...config,
+    googleAnalytics: undefined,
+    firebaseConfig: { ...config.firebaseConfig, measurementId: undefined },
+    posthog: anonymousUsagePosthog(
+      isDataTugProfile(profile) ? dataTugPosthog : config.posthog,
+    ),
+  };
+}
+
+/**
+ * The storage key of the usage-analytics consent. DataTug's (datatug.app) is apart from the landing site's Google
+ * Analytics key; every other profile has its own, named after it (`incidentius.usage-analytics-consent.v1` on
+ * app.incidentius.com, another origin, whose banner names PostHog only).
+ */
+export function usageConsentKey(profile: ResolveProductProfileInput): string {
+  const id = resolveProductProfileId(profile);
+  return id === 'datatug'
+    ? USAGE_ANALYTICS_CONSENT_KEY
+    : `${id}.usage-analytics-consent.v1`;
 }
