@@ -152,7 +152,7 @@
     @if (workspaceOverflowTabs().length) {
       <ion-button id="workspace-more-trigger" class="workspace-more" data-testid="workspace-more-tab" fill="clear" color="medium" size="small" aria-label="More query views">
         <ion-icon name="ellipsis-horizontal" slot="start" aria-hidden="true" />
-        More
+        <span class="narrow-hidden">More</span>
       </ion-button>
       <ion-popover trigger="workspace-more-trigger" [dismissOnSelect]="true" data-testid="workspace-more-menu">
         <ng-template>
@@ -1403,8 +1403,9 @@
                 <ion-select-option [value]="runtime.selectionId">{{ runtime.title }} · working copy</ion-select-option>
               }
             </ion-select>
-            <ion-button slot="end" fill="clear" size="small" [disabled]="workingCopyLoading()" (click)="loadWorkingCopies()">
-              {{ workingCopyLoading() ? 'Checking…' : 'Find working copies' }}
+            <ion-button slot="end" fill="clear" size="small" aria-label="Find working copies" title="Find working copies" [disabled]="workingCopyLoading()" (click)="loadWorkingCopies()">
+              <ion-icon name="search-outline" slot="start" aria-hidden="true" />
+              <span class="narrow-hidden">{{ workingCopyLoading() ? 'Checking…' : 'Find working copies' }}</span>
             </ion-button>
           </ion-item>
           @if (!usesFixedPublicQuerySource()) {

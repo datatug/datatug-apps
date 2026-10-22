@@ -134,6 +134,7 @@ import {
   globeOutline,
   informationCircleOutline,
   saveOutline,
+  searchOutline,
   shieldCheckmarkOutline,
 } from 'ionicons/icons';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -6545,6 +6546,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       globeOutline,
       informationCircleOutline,
       saveOutline,
+      searchOutline,
       shieldCheckmarkOutline,
     });
     this.observedSecurityContextId = this.agentContext.securityContextId();

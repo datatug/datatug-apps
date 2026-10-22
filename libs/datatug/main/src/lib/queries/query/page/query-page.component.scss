@@ -344,3 +344,20 @@ ion-button.workspace-run[disabled] {
   --color: var(--ion-color-step-550, #6b6f76);
   cursor: not-allowed;
 }
+
+// Narrow screens: Source and Parameters fit beside More and Run without
+// scrolling; More and "Find working copies" keep their icon only.
+.workspace-tab-row ion-segment-button {
+  min-width: auto;
+  --padding-start: 0.625rem;
+  --padding-end: 0.625rem;
+}
+@media (max-width: 575.98px) {
+  .narrow-hidden {
+    display: none;
+  }
+  .workspace-more ion-icon[slot='start'],
+  .query-runtime-row ion-button ion-icon[slot='start'] {
+    margin-inline-end: 0;
+  }
+}

@@ -92,6 +92,26 @@
         @if (savedNotice() && !dirty()) {
           <p class="notice ok" role="status">Saved.</p>
         }
+        @if (!isNew && tab() === 'build' && (relatedEntities().length || relatedQueries().length)) {
+          <!-- Related: where this card's data comes from and what it shows. -->
+          <section class="block related" aria-labelledby="related-h" data-test="card-related">
+            <h3 id="related-h">Related</h3>
+            <ul class="related-list">
+              @for (entity of relatedEntities(); track entity) {
+                <li>
+                  <span class="related-kind">Entity</span>
+                  <a [routerLink]="ctx.url(['entity', entity])" data-test="related-entity">{{ entity }}</a>
+                </li>
+              }
+              @for (queryId of relatedQueries(); track queryId) {
+                <li>
+                  <span class="related-kind">Query</span>
+                  <a [routerLink]="queryUrl(queryId)" data-test="related-query">{{ queryId }}</a>
+                </li>
+              }
+            </ul>
+          </section>
+        }
 
         @if (tab() === 'json') {
           <section class="block" aria-labelledby="json-h">
@@ -291,26 +311,6 @@
                 </ion-button>
               }
             }
-          </section>
-        }
-        @if (!isNew && tab() === 'build' && (relatedEntities().length || relatedQueries().length)) {
-          <!-- Related: where this card's data comes from and what it shows. -->
-          <section class="block related" aria-labelledby="related-h" data-test="card-related">
-            <h3 id="related-h">Related</h3>
-            <ul class="related-list">
-              @for (entity of relatedEntities(); track entity) {
-                <li>
-                  <span class="related-kind">Entity</span>
-                  <a [routerLink]="ctx.url(['entity', entity])" data-test="related-entity">{{ entity }}</a>
-                </li>
-              }
-              @for (queryId of relatedQueries(); track queryId) {
-                <li>
-                  <span class="related-kind">Query</span>
-                  <a [routerLink]="queryUrl(queryId)" data-test="related-query">{{ queryId }}</a>
-                </li>
-              }
-            </ul>
           </section>
         }
       </div>
