@@ -339,9 +339,10 @@
 ion-button.workspace-run.button-disabled,
 ion-button.workspace-run[disabled] {
   opacity: 1;
-  --background: var(--ion-color-step-100, #e8eaed);
-  --border-color: var(--ion-color-step-250, #c4c7cc);
-  --color: var(--ion-color-step-550, #6b6f76);
+  // Ionic's .ion-color-* classes set these with !important.
+  --ion-color-base: var(--ion-color-step-150, #e3e5e8) !important;
+  --ion-color-contrast: var(--ion-color-step-600, #5f636a) !important;
+  --box-shadow: none;
   cursor: not-allowed;
 }
 
