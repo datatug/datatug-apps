@@ -4,7 +4,7 @@
   @if(retainedReviewed()){<ion-button color="warning" (click)="abandonRetainedRun()" [disabled]="running()">Abandon original retry</ion-button>}
 }
 @let widget = widgetDef();
-@switch (widget?.name) {
+@switch (widgetCase()) {
   @case ('tabs') {
     <sneat-datatug-tabs-widget
       [level]="level() ?? 0"
@@ -16,9 +16,51 @@
       [readBoardForRun]="readBoardForRun()"
       [widgetPath]="widgetPath()"
       [boardWidgetComponent]="nestedWidgetComponent"
+      [cardMode]="cardMode()"
+      [resultCache]="resultCache()"
       [resultSnapshot]="snapshotStore()"
       [autoRunAttempts]="attemptsStore()"
     />
+  }
+  @case ('text') {
+    <sneat-datatug-text-widget
+      [def]="textWidgetDef()"
+      [values]="parameterValues()"
+    />
+  }
+  @case ('fields') {
+    <div class="ion-padding card-widget" data-widget="fields">
+      @if (fieldsSourceIsParameter()) {
+        @if (fieldPairs(); as pairs) {
+          <sneat-datatug-fields-view
+            [title]="fieldsWidgetDef()?.title"
+            [pairs]="pairs"
+          />
+        } @else {
+          <p role="status">No data</p>
+        }
+      } @else if (definitionLoading() || running()) {
+        <ion-skeleton-text [animated]="true" style="width: 60%" />
+        <ion-skeleton-text [animated]="true" style="width: 40%" />
+        <p role="status" class="visually-hidden">Loading…</p>
+      } @else if (unsupportedReason(); as reason) {
+        <p role="alert">{{ reason }}</p>
+      } @else if (runError(); as error) {
+        <p role="alert">{{ error }}</p>
+        <ion-button size="small" fill="outline" (click)="retry()"
+          >Retry</ion-button
+        >
+      } @else if (fieldPairs(); as pairs) {
+        <sneat-datatug-fields-view
+          [title]="fieldsWidgetDef()?.title"
+          [pairs]="pairs"
+        />
+      } @else if (result()) {
+        <p role="status">No data</p>
+      } @else {
+        <ion-skeleton-text [animated]="true" style="width: 60%" />
+      }
+    </div>
   }
   @case ('chart') {
     <div class="ion-padding">
@@ -200,65 +242,114 @@
       }
     </div>
   }
+  @case ('SQL-parameter') {
+    <div class="ion-padding card-widget" data-widget="SQL-parameter">
+      @if (sqlWidgetDef()?.title) {
+        <p>{{ sqlWidgetDef()?.title }}</p>
+      }
+      @if (sqlParameterGrid(); as grid) {
+        @if (!grid.rows.length) {
+          <p role="status">No data</p>
+        } @else {
+          <div class="board-result-scroll">
+            <table>
+              <thead>
+                <tr>
+                  @for (column of grid.columns; track column) {
+                    <th scope="col">{{ column }}</th>
+                  }
+                </tr>
+              </thead>
+              <tbody>
+                @for (row of grid.rows; track $index) {
+                  <tr>
+                    @for (cell of row; track $index) {
+                      <td>{{ displayParameterCell(cell) }}</td>
+                    }
+                  </tr>
+                }
+              </tbody>
+            </table>
+          </div>
+        }
+      }
+    </div>
+  }
   @case ('SQL') {
     <div class="ion-padding">
       @if (sqlWidgetDef()?.title) {
         <p>{{ sqlWidgetDef()?.title }}</p>
       }
-      @if (remembered()) {
-        <p role="status">Last selected from this board in this browser</p>
-      }
-      @if (sessionOnly()) {
-        <p>Choices stay in this tutorial session.</p>
-      } @else if (!canRemember()) {
-        <p>Choices are not saved for local agent projects.</p>
-      }
-      @if (definitionLoading()) {
-        <p role="status">Checking saved query…</p>
-      } @else if (unsupportedReason(); as reason) {
-        <p role="status">{{ reason }}</p>
-      } @else if (definition()) {
-        <p>
-          Environment:
-          {{ boardContext()?.environment || 'connection default' }}. Runtime:
-          {{
-            selectedRuntimeId() === 'snapshot'
-              ? projectRuntimeLabel()
-              : 'open working copy'
-          }}.
-        </p>
-        @if (workingCopies().length) {
-          <label
-            >Execution runtime
-            <select
-              [value]="selectedRuntimeId()"
-              (change)="selectRuntime($any($event.target).value)"
-            >
-              <option value="snapshot">{{ projectRuntimeLabel() }}</option>
-              @for (runtime of workingCopies(); track runtime.selectionId) {
-                <option [value]="runtime.selectionId">
-                  {{ runtime.title }} · working copy
-                </option>
-              }
-            </select>
-          </label>
+      @if (cardMode()) {
+        @if (definitionLoading() || running()) {
+          <ion-skeleton-text [animated]="true" style="width: 80%" />
+          <ion-skeleton-text [animated]="true" style="width: 60%" />
+          <ion-skeleton-text [animated]="true" style="width: 70%" />
+          <p role="status" class="visually-hidden">Loading…</p>
+        } @else if (unsupportedReason(); as reason) {
+          <p role="alert">{{ reason }}</p>
+        } @else if (runError(); as error) {
+          <p role="alert">{{ error }}</p>
+          <ion-button size="small" fill="outline" (click)="retry()"
+            >Retry</ion-button
+          >
         }
-        <ion-button [disabled]="running()" (click)="run()">{{
-          running() ? 'Running…' : 'Run on board'
-        }}</ion-button>
-      }
-      @if (queryUrlTree(); as urlTree) {
-        <ion-button [routerLink]="urlTree" (click)="rememberChoice()">
-          Open saved query
-        </ion-button>
       } @else {
-        <p role="status">This saved query is unavailable.</p>
-      }
-      @if (runError(); as error) {
-        <p role="alert">{{ error }}</p>
-      }
-      @if (choiceError(); as error) {
-        <p role="alert">{{ error }}</p>
+      @if (remembered()) {
+          <p role="status">Last selected from this board in this browser</p>
+        }
+        @if (sessionOnly()) {
+          <p>Choices stay in this tutorial session.</p>
+        } @else if (!canRemember()) {
+          <p>Choices are not saved for local agent projects.</p>
+        }
+        @if (definitionLoading()) {
+          <p role="status">Checking saved query…</p>
+        } @else if (unsupportedReason(); as reason) {
+          <p role="status">{{ reason }}</p>
+        } @else if (definition()) {
+          <p>
+            Environment:
+            {{ boardContext()?.environment || 'connection default' }}. Runtime:
+            {{
+              selectedRuntimeId() === 'snapshot'
+                ? projectRuntimeLabel()
+                : 'open working copy'
+            }}.
+          </p>
+          @if (workingCopies().length) {
+            <label
+              >Execution runtime
+              <select
+                [value]="selectedRuntimeId()"
+                (change)="selectRuntime($any($event.target).value)"
+              >
+                <option value="snapshot">{{ projectRuntimeLabel() }}</option>
+                @for (runtime of workingCopies(); track runtime.selectionId) {
+                  <option [value]="runtime.selectionId">
+                    {{ runtime.title }} · working copy
+                  </option>
+                }
+              </select>
+            </label>
+          }
+          <ion-button [disabled]="running()" (click)="run()">{{
+            running() ? 'Running…' : 'Run on board'
+          }}</ion-button>
+        }
+        @if (queryUrlTree(); as urlTree) {
+          <ion-button [routerLink]="urlTree" (click)="rememberChoice()">
+            Open saved query
+          </ion-button>
+        } @else {
+          <p role="status">This saved query is unavailable.</p>
+        }
+        @if (runError(); as error) {
+          <p role="alert">{{ error }}</p>
+        }
+        @if (choiceError(); as error) {
+          <p role="alert">{{ error }}</p>
+        }
       }
       @let presentation = filteredPresentation();
       @if (presentation.country !== undefined) {
@@ -291,7 +382,9 @@
           />
         } @else {
           @if (!answer.recordset.rows.length) {
-            <p role="status">Query completed with no rows.</p>
+            <p role="status">{{
+              cardMode() ? 'No data' : 'Query completed with no rows.'
+            }}</p>
           } @else {
             <p role="status">
               {{ answer.recordset.rows.length }} rows returned{{
@@ -349,7 +442,7 @@
       } @else if (!widget.name) {
         No widget name
       } @else {
-        To be implemented: {{ widget.name }}
+        Unsupported widget: {{ widget.name }}
       }
     </div>
   }

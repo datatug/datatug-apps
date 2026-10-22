@@ -38,6 +38,7 @@ const mappingFields = (data: ChartWidgetDef) => {
   throw new Error('fixture');
 };
 
+import { ProjectCardsService } from '../../../../cards/project-cards.service';
 import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
 import { HostedBoardScope } from '../../../core/hosted-board-scope';
 import { BoardComponent } from '../../components/board/board.component';
@@ -91,6 +92,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     deny: ReturnType<typeof vi.fn>;
   };
   const api = { board: vi.fn(), saveBoard: vi.fn() };
+  const cardsApi = { listCards: vi.fn(), createCard: vi.fn() };
   let navigate: ReturnType<typeof vi.fn>;
   let isNew: boolean;
   let saved: Board;
@@ -140,6 +142,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
         {provide:DatatugNavContextService,useValue:{currentProject:of({ref}),currentEnv:of({id:'demo'})}},
         {provide:DetectiveClientService,useValue:{projectIncidents:vi.fn(()=>of({incidents:[]}))}},
         {provide:AgentContextService,useValue:{}},
+        { provide: ProjectCardsService, useValue: cardsApi },
         { provide: ProjectAssetsApiService, useValue: api },
         {
           provide: ProjectQueryApiService,
@@ -376,6 +379,59 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     ).toBe(3);
     expect(writes, f.nativeElement.textContent).toHaveLength(1);
   });
+  it('saves an inline card as a project card and turns the cell into a reference, then saves the board with it', async () => {
+    isNew = false;
+    cardsApi.listCards.mockReturnValue(of([{ id: 'receipt', title: 'Receipt' }]));
+    cardsApi.createCard.mockImplementation((_r: unknown, card: unknown) => of(card));
+    const f = await mount();
+    button(f, 'Edit board').click();
+    await f.whenStable();
+    button(f, 'Save Receipt as project card').click();
+    await f.whenStable();
+    expect(cardsApi.listCards).toHaveBeenCalledWith(ref, 'demo', true);
+    expect(cardsApi.createCard).toHaveBeenCalledTimes(1);
+    const [, created, environment] = cardsApi.createCard.mock.calls[0];
+    expect(environment).toBe('demo');
+    expect(created).toMatchObject({
+      id: 'receipt-2',
+      title: 'Receipt',
+      widget: { name: 'SQL', data: { sql: { queryId: 'receipt' } } },
+    });
+    const cell = f.componentInstance.draft()?.rows?.[0].cards?.[0];
+    expect(cell?.widget).toBeUndefined();
+    expect(cell?.ref).toEqual({ cardId: 'receipt-2' });
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('Saved project card "Receipt" (receipt-2)');
+    // the cell is a reference now: no second copy is offered
+    expect(
+      Array.from(f.nativeElement.querySelectorAll('ion-button')).some((b) =>
+        (b as HTMLElement).textContent?.includes('as project card'),
+      ),
+    ).toBe(false);
+    button(f, 'Save board').click();
+    await f.whenStable();
+    expect(writes).toHaveLength(1);
+    expect(writes[0].board.rows?.[0].cards?.[0].ref).toEqual({ cardId: 'receipt-2' });
+  });
+
+  it('keeps the inline card and shows the error when the project card cannot be created', async () => {
+    isNew = false;
+    cardsApi.listCards.mockReturnValue(of([]));
+    cardsApi.createCard.mockReturnValue(throwError(() => new Error('Card "receipt" already exists.')));
+    const f = await mount();
+    button(f, 'Edit board').click();
+    await f.whenStable();
+    button(f, 'Save Receipt as project card').click();
+    await f.whenStable();
+    f.detectChanges();
+    expect(f.nativeElement.textContent).toContain('already exists');
+    expect(f.componentInstance.draft()).toEqual(initial);
+    // and it can be tried again
+    expect(
+      (button(f, 'Save Receipt as project card') as never as { disabled: boolean }).disabled,
+    ).toBeFalsy();
+  });
+
   it('opens saved deep links in canonical view, explicitly edits and cancels the complete definition', async () => {
     isNew = false;
     const f = await mount();

@@ -1,6 +1,7 @@
 // Public API entry — see ../public_api.ts.
 
 import { WidgetBase } from './widget-base';
+import type { ParameterRowsSource } from './card';
 
 /** The `BoardWidget.name` value that selects {@link SQLWidgetDef} (boards.go `QueryTypeSQL`). */
 export const BOARD_WIDGET_NAME_SQL = 'SQL' as const;
@@ -44,5 +45,11 @@ export interface WidgetParameterBinding {
 
 /** Mirrors `SQLWidgetDef` (boards.go) field for field: `WidgetBase` inlined + `sql`. */
 export interface SQLWidgetDef extends WidgetBase {
-  sql: SQLWidgetSettings;
+  /** The saved query; absent when `source` supplies the rows. */
+  sql?: SQLWidgetSettings;
+  /**
+   * Rows from a `recordset` / `record` card parameter instead of a saved
+   * query (project cards, spec REQ: card-kinds). Exclusive with `sql`.
+   */
+  source?: ParameterRowsSource;
 }

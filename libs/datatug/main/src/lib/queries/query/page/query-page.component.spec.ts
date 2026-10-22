@@ -2211,6 +2211,84 @@ select i.InvoiceId
     expect(component.resultTotalRowsKnown()).toBe(false);
   });
 
+  it('hands the focused result cell to the project cards pane by column name', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [
+          { name: 'InvoiceId', type: 'integer' },
+          { name: 'CustomerID', type: 'string' },
+        ],
+        rows: [
+          [
+            { type: 'integer', value: '7' },
+            { type: 'string', value: 'ALFKI' },
+          ],
+          [
+            { type: 'integer', value: '8' },
+            { type: 'null' },
+          ],
+        ],
+      },
+    } as unknown as FederatedQueryResult);
+    await component.changeRelatedResultSet('affiliations');
+    const rows = component.resultGridRows();
+    const cards = { focusCell: vi.fn(), clear: vi.fn() };
+    Object.defineProperty(component, 'resultCellCards', { value: () => cards });
+    const api = { getDisplayedRowAtIndex: (i: number) => ({ data: rows[i] }) };
+    try {
+      component.authorResultCellFocused({
+        rowIndex: 0,
+        column: { getColId: () => 'result_1' },
+        api,
+      } as never);
+      expect(cards.focusCell).toHaveBeenCalledWith(
+        {
+          identity: { column: 'CustomerID' },
+          value: 'ALFKI',
+          row: { InvoiceId: '7', CustomerID: 'ALFKI' },
+        },
+        expect.any(Function),
+      );
+      // the anchor is looked up inside this page's grid, not in the whole document
+      const anchorOf = cards.focusCell.mock.calls[0][1] as () => Element | null;
+      const host = (component as never as { pageHost: { nativeElement: HTMLElement } }).pageHost.nativeElement;
+      const own = document.createElement('div');
+      own.className = 'result-grid-viewport';
+      own.innerHTML = '<div class="ag-cell-focus"></div>';
+      host.appendChild(own);
+      const foreign = document.createElement('div');
+      foreign.className = 'result-grid-viewport';
+      foreign.innerHTML = '<div class="ag-cell-focus" id="foreign"></div>';
+      document.body.appendChild(foreign);
+      expect(anchorOf()).toBe(own.firstElementChild);
+      foreign.remove();
+      own.remove();
+      // a NULL cell is handed over as it is; the lookup itself skips it
+      component.authorResultCellFocused({
+        rowIndex: 1,
+        column: 'result_1',
+        api,
+      } as never);
+      expect(cards.focusCell).toHaveBeenLastCalledWith(
+        expect.objectContaining({ identity: { column: 'CustomerID' }, value: null }),
+        expect.any(Function),
+      );
+      // no row, a group row, or an unknown column clear the pane
+      component.authorResultCellFocused({ rowIndex: null, column: 'result_0', api } as never);
+      component.authorResultCellFocused({
+        rowIndex: 0,
+        column: 'result_0',
+        api: { getDisplayedRowAtIndex: () => ({ group: true }) },
+      } as never);
+      component.authorResultCellFocused({ rowIndex: 0, column: 'ag-Grid-SelectionColumn', api } as never);
+      expect(cards.clear).toHaveBeenCalledTimes(3);
+    } finally {
+      /* nothing to restore */
+    }
+  });
+
   it('clears the accepted page request after empty or short final pages update the result snapshot', async () => {
     component = await createTugQLAuthor(authorSource);
     const originalRow = [{ type: 'integer', value: '1' }] as const;

@@ -31,22 +31,64 @@
     }
   </section>
 }
-<ion-card>
-  @if (boarCardDef()?.title) {
-    <ion-item>
-      @if (boarCardDef()?.title) {
+@if (bare()) {
+  <ng-container [ngTemplateOutlet]="content" />
+} @else {
+  <ion-card>
+    @if (boarCardDef()?.title) {
+      <ion-item>
         <ion-label>{{ boarCardDef()?.title }}</ion-label>
+      </ion-item>
+    }
+    <ng-container [ngTemplateOutlet]="content" />
+  </ion-card>
+}
+<ng-template #content>
+  @if (refDef(); as ref) {
+    @switch (refState().kind) {
+      @case ('ready') {
+        <!-- The referenced card renders through this same component, body only: no card in a card. -->
+        <sneat-datatug-board-card
+          [bare]="true"
+          [cardMode]="true"
+          [boarCardDef]="refBoardCard()"
+          [boardContext]="refContext()"
+          [projectRef]="projectRef()"
+          [boardId]="boardId()"
+          [resultCache]="resultCache()"
+        />
       }
-    </ion-item>
+      @case ('missing') {
+        <p class="ion-padding" role="alert">Card not found: {{ ref.cardId }}</p>
+      }
+      @case ('error') {
+        <div class="ion-padding">
+          <p role="alert">{{ $any(refState()).message }}</p>
+          <ion-button size="small" fill="outline" (click)="retryRef()"
+            >Retry</ion-button
+          >
+        </div>
+      }
+      @default {
+        <div class="ion-padding">
+          <ion-skeleton-text [animated]="true" style="width: 70%" />
+          <ion-skeleton-text [animated]="true" style="width: 50%" />
+          <p role="status" class="visually-hidden">Loading card…</p>
+        </div>
+      }
+    }
+  } @else {
+    <sneat-datatug-board-widget
+      [level]="0"
+      [cardTab]="boardCardTab.currentTab"
+      [widgetDef]="boarCardDef()?.widget"
+      [boardContext]="boardContext()"
+      [projectRef]="projectRef()"
+      [boardId]="boardId()"
+      [cardId]="boarCardDef()?.id"
+      [readBoardForRun]="readBoardForRun()"
+      [cardMode]="cardMode()"
+      [resultCache]="resultCache()"
+    />
   }
-  <sneat-datatug-board-widget
-    [level]="0"
-    [cardTab]="boardCardTab.currentTab"
-    [widgetDef]="boarCardDef()?.widget"
-    [boardContext]="boardContext()"
-    [projectRef]="projectRef()"
-    [boardId]="boardId()"
-    [cardId]="boarCardDef()?.id"
-    [readBoardForRun]="readBoardForRun()"
-  />
-</ion-card>
+</ng-template>

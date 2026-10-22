@@ -166,7 +166,7 @@ describe('shared project menu refuses active-query tab', () => {
     ).toBeNull();
     const items = [...host.querySelectorAll('ion-item')];
     // Seven metadata destinations, including Quick Search and hosted Boards, plus Incidents.
-    expect(items).toHaveLength(8);
+    expect(items).toHaveLength(9);
     const router = TestBed.inject(Router);
     const destinations = fixture.debugElement
       .queryAll(By.directive(RouterLink))
@@ -176,6 +176,7 @@ describe('shared project menu refuses active-query tab', () => {
         return router.serializeUrl(tree);
       });
     expect(destinations).toContain('/space/S1/store/firestore/project/same/boards');
+    expect(destinations).toContain('/space/S1/store/firestore/project/same/cards');
     expect(destinations).toContain('/space/S1/store/firestore/project/same/quick-search');
     expect(
       host.querySelector('[data-testid="incidents-project-menu-item"]'),

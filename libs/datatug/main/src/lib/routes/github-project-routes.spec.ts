@@ -196,6 +196,10 @@ describe('the routes as registered', () => {
       'boards/new',
       'board/:board',
       'board',
+      'cards/new',
+      'card/:cardId',
+      'card',
+      'cards',
       'boards',
       'sessions',
       'incidents',
@@ -256,6 +260,7 @@ describe('navigating to a short address', () => {
       profile?: keyof typeof PRODUCT_PROFILES;
       lookup?: unknown;
       summaryResult?: () => unknown;
+      children?: Routes;
     } = {},
   ) {
     branch = vi.fn(
@@ -271,7 +276,7 @@ describe('navigating to a short address', () => {
       {
         ...githubProjectRoutes[1],
         loadChildren: () =>
-          [
+          options.children ?? [
             { path: 'chat', component: PageStub },
             { path: 'queries', component: PageStub },
             { path: 'quick-search', component: PageStub },
@@ -310,11 +315,31 @@ describe('navigating to a short address', () => {
       component: leaf.component,
       storeId: leaf.paramMap.get('storeId'),
       projectId: leaf.paramMap.get('projectId'),
+      routePath: leaf.routeConfig?.path,
       problem: TestBed.inject(GithubAddressProblemState).problem(),
     };
   }
 
   beforeEach(() => TestBed.resetTestingModule());
+
+  it.each([
+    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/card/customer', 'card/:cardId'],
+    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/cards/new', 'cards/new'],
+    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/cards', 'cards'],
+    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/board/shipping', 'board/:board'],
+    ['/project/github.com/datatug/chinook-demo/card/customer', 'card/:cardId'],
+  ])('%s reaches the %s page of the real project routes', async (url, routePath) => {
+    const { datatugProjectRoutes } = await import('./datatug-routing-proj');
+    const stub = (routes: Routes): Routes =>
+      routes.map((r) =>
+        r.redirectTo !== undefined
+          ? r
+          : { path: r.path, data: r.data, component: PageStub },
+      );
+    const result = await visit(url, { children: stub(datatugProjectRoutes) });
+    expect(result.ok).toBe(true);
+    expect(result.routePath).toBe(routePath);
+  });
 
   it.each([
     ['/project/github.com/datatug/chinook-demo', 'chinook-demo@datatug@'],

@@ -1,6 +1,7 @@
 // Public API entry — see ../public_api.ts.
 
 import { BoardWidget } from './board-widget';
+import type { BoardCardRef } from './card';
 import { BoardCardId, BoardId } from './ids';
 import { BoardParameterDef } from './widget-parameter';
 
@@ -52,5 +53,8 @@ export interface BoardCard {
   title: string;
   /** How many of the 12 available grid columns this card spans. */
   cols?: number;
+  /** Exactly one of `widget` or `ref` (spec/features/project-cards). */
   widget?: BoardWidget;
+  /** References a project card instead of an inline widget. */
+  ref?: BoardCardRef;
 }
