@@ -5,6 +5,7 @@ import {
   QueryType,
 } from '../models/definition/query-def';
 import { savableHttpHeaders } from './http-credential-headers';
+import { httpMethodAllowsBody } from './http-request-rules';
 
 /** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
 export interface ProjectQueryWire {
@@ -161,7 +162,9 @@ function httpWire(request: IHttpQueryRequest): ProjectQueryHttpWire {
   return {
     method: request.method ?? 'GET',
     ...(headers.length ? { headers } : {}),
-    ...(request.body ? { body: request.body } : {}),
+    ...(request.body && httpMethodAllowsBody(request.method)
+      ? { body: request.body }
+      : {}),
   };
 }
 

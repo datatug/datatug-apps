@@ -1,9 +1,12 @@
+import type { IHttpQueryRequest } from '../models/definition/query-def';
+import { httpMethodAllowsBody } from './http-request-rules';
+
 /**
  * Header names that carry credentials. Mirrors datatug-core's
  * `IsCredentialHTTPHeader` (pkg/datatug/query.go): such headers may be used for
  * a run but are never saved.
  */
-const CREDENTIAL_HEADER_NAMES: ReadonlySet<string> = new Set([
+export const CREDENTIAL_HEADER_NAMES: ReadonlySet<string> = new Set([
   'authorization',
   'proxy-authorization',
   'cookie',
@@ -14,7 +17,7 @@ const CREDENTIAL_HEADER_NAMES: ReadonlySet<string> = new Set([
   'x-amz-security-token',
 ]);
 
-const CREDENTIAL_HEADER_FRAGMENTS: readonly string[] = [
+export const CREDENTIAL_HEADER_FRAGMENTS: readonly string[] = [
   'token',
   'secret',
   'password',
@@ -30,11 +33,29 @@ export function isCredentialHttpHeader(name: string): boolean {
   );
 }
 
-/** The headers that may be saved: credential-named and unnamed rows are dropped. */
+/** The headers that may be saved: names are trimmed; credential-named and unnamed rows are dropped. */
 export function savableHttpHeaders<T extends { readonly name: string }>(
   headers: readonly T[] | undefined,
 ): T[] {
-  return (headers ?? []).filter(
-    (h) => h.name.trim() !== '' && !isCredentialHttpHeader(h.name),
-  );
+  return (headers ?? [])
+    .filter((h) => h.name.trim() !== '' && !isCredentialHttpHeader(h.name))
+    .map((h) => ({ ...h, name: h.name.trim() }));
+}
+
+/**
+ * The request as it is saved: credential headers stripped, names trimmed, and
+ * no body for a method that carries none. Applied on every save path.
+ */
+export function savableHttpRequest<T extends { readonly queryType: unknown }>(
+  request: T,
+): T {
+  if (request.queryType !== 'HTTP') return request;
+  const http = request as unknown as IHttpQueryRequest;
+  const { body, ...rest } = http;
+  const headers = savableHttpHeaders(http.headers);
+  return {
+    ...rest,
+    ...(headers.length ? { headers } : { headers: undefined }),
+    ...(body && httpMethodAllowsBody(http.method) ? { body } : {}),
+  } as unknown as T;
 }

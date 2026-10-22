@@ -39,6 +39,14 @@ import type {
 } from '../../../models/definition/query-def';
 import { isCredentialHttpHeader } from '../../http-credential-headers';
 import {
+  ABSOLUTE_URL_MESSAGE,
+  MAX_HTTP_HEADERS,
+  httpRequestSaveProblem,
+  isAbsoluteHttpUrl,
+  isBrowserForbiddenHeader,
+  isHttpToken,
+} from '../../http-request-rules';
+import {
   BrowserFetchFailedError,
   HttpRunService,
   methodTakesBody,
@@ -108,24 +116,46 @@ export class HttpQueryEditorComponent {
   protected readonly runError = signal<string | undefined>(undefined);
   /** The browser call failed before any response, so the server may succeed. */
   protected readonly offerServerRun = signal(false);
-  private readonly blankParamRows = signal(0);
+  /** The param rows being edited, kept while they still serialise to the URL (blank-name rows are not in it). */
+  private readonly paramDraft = signal<IHttpHeader[] | undefined>(undefined);
 
   protected readonly method = computed(() => this.request().method ?? 'GET');
   protected readonly url = computed(() => this.request().url ?? '');
   protected readonly headers = computed(() => this.request().headers ?? []);
   protected readonly body = computed(() => this.request().body ?? '');
   protected readonly takesBody = computed(() => methodTakesBody(this.method()));
+  /** Why the URL cannot be run, when something has been typed. */
+  protected readonly urlProblem = computed(() =>
+    this.url().trim() !== '' && !isAbsoluteHttpUrl(this.url())
+      ? ABSOLUTE_URL_MESSAGE
+      : undefined,
+  );
   protected readonly canRun = computed(
-    () => this.url().trim() !== '' && !this.running(),
+    () => this.url().trim() !== '' && !this.urlProblem() && !this.running(),
+  );
+  protected readonly maxHeaders = MAX_HTTP_HEADERS;
+  protected readonly canAddHeader = computed(
+    () => this.headers().length < MAX_HTTP_HEADERS,
+  );
+  /** Blocks Save: the same rule the save path applies. */
+  protected readonly saveProblem = computed(() =>
+    httpRequestSaveProblem(this.request()),
+  );
+  /** Headers a browser run silently drops; only the DataTug server sends them. */
+  protected readonly browserForbidden = computed(() =>
+    this.runVia() === 'browser'
+      ? this.headers()
+          .map((h) => h.name.trim())
+          .filter((n) => n !== '' && isBrowserForbiddenHeader(n))
+      : [],
   );
 
-  protected readonly paramRows = computed<IHttpHeader[]>(() => [
-    ...parseUrlParams(this.url()),
-    ...Array.from({ length: this.blankParamRows() }, () => ({
-      name: '',
-      value: '',
-    })),
-  ]);
+  protected readonly paramRows = computed<IHttpHeader[]>(() => {
+    const draft = this.paramDraft();
+    return draft && withUrlParams(this.url(), draft) === this.url()
+      ? draft
+      : parseUrlParams(this.url());
+  });
 
   protected readonly bodyJson = computed(() => {
     const text = this.result()?.bodyText;
@@ -151,7 +181,12 @@ export class HttpQueryEditorComponent {
   });
 
   constructor() {
-    addIcons({ addOutline, closeOutline, lockClosedOutline, playCircleOutline });
+    addIcons({
+      addOutline,
+      closeOutline,
+      lockClosedOutline,
+      playCircleOutline,
+    });
   }
 
   protected isCredential(name: string): boolean {
@@ -183,23 +218,21 @@ export class HttpQueryEditorComponent {
     const rows = this.paramRows().map((row, i) =>
       i === index ? { ...row, ...patch } : row,
     );
-    if (index >= parseUrlParams(this.url()).length && rows[index].name !== '')
-      this.blankParamRows.update((n) => Math.max(0, n - 1));
-    this.emit({ url: withUrlParams(this.url(), rows) });
+    this.applyParams(rows);
   }
 
   protected addParam(): void {
-    this.blankParamRows.update((n) => n + 1);
+    this.paramDraft.set([...this.paramRows(), { name: '', value: '' }]);
   }
 
   protected removeParam(index: number): void {
-    const parsedCount = parseUrlParams(this.url()).length;
-    if (index >= parsedCount) {
-      this.blankParamRows.update((n) => Math.max(0, n - 1));
-      return;
-    }
-    const rows = this.paramRows().filter((_, i) => i !== index);
-    this.emit({ url: withUrlParams(this.url(), rows) });
+    this.applyParams(this.paramRows().filter((_, i) => i !== index));
+  }
+
+  private applyParams(rows: IHttpHeader[]): void {
+    this.paramDraft.set(rows);
+    const url = withUrlParams(this.url(), rows);
+    if (url !== this.url()) this.emit({ url });
   }
 
   // Headers
@@ -212,7 +245,12 @@ export class HttpQueryEditorComponent {
     });
   }
 
+  protected isInvalidHeaderName(name: string): boolean {
+    return name.trim() !== '' && !isHttpToken(name.trim());
+  }
+
   protected addHeader(): void {
+    if (!this.canAddHeader()) return;
     this.emit({ headers: [...this.headers(), { name: '', value: '' }] });
   }
 

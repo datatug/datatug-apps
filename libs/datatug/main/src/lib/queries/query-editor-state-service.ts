@@ -1,5 +1,11 @@
+import { HttpErrorResponse } from '@angular/common/http';
 import { isDevicePersonalQuery } from './device-personal-queries';
-import { isCredentialHttpHeader, savableHttpHeaders } from './http-credential-headers';
+import {
+  isCredentialHttpHeader,
+  savableHttpHeaders,
+  savableHttpRequest,
+} from './http-credential-headers';
+import { httpMethodAllowsBody, httpRequestSaveProblem } from './http-request-rules';
 import { equalProjectRef, isSharedProjectRef } from '../core/project-context';
 import {
   fromProjectQueryWire,
@@ -110,7 +116,7 @@ function isHttpRequestChanged(
       r.url ?? '',
       r.method ?? 'GET',
       savableHttpHeaders(r.headers).map((h) => [h.name, h.value]),
-      r.body ?? '',
+      httpMethodAllowsBody(r.method) ? (r.body ?? '') : '',
     ]);
   return savedShape(current) !== savedShape(saved);
 }
@@ -125,16 +131,59 @@ function withSessionHttpHeaders<T extends { queryType: unknown }>(
 ): T {
   if (saved.queryType !== QueryType.HTTP || live?.queryType !== QueryType.HTTP)
     return saved;
-  const kept = ((live as IHttpQueryRequest).headers ?? []).filter(
+  const liveHttp = live as IHttpQueryRequest;
+  const kept = (liveHttp.headers ?? []).filter(
     (h) => h.name.trim() !== '' && isCredentialHttpHeader(h.name),
   );
-  if (!kept.length) return saved;
   const savedHttp = saved as unknown as IHttpQueryRequest;
+  // A body typed for a bodyless method is not saved but stays in the session.
+  const keptBody =
+    !savedHttp.body && liveHttp.body && !httpMethodAllowsBody(savedHttp.method)
+      ? liveHttp.body
+      : undefined;
+  if (!kept.length && keptBody === undefined) return saved;
+  // Keep the editor's own row order when only credential rows differ from the saved headers.
+  const sameSavable =
+    JSON.stringify(savableHttpHeaders(liveHttp.headers)) ===
+    JSON.stringify(savedHttp.headers ?? []);
   return {
     ...savedHttp,
-    headers: [...(savedHttp.headers ?? []), ...kept],
+    ...(kept.length
+      ? {
+          headers: sameSavable
+            ? liveHttp.headers
+            : [...(savedHttp.headers ?? []), ...kept],
+        }
+      : {}),
+    ...(keptBody !== undefined ? { body: keptBody } : {}),
   } as unknown as T;
 }
+
+/**
+ * The server's own reason for refusing a save (core validation message or the
+ * backend error envelope), when the response carries one.
+ */
+export function serverSaveReason(error: unknown): string | undefined {
+  // Only a definite 4xx refusal: a 5xx may have committed, so it stays "not confirmed".
+  if (!(error instanceof HttpErrorResponse)) return undefined;
+  if (error.status < 400 || error.status >= 500) return undefined;
+  const body = error.error as unknown;
+  const pick = (v: unknown): string | undefined =>
+    typeof v === 'string' && v.trim() ? v.trim() : undefined;
+  let reason = pick(body);
+  if (!reason && body && typeof body === 'object') {
+    const b = body as { error?: unknown; message?: unknown };
+    reason =
+      pick(b.error) ??
+      pick((b.error as { message?: unknown } | undefined)?.message) ??
+      pick(b.message);
+  }
+  if (!reason || reason.startsWith('<')) return undefined;
+  return /[.!?]$/.test(reason) ? reason : reason + '.';
+}
+
+/** An HTTP request that cannot be saved as typed (e.g. an invalid header name). */
+export class HttpSaveBlockedError extends Error {}
 
 const $state = new BehaviorSubject<IQueryEditorState | undefined>(undefined);
 
@@ -806,12 +855,27 @@ export class QueryEditorStateService {
       if (!queryState.def?.id) {
         return throwError(() => `queryState.def.id is not defined`);
       }
+      const problem =
+        queryState.request.queryType === QueryType.HTTP
+          ? httpRequestSaveProblem(queryState.request as IHttpQueryRequest)
+          : undefined;
+      if (problem) {
+        setIsSavingToFalse();
+        this.updateQueryState({
+          ...(this.getQueryState(id) ?? queryState),
+          isSaving: false,
+          saveError: problem,
+        });
+        return throwError(() => new Error(problem));
+      }
+      // Credential headers are used for runs only: strip them on every save path.
       const query: IQueryDef = {
         ...queryState.def,
         ...(queryState.title !== undefined ? { title: queryState.title } : {}),
-        request: queryState.request,
+        request: savableHttpRequest(queryState.request),
         federation: queryState.federation ?? queryState.def.federation,
       };
+      const sentRequest = queryState.request;
       const saveQuery = queryState.isNew
         ? this.queriesService.createQuery(projectRef, query)
         : this.queriesService.updateQuery(projectRef, query);
@@ -823,7 +887,7 @@ export class QueryEditorStateService {
           }
           const requestChangedDuringSave =
             JSON.stringify(currentState.request) !==
-            JSON.stringify(query.request);
+            JSON.stringify(sentRequest);
           const titleChangedDuringSave = currentState.title !== query.title;
           const federationChangedDuringSave =
             JSON.stringify(
@@ -835,7 +899,7 @@ export class QueryEditorStateService {
             title: titleChangedDuringSave ? currentState.title : value.title,
             request: requestChangedDuringSave
               ? currentState.request
-              : value.request,
+              : withSessionHttpHeaders(value.request, sentRequest),
             federation: federationChangedDuringSave
               ? currentState.federation
               : value.federation,
@@ -846,6 +910,13 @@ export class QueryEditorStateService {
         }),
         catchError((err) => {
           setIsSavingToFalse();
+          const reason = serverSaveReason(err);
+          const failed = this.getQueryState(id);
+          if (reason && failed)
+            this.updateQueryState({
+              ...failed,
+              saveError: `The query was not saved: ${reason} Your draft is preserved.`,
+            });
           this.errorLogger.logError(err, 'Failed to save query');
           throw err;
         }),
@@ -883,6 +954,11 @@ export class QueryEditorStateService {
         );
       if (!id || !queryState.def || !queryState.request || (!isSharedProjectRef(ref) && !ref.branch))
         throw new Error('Load a query and select its branch before saving.');
+      const problem =
+        queryState.request.queryType === QueryType.HTTP
+          ? httpRequestSaveProblem(queryState.request as IHttpQueryRequest)
+          : undefined;
+      if (problem) throw new HttpSaveBlockedError(problem);
       const generation = this.generation;
       const query = toProjectQueryWire(
         {
@@ -1004,7 +1080,9 @@ export class QueryEditorStateService {
                 saveError:
                   error?.status === 409 || error?.status === 412
                     ? 'The saved query or branch changed. Your draft is preserved. Reload only when you are ready to discard it.'
-                    : 'The query was not confirmed saved. Your draft is preserved. Retry the same draft, or reload to inspect the saved revision.',
+                    : serverSaveReason(error)
+                      ? `The query was not saved: ${serverSaveReason(error)} Your draft is preserved.`
+                      : 'The query was not confirmed saved. Your draft is preserved. Retry the same draft, or reload to inspect the saved revision.',
               });
           }
           return throwError(() => error);
@@ -1019,7 +1097,8 @@ export class QueryEditorStateService {
             ...current,
             isSaving: false,
             saveError:
-              error instanceof UnsupportedQueryContractError
+              error instanceof UnsupportedQueryContractError ||
+              error instanceof HttpSaveBlockedError
                 ? error.message
                 : (current.saveError ??
                   'The query could not be saved. Your draft is preserved. Reload its revision or check project access before retrying.'),

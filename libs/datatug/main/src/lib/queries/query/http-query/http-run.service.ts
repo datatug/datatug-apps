@@ -1,6 +1,11 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { firstValueFrom } from 'rxjs';
+import {
+  ABSOLUTE_URL_MESSAGE,
+  httpMethodAllowsBody,
+  isAbsoluteHttpUrl,
+} from '../../http-request-rules';
 import { DatatugApiService } from '../../../services/base/datatug-api.service';
 import type {
   IHttpHeader,
@@ -25,7 +30,7 @@ export interface IHttpRunResult {
 export class BrowserFetchFailedError extends Error {
   constructor(cause: unknown) {
     super(
-      'The browser could not reach this URL. The API most likely blocks browser calls (CORS).',
+      'The browser could not complete this request. The API most likely blocks browser calls (CORS), or the connection dropped.',
       { cause },
     );
   }
@@ -45,11 +50,14 @@ interface IServerRunResponse {
   durationMs?: number;
 }
 
-/** Methods that carry no request body. */
-const NO_BODY_METHODS = ['GET', 'HEAD'];
-
+/** Only POST, PUT, PATCH and DELETE carry a body; GET, HEAD and OPTIONS do not. */
 export function methodTakesBody(method: string | undefined): boolean {
-  return !NO_BODY_METHODS.includes((method ?? 'GET').toUpperCase());
+  return httpMethodAllowsBody(method);
+}
+
+function assertRunnableUrl(url: string): void {
+  if (!isAbsoluteHttpUrl(url))
+    throw new ServerRunFailedError(ABSOLUTE_URL_MESSAGE);
 }
 
 function runnableHeaders(request: IHttpQueryRequest): IHttpHeader[] {
@@ -108,6 +116,7 @@ export class HttpRunService {
   }
 
   async runViaBrowser(request: IHttpQueryRequest): Promise<IHttpRunResult> {
+    assertRunnableUrl(request.url);
     const method = (request.method ?? 'GET').toUpperCase();
     const headers = new Headers();
     try {
@@ -119,20 +128,24 @@ export class HttpRunService {
     }
     const started = performance.now();
     let response: Response;
+    let bytes: Uint8Array;
     try {
-      response = await fetch(request.url, {
+      response = await fetch(request.url.trim(), {
         method,
         headers,
         ...(methodTakesBody(method) && request.body
           ? { body: request.body }
           : {}),
       });
+      // A failure mid-body (dropped connection) is as retryable via the server as a CORS block.
+      bytes = new Uint8Array(await response.arrayBuffer());
     } catch (e) {
       throw new BrowserFetchFailedError(e);
     }
-    const bytes = new Uint8Array(await response.arrayBuffer());
     const respHeaders: IHttpHeader[] = [];
-    response.headers.forEach((value, name) => respHeaders.push({ name, value }));
+    response.headers.forEach((value, name) =>
+      respHeaders.push({ name, value }),
+    );
     return {
       via: 'browser',
       status: response.status,
@@ -146,13 +159,14 @@ export class HttpRunService {
   }
 
   async runViaServer(request: IHttpQueryRequest): Promise<IHttpRunResult> {
+    assertRunnableUrl(request.url);
     const method = (request.method ?? 'GET').toUpperCase();
     let response: IServerRunResponse;
     try {
       response = await firstValueFrom(
         this.api.post<IServerRunResponse>('datatug/http/run', {
           method,
-          url: request.url,
+          url: request.url.trim(),
           headers: runnableHeaders(request),
           body: methodTakesBody(method) ? (request.body ?? '') : '',
         }),
@@ -171,7 +185,9 @@ export class HttpRunService {
       bodyText: bytes ? decodeUtf8(bytes) : rawBody,
       truncated: !!response.truncated,
       sizeBytes:
-        response.sizeBytes ?? bytes?.byteLength ?? new TextEncoder().encode(rawBody).byteLength,
+        response.sizeBytes ??
+        bytes?.byteLength ??
+        new TextEncoder().encode(rawBody).byteLength,
       durationMs: response.durationMs ?? 0,
     };
   }

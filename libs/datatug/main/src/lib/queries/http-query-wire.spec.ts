@@ -92,6 +92,25 @@ describe('HTTP query wire mapping', () => {
     expect(JSON.stringify(wire)).not.toContain('secret');
   });
 
+  it.each(['GET', 'HEAD', 'OPTIONS'] as const)(
+    'omits the body for %s but keeps it for body methods',
+    (method) => {
+      const wire = toProjectQueryWire(httpDef({ method, body: 'typed' }));
+      expect(wire.http).toEqual({ method });
+      for (const m of ['POST', 'PUT', 'PATCH', 'DELETE'] as const)
+        expect(
+          toProjectQueryWire(httpDef({ method: m, body: 'typed' })).http?.body,
+        ).toBe('typed');
+    },
+  );
+
+  it('trims header names on save', () => {
+    const wire = toProjectQueryWire(
+      httpDef({ headers: [{ name: '  Accept ', value: 'a' }] }),
+    );
+    expect(wire.http?.headers).toEqual([{ name: 'Accept', value: 'a' }]);
+  });
+
   it('omits empty headers and body', () => {
     const wire = toProjectQueryWire(
       httpDef({ headers: [{ name: 'Authorization', value: 'x' }] }),
@@ -137,6 +156,15 @@ describe('HTTP query change detection', () => {
     }) as unknown as Parameters<typeof isQueryChanged>[0];
   const base = httpDef({}).request as IHttpQueryRequest;
 
+  it('detects a body edit on a body method', () => {
+    const post = httpDef({ method: 'POST', body: 'a' });
+    expect(
+      isQueryChanged(
+        state({ ...(post.request as IHttpQueryRequest), body: 'b' }, post),
+      ),
+    ).toBe(true);
+  });
+
   it('is unchanged for the same request', () => {
     expect(isQueryChanged(state({ ...base }))).toBe(false);
   });
@@ -144,10 +172,25 @@ describe('HTTP query change detection', () => {
   it.each([
     ['url', { url: 'https://x.test' }],
     ['method', { method: 'POST' as const }],
-    ['body', { body: 'x' }],
+    ['body', { method: 'POST' as const, body: 'x' }],
     ['header', { headers: [{ name: 'Accept', value: 'a' }] }],
   ])('detects a %s edit', (_, patch) => {
     expect(isQueryChanged(state({ ...base, ...patch }))).toBe(true);
+  });
+
+  it('ignores the body of a bodyless method and header-name padding', () => {
+    expect(isQueryChanged(state({ ...base, body: 'typed' }))).toBe(false);
+    expect(
+      isQueryChanged(
+        state(
+          { ...base, headers: [{ name: ' Accept ', value: 'a' }] },
+          httpDef({ headers: [{ name: 'Accept', value: 'a' }] }),
+        ),
+      ),
+    ).toBe(false);
+    expect(
+      isQueryChanged(state({ ...base, method: 'POST', body: 'typed' })),
+    ).toBe(true);
   });
 
   it('ignores unsaved credential headers and blank rows', () => {

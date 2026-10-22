@@ -514,6 +514,7 @@ import {
   IParameter,
   IParameterDef,
 } from '../../../models/definition/parameter';
+import { httpRequestSaveProblem } from '../../http-request-rules';
 import {
   IHttpQueryRequest,
   IQueryDef,
@@ -4069,6 +4070,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return request?.queryType === QueryType.HTTP
       ? (request as IHttpQueryRequest)
       : undefined;
+  }
+
+  /** Why the HTTP request being edited cannot be saved (e.g. an invalid header name). */
+  public get httpSaveProblem(): string | undefined {
+    const request = this.httpRequest;
+    return request ? httpRequestSaveProblem(request) : undefined;
   }
 
   public httpRequestChanged(request: IHttpQueryRequest): void {
