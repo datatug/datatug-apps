@@ -212,6 +212,58 @@ describe('actual source adapter with neutral production route and owner discover
       'private owner failure',
     );
   });
+  it.each([false, true])(
+    'disables publication replacement after restoring a different-environment uncertain journal (other enabled=%s)',
+    async (enabled) => {
+      detective.state.mockReturnValue(
+        of({
+          capabilities: { canRead: true, canWrite: true },
+          environments: ['demo', 'other'],
+        }),
+      );
+      api.publish.mockReturnValue(throwError(() => new Error('lost reply')));
+      const h = await mount();
+      click(h, 'Enable query access');
+      await h.fixture.whenStable();
+      submit(h);
+      await vi.waitFor(() => expect(api.publish).toHaveBeenCalledOnce());
+      const original = sessionStorage.getItem(
+        'datatug.shipping.publication.intent.v1',
+      );
+      expect(original).not.toBeNull();
+      api.publication.mockReturnValue(
+        of({ exists: true, publication: { revision: 3, enabled } }),
+      );
+      await h.navigateByUrl(
+        `${base}/sources/shipping-working-copy?environment=other`,
+        SourceWorkspacePageComponent,
+      );
+      await h.fixture.whenStable();
+      await vi.waitFor(() =>
+        expect(h.routeNativeElement?.textContent).toContain(
+          `other · ${enabled ? 'enabled' : 'disabled'}`,
+        ),
+      );
+      for (const label of ['Enable query access', 'Disable query access']) {
+        const button = Array.from(
+          h.routeNativeElement?.querySelectorAll('ion-button') ?? [],
+        ).find((item) => item.textContent?.trim() === label);
+        expect(button?.disabled).toBe(true);
+        click(h, label);
+      }
+      await h.fixture.whenStable();
+      expect(h.routeNativeElement?.textContent).toContain(
+        'Return there to review its uncertain delivery.',
+      );
+      expect(
+        h.routeNativeElement?.querySelector('sneat-source-action-form'),
+      ).toBeNull();
+      expect(api.publish).toHaveBeenCalledOnce();
+      expect(
+        sessionStorage.getItem('datatug.shipping.publication.intent.v1'),
+      ).toBe(original);
+    },
+  );
   it('uses explicit neutral review/cancel/replay input and exact original-intent retry, then refreshes authoritative state', async () => {
     const h = await mount();
     expect(api.action).not.toHaveBeenCalled();

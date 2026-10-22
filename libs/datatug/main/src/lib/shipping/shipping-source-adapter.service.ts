@@ -261,13 +261,18 @@ export class ShippingSourceAdapterService {
           enabled: workspace.environments().length > 0,
         },
       ];
-      const access = publication.current();
+      const access = publication.current(),
+        recoveryReason = publication.recoveryBlocked()
+          ? 'An original query-access operation belongs to another environment. Return there to review its uncertain delivery.'
+          : undefined;
       if (access)
         items.push(
           {
             id: 'query-access:enable',
             title: 'Enable query access',
+            unavailableReason: recoveryReason,
             enabled:
+              !publication.recoveryBlocked() &&
               writable &&
               publication.authReady() &&
               !publication.enabled() &&
@@ -276,7 +281,9 @@ export class ShippingSourceAdapterService {
           {
             id: 'query-access:disable',
             title: 'Disable query access',
+            unavailableReason: recoveryReason,
             enabled:
+              !publication.recoveryBlocked() &&
               writable &&
               publication.authReady() &&
               publication.enabled() &&
