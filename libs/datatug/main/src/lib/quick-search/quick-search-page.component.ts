@@ -813,6 +813,8 @@ export class QuickSearchPageComponent {
         this.settings.set(false);
         this.query.set(params.get('q') || '');
         this.loadStatus();
+        // Returning from a Check detail to the search view must show results again.
+        this.autoSearch();
         return;
       }
       const query = params.get(this.discovery ? 'name' : 'q') || '';

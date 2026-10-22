@@ -827,6 +827,39 @@ describe('Quick Search consent and async state', () => {
       expect(preview).toHaveBeenCalledTimes(2);
       expect(page.items().length).toBe(1);
     });
+    it('re-runs the search when returning from a Check detail to the search view', async () => {
+      const query = new BehaviorSubject(convertToParamMap({ q: 'Customers' }));
+      TestBed.overrideProvider(ActivatedRoute, {
+        useValue: {
+          snapshot: {
+            data: {},
+            paramMap: convertToParamMap({}),
+            queryParamMap: query.value,
+          },
+          queryParamMap: query,
+        },
+      });
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      expect(api.search).toHaveBeenCalledTimes(1);
+      query.next(
+        convertToParamMap({
+          q: 'Customers',
+          detailKind: 'check',
+          objectId: 'check-a',
+        }),
+      );
+      expect(page.checkDetail()).toBe(true);
+      query.next(convertToParamMap({ q: 'Customers' }));
+      await fixture.whenStable();
+      expect(page.checkDetail()).toBe(false);
+      expect(api.search).toHaveBeenCalledTimes(2);
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+    });
     const httpError = (status: number, code: string) => ({
       status,
       error: { error: { code } },
