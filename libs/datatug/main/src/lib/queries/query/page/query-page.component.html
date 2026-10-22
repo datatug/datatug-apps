@@ -537,6 +537,7 @@
         [parameters]="httpParameters"
         (parametersChange)="httpParametersChanged($event)"
         [rowBinding]="httpRowBinding()"
+        [bagEntries]="httpBagEntries()"
       />
     }
   } @else if (isTextQueryWorkspace()) {

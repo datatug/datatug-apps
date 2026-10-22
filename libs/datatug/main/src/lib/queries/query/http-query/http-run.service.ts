@@ -11,6 +11,7 @@ import type {
   IHttpHeader,
   IHttpQueryRequest,
 } from '../../../models/definition/query-def';
+import { httpTemplateMessage } from '../../http-template-message';
 import {
   httpTemplatePlaceholders,
   substituteHttpTemplate,
@@ -103,12 +104,32 @@ function base64ToBytes(value: string): Uint8Array {
 function serverErrorMessage(error: unknown): string {
   if (error instanceof HttpErrorResponse) {
     const body = error.error as
-      | { error?: { message?: string } | string; message?: string }
+      | {
+          error?:
+            | {
+                message?: string;
+                code?: string;
+                templateCode?: string;
+                parameter?: string;
+                position?: string;
+                header?: string;
+              }
+            | string;
+          message?: string;
+        }
       | string
       | null;
     if (typeof body === 'string' && body) return body;
     if (body && typeof body === 'object') {
       const nested = body.error;
+      // A template problem arrives as fields; the words are written here.
+      if (nested && typeof nested === 'object' && nested.code === 'http_template')
+        return httpTemplateMessage(
+          nested.templateCode ?? '',
+          nested.parameter,
+          nested.position,
+          nested.header,
+        );
       if (typeof nested === 'string' && nested) return nested;
       if (nested && typeof nested === 'object' && nested.message)
         return nested.message;

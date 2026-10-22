@@ -623,7 +623,10 @@ import {
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
 import { HttpRowActionComponent } from '../../http-row-action/http-row-action.component';
 import { HttpRowBindingStore } from '../../http-row-action/http-row-binding.store';
-import type { HttpRowBinding } from '../../http-parameter-binding';
+import {
+  bagEntriesFromSnapshot,
+  type HttpRowBinding,
+} from '../../http-parameter-binding';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 /** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
@@ -4094,6 +4097,14 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.queryEditorStateService.updateQueryState(this.queryState);
   }
 
+  /** The applied context-bag entries of this page's session, offered to HTTP parameters. */
+  public readonly httpBagEntries = computed(() => {
+    const id = this.contextSessionId();
+    return bagEntriesFromSnapshot(
+      id ? this.sessionWorkspace?.snapshotFor(id) : undefined,
+    );
+  });
+
   /** The result row an HTTP run was launched from (Run HTTP query action). */
   public readonly httpRowBinding = signal<HttpRowBinding | undefined>(undefined);
   private httpRowBindingQueryId?: string;
@@ -4108,6 +4119,31 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (queryId === this.httpRowBindingQueryId) return;
     this.httpRowBindingQueryId = queryId;
     this.httpRowBinding.set(this.httpRowBindings.take(queryId));
+  }
+
+  private httpFocusedRow?: { values: unknown[]; position: number };
+  private httpCheckedRow?: { values: unknown[]; position: number };
+
+  /** Exactly one checked row is the selected row; with none checked the focused row is offered. */
+  private syncHttpCheckedRow(api: GridApi<QueryResultGridRow>): void {
+    const nodes = api.getSelectedNodes?.() ?? [];
+    this.httpCheckedRows.set(nodes.length);
+    const columns = this.displayedRecordset()?.columns;
+    const data = nodes.length === 1 ? nodes[0].data : undefined;
+    this.httpCheckedRow =
+      data && columns
+        ? {
+            values: columns.map((_, i) => data[`result_${i}` as keyof typeof data]),
+            position: (nodes[0].rowIndex ?? 0) + 1,
+          }
+        : undefined;
+    this.offerHttpActionRow();
+  }
+
+  private offerHttpActionRow(): void {
+    const columns = this.displayedRecordset()?.columns;
+    const row = this.httpCheckedRow ?? this.httpFocusedRow;
+    if (columns && row) this.setHttpActionRow(columns, row.values, row.position);
   }
 
   private setHttpActionRow(
@@ -4323,7 +4359,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   ): void {
     // The grid's checkboxes select rows for export and copy. The Current row is the focused or clicked row, never
     // the checked ones, so a selection change only keeps the api.
-    this.httpCheckedRows.set(event.api.getSelectedRows?.().length ?? 0);
+    this.syncHttpCheckedRow(event.api);
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
   }
@@ -4357,11 +4393,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const row = Object.fromEntries(
       columns.map((c, i) => [c.name, data[`result_${i}`]]),
     );
-    this.setHttpActionRow(
-      columns,
-      columns.map((_, i) => data[`result_${i}`]),
-      (event.rowIndex ?? 0) + 1,
-    );
+    this.httpFocusedRow = {
+      values: columns.map((_, i) => data[`result_${i}`]),
+      position: (event.rowIndex ?? 0) + 1,
+    };
+    this.offerHttpActionRow();
     // The focus class lands after this event; the pane anchors the tooltip on the next frame, in this grid only.
     cards.focusCell(
       {

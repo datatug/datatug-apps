@@ -7,6 +7,7 @@ import {
 } from '../../../models/definition/query-def';
 import {
   HttpQueryEditorComponent,
+  markSegments,
   parseDefault,
 } from './http-query-editor.component';
 import type { IParameterDef } from '../../../models/definition/parameter';
@@ -373,9 +374,44 @@ describe('HttpQueryEditorComponent', () => {
       expect(template.record).toEqual([{ id: 'request_id', source: 'row', value: 'request-11038' }]);
     });
 
+    it('takes the context bag, lets a picked column win and marks each substituted segment', async () => {
+      fixture = TestBed.createComponent(HttpQueryEditorComponent);
+      fixture.componentRef.setInput('request', carrier);
+      fixture.componentRef.setInput('parameters', [requestId]);
+      fixture.componentRef.setInput('bagEntries', [
+        { entity: 'ShippingRequest', field: 'id', kind: 'scalar', value: 'bag-1' },
+      ]);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(el().querySelector('.http-origin')?.textContent?.trim()).toBe('context bag');
+      const seg = el().querySelector('.http-preview-url mark') as HTMLElement;
+      expect(seg.textContent).toBe('bag-1');
+      expect(seg.getAttribute('data-source')).toBe('bag');
+      fixture.componentRef.setInput('rowBinding', {
+        columns: [{ name: 'a' }, { name: 'b' }],
+        values: ['x', 'picked'],
+      });
+      fixture.detectChanges();
+      protectedApi()['pickColumn']('request_id', new CustomEvent('ionChange', { detail: { value: 'b' } }));
+      fixture.detectChanges();
+      expect(el().querySelector('.http-preview-url mark')?.textContent).toBe('picked');
+    });
+
+    it('keeps the browser from saving a credential and refuses a placeholder in the host', async () => {
+      await createWith(
+        { ...carrier, headers: [{ name: 'Authorization', value: 'Bearer {token}' }] },
+        [requestId, { id: 'token', type: 'string', isRequired: true, isCredential: true }],
+      );
+      const input = el().querySelector('.http-param[data-param="token"] ion-input') as HTMLElement;
+      expect(input.getAttribute('autocomplete')).toBe('new-password');
+      fixture.componentRef.setInput('request', { ...carrier, url: 'https://{host}.demodb.dev/v1' });
+      fixture.detectChanges();
+      expect(text()).toContain("can't be in the web address's host");
+    });
+
     it('blocks the run with an inline problem when a required value is missing (AC required-missing)', async () => {
       await createWith(carrier, [requestId]);
-      expect(el().querySelector('.http-param-error')?.textContent).toContain('request_id needs a value');
+      expect(el().querySelector('.http-param-error')?.textContent).toContain('{request_id} needs a value');
       await (protectedApi()['run']() as Promise<void>);
       expect(run).not.toHaveBeenCalled();
     });
@@ -413,7 +449,7 @@ describe('HttpQueryEditorComponent', () => {
       const preview = el().querySelector('.http-preview')?.textContent ?? '';
       expect(preview).toContain('Authorization: ••••••');
       expect(preview).not.toContain('s3cr3t');
-      expect(text()).toContain('Not taken from row');
+      expect(text()).toContain('only a typed value is used');
     });
 
     it('edits declarations: type, required, default, meaning, credential, remove', async () => {
@@ -447,5 +483,19 @@ describe('HttpQueryEditorComponent', () => {
     expect(parseDefault('boolean', 'maybe')).toBe('maybe');
     expect(parseDefault('date', '2026-01-01')).toBe('2026-01-01');
     expect(parseDefault('string', '')).toBeUndefined();
+  });
+});
+
+describe('markSegments', () => {
+  it('splits a resolved text around the substituted values', () => {
+    expect(markSegments('/a/{x}/b?q={y}', '/a/1/b?q=two', (id) => (id === 'x' ? 'row' : 'typed'))).toEqual([
+      { text: '/a/' },
+      { text: '1', id: 'x', source: 'row' },
+      { text: '/b?q=' },
+      { text: 'two', id: 'y', source: 'typed' },
+    ]);
+  });
+  it('falls back to one unmarked piece when the text does not line up', () => {
+    expect(markSegments('/a/{x}', 'other', () => 'row')).toEqual([{ text: 'other' }]);
   });
 });

@@ -183,6 +183,29 @@ describe('HttpRunService', () => {
     );
   });
 
+  it('writes a plain message from a structured template error', async () => {
+    post.mockReturnValue(
+      throwError(
+        () =>
+          new HttpErrorResponse({
+            status: 400,
+            error: {
+              error: {
+                code: 'http_template',
+                message: 'The request template is not valid.',
+                templateCode: 'forbidden-position',
+                parameter: 'host',
+                position: 'host',
+              },
+            },
+          }),
+      ),
+    );
+    await expect(service.runViaServer(request)).rejects.toThrow(
+      "{host} can't be used in the web address's host. Use a separate query for each host.",
+    );
+  });
+
   describe('parameterised runs (http-query-parameters)', () => {
     const tmplRequest: IHttpQueryRequest = {
       queryType: QueryType.HTTP,

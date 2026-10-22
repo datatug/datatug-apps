@@ -1,3 +1,4 @@
+import { NgTemplateOutlet } from '@angular/common';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -51,6 +52,7 @@ import {
   httpRunParameterRecord,
   resolveHttpParameters,
   type HttpBagEntry,
+  type HttpValueSource,
   type HttpRowBinding,
   type ResolvedHttpParameter,
 } from '../../http-parameter-binding';
@@ -117,12 +119,64 @@ export function parseDefault(type: string, text: string): IParameterDef['default
  * Postman-like editor of one HTTP request. Controlled: the owner passes the
  * `request` and applies each `requestChange`. Running does not change it.
  */
+/** A piece of a resolved request, marked with the source of the parameter that filled it. */
+export interface PreviewSegment {
+  readonly text: string;
+  readonly id?: string;
+  readonly source?: HttpValueSource;
+}
+
+/**
+ * Splits a resolved text into literal and substituted pieces by walking the
+ * template's literal parts in order. A text that cannot be aligned comes back
+ * as one unmarked piece.
+ */
+export function markSegments(
+  template: string,
+  resolved: string,
+  sourceOf: (id: string) => HttpValueSource | undefined,
+): PreviewSegment[] {
+  const re = /\{([a-zA-Z0-9_]+)\}/g;
+  const literals: string[] = [];
+  const ids: string[] = [];
+  let last = 0;
+  for (let m = re.exec(template); m; m = re.exec(template)) {
+    literals.push(template.slice(last, m.index));
+    ids.push(m[1]);
+    last = m.index + m[0].length;
+  }
+  literals.push(template.slice(last));
+  if (!ids.length) return [{ text: resolved }];
+  const out: PreviewSegment[] = [];
+  let pos = 0;
+  if (!resolved.startsWith(literals[0])) return [{ text: resolved }];
+  if (literals[0]) out.push({ text: literals[0] });
+  pos = literals[0].length;
+  for (let i = 0; i < ids.length; i++) {
+    const next = literals[i + 1];
+    const end =
+      i === ids.length - 1
+        ? resolved.length - next.length
+        : next
+          ? resolved.indexOf(next, pos)
+          : pos;
+    if (end < pos || (i === ids.length - 1 && !resolved.endsWith(next)))
+      return [{ text: resolved }];
+    const source = sourceOf(ids[i]);
+    out.push({ text: resolved.slice(pos, end), id: ids[i], ...(source ? { source } : {}) });
+    if (next) out.push({ text: next });
+    pos = end + next.length;
+  }
+  return out;
+}
+
 @Component({
   selector: 'sneat-datatug-http-query-editor',
   templateUrl: 'http-query-editor.component.html',
   styleUrl: 'http-query-editor.component.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     IonButton,
     IonButtons,
     IonCard,
@@ -157,6 +211,20 @@ export class HttpQueryEditorComponent {
   /** Applied session context bag entries. */
   readonly bagEntries = input<readonly HttpBagEntry[]>([]);
 
+  /** Columns picked in the run panel by parameter id (this run only). */
+  protected readonly pickedColumns = signal<Readonly<Record<string, string>>>({});
+  protected readonly rowColumnNames = computed(
+    () => this.rowBinding()?.columns.map((c) => c.name) ?? [],
+  );
+
+  protected pickColumn(id: string, event: Event): void {
+    const value = (event as CustomEvent<{ value?: string }>).detail?.value ?? '';
+    const next = { ...this.pickedColumns() };
+    if (value) next[id] = value;
+    else delete next[id];
+    this.pickedColumns.set(next);
+  }
+
   protected readonly parameterTypes = HTTP_PARAMETER_TYPES;
   protected readonly sourceLabel = HTTP_VALUE_SOURCE_LABEL;
   /** Values typed in the run panel: this run only, never saved or written to the bag. */
@@ -180,12 +248,17 @@ export class HttpQueryEditorComponent {
   protected readonly body = computed(() => this.request().body ?? '');
   protected readonly takesBody = computed(() => methodTakesBody(this.method()));
   /** Why the URL cannot be run, when something has been typed. */
-  protected readonly urlProblem = computed(() =>
-    this.url().trim() !== '' &&
-    !isAbsoluteHttpUrl(this.url().replace(/\{[a-zA-Z0-9_]+\}/g, 'x'))
-      ? ABSOLUTE_URL_MESSAGE
-      : undefined,
-  );
+  protected readonly urlProblem = computed(() => {
+    const url = this.url();
+    if (url.trim() === '') return undefined;
+    if (!isAbsoluteHttpUrl(url.replace(/\{[a-zA-Z0-9_]+\}/g, 'x')))
+      return ABSOLUTE_URL_MESSAGE;
+    // A host is pinned to the saved query, so a placeholder there can never work.
+    const host = /^[a-z][a-z0-9+.-]*:\/\/([^/?#]*)/i.exec(url.trim())?.[1] ?? '';
+    return /\{[a-zA-Z0-9_]+\}/.test(host)
+      ? "A placeholder can't be in the web address's host, so this request can never run. Use a separate query for each host."
+      : undefined;
+  });
   protected readonly canRun = computed(
     () =>
       this.url().trim() !== '' &&
@@ -304,6 +377,7 @@ export class HttpQueryEditorComponent {
           row: this.rowBinding(),
           board: this.boardValues(),
           bag: this.bagEntries(),
+          rowColumns: this.pickedColumns(),
         })
       : [],
   );
@@ -319,13 +393,23 @@ export class HttpQueryEditorComponent {
     if (!this.hasParameters() || this.templateProblem() || this.valueProblem()) return undefined;
     try {
       const out = substituteHttpTemplate(this.template(), this.parameters(), this.runValues());
+      const template = this.template();
+      const sources = new Map(this.resolved().map((r) => [r.id, r.source]));
+      const segs = (tpl: string, text: string) =>
+        markSegments(tpl, text, (id) => sources.get(id));
       return {
         url: out.url,
-        headers: (out.headers ?? []).map((h) => ({
+        urlSegments: segs(template.url, out.url),
+        headers: (out.headers ?? []).map((h, i) => ({
           name: h.name,
           value: isCredentialHttpHeader(h.name) ? '••••••' : h.value,
+          segments: isCredentialHttpHeader(h.name)
+            ? [{ text: '••••••' }]
+            : segs(template.headers?.[i]?.value ?? '', h.value),
         })),
         body: out.body,
+        bodySegments:
+          out.body !== undefined ? segs(template.body ?? '', out.body) : undefined,
       };
     } catch (e) {
       return { error: e instanceof HttpTemplateError ? e.message : String(e) };

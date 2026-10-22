@@ -56,7 +56,7 @@ describe('resolveHttpParameters', () => {
 
   it('blocks a value that cannot be coerced, naming parameter and source (AC bad-coercion-blocks)', () => {
     const r = resolveHttpParameters([asOf], { typed: { as_of: 'not-a-date' } });
-    expect(r[0]).toMatchObject({ source: 'typed', error: 'as_of: the typed value is not a valid date.' });
+    expect(r[0]).toMatchObject({ source: 'typed', error: 'The typed value for {as_of} is not a valid date.' });
   });
 
   it('takes a credential from typed values only (AC credential-parameter-isolated)', () => {

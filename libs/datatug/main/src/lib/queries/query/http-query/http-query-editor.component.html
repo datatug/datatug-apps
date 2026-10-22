@@ -83,7 +83,7 @@
         <span class="http-params-hint">{{
           rowBinding()?.label
             ? 'Bound from ' + rowBinding()!.label
-            : 'Typed value, then row, board, context bag, default'
+            : 'Uses the value you type, otherwise the selected row, the context bag, then the default.'
         }}</span>
       </div>
       @for (p of parameters(); track p.id) {
@@ -138,6 +138,8 @@
               labelPlacement="stacked"
               [label]="p.isCredential ? 'Value (typed each run)' : 'Value for this run'"
               [type]="p.isCredential ? 'password' : 'text'"
+              [attr.autocomplete]="p.isCredential ? 'new-password' : null"
+              [attr.spellcheck]="p.isCredential ? 'false' : null"
               [placeholder]="resolvedById().get(p.id)?.rendered ?? ''"
               [value]="typedValues()[p.id] ?? ''"
               (ionInput)="setTypedValue(p.id, $event)"
@@ -162,6 +164,22 @@
               />
             }
           </div>
+          @if (!p.isCredential && rowColumnNames().length) {
+            <ion-select
+              class="http-param-column"
+              label="From column"
+              labelPlacement="stacked"
+              fill="outline"
+              interface="popover"
+              [value]="pickedColumns()[p.id] ?? ''"
+              (ionChange)="pickColumn(p.id, $event)"
+            >
+              <ion-select-option value="">Match automatically</ion-select-option>
+              @for (c of rowColumnNames(); track c) {
+                <ion-select-option [value]="c">{{ c }}</ion-select-option>
+              }
+            </ion-select>
+          }
           <div class="http-param-status">
             @if (resolvedById().get(p.id); as r) {
               @if (r.source) {
@@ -175,7 +193,7 @@
               }
               @if (r.refused?.length) {
                 <span class="http-param-refused"
-                  >Not taken from {{ r.refused!.join(', ') }}: credentials are typed.</span
+                  >{{ braced(p.id) }} is a credential, so only a typed value is used.</span
                 >
               }
             }
@@ -205,13 +223,39 @@
         } @else {
           <div class="http-preview" aria-label="Resolved request">
             <span class="http-preview-label">Sends</span>
-            <code class="http-preview-url">{{ method() }} {{ pv.url }}</code>
+            <code class="http-preview-url"
+              >{{ method() }}
+              <ng-container
+                [ngTemplateOutlet]="segs"
+                [ngTemplateOutletContext]="{ $implicit: pv.urlSegments }"
+            /></code>
             @for (h of pv.headers; track $index) {
-              <code class="http-preview-header">{{ h.name }}: {{ h.value }}</code>
+              <code class="http-preview-header"
+                >{{ h.name }}:
+                <ng-container
+                  [ngTemplateOutlet]="segs"
+                  [ngTemplateOutletContext]="{ $implicit: h.segments }"
+              /></code>
             }
-            @if (pv.body) {
-              <code class="http-preview-body">{{ pv.body }}</code>
+            @if (pv.bodySegments) {
+              <code class="http-preview-body"
+                ><ng-container
+                  [ngTemplateOutlet]="segs"
+                  [ngTemplateOutletContext]="{ $implicit: pv.bodySegments }"
+              /></code>
             }
+            <ng-template #segs let-list>
+              @for (s of list; track $index) {
+                @if (s.source) {
+                  <mark
+                    class="http-seg"
+                    [attr.data-source]="s.source"
+                    [attr.title]="braced(s.id) + ' from ' + sourceLabel[s.source]"
+                    >{{ s.text }}</mark
+                  >
+                } @else {<ng-container>{{ s.text }}</ng-container>}
+              }
+            </ng-template>
           </div>
         }
       }

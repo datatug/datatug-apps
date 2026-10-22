@@ -168,3 +168,29 @@
   padding: 6px 0;
   font-size: 0.85rem;
 }
+
+.http-seg {
+  background: transparent;
+  color: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+
+  &[data-source='typed'] {
+    text-decoration-color: var(--ion-color-success);
+  }
+  &[data-source='row'] {
+    text-decoration-color: var(--ion-color-primary);
+  }
+  &[data-source='bag'] {
+    text-decoration-color: var(--ion-color-tertiary);
+  }
+  &[data-source='default'] {
+    text-decoration-style: dotted;
+  }
+}
+
+.http-param-column {
+  margin-top: 6px;
+  max-width: 320px;
+}

@@ -49,6 +49,8 @@ export interface HttpBindingSources {
   /** Board or card parameter bindings (WidgetParameterBinding), resolved to values by the board. */
   readonly board?: Readonly<Record<string, unknown>>;
   readonly bag?: readonly HttpBagEntry[];
+  /** Row columns the user picked in the run panel, by parameter id; wins over the automatic match. */
+  readonly rowColumns?: Readonly<Record<string, string>>;
 }
 
 export interface ResolvedHttpParameter {
@@ -109,7 +111,11 @@ export function resolveHttpParameters(
     const typed = sources.typed?.[def.id];
     if (!missing(typed)) offers.push({ source: 'typed', value: typed });
     if (sources.row) {
-      const i = rowColumnFor(def, sources.row);
+      const picked = sources.rowColumns?.[def.id];
+      const pickedAt = picked
+        ? sources.row.columns.findIndex((c) => c.name === picked)
+        : -1;
+      const i = pickedAt >= 0 ? pickedAt : rowColumnFor(def, sources.row);
       if (i >= 0 && !missing(sources.row.values[i]))
         offers.push({ source: 'row', value: sources.row.values[i], column: sources.row.columns[i].name });
     }
@@ -132,8 +138,8 @@ export function resolveHttpParameters(
       return {
         ...base,
         error: def.isCredential
-          ? `Type a value for ${def.id}: credentials are never taken from rows, boards or the context bag.`
-          : `${def.id} needs a value.`,
+          ? `Type a value for {${def.id}}. A credential is only ever typed.`
+          : `{${def.id}} needs a value.`,
       };
     const rendered = renderHttpParameterValue(def.type, chosen.value);
     if (rendered === undefined)
@@ -142,7 +148,7 @@ export function resolveHttpParameters(
         source: chosen.source,
         value: chosen.value,
         ...(chosen.column ? { column: chosen.column } : {}),
-        error: `${def.id}: the ${HTTP_VALUE_SOURCE_LABEL[chosen.source]} value is not a valid ${def.type}.`,
+        error: `The ${HTTP_VALUE_SOURCE_LABEL[chosen.source]} value for {${def.id}} is not a valid ${def.type}.`,
       };
     return {
       ...base,

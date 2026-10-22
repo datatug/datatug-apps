@@ -22,6 +22,8 @@
  * control character, and the substituted URL, headers and body are capped.
  */
 
+import { httpTemplateMessage } from './http-template-message';
+
 export type HttpParameterType =
   | 'string'
   | 'integer'
@@ -88,15 +90,7 @@ export class HttpTemplateError extends Error {
     readonly position?: HttpPosition,
     readonly header?: string,
   ) {
-    super(
-      [
-        parameter ? `Parameter ${parameter}` : '',
-        header ? `header ${header}` : '',
-        detail,
-      ]
-        .filter(Boolean)
-        .join(': '),
-    );
+    super(httpTemplateMessage(code, parameter, position, header));
     this.name = 'HttpTemplateError';
   }
 }
