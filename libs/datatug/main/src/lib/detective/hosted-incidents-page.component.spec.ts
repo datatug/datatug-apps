@@ -11,6 +11,9 @@ import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DetectiveClientService } from './detective-client.service';
 import { HostedIncidentsPageComponent } from './hosted-incidents-page.component';
+import { restoreStorageSpies } from '../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 const ref = { storeId: 'firestore', spaceID: 'private-space', projectId: 'private-project' };
 const incident = {

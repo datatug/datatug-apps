@@ -626,6 +626,12 @@ import {
   QueryEditorStateService,
 } from '../../query-editor-state-service';
 import { HttpQueryEditorComponent } from '../http-query/http-query-editor.component';
+import { HttpRowActionComponent } from '../../http-row-action/http-row-action.component';
+import { HttpRowBindingStore } from '../../http-row-action/http-row-binding.store';
+import {
+  bagEntriesFromSnapshot,
+  type HttpRowBinding,
+} from '../../http-parameter-binding';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 
 /** The exact pair of disagreeing values a confirmed conflict was confirmed for — see
@@ -861,6 +867,7 @@ let queryParameterEditorId = 0;
     HeldResultPresentationComponent,
     ValidationRunResultsComponent,
     HttpQueryEditorComponent,
+    HttpRowActionComponent,
     SneatDatatugPageTitleComponent,
     IonHeader,
     IonToolbar,
@@ -4082,7 +4089,104 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Why the HTTP request being edited cannot be saved (e.g. an invalid header name). */
   public get httpSaveProblem(): string | undefined {
     const request = this.httpRequest;
-    return request ? httpRequestSaveProblem(request) : undefined;
+    return request
+      ? httpRequestSaveProblem(request, this.httpParameters)
+      : undefined;
+  }
+
+  /** The declared parameters of the HTTP query being edited (http-query-parameters). */
+  public get httpParameters(): readonly IParameterDef[] {
+    return this.queryState.parameters ?? this.queryState.def?.parameters ?? [];
+  }
+
+  public httpParametersChanged(parameters: IParameterDef[]): void {
+    if (!this.queryState.request) return;
+    this.reportGitHubQueryEdit(this.project?.ref);
+    this.queryState = { ...this.queryState, parameters };
+    this.queryEditorStateService.updateQueryState(this.queryState);
+  }
+
+  /** The applied context-bag entries of this page's session, offered to HTTP parameters. */
+  public readonly httpBagEntries = computed(() => {
+    const id = this.contextSessionId();
+    return bagEntriesFromSnapshot(
+      id ? this.sessionWorkspace?.snapshotFor(id) : undefined,
+    );
+  });
+
+  /** The result row an HTTP run was launched from (Run HTTP query action). */
+  public readonly httpRowBinding = signal<HttpRowBinding | undefined>(undefined);
+  private httpRowBindingQueryId?: string;
+  private readonly httpRowBindings = inject(HttpRowBindingStore);
+  /** The focused result row, offered to "Run HTTP query". */
+  public readonly httpActionRow = signal<HttpRowBinding | undefined>(undefined);
+  /** Rows checked in the result grid: more than one disables "Run HTTP query". */
+  public readonly httpCheckedRows = signal(0);
+
+  /** Takes the row offered for this query when it opens; another query drops it. */
+  private syncHttpRowBinding(queryId: string): void {
+    if (queryId === this.httpRowBindingQueryId) return;
+    this.httpRowBindingQueryId = queryId;
+    this.httpRowBinding.set(this.httpRowBindings.take(queryId));
+  }
+
+  private httpFocusedRow?: { values: unknown[]; position: number };
+  private httpCheckedRow?: { values: unknown[]; position: number };
+
+  /** Exactly one checked row is the selected row; with none checked the focused row is offered. */
+  private syncHttpCheckedRow(api: GridApi<QueryResultGridRow>): void {
+    const nodes = api.getSelectedNodes?.() ?? [];
+    this.httpCheckedRows.set(nodes.length);
+    const columns = this.displayedRecordset()?.columns;
+    const data = nodes.length === 1 ? nodes[0].data : undefined;
+    this.httpCheckedRow =
+      data && columns
+        ? {
+            values: columns.map((_, i) => data[`result_${i}` as keyof typeof data]),
+            position: (nodes[0].rowIndex ?? 0) + 1,
+          }
+        : undefined;
+    this.offerHttpActionRow();
+  }
+
+  private offerHttpActionRow(): void {
+    const columns = this.displayedRecordset()?.columns;
+    const row = this.httpCheckedRow ?? this.httpFocusedRow;
+    if (columns && row) this.setHttpActionRow(columns, row.values, row.position);
+    else this.httpActionRow.set(undefined);
+  }
+
+  /** A new result shows other rows, so none of the remembered ones applies to it. */
+  private readonly forgetHttpRowsOnNewResult = effect(() => {
+    this.displayedRecordset();
+    untracked(() => {
+      this.httpFocusedRow = undefined;
+      this.httpCheckedRow = undefined;
+      this.httpCheckedRows.set(0);
+      this.httpActionRow.set(undefined);
+    });
+  });
+
+  private setHttpActionRow(
+    columns: readonly { readonly name: string; readonly meta?: unknown }[],
+    values: readonly unknown[],
+    position?: number,
+  ): void {
+    const savedColumns = this.queryState.def?.recordsets?.[0]?.columns ?? [];
+    const plain = (v: unknown) =>
+      v !== null && typeof v === 'object' && 'value' in v && 'type' in v
+        ? (v as { value: unknown }).value
+        : v;
+    this.httpActionRow.set({
+      columns: columns.map((c) => {
+        const meta =
+          (c.meta as HttpRowBinding['columns'][number]['meta']) ??
+          (savedColumns.find((s) => s.name === c.name) as { meta?: HttpRowBinding['columns'][number]['meta'] } | undefined)?.meta;
+        return meta ? { name: c.name, meta } : { name: c.name };
+      }),
+      values: values.map(plain),
+      label: `${this.queryPageTitle()} row${position !== undefined ? ' ' + position : ''}`,
+    });
   }
 
   public httpRequestChanged(request: IHttpQueryRequest): void {
@@ -4275,7 +4379,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     event: SelectionChangedEvent<QueryResultGridRow>,
   ): void {
     // The grid's checkboxes select rows for export and copy. The Current row is the focused or clicked row, never
-    // the checked ones, so a selection change only keeps the api.
+    // the checked ones, so a selection change keeps the api. It also tells the HTTP row action which row to offer.
+    this.syncHttpCheckedRow(event.api);
     if (!this.isTextQueryWorkspace()) return;
     this.authorResultGridApi = event.api;
   }
@@ -4309,6 +4414,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const row = Object.fromEntries(
       columns.map((c, i) => [c.name, data[`result_${i}`]]),
     );
+    this.httpFocusedRow = {
+      values: columns.map((_, i) => data[`result_${i}`]),
+      position: (event.rowIndex ?? 0) + 1,
+    };
+    this.offerHttpActionRow();
     // The focus class lands after this event; the pane anchors the tooltip on the next frame, in this grid only.
     cards.focusCell(
       {
@@ -6574,6 +6684,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             queryState.def !== structuralDraft.saved))
       )
         this.authorSavedDefinition.set(undefined);
+      this.syncHttpRowBinding(queryState.id ?? '');
       const currentTitle = queryState.title ?? queryState.def?.title;
       this.queryPageTitle.set(
         typeof currentTitle === 'string'

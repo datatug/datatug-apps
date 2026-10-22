@@ -24,6 +24,9 @@ import {
   HostedCloudLogsAccessService,
   hostedCloudLogsAccessGuard,
 } from './hosted-cloud-logs-access.service';
+import { restoreStorageSpies } from '../../../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 @Component({
   selector: 'sneat-datatug-cloud-logs-target-stub',
