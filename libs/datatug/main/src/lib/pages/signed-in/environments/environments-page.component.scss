@@ -1,16 +1,32 @@
-.environment-warning {
-  color: color-mix(in srgb, var(--ion-color-warning) 45%, var(--ion-text-color) 55%);
-}
-.environment-danger {
-  color: var(--ion-color-danger);
-}
+// Environment accents match the project page: neutral backgrounds, coloured text.
+// Each tone is mixed with the theme text colour so it keeps WCAG AA (4.5:1)
+// contrast on light and dark backgrounds.
+.environment-warning,
 ion-chip.severity-warning {
-  --background: var(--ion-color-warning);
-  --color: var(--ion-color-warning-contrast);
+  --environment-tone: color-mix(
+    in srgb,
+    var(--ion-color-warning) 55%,
+    var(--ion-text-color) 45%
+  );
 }
+.environment-danger,
 ion-chip.severity-danger {
-  --background: var(--ion-color-danger);
-  --color: var(--ion-color-danger-contrast);
+  --environment-tone: color-mix(
+    in srgb,
+    var(--ion-color-danger) 75%,
+    var(--ion-text-color) 25%
+  );
+}
+.environment-warning,
+.environment-danger {
+  color: var(--environment-tone);
+}
+ion-chip.severity-warning,
+ion-chip.severity-danger {
+  --background: transparent;
+  --color: var(--environment-tone);
+  border: 1px solid currentColor;
+  font-weight: 600;
 }
 ion-chip.severity-warning ion-icon,
 ion-chip.severity-danger ion-icon {

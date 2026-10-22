@@ -68,8 +68,13 @@
 .environment-label {
   font-weight: 600;
 }
+// Mixed with the theme text colour to keep WCAG AA (4.5:1) on light and dark.
 .environment-danger {
-  color: var(--ion-color-danger);
+  color: color-mix(
+    in srgb,
+    var(--ion-color-danger) 75%,
+    var(--ion-text-color) 25%
+  );
 }
 .environment-warning {
   color: color-mix(
