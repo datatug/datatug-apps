@@ -217,6 +217,20 @@ jobs:
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm nx affected --target=test --parallel=4 --base=${{ env.NX_BASE }} --outputStyle=stream
 
+      # The default reporter in CI prints no per-file times for the largest files; this keeps the slowest ones visible
+      # (a large file that dominates a worker is the candidate to split).
+      - name: Slowest datatug-main spec files
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (always()) }}
+        run: |
+          f=coverage/libs/datatug/main/vitest-results.json
+          if [ ! -f "$f" ]; then echo "no $f (datatug-main not affected)"; exit 0; fi
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).testResults;
+            const rows = r.map((t) => [(t.endTime - t.startTime) / 1000, t.assertionResults.length, t.name.replace(/^.*\/src\//, "src/")]);
+            rows.sort((a, b) => b[0] - a[0]);
+            for (const [s, n, name] of rows.slice(0, 15)) console.log(`${s.toFixed(1).padStart(7)}s ${String(n).padStart(4)} tests  ${name}`);
+          ' "$f" | tee -a "$GITHUB_STEP_SUMMARY"
+
       - name: DemoDB guard unit tests, mutation check and public OVDB proxy test
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
