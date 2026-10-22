@@ -43,6 +43,9 @@ export default defineConfig({
     'showcase-live-measurement.spec.ts',
     'showcase-routing-ab.spec.ts',
     'query-grid-enterprise.spec.ts',
+    // Needs its paired Demo revision, not the browser catalog pin: CI's
+    // e2e-app job runs it through `datatug-app:e2e-showcase-independent`.
+    'showcase-independent-sources.spec.ts',
   ],
   outputDir: '../../coverage/apps/datatug-app-e2e/results',
   fullyParallel: true,
