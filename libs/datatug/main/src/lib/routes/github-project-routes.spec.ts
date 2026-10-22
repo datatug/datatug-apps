@@ -193,6 +193,7 @@ describe('the routes as registered', () => {
       '',
       'overview',
       'environments',
+      'sources/:sourceId',
       'shipping',
       'boards/new',
       'board/:board',
@@ -210,9 +211,13 @@ describe('the routes as registered', () => {
       'query',
     ]);
     expect(
-      ['', 'overview', 'shipping'].every((path) =>
+      ['', 'overview', 'sources/:sourceId'].every((path) =>
         typeof shared?.children?.find((route) => route.path === path)?.loadComponent === 'function'),
     ).toBe(true);
+    expect(shared?.children?.find((route) => route.path === 'shipping')).toMatchObject({
+      pathMatch: 'full',
+      redirectTo: 'sources/shipping-working-copy',
+    });
     expect(shared?.children?.find((route) => route.path === 'query')?.children?.map((r) => r.path)).toEqual([
       ':queryId',
     ]);

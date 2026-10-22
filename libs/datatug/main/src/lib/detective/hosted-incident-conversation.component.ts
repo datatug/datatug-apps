@@ -801,7 +801,7 @@ export class HostedIncidentConversationComponent {
   protected readonly posted = signal(false);
   protected readonly hasMore = signal(false);
   private readonly afterSeq = signal(0);
-  private readonly lastSeq = signal(0);
+  protected readonly lastSeq = signal(0);
   private requestGeneration = 0;
   private pendingStorageUnreadable = false;
   private reviewedPendingRaw: string | null | undefined;
