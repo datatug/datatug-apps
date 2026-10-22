@@ -39,7 +39,7 @@ export interface SearchDocument {
 export interface SourceCoverage {
   kind: SearchKind;
   status: 'complete' | 'unavailable';
-  count: number;
+  count?: number;
   error?: string;
 }
 export interface SearchSnapshot {
@@ -55,7 +55,7 @@ export interface SearchStatus {
   provider: string;
   consentVersion?: string;
   lastIndexedAt?: string;
-  documentCount: number;
+  documentCount?: number;
   revision?: number;
   error?: string;
   sourceCoverage?: SourceCoverage[];
@@ -73,6 +73,8 @@ export type SearchProblem =
   | 'denied'
   | 'conflict'
   | 'rateLimited'
+  | 'capacity'
+  | 'invalid'
   | 'unavailable'
   | 'failed';
 /**
@@ -99,6 +101,12 @@ export function classifySearchError(error: unknown): SearchProblem {
       return 'premium';
     case 'project_denied':
       return 'denied';
+    case 'index_capacity_reached':
+      return 'capacity';
+    case 'invalid_request':
+      return 'invalid';
+    case 'provider_completion_unknown':
+      return 'unavailable';
     case 'operation_in_progress':
       return 'conflict';
     case 'quick_search_rate_limited':
@@ -278,4 +286,26 @@ export function checkMetadataTarget(params: {
     /^[A-Za-z0-9_-]{1,128}$/.test(ids[0])
     ? { kind: 'check', objectId: ids[0] }
     : { kind: 'invalid' };
+}
+
+/** Message for a failed enable/refresh/disable; every one keeps the operation retryable. */
+export function mutationMessage(problem: SearchProblem): string {
+  switch (problem) {
+    case 'consent':
+      return 'Indexing consent is required. Retry after giving consent in Index settings.';
+    case 'conflict':
+      return 'Another index operation is in progress. Retry in a moment.';
+    case 'capacity':
+      return 'The selected metadata exceeds the index limit. Reduce the source metadata, then retry.';
+    case 'denied':
+      return 'You do not have permission to change this index. Check your project access and retry.';
+    case 'rateLimited':
+      return 'Too many requests. Retry in a moment.';
+    case 'premium':
+      return 'Quick Search requires a Pro or Business plan.';
+    case 'unsupported':
+      return "Quick Search isn't available yet for projects stored in DataTug cloud.";
+    default:
+      return 'Index operation failed. Retry the operation; deletion remains available.';
+  }
 }

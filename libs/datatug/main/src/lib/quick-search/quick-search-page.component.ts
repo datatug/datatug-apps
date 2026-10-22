@@ -53,6 +53,7 @@ import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import {
   checkMetadataTarget,
   classifySearchError,
+  mutationMessage,
   SearchDocument,
   SearchKind,
   SearchProblem,
@@ -136,7 +137,7 @@ import {
               fill="outline"
               labelPlacement="stacked"
               [ngModel]="query()"
-              (ngModelChange)="query.set($event); invalidateSearch()"
+              (ngModelChange)="query.set($event)"
               name="search"
             />
             <div class="filters">
@@ -155,7 +156,7 @@ import {
                 label="Tag filter"
                 fill="outline"
                 [ngModel]="tag()"
-                (ngModelChange)="tag.set($event); invalidateSearch()"
+                (ngModelChange)="tag.set($event)"
                 name="tag"
               /><ion-button type="submit" [disabled]="busy()"
                 >Search</ion-button
@@ -180,6 +181,8 @@ import {
                 {{ s.state }}
                 @if (s.countsUnavailable) {
                   · Item counts unavailable
+                } @else if (s.documentCount === undefined) {
+                  · Item count unavailable
                 } @else {
                   · Last indexed snapshot: {{ s.documentCount }}
                   {{ s.documentCount === 1 ? 'item' : 'items' }}
@@ -197,7 +200,9 @@ import {
                     <li>
                       {{ names[coverage.kind] }}:
                       @if (
-                        s.countsUnavailable || coverage.status !== 'complete'
+                        s.countsUnavailable ||
+                        coverage.status !== 'complete' ||
+                        coverage.count === undefined
                       ) {
                         unavailable
                       } @else {
@@ -221,11 +226,11 @@ import {
                 <ion-button
                   fill="outline"
                   (click)="preview()"
-                  [disabled]="busy()"
+                  [disabled]="previewBusy() || mutationBusy()"
                   >Preview selected metadata</ion-button
                 >
                 @if (capacityExceeded()) {
-                  <p role="alert">
+                  <p role="status">
                     This selected snapshot exceeds the Quick Search limit of
                     1,000 items including tags or 1 MiB. Reduce the source
                     metadata before indexing.
@@ -290,7 +295,7 @@ import {
                     [disabled]="
                       !consent() ||
                       !snapshot() ||
-                      busy() ||
+                      mutationBusy() ||
                       !s.eligible ||
                       capacityExceeded()
                     "
@@ -300,7 +305,10 @@ import {
                   <ion-button
                     (click)="refresh()"
                     [disabled]="
-                      !snapshot() || busy() || !s.eligible || capacityExceeded()
+                      !snapshot() ||
+                      mutationBusy() ||
+                      !s.eligible ||
+                      capacityExceeded()
                     "
                     >Refresh selected snapshot</ion-button
                   >
@@ -309,7 +317,7 @@ import {
                   color="danger"
                   fill="outline"
                   (click)="confirmDelete.set(true)"
-                  [disabled]="busy() || s.state === 'disabled'"
+                  [disabled]="mutationBusy() || s.state === 'disabled'"
                   >Disable and delete index</ion-button
                 >
                 @if (confirmDelete()) {
@@ -320,14 +328,14 @@ import {
                   <ion-button
                     color="danger"
                     (click)="disable()"
-                    [disabled]="busy()"
+                    [disabled]="mutationBusy()"
                     >Confirm disable and delete</ion-button
                   ><ion-button fill="clear" (click)="confirmDelete.set(false)"
                     >Cancel</ion-button
                   >
                 }
                 @if (s.state === 'deleting' || s.error) {
-                  <ion-button (click)="disable()" [disabled]="busy()"
+                  <ion-button (click)="disable()" [disabled]="mutationBusy()"
                     >Retry deletion</ion-button
                   >
                 }
@@ -340,17 +348,17 @@ import {
             }
           </section>
         }
-        @if (busy()) {
+        @if (working()) {
           <p role="status"><ion-spinner /> Loading…</p>
         }
         @if (statusBusy() && settings()) {
           <p role="status">Loading index status…</p>
         }
-        @if (error()) {
+        @if (error() && !problem()) {
           <p role="alert">{{ error() }}</p>
         }
         @if (statusError()) {
-          <p role="alert">{{ statusError() }}</p>
+          <p role="status">{{ statusError() }}</p>
           <ion-button (click)="retry()" fill="clear">Retry status</ion-button>
         }
         @switch (problem()) {
@@ -394,6 +402,14 @@ import {
               >Retry search</ion-button
             >
           }
+          @case ('capacity') {
+            <p role="alert">This project's index has reached its size limit.</p>
+          }
+          @case ('invalid') {
+            <p role="alert">
+              That search isn't valid. Change the query and try again.
+            </p>
+          }
           @case ('rateLimited') {
             <p role="alert">Too many searches — try again in a moment.</p>
             <ion-button fill="clear" (click)="search()"
@@ -410,11 +426,11 @@ import {
           }
         }
         @if (status()?.error) {
-          <p role="alert">{{ status()?.error }}</p>
+          <p role="status">{{ status()?.error }}</p>
         }
         @if (
           !checkDetail() &&
-          !busy() &&
+          !working() &&
           (status()?.state === 'disabled' || problem() === 'consent')
         ) {
           @if (canManage()) {
@@ -434,16 +450,18 @@ import {
             </p>
           }
         }
-        @if (!checkDetail() && (searched() || schemaDetail) && !problem()) {
-          <p aria-live="polite">
-            {{ groups().length }}
-            {{ groups().length === 1 ? 'name' : 'names' }} ·
-            {{ items().length }} items
+        @if (!checkDetail()) {
+          <p aria-live="polite" [hidden]="!showCount()">
+            @if (showCount()) {
+              {{ groups().length }}
+              {{ groups().length === 1 ? 'name' : 'names' }} ·
+              {{ items().length }} items
+            }
           </p>
         }
         @if (
           !checkDetail() &&
-          !busy() &&
+          !working() &&
           searched() &&
           !problem() &&
           !groups().length
@@ -465,7 +483,7 @@ import {
               @if (item.tags.length) {
                 <p>Tags: {{ item.tags.join(', ') }}</p>
               }
-            } @else if (!busy() && !error() && !statusError()) {
+            } @else if (!working() && !error() && !statusError()) {
               <p role="status">
                 This Check metadata is unavailable for the selected project.
               </p>
@@ -654,8 +672,19 @@ export class QuickSearchPageComponent {
   readonly consent = signal(false);
   readonly confirmDelete = signal(false);
   readonly error = signal('');
-  /** Busy for search and index operations; status loading has its own signal. */
+  /** Busy for search and check/schema reads; status, preview and mutations have their own signals. */
   readonly busy = signal(false);
+  readonly previewBusy = signal(false);
+  readonly mutationBusy = signal(false);
+  readonly working = computed(
+    () => this.busy() || this.previewBusy() || this.mutationBusy(),
+  );
+  readonly showCount = computed(
+    () =>
+      !this.checkDetail() &&
+      (this.searched() || this.schemaDetail) &&
+      !this.problem(),
+  );
   readonly statusBusy = signal(false);
   readonly statusError = signal('');
   readonly problem = signal<SearchProblem | undefined>(undefined);
@@ -674,6 +703,11 @@ export class QuickSearchPageComponent {
   private statusGeneration = 0;
   /** Guards metadata previews only. */
   private previewGeneration = 0;
+  /** Guards enable/refresh/disable only; typing and searching never cancel them. */
+  private mutationGeneration = 0;
+  private mutationRequest?: Subscription;
+  /** Keys of the last started status load and search, so re-entry does not refire. */
+  private readonly loaded = { status: '', search: '' };
   private readonly authReady = signal(false);
   private statusRequest?: Subscription;
   private readonly authKey = signal<string | undefined>(undefined);
@@ -695,7 +729,8 @@ export class QuickSearchPageComponent {
       const key = JSON.stringify([auth.status, auth.user?.uid]);
       if (key === this.authKey()) return;
       this.authKey.set(key);
-      this.invalidateSearch();
+      this.invalidateActor();
+      this.cancelStatus();
       this.status.set(undefined);
       this.snapshot.set(undefined);
       this.consent.set(false);
@@ -704,8 +739,8 @@ export class QuickSearchPageComponent {
       this.statusError.set('');
       this.authReady.set(auth.status !== 'authenticating');
       if (this.authReady()) {
-        this.loadStatus();
-        this.autoSearch();
+        this.ensureStatus();
+        this.ensureSearch();
       }
     });
     if (this.schemaDetail && this.route.paramMap && this.route.queryParamMap) {
@@ -723,7 +758,7 @@ export class QuickSearchPageComponent {
             column === this.schemaColumn()
           )
             return;
-          this.invalidateSearch();
+          this.invalidateAll();
           this.snapshot.set(undefined);
           this.schemaModel.set(model);
           this.schemaName.set(schema);
@@ -734,19 +769,21 @@ export class QuickSearchPageComponent {
     }
     this.nav.currentProject.pipe(takeUntilDestroyed()).subscribe((context) => {
       if (equalProjectRef(this.project(), context?.ref)) return;
-      this.invalidateSearch();
+      this.invalidateActor();
+      this.cancelStatus();
       this.project.set(context?.ref);
       this.status.set(undefined);
       this.snapshot.set(undefined);
       this.consent.set(false);
       this.error.set('');
       this.statusError.set('');
-      this.loadStatus();
-      this.autoSearch();
+      this.ensureStatus();
+      this.ensureSearch();
     });
     this.nav.currentEnv?.pipe(takeUntilDestroyed()).subscribe((environment) => {
       if (this.environmentId() !== environment?.id) {
-        this.invalidateSearch();
+        // Search does not depend on the environment; only previews do.
+        this.invalidatePreview();
         this.environmentId.set(environment?.id);
         this.snapshot.set(undefined);
         this.consent.set(false);
@@ -761,7 +798,7 @@ export class QuickSearchPageComponent {
         JSON.stringify(target) !== JSON.stringify(this.detailTarget())
       ) {
         this.detailTarget.set(target);
-        this.invalidateSearch();
+        this.invalidateAll();
         this.snapshot.set(undefined);
         this.consent.set(false);
         this.settings.set(false);
@@ -779,17 +816,23 @@ export class QuickSearchPageComponent {
     this.destroy.onDestroy(() => {
       this.generation++;
       this.previewGeneration++;
+      this.mutationGeneration++;
       this.statusGeneration++;
       this.request?.unsubscribe();
+      this.mutationRequest?.unsubscribe();
       this.statusRequest?.unsubscribe();
     });
   }
+  /** Fires once per key: the constructor subscriptions and the first entry share one load. */
   ionViewWillEnter(): void {
-    this.loadStatus();
-    this.autoSearch();
+    this.ensureStatus();
+    this.ensureSearch();
   }
+  /** Leaving clears cached results, so the next entry reloads status and search. */
   ionViewWillLeave(): void {
-    this.invalidateSearch();
+    this.invalidateAll();
+    this.loaded.status = '';
+    this.loaded.search = '';
     this.snapshot.set(undefined);
     this.consent.set(false);
   }
@@ -807,18 +850,65 @@ export class QuickSearchPageComponent {
     const href = ref ? searchItemHref(ref, item) : undefined;
     return href ? this.router.parseUrl(href) : undefined;
   }
+  /** Cancels search state only; never a preview or an index operation. */
   invalidateSearch() {
     this.generation++;
-    this.previewGeneration++;
     this.request?.unsubscribe();
     this.items.set([]);
     this.busy.set(false);
     this.searched.set(false);
     this.problem.set(undefined);
   }
+  private invalidatePreview() {
+    this.previewGeneration++;
+    this.previewBusy.set(false);
+  }
+  /** Search and preview, e.g. when the view or route target changes. */
+  private invalidateAll() {
+    this.invalidateSearch();
+    this.invalidatePreview();
+  }
+  /** Everything an actor or project change must fence, including index operations. */
+  private invalidateActor() {
+    this.invalidateAll();
+    this.mutationGeneration++;
+    this.mutationRequest?.unsubscribe();
+    this.mutationBusy.set(false);
+  }
+  private cancelStatus() {
+    this.statusGeneration++;
+    this.statusRequest?.unsubscribe();
+    this.statusBusy.set(false);
+  }
+  private contextKey() {
+    const ref = this.project();
+    return ref ? JSON.stringify([ref, this.authKey()]) : '';
+  }
+  private searchKey() {
+    return JSON.stringify([
+      this.contextKey(),
+      this.query(),
+      this.kind(),
+      this.tag(),
+    ]);
+  }
+  /** Loads status unless this project and actor already have a load started. */
+  private ensureStatus() {
+    const key = this.contextKey();
+    if (!key || key === this.loaded.status) return;
+    this.loadStatus();
+  }
+  /** Searches unless this exact context and query already ran. */
+  private ensureSearch() {
+    if (!this.searchable() || this.searchKey() === this.loaded.search) return;
+    this.search();
+  }
+  private searchable() {
+    return !this.schemaDetail && !this.checkDetail();
+  }
   /** Starts the search for the current query once project and auth are usable; never waits for status. */
   private autoSearch() {
-    if (!this.schemaDetail && !this.checkDetail()) this.search();
+    if (this.searchable()) this.search();
   }
   /** Retries status and, when a query is present, the search too. */
   retry() {
@@ -828,7 +918,9 @@ export class QuickSearchPageComponent {
   /** Loads index status independently: it never touches search results, busy or generation. */
   loadStatus() {
     const ref = this.project();
-    if (!ref) return;
+    // An index operation's status is authoritative; do not race it.
+    if (!ref || this.mutationBusy()) return;
+    this.loaded.status = this.contextKey();
     const generation = ++this.statusGeneration;
     this.statusRequest?.unsubscribe();
     this.statusBusy.set(true);
@@ -847,6 +939,7 @@ export class QuickSearchPageComponent {
       },
       error: () => {
         if (generation === this.statusGeneration) {
+          this.loaded.status = '';
           this.statusError.set(
             'Could not load index status. Check your project access and retry.',
           );
@@ -863,6 +956,7 @@ export class QuickSearchPageComponent {
       this.invalidateSearch();
       return;
     }
+    this.loaded.search = this.searchKey();
     const generation = ++this.generation;
     this.request?.unsubscribe();
     this.busy.set(true);
@@ -950,7 +1044,7 @@ export class QuickSearchPageComponent {
     if (!ref || this.checkDetail()) return;
     // Own counter: a preview never cancels an in-flight search, and vice versa.
     const generation = ++this.previewGeneration;
-    this.busy.set(true);
+    this.previewBusy.set(true);
     this.snapshot.set(undefined);
     this.error.set('');
     try {
@@ -966,12 +1060,7 @@ export class QuickSearchPageComponent {
           'Could not read selected metadata. No metadata was uploaded.',
         );
     } finally {
-      // Stay busy while a search or index operation is still in flight.
-      if (
-        generation === this.previewGeneration &&
-        this.request?.closed !== false
-      )
-        this.busy.set(false);
+      if (generation === this.previewGeneration) this.previewBusy.set(false);
     }
   }
   async schemaPreview() {
@@ -1001,7 +1090,7 @@ export class QuickSearchPageComponent {
       !snapshot ||
       !this.consent() ||
       this.capacityExceeded() ||
-      this.busy()
+      this.mutationBusy()
     )
       return;
     this.mutate(this.api.enable(ref, snapshot));
@@ -1010,47 +1099,43 @@ export class QuickSearchPageComponent {
     if (this.checkDetail()) return;
     const ref = this.project(),
       snapshot = this.snapshot();
-    if (!ref || !snapshot || this.capacityExceeded() || this.busy()) return;
+    if (!ref || !snapshot || this.capacityExceeded() || this.mutationBusy())
+      return;
     this.mutate(this.api.refresh(ref, snapshot));
   }
   disable() {
     if (this.checkDetail()) return;
     const ref = this.project();
-    if (!ref || this.busy()) return;
-    this.items.set([]);
+    if (!ref || this.mutationBusy()) return;
+    this.invalidateSearch();
     this.status.update((status) =>
       status ? { ...status, state: 'deleting' } : status,
     );
     this.mutate(this.api.disable(ref));
   }
   private mutate(operation: ReturnType<QuickSearchApiService['disable']>) {
-    const generation = ++this.generation;
-    this.request?.unsubscribe();
+    const generation = ++this.mutationGeneration;
+    this.mutationRequest?.unsubscribe();
     // The operation's status is authoritative: cancel any in-flight status load.
-    this.statusGeneration++;
-    this.statusRequest?.unsubscribe();
-    this.statusBusy.set(false);
-    this.busy.set(true);
+    this.cancelStatus();
+    this.mutationBusy.set(true);
     this.error.set('');
     this.problem.set(undefined);
-    this.request = operation.subscribe({
+    this.mutationRequest = operation.subscribe({
       next: (status) => {
-        if (generation !== this.generation) return;
+        if (generation !== this.mutationGeneration) return;
         this.status.set(status);
         this.statusError.set('');
-        this.busy.set(false);
+        this.mutationBusy.set(false);
         this.confirmDelete.set(false);
         this.consent.set(false);
         if (status.state === 'disabled') this.snapshot.set(undefined);
         if (status.state === 'ready') this.autoSearch();
       },
-      error: () => {
-        if (generation === this.generation) {
-          this.error.set(
-            'Index operation failed. Retry the operation; deletion remains available.',
-          );
-          this.busy.set(false);
-        }
+      error: (failure: unknown) => {
+        if (generation !== this.mutationGeneration) return;
+        this.error.set(mutationMessage(classifySearchError(failure)));
+        this.mutationBusy.set(false);
       },
     });
   }

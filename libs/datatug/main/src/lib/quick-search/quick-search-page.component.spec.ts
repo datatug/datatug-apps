@@ -595,6 +595,130 @@ describe('Quick Search consent and async state', () => {
       await pending2;
       expect(page.snapshot()).toBe(snapshot);
     });
+    it('lets typing and searching proceed during a mutation without dropping its response', () => {
+      const disable = new Subject<SearchStatus>();
+      api.disable.mockReturnValue(disable);
+      api.search.mockReturnValue(of({ items: [], tags: [], itemCount: 0 }));
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      page.disable();
+      expect(page.mutationBusy()).toBe(true);
+      page.query.set('typed');
+      page.search();
+      page.kind.set('table');
+      page.search();
+      expect(page.mutationBusy()).toBe(true);
+      disable.next({ ...ready, state: 'disabled' });
+      expect(page.status()?.state).toBe('disabled');
+      expect(page.mutationBusy()).toBe(false);
+    });
+    it('keeps an in-flight preview when the query changes', async () => {
+      let resolvePreview: (value: unknown) => void = () => undefined;
+      TestBed.overrideProvider(QuickSearchSnapshotService, {
+        useValue: {
+          preview: () =>
+            new Promise((resolve) => {
+              resolvePreview = resolve;
+            }),
+        },
+      });
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      const pending = page.preview();
+      page.query.set('typed');
+      page.search();
+      const snapshot = { documents: [], sourceCoverage: [] };
+      resolvePreview(snapshot);
+      await pending;
+      expect(page.snapshot()).toBe(snapshot);
+      expect(page.previewBusy()).toBe(false);
+    });
+    it('keeps results visible while typing until the new search is submitted', async () => {
+      withQuery('Customers');
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      page.query.set('Custom');
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+    });
+    it('does not clear or restart search when the environment changes', async () => {
+      const env = new BehaviorSubject<{ id: string } | undefined>(undefined);
+      TestBed.overrideProvider(DatatugNavContextService, {
+        useValue: { currentProject: context, currentEnv: env },
+      });
+      withQuery('Customers');
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      env.next({ id: 'e2' });
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+      expect(api.search).toHaveBeenCalledTimes(1);
+    });
+    it('loads status and search exactly once on first entry, and again after leaving', async () => {
+      withQuery('Customers');
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      expect(api.status).toHaveBeenCalledTimes(1);
+      expect(api.search).toHaveBeenCalledTimes(1);
+      page.ionViewWillEnter();
+      page.ionViewWillEnter();
+      expect(api.status).toHaveBeenCalledTimes(1);
+      expect(api.search).toHaveBeenCalledTimes(1);
+      page.ionViewWillLeave();
+      page.ionViewWillEnter();
+      expect(api.status).toHaveBeenCalledTimes(2);
+      expect(api.search).toHaveBeenCalledTimes(2);
+    });
+    it('ignores a late status from a previous identity', () => {
+      const first = new Subject<SearchStatus>();
+      api.status.mockReturnValueOnce(first);
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      auth.next({ status: 'authenticating', user: { uid: '' } });
+      first.next({ ...ready, canManage: true });
+      expect(page.status()).toBeUndefined();
+    });
+    it('does not let a status load started during a mutation overwrite its result', () => {
+      const disable = new Subject<SearchStatus>();
+      api.disable.mockReturnValue(disable);
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      page.disable();
+      const calls = api.status.mock.calls.length;
+      page.loadStatus();
+      expect(api.status).toHaveBeenCalledTimes(calls);
+      disable.next({ ...ready, state: 'disabled' });
+      expect(page.status()?.state).toBe('disabled');
+    });
+    it.each([
+      [409, 'consent_required', 'consent is required'],
+      [409, 'operation_in_progress', 'in progress'],
+      [409, 'index_capacity_reached', 'exceeds the index limit'],
+      [403, 'project_denied', 'permission'],
+      [429, 'quick_search_rate_limited', 'Too many requests'],
+    ])('classifies a failed index operation %s %s', (status, code, text) => {
+      api.refresh.mockReturnValue(
+        throwError(() => ({ status, error: { error: { code } } })),
+      );
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      page.snapshot.set({ documents: [], sourceCoverage: [] });
+      page.refresh();
+      expect(page.error().toLowerCase()).toContain(text.toLowerCase());
+      expect(page.mutationBusy()).toBe(false);
+    });
     const httpError = (status: number, code: string) => ({
       status,
       error: { error: { code } },

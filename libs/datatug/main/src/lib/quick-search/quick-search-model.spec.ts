@@ -154,7 +154,10 @@ describe('classifySearchError', () => {
     [body(503, undefined), 'unavailable'],
     [body(429, { code: 'quick_search_rate_limited' }), 'rateLimited'],
     [body(429, undefined), 'rateLimited'],
-    [body(400, 'invalid_request'), 'failed'],
+    [body(400, 'invalid_request'), 'invalid'],
+    [body(409, 'index_capacity_reached'), 'capacity'],
+    [body(503, 'provider_completion_unknown'), 'unavailable'],
+    [body(400, 'something_else'), 'failed'],
     [new Error('boom'), 'failed'],
     [undefined, 'failed'],
   ])('maps %j to %s', (error, expected) => {
