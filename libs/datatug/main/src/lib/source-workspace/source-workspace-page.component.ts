@@ -1,3 +1,5 @@
+import { NgComponentOutlet } from '@angular/common';
+import { RetainedEvidenceViewerComponent } from '../evidence/retained-evidence-viewer.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -40,6 +42,8 @@ import {
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    NgComponentOutlet,
+    RetainedEvidenceViewerComponent,
     IonButton,
     IonButtons,
     IonContent,
@@ -65,6 +69,12 @@ import {
       font-size: 1rem;
       margin: 0;
       overflow-wrap: anywhere;
+    }
+    .source-links {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.25rem 0.75rem;
+      margin-block: 0.5rem;
     }
     .source-actions {
       display: flex;
@@ -133,6 +143,13 @@ import {
             }
           </div>
         }
+        @if (current.links?.length) {
+          <nav class="source-links" aria-label="Related project content">
+            @for (link of current.links; track link.label) {
+              <a [routerLink]="link.destination">{{ link.label }}</a>
+            }
+          </nav>
+        }
         @if (current.interaction; as interaction) {
           <sneat-source-action-form
             [interaction]="interaction"
@@ -161,6 +178,21 @@ import {
             [notice]="activity.notice || ''"
             (reload)="dispatch({ type: 'load-activity' })"
             (openItem)="openActivity($event)"
+          />
+        }
+        @if (current.retainedEvidence; as evidence) {
+          <sneat-datatug-retained-evidence-viewer
+            [projectRef]="page.ref()"
+            [environment]="evidence.environment"
+            [target]="evidence.target"
+          />
+          <ion-button fill="clear" (click)="dispatch({ type: 'close-details' })"
+            >Close evidence</ion-button
+          >
+        }
+        @if (current.browser; as browser) {
+          <ng-container
+            *ngComponentOutlet="browser.component; inputs: browser.inputs"
           />
         }
         @if (current.details; as details) {
@@ -256,8 +288,12 @@ export class SourceWorkspacePageComponent {
             scope.actor,
             { sourceId: scope.sourceId, environment: scope.environment || '' },
           )
-        )
+        ) {
+          const held = this.active();
+          if (held?.key === this.key() && held.controller.sourceChanged?.())
+            return;
           this.invalidate();
+        }
       });
     effect((cleanup) => {
       const scope = this.scope(),

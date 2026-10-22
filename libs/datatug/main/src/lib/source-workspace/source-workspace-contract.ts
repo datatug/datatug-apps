@@ -1,4 +1,6 @@
-import { InjectionToken, type Signal } from '@angular/core';
+import { InjectionToken, type Signal, type Type } from '@angular/core';
+import { type UrlTree } from '@angular/router';
+import { type ArtifactRef } from '@sneat/datatug-semantic';
 import { type IProjectRef } from '../core/project-context';
 import { type ActivityListItem } from '../activity/activity-list-item';
 
@@ -68,6 +70,19 @@ export interface SourceWorkspaceView {
   readonly interaction?: SourceInteraction;
   readonly current?: SourceDetails;
   readonly details?: SourceDetails;
+  readonly links?: readonly {
+    readonly label: string;
+    readonly destination: UrlTree;
+  }[];
+  readonly retainedEvidence?: {
+    readonly target: ArtifactRef;
+    readonly environment: string;
+  };
+  /** Deployment adapter composition only; never an executable project-file declaration. */
+  readonly browser?: {
+    readonly component: Type<unknown>;
+    readonly inputs: Record<string, unknown>;
+  };
   readonly activity?: {
     readonly heading: string;
     readonly actionLabel: string;
@@ -102,10 +117,20 @@ export interface SourceWorkspaceController {
   readonly view: Signal<SourceWorkspaceView>;
   /** Owner validates every event against current rights/state and exact original intent. */
   handle(event: SourceUiEvent): void | Promise<void>;
+  /** Clear protected reads synchronously. True keeps only an already in-flight delivery subscribed
+   * so a verified acknowledgement can retire its original journal. Never handles identity/environment changes. */
+  sourceChanged?(): boolean;
   destroy(): void;
 }
 export interface SourceAdapterRegistration {
   readonly sourceId: string;
+  /** Read-only owner discovery. Metadata selects a source; only current owner reads establish availability. */
+  discover?(
+    scope: SourceUiScope,
+    signal: AbortSignal,
+  ): Promise<
+    { readonly title: string; readonly description?: string } | undefined
+  >;
   /** A fresh instance for this host lifetime. Creation may read, never mutate a source. */
   create(scope: SourceUiScope, signal: AbortSignal): SourceWorkspaceController;
 }
@@ -113,3 +138,8 @@ export interface SourceAdapterRegistration {
 export const SOURCE_ADAPTER_REGISTRATIONS = new InjectionToken<
   readonly SourceAdapterRegistration[]
 >('source adapter registrations', { providedIn: 'root', factory: () => [] });
+
+/** Optional scoped context for adapter-owned protocol controllers. */
+export const SOURCE_UI_SCOPE = new InjectionToken<SourceUiScope>(
+  'source UI scope',
+);

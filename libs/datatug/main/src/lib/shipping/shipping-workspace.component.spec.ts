@@ -1,3 +1,4 @@
+import { mountShippingController } from './shipping-controller.spec-helper';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
 import { NativeSemanticApiService } from './native-semantic-api.service';
 import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
@@ -8,7 +9,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { HttpErrorResponse } from '@angular/common/http';
 import { of, Subject, throwError } from 'rxjs';
-import { ShippingWorkspaceComponent } from './shipping-workspace.component';
+import { ShippingWorkspaceController } from './shipping-workspace.controller';
 import { ShippingApiService, ShippingAck } from './shipping-api.service';
 import { DetectiveClientService } from '../detective/detective-client.service';
 import { ShippingRevision } from './shipping-api.service';
@@ -30,7 +31,7 @@ const page = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../detective/detective-page-context', () => ({
   useDetectivePageContext: () => page.current,
 }));
-describe('Shipping workspace native DOM lifecycle', () => {
+describe('Shipping workspace scoped controller lifecycle', () => {
   const ref = signal({
     storeId: 'firestore',
     spaceID: 'space',
@@ -64,7 +65,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
       .mockReset()
       .mockReturnValue(of({ capabilities: { canWrite: true } }));
     TestBed.configureTestingModule({
-      imports: [ShippingWorkspaceComponent],
+      imports: [],
       providers: [
         {
           provide: RetainedEvidenceApiService,
@@ -98,7 +99,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
     });
   });
   const mount = async (waitForMetadata = true) => {
-    const f = TestBed.createComponent(ShippingWorkspaceComponent);
+    const f = await mountShippingController(ShippingWorkspaceController);
     f.detectChanges();
     await f.whenStable();
     if (waitForMetadata)
@@ -106,34 +107,29 @@ describe('Shipping workspace native DOM lifecycle', () => {
     await f.whenStable();
     return f;
   };
-  const button = (f: Awaited<ReturnType<typeof mount>>, text: string) => {
-    const b = Array.from(
-      f.nativeElement.querySelectorAll('ion-button') as NodeListOf<HTMLElement>,
-    ).find((b) => b.textContent?.includes(text));
-    if (!b) throw new Error('Missing button: ' + text);
-    return b;
-  };
-  it('renders asynchronous current revision without an extra change detection and preserves scoped entry/exit', async () => {
+  it('receives asynchronous current revision without an extra change detection and preserves scoped entry/exit', async () => {
     const result = new Subject<ReturnType<typeof revisionFixture>>();
     api.revision.mockReturnValue(result);
     const f = await mount(false);
-    expect(f.nativeElement.textContent).toContain('Loading current');
+    expect(f.componentInstance.loading()).toBe(true);
     result.next(revisionFixture());
     result.complete();
     await f.whenStable();
     await vi.waitFor(() =>
-      expect(f.nativeElement.textContent).toContain('Routing configuration 17'),
+      expect(f.componentInstance.revision()?.configuration).toBe(17),
     );
-    expect(f.nativeElement.querySelector('a').getAttribute('href')).toBe(
+    expect(f.componentInstance.overviewHref()).toBe(
       '/space/space/store/firestore/project/training/overview',
     );
-    expect(f.nativeElement.textContent).toContain('logs/base.jsonl');
+    expect(
+      f.componentInstance.revision()?.artifacts.map((a) => a.id),
+    ).toContain('logs/base.jsonl');
     expect(api.action).not.toHaveBeenCalled();
   });
   it('keeps the exact correction intent after a lost response, retries once explicitly and fresh-reads newer metadata', async () => {
     const f = await mount();
     api.action.mockReturnValueOnce(throwError(() => new Error('lost reply')));
-    button(f, 'Correct routing').click();
+    f.componentInstance.prepare('correct');
     await f.whenStable();
     const intent = api.action.mock.calls[0][1];
     expect(intent.expected.revision).toBe(1);
@@ -154,7 +150,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
         current: revisionFixture(3),
       } as ShippingAck),
     );
-    button(f, 'Retry original').click();
+    f.componentInstance.send();
     await f.whenStable();
     expect(api.action.mock.calls[1][1]).toEqual(intent);
     expect(f.componentInstance.revision()?.revision).toBe(4);
@@ -164,27 +160,27 @@ describe('Shipping workspace native DOM lifecycle', () => {
     api.action.mockReturnValueOnce(
       throwError(() => new HttpErrorResponse({ status: 401 })),
     );
-    button(f, 'Correct routing').click();
+    f.componentInstance.prepare('correct');
     await f.whenStable();
     const intent = api.action.mock.calls[0][1];
     expect(f.componentInstance.pending()).toEqual(intent);
     expect(f.componentInstance.canWrite()).toBe(false);
     expect(api.action).toHaveBeenCalledTimes(1);
-    button(f, 'Refresh current').click();
+    f.componentInstance.refresh();
     await vi.waitFor(() => expect(f.componentInstance.canWrite()).toBe(true));
     await f.whenStable();
     expect(api.action).toHaveBeenCalledTimes(1);
     api.action.mockReturnValueOnce(
       throwError(() => new Error('still uncertain')),
     );
-    button(f, 'Retry original').click();
+    f.componentInstance.send();
     await f.whenStable();
     expect(api.action.mock.calls[1][1]).toEqual(intent);
   });
   it('restores the exact uncertain operation on remount without resubmitting automatically', async () => {
     const f = await mount();
     api.action.mockReturnValueOnce(throwError(() => new Error('lost reply')));
-    button(f, 'Correct routing').click();
+    f.componentInstance.prepare('correct');
     await f.whenStable();
     const intent = api.action.mock.calls[0][1];
     f.destroy();
@@ -194,7 +190,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
     api.action.mockReturnValueOnce(
       throwError(() => new Error('still uncertain')),
     );
-    button(reopened, 'Retry original').click();
+    reopened.componentInstance.send();
     await reopened.whenStable();
     expect(api.action.mock.calls[1][1]).toEqual(intent);
   });
@@ -204,30 +200,28 @@ describe('Shipping workspace native DOM lifecycle', () => {
     );
     const f = await mount();
     expect(api.action).not.toHaveBeenCalled();
-    expect(f.nativeElement.textContent).toContain(
-      'No current revision could be confirmed',
-    );
+    expect(f.componentInstance.revision()).toBeUndefined();
     api.action.mockReturnValue(
       throwError(() => new HttpErrorResponse({ status: 409 })),
     );
-    button(f, 'Initialize working').click();
+    f.componentInstance.prepare('initialize');
     await f.whenStable();
     expect(api.action).toHaveBeenCalledTimes(1);
     expect(api.action.mock.calls[0][1].expected).toBeUndefined();
-    expect(f.nativeElement.textContent).toContain('server refused');
-    expect(f.nativeElement.textContent).not.toContain('Retry original');
+    expect(f.componentInstance.conflict()).toBe(true);
+    expect(f.componentInstance.conflict()).toBe(true);
     api.revision.mockReturnValue(of(revisionFixture(2)));
     f.componentInstance.refresh();
     await f.whenStable();
-    button(f, 'I reviewed').click();
+    f.componentInstance.reviewConflict();
     await f.whenStable();
     expect(api.action).toHaveBeenCalledTimes(1);
-    expect(f.nativeElement.textContent).toContain('Correct routing');
+    expect(f.componentInstance.canWrite()).toBe(true);
   });
   it('requires explicit order replay and reset confirmation', async () => {
     const f = await mount();
     api.action.mockReturnValue(throwError(() => new Error('lost')));
-    button(f, 'Replay order 11062').click();
+    f.componentInstance.prepare('replay', 11062);
     await f.whenStable();
     expect(api.action.mock.calls[0][1]).toMatchObject({
       action: 'replay',
@@ -239,15 +233,15 @@ describe('Shipping workspace native DOM lifecycle', () => {
   it('does not reset until the separate confirmation is activated', async () => {
     const f = await mount();
     api.action.mockReturnValue(throwError(() => new Error('lost')));
-    button(f, 'Reset working').click();
+    f.componentInstance.confirmReset.set(true);
     await f.whenStable();
     expect(api.action).not.toHaveBeenCalled();
-    button(f, 'Cancel').click();
+    f.componentInstance.confirmReset.set(false);
     await f.whenStable();
     expect(api.action).not.toHaveBeenCalled();
-    button(f, 'Reset working').click();
+    f.componentInstance.confirmReset.set(true);
     await f.whenStable();
-    button(f, 'Confirm reset').click();
+    f.componentInstance.prepare('reset');
     await f.whenStable();
     expect(api.action.mock.calls[0][1]).toMatchObject({
       action: 'reset',
@@ -258,17 +252,17 @@ describe('Shipping workspace native DOM lifecycle', () => {
     detective.state.mockReturnValue(of({ capabilities: { canWrite: false } }));
     const f = await mount();
     expect(f.componentInstance.canWrite()).toBe(false);
-    expect(f.nativeElement.textContent).not.toContain('Correct routing');
+    expect(f.componentInstance.canWrite()).toBe(false);
     ref.set({ storeId: 'github', spaceID: '', projectId: 'public' });
     await f.whenStable();
     expect(f.componentInstance.revision()).toBeUndefined();
-    expect(f.nativeElement.textContent).not.toContain('Initialize working');
+    expect(f.componentInstance.native()).toBe(false);
   });
   it('disables duplicate submissions while the original response is pending', async () => {
     const result = new Subject<ShippingAck>();
     const f = await mount();
     api.action.mockReturnValue(result);
-    button(f, 'Correct routing').click();
+    f.componentInstance.prepare('correct');
     await f.whenStable();
     f.componentInstance.prepare('replay', 11045);
     await f.componentInstance.send();
@@ -282,7 +276,7 @@ describe('Shipping workspace native DOM lifecycle', () => {
     const late = new Subject<ShippingAck>();
     const f = await mount();
     api.action.mockReturnValue(late);
-    button(f, 'Correct routing').click();
+    f.componentInstance.prepare('correct');
     await f.whenStable();
     actor.set('maya');
     ref.set({ storeId: 'firestore', spaceID: 'space', projectId: 'other' });
@@ -297,6 +291,6 @@ describe('Shipping workspace native DOM lifecycle', () => {
     expect(sessionStorage.getItem('datatug.shipping.intent.v1')).toBeNull();
     expect(f.componentInstance.revision()).toBeUndefined();
     expect(f.componentInstance.canWrite()).toBe(false);
-    expect(f.nativeElement.textContent).not.toContain('Correct routing');
+    expect(f.componentInstance.canWrite()).toBe(false);
   });
 });

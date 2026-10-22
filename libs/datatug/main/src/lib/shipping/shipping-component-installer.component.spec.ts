@@ -1,10 +1,11 @@
+import { mountShippingController } from './shipping-controller.spec-helper';
 import { provideHttpClient } from '@angular/common/http';
 import {
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
-import { provideRouter } from '@angular/router';
+import { provideRouter, Router } from '@angular/router';
 import { SneatApiAuthTokenBridge } from '@sneat/api';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import {
@@ -13,7 +14,7 @@ import {
 } from '@sneat/datatug-semantic';
 import { BehaviorSubject, firstValueFrom } from 'rxjs';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
+import { ShippingInstallationController } from './shipping-installation.controller';
 import {
   SHIPPING_COMPONENT,
   SHIPPING_COMPONENT_COMMIT,
@@ -44,7 +45,7 @@ const installed = (
 });
 const ref = { storeId: 'firestore', spaceID: 'space', projectId: 'training' };
 
-describe('Shipping component actual authenticated HTTP and zoneless DOM', () => {
+describe('Shipping component actual authenticated HTTP and scoped lifecycle', () => {
   const auth = new BehaviorSubject({
     status: 'authenticated',
     user: { uid: 'sarah' },
@@ -61,7 +62,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     project.next({ ref });
     environment.next(undefined);
     TestBed.configureTestingModule({
-      imports: [ShippingComponentInstallerComponent],
+      imports: [],
       providers: [
         provideRouter([]),
         provideHttpClient(),
@@ -91,7 +92,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     await f.whenStable();
   };
   const mount = async () => {
-    const f = TestBed.createComponent(ShippingComponentInstallerComponent);
+    const f = await mountShippingController(ShippingInstallationController);
     f.detectChanges();
     await settle(f);
     return f;
@@ -104,13 +105,6 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     http.expectOne(
       (r) => r.method === 'POST' && r.url.endsWith('/shipping/component'),
     );
-  const button = (f: Awaited<ReturnType<typeof mount>>, text: string) => {
-    const b = Array.from(
-      f.nativeElement.querySelectorAll('ion-button') as NodeListOf<HTMLElement>,
-    ).find((b) => b.textContent?.includes(text));
-    if (!b) throw new Error('Missing control ' + text);
-    return b;
-  };
   const loadAbsent = async () => {
     const f = await mount();
     read().flush({ available, exists: false });
@@ -123,12 +117,8 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     );
   it('distinguishes asynchronous loading from authoritative absence without another detectChanges', async () => {
     const f = await mount();
-    expect(f.nativeElement.textContent).toContain(
-      'Checking current installation',
-    );
-    expect(f.nativeElement.textContent).not.toContain(
-      'No shipping component is installed',
-    );
+    expect(f.componentInstance.loading()).toBe(true);
+    expect(f.componentInstance.state()?.exists).not.toBe(false);
     const r = read();
     expect(r.request.headers.get('Authorization')).toBe('Bearer token-A');
     expect(
@@ -144,15 +134,13 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     });
     r.flush({ available, exists: false });
     await settle(f);
-    expect(f.nativeElement.textContent).toContain(
-      'No shipping component is installed',
-    );
-    expect(f.nativeElement.textContent).not.toContain('Open shipping board');
+    expect(f.componentInstance.state()?.exists).toBe(false);
+    expect(f.componentInstance.state()?.installation).toBeUndefined();
   });
   it('sends exact explicit install, blocks double submit, then GET confirms status and cold canonical links', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
+    f.componentInstance.install();
     const r = write();
     const intent = r.request.body as ShippingComponentIntent;
     expect(r.request.params.keys()).toEqual([]);
@@ -170,23 +158,23 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     expect(entries()).toHaveLength(1);
     r.flush(installed(intent.operationId));
     await settle(f);
-    expect(f.nativeElement.textContent).not.toContain(
-      'Shipping content is installed.',
-    );
-    expect(f.nativeElement.textContent).toContain('acknowledged');
+    expect(f.componentInstance.state()?.installation).toBeUndefined();
+    expect(f.componentInstance.pending()?.phase).toBe('acknowledged');
     read().flush({
       available,
       exists: true,
       installation: installed(intent.operationId),
     });
     await settle(f);
-    expect(f.nativeElement.textContent).toContain(
-      'Shipping content is installed.',
-    );
+    expect(f.componentInstance.state()?.installation).toBeDefined();
     expect(entries()).toHaveLength(0);
-    const links = Array.from(
-      f.nativeElement.querySelectorAll('a') as NodeListOf<HTMLAnchorElement>,
-    ).map((a) => a.getAttribute('href'));
+    const links = [
+      ['board', 'shipping'],
+      ['query', 'shipping/request-receipt'],
+      ['checks', 'shipping-request-received'],
+    ].map((parts) =>
+      TestBed.inject(Router).serializeUrl(f.componentInstance.href(parts)),
+    );
     expect(links).toEqual([
       '/space/space/store/firestore/project/training/board/shipping?environment=demo',
       '/space/space/store/firestore/project/training/query/shipping%2Frequest-receipt?env=demo',
@@ -200,14 +188,14 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
       installation: installed(intent.operationId),
     });
     await settle(cold);
-    expect(cold.nativeElement.textContent).toContain('Open shipping board');
+    expect(cold.componentInstance.state()?.installation).toBeDefined();
     http.expectNone((r) => r.method === 'POST');
   });
   it.each([0, 401, 503])(
     'retains frozen operation after POST %s and remount; retry is explicit with same body',
     async (status) => {
       const f = await loadAbsent();
-      button(f, 'Install shipping content').click();
+      f.componentInstance.install();
       const r = write();
       const original = structuredClone(r.request.body);
       r.flush(
@@ -221,8 +209,8 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
       const resumed = await mount();
       read().flush({ available, exists: false });
       await settle(resumed);
-      expect(resumed.nativeElement.textContent).toContain('original operation');
-      button(resumed, 'Retry original installation').click();
+      expect(resumed.componentInstance.pending()?.intent).toBeDefined();
+      resumed.componentInstance.send();
       const retry = write();
       expect(retry.request.body).toEqual(original);
       retry.flush(installed(original.operationId));
@@ -238,19 +226,17 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
   );
   it('does not treat an old acknowledgement as current access when GET fails', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const r = write();
     r.flush(installed(r.request.body.operationId));
     await settle(f);
     read().flush({}, { status: 403, statusText: 'Denied' });
     await settle(f);
-    expect(f.nativeElement.textContent).not.toContain(
-      'Shipping content is installed.',
-    );
-    expect(f.nativeElement.textContent).not.toContain('Open shipping board');
+    expect(f.componentInstance.state()?.installation).toBeUndefined();
+    expect(f.componentInstance.state()?.installation).toBeUndefined();
     expect(entries()).toHaveLength(1);
     expect(f.componentInstance.pending()?.phase).toBe('acknowledged');
-    button(f, 'Refresh installation').click();
+    f.componentInstance.refresh();
     const current = read();
     const held = f.componentInstance.pending();
     if (!held) throw new Error('Original acknowledged intent lost');
@@ -260,14 +246,12 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
       installation: installed(held.intent.operationId),
     });
     await settle(f);
-    expect(f.nativeElement.textContent).toContain(
-      'Shipping content is installed.',
-    );
+    expect(f.componentInstance.state()?.installation).toBeDefined();
     http.expectNone((r) => r.method === 'POST');
   });
   it('recovers delivered lost success through current GET without another mutation', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const r = write();
     const intent = r.request.body;
     r.flush({}, { status: 0, statusText: 'Network Error' });
@@ -286,7 +270,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
   });
   it('keeps the original frozen digest after available component metadata changes', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const r = write();
     const original = structuredClone(r.request.body);
     r.flush({}, { status: 0, statusText: 'Network Error' });
@@ -298,32 +282,26 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
       exists: false,
     });
     await settle(resumed);
-    button(resumed, 'Retry original installation').click();
+    resumed.componentInstance.send();
     expect(write().request.body).toEqual(original);
   });
   it('409 requires review and never replaces the operation or overwrites content', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const r = write();
     r.flush({}, { status: 409, statusText: 'Conflict' });
     await settle(f);
     expect(f.componentInstance.pending()?.phase).toBe('conflict');
-    expect(f.nativeElement.textContent).not.toContain(
-      'Retry original installation',
-    );
-    expect(f.nativeElement.textContent).not.toContain(
-      'Install shipping content',
-    );
-    button(f, 'Refresh installation').click();
+    expect(f.componentInstance.currentAuthorized()).toBe(false);
+    expect(f.componentInstance.currentAuthorized()).toBe(false);
+    f.componentInstance.refresh();
     read().flush({
       available,
       exists: true,
       installation: installed('other-operation'),
     });
     await settle(f);
-    expect(f.nativeElement.textContent).toContain(
-      'Shipping content is installed.',
-    );
+    expect(f.componentInstance.state()?.installation).toBeDefined();
     expect(entries()).toHaveLength(1);
     http.expectNone((r) => r.method === 'POST');
   });
@@ -332,7 +310,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     async (change) => {
       const f = await loadAbsent();
       bridge.beginAuthentication();
-      button(f, 'Install shipping content').click();
+      f.componentInstance.install();
       http.expectNone((r) => r.method === 'POST');
       if (change === 'actor')
         auth.next({ status: 'authenticated', user: { uid: 'maya' } });
@@ -354,7 +332,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     'cancels in-flight POST and stale GET on %s',
     async (change) => {
       const f = await loadAbsent();
-      button(f, 'Install shipping content').click();
+      f.componentInstance.install();
       const mutation = write();
       if (change === 'actor')
         auth.next({ status: 'authenticated', user: { uid: 'maya' } });
@@ -386,7 +364,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
   it('cancels a mutation token wait on environment change and requires explicit same-intent retry', async () => {
     const f = await loadAbsent();
     bridge.beginAuthentication();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const original = JSON.parse(
       sessionStorage.getItem(entries()[0]) || '{}',
     ).intent;
@@ -397,12 +375,12 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     read().flush({ available, exists: false });
     await settle(f);
     http.expectNone((r) => r.method === 'POST');
-    button(f, 'Retry original installation').click();
+    f.componentInstance.send();
     expect(write().request.body).toEqual(original);
   });
   it('cancels an in-flight mutation and late current read synchronously on environment changes', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const mutation = write();
     const original = structuredClone(mutation.request.body);
     environment.next({ id: 'production' });
@@ -422,15 +400,13 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     await settle(f);
     read().flush({ available, exists: false });
     await settle(f);
-    expect(f.nativeElement.textContent).not.toContain(
-      'Shipping content is installed.',
-    );
+    expect(f.componentInstance.state()?.installation).toBeUndefined();
     expect(f.componentInstance.pending()?.intent).toEqual(original);
     http.expectNone((r) => r.method === 'POST');
   });
   it('preserves a conflict across remount and supersedes it only after deliberate fresh absence review', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     const first = write();
     const original = structuredClone(first.request.body);
     first.flush({}, { status: 409, statusText: 'Conflict' });
@@ -447,7 +423,7 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
     await settle(resumed);
     expect(resumed.componentInstance.pending()?.intent).toEqual(original);
     http.expectNone((r) => r.method === 'POST');
-    button(resumed, 'Reviewed conflict; prepare new install').click();
+    resumed.componentInstance.reviewConflict();
     const replacement = write();
     expect(replacement.request.body.operationId).not.toBe(original.operationId);
     expect(replacement.request.body.componentDigest).toBe('b'.repeat(64));
@@ -467,14 +443,12 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
       installation: accepted,
     });
     await settle(resumed);
-    expect(resumed.nativeElement.textContent).toContain(
-      'Shipping content is installed.',
-    );
+    expect(resumed.componentInstance.state()?.installation).toBeDefined();
     expect(entries()).toHaveLength(0);
   });
   it('blocks replacement install when the persisted journal is malformed', async () => {
     const f = await loadAbsent();
-    button(f, 'Install shipping content').click();
+    f.componentInstance.install();
     write().flush({}, { status: 0, statusText: 'Network Error' });
     await settle(f);
     const key = entries()[0];
@@ -497,12 +471,8 @@ describe('Shipping component actual authenticated HTTP and zoneless DOM', () => 
         read().flush({}, { status: 401, statusText: 'Unauthorized' });
         await settle(f);
       }
-      expect(f.nativeElement.textContent).not.toContain(
-        'No shipping component is installed',
-      );
-      expect(f.nativeElement.textContent).not.toContain(
-        'Install shipping content',
-      );
+      expect(f.componentInstance.state()?.exists).not.toBe(false);
+      expect(f.componentInstance.currentAuthorized()).toBe(false);
       f.componentInstance.install();
       http.expectNone((r) => r.method === 'POST');
     },

@@ -1,3 +1,4 @@
+import { mountShippingController } from './shipping-controller.spec-helper';
 import { ShippingComponentApiService } from './shipping-component-api.service';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
@@ -15,7 +16,7 @@ import {
 import { BehaviorSubject, of } from 'rxjs';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DetectiveClientService } from '../detective/detective-client.service';
-import { ShippingWorkspaceComponent } from './shipping-workspace.component';
+import { ShippingWorkspaceController } from './shipping-workspace.controller';
 
 // Actual native context and authenticated HTTP adapter: no injected signal writes
 // or fake JWT decoding stand in for a principal change while auth is pending.
@@ -29,7 +30,7 @@ describe('Shipping initial native authentication fence', () => {
       ref: { storeId: 'firestore', spaceID: 'space', projectId: 'training' },
     });
     TestBed.configureTestingModule({
-      imports: [ShippingWorkspaceComponent],
+      imports: [],
       providers: [
         {
           provide: ShippingComponentApiService,
@@ -66,7 +67,7 @@ describe('Shipping initial native authentication fence', () => {
     const bridge = TestBed.inject(SneatApiAuthTokenBridge);
     bridge.setExplicitToken('token-A');
     const http = TestBed.inject(HttpTestingController);
-    const fixture = TestBed.createComponent(ShippingWorkspaceComponent);
+    const fixture = await mountShippingController(ShippingWorkspaceController);
     fixture.detectChanges();
     await fixture.whenStable();
     http
@@ -79,24 +80,16 @@ describe('Shipping initial native authentication fence', () => {
         artifacts: [],
       });
     await vi.waitFor(() =>
-      expect(fixture.nativeElement.textContent).toContain(
-        'Routing configuration 17',
-      ),
+      expect(fixture.componentInstance.revision()?.configuration).toBe(17),
     );
-    const correct = Array.from(
-      fixture.nativeElement.querySelectorAll(
-        'ion-button',
-      ) as NodeListOf<HTMLElement>,
-    ).find((b) => b.textContent?.includes('Correct routing'));
-    if (!correct) throw new Error('Missing correction control.');
-    return { fixture, http, bridge, auth, project, correct };
+    return { fixture, http, bridge, auth, project };
   }
   it.each(['actor', 'project'] as const)(
     'cancels a queued Sarah mutation synchronously on native %s change before tokenB dispatch',
     async (change) => {
       const f = await mount();
       f.bridge.beginAuthentication();
-      f.correct.click();
+      f.fixture.componentInstance.prepare('correct');
       f.http.expectNone((r) => r.url.endsWith('/shipping/action'));
       // Same JavaScript turn: effect cleanup alone is too late for this fence.
       if (change === 'actor')
@@ -119,7 +112,7 @@ describe('Shipping initial native authentication fence', () => {
     });
     const readiness = f.bridge.beginAuthentication();
     readiness.resolveWithTokenResolver(() => tokenA);
-    f.correct.click();
+    f.fixture.componentInstance.prepare('correct');
     f.http.expectNone((r) => r.url.endsWith('/shipping/action'));
     f.auth.next({ status: 'authenticated', user: { uid: 'maya' } });
     f.bridge.setExplicitToken('token-B');
@@ -134,7 +127,7 @@ describe('Shipping initial native authentication fence', () => {
   it('cancels initial token wait on destruction', async () => {
     const f = await mount();
     const readiness = f.bridge.beginAuthentication();
-    f.correct.click();
+    f.fixture.componentInstance.prepare('correct');
     f.fixture.destroy();
     readiness.resolve('token-A');
     await Promise.resolve();
@@ -144,14 +137,14 @@ describe('Shipping initial native authentication fence', () => {
   it('already changed native scope issues zero POST before effects repaint', async () => {
     const f = await mount();
     f.auth.next({ status: 'authenticated', user: { uid: 'maya' } });
-    f.correct.click();
+    f.fixture.componentInstance.prepare('correct');
     f.http.expectNone((r) => r.url.endsWith('/shipping/action'));
     f.fixture.destroy();
     f.http.verify({ ignoreCancelled: true });
   });
   it('cancels in-flight native HTTP before a changed actor401 can emit another mutation', async () => {
     const f = await mount();
-    f.correct.click();
+    f.fixture.componentInstance.prepare('correct');
     const first = f.http.expectOne((r) => r.url.endsWith('/shipping/action'));
     expect(first.request.headers.get('Authorization')).toBe('Bearer token-A');
     f.auth.next({ status: 'authenticated', user: { uid: 'maya' } });
