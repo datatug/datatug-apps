@@ -17,6 +17,8 @@
     "idb": "^8.0.3",
     "@ingitdb/client": "*",
     "@ingitdb/client-github": "*",
+    "@ingr/codec": "^0.0.1",
+    "http-cache-semantics": "4.2.0",
     "@ionic/angular": ">=9.0.0 <10.0.0",
     "ionicons": "*",
     "marked": "^18.0.14",
