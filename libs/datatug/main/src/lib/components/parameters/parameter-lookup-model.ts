@@ -21,11 +21,21 @@ export const EXPLICIT_LOOKUP_MAX_ROWS = 1000;
 const MAX_DECLARED_DISPLAY = 6;
 const MAX_INFERRED_DISPLAY = 3;
 
+/** A Core `StringPattern` (`*.entity.json` `namePatterns[]`). */
+export interface LookupNamePattern {
+  readonly type?: string;
+  readonly value?: string;
+  readonly caseSensitive?: boolean;
+}
+
 /** The subset of a Core entity field the picker reads. */
 export interface LookupEntityField {
   readonly id: string;
   readonly type?: string;
   readonly title?: string;
+  /** Core `EntityField.IsKeyField`: only key fields' name patterns can give a parameter its meaning. */
+  readonly isKeyField?: boolean;
+  readonly namePatterns?: readonly (LookupNamePattern | null | undefined)[] | null;
   readonly mappings?: readonly {
     readonly source: string;
     readonly collection: string;
@@ -80,6 +90,69 @@ export function parameterAcceptsKey(parameterType: string, kind: LookupKeyKind |
   if (!kind) return false;
   if (['string', 'text', 'UUID', 'GUID'].includes(parameterType)) return true;
   return parameterType === 'integer' && kind === 'integer';
+}
+
+/** A parameter that could ever have a picker: not multi-value, not a record or recordset. */
+export function isScalarLookupParameter(parameter: IParameterDef | undefined): parameter is IParameterDef {
+  return !!parameter && !parameter.isMultiValue &&
+    parameter.type !== ('record' as string) && parameter.type !== ('recordset' as string);
+}
+
+/**
+ * The meaning a parameter's lookup resolves through (REQ:inferred-parameter-meaning),
+ * the twin of Core `semantic.ResolveParameterMeaning`.
+ */
+export interface ParameterMeaning {
+  readonly entity: string;
+  readonly field: string;
+  readonly provenance: 'declared' | 'inferred';
+  /** For an inferred meaning: the pattern that matched, e.g. `namePattern:regexp:\w+CustomerID`. */
+  readonly rule?: string;
+}
+
+/**
+ * Whether `name` matches a Core name pattern, as Core `semantic.Resolve`
+ * matches columns: `exact` compares the whole name, `regexp` searches it
+ * (unanchored), and both ignore case unless `caseSensitive`. A pattern that
+ * cannot be evaluated never matches.
+ */
+export function matchesNamePattern(pattern: LookupNamePattern | null | undefined, name: string): boolean {
+  if (!pattern?.value) return false;
+  if (pattern.type === 'exact')
+    return pattern.caseSensitive ? pattern.value === name : pattern.value.toLowerCase() === name.toLowerCase();
+  if (pattern.type !== 'regexp') return false;
+  try {
+    return new RegExp(pattern.value, pattern.caseSensitive ? '' : 'i').test(name);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A parameter's declared `meta`, else the one key field across `entities`
+ * whose name patterns match the parameter's name without `@` (inferred).
+ * Undefined when nothing matches or more than one entity field does: an
+ * ambiguous name gets no button.
+ */
+export function resolveParameterMeaning(
+  entities: readonly (LookupEntity | null | undefined)[],
+  parameter: Pick<IParameterDef, 'id' | 'meta'>,
+): ParameterMeaning | undefined {
+  if (parameter.meta?.entity && parameter.meta.field)
+    return { entity: parameter.meta.entity, field: parameter.meta.field, provenance: 'declared' };
+  const name = parameter.id.replace(/^@/, '');
+  if (!name) return undefined;
+  const matches: ParameterMeaning[] = [];
+  for (const entity of entities) {
+    if (!entity?.id) continue;
+    for (const field of entity.fields ?? []) {
+      if (!field?.isKeyField) continue;
+      const pattern = (field.namePatterns ?? []).find((p) => matchesNamePattern(p, name));
+      if (pattern)
+        matches.push({ entity: entity.id, field: field.id, provenance: 'inferred', rule: `namePattern:${pattern.type}:${pattern.value}` });
+    }
+  }
+  return matches.length === 1 ? matches[0] : undefined;
 }
 
 /** A parameter that could ever have a meaning-keyed picker: scalar, with `meta`. */

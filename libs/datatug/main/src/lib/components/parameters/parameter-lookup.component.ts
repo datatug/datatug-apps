@@ -130,6 +130,7 @@ export class ParameterLookupComponent
 
   readonly subject = computed(() => this.providerValue().subject);
   readonly sourceNote = computed(() => this.providerValue().sourceNote);
+  readonly meaningNote = computed(() => this.providerValue().meaningNote);
   readonly title = computed(() => `Find ${this.subject()}`);
   readonly needsSource = computed(() => this.sourceId() === undefined && !this.preparing() && !this.noUsableSource());
   readonly rows = computed(() => this.page()?.rows ?? []);

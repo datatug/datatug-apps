@@ -4,6 +4,9 @@ import type { QueryConnectionDescriptor } from '../../queries/query-dispatch';
 import {
   columnKeyKind,
   isMeaningLookupParameter,
+  isScalarLookupParameter,
+  matchesNamePattern,
+  resolveParameterMeaning,
   likeContainsPattern,
   lookupCandidates,
   lookupCellText,
@@ -78,6 +81,42 @@ describe('parameter lookup model', () => {
     expect(isMeaningLookupParameter(param({ isMultiValue: true }))).toBe(false);
     expect(isMeaningLookupParameter(param({ type: 'record' as IParameterDef['type'] }))).toBe(false);
     expect(isMeaningLookupParameter(undefined)).toBe(false);
+  });
+
+  it('admits scalar parameters with or without a meaning', () => {
+    expect(isScalarLookupParameter(param({ meta: undefined }))).toBe(true);
+    expect(isScalarLookupParameter(param({ isMultiValue: true }))).toBe(false);
+    expect(isScalarLookupParameter(param({ type: 'recordset' as IParameterDef['type'] }))).toBe(false);
+    expect(isScalarLookupParameter(undefined)).toBe(false);
+  });
+
+  it('matches name patterns as Core semantic.Resolve does', () => {
+    expect(matchesNamePattern({ type: 'exact', value: 'CustomerID', caseSensitive: true }, 'CustomerID')).toBe(true);
+    expect(matchesNamePattern({ type: 'exact', value: 'CustomerID', caseSensitive: true }, 'customerid')).toBe(false);
+    expect(matchesNamePattern({ type: 'exact', value: 'CustomerID' }, 'customerid')).toBe(true);
+    expect(matchesNamePattern({ type: 'regexp', value: '\\w+CustomerID', caseSensitive: true }, 'ShipCustomerID')).toBe(true);
+    expect(matchesNamePattern({ type: 'regexp', value: '\\w+CustomerID', caseSensitive: true }, 'CustomerID')).toBe(false);
+    expect(matchesNamePattern({ type: 'regexp', value: 'customerid' }, 'ShipCustomerID')).toBe(true);
+    expect(matchesNamePattern({ type: 'regexp', value: '(' }, 'x')).toBe(false);
+    expect(matchesNamePattern({ type: 'glob', value: '*' }, 'x')).toBe(false);
+    expect(matchesNamePattern({ type: 'exact' }, 'x')).toBe(false);
+    expect(matchesNamePattern(null, 'x')).toBe(false);
+  });
+
+  it('resolves a declared meta, else one key field matched by name', () => {
+    const keyed = (id: string, value: string, isKeyField = true): LookupEntity => ({
+      id, fields: [null, { id: 'ID', type: 'string', isKeyField, namePatterns: [undefined, { type: 'regexp', value, caseSensitive: true }] }],
+    });
+    const nw = keyed('Customer', '^\\w*CustomerID$');
+    expect(resolveParameterMeaning([nw], param())).toEqual({ entity: 'Customer', field: 'ID', provenance: 'declared' });
+    expect(resolveParameterMeaning([undefined, { fields: [] }, { id: 'Empty' }, nw], { id: '@ShipCustomerID' })).toEqual({
+      entity: 'Customer', field: 'ID', provenance: 'inferred', rule: 'namePattern:regexp:^\\w*CustomerID$',
+    });
+    expect(resolveParameterMeaning([nw], { id: 'Region' })).toBeUndefined();
+    expect(resolveParameterMeaning([nw], { id: '@' })).toBeUndefined();
+    expect(resolveParameterMeaning([keyed('Customer', 'CustomerID', false)], { id: 'CustomerID' })).toBeUndefined();
+    expect(resolveParameterMeaning([nw, keyed('Account', 'CustomerID')], { id: 'CustomerID' })).toBeUndefined();
+    expect(resolveParameterMeaning([{ id: 'X', fields: [{ id: 'ID', isKeyField: true, namePatterns: null }] }], { id: 'CustomerID' })).toBeUndefined();
   });
 
   it('lists declared mappings as candidates when the field type fits the parameter', () => {

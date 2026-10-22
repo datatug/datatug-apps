@@ -35,6 +35,7 @@ describe('PublicParameterLookupService', () => {
   let execute: ReturnType<typeof vi.fn>;
   let connectionCatalog: ReturnType<typeof vi.fn>;
   let entity: ReturnType<typeof vi.fn>;
+  let entities: ReturnType<typeof vi.fn>;
   let schemaRows: [string, string, number][];
 
   beforeEach(() => {
@@ -52,11 +53,12 @@ describe('PublicParameterLookupService', () => {
     });
     connectionCatalog = vi.fn(() => Promise.resolve(catalog));
     entity = vi.fn(() => of(customer));
+    entities = vi.fn(() => of([{ id: 'Customer' }]));
     TestBed.configureTestingModule({
       providers: [
         PublicParameterLookupService,
         { provide: QueryDispatchService, useValue: { execute, connectionCatalog } },
-        { provide: ProjectAssetsReadService, useValue: { entity } },
+        { provide: ProjectAssetsReadService, useValue: { entity, entities } },
       ],
     });
   });
@@ -80,6 +82,39 @@ describe('PublicParameterLookupService', () => {
     expect(connectionCatalog).toHaveBeenCalledTimes(1);
     expect(await service.sources({ ...param, meta: undefined }, { projectRef: ref })).toEqual([]);
     expect(await service.sources(param, { projectRef: { storeId: 'localhost:8989', projectId: 'demo' } })).toEqual([]);
+  });
+
+  it('infers a meta-less parameter\'s meaning from one key field\'s name pattern', async () => {
+    const keyed = {
+      ...customer,
+      fields: [{ ...customer.fields[0], isKeyField: true, namePatterns: [{ type: 'regexp', value: '\\w+CustomerID', caseSensitive: true }] }, customer.fields[1]],
+    };
+    const supplier = { id: 'Supplier', fields: [{ id: 'ID', type: 'string', isKeyField: true, namePatterns: [{ type: 'exact', value: 'ShipCustomerID' }] }] };
+    entity.mockImplementation((_ref: unknown, id: string) => of(id === 'Customer' ? keyed : supplier));
+    const service = TestBed.inject(PublicParameterLookupService);
+    const bare: IParameterDef = { id: '@ShipCustomerID', type: 'string' };
+    const sources = await service.sources(bare, { projectRef: ref });
+    expect(sources).toHaveLength(1);
+    expect(sources[0].meaning).toEqual({ entity: 'Customer', field: 'ID', provenance: 'inferred', rule: 'namePattern:regexp:\\w+CustomerID' });
+    const provider = service.provider({ ...bare, meta: { entity: 'Customer', field: 'ID' } }, { projectRef: ref }, sources, keyed);
+    expect(provider.meaningNote).toBe('Meaning guessed from the name @ShipCustomerID: Customer.ID. Declare meta on this parameter to confirm it.');
+    expect(service.provider(param, { projectRef: ref }, [], keyed).meaningNote).toBeUndefined();
+    expect(await service.sources({ id: 'Region', type: 'string' }, { projectRef: ref })).toEqual([]);
+    expect(await service.sources({ ...bare, isMultiValue: true }, { projectRef: ref })).toEqual([]);
+    // A second project lists Customer and Supplier: two key fields match, so the name is ambiguous.
+    entities.mockReturnValueOnce(of([{ id: 'Customer' }, { id: 'Supplier' }]));
+    expect(await service.sources(bare, { projectRef: { ...ref, projectId: 'two' } })).toEqual([]);
+    expect(entities).toHaveBeenCalledTimes(2);
+  });
+
+  it('retries the entity listing after a failure', async () => {
+    entities.mockReturnValueOnce(throwError(() => new Error('offline')));
+    const service = TestBed.inject(PublicParameterLookupService);
+    const bare: IParameterDef = { id: 'CustomerID', type: 'string' };
+    expect(await service.meaning(ref, bare)).toBeUndefined();
+    entities.mockReturnValueOnce(of(undefined));
+    expect(await service.meaning(ref, bare)).toBeUndefined();
+    expect(entities).toHaveBeenCalledTimes(2);
   });
 
   it('has no source when the entity or the catalog cannot be read', async () => {

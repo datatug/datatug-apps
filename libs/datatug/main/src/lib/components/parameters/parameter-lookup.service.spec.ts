@@ -61,13 +61,23 @@ describe('ParameterLookupService', () => {
     expect(await service.isAvailable(explicit, { projectRef: ref })).toBe(false);
     expect(await service.isAvailable({ ...explicit, lookup: { db: 'x', sql: 's', keyFields: [] } }, { explicitAgent: agent })).toBe(false);
     expect(await service.isAvailable(meaning, { projectRef: ref })).toBe(false);
-    publicLookup.sources.mockResolvedValueOnce([{ id: 'nw' }]);
+    publicLookup.sources.mockResolvedValueOnce([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'declared' } }]);
     expect(await service.isAvailable(meaning, { projectRef: ref })).toBe(true);
+  });
+
+  it('reports an inferred meaning and opens the dialog with the inferred meta', async () => {
+    const service = TestBed.inject(ParameterLookupService);
+    const bare: IParameterDef = { id: 'ShipCustomerID', type: 'string' };
+    expect(await service.availability({ ...bare, isMultiValue: true }, { projectRef: ref })).toEqual({ available: false, inferred: false });
+    publicLookup.sources.mockResolvedValue([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'inferred', rule: 'namePattern:exact:ShipCustomerID' } }]);
+    expect(await service.availability(bare, { projectRef: ref })).toEqual({ available: true, inferred: true });
+    await service.open(bare, { projectRef: ref });
+    expect(publicLookup.provider).toHaveBeenCalledWith({ ...bare, meta: { entity: 'Customer', field: 'ID' } }, { projectRef: ref }, expect.any(Array), { id: 'Customer' });
   });
 
   it('opens the dialog with a meaning provider and returns the picked key', async () => {
     const service = TestBed.inject(ParameterLookupService);
-    publicLookup.sources.mockResolvedValue([{ id: 'nw' }]);
+    publicLookup.sources.mockResolvedValue([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'declared' } }]);
     const result = await service.open(meaning, { projectRef: ref }, 'ALFKI');
     expect(result).toEqual({ value: { type: 'string', value: 'BOTTM' } });
     expect(create).toHaveBeenCalledWith(expect.objectContaining({
@@ -82,7 +92,7 @@ describe('ParameterLookupService', () => {
 
   it('closes a dialog that is still open when its host goes away', async () => {
     const service = TestBed.inject(ParameterLookupService);
-    publicLookup.sources.mockResolvedValue([{ id: 'nw' }]);
+    publicLookup.sources.mockResolvedValue([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'declared' } }]);
     let finish!: (v: unknown) => void;
     const modal = { dismiss: vi.fn(() => Promise.resolve(true)), present: vi.fn(() => Promise.resolve()), onWillDismiss: vi.fn(() => new Promise((r) => { finish = r; })) };
     create.mockResolvedValueOnce(modal);
@@ -98,7 +108,7 @@ describe('ParameterLookupService', () => {
     const service = TestBed.inject(ParameterLookupService);
     expect(await service.open(meaning, { projectRef: ref })).toBeUndefined();
     expect(await service.open(explicit, { projectRef: ref })).toBeUndefined();
-    publicLookup.sources.mockResolvedValue([{ id: 'nw' }]);
+    publicLookup.sources.mockResolvedValue([{ id: 'nw', meaning: { entity: 'Customer', field: 'ID', provenance: 'declared' } }]);
     expect(await service.open(meaning, {})).toBeUndefined();
     expect(create).not.toHaveBeenCalled();
   });

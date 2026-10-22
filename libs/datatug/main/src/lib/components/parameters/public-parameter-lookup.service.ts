@@ -11,7 +11,7 @@ import {
   LOOKUP_PAGE_SIZE,
   LOOKUP_SCHEMA_SQL,
   columnKeyKind,
-  isMeaningLookupParameter,
+  isScalarLookupParameter,
   lookupCandidates,
   lookupConnection,
   lookupDisplayColumns,
@@ -19,9 +19,11 @@ import {
   lookupRowsSql,
   orderCandidates,
   parameterAcceptsKey,
+  resolveParameterMeaning,
   type LookupCandidate,
   type LookupColumn,
   type LookupEntity,
+  type ParameterMeaning,
 } from './parameter-lookup-model';
 import type {
   ParameterLookupContext,
@@ -32,6 +34,8 @@ import type {
 /** An eligible candidate bound to the browser-runnable connection that will read it. */
 export interface PublicLookupSource extends LookupCandidate {
   readonly id: string;
+  /** The meaning the source was resolved through: declared `meta`, or inferred from the name. */
+  readonly meaning: ParameterMeaning;
   readonly connection: QueryConnectionDescriptor;
   readonly environment?: string;
 }
@@ -84,25 +88,40 @@ export class PublicParameterLookupService {
   private readonly dispatch = inject(QueryDispatchService);
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly entities = new Map<string, Promise<LookupEntity | undefined>>();
+  private readonly allEntities = new Map<string, Promise<readonly (LookupEntity | undefined)[]>>();
   private readonly catalogs = new Map<string, Promise<readonly QueryConnectionDescriptor[]>>();
   private readonly schemas = new Map<string, Promise<SchemaProbe>>();
+
+  /**
+   * The parameter's meaning (REQ:inferred-parameter-meaning): its declared
+   * `meta`, else the one key field whose name patterns match its name. Only a
+   * meta-less parameter reads the project's entity declarations, once per project.
+   */
+  async meaning(ref: IProjectRef, parameter: IParameterDef): Promise<ParameterMeaning | undefined> {
+    if (parameter.meta?.entity && parameter.meta.field) return resolveParameterMeaning([], parameter);
+    return resolveParameterMeaning(await this.projectEntities(ref), parameter);
+  }
 
   /** The eligible sources of a parameter; empty means no pick button. Never downloads a fixture. */
   async sources(parameter: IParameterDef, context: ParameterLookupContext): Promise<PublicLookupSource[]> {
     const ref = context.projectRef;
-    if (!isMeaningLookupParameter(parameter) || !isPublicBrowserProject(ref)) return [];
-    const [entity, catalog] = await Promise.all([this.entity(ref, parameter.meta.entity), this.catalog(ref)]);
+    if (!isScalarLookupParameter(parameter) || !isPublicBrowserProject(ref)) return [];
+    const meaning = await this.meaning(ref, parameter);
+    if (!meaning) return [];
+    const meant: IParameterDef = { ...parameter, meta: { entity: meaning.entity, field: meaning.field } };
+    const [entity, catalog] = await Promise.all([this.entity(ref, meaning.entity), this.catalog(ref)]);
     const environment = context.environment ?? undefined;
     const hostSource = context.hostConnectionId
       ? catalog.find((c) => c.id === context.hostConnectionId)?.dataset ?? context.hostConnectionId
       : undefined;
     const result: PublicLookupSource[] = [];
-    for (const candidate of orderCandidates(lookupCandidates(entity, parameter), hostSource)) {
+    for (const candidate of orderCandidates(lookupCandidates(entity, meant), hostSource)) {
       const connection = lookupConnection(catalog, candidate.source, context.hostConnectionId, environment);
       if (!connection?.id) continue;
       result.push({
         ...candidate,
         id: `${candidate.source}\u0000${candidate.collection}`,
+        meaning,
         connection,
         environment: lookupEnvironment(connection, environment),
       });
@@ -122,6 +141,9 @@ export class PublicParameterLookupService {
       sources: sources.map((s) => ({ id: s.id, label: `${s.collection} · ${s.source}` })),
       preselectedSourceId: preselected,
       sourceNote: 'Read from the pinned public sample in your browser.',
+      ...(sources[0]?.meaning.provenance === 'inferred' ? {
+        meaningNote: `Meaning guessed from the name ${parameter.id}: ${sources[0].meaning.entity}.${sources[0].meaning.field}. Declare meta on this parameter to confirm it.`,
+      } : {}),
       ...(sources.length > 1 ? {
         // Several mappings: keep only those whose fixture key really is the mapped column.
         prepare: async (signal: AbortSignal) => {
@@ -163,6 +185,25 @@ export class PublicParameterLookupService {
       this.entities.set(key, entity);
     }
     return entity;
+  }
+
+  /**
+   * Every entity declaration of the project (at most 100), read once per
+   * project, for name-pattern inference. A failed listing yields none.
+   */
+  private projectEntities(ref: IProjectRef): Promise<readonly (LookupEntity | undefined)[]> {
+    const key = refKey(ref);
+    let all = this.allEntities.get(key);
+    if (!all) {
+      all = firstValueFrom(this.assets.entities(ref))
+        .then((briefs) => Promise.all((briefs ?? []).slice(0, 100).map((b) => this.entity(ref, b.id))))
+        .catch(() => {
+          this.allEntities.delete(key);
+          return [];
+        });
+      this.allEntities.set(key, all);
+    }
+    return all;
   }
 
   private catalog(ref: IProjectRef): Promise<readonly QueryConnectionDescriptor[]> {

@@ -9,7 +9,9 @@ import { ErrorLogger } from '@sneat/core';
 const param: IParameterDef = { id: 'CustomerID', title: 'Customer', type: 'string', meta: { entity: 'Customer', field: 'ID' } };
 
 describe('ParameterLookupButtonComponent', () => {
-  const lookup = { isAvailable: vi.fn(), open: vi.fn(), closeOpen: vi.fn() };
+  const lookup = { availability: vi.fn(), open: vi.fn(), closeOpen: vi.fn() };
+  const yes = { available: true, inferred: false };
+  const no = { available: false, inferred: false };
 
   const render = async (parameter: IParameterDef = param) => {
     const fixture = TestBed.createComponent(ParameterLookupButtonComponent);
@@ -26,7 +28,7 @@ describe('ParameterLookupButtonComponent', () => {
   };
 
   beforeEach(async () => {
-    lookup.isAvailable.mockReset().mockResolvedValue(true);
+    lookup.availability.mockReset().mockResolvedValue(yes);
     lookup.open.mockReset().mockResolvedValue({ value: { type: 'string', value: 'BOTTM' } });
     await TestBed.configureTestingModule({
       imports: [ParameterLookupButtonComponent],
@@ -44,9 +46,16 @@ describe('ParameterLookupButtonComponent', () => {
     expect(button()).not.toBeNull();
     expect(fixture.componentInstance.label()).toBe('Find Customer');
     expect(button()?.getAttribute('title')).toBe('Find Customer');
-    lookup.isAvailable.mockResolvedValue(false);
+    lookup.availability.mockResolvedValue(no);
     const hidden = await render({ ...param, id: 'Other', title: undefined });
     expect(hidden.button()).toBeNull();
+  });
+
+  it('says when the meaning was guessed from the parameter name', async () => {
+    lookup.availability.mockResolvedValue({ available: true, inferred: true });
+    const { button, fixture } = await render({ id: 'ShipCustomerID', type: 'string' });
+    expect(button()).not.toBeNull();
+    expect(fixture.componentInstance.label()).toBe('Find ShipCustomerID (meaning guessed from its name)');
   });
 
   it('emits the picked value in the parameter type and passes the current value', async () => {
@@ -78,19 +87,19 @@ describe('ParameterLookupButtonComponent', () => {
   });
 
   it('keeps the last answer when an older availability check resolves late', async () => {
-    let slow!: (v: boolean) => void;
-    lookup.isAvailable.mockReturnValueOnce(new Promise<boolean>((resolve) => { slow = resolve; }));
-    lookup.isAvailable.mockResolvedValueOnce(true);
+    let slow!: (v: typeof no) => void;
+    lookup.availability.mockReturnValueOnce(new Promise<typeof no>((resolve) => { slow = resolve; }));
+    lookup.availability.mockResolvedValueOnce(yes);
     const fixture = TestBed.createComponent(ParameterLookupButtonComponent);
     fixture.componentRef.setInput('parameter', param);
     fixture.detectChanges();
     fixture.componentRef.setInput('parameter', { ...param });
     fixture.detectChanges();
     await fixture.whenStable();
-    slow(false);
+    slow(no);
     await Promise.resolve();
     expect(fixture.componentInstance.available()).toBe(true);
-    lookup.isAvailable.mockRejectedValueOnce(new Error('x'));
+    lookup.availability.mockRejectedValueOnce(new Error('x'));
     fixture.componentRef.setInput('parameter', { ...param, id: 'z' });
     fixture.detectChanges();
     await fixture.whenStable();

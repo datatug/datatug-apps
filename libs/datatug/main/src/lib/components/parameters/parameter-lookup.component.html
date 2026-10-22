@@ -59,6 +59,9 @@
     }
   </div>
 
+  @if (meaningNote(); as note) {
+    <ion-note class="lookup-note" data-testid="lookup-meaning-note">{{ note }}</ion-note>
+  }
   @if (page()?.inferredNote; as note) {
     <ion-note class="lookup-note">{{ note }}</ion-note>
   }

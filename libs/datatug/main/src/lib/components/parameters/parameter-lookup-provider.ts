@@ -44,6 +44,11 @@ export interface ParameterLookupProvider {
   readonly preselectedSourceId?: string;
   /** Where the list comes from, shown under the searchbar, e.g. "Northwind sample, pinned". */
   readonly sourceNote?: string;
+  /**
+   * Set when the parameter's meaning was inferred from its name rather than
+   * declared (REQ:inferred-parameter-meaning); the dialog shows it.
+   */
+  readonly meaningNote?: string;
   search(sourceId: string, filter: string, signal: AbortSignal): Promise<ParameterLookupPage>;
   /**
    * Optional check run when the dialog opens, before any search, that narrows

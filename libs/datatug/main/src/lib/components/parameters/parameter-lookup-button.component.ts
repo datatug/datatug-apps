@@ -71,7 +71,10 @@ export class ParameterLookupButtonComponent {
   private readonly button = viewChild<ElementRef<HTMLIonButtonElement>>('button');
   readonly available = signal(false);
   readonly opening = signal(false);
-  readonly label = computed(() => `Find ${this.parameter().title || this.parameter().id}`);
+  /** True when the parameter's meaning was inferred from its name, not declared. */
+  readonly inferred = signal(false);
+  readonly label = computed(() =>
+    `Find ${this.parameter().title || this.parameter().id}${this.inferred() ? ' (meaning guessed from its name)' : ''}`);
 
   private availabilityGeneration = 0;
 
@@ -83,9 +86,11 @@ export class ParameterLookupButtonComponent {
       const host = this.context();
       // No reset to false here: a new context object with the same content must not make the button flicker.
       const generation = ++this.availabilityGeneration;
-      this.lookup.isAvailable(parameter, host).then(
-        (available) => {
-          if (generation === this.availabilityGeneration) this.available.set(available);
+      this.lookup.availability(parameter, host).then(
+        ({ available, inferred }) => {
+          if (generation !== this.availabilityGeneration) return;
+          this.available.set(available);
+          this.inferred.set(inferred);
         },
         () => undefined,
       );

@@ -7,7 +7,7 @@ import { ParameterLookupComponent } from './parameter-lookup.component';
 import {
   EXPLICIT_LOOKUP_MAX_ROWS,
   LOOKUP_PAGE_SIZE,
-  isMeaningLookupParameter,
+  isScalarLookupParameter,
   rawCellToTypedValue,
   rowMatchesFilter,
 } from './parameter-lookup-model';
@@ -55,9 +55,19 @@ export class ParameterLookupService {
 
   /** Whether the parameter gets a pick button on this host. Never downloads a fixture. */
   async isAvailable(parameter: IParameterDef, host: ParameterLookupHost): Promise<boolean> {
-    if (parameter.lookup) return !!host.explicitAgent && !!parameter.lookup.db && !!parameter.lookup.keyFields?.length;
-    if (!isMeaningLookupParameter(parameter)) return false;
-    return (await this.publicLookup.sources(parameter, host)).length > 0;
+    return (await this.availability(parameter, host)).available;
+  }
+
+  /**
+   * Whether the parameter gets a pick button, and whether its meaning was
+   * inferred from its name (REQ:inferred-parameter-meaning), so the button can say so.
+   */
+  async availability(parameter: IParameterDef, host: ParameterLookupHost): Promise<{ available: boolean; inferred: boolean }> {
+    if (parameter.lookup)
+      return { available: !!host.explicitAgent && !!parameter.lookup.db && !!parameter.lookup.keyFields?.length, inferred: false };
+    if (!isScalarLookupParameter(parameter)) return { available: false, inferred: false };
+    const sources = await this.publicLookup.sources(parameter, host);
+    return { available: sources.length > 0, inferred: sources[0]?.meaning.provenance === 'inferred' };
   }
 
   /** Opens the dialog; resolves with the picked key, or undefined when cancelled or unavailable. */
@@ -92,9 +102,10 @@ export class ParameterLookupService {
       return host.explicitAgent ? this.explicitProvider({ ...parameter, lookup: parameter.lookup }, host.explicitAgent) : undefined;
     }
     const sources = await this.publicLookup.sources(parameter, host);
-    if (!sources.length || !host.projectRef || !parameter.meta) return undefined;
-    const entity = await this.publicLookup.entity(host.projectRef, parameter.meta.entity);
-    return this.publicLookup.provider(parameter, host, sources, entity);
+    if (!sources.length || !host.projectRef) return undefined;
+    const { entity: entityId, field } = sources[0].meaning;
+    const entity = await this.publicLookup.entity(host.projectRef, entityId);
+    return this.publicLookup.provider({ ...parameter, meta: { entity: entityId, field } }, host, sources, entity);
   }
 
   /**
