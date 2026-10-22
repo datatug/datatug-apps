@@ -1191,6 +1191,9 @@ export class BoardWidgetComponent {
             actor: JSON.stringify([actor, this.dispatcher.runtimeRevision()]),
             project: JSON.stringify(ref),
             environment: context?.environment,
+            securityContextId: context?.securityContextId,
+            executionTarget: context?.executionTarget,
+            runtimeBinding: context?.runtimeBinding,
           })
         : JSON.stringify({
             ref,

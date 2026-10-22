@@ -1838,6 +1838,7 @@
         [class.result-author-data-enabled]="isTextQueryWorkspace()"
         [class.result-chart-hidden]="resultChartVisible()"
         [class.result-author-data-collapsed]="isTextQueryWorkspace() && !currentRowPaneOpen()"
+        [class.result-author-data-card]="resultCardPaneOpen()"
       >
       <div class="result-grid-viewport" [class.author-result-grid-viewport]="isTextQueryWorkspace()">
         <sneat-datatug-results-grid
@@ -1856,7 +1857,10 @@
           (rowClicked)="authorResultRowClicked($event)"
         />
       </div>
-      <sneat-datatug-result-cell-cards class="result-card-pane" />
+      <sneat-datatug-result-cell-cards
+        class="result-card-pane"
+        (paneOpen)="resultCardPaneOpen.set($event)"
+      />
       @if (isTextQueryWorkspace() && displayedRecordset(); as currentRecordset) {
         @if (currentRowPaneOpen()) {
         <sneat-author-current-row

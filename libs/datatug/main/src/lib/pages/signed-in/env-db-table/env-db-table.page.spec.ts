@@ -514,6 +514,33 @@ describe('EnvDbTablePage — semantic markers and cell selection', () => {
       });
     });
 
+    it('looks cards up when the grid selects a cell by keyboard or touch, anchored on that cell', async () => {
+      component = await createComponent([
+        { column: 'CustomerId', entity: 'Customer', field: 'ID', provenance: 'declared' },
+      ]);
+      const element = document.createElement('div');
+      element.getBoundingClientRect = () => ({ left: 40, bottom: 90 }) as DOMRect;
+      const row = { getCell: vi.fn(() => ({ getElement: () => element })) };
+      component.onGridCellSelected({
+        row,
+        column: { field: 'CustomerId' },
+        rowData: { CustomerId: 9, Name: 'Bob' },
+      });
+      const cell = lookupOf(component).cell();
+      expect(row.getCell).toHaveBeenCalledWith('CustomerId');
+      expect(cell?.value).toBe(9);
+      expect(cell?.identity.entity).toEqual({ entity: 'Customer', field: 'ID' });
+      expect(cell?.anchor).toEqual({ x: 40, y: 90 });
+      // a grid that cannot say where the cell is still selects it
+      component.onGridCellSelected({
+        row: {},
+        column: { field: 'CustomerId' },
+        rowData: { CustomerId: 10 },
+      });
+      expect(lookupOf(component).cell()?.value).toBe(10);
+      expect(lookupOf(component).cell()?.anchor).toBeUndefined();
+    });
+
     it('opens the side pane for a matching card even without a semantic selection, and closing hides it', async () => {
       component = await createComponent([]);
       const lookup = lookupOf(component);

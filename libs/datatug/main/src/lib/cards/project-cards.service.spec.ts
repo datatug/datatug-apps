@@ -3,7 +3,9 @@ import {
   HttpTestingController,
   provideHttpClientTesting,
 } from '@angular/common/http/testing';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
+import { BoardChoicesService } from '../board/core/board-choices.service';
 import { SneatApiAuthTokenBridge } from '@sneat/api';
 import { DatatugApiBaseUrl } from '@sneat/datatug-semantic';
 import type { ProjectCard } from '@datatug/board-models';
@@ -14,6 +16,7 @@ import { GithubProjectReaderService } from '../services/repo/github/github-proje
 import { GITHUB_READ_ONLY_MESSAGE } from '../services/repo/store-api.service';
 import {
   CardNotFoundError,
+  CARD_CACHE_TTL_MS,
   ProjectCardsService,
   validBrief,
 } from './project-cards.service';
@@ -211,7 +214,7 @@ describe('ProjectCardsService: hosted shared-asset API', () => {
     await expect(
       firstValueFrom(service.saveCard(hostedRef, { ...customer, id: 'fresh' }, 'demo')),
     ).rejects.toThrow('Reload the card');
-    await expect(firstValueFrom(service.deleteCard(hostedRef, 'customer', 'demo'))).rejects.toThrow('not available');
+    await expect(firstValueFrom(service.deleteCard(hostedRef, 'customer'))).rejects.toThrow('not available');
   });
 
   it('rejects a card with a missing revision header', async () => {
@@ -337,5 +340,77 @@ describe('ProjectCardsService: write capabilities', () => {
       expect(service.canWrite(ref)).toBe(false);
       expect(service.canDelete(ref)).toBe(false);
     }
+  });
+});
+
+describe('ProjectCardsService: cache scope and lifetime', () => {
+  let http: HttpTestingController;
+  let service: ProjectCardsService;
+  const actor = signal<string | undefined>('alice');
+  const list = async () => {
+    const pending = firstValueFrom(service.listCards(local));
+    return { pending };
+  };
+  const answerList = (rows: unknown[] = [{ id: 'customer', title: 'Customer' }]) => {
+    http.expectOne((r) => r.url.endsWith('/datatug/cards/all_cards')).flush(rows);
+  };
+
+  beforeEach(() => {
+    actor.set('alice');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    TestBed.configureTestingModule({
+      providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: BoardChoicesService, useValue: { actor } },
+      ],
+    });
+    http = TestBed.inject(HttpTestingController);
+    service = TestBed.inject(ProjectCardsService);
+    TestBed.tick();
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    http.verify();
+  });
+
+  it('reads the list again after five minutes, not before', async () => {
+    const first = await list();
+    answerList();
+    await first.pending;
+    vi.advanceTimersByTime(CARD_CACHE_TTL_MS - 1000);
+    await firstValueFrom(service.listCards(local)); // cached: no request
+    vi.advanceTimersByTime(1000);
+    const again = firstValueFrom(service.listCards(local));
+    answerList([{ id: 'other', title: 'Other' }]);
+    expect((await again).map((r) => r.id)).toEqual(['other']);
+  });
+
+  it('keeps cards of one actor from another, and forgets everything when the actor changes', async () => {
+    const first = await list();
+    answerList();
+    await first.pending;
+    actor.set('bob');
+    TestBed.tick();
+    const second = firstValueFrom(service.listCards(local));
+    answerList([{ id: 'bobs', title: 'Bobs' }]);
+    expect((await second).map((r) => r.id)).toEqual(['bobs']);
+    // signing out drops the cache too
+    actor.set(undefined);
+    TestBed.tick();
+    const third = firstValueFrom(service.listCards(local));
+    answerList([]);
+    expect(await third).toEqual([]);
+  });
+
+  it('serves a card read from the cache until it is old', async () => {
+    const card = firstValueFrom(service.getCard(local, 'customer'));
+    http.expectOne((r) => r.url.endsWith('/datatug/cards/card')).flush(customer);
+    await card;
+    await firstValueFrom(service.getCard(local, 'customer'));
+    vi.advanceTimersByTime(CARD_CACHE_TTL_MS);
+    const again = firstValueFrom(service.getCard(local, 'customer'));
+    http.expectOne((r) => r.url.endsWith('/datatug/cards/card')).flush(customer);
+    await again;
   });
 });

@@ -6,6 +6,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, throwError } from 'rxjs';
 import type { BoardWidget } from '@datatug/board-models';
 import { BoardPresentationSelection } from '../../../core/board-presentation-selection';
+import { BoardQueryResults, PROJECT_CARD_RESULTS_OPTIONS } from '../../../core/board-query-results.service';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
@@ -283,5 +284,52 @@ describe('BoardWidgetComponent in card mode', () => {
     );
     await settle();
     expect(el.textContent).toContain('No data');
+  });
+
+  it('does not share cached results across security contexts, execution targets or runtime bindings', async () => {
+    getQuery.mockReturnValue(
+      of({
+        ...definition,
+        parameters: [{ id: 'id', type: 'string', isRequired: true }],
+      }),
+    );
+    const cache = new BoardQueryResults(PROJECT_CARD_RESULTS_OPTIONS);
+    const widget: BoardWidget = {
+      name: 'fields',
+      data: {
+        source: {
+          queryId: 'customers/by-id',
+          parameters: [{ id: 'id', boardParameterId: 'customerId' }],
+        },
+      },
+    };
+    const context = (extra: Record<string, unknown>) => ({
+      mode: 'view',
+      environment: 'LOCAL',
+      parameters: { customerId: { type: 'string', value: 'ALFKI' } },
+      ...extra,
+    });
+    fixture.componentRef.setInput('cardMode', true);
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'card:customer');
+    fixture.componentRef.setInput('cardId', 'customer');
+    fixture.componentRef.setInput('resultCache', cache);
+    fixture.componentRef.setInput('widgetDef', widget);
+    const show = async (extra: Record<string, unknown>) => {
+      fixture.componentRef.setInput('boardContext', context(extra));
+      fixture.detectChanges();
+      await settle();
+    };
+    await show({ securityContextId: 'ctx-1' });
+    expect(run).toHaveBeenCalledTimes(1);
+    await show({ securityContextId: 'ctx-2' });
+    expect(run).toHaveBeenCalledTimes(2);
+    await show({ securityContextId: 'ctx-2', executionTarget: { kind: 'hosted-cloud' } });
+    expect(run).toHaveBeenCalledTimes(3);
+    await show({ securityContextId: 'ctx-2', executionTarget: { kind: 'hosted-cloud' }, runtimeBinding: { id: 'rb' } });
+    expect(run).toHaveBeenCalledTimes(4);
+    // back to the first context: its result is still cached
+    await show({ securityContextId: 'ctx-1' });
+    expect(run).toHaveBeenCalledTimes(4);
   });
 });

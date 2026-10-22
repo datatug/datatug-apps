@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   computed,
+  effect,
   inject,
 } from '@angular/core';
 import { IonButton, IonPopover } from '@ionic/angular';
@@ -21,7 +22,6 @@ import { ProjectCardViewComponent } from './project-card-view.component';
   selector: 'sneat-datatug-cell-card-popover',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [IonPopover, IonButton, ProjectCardViewComponent],
-  host: { '(document:keydown.escape)': 'onEscape()' },
   template: `
     <ion-popover
       reference="event"
@@ -54,13 +54,15 @@ import { ProjectCardViewComponent } from './project-card-view.component';
           } @else {
             <p role="status">Loading…</p>
           }
-          <ion-button
-            size="small"
-            fill="clear"
-            data-action="open-in-panel"
-            (click)="openInPanel()"
-            >Open in panel</ion-button
-          >
+          @if (!lookup.compact()) {
+            <ion-button
+              size="small"
+              fill="clear"
+              data-action="open-in-panel"
+              (click)="openInPanel()"
+              >Open in panel</ion-button
+            >
+          }
         </div>
       </ng-template>
     </ion-popover>
@@ -95,9 +97,47 @@ export class CellCardPopoverComponent {
     this.lookup.setMode('panel');
   }
 
-  /** Escape closes the tooltip; the grid behind it stays usable, so the popover has no backdrop to dismiss it. */
-  protected onEscape(): void {
-    if (this.lookup.tooltipOpen()) this.lookup.dismiss();
+  constructor() {
+    // While the tooltip is open: Escape, a press outside it, or a scroll anywhere outside it closes it. None of
+    // these is consumed, so the press that closes it still reaches the grid and selects the next cell.
+    effect((onCleanup) => {
+      if (!this.lookup.tooltipOpen()) return;
+      const inside = (target: EventTarget | null): boolean =>
+        target instanceof Node &&
+        !!document
+          .querySelector('ion-popover.cell-card-popover')
+          ?.contains(target);
+      const onKey = (event: KeyboardEvent): void => {
+        if (event.key === 'Escape' && this.isTopmost()) this.lookup.dismiss();
+      };
+      const onPress = (event: Event): void => {
+        if (!inside(event.target)) this.lookup.dismiss();
+      };
+      const onScroll = (event: Event): void => {
+        if (!inside(event.target)) this.lookup.dismiss();
+      };
+      document.addEventListener('keydown', onKey);
+      document.addEventListener('pointerdown', onPress, true);
+      document.addEventListener('scroll', onScroll, true);
+      onCleanup(() => {
+        document.removeEventListener('keydown', onKey);
+        document.removeEventListener('pointerdown', onPress, true);
+        document.removeEventListener('scroll', onScroll, true);
+      });
+    });
+  }
+
+  /** Escape belongs to this tooltip only while no other overlay (a dialog, alert, menu popover) is above it. */
+  private isTopmost(): boolean {
+    return ![
+      ...document.querySelectorAll(
+        'ion-popover, ion-modal, ion-alert, ion-action-sheet',
+      ),
+    ].some(
+      (overlay) =>
+        !overlay.classList.contains('cell-card-popover') &&
+        !overlay.classList.contains('overlay-hidden'),
+    );
   }
 
   /** A pointer event at the selected cell, which is how the popover is anchored. */

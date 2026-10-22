@@ -141,3 +141,31 @@ describe('matchCards', () => {
     expect(result[0].rank).toBe(CardMatchRank.TableColumn);
   });
 });
+
+describe('matchRuleRank hardening', () => {
+  const cell = { table: 'dbo.Orders', column: 'CustomerID', entity: { entity: 'customer', field: 'id' } };
+  it('rejects rules mixing keys of two shapes', () => {
+    for (const rule of [
+      { entity: 'customer', field: 'id', table: 'Orders' },
+      { entity: 'customer', field: 'id', column: 'CustomerID' },
+      { table: 'Orders', column: 'CustomerID', field: 'id' },
+      { table: 'Orders' },
+      { entity: 'customer' },
+      {},
+    ])
+      expect(matchRuleRank(rule as never, cell)).toBeUndefined();
+    expect(matchRuleRank({ entity: 'customer', field: 'id' }, cell)).toBe(CardMatchRank.EntityField);
+  });
+  it('matches wildcards without backtracking blow-up and ignores case', () => {
+    const evil = '*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b';
+    const started = Date.now();
+    expect(matchRuleRank({ column: evil }, { column: 'a'.repeat(400) })).toBeUndefined();
+    expect(Date.now() - started).toBeLessThan(500);
+    expect(matchRuleRank({ column: 'customer*' }, { column: 'CUSTOMERID' })).toBe(CardMatchRank.ColumnPattern);
+    expect(matchRuleRank({ column: 'c?stomerid' }, { column: 'CustomerID' })).toBe(CardMatchRank.ColumnPattern);
+    expect(matchRuleRank({ column: '*ID' }, { column: 'CustomerID' })).toBe(CardMatchRank.ColumnPattern);
+    expect(matchRuleRank({ column: '*I' }, { column: 'CustomerID' })).toBeUndefined();
+    expect(matchRuleRank({ column: '**' }, { column: '' })).toBe(CardMatchRank.ColumnPattern);
+    expect(matchRuleRank({ column: 'x' }, { column: 'y'.repeat(2000) })).toBeUndefined();
+  });
+});

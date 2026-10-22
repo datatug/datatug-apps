@@ -223,6 +223,8 @@
         [columns]="grid()?.columns"
         [groupBy]="grid()?.groupBy"
         [rowClick]="onGridRowClick"
+        [selectableRange]="1"
+        (cellSelected)="onGridCellSelected($event)"
       />
     </ion-card-content>
   </ion-card>

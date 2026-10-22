@@ -15,34 +15,10 @@ import { BoardCardComponent } from '../board/ui/components/board-card/board-card
 import type { BoardQueryResults } from '../board/core/board-query-results.service';
 import type { IProjectRef } from '../core/project-context';
 import type { IBoardContext } from '../models/definition/board/board';
+import { cardQueryIds } from './card-model';
 import { cardBoardContext, isBlankValue, missingRequired } from './card-parameters';
 
-/** Every saved query a card's widgets read, for cache invalidation. */
-export function cardQueryIds(card: Pick<ProjectCard, 'widget'>): string[] {
-  const ids = new Set<string>();
-  const visit = (widget: unknown, depth = 0): void => {
-    if (!widget || typeof widget !== 'object' || depth > 8) return;
-    const { name, data } = widget as {
-      name?: string;
-      data?: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
-    };
-    if (name === 'SQL' && typeof data?.['sql']?.queryId === 'string')
-      ids.add(data['sql'].queryId);
-    else if (name === 'fields' && typeof data?.['source']?.queryId === 'string')
-      ids.add(data['source'].queryId);
-    else if (name === 'chart' && Array.isArray(data?.['sources']))
-      for (const s of data['sources'])
-        if (typeof s?.queryId === 'string') ids.add(s.queryId);
-    if (name === 'tabs' && Array.isArray(data?.['tabs']))
-      for (const tab of data['tabs']) {
-        visit(tab?.widget, depth + 1);
-        if (Array.isArray(tab?.widgets))
-          for (const w of tab.widgets) visit(w, depth + 1);
-      }
-  };
-  visit(card.widget);
-  return [...ids];
-}
+export { cardQueryIds };
 
 /**
  * One project card rendered through the shared dashboard renderer

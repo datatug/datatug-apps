@@ -169,11 +169,14 @@ export class BoardCardComponent {
     );
   });
 
+  /** Only the environment of the context matters to loading the card, not every parameter change. */
+  private readonly environment = computed(() => this.boardContext()?.environment);
+
   constructor() {
     effect((onCleanup) => {
       const ref = this.refDef();
       const project = this.projectRef();
-      const environment = this.boardContext()?.environment;
+      const environment = this.environment();
       this.reload();
       if (!ref) return;
       if (!project) {

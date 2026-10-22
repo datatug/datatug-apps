@@ -225,6 +225,96 @@ describe('CardLookupService', () => {
     expect(service.mode()).toBe('panel');
   });
 
+  it('never shows the answer for cell A under a newer selection B, and drops it when it arrives late', () => {
+    setup();
+    const a = new Subject<ProjectCardBrief[]>();
+    const b = new Subject<ProjectCardBrief[]>();
+    listCards.mockReturnValueOnce(a).mockReturnValueOnce(b);
+    const cellA = cell('1');
+    const cellB = cell('2');
+    service.select(cellA);
+    settle();
+    service.select(cellB);
+    // B is selected: A's answer, if it still came, is not applied
+    a.next([brief('a-card', 'A', [{ column: 'CustomerID' }])]);
+    expect(service.matches()).toEqual([]);
+    expect(service.resolvedCell()).toBeUndefined();
+    settle();
+    b.next([brief('b-card', 'B', [{ column: 'CustomerID' }])]);
+    expect(service.resolvedCell()).toBe(cellB);
+    expect(service.active()?.card.id).toBe('b-card');
+    expect(service.values()).toEqual({ customerId: 2 });
+  });
+
+  it('lets a NULL selection win over a lookup already in flight', () => {
+    setup();
+    const flight = new Subject<ProjectCardBrief[]>();
+    listCards.mockReturnValueOnce(flight);
+    service.select(cell('1'));
+    settle();
+    expect(flight.observed).toBe(true);
+    service.select(cell(null));
+    expect(flight.observed).toBe(false); // cancelled at once, not after the debounce
+    flight.next([brief('late', 'Late', [{ column: 'CustomerID' }])]);
+    settle();
+    expect(service.matches()).toEqual([]);
+    expect(service.panelOpen()).toBe(false);
+    expect(service.cell()?.value).toBeNull();
+  });
+
+  it('clears the previous card before the next one loads and cancels a card still loading for an older cell', () => {
+    setup([
+      brief('first', 'First', [{ column: 'CustomerID' }]),
+      brief('second', 'Second', [{ table: 'Orders', column: 'CustomerID' }]),
+    ]);
+    const loading = new Subject<ProjectCard>();
+    service.select(cell('1'));
+    settle();
+    expect(service.card()?.id).toBe('second');
+    getCard.mockReturnValue(loading);
+    service.choose('first');
+    expect(service.card()).toBeUndefined();
+    expect(service.cardLoading()).toBe(true);
+    expect(loading.observed).toBe(true);
+    // a newer selection cancels the card read that is still pending
+    service.select(cell('2'));
+    expect(loading.observed).toBe(false);
+    expect(service.cardLoading()).toBe(false);
+  });
+
+  it('reads the card again when the card list was refreshed', () => {
+    const first = [brief('customer', 'Customer', [{ column: 'CustomerID' }])];
+    setup(first);
+    service.select(cell('1'));
+    settle();
+    expect(getCard).toHaveBeenCalledTimes(1);
+    // same list: the card stays
+    service.select(cell('2'));
+    settle();
+    expect(getCard).toHaveBeenCalledTimes(1);
+    // a refreshed list brings new brief objects: the card is read again
+    listCards.mockReturnValue(of([brief('customer', 'Customer', [{ column: 'CustomerID' }])]));
+    service.select(cell('3'));
+    settle();
+    expect(getCard).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows every card as a popover while the page has no room beside its grid', () => {
+    setup([brief('customer', 'Customer', [{ column: 'CustomerID' }], { display: 'panel' })]);
+    service.select(cell('1'));
+    settle();
+    expect(service.panelOpen()).toBe(true);
+    service.compact.set(true);
+    expect(service.mode()).toBe('tooltip');
+    expect(service.panelOpen()).toBe(false);
+    expect(service.tooltipOpen()).toBe(true);
+    // the session override cannot force a panel where there is no room
+    service.setMode('panel');
+    expect(service.tooltipOpen()).toBe(true);
+    service.compact.set(false);
+    expect(service.panelOpen()).toBe(true);
+  });
+
   it('does nothing without a project', () => {
     setup([brief('customer', 'Customer', [{ column: 'CustomerID' }])]);
     service.use({

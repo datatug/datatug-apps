@@ -1,5 +1,5 @@
 import { HttpErrorResponse } from '@angular/common/http';
-import { Injectable, inject } from '@angular/core';
+import { Injectable, effect, inject, untracked } from '@angular/core';
 import {
   CARD_ID_PATTERN,
   ProjectCard,
@@ -21,6 +21,7 @@ import {
   throwError,
   toArray,
 } from 'rxjs';
+import { BoardChoicesService } from '../board/core/board-choices.service';
 import { IProjectRef, isSharedProjectRef } from '../core/project-context';
 import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
 import { githubProjectAddressForRef } from '../services/project/project-assets-read.service';
@@ -38,6 +39,9 @@ export class CardNotFoundError extends Error {
     this.name = 'CardNotFoundError';
   }
 }
+
+/** Cached card reads are read again after this long (spec: 5 minutes). */
+export const CARD_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const MAX_CARDS = 200;
 const MAX_PARALLEL_READS = 8;
@@ -135,8 +139,26 @@ export class ProjectCardsService {
 
   private readonly lists = new Map<string, Observable<ProjectCardBrief[]>>();
   private readonly cards = new Map<string, Observable<ProjectCard>>();
+  /** When each cached read started: reads older than {@link CARD_CACHE_TTL_MS} are read again. */
+  private readonly stamps = new Map<Map<string, unknown>, Map<string, number>>();
+  private readonly choices = inject(BoardChoicesService);
+  /** Injectable clock, milliseconds. */
+  protected now: () => number = () => Date.now();
   /** Last revision read or written per hosted card; guards the next save. */
   private readonly revisions = new Map<string, string>();
+
+  constructor() {
+    // Another person (or signing out) must never be served what the previous one was allowed to read.
+    effect(() => {
+      this.choices.actor();
+      untracked(() => {
+        this.lists.clear();
+        this.cards.clear();
+        this.revisions.clear();
+        this.stamps.clear();
+      });
+    });
+  }
 
   private scopeKey(ref: IProjectRef, environment?: string): string {
     return JSON.stringify([
@@ -145,6 +167,7 @@ export class ProjectCardsService {
       ref.spaceID,
       ref.projectApi,
       ref.branch,
+      this.choices.actor() ?? '',
       environment ?? '',
     ]);
   }
@@ -160,7 +183,10 @@ export class ProjectCardsService {
     ]).slice(0, -1);
     for (const map of [this.lists, this.cards])
       for (const key of [...map.keys()])
-        if (key.startsWith(prefix)) map.delete(key);
+        if (key.startsWith(prefix)) {
+          map.delete(key);
+          this.stamps.get(map)?.delete(key);
+        }
   }
 
   private isLocalAgent(ref: IProjectRef): boolean {
@@ -189,8 +215,16 @@ export class ProjectCardsService {
     key: string,
     load: () => Observable<T>,
   ): Observable<T> {
+    let stamps = this.stamps.get(map);
+    if (!stamps) this.stamps.set(map, (stamps = new Map()));
+    const started = stamps.get(key);
+    if (started !== undefined && this.now() - started >= CARD_CACHE_TTL_MS) {
+      map.delete(key);
+      stamps.delete(key);
+    }
     let hit = map.get(key);
     if (!hit) {
+      stamps.set(key, this.now());
       const loading = defer(load).pipe(
         catchError((error: unknown) => {
           if (map.get(key) === loading) map.delete(key);
@@ -432,11 +466,7 @@ export class ProjectCardsService {
   }
 
   /** Deletes a card (`cards/<id>/` is removed by the agent). */
-  deleteCard(
-    ref: IProjectRef,
-    id: string,
-    environment?: string,
-  ): Observable<void> {
+  deleteCard(ref: IProjectRef, id: string): Observable<void> {
     return defer(() => {
       if (!CARD_ID_PATTERN.test(id))
         return throwError(() => new Error('Invalid card id'));
@@ -446,7 +476,6 @@ export class ProjectCardsService {
         return throwError(() => new Error(HOSTED_DELETE_UNSUPPORTED));
       if (!this.isLocalAgent(ref))
         return throwError(() => new Error(READ_ONLY_QUALIFIED));
-      void environment;
       return this.store
         .delete<unknown>(ref.storeId, '/cards/delete_card', {
           params: { project: ref.projectId, id },

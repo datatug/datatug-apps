@@ -308,6 +308,86 @@ describe('BoardQueryResults bounds (project card cache)', () => {
     expect(e).toHaveBeenCalledTimes(5);
   });
 
+  it('detaches a refreshed in-flight run that other requesters still use instead of aborting it', async () => {
+    const { cache } = make();
+    let finish!: () => void;
+    let owned!: AbortSignal;
+    const e = vi.fn(
+      (s: AbortSignal) =>
+        new Promise<FederatedQueryResult>((resolve) => {
+          owned = s;
+          finish = () => resolve(result);
+        }),
+    );
+    const other = new AbortController();
+    const refreshing = new AbortController();
+    const otherCard = cache.read('s', 'k', other.signal, true, e);
+    await Promise.resolve();
+    // refresh of card A drops the entry while card B (identical run) still waits on it
+    cache.invalidate((key) => key === 'k');
+    expect(owned.aborted).toBe(false);
+    finish();
+    await expect(otherCard).resolves.toBe(result);
+    // ...but no longer cached: the next read runs again
+    const again = vi.fn(async () => result);
+    await cache.read('s', 'k', refreshing.signal, true, again);
+    expect(again).toHaveBeenCalledOnce();
+  });
+
+  it('aborts an invalidated in-flight run once its last requester leaves', async () => {
+    const { cache } = make();
+    let owned!: AbortSignal;
+    const e = vi.fn(
+      (s: AbortSignal) =>
+        new Promise<FederatedQueryResult>(() => {
+          owned = s;
+        }),
+    );
+    const a = new AbortController();
+    const pending = cache.read('s', 'k', a.signal, true, e).catch(() => undefined);
+    await Promise.resolve();
+    cache.invalidate(['k']);
+    expect(owned.aborted).toBe(false);
+    a.abort();
+    await pending;
+    expect(owned.aborted).toBe(true);
+  });
+
+  it('aborts an invalidated in-flight run nobody waits for', async () => {
+    const { cache } = make();
+    let owned!: AbortSignal;
+    const a = new AbortController();
+    const e = vi.fn(
+      (s: AbortSignal) =>
+        new Promise<FederatedQueryResult>(() => {
+          owned = s;
+        }),
+    );
+    void cache.read('s', 'k', a.signal, true, e).catch(() => undefined);
+    await Promise.resolve();
+    a.abort();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(owned.aborted).toBe(true);
+  });
+
+  it('keeps runs of another security context, execution target or runtime binding apart', async () => {
+    const { cache } = make();
+    const e = exec();
+    const base = { actor: 'a', project: 'p', environment: 'dev' };
+    const scopes = [
+      cardResultScope({ ...base, securityContextId: 'ctx-1' }),
+      cardResultScope({ ...base, securityContextId: 'ctx-2' }),
+      cardResultScope({ ...base, securityContextId: 'ctx-1', executionTarget: { kind: 'hosted-cloud' } }),
+      cardResultScope({ ...base, securityContextId: 'ctx-1', runtimeBinding: { id: 'rb' } }),
+    ];
+    expect(new Set(scopes).size).toBe(4);
+    for (const scope of scopes) await cache.read(scope, 'k', signal, true, e);
+    expect(e).toHaveBeenCalledTimes(4);
+    await cache.read(scopes[0], 'k', signal, true, e);
+    expect(e).toHaveBeenCalledTimes(4);
+  });
+
   it('canonicalises keys: sorted, typed, null explicit, unset omitted', () => {
     expect(cardResultKey({ queryId: 'q', parameters: { b: 1, a: '2' } })).toBe(
       cardResultKey({ queryId: 'q', parameters: { a: '2', b: 1 } }),

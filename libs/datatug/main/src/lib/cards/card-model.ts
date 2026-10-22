@@ -172,33 +172,58 @@ export function firstTabCard(card: ProjectCard): ProjectCard {
   };
 }
 
+type Data = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
+
+/** Visits a widget and, depth first, every widget inside its tabs (`widget` and `widgets[]`). */
+export function walkWidgets(
+  widget: BoardWidget | undefined,
+  visit: (widget: BoardWidget) => void,
+  depth = 0,
+): void {
+  if (!widget || typeof widget !== 'object' || depth > 8) return;
+  visit(widget);
+  const data = widget.data as Data | undefined;
+  if (widget.name === 'tabs' && Array.isArray(data?.['tabs']))
+    for (const tab of data['tabs']) {
+      walkWidgets(tab?.widget, visit, depth + 1);
+      if (Array.isArray(tab?.widgets))
+        for (const w of tab.widgets) walkWidgets(w, visit, depth + 1);
+    }
+}
+
+/** The query bindings a widget carries, by kind: grid `sql`, `fields` source, chart sources. */
+function widgetBindings(widget: BoardWidget): unknown[] {
+  const data = widget.data as Data | undefined;
+  if (!data) return [];
+  if (widget.name === 'SQL') return [data['sql']];
+  if (widget.name === 'fields') return [data['source']];
+  if (widget.name === 'chart' && Array.isArray(data['sources']))
+    return data['sources'];
+  return [];
+}
+
 /** Every board parameter id a widget graph binds (saved-query bindings and chart sources). */
 export function boundBoardParameterIds(widget: BoardWidget | undefined): string[] {
   const ids = new Set<string>();
-  const bindings = (list: unknown): void => {
-    if (!Array.isArray(list)) return;
-    for (const b of list) {
-      const id = (b as { boardParameterId?: unknown } | undefined)
-        ?.boardParameterId;
-      if (typeof id === 'string' && id) ids.add(id);
-    }
-  };
-  const visit = (value: BoardWidget | undefined, depth: number): void => {
-    if (!value || depth > 8) return;
-    const data = value.data as Record<string, any> | undefined; // eslint-disable-line @typescript-eslint/no-explicit-any
-    if (!data) return;
-    if (value.name === 'SQL') bindings(data['sql']?.parameters);
-    else if (value.name === 'fields') bindings(data['source']?.parameters);
-    else if (value.name === 'chart' && Array.isArray(data['sources']))
-      for (const s of data['sources']) bindings(s?.parameters);
-    else if (value.name === 'tabs' && Array.isArray(data['tabs']))
-      for (const tab of data['tabs']) {
-        visit(tab?.widget, depth + 1);
-        if (Array.isArray(tab?.widgets))
-          for (const w of tab.widgets) visit(w, depth + 1);
-      }
-  };
-  visit(widget, 0);
+  walkWidgets(widget, (w) => {
+    for (const source of widgetBindings(w) as Data[])
+      if (Array.isArray(source?.['parameters']))
+        for (const b of source['parameters']) {
+          const id = (b as { boardParameterId?: unknown } | undefined)
+            ?.boardParameterId;
+          if (typeof id === 'string' && id) ids.add(id);
+        }
+  });
+  return [...ids];
+}
+
+/** Every saved query a card's widgets read, for cache invalidation. */
+export function cardQueryIds(card: { widget?: BoardWidget }): string[] {
+  const ids = new Set<string>();
+  walkWidgets(card.widget, (w) => {
+    for (const source of widgetBindings(w) as Data[])
+      if (typeof source?.['queryId'] === 'string') ids.add(source['queryId']);
+  });
   return [...ids];
 }
 

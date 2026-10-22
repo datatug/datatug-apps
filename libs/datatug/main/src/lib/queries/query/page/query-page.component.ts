@@ -4253,8 +4253,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.authorResultGridApi = event.api;
   }
 
+  private readonly pageHost = inject<ElementRef<HTMLElement>>(ElementRef, {
+    optional: true,
+  });
   /** Project cards for the selected result cell (spec REQ: cell-to-card). */
   private readonly resultCellCards = viewChild(ResultCellCardsComponent);
+  /** A project card is open beside the results. */
+  public readonly resultCardPaneOpen = signal(false);
 
   private openCardsForFocusedCell(
     event: CellFocusedEvent<QueryResultGridRow>,
@@ -4277,18 +4282,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const row = Object.fromEntries(
       columns.map((c, i) => [c.name, data[`result_${i}`]]),
     );
-    // The focus class lands after this event; anchor the tooltip on the next frame.
-    requestAnimationFrame(() => {
-      const rect = document
-        .querySelector('.result-grid-viewport .ag-cell-focus')
-        ?.getBoundingClientRect();
-      cards.focusCell({
+    // The focus class lands after this event; the pane anchors the tooltip on the next frame, in this grid only.
+    cards.focusCell(
+      {
         identity: { column: columns[index].name },
         value: data[colId],
         row,
-        anchor: rect ? { x: rect.left, y: rect.bottom } : undefined,
-      });
-    });
+      },
+      () =>
+        this.pageHost?.nativeElement.querySelector(
+          '.result-grid-viewport .ag-cell-focus',
+        ) ?? null,
+    );
   }
 
   public authorResultCellFocused(

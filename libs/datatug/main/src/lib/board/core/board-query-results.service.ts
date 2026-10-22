@@ -80,16 +80,25 @@ export function canonicalJson(value: unknown): string {
   return JSON.stringify(sortedJson(value));
 }
 
-/** The cache scope of a card run: actor + project + environment. */
+/** The cache scope of a card run: actor + project + environment + security context + execution target + runtime binding. */
 export function cardResultScope(parts: {
   actor?: string;
   project: string;
   environment?: string;
+  /** Who the agent runs the query as: another security context never shares results. */
+  securityContextId?: string;
+  /** Where the query runs (local agent, hosted cloud). */
+  executionTarget?: unknown;
+  /** The runtime binding the run used. */
+  runtimeBinding?: unknown;
 }): string {
   return canonicalJson({
     actor: parts.actor ?? '',
     project: parts.project,
     environment: parts.environment ?? '',
+    securityContextId: parts.securityContextId ?? '',
+    executionTarget: parts.executionTarget ?? null,
+    runtimeBinding: parts.runtimeBinding ?? null,
   });
 }
 
@@ -166,10 +175,12 @@ export class BoardQueryResults implements OnDestroy {
   }
 
   /**
-   * With no argument drops everything (aborting in-flight runs). With a list
-   * of keys, or a predicate over `(key, scope)`, drops only the matching
-   * entries (aborting matching in-flight runs). In-flight runs that still
-   * have requesters keep serving them but are no longer cached.
+   * With no argument drops everything and aborts in-flight runs (the source
+   * itself changed). With a list of keys, or a predicate over `(key, scope)`,
+   * drops only the matching entries: an in-flight run that still has
+   * requesters is detached, not aborted. It keeps serving them (another card
+   * showing the same query is not cut off) but is no longer cached, and is
+   * aborted when its last requester leaves.
    */
   invalidate(
     which?: readonly string[] | ((key: string, scope: string) => boolean),
@@ -184,7 +195,7 @@ export class BoardQueryResults implements OnDestroy {
     for (const [id, run] of [...this.runs]) {
       if (!test(run.key, run.scope)) continue;
       this.runs.delete(id);
-      if (!run.settled) run.controller.abort();
+      if (!run.settled && run.users === 0) run.controller.abort();
     }
   }
 

@@ -317,9 +317,11 @@ export class CardPageComponent {
     effect((onCleanup) => {
       const card = this.finished();
       const valid = !this.problem() || this.isIdOnlyProblem();
+      // Reading the preview here must not make the effect depend on what it writes.
+      const first = untracked(() => this.previewCard() === undefined);
       const timer = setTimeout(
         () => this.previewCard.set(valid ? card : undefined),
-        this.previewCard() === undefined ? 0 : PREVIEW_DEBOUNCE_MS,
+        first ? 0 : PREVIEW_DEBOUNCE_MS,
       );
       onCleanup(() => clearTimeout(timer));
     });
@@ -532,7 +534,6 @@ export class CardPageComponent {
           if (url) void this.router.navigateByUrl(url, { replaceUrl: true });
         } else {
           this.savedNotice.set(true);
-          this.adoptSaved(card);
         }
       },
       error: (error: unknown) => {
@@ -540,10 +541,6 @@ export class CardPageComponent {
         this.saveError.set(errorText(error, 'The card could not be saved.'));
       },
     });
-  }
-
-  private adoptSaved(card: ProjectCard): void {
-    this.baseline.set(JSON.stringify(card));
   }
 
   protected async confirmDelete(): Promise<void> {
@@ -565,7 +562,7 @@ export class CardPageComponent {
     if (!ref) return;
     this.saving.set(true);
     this.cards
-      .deleteCard(ref, this.card().id, this.ctx.environment())
+      .deleteCard(ref, this.card().id)
       .subscribe({
         next: () => {
           this.saving.set(false);

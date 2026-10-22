@@ -306,7 +306,7 @@ describe('CardPageComponent', () => {
       expect(options.buttons.map((b) => b.text)).toEqual(['Keep card', 'Delete card']);
       options.buttons[1].handler?.();
       await fixture.whenStable();
-      expect(harness.service['deleteCard']).toHaveBeenCalledWith(demoRef, 'customer', undefined);
+      expect(harness.service['deleteCard']).toHaveBeenCalledWith(demoRef, 'customer');
       expect(harness.router.navigateByUrl).toHaveBeenCalledWith(
         expect.objectContaining({ url: expect.stringContaining('/cards') }),
         { replaceUrl: true },

@@ -2236,7 +2236,6 @@ select i.InvoiceId
     const rows = component.resultGridRows();
     const cards = { focusCell: vi.fn(), clear: vi.fn() };
     Object.defineProperty(component, 'resultCellCards', { value: () => cards });
-    vi.stubGlobal('requestAnimationFrame', (run: () => void) => run());
     const api = { getDisplayedRowAtIndex: (i: number) => ({ data: rows[i] }) };
     try {
       component.authorResultCellFocused({
@@ -2244,12 +2243,28 @@ select i.InvoiceId
         column: { getColId: () => 'result_1' },
         api,
       } as never);
-      expect(cards.focusCell).toHaveBeenCalledWith({
-        identity: { column: 'CustomerID' },
-        value: 'ALFKI',
-        row: { InvoiceId: '7', CustomerID: 'ALFKI' },
-        anchor: undefined,
-      });
+      expect(cards.focusCell).toHaveBeenCalledWith(
+        {
+          identity: { column: 'CustomerID' },
+          value: 'ALFKI',
+          row: { InvoiceId: '7', CustomerID: 'ALFKI' },
+        },
+        expect.any(Function),
+      );
+      // the anchor is looked up inside this page's grid, not in the whole document
+      const anchorOf = cards.focusCell.mock.calls[0][1] as () => Element | null;
+      const host = (component as never as { pageHost: { nativeElement: HTMLElement } }).pageHost.nativeElement;
+      const own = document.createElement('div');
+      own.className = 'result-grid-viewport';
+      own.innerHTML = '<div class="ag-cell-focus"></div>';
+      host.appendChild(own);
+      const foreign = document.createElement('div');
+      foreign.className = 'result-grid-viewport';
+      foreign.innerHTML = '<div class="ag-cell-focus" id="foreign"></div>';
+      document.body.appendChild(foreign);
+      expect(anchorOf()).toBe(own.firstElementChild);
+      foreign.remove();
+      own.remove();
       // a NULL cell is handed over as it is; the lookup itself skips it
       component.authorResultCellFocused({
         rowIndex: 1,
@@ -2258,6 +2273,7 @@ select i.InvoiceId
       } as never);
       expect(cards.focusCell).toHaveBeenLastCalledWith(
         expect.objectContaining({ identity: { column: 'CustomerID' }, value: null }),
+        expect.any(Function),
       );
       // no row, a group row, or an unknown column clear the pane
       component.authorResultCellFocused({ rowIndex: null, column: 'result_0', api } as never);
@@ -2269,7 +2285,7 @@ select i.InvoiceId
       component.authorResultCellFocused({ rowIndex: 0, column: 'ag-Grid-SelectionColumn', api } as never);
       expect(cards.clear).toHaveBeenCalledTimes(3);
     } finally {
-      vi.unstubAllGlobals();
+      /* nothing to restore */
     }
   });
 

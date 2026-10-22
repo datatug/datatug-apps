@@ -30,25 +30,33 @@ export interface CardMatch {
 }
 
 const MAX_PATTERN = 128;
-const MAX_GLOBS = 500;
-const globCache = new Map<string, RegExp>();
-
-function glob(pattern: string): RegExp {
-  let re = globCache.get(pattern);
-  if (!re) {
-    // Collapse runs of `*` so stored patterns cannot cause heavy backtracking.
-    const body = pattern
-      .replace(/\*+/g, '*')
-      .split('')
-      .map((c) =>
-        c === '*' ? '.*' : c === '?' ? '.' : c.replace(/[\\^$.|+()[\]{}]/g, '\\$&'),
-      )
-      .join('');
-    re = new RegExp(`^${body}$`, 'i');
-    if (globCache.size >= MAX_GLOBS) globCache.clear();
-    globCache.set(pattern, re);
+/**
+ * Case-insensitive `*` / `?` wildcard match without a regular expression: the classic two-pointer walk that
+ * remembers only the last `*`, so a stored pattern cannot cause exponential backtracking. Cost is at most
+ * pattern x text steps, and both are bounded by {@link MAX_PATTERN} / the caller's names.
+ */
+function wildcardMatch(pattern: string, text: string): boolean {
+  if (pattern.length > MAX_PATTERN || text.length > 4 * MAX_PATTERN) return false;
+  const p = pattern.toLowerCase();
+  const t = text.toLowerCase();
+  let pi = 0;
+  let ti = 0;
+  let star = -1;
+  let resume = 0;
+  while (ti < t.length) {
+    if (pi < p.length && p[pi] === '*') {
+      star = pi++;
+      resume = ti;
+    } else if (pi < p.length && (p[pi] === '?' || p[pi] === t[ti])) {
+      pi++;
+      ti++;
+    } else if (star >= 0) {
+      pi = star + 1;
+      ti = ++resume;
+    } else return false;
   }
-  return re;
+  while (pi < p.length && p[pi] === '*') pi++;
+  return pi === p.length;
 }
 
 const isPattern = (s: string) => s.includes('*') || s.includes('?');
@@ -64,9 +72,9 @@ function tableParts(name: string): string[] {
 function tableMatches(rule: string, table: string): boolean {
   const r = tableParts(rule);
   const t = tableParts(table);
-  if (!glob(r[r.length - 1]).test(t[t.length - 1])) return false;
+  if (!wildcardMatch(r[r.length - 1], t[t.length - 1])) return false;
   if (r.length < 2 || t.length < 2) return true;
-  return glob(r[r.length - 2]).test(t[t.length - 2]);
+  return wildcardMatch(r[r.length - 2], t[t.length - 2]);
 }
 
 /** Rank of one rule against a cell, or undefined when it does not match or is malformed. */
@@ -76,8 +84,14 @@ export function matchRuleRank(
 ): CardMatchRank | undefined {
   if (!rule || typeof rule !== 'object') return undefined;
   const r = rule as Record<string, unknown>;
+  // Exactly one shape: {entity, field}, {table, column} or {column}; keys of two shapes mixed never match.
+  const keys = Object.keys(r).filter((k) => r[k] !== undefined);
+  const shape = (...allowed: string[]) =>
+    keys.length === allowed.length && allowed.every((k) => keys.includes(k));
+  if (!shape('entity', 'field') && !shape('table', 'column') && !shape('column'))
+    return undefined;
   if (r['entity'] !== undefined || r['field'] !== undefined) {
-    if (!str(r['entity']) || !str(r['field']) || r['column'] !== undefined)
+    if (!str(r['entity']) || !str(r['field']))
       return undefined;
     const e = cell.entity;
     return e &&
@@ -88,7 +102,7 @@ export function matchRuleRank(
   }
   const column = r['column'];
   const table = r['table'];
-  if (!str(column) || !glob(column).test(cell.column)) return undefined;
+  if (!str(column) || !wildcardMatch(column, cell.column)) return undefined;
   if (table === undefined)
     return isPattern(column) ? CardMatchRank.ColumnPattern : CardMatchRank.Column;
   if (!str(table) || !cell.table || !tableMatches(table, cell.table)) return undefined;

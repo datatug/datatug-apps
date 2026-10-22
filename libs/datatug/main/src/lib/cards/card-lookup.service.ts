@@ -8,14 +8,15 @@ import {
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import {
+  EMPTY,
   Observable,
   Subject,
   Subscription,
   catchError,
-  debounceTime,
   map,
   of,
   switchMap,
+  timer,
 } from 'rxjs';
 import {
   matchCards,
@@ -49,6 +50,11 @@ export interface CardCellSelection {
 
 /** Selecting a cell waits this long before looking cards up, so arrowing through cells costs nothing. */
 export const CARD_LOOKUP_DEBOUNCE_MS = 150;
+
+interface LookupRequest {
+  readonly id: number;
+  readonly cell: CardCellSelection | undefined;
+}
 
 const NUMERIC = new Set(['integer', 'number', 'float', 'money']);
 
@@ -124,10 +130,17 @@ export class CardLookupService {
   private readonly overrides = signal<Record<string, CardDisplay>>({});
   private readonly dismissed = signal<CardCellSelection | undefined>(undefined);
 
-  /** How the active card shows: the session override, else its own `display`, else a panel. */
+  /**
+   * True when the page has no room beside its grid (narrow content area): every card then shows as a popover over
+   * the selected cell, so a selection always gives visible feedback.
+   */
+  readonly compact = signal(false);
+
+  /** How the active card shows: narrow pages always a tooltip; else the session override, its own `display`, a panel. */
   readonly mode = computed<CardDisplay>(() => {
     const active = this.active();
     if (!active) return 'panel';
+    if (this.compact()) return 'tooltip';
     return this.overrides()[active.card.id] ?? active.card.display ?? 'panel';
   });
   private readonly shown = computed(
@@ -146,32 +159,41 @@ export class CardLookupService {
     bindCellValues(this.active(), this.resolvedCell()),
   );
 
-  private readonly requests = new Subject<CardCellSelection | undefined>();
+  private readonly requests = new Subject<LookupRequest>();
+  /** Ordinal of the latest selection: an answer for an older one is dropped. */
+  private latest = 0;
   private cardLoad?: Subscription;
   private loadedFor?: string;
+  /** The brief the shown card was loaded for: a refreshed list means a different brief. */
+  private loadedBrief?: ProjectCardBrief;
 
   constructor() {
     this.requests
       .pipe(
-        debounceTime(CARD_LOOKUP_DEBOUNCE_MS),
-        switchMap((cell) => this.lookup(cell)),
+        // A newer selection (or a clear) cancels the older lookup at once, its card list read included.
+        switchMap((request) =>
+          request.cell
+            ? timer(CARD_LOOKUP_DEBOUNCE_MS).pipe(
+                switchMap(() => this.lookup(request.cell)),
+                map((matches) => ({ request, matches })),
+              )
+            : EMPTY,
+        ),
         takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe(({ cell, matches }) => this.apply(cell, matches));
+      .subscribe(({ request, matches }) => {
+        // Never show an answer for a cell that is no longer the selected one.
+        if (request.id === this.latest) this.apply(request.cell, matches);
+      });
     this.destroyRef.onDestroy(() => this.cardLoad?.unsubscribe());
   }
 
-  private lookup(
-    cell: CardCellSelection | undefined,
-  ): Observable<{ cell: CardCellSelection | undefined; matches: CardMatch[] }> {
+  private lookup(cell: CardCellSelection | undefined): Observable<CardMatch[]> {
     const ref = this.projectRef();
-    if (!cell || !ref) return of({ cell, matches: [] });
+    if (!cell || !ref) return of([]);
     return this.cards.listCards(ref, this.environment()).pipe(
-      map((briefs: ProjectCardBrief[]) => ({
-        cell,
-        matches: matchCards(briefs, cell.identity),
-      })),
-      catchError(() => of({ cell, matches: [] as CardMatch[] })),
+      map((briefs: ProjectCardBrief[]) => matchCards(briefs, cell.identity)),
+      catchError(() => of([] as CardMatch[])),
     );
   }
 
@@ -182,13 +204,22 @@ export class CardLookupService {
 
   /** Selects a grid cell, or clears the selection (`undefined`). */
   select(cell: CardCellSelection | undefined): void {
+    const id = ++this.latest;
     this.cell.set(cell);
+    // A card still loading for the previous cell is of no use any more.
+    if (this.cardLoading()) {
+      this.cardLoad?.unsubscribe();
+      this.cardLoad = undefined;
+      this.loadedFor = undefined;
+      this.loadedBrief = undefined;
+      this.cardLoading.set(false);
+    }
     if (!cell || isBlankValue(cell.value)) {
-      this.requests.next(undefined);
+      this.requests.next({ id, cell: undefined });
       this.apply(undefined, []);
       return;
     }
-    this.requests.next(cell);
+    this.requests.next({ id, cell });
   }
 
   /** Forgets the selection and anything shown for it. */
@@ -231,11 +262,15 @@ export class CardLookupService {
     const key = active && ref ? active.card.id : undefined;
     if (
       key === this.loadedFor &&
+      active?.card === this.loadedBrief &&
       (key === undefined || this.card() || this.cardLoading())
     )
       return;
     this.cardLoad?.unsubscribe();
+    // Another card, or none: nothing of the previous card stays on show while the next loads.
+    if (key !== this.loadedFor) this.card.set(undefined);
     this.loadedFor = key;
+    this.loadedBrief = active?.card;
     this.cardError.set(undefined);
     if (!key || !ref) {
       this.card.set(undefined);

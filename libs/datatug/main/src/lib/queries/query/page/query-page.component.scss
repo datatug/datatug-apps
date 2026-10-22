@@ -192,15 +192,24 @@
 .result-author-data-enabled.result-author-data-collapsed {
   grid-template-columns: minmax(0, 1fr);
 }
-/* A matching project card opens beside the results; in the text workspace it sits under them. */
-.result-author-data:not(.result-author-data-enabled):has(.cell-card-open) {
+/* A matching project card opens beside the results (on a narrow area it is a popover instead, see the pane). */
+.result-author-data.result-author-data-card {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 24rem);
+  grid-template-columns: minmax(0, 1fr) clamp(22rem, 30%, 26rem);
   gap: 0.75rem;
   align-items: start;
 }
-.result-author-data-enabled > .result-card-pane {
+.result-author-data.result-author-data-card > .result-card-pane {
+  grid-column: 2;
+  grid-row: 1;
+}
+/* In the text workspace the current row moves under the grid while a card is open. */
+.result-author-data-enabled.result-author-data-card > sneat-author-current-row {
   grid-column: 1 / -1;
+  grid-row: 2;
+}
+.result-author-data-enabled:not(.result-author-data-card) > .result-card-pane {
+  display: none;
 }
 .author-current-row-toggle {
   display: flex;

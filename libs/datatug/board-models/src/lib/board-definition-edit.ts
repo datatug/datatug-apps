@@ -62,6 +62,32 @@ export function validateCardRef(ref: unknown): void {
     throw new Error('Unsupported project card reference.');
   bindings(ref['parameters'], 'Unsupported project card parameter binding.');
 }
+/** Every card input a widget graph takes its rows from (`source: {parameter}` of grids and fields). */
+function parameterSources(widget: BoardWidget | undefined, depth = 0): string[] {
+  if (!widget || depth > 8 || !record(widget.data)) return [];
+  const data = widget.data;
+  const source = data['source'];
+  const own =
+    (widget.name === 'SQL' || widget.name === BOARD_WIDGET_NAME_FIELDS) &&
+    record(source) &&
+    typeof source['parameter'] === 'string'
+      ? [source['parameter']]
+      : [];
+  if (widget.name !== 'tabs' || !Array.isArray(data['tabs'])) return own;
+  return [
+    ...own,
+    ...data['tabs'].flatMap((tab) =>
+      record(tab)
+        ? [
+            ...parameterSources(tab['widget'] as BoardWidget, depth + 1),
+            ...(Array.isArray(tab['widgets']) ? tab['widgets'] : []).flatMap(
+              (w: BoardWidget) => parameterSources(w, depth + 1),
+            ),
+          ]
+        : [],
+    ),
+  ];
+}
 /** Bounded structural admission of one widget graph (boards and project cards). */
 export function validateHostedWidget(value: BoardWidget, depth: number): void {
   if (
@@ -107,6 +133,9 @@ export function validateHostedWidget(value: BoardWidget, depth: number): void {
     for (const tab of value.data['tabs']) {
       if (!record(tab) || !keys(tab, ['id', 'title', 'widget', 'widgets']))
         throw new Error('Unsupported tab definition.');
+      // A tab holds `widgets[]` or the legacy single `widget`, never both (Go writes widgets-only tabs).
+      if (tab['widget'] && tab['widgets'] != null)
+        throw new Error('A tab holds either widget or widgets, not both.');
       if (tab['widget']) validateHostedWidget(tab['widget'] as BoardWidget, depth + 1);
       if (tab['widgets'] != null) {
         if (!Array.isArray(tab['widgets']))
@@ -294,6 +323,16 @@ export function validateProjectCard(value: unknown): ProjectCard {
     rows: [{ cards: [{ widget: value['widget'] }] }],
   });
   validateHostedWidget(value['widget'] as unknown as BoardWidget, 0);
+  const rowParameters = new Set(
+    (params ?? [])
+      .filter((p) => p.type === 'record' || p.type === 'recordset')
+      .map((p) => p.id),
+  );
+  for (const id of parameterSources(value['widget'] as unknown as BoardWidget))
+    if (!rowParameters.has(id))
+      throw new Error(
+        `Rows source "${id}" must be a declared record or recordset input.`,
+      );
   return value as unknown as ProjectCard;
 }
 export type BoardDefinitionEdit =

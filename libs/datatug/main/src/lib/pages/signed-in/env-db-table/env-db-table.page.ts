@@ -599,7 +599,13 @@ from ${this.tableFromClause(currentTable)}`;
       if (!field) {
         return;
       }
-      this.selectCardCell(field, row, cellElement);
+      this.selectCardCell(
+        field,
+        (
+          row as { getData?: () => Record<string, unknown> } | undefined
+        )?.getData?.(),
+        cellElement,
+      );
       const mapping = this.semanticColumns().find((m) => m.column === field);
       if (!mapping) {
         this.selection.set(undefined);
@@ -648,12 +654,9 @@ from ${this.tableFromClause(currentTable)}`;
    * from the semantic mapping, else from the foreign key the column belongs to. */
   private selectCardCell(
     field: string,
-    row: unknown,
+    data: Record<string, unknown> | undefined,
     cellElement: Element | null,
   ): void {
-    const data = (
-      row as { getData?: () => Record<string, unknown> } | undefined
-    )?.getData?.();
     const mapping = this.semanticColumns().find((m) => m.column === field);
     const rect = cellElement?.getBoundingClientRect();
     this.cardLookup.select({
@@ -670,6 +673,32 @@ from ${this.tableFromClause(currentTable)}`;
       row: data,
       anchor: rect ? { x: rect.left, y: rect.bottom } : undefined,
     });
+  }
+
+  /**
+   * A cell became the active selection by mouse, touch or keyboard arrow keys (the grid's range selection
+   * navigates cell to cell): looks up its project cards. A click also reaches {@link onGridRowClick}; the
+   * lookup's debounce folds the two into one.
+   */
+  public onGridCellSelected(event: {
+    row: unknown;
+    column: { field: string };
+    rowData: unknown;
+  }): void {
+    try {
+      const cell = (
+        event.row as {
+          getCell?: (field: string) => { getElement?: () => Element } | undefined;
+        }
+      )?.getCell?.(event.column.field);
+      this.selectCardCell(
+        event.column.field,
+        event.rowData as Record<string, unknown> | undefined,
+        cell?.getElement?.() ?? null,
+      );
+    } catch (e) {
+      this.errorLogger.logError(e, 'Failed to process grid cell selection');
+    }
   }
 
   /** Context panel's (openQuery) — this library deliberately doesn't depend on

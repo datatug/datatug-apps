@@ -23,6 +23,7 @@ const card = (): Record<string, unknown> => ({
       isRequired: true,
       match: [{ column: 'CustomerID' }, { table: 'Orders', column: 'CustomerID' }, { entity: 'customer', field: 'id' }],
     },
+    { id: 'row', type: 'record' },
   ],
   widget: {
     name: 'tabs',
@@ -103,7 +104,11 @@ describe('validateProjectCard', () => {
 });
 
 describe('parameter-sourced SQL grid widget', () => {
-  const withWidget = (widget: unknown) => ({ ...card(), widget });
+  const withWidget = (widget: unknown) => ({
+    ...card(),
+    parameters: [{ id: 'orders', type: 'recordset' }],
+    widget,
+  });
   it('admits source: {parameter} and presentation validation', () => {
     const c = withWidget({
       name: 'SQL',
@@ -128,6 +133,47 @@ describe('parameter-sourced SQL grid widget', () => {
       expect(() =>
         validateProjectCard(withWidget({ name: 'SQL', data })),
       ).toThrow();
+  });
+});
+
+describe('rows sources and tab shapes', () => {
+  it('requires source.parameter to be a declared record or recordset input', () => {
+    const grid = (parameter: string, parameters: unknown[]) =>
+      validateProjectCard({
+        id: 'c',
+        title: 'C',
+        parameters,
+        widget: { name: 'SQL', data: { source: { parameter } } },
+      });
+    expect(grid('orders', [{ id: 'orders', type: 'recordset' }]).id).toBe('c');
+    expect(grid('row', [{ id: 'row', type: 'record' }]).id).toBe('c');
+    expect(() => grid('orders', [])).toThrow('declared record or recordset');
+    expect(() => grid('orders', [{ id: 'orders', type: 'string' }])).toThrow(
+      'declared record or recordset',
+    );
+    // also inside tabs, for fields
+    expect(() =>
+      validateProjectCard({
+        id: 'c',
+        title: 'C',
+        widget: {
+          name: 'tabs',
+          data: { tabs: [{ title: 'T', widgets: [{ name: 'fields', data: { source: { parameter: 'nope' } } }] }] },
+        },
+      }),
+    ).toThrow('declared record or recordset');
+  });
+  it('makes tab.widget and tab.widgets exclusive', () => {
+    const text = { name: 'text', data: { markdown: 'x' } };
+    const tab = (extra: object) =>
+      validateProjectCard({
+        id: 'c',
+        title: 'C',
+        widget: { name: 'tabs', data: { tabs: [{ title: 'T', ...extra }] } },
+      });
+    expect(tab({ widget: text }).id).toBe('c');
+    expect(tab({ widgets: [text] }).id).toBe('c');
+    expect(() => tab({ widget: text, widgets: [text] })).toThrow('either widget or widgets');
   });
 });
 

@@ -80,6 +80,7 @@ function fakeLookup() {
   const lookup = {
     panelOpen,
     tooltipOpen,
+    compact: signal(false),
     matches,
     active,
     card: signal<ProjectCard | undefined>(card('customer')),
@@ -227,14 +228,57 @@ describe('CellCardPopoverComponent', () => {
     expect((fixture.componentInstance as never as { compact: () => unknown }).compact()).toBeUndefined();
   });
 
-  it('closes on Escape and when the popover is dismissed, only while open', () => {
+  it('closes on Escape and when the popover is dismissed, only while open', async () => {
+    await settle();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(lookup.dismiss).toHaveBeenCalledTimes(1);
     popover().didDismiss.emit();
     expect(lookup.dismiss).toHaveBeenCalledTimes(2);
     lookup.tooltipOpen.set(false);
+    await settle();
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(lookup.dismiss).toHaveBeenCalledTimes(2);
+  });
+
+  it('ignores Escape while another overlay is on top', async () => {
+    await settle();
+    const other = document.createElement('ion-modal');
+    document.body.appendChild(other);
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(lookup.dismiss).not.toHaveBeenCalled();
+    other.classList.add('overlay-hidden');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    expect(lookup.dismiss).toHaveBeenCalledTimes(1);
+    other.remove();
+  });
+
+  it('closes on a press or scroll outside, without consuming it, and ignores ones inside', async () => {
+    await settle();
+    const inner = document.createElement('ion-popover');
+    inner.className = 'cell-card-popover';
+    const content = document.createElement('p');
+    inner.appendChild(content);
+    document.body.appendChild(inner);
+    content.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    content.dispatchEvent(new Event('scroll', { bubbles: false }));
+    expect(lookup.dismiss).not.toHaveBeenCalled();
+    const outside = document.createElement('div');
+    document.body.appendChild(outside);
+    const press = new Event('pointerdown', { bubbles: true, cancelable: true });
+    outside.dispatchEvent(press);
+    expect(lookup.dismiss).toHaveBeenCalledTimes(1);
+    expect(press.defaultPrevented).toBe(false);
+    outside.dispatchEvent(new Event('scroll'));
+    expect(lookup.dismiss).toHaveBeenCalledTimes(2);
+    inner.remove();
+    outside.remove();
+  });
+
+  it('stops listening once the tooltip is closed', async () => {
+    lookup.tooltipOpen.set(false);
+    await settle();
+    document.body.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    expect(lookup.dismiss).not.toHaveBeenCalled();
   });
 
   it('opens in panel', () => {
@@ -249,37 +293,99 @@ describe('CellCardPopoverComponent', () => {
   });
 });
 
+async function makeResultCards() {
+  const listCards = vi.fn(() => of<ProjectCardBrief[]>([]));
+  await TestBed.configureTestingModule({
+    imports: [ResultCellCardsComponent],
+    providers: [
+      { provide: ProjectCardsService, useValue: { listCards, getCard: vi.fn(), canWrite: vi.fn(), canDelete: vi.fn() } },
+      { provide: DatatugNavContextService, useValue: { currentProject: new Subject(), currentEnv: of(undefined) } },
+      { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) }, queryParamMap: of(convertToParamMap({})) } },
+      { provide: Router, useValue: {} },
+      { provide: AgentContextService, useValue: { contextFor: vi.fn() } },
+    ],
+  })
+    .overrideComponent(ResultCellCardsComponent, { set: { imports: [], template: '' } })
+    .compileComponents();
+  const fixture = TestBed.createComponent(ResultCellCardsComponent);
+  fixture.detectChanges();
+  const lookup = (fixture.componentInstance as never as { lookup: CardLookupService }).lookup;
+  return { fixture, lookup, select: vi.spyOn(lookup, 'select') };
+}
+
 describe('ResultCellCardsComponent', () => {
   it('owns a lookup of its own and forwards focused cells to it', async () => {
-    const listCards = vi.fn(() => of<ProjectCardBrief[]>([]));
-    await TestBed.configureTestingModule({
-      imports: [ResultCellCardsComponent],
-      providers: [
-        { provide: ProjectCardsService, useValue: { listCards, getCard: vi.fn(), canWrite: vi.fn(), canDelete: vi.fn() } },
-        {
-          provide: DatatugNavContextService,
-          useValue: {
-            currentProject: new Subject(),
-            currentEnv: of(undefined),
-          },
-        },
-        { provide: ActivatedRoute, useValue: { snapshot: { queryParamMap: convertToParamMap({}) }, queryParamMap: of(convertToParamMap({})) } },
-        { provide: Router, useValue: {} },
-        { provide: AgentContextService, useValue: { contextFor: vi.fn() } },
-      ],
-    })
-      .overrideComponent(ResultCellCardsComponent, {
-        set: { imports: [], template: '' },
-      })
-      .compileComponents();
-    const fixture = TestBed.createComponent(ResultCellCardsComponent);
-    fixture.detectChanges();
-    const lookup = (fixture.componentInstance as never as { lookup: CardLookupService }).lookup;
-    const select = vi.spyOn(lookup, 'select');
+    const { fixture, select } = await makeResultCards();
     const cell = { identity: { column: 'CustomerID' }, value: 'ALFKI' };
     fixture.componentInstance.focusCell(cell);
     expect(select).toHaveBeenCalledWith(cell);
     fixture.componentInstance.clear();
     expect(select).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('tells the page when the pane opens, and turns cards into popovers below 900px of results width', async () => {
+    const observers: { cb: ResizeObserverCallback; el: Element; disconnect: () => void }[] = [];
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        constructor(private readonly cb: ResizeObserverCallback) {}
+        observe(el: Element) {
+          observers.push({ cb: this.cb, el, disconnect: () => undefined });
+        }
+        disconnect() {
+          /* nothing */
+        }
+      },
+    );
+    try {
+      const { fixture, lookup } = await makeResultCards();
+      const opened: boolean[] = [];
+      fixture.componentInstance.paneOpen.subscribe((v) => opened.push(v));
+      expect(observers).toHaveLength(1);
+      expect(observers[0].el).toBe(fixture.nativeElement.parentElement);
+      const resize = (width: number) =>
+        observers[0].cb([{ contentRect: { width } } as ResizeObserverEntry], {} as ResizeObserver);
+      resize(899);
+      expect(lookup.compact()).toBe(true);
+      resize(900);
+      expect(lookup.compact()).toBe(false);
+      lookup.matches.set([{ card: { id: 'c', title: 'C' } as never, parameterId: 'p', rank: 1 }]);
+      lookup.resolvedCell.set({ identity: { column: 'x' }, value: 1 });
+      TestBed.tick();
+      expect(opened.at(-1)).toBe(true);
+      resize(700);
+      TestBed.tick();
+      expect(opened.at(-1)).toBe(false); // a narrow page gets a popover, not a pane
+      expect(lookup.mode()).toBe('tooltip');
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it('anchors on the next frame, cancels a pending frame on a newer cell, a clear or destroy', async () => {
+    const { fixture, select } = await makeResultCards();
+    const frames: (() => void)[] = [];
+    vi.stubGlobal('requestAnimationFrame', (run: () => void) => frames.push(run));
+    const cancel = vi.fn();
+    vi.stubGlobal('cancelAnimationFrame', cancel);
+    try {
+      const rect = { left: 10, bottom: 20 };
+      const el = { getBoundingClientRect: () => rect } as unknown as Element;
+      fixture.componentInstance.focusCell({ identity: { column: 'a' }, value: 1 }, () => el);
+      expect(select).not.toHaveBeenCalled();
+      fixture.componentInstance.focusCell({ identity: { column: 'b' }, value: 2 }, () => el);
+      expect(cancel).toHaveBeenCalledTimes(1);
+      frames[1]();
+      expect(select).toHaveBeenCalledTimes(1);
+      expect(select).toHaveBeenCalledWith({ identity: { column: 'b' }, value: 2, anchor: { x: 10, y: 20 } });
+      fixture.componentInstance.focusCell({ identity: { column: 'c' }, value: 3 }, () => null);
+      fixture.componentInstance.clear();
+      expect(cancel).toHaveBeenCalledTimes(2);
+      fixture.componentInstance.focusCell({ identity: { column: 'd' }, value: 4 }, () => el);
+      fixture.destroy();
+      expect(cancel).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
