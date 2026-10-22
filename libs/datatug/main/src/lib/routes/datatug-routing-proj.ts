@@ -1,5 +1,6 @@
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { RouterModule, Routes } from '@angular/router';
+import { savedQueryIsMissing } from './project-query-exists.guard';
 import { NgModule } from '@angular/core';
 import { ENABLE_EMPTY_SHELL_PAGES } from '../core/feature-flags';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
@@ -389,6 +390,15 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
+  {
+    // Any other address inside a project: a friendly 404 with a way back to its Boards and Queries, instead of
+    // NG04002 and the crash-report dialog. Last on purpose; every page above is tried first.
+    path: '**',
+    loadComponent: () =>
+      import('./project-not-found-page.component').then(
+        (m) => m.ProjectNotFoundPageComponent,
+      ),
+  },
 ];
 
 // The session ID is a real Ionic stack ID. Legacy project/query addresses remain

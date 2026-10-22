@@ -68,6 +68,7 @@ import {
   countProjectQueries,
 } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -78,6 +79,7 @@ import { readGithubProjectId } from '@datatug/project-address';
   styleUrls: ['./project-page.component.scss'],
   imports: [
     RouterLink,
+    ErrorStateComponent,
     SourceEntriesComponent,
     DatatugCoreModule,
     DatatugServicesNavModule,
@@ -216,6 +218,9 @@ export class ProjectPageComponent
     'loading' | 'available' | 'unavailable'
   >('loading');
   protected readonly metadataReadError = signal<string | undefined>(undefined);
+  /** The failure behind `metadataReadError`, so the error state can word a rate limit or an outage plainly. */
+  protected readonly metadataFailure = signal<unknown>(undefined);
+  protected readonly metadataGuidance = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
     'boards' | 'queries' | 'entities' | 'databases'
   >('boards');
@@ -281,6 +286,7 @@ export class ProjectPageComponent
       });
       this.metadataState.set('loading');
       this.metadataReadError.set(undefined);
+      this.metadataFailure.set(undefined);
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
       this.queryCount.set(undefined);
       this.querySource.set(undefined);
@@ -386,6 +392,8 @@ export class ProjectPageComponent
           error: (error) => {
             if (!equalProjectRef(this.project()?.ref, ref)) return;
             this.onProjectSummaryChanged(ref, undefined);
+            this.metadataFailure.set(error);
+            this.metadataGuidance.set(qualifiedLocalReadVersionGuidance(error) ?? undefined);
             this.metadataReadError.set(
               qualifiedLocalReadVersionGuidance(error) ??
                 'Project details could not be loaded. Check access and refresh to try again.',
@@ -393,6 +401,7 @@ export class ProjectPageComponent
             this.errorLogger.logError(
               error,
               'Failed to load project summary for project page',
+              { show: false },
             );
           },
         });
@@ -535,6 +544,11 @@ export class ProjectPageComponent
       brief: { access: summary.access, title: summary.title },
       summary,
     });
+  }
+
+  protected retryMetadata(): void {
+    const ref = this.project()?.ref;
+    if (ref) this.setProjRef(ref);
   }
 
   private goProjItemPage(page: ProjectItemType): void {

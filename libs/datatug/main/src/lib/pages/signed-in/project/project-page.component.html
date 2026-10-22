@@ -62,7 +62,13 @@
     </p>
   }
   @if (metadataReadError(); as error) {
-    <p class="project-metadata-error" role="alert">{{ error }}</p>
+    <sneat-datatug-error-state
+      what="the project details"
+      [error]="metadataFailure()"
+      [hint]="metadataGuidance()"
+      [retryable]="true"
+      (retry)="retryMetadata()"
+    />
   }
 
   @if (project()?.ref; as projectRef) {

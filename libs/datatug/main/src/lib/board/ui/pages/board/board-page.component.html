@@ -12,6 +12,17 @@
   @if (hostedProject()) {
     <sneat-datatug-hosted-board-workspace />
   } @else {
+    @if (notFound()) {
+      <sneat-datatug-error-state
+        title="This board does not exist"
+        hint="The link may be mistyped, or the board was renamed or deleted. Open it from the list of boards."
+        [retryable]="false"
+        [links]="[
+          { label: 'Boards', href: boardsHref() },
+          { label: 'Queries', href: queriesHref() },
+        ]"
+      />
+    } @else {
     <ion-grid>
       <ion-row>
         <ion-col size="12" class="ion-padding-start">
@@ -65,7 +76,15 @@
     } @else if (loading()) {
       <p class="ion-padding" role="status">Loading board…</p>
     } @else if (loadError()) {
-      <p class="ion-padding" role="alert">{{ loadError() }}</p>
+      <sneat-datatug-error-state
+        what="this board"
+        [error]="loadFailure()"
+        [title]="loadFailure() === undefined ? 'This board could not be opened' : undefined"
+        [hint]="loadFailure() === undefined ? loadError() : undefined"
+        [retryable]="loadFailure() !== undefined"
+        [links]="[{ label: 'Boards', href: boardsHref() }]"
+        (retry)="retryLoad()"
+      />
     }
 
     @if (tutorialActive()) {
@@ -547,4 +566,5 @@
       />
     }
   }
+    }
 </ion-content>
