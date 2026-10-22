@@ -77,7 +77,9 @@ async function render(
 }
 
 function copiedLink(page: { nativeElement: HTMLElement }) {
-  return page.nativeElement.querySelector('sneat-datatug-evidence-copy-link');
+  return page.nativeElement.querySelector(
+    'sneat-datatug-evidence-copy-link',
+  ) as HTMLElement;
 }
 
 describe('Copy link on retained evidence', () => {
