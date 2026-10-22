@@ -61,6 +61,7 @@ describe('datatugRoutes', () => {
       '',
       'overview',
       'environments',
+      'sources/:sourceId',
       'shipping',
       'boards/new',
       'board/:board',

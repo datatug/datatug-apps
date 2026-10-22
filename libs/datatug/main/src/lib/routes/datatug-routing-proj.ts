@@ -194,6 +194,13 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    path: 'sources/:sourceId',
+    loadComponent: () =>
+      import('../source-workspace/source-workspace-page.component').then(
+        (m) => m.SourceWorkspacePageComponent,
+      ),
+  },
+  {
     path: 'shipping',
     loadComponent: () =>
       import('../shipping/shipping-workspace.component').then(
