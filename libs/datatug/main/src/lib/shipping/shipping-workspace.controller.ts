@@ -1,26 +1,14 @@
-import { SourceOperationHistoryComponent } from './source-operation-history.component';
-import { NativeSemanticBrowserComponent } from './native-semantic-browser.component';
-import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
-import { ShippingQueryAccessComponent } from './shipping-query-access.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   DestroyRef,
-  ChangeDetectionStrategy,
-  Component,
+  Injectable,
   computed,
   effect,
   inject,
   signal,
   untracked,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
-import {
-  IonButton,
-  IonContent,
-  IonHeader,
-  IonTitle,
-  IonToolbar,
-} from '@ionic/angular';
+
 import { filter, firstValueFrom, takeUntil } from 'rxjs';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { useDetectivePageContext } from '../detective/detective-page-context';
@@ -40,184 +28,8 @@ import {
   validateShippingIntent,
 } from './shipping-api.service';
 
-@Component({
-  selector: 'sneat-datatug-shipping-workspace',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    SourceOperationHistoryComponent,
-    ShippingQueryAccessComponent,
-    NativeSemanticBrowserComponent,
-    RouterLink,
-    IonButton,
-    IonContent,
-    IonHeader,
-    IonTitle,
-    IonToolbar,
-    ShippingComponentInstallerComponent,
-  ],
-  template: ` <ion-header
-      ><ion-toolbar
-        ><ion-title>Shipping training workspace</ion-title></ion-toolbar
-      ></ion-header
-    >
-    <ion-content class="ion-padding">
-      <a [routerLink]="overviewHref()">Back to project overview</a>
-      <p>
-        Prepare an isolated working copy, then explicitly choose query access
-        below. Working-copy actions do not grant project membership or paid
-        access.
-      </p>
-      @if (!native()) {
-        <p role="status">
-          Sign in and open a native hosted project with a Space to use these
-          controls.
-        </p>
-      }
-      @if (loading()) {
-        <p role="status">Loading current shipping revision…</p>
-      }
-      @if (error()) {
-        <p role="alert">{{ error() }}</p>
-      }
-      @if (revision(); as current) {
-        <h2>Current working copy</h2>
-        <p>
-          Routing configuration {{ current.configuration }}. Correction alone
-          does not create a carrier assignment; replay is a separate action.
-        </p>
-        <details>
-          <summary>Revision and immutable log details</summary>
-          <p>
-            Generation {{ current.generation }} · revision
-            {{ current.revision }}
-          </p>
-          <p>SHA-256 {{ current.sha256 }}</p>
-          @for (artifact of current.artifacts; track artifact.id) {
-            <p>{{ artifact.id }} · {{ artifact.sha256 }}</p>
-          }
-        </details>
-      }
-      @if (native()) {
-        <sneat-datatug-shipping-query-access
-          [environments]="environments()"
-          [canWrite]="canWrite()"
-        />
-        <p>
-          <a [routerLink]="sessionsHref()"
-            >Open Sessions and explicitly select Shipping orders</a
-          >
-        </p>
-      }
-      @if (notice()) {
-        <p role="status">{{ notice() }}</p>
-      }
-      @if (pending(); as intent) {
-        <h2>Operation awaiting review</h2>
-        <p>
-          {{ intent.action }}
-          @if (intent.orderId) {
-            for order {{ intent.orderId }}
-          }
-        </p>
-        @if (intent.expected) {
-          <p>
-            Expected generation {{ intent.expected.generation }}, revision
-            {{ intent.expected.revision }}, SHA-256 {{ intent.expected.sha256 }}
-          </p>
-        }
-        @if (conflict()) {
-          <p>
-            The server refused this operation because its revision or operation
-            no longer matches. Review the current revision above before
-            preparing another action.
-          </p>
-          <ion-button
-            (click)="reviewConflict()"
-            [disabled]="busy() || loading() || !revision()"
-            >I reviewed this conflict; prepare a new action</ion-button
-          >
-        } @else {
-          <p>
-            A previous attempt may already have completed. Retry uses the same
-            operation and expected revision.
-          </p>
-          <ion-button
-            (click)="send()"
-            [disabled]="busy() || loading() || !canWrite()"
-            >Retry original operation</ion-button
-          >
-        }
-      } @else if (canWrite() && !loading()) {
-        @if (!revision()) {
-          <p>
-            No current revision could be confirmed. Initialize asks the server
-            to create a copy only if none exists; it never replaces an existing
-            copy.
-          </p>
-          <ion-button (click)="prepare('initialize')" [disabled]="busy()"
-            >Initialize working copy</ion-button
-          >
-        } @else {
-          <ion-button (click)="prepare('correct')" [disabled]="busy()"
-            >Correct routing configuration</ion-button
-          >
-          <p>
-            Replay explicitly processes the selected order using the current
-            configuration.
-          </p>
-          <ion-button (click)="prepare('replay', 11045)" [disabled]="busy()"
-            >Replay order 11045</ion-button
-          >
-          <ion-button (click)="prepare('replay', 11062)" [disabled]="busy()"
-            >Replay order 11062</ion-button
-          >
-          <p>
-            Reset starts a new generation. Existing evidence remains associated
-            with its original generation.
-          </p>
-          <ion-button
-            color="warning"
-            (click)="confirmReset.set(true)"
-            [disabled]="busy()"
-            >Reset working copy…</ion-button
-          >
-          @if (confirmReset()) {
-            <p>Start a new generation for this project?</p>
-            <ion-button color="warning" (click)="prepare('reset')"
-              >Confirm reset</ion-button
-            ><ion-button fill="clear" (click)="confirmReset.set(false)"
-              >Cancel</ion-button
-            >
-          }
-        }
-      }
-      @if (busy()) {
-        <p role="status">Waiting for the server…</p>
-      }
-      @if (native()) {
-        <ion-button
-          fill="clear"
-          (click)="refresh()"
-          [disabled]="busy() || loading()"
-          >Refresh current revision</ion-button
-        >
-        <p>
-          <a [routerLink]="incidentsHref()"
-            >Open Incidents and select an environment</a
-          >
-        </p>
-      }
-      @if (native()) {
-        <sneat-source-operation-history [environments]="environments()" />
-        <sneat-shipping-component-installer />
-        <sneat-native-semantic-browser
-          [environments]="environments()"
-          [canWrite]="canWrite()"
-        />
-      }
-    </ion-content>`,
-})
-export class ShippingWorkspaceComponent {
+@Injectable()
+export class ShippingWorkspaceController {
   readonly page = useDetectivePageContext();
   private readonly api = inject(ShippingApiService);
   private readonly destroyRef = inject(DestroyRef);
@@ -248,6 +60,7 @@ export class ShippingWorkspaceComponent {
   readonly busy = signal(false);
   readonly loading = signal(false);
   readonly error = signal('');
+  readonly readDenied = signal(false);
   readonly notice = signal('');
   private readonly refreshVersion = signal(0);
   readonly overviewHref = computed(() =>
@@ -304,6 +117,7 @@ export class ShippingWorkspaceComponent {
           );
           const current = await firstValueFrom(this.api.revision(ref));
           if (!cancelled) {
+            this.readDenied.set(false);
             this.revision.set(current);
             this.error.set('');
           }
@@ -318,6 +132,10 @@ export class ShippingWorkspaceComponent {
         cancelled = true;
       });
     });
+  }
+  invalidateReadState() {
+    this.revision.set(undefined);
+    this.grantedFor.set(undefined);
   }
   refresh(): void {
     this.refreshVersion.update((n) => n + 1);
@@ -465,6 +283,8 @@ export class ShippingWorkspaceComponent {
   }
   private fail(error: unknown): void {
     this.error.set(detectiveErrorMessage(error, true));
+    if (error instanceof HttpErrorResponse && [401, 403].includes(error.status))
+      this.readDenied.set(true);
     if (error instanceof HttpErrorResponse && error.status === 401) {
       // Expired credentials do not prove that the original mutation was never
       // delivered. Keep its intent for explicit same-principal recovery.

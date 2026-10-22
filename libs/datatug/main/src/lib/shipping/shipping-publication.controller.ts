@@ -1,17 +1,16 @@
+import { SOURCE_UI_SCOPE } from '../source-workspace/source-workspace-contract';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
-  ChangeDetectionStrategy,
-  Component,
+  Injectable,
   DestroyRef,
   computed,
   effect,
   inject,
-  input,
   signal,
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonButton } from '@ionic/angular';
+
 import { defer, filter, firstValueFrom, takeUntil } from 'rxjs';
 import { useDetectivePageContext } from '../detective/detective-page-context';
 import { detectiveErrorMessage } from '../detective/detective-client.service';
@@ -29,114 +28,11 @@ interface PendingPublication {
   conflict: boolean;
 }
 /** Current metadata is the CAS authority; an old operation receipt is never a grant. */
-@Component({
-  selector: 'sneat-datatug-shipping-query-access',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonButton],
-  template: `<section aria-label="Shipping query access">
-    <h2>Query access</h2>
-    <p>
-      Explicitly publish this isolated source for queries in the selected
-      environment. This does not change project membership or paid access.
-    </p>
-    <label
-      >Environment
-      <select
-        aria-label="Query-access environment"
-        [value]="environment()"
-        (change)="chooseEnvironment($any($event.target).value)"
-        [disabled]="busy() || !!pending()"
-      >
-        <option value="">Choose an admitted environment</option>
-        @for (name of environments(); track name) {
-          <option [value]="name" [selected]="name === environment()">
-            {{ name }}
-          </option>
-        }
-      </select>
-    </label>
-    @if (loading()) {
-      <p role="status">Reading current query access…</p>
-    }
-    @if (error()) {
-      <p role="alert">{{ error() }}</p>
-    }
-    @if (current(); as state) {
-      <p role="status">
-        {{
-          state.exists
-            ? state.publication.enabled
-              ? 'Query access enabled'
-              : 'Query access disabled'
-            : 'Query access not published'
-        }}
-      </p>
-      @if (state.exists) {
-        <p>Publication revision {{ state.publication.revision }}</p>
-      }
-    }
-    @if (pending(); as operation) {
-      <p>
-        A previous {{ operation.intent.enabled ? 'enable' : 'disable' }} attempt
-        may have completed. The original operation and expected revision are
-        retained.
-      </p>
-      @if (operation.conflict) {
-        <p>
-          Review the current query access before preparing another operation.
-        </p>
-        <ion-button
-          (click)="reviewConflict()"
-          [disabled]="busy() || loading() || !current()"
-          >I reviewed the conflict</ion-button
-        >
-      } @else {
-        <ion-button
-          (click)="send()"
-          [disabled]="
-            busy() || loading() || !current() || !canWrite() || !authReady()
-          "
-          >Retry original query-access operation</ion-button
-        >
-      }
-    } @else if (current() && canWrite() && authReady() && !loading()) {
-      <ion-button
-        (click)="prepare(true)"
-        [disabled]="busy() || enabled() || atCapacity()"
-        >Enable query access</ion-button
-      >
-      <ion-button
-        fill="outline"
-        (click)="prepare(false)"
-        [disabled]="busy() || !enabled() || atCapacity()"
-        >Disable query access</ion-button
-      >
-      @if (atCapacity()) {
-        <p role="status">
-          This publication reached its revision limit. No new operation can be
-          prepared.
-        </p>
-      }
-    }
-    @if (environment()) {
-      <ion-button
-        fill="clear"
-        (click)="refresh()"
-        [disabled]="busy() || loading()"
-        >Refresh current query access</ion-button
-      >
-    }
-    @if (busy()) {
-      <p role="status">Waiting for query-access acknowledgement…</p>
-    }
-    @if (notice()) {
-      <p role="status">{{ notice() }}</p>
-    }
-  </section>`,
-})
-export class ShippingQueryAccessComponent {
-  readonly environments = input<readonly string[]>([]);
-  readonly canWrite = input(false);
+@Injectable()
+export class ShippingPublicationController {
+  private readonly sourceScope = inject(SOURCE_UI_SCOPE, { optional: true });
+  readonly environments = signal<readonly string[]>([]);
+  readonly canWrite = signal(false);
   readonly page = useDetectivePageContext();
   private readonly api = inject(ShippingApiService);
   private readonly destroyRef = inject(DestroyRef);
@@ -170,6 +66,7 @@ export class ShippingQueryAccessComponent {
   readonly error = signal('');
   readonly notice = signal('');
   readonly authReady = signal(true);
+  readonly recoveryBlocked = signal(false);
   private readonly refreshVersion = signal(0);
   private readonly journalKey = 'datatug.shipping.publication.intent.v1';
   constructor() {
@@ -248,11 +145,18 @@ export class ShippingQueryAccessComponent {
     if (
       this.busy() ||
       this.pending() ||
+      (value &&
+        this.sourceScope?.environment &&
+        value !== this.sourceScope.environment) ||
       (value && !this.environments().includes(value))
     )
       return;
     this.environment.set(value);
     this.notice.set('');
+  }
+  invalidateReadState() {
+    this.loaded.set(undefined);
+    this.authReady.set(false);
   }
   refresh(): void {
     this.refreshVersion.update((value) => value + 1);
@@ -268,6 +172,7 @@ export class ShippingQueryAccessComponent {
       this.busy() ||
       this.loading() ||
       this.pending() ||
+      this.recoveryBlocked() ||
       this.atCapacity() ||
       this.enabled() === enabled
     )
@@ -377,6 +282,7 @@ export class ShippingQueryAccessComponent {
     this.environment.set('');
     this.busy.set(false);
     this.authReady.set(true);
+    this.recoveryBlocked.set(false);
     this.clear();
   }
   private clear(): void {
@@ -415,6 +321,16 @@ export class ShippingQueryAccessComponent {
       const ref = this.page.ref();
       if (!ref) return;
       validatePublicationIntent(ref, value.intent);
+      if (
+        this.sourceScope?.environment &&
+        value.intent.environment !== this.sourceScope.environment
+      ) {
+        this.recoveryBlocked.set(true);
+        this.notice.set(
+          'An original query-access operation belongs to another environment. Return there to review its uncertain delivery.',
+        );
+        return;
+      }
       if (!names.includes(value.intent.environment)) {
         this.clear();
         return;
@@ -424,6 +340,7 @@ export class ShippingQueryAccessComponent {
         typeof value.conflict !== 'boolean'
       )
         throw new Error('Invalid query-access journal.');
+      this.recoveryBlocked.set(false);
       this.environment.set(value.intent.environment);
       this.held.set(value);
     } catch {

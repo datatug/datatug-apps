@@ -1,3 +1,4 @@
+import { SourceEntriesComponent } from '../../../source-workspace/source-entries.component';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { race, Subject, of, Observable } from 'rxjs';
@@ -30,11 +31,7 @@ import {
   ViewWillEnter,
 } from '@ionic/angular';
 import { DatatugCoreModule } from '../../../core/datatug-core.module';
-import {
-  IProjectRef,
-  equalProjectRef,
-  isSharedProjectRef,
-} from '../../../core/project-context';
+import { IProjectRef, equalProjectRef } from '../../../core/project-context';
 import { isCanonicalDemoDbProject } from '../../../core/demo-db-project';
 import { IEnvironmentFull } from '../../../models/definition/environments';
 import { environmentPresentation } from '../../../models/definition/environment-presentation';
@@ -66,7 +63,10 @@ import { qualifiedLocalReadVersionGuidance } from '../../../services/project/pro
 import { DemoDbConnectionsComponent } from './demo-db-connections.component';
 import { QueriesService } from '../../../queries/queries.service';
 import type { IQueryFolder } from '../../../models/definition/query-def';
-import { ProjectQueriesPreviewComponent, countProjectQueries } from './project-queries-preview.component';
+import {
+  ProjectQueriesPreviewComponent,
+  countProjectQueries,
+} from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
@@ -78,6 +78,7 @@ import { readGithubProjectId } from '@datatug/project-address';
   styleUrls: ['./project-page.component.scss'],
   imports: [
     RouterLink,
+    SourceEntriesComponent,
     DatatugCoreModule,
     DatatugServicesNavModule,
     DatatugServicesProjectModule,
@@ -96,7 +97,7 @@ import { readGithubProjectId } from '@datatug/project-address';
     IonContent,
     IonCard,
     IonCardContent,
-  IonChip,
+    IonChip,
     IonCardHeader,
     IonCardTitle,
     IonButton,
@@ -119,7 +120,9 @@ export class ProjectPageComponent
   private readonly projectAssets = inject(ProjectAssetsReadService);
   private readonly queriesService = inject(QueriesService);
   protected readonly queryCount = signal<number | undefined>(undefined);
-  protected readonly querySource = signal<Observable<IQueryFolder | null | undefined> | undefined>(undefined);
+  protected readonly querySource = signal<
+    Observable<IQueryFolder | null | undefined> | undefined
+  >(undefined);
   private readonly navController = inject(NavController);
 
   // readonly DbModel = ProjectItem.dbModel as const;
@@ -167,15 +170,21 @@ export class ProjectPageComponent
   });
   readonly quickSearchQuery = signal('');
   updateQuickSearch(event: Event): void {
-    if (event.target instanceof HTMLInputElement) this.quickSearchQuery.set(event.target.value);
+    if (event.target instanceof HTMLInputElement)
+      this.quickSearchQuery.set(event.target.value);
   }
   submitQuickSearch(event: Event): void {
     event.preventDefault();
-    const ref=this.project()?.ref,q=this.quickSearchQuery().trim();
+    const ref = this.project()?.ref,
+      q = this.quickSearchQuery().trim();
     if (!ref || !q) return;
-    const destination=this.router.parseUrl(projectPageHref(ref,['quick-search']));
-    destination.queryParams={...destination.queryParams,q};
-    void this.router.navigateByUrl(destination).catch(() => this.errorLogger.logError('Could not open Quick Search'));
+    const destination = this.router.parseUrl(
+      projectPageHref(ref, ['quick-search']),
+    );
+    destination.queryParams = { ...destination.queryParams, q };
+    void this.router
+      .navigateByUrl(destination)
+      .catch(() => this.errorLogger.logError('Could not open Quick Search'));
   }
 
   protected readonly publicDataHref = computed(() => {
@@ -232,15 +241,6 @@ export class ProjectPageComponent
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
-  protected readonly shippingHref = computed(() => {
-    const ref = this.project()?.ref;
-    return ref &&
-      isSharedProjectRef(ref) &&
-      ref.branch === undefined &&
-      ref.projectApi === undefined
-      ? projectPageHref(ref, 'shipping')
-      : undefined;
-  });
   protected readonly sandboxHref = computed(() => {
     const ref = this.project()?.ref;
     return isCanonicalDemoDbProject(ref)
@@ -273,7 +273,8 @@ export class ProjectPageComponent
   private setProjRef = (ref: IProjectRef) => {
     try {
       this.scopeChanged.next();
-      if (!equalProjectRef(this.project()?.ref, ref)) this.quickSearchQuery.set('');
+      if (!equalProjectRef(this.project()?.ref, ref))
+        this.quickSearchQuery.set('');
       this.project.set({
         ref,
         store: { ref: parseDatatugStoreRef(ref.storeId) },
@@ -297,10 +298,12 @@ export class ProjectPageComponent
       // excluded because that API does not expose these asset collections.
       const cancel$ = race([this.scopeChanged, this.destroyed]);
       if (!ref.spaceID) {
-        const queries$ = this.queriesService.getQueriesFolder(ref, '~', 'shared').pipe(shareReplay({ bufferSize: 1, refCount: true }));
+        const queries$ = this.queriesService
+          .getQueriesFolder(ref, '~', 'shared')
+          .pipe(shareReplay({ bufferSize: 1, refCount: true }));
         this.querySource.set(queries$);
         queries$.pipe(takeUntil(cancel$)).subscribe({
-          next: folder => this.queryCount.set(countProjectQueries(folder)),
+          next: (folder) => this.queryCount.set(countProjectQueries(folder)),
           error: () => this.queryCount.set(undefined),
         });
         const environments$ = this.projectAssets.environments(ref);

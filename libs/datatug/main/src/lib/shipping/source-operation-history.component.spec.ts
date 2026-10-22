@@ -1,9 +1,9 @@
-import { Component, input, signal } from '@angular/core';
+import { mountShippingController } from './shipping-controller.spec-helper';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Subject } from 'rxjs';
-import { SourceOperationHistoryComponent } from './source-operation-history.component';
+import { ShippingHistoryController } from './shipping-history.controller';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
-import { RetainedEvidenceViewerComponent } from '../evidence/retained-evidence-viewer.component';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
 import { readSourceOperationHistory } from '../evidence/source-operation-contract';
 import fixture from '../evidence/testdata/source-operation.facade.go.json';
@@ -11,15 +11,6 @@ const page = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../detective/detective-page-context', () => ({
   useDetectivePageContext: () => page.current,
 }));
-@Component({
-  selector: 'sneat-datatug-retained-evidence-viewer',
-  template: '<p>Historical receipt viewer</p>',
-})
-class ViewerStub {
-  readonly projectRef = input<unknown>();
-  readonly environment = input('');
-  readonly target = input<unknown>();
-}
 const ref = {
   storeId: 'firestore',
   spaceID: fixture.request.spaceID,
@@ -51,17 +42,13 @@ describe('explicit source history discovery and receipt selection', () => {
       scopeChanges$: changes,
     };
     TestBed.configureTestingModule({
-      imports: [SourceOperationHistoryComponent],
+      imports: [],
       providers: [{ provide: RetainedEvidenceApiService, useValue: api }],
-    });
-    TestBed.overrideComponent(SourceOperationHistoryComponent, {
-      remove: { imports: [RetainedEvidenceViewerComponent] },
-      add: { imports: [ViewerStub] },
     });
   });
   async function mount() {
-    const f = TestBed.createComponent(SourceOperationHistoryComponent);
-    f.componentRef.setInput('environments', ['demo', 'other']);
+    const f = await mountShippingController(ShippingHistoryController);
+    f.setInput('environments', ['demo', 'other']);
     f.detectChanges();
     await f.whenStable();
     return f;
@@ -81,13 +68,16 @@ describe('explicit source history discovery and receipt selection', () => {
     );
     const pending = f.componentInstance.load();
     await f.whenStable();
-    expect(f.nativeElement.textContent).toContain('Loading source history');
+    expect(f.componentInstance.loading()).toBe(true);
     finish(readSourceOperationHistory(fixture.discovery, scope()));
     await pending;
     await f.whenStable();
-    expect(f.nativeElement.textContent).toContain('No new change');
-    expect(f.nativeElement.textContent).toContain('2026-10-21T12:00:00Z');
-    expect(f.nativeElement.querySelector('ion-card')).toBeNull();
+    expect(
+      f.componentInstance.activityItems()?.map((i) => i.outcome),
+    ).toContain('No new change');
+    expect(
+      f.componentInstance.activityItems()?.map((i) => i.acceptedAt),
+    ).toContain('2026-10-21T12:00:00Z');
     const item = f.componentInstance.operations()?.[0];
     if (!item) throw new Error('Missing actual source operation');
     f.componentInstance.open({
@@ -97,23 +87,17 @@ describe('explicit source history discovery and receipt selection', () => {
     expect(f.componentInstance.target()).toBeUndefined();
     f.componentInstance.openActivity('not-offered');
     expect(f.componentInstance.target()).toBeUndefined();
-    const openButton = (
-      f.nativeElement as HTMLElement
-    ).querySelector<HTMLElement>('sneat-activity-list li ion-button');
-    expect(openButton?.textContent).toContain('Open receipt');
-    openButton?.click();
+    f.componentInstance.openActivity(item.reference.operationId);
     await f.whenStable();
     expect(f.componentInstance.target()).toEqual({
       kind: 'source-operation',
       sourceOperation: item.reference,
     });
-    expect(f.nativeElement.textContent).toContain('Historical receipt viewer');
-    expect(f.nativeElement.textContent).not.toContain('Resolve');
+    expect(f.componentInstance.target()).toBeDefined();
+    expect(f.componentInstance.target()?.kind).toBe('source-operation');
     f.componentInstance.selected.set(undefined);
     await f.whenStable();
-    expect(f.nativeElement.textContent).not.toContain(
-      'Historical receipt viewer',
-    );
+    expect(f.componentInstance.target()).toBeUndefined();
   });
   it.each(['account', 'project', 'environment', 'source'] as const)(
     'clears and rejects ignored-abort late discovery after %s changes',
@@ -164,18 +148,16 @@ describe('explicit source history discovery and receipt selection', () => {
     api.sourceOperations.mockResolvedValue([]);
     await f.componentInstance.load();
     await f.whenStable();
-    expect(f.nativeElement.textContent).toContain(
-      'No source operations were returned',
-    );
+    expect(f.componentInstance.operations()).toEqual([]);
     api.sourceOperations.mockRejectedValue(
       new Error('protected provider details'),
     );
     await f.componentInstance.load();
     await f.whenStable();
-    expect(f.nativeElement.textContent).toContain(
+    expect(f.componentInstance.error()).toContain(
       'Source history is unavailable',
     );
-    expect(f.nativeElement.textContent).not.toContain(
+    expect(f.componentInstance.error()).not.toContain(
       'protected provider details',
     );
     TestBed.inject(NativeSourceInvalidationService).invalidate({

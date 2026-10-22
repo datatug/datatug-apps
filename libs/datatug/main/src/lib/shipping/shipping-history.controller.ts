@@ -1,17 +1,15 @@
+import { SOURCE_UI_SCOPE } from '../source-workspace/source-workspace-contract';
 import {
-  ChangeDetectionStrategy,
-  Component,
+  Injectable,
   DestroyRef,
   computed,
   effect,
   inject,
-  input,
   signal,
   untracked,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonButton, IonSelect, IonSelectOption } from '@ionic/angular';
-import { ActivityListComponent } from '../activity/activity-list.component';
+
 import { type ActivityListItem } from '../activity/activity-list-item';
 import { type ArtifactRef } from '@sneat/datatug-semantic';
 import { useDetectivePageContext } from '../detective/detective-page-context';
@@ -20,75 +18,13 @@ import {
   matchesNativeSourceInvalidation,
 } from '../evidence/native-source-invalidation';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
-import { RetainedEvidenceViewerComponent } from '../evidence/retained-evidence-viewer.component';
+
 import { type SourceOperationSummary } from '../evidence/source-operation-contract';
 
-@Component({
-  selector: 'sneat-source-operation-history',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [
-    IonButton,
-    IonSelect,
-    IonSelectOption,
-    RetainedEvidenceViewerComponent,
-    ActivityListComponent,
-  ],
-  styles: `
-    :host {
-      display: block;
-      margin-block: 1rem;
-      color: var(--ion-text-color);
-    }
-    ion-button {
-      --color: var(--ion-text-color);
-    }
-    p {
-      font-size: 0.85rem;
-      line-height: 1.45;
-    }
-  `,
-  template: `<sneat-activity-list
-      heading="Shipping activity"
-      actionLabel="Activity"
-      listLabel="Source operations"
-      loadingMessage="Loading source history…"
-      emptyMessage="No source operations were returned for this account and environment."
-      [items]="activityItems()"
-      [loading]="loading()"
-      [disabled]="!environment()"
-      [error]="error()"
-      [notice]="notice()"
-      (reload)="load()"
-      (openItem)="openActivity($event)"
-    >
-      <ion-select
-        label="Activity environment"
-        [value]="environment()"
-        (ionChange)="chooseEnvironment($event.detail.value)"
-      >
-        <ion-select-option value="">Choose environment</ion-select-option>
-        @for (item of environments(); track item) {
-          <ion-select-option [value]="item">{{ item }}</ion-select-option>
-        }
-      </ion-select>
-      <p>
-        Original operations for your current account. Opening a receipt makes no
-        source change and does not prove recovery.
-      </p>
-    </sneat-activity-list>
-    @if (target(); as reference) {
-      <sneat-datatug-retained-evidence-viewer
-        [projectRef]="page.ref()"
-        [environment]="environment()"
-        [target]="reference"
-      />
-      <ion-button fill="clear" (click)="selected.set(undefined)"
-        >Close receipt</ion-button
-      >
-    } `,
-})
-export class SourceOperationHistoryComponent {
-  readonly environments = input<readonly string[]>([]);
+@Injectable()
+export class ShippingHistoryController {
+  private readonly sourceScope = inject(SOURCE_UI_SCOPE, { optional: true });
+  readonly environments = signal<readonly string[]>([]);
   readonly page = useDetectivePageContext();
   readonly environment = signal('');
   readonly loading = signal(false);
@@ -181,6 +117,9 @@ export class SourceOperationHistoryComponent {
     });
     this.destroy.onDestroy(() => this.clear());
   }
+  clearAccess() {
+    this.clear();
+  }
   private clear() {
     this.controller?.abort();
     this.controller = undefined;
@@ -192,7 +131,13 @@ export class SourceOperationHistoryComponent {
     this.notice.set('');
   }
   chooseEnvironment(value: string) {
-    if (value && !this.environments().includes(value)) return;
+    if (
+      value &&
+      (!this.environments().includes(value) ||
+        (this.sourceScope?.environment &&
+          value !== this.sourceScope.environment))
+    )
+      return;
     this.clear();
     this.environment.set(value);
   }
