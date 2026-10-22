@@ -26,7 +26,7 @@ import { projectPageHref } from '../nav/project-page-href';
 import { DetectiveClientService } from '../detective/detective-client.service';
 import { isSharedProjectRef } from '../core/project-context';
 import { ShippingComponentApiService } from './shipping-component-api.service';
-import { SHIPPING_SOURCE } from './shipping-api.service';
+import { SHIPPING_SOURCE, ShippingApiService } from './shipping-api.service';
 import { ShippingWorkspaceController } from './shipping-workspace.controller';
 import { ShippingPublicationController } from './shipping-publication.controller';
 import { ShippingInstallationController } from './shipping-installation.controller';
@@ -41,8 +41,26 @@ export class ShippingSourceAdapterService {
   private readonly detective = inject(DetectiveClientService);
   private readonly components = inject(ShippingComponentApiService);
   private readonly router = inject(Router);
+  private readonly shipping = inject(ShippingApiService);
   readonly registration: SourceAdapterRegistration = {
     sourceId: SHIPPING_SOURCE,
+    // The synthetic working copy's own time: workspace_state.business_clock, read under current rights.
+    businessClock: async (scope, abort) => {
+      // Only a shared (Firestore) working copy can hold Shipping: no request for any other project.
+      if (
+        !isSharedProjectRef(scope.projectRef) ||
+        scope.projectRef.branch ||
+        scope.projectRef.projectApi
+      )
+        return undefined;
+      const revision = await firstValueFrom(
+        this.shipping
+          .revision(scope.projectRef)
+          .pipe(takeUntil(fromEvent(abort, 'abort'))),
+      );
+      abort.throwIfAborted();
+      return { label: 'Demo clock', at: revision.businessClock };
+    },
     discover: async (scope, abort) => {
       if (
         !isSharedProjectRef(scope.projectRef) ||

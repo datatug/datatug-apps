@@ -1,6 +1,8 @@
 import type { AnalyticsConsent } from './analytics-consent';
 import {
   BANNER_TEXT,
+  BANNER_TEXT_WITH_USAGE,
+  bannerText,
   mountAnalyticsConsentBanner,
   PRIVACY_NOTICE_URL,
 } from './analytics-consent-banner';
@@ -41,6 +43,17 @@ describe('analytics consent banner', () => {
     expect(banner()).toBeNull();
     expect(document.documentElement.classList).not.toContain(
       'datatug-analytics-consent-open',
+    );
+  });
+
+  it('names PostHog and its anonymous usage events only where they run', () => {
+    expect(bannerText(false)).toBe(BANNER_TEXT);
+    expect(BANNER_TEXT).not.toContain('PostHog');
+    expect(bannerText(true)).toBe(BANNER_TEXT_WITH_USAGE);
+    const { consent } = fakeConsent();
+    mountAnalyticsConsentBanner(consent, document, window, bannerText(true));
+    expect((banner() as HTMLElement).querySelector('p')?.textContent).toBe(
+      BANNER_TEXT_WITH_USAGE + ' Privacy notice',
     );
   });
 

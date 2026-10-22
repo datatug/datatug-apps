@@ -63,6 +63,11 @@ export interface AnalyticsConsent {
   choose(choice: AnalyticsChoice): void;
   /** A route finished navigating (the first included): reports the page when GA is on. */
   pageView(): void;
+  /**
+   * Analytics may run on this page (a measurement id, not checkout, not localhost) and the visitor accepted. The one
+   * gate for every analytics backend: GA here, PostHog and the shared `AnalyticsService` events too.
+   */
+  granted(): boolean;
   /** Called whenever the choice or the banner's visibility may have changed. Returns an unsubscribe function. */
   subscribe(listener: () => void): () => void;
   /** Applies a stored grant and starts following the choice of other tabs. */
@@ -272,6 +277,7 @@ export function createAnalyticsConsent(
       if (enabled) sendPageView();
       notify();
     },
+    granted: () => allowed() && choice() === 'granted',
     subscribe(listener) {
       listeners.add(listener);
       return () => void listeners.delete(listener);
@@ -285,6 +291,105 @@ export function createAnalyticsConsent(
     stop() {
       env.window.removeEventListener('storage', onStorage);
       env.window.removeEventListener('pageshow', onPageShow);
+    },
+  };
+}
+
+/**
+ * The app's own consent for anonymous usage analytics (PostHog), public-demo REQ:demo-usage-analytics. Distinct from
+ * {@link ANALYTICS_CONSENT_KEY}, which the landing site's Google Analytics banner also writes: a yes there names only
+ * Google Analytics, so it never starts PostHog here. Only the app's banner, whose text names PostHog, writes this key.
+ */
+export const USAGE_ANALYTICS_CONSENT_KEY = 'datatug.usage-analytics-consent.v1';
+
+/**
+ * Google Analytics consent (`ga`, shared with the landing site) plus the app-only usage consent. `granted()` is the
+ * usage gate (PostHog and usage events): it needs this app's own yes, and a no on either key (a withdrawal on the site
+ * included) keeps it off. The banner shows while either choice is open; one answer records both. Without usage
+ * analytics configured (`usageEnabled` false) it is `ga` unchanged, except that `granted()` is never true.
+ */
+export function withUsageConsent(
+  ga: AnalyticsConsent,
+  env: Pick<AnalyticsEnv, 'storage' | 'location' | 'checkoutActive' | 'window'>,
+  usageEnabled: boolean,
+  usageKey: string = USAGE_ANALYTICS_CONSENT_KEY,
+): AnalyticsConsent {
+  const listeners = new Set<() => void>();
+  let memory: AnalyticsChoice | undefined;
+
+  function usageChoice(): AnalyticsChoice | undefined {
+    try {
+      return parseChoice(env.storage().getItem(usageKey)) ?? memory;
+    } catch {
+      return memory;
+    }
+  }
+
+  function writeUsage(next: AnalyticsChoice): void {
+    try {
+      env.storage().setItem(usageKey, next);
+      memory = undefined;
+    } catch {
+      memory = next;
+    }
+  }
+
+  const usageAllowed = () =>
+    usageEnabled &&
+    !env.checkoutActive() &&
+    !LOCAL_HOSTS.has(env.location().hostname);
+
+  const notify = () => {
+    for (const listener of [...listeners]) listener();
+  };
+  /**
+   * A no on the shared key (the site's withdrawal button included) withdraws usage analytics for good: a later Google
+   * Analytics yes there never brings PostHog back, only a new yes in this app does. Run on start, on every change of
+   * either key, never from a read.
+   */
+  const reconcile = () => {
+    if (usageEnabled && ga.choice() === 'denied' && usageChoice() === 'granted')
+      writeUsage('denied');
+  };
+  let stopFollowingGa: (() => void) | undefined;
+  const onStorage = (event: { key: string | null }) => {
+    if (event.key === null || event.key === usageKey) {
+      reconcile();
+      notify();
+    }
+  };
+
+  return {
+    choice: ga.choice,
+    bannerVisible: () =>
+      ga.bannerVisible() || (usageAllowed() && usageChoice() === undefined),
+    choose(next) {
+      if (usageEnabled) writeUsage(next);
+      // GA applies its own key and tells every subscriber, this one's included.
+      ga.choose(next);
+    },
+    pageView: ga.pageView,
+    // Pure: reconcile() records a withdrawal on the shared key, and a no there keeps this off until it has.
+    granted: () =>
+      usageAllowed() && usageChoice() === 'granted' && ga.choice() !== 'denied',
+    subscribe(listener) {
+      listeners.add(listener);
+      const unsubscribe = ga.subscribe(listener);
+      return () => {
+        listeners.delete(listener);
+        unsubscribe();
+      };
+    },
+    start() {
+      env.window.addEventListener('storage', onStorage);
+      stopFollowingGa = ga.subscribe(reconcile);
+      reconcile();
+      ga.start();
+    },
+    stop() {
+      env.window.removeEventListener('storage', onStorage);
+      stopFollowingGa?.();
+      ga.stop();
     },
   };
 }

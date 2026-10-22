@@ -57,6 +57,7 @@ import {
   type ParameterLookupPick,
 } from '../../../../components/parameters/parameter-lookup-button.component';
 import type { ParameterLookupHost } from '../../../../components/parameters/parameter-lookup.service';
+import { UsageAnalyticsService } from '../../../../analytics/usage-analytics';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import {
@@ -172,6 +173,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router, { optional: true });
+  private readonly usage = inject(UsageAnalyticsService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
   private readonly agentContext = inject(AgentContextService);
@@ -879,13 +881,23 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   }
 
   tutorialSourceQueries(editor: TutorialEditor) {
-    const card = this.boardDef()?.rows?.flatMap((row) => row.cards ?? []).find((item) => item.id === editor.cardId);
+    const card = this.boardDef()
+      ?.rows?.flatMap((row) => row.cards ?? [])
+      .find((item) => item.id === editor.cardId);
     const widget = widgetAtTabPath(card?.widget, editor.path);
-    const sources = widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
-    return this.tutorialQueries().map((id) => ({ id, sourceId: sources.find((source) => source.queryId === id)?.id }));
+    const sources =
+      widget?.name === 'chart' ? (widget.data as ChartWidgetDef).sources : [];
+    return this.tutorialQueries().map((id) => ({
+      id,
+      sourceId: sources.find((source) => source.queryId === id)?.id,
+    }));
   }
   editTutorialSource(editor: TutorialEditor, edit: ChartSourceEdit): void {
-    this.editTutorial({ ...edit, cardId: editor.cardId, widgetPath: editor.path });
+    this.editTutorial({
+      ...edit,
+      cardId: editor.cardId,
+      widgetPath: editor.path,
+    });
   }
 
   removeTutorialSource(editor: TutorialEditor, sourceId: string): void {
@@ -997,7 +1009,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     });
   }
 
-
   ngOnInit() {
     try {
       this.defaultHref = location.pathname.split('/').slice(0, -1).join('/');
@@ -1015,6 +1026,8 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   onLookupPicked(parameter: IParamWithDefAndValue, pick: ParameterLookupPick): void {
     // setParameterValue ignores a parameter of a board that is no longer shown.
     this.setParameterValue(parameter, pick.value);
+    // public-demo REQ:demo-usage-analytics: only that a lookup was used, never the value.
+    this.usage.lookupUsed(this.projectRef());
     if (!this.parameterErrors()[parameter.def.id])
       this.lookupOrigins.update((origins) => ({ ...origins, [parameter.def.id]: true }));
   }

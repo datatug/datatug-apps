@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { BusinessClockChipComponent } from '../../source-workspace/business-clock-chip.component';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IonTitle } from '@ionic/angular';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
@@ -45,7 +52,7 @@ import { DatatugNavContextService } from '../../services/nav/datatug-nav-context
     `,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonTitle],
+  imports: [BusinessClockChipComponent, IonTitle],
 })
 export class SneatDatatugPageTitleComponent {
   private readonly navContext = inject(DatatugNavContextService);

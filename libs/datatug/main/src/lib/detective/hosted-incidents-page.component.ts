@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import { IncidentEmptyStateComponent } from '../incidents/incident-empty-state.component';
 import { incidentStarterDraft } from '../incidents/incident-starter-draft';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
@@ -55,6 +56,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
   selector: 'sneat-datatug-hosted-incidents-page',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BusinessClockChipComponent,
     RouterLink,
     IncidentEmptyStateComponent,
     HostedIncidentConversationComponent,
@@ -83,7 +85,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
           <ion-menu-button />
           <ion-back-button [defaultHref]="listHref()" />
         </ion-buttons>
-        <ion-title>Incidents</ion-title>
+        <ion-title>Incidents<sneat-datatug-business-clock /></ion-title>
         @if (mode() === 'list' && canWrite() && incidents()?.length && !loading() && !loadError() && !scopeLoading() && !scopeError()) {
           <ion-buttons slot="end">
             <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">Create Incident</ion-button>

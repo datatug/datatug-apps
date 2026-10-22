@@ -1,5 +1,5 @@
 import { Provider } from '@angular/core';
-import { IEnvironmentConfig } from '@sneat/core';
+import { IPosthogSettings, IEnvironmentConfig } from '@sneat/core';
 import type { DatatugDemoConfig } from './demo-config';
 
 export const datatugBusinessCheckoutApiOrigin: string | null = null;
@@ -9,6 +9,9 @@ export const datatugBusinessCheckoutLiveEnabled = false;
 // No analytics in a development or end-to-end build.
 export const datatugGoogleAnalyticsMeasurementId: string | undefined =
   undefined;
+
+// No anonymous usage analytics (PostHog) in a development or end-to-end build.
+export const datatugUsagePosthog: IPosthogSettings | undefined = undefined;
 
 export const datatugAppEnvironmentConfig: IEnvironmentConfig & {
   hostedCloudLogsEnabled: boolean;

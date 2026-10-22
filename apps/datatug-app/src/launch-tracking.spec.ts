@@ -198,3 +198,28 @@ it.each([
     expect(target).toEqual({});
   },
 );
+
+describe('withAnonymousUsageTracking', () => {
+  it('gives DataTug only its own PostHog (off while unset) and keeps no shared GA or Firebase Analytics', async () => {
+    const { withAnonymousUsageTracking, usageConsentKey } =
+      await import('./launch-tracking');
+    const datatug = { hostname: 'datatug.app', queryProfile: null };
+    const off = withAnonymousUsageTracking(production, datatug, undefined);
+    expect(off.posthog).toBeUndefined();
+    expect(off.googleAnalytics).toBeUndefined();
+    expect(off.firebaseConfig.measurementId).toBeUndefined();
+    const on = withAnonymousUsageTracking(production, datatug, {
+      token: 'phc_datatug',
+    });
+    expect(on.posthog?.token).toBe('phc_datatug');
+    expect(usageConsentKey(datatug)).toBe('datatug.usage-analytics-consent.v1');
+    // Incidentius keeps its configured key (still shared with sneat.app), anonymous.
+    const incidentius = withAnonymousUsageTracking(
+      production,
+      { hostname: 'app.incidentius.com', queryProfile: null },
+      { token: 'phc_datatug' },
+    );
+    expect(incidentius.posthog?.token).toBe(production.posthog?.token);
+    expect(incidentius.posthog?.config?.person_profiles).toBe('never');
+  });
+});

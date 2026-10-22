@@ -11,12 +11,13 @@
       />
     </ion-buttons>
     <ion-title
-      ><h1 class="project-title">{{ projectTitle() }}</h1></ion-title
+      ><h1 class="project-title">{{ projectTitle() }}</h1><sneat-datatug-business-clock /></ion-title
     >
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
+  <sneat-datatug-shared-evidence-link [projectRef]="project()?.ref" />
   <form
     class="overview-quick-search ph-no-capture"
     role="search"

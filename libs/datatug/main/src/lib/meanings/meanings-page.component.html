@@ -3,7 +3,7 @@
     <ion-buttons slot="start"
       ><ion-menu-button /><ion-back-button [defaultHref]="backHref()"
     /></ion-buttons>
-    <ion-title>{{ title() }}</ion-title>
+    <ion-title>{{ title() }}<sneat-datatug-business-clock /></ion-title>
     @if (mode() === 'list' && catalog()?.writable) {
       <ion-buttons slot="end"
         ><ion-button [routerLink]="link(href('new-entity'))"

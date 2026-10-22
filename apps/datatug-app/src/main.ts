@@ -54,6 +54,10 @@ import {
 } from './app/checkout/business-checkout-config';
 import { provideCheckoutAnalyticsPrivacy } from './app/checkout/checkout-analytics-privacy';
 import { provideAnalyticsConsent } from './app/analytics-consent/analytics-consent.provider';
+import { provideConsentGatedAnalytics } from './app/analytics-consent/consent-gated-analytics';
+import { provideUsageEvents } from './app/analytics-consent/usage-events.provider';
+import { posthogStarted } from './register-posthog';
+import { BANNER_TEXT_USAGE_ONLY } from './app/analytics-consent/analytics-consent-banner';
 import { notFoundRoute, routes } from './app/datatug-app-routes';
 import { provideDatatugErrorLogger } from './app/errors/datatug-error-logger';
 import { datatugErrorHandler } from './app/errors/datatug-crash-handler';
@@ -68,13 +72,16 @@ import {
   datatugBusinessCheckoutLiveEnabled,
   datatugEnvironmentProviders,
   datatugGoogleAnalyticsMeasurementId,
+  datatugUsagePosthog,
 } from './environments/environment';
 import {
   dataTugGoogleAnalyticsId,
+  isDataTugProfile,
+  usageConsentKey,
+  withAnonymousUsageTracking,
   withoutDataTugTracking,
 } from './launch-tracking';
 import { registerIonicons } from './register-ionicons';
-import { registerPosthog } from './register-posthog';
 import { captureCliChatCapability } from './app/cli-chat-capability';
 import { cliChatProjectInterceptor } from './app/cli-chat-project.interceptor';
 import {
@@ -90,6 +97,7 @@ import {
   withPosthogLinkPrivacy,
 } from './app/telemetry/link-telemetry-privacy';
 import { withSentryLinkPrivacy } from './app/telemetry/sentry-privacy';
+import { forgetLegacyPosthogStore } from './app/telemetry/usage-privacy';
 
 // First: take the one-time code of a card's link out of the address before Sentry, PostHog or the router read it.
 const agentLinkCode = takeAgentLinkCode(location, history);
@@ -98,10 +106,19 @@ const productProfile = {
   hostname: location.hostname,
   queryProfile: new URLSearchParams(location.search).get('profile'),
 };
-const trackedEnvironmentConfig = withoutDataTugTracking(
-  environmentConfig,
+const dataTugProfile = isDataTugProfile(productProfile);
+// Every profile: anonymous usage PostHog behind its own consent, no shared GA or Firebase Analytics, never identified.
+// DataTug uses its own PostHog project (off while datatugUsagePosthog is unset); Incidentius keeps its key, shared
+// with sneat.app for now.
+const trackedEnvironmentConfig = withAnonymousUsageTracking(
+  withoutDataTugTracking(environmentConfig, productProfile),
   productProfile,
+  datatugUsagePosthog,
 );
+// Earlier builds identified signed-in users against these keys: their PostHog stores can hold a Firebase uid.
+// Deleted at start-up, before any choice; the anonymous client keeps its own store.
+forgetLegacyPosthogStore(environmentConfig.posthog?.token);
+forgetLegacyPosthogStore(datatugUsagePosthog?.token);
 // REQ:ui-no-context-telemetry (claude-mod-web-links): no fragment, key, row or loopback agent request data reaches
 // PostHog or Sentry, whichever code starts them.
 const datatugAppEnvironmentConfig = {
@@ -116,9 +133,7 @@ const datatugAppEnvironmentConfig = {
 
 captureCliChatCapability();
 
-if (datatugAppEnvironmentConfig.posthog) {
-  registerPosthog(datatugAppEnvironmentConfig.posthog);
-}
+// PostHog starts only with the visitor's consent, on every profile: provideAnalyticsConsent below follows it.
 
 // Hand the build-time AG Grid license key (possibly empty) to the lazy loader. No AG Grid code runs or loads at
 // startup: each grid-hosting chunk awaits ensureAgGrid() itself.
@@ -155,7 +170,15 @@ bootstrapApplication(DatatugAppComponent, {
         datatugGoogleAnalyticsMeasurementId,
         productProfile,
       ),
+      datatugAppEnvironmentConfig.posthog,
+      undefined,
+      {
+        usageConsentKey: usageConsentKey(productProfile),
+        // Incidentius runs no Google Analytics: its banner names PostHog only.
+        ...(dataTugProfile ? {} : { bannerCopy: BANNER_TEXT_USAGE_ONLY }),
+      },
     ),
+    provideUsageEvents(),
     provideIonicAngular(),
     provideAnimationsAsync(),
     { provide: LOGGER_FACTORY, useValue: loggerFactory },
@@ -222,7 +245,12 @@ bootstrapApplication(DatatugAppComponent, {
     // GitHub token — see github-redirect-capture.ts.
     provideGithubRedirectCapture(),
     provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig),
-    provideSneatAnalytics(datatugAppEnvironmentConfig),
+    // DataTug: the shared AnalyticsService sends nothing without the same consent, never identifies, and starts no
+    // PostHog of its own (register-posthog.ts is the one init, with the app's scrubber).
+    provideConsentGatedAnalytics(
+      provideSneatAnalytics(datatugAppEnvironmentConfig),
+      posthogStarted,
+    ),
     TopMenuService,
     TelegramAuthService,
     {

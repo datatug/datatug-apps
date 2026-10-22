@@ -15,4 +15,17 @@ export {
   resolveProductProfile,
   isLocalDevelopmentHostname,
 } from './lib/resolve-product-profile';
-export { PRODUCT_PROFILE, PRODUCT_PROFILE_OVERRIDE } from './lib/product-profile.token';
+export {
+  PRODUCT_PROFILE,
+  PRODUCT_PROFILE_OVERRIDE,
+} from './lib/product-profile.token';
+// The closed list of anonymous usage events and their sink (public-demo REQ:demo-usage-analytics).
+export {
+  USAGE_EVENT_NAMES,
+  UsageEventName,
+  UsageEventParams,
+  UsageEventSink,
+  USAGE_EVENT_SINK,
+  NOOP_USAGE_EVENT_SINK,
+  isUsageEventName,
+} from './lib/usage-events';
