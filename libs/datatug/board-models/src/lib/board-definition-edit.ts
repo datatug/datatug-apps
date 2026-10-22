@@ -5,6 +5,8 @@ import type { BoardWidget } from './board-widget';
 import { validateBoardPresentation } from './board-presentation';
 import { validBoardParameterDefinitions } from './widget-parameter';
 import { applyBoardAction } from './tutorial-board';
+import type { ProjectCard } from './card';
+import { BOARD_WIDGET_NAME_FIELDS, BOARD_WIDGET_NAME_TEXT, CARD_ID_PATTERN } from './card';
 
 const clone = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
 const record = (value: unknown): value is Record<string, unknown> =>
@@ -29,6 +31,138 @@ const parameters = (value: unknown): void => {
     throw new Error(
       'Unsupported hosted parameter definition; inline lookups are unavailable.',
     );
+};
+const bindings = (value: unknown, message: string): void => {
+  if (
+    value != null &&
+    (!Array.isArray(value) ||
+      !value.every(
+        (binding) =>
+          record(binding) &&
+          keys(binding, ['id', 'value', 'boardParameterId']) &&
+          typeof binding['id'] === 'string' &&
+          !!binding['id'] &&
+          literal(binding['value']) &&
+          (binding['boardParameterId'] == null ||
+            (typeof binding['boardParameterId'] === 'string' &&
+              !!binding['boardParameterId'] &&
+              binding['value'] == null)),
+      ))
+  )
+    throw new Error(message);
+};
+/** A dashboard cell's reference to a project card. */
+export function validateCardRef(ref: unknown): void {
+  if (
+    !record(ref) ||
+    !keys(ref, ['cardId', 'parameters']) ||
+    typeof ref['cardId'] !== 'string' ||
+    !CARD_ID_PATTERN.test(ref['cardId'])
+  )
+    throw new Error('Unsupported project card reference.');
+  bindings(ref['parameters'], 'Unsupported project card parameter binding.');
+}
+/** Bounded structural admission of one widget graph (boards and project cards). */
+export function validateHostedWidget(value: BoardWidget, depth: number): void {
+  if (
+    depth > 8 ||
+    !record(value) ||
+    !keys(value, ['name', 'data']) ||
+    !record(value.data)
+  )
+    throw new Error('Unsupported board widget.');
+  parameters(value.data['parameters']);
+  if (value.name === 'SQL') {
+    const sql = value.data['sql'];
+    if (
+      !keys(value.data, ['title', 'parameters', 'sql']) ||
+      !record(sql) ||
+      !keys(sql, ['queryId', 'parameters', 'presentationFilter']) ||
+      typeof sql['queryId'] !== 'string' ||
+      !sql['queryId']
+    )
+      throw new Error(
+        'Choose a saved query; inline SQL is unavailable for hosted boards.',
+      );
+    bindings(sql['parameters'], 'Unsupported saved-query parameter binding.');
+  } else if (value.name === 'tabs') {
+    if (
+      !keys(value.data, ['title', 'parameters', 'tabs']) ||
+      !Array.isArray(value.data['tabs'])
+    )
+      throw new Error('Unsupported tabs definition.');
+    for (const tab of value.data['tabs']) {
+      if (!record(tab) || !keys(tab, ['id', 'title', 'widget', 'widgets']))
+        throw new Error('Unsupported tab definition.');
+      if (tab['widget']) validateHostedWidget(tab['widget'] as BoardWidget, depth + 1);
+      if (tab['widgets'] != null) {
+        if (!Array.isArray(tab['widgets']))
+          throw new Error('Unsupported tab definition.');
+        for (const inner of tab['widgets'])
+          validateHostedWidget(inner as BoardWidget, depth + 1);
+      }
+    }
+  } else if (value.name === BOARD_WIDGET_NAME_TEXT) {
+    if (
+      !keys(value.data, ['title', 'parameters', 'markdown']) ||
+      typeof value.data['markdown'] !== 'string'
+    )
+      throw new Error('Unsupported text widget.');
+  } else if (value.name === BOARD_WIDGET_NAME_FIELDS) {
+    const source = value.data['source'];
+    const fields = value.data['fields'];
+    if (
+      !keys(value.data, ['title', 'parameters', 'source', 'fields']) ||
+      !record(source) ||
+      !(
+        (keys(source, ['parameter']) &&
+          typeof source['parameter'] === 'string' &&
+          !!source['parameter']) ||
+        (keys(source, ['queryId', 'parameters']) &&
+          typeof source['queryId'] === 'string' &&
+          !!source['queryId'])
+      ) ||
+      (fields != null &&
+        (!Array.isArray(fields) ||
+          !fields.every(
+            (f) =>
+              record(f) &&
+              keys(f, ['column', 'label']) &&
+              typeof f['column'] === 'string' &&
+              !!f['column'] &&
+              (f['label'] == null || typeof f['label'] === 'string'),
+          )))
+    )
+      throw new Error('Unsupported fields widget.');
+    if ('queryId' in source)
+      bindings(source['parameters'], 'Unsupported saved-query parameter binding.');
+  } else if (value.name === 'chart') {
+    const chart = value.data as unknown as ChartWidgetDef;
+    if (
+      chart.sources.some((source) =>
+        source.parameters?.some((binding) => !literal(binding.value)),
+      )
+    )
+      throw new Error('Unsupported exact chart parameter literal.');
+  } else throw new Error('Unsupported hosted board widget.');
+}
+const checkNumbers = (root: unknown): void => {
+  let remaining = 131072;
+  const numbers = (value: unknown, depth = 0): void => {
+    if (--remaining < 0 || depth > 64)
+      throw new Error('Board definition exceeds validation limits.');
+    if (
+      typeof value === 'number' &&
+      (!Number.isFinite(value) ||
+        (Number.isInteger(value) && !Number.isSafeInteger(value)) ||
+        Object.is(value, -0))
+    )
+      throw new Error('Unsupported numeric precision in board definition.');
+    if (Array.isArray(value)) value.forEach((item) => numbers(item, depth + 1));
+    else if (record(value))
+      Object.values(value).forEach((item) => numbers(item, depth + 1));
+  };
+  numbers(root);
 };
 /** Admit raw numeric lexemes before JSON.parse can silently round a persisted definition. */
 export function parseHostedBoardDefinition(raw: string): Board {
@@ -82,92 +216,61 @@ export function validateHostedBoardDefinition(board: Board): void {
   )
     throw new Error('Unsupported or incomplete board definition.');
   parameters(board.parameters);
-  let remaining = 131072;
-  const numbers = (value: unknown, depth = 0): void => {
-    if (--remaining < 0 || depth > 64)
-      throw new Error('Board definition exceeds validation limits.');
-    if (
-      typeof value === 'number' &&
-      (!Number.isFinite(value) ||
-        (Number.isInteger(value) && !Number.isSafeInteger(value)) ||
-        Object.is(value, -0))
-    )
-      throw new Error('Unsupported numeric precision in board definition.');
-    if (Array.isArray(value)) value.forEach((item) => numbers(item, depth + 1));
-    else if (record(value))
-      Object.values(value).forEach((item) => numbers(item, depth + 1));
-  };
-  numbers(board);
+  checkNumbers(board);
   validateBoardPresentation(board);
-  const widget = (value: BoardWidget, depth: number): void => {
-    if (
-      depth > 8 ||
-      !record(value) ||
-      !keys(value, ['name', 'data']) ||
-      !record(value.data)
-    )
-      throw new Error('Unsupported board widget.');
-    parameters(value.data['parameters']);
-    if (value.name === 'SQL') {
-      const sql = value.data['sql'];
-      if (
-        !keys(value.data, ['title', 'parameters', 'sql']) ||
-        !record(sql) ||
-        !keys(sql, ['queryId', 'parameters', 'presentationFilter']) ||
-        typeof sql['queryId'] !== 'string' ||
-        !sql['queryId']
-      )
-        throw new Error(
-          'Choose a saved query; inline SQL is unavailable for hosted boards.',
-        );
-      const bindings = sql['parameters'];
-      if (
-        bindings != null &&
-        (!Array.isArray(bindings) ||
-          !bindings.every(
-            (binding) =>
-              record(binding) &&
-              keys(binding, ['id', 'value', 'boardParameterId']) &&
-              typeof binding['id'] === 'string' &&
-              !!binding['id'] &&
-              literal(binding['value']) &&
-              (binding['boardParameterId'] == null ||
-                (typeof binding['boardParameterId'] === 'string' &&
-                  !!binding['boardParameterId'] &&
-                  binding['value'] == null)),
-          ))
-      )
-        throw new Error('Unsupported saved-query parameter binding.');
-    } else if (value.name === 'tabs') {
-      if (
-        !keys(value.data, ['title', 'parameters', 'tabs']) ||
-        !Array.isArray(value.data['tabs'])
-      )
-        throw new Error('Unsupported tabs definition.');
-      for (const tab of value.data['tabs']) {
-        if (!record(tab) || !keys(tab, ['id', 'title', 'widget']))
-          throw new Error('Unsupported tab definition.');
-        if (tab['widget']) widget(tab['widget'] as BoardWidget, depth + 1);
-      }
-    } else if (value.name === 'chart') {
-      const chart = value.data as unknown as ChartWidgetDef;
-      if (
-        chart.sources.some((source) =>
-          source.parameters?.some((binding) => !literal(binding.value)),
-        )
-      )
-        throw new Error('Unsupported exact chart parameter literal.');
-    } else throw new Error('Unsupported hosted board widget.');
-  };
   for (const row of board.rows ?? []) {
     if (!keys(row, ['minHeight', 'maxHeight', 'cards']))
       throw new Error('Unsupported board row.');
     for (const card of row.cards ?? []) {
-      if (!keys(card, ['id', 'title', 'cols', 'widget']))
+      if (!record(card) || !keys(card, ['id', 'title', 'cols', 'widget', 'ref']))
         throw new Error('Unsupported board card.');
-      if (card.widget) widget(card.widget, 0);
+      // Exactly one of an inline widget or a project-card reference.
+      if (!!card.widget === !!card.ref)
+        throw new Error('A board card needs exactly one of widget or ref.');
+      if (card.widget) validateHostedWidget(card.widget, 0);
+      if (card.ref) validateCardRef(card.ref);
     }
   }
+}
+
+/**
+ * Validates a `cards/<id>/card.json` value and returns it typed. Cards carry
+ * parameters (with `match`), a default `display` and exactly one inline
+ * widget; they never carry `ref`, `cols` or access fields.
+ */
+export function validateProjectCard(value: unknown): ProjectCard {
+  if (
+    !record(value) ||
+    !keys(value, ['id', 'title', 'description', 'parameters', 'display', 'widget']) ||
+    typeof value['id'] !== 'string' ||
+    !CARD_ID_PATTERN.test(value['id']) ||
+    typeof value['title'] !== 'string' ||
+    (value['description'] != null && typeof value['description'] !== 'string') ||
+    (value['display'] != null && !['panel', 'tooltip'].includes(String(value['display'])))
+  )
+    throw new Error('Unsupported or incomplete project card.');
+  checkNumbers(value);
+  const params = value['parameters'];
+  if (
+    !validBoardParameterDefinitions(params, { allowMatch: true }) ||
+    params?.some(
+      (item) =>
+        item.lookup != null ||
+        (['record', 'recordset'].includes(item.type)
+          ? item.defaultValue != null
+          : !literal(item.defaultValue)),
+    )
+  )
+    throw new Error('Unsupported project card parameter definition.');
+  if (new Set(params?.map((p) => p.id)).size !== (params?.length ?? 0))
+    throw new Error('Project card parameter ids must be distinct.');
+  if (!record(value['widget']))
+    throw new Error('A project card needs exactly one widget.');
+  validateBoardPresentation({
+    rows: [{ cards: [{ widget: value['widget'] }] }],
+  });
+  validateHostedWidget(value['widget'] as unknown as BoardWidget, 0);
+  return value as unknown as ProjectCard;
 }
 export type BoardDefinitionEdit =
   | { type: 'title'; title: string }

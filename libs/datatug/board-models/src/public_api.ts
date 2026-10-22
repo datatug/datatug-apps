@@ -64,6 +64,8 @@ export { ParameterLookup } from './lib/parameter-lookup';
 export {
   BoardParameterDef,
   BoardParameterFieldRef,
+  validBoardParameterDefinitions,
+  validMatchRules,
 } from './lib/widget-parameter';
 
 // Whole-board new-field validation for raw GitHub and tutorial reads.
@@ -75,6 +77,8 @@ export {
 export {
   validateHostedBoardDefinition,
   parseHostedBoardDefinition,
+  validateProjectCard,
+  validateCardRef,
   editBoardDefinition,
   BoardDefinitionEdit,
 } from './lib/board-definition-edit';

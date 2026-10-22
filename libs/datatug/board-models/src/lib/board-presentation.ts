@@ -285,6 +285,10 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
       for (const tab of data['tabs']) {
         if (!record(tab)) return fail();
         visit(tab['widget'], depth + 1);
+        if (tab['widgets'] != null) {
+          if (!Array.isArray(tab['widgets'])) return fail();
+          for (const inner of tab['widgets']) visit(inner, depth + 1);
+        }
       }
     }
   };
