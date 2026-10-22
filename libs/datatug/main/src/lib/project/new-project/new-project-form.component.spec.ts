@@ -6,7 +6,7 @@ import { By } from '@angular/platform-browser';
 import { ActivatedRoute, Router } from '@angular/router';
 import { addIcons } from 'ionicons';
 import { closeOutline, saveOutline } from 'ionicons/icons';
-import { ErrorLogger, type SpaceType } from '@sneat/core';
+import { type SpaceType } from '@sneat/core';
 import { SpaceService } from '@sneat/space-services';
 import { SneatAuthStateService, SneatUserService } from '@sneat/auth-core';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -26,6 +26,7 @@ import {
   saveBusinessGithubContinuation,
   takeBusinessGithubContinuation,
 } from './business-github-continuation';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.
@@ -154,10 +155,7 @@ async function harness(
           },
         },
       },
-      {
-        provide: ErrorLogger,
-        useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
-      },
+      provideMockErrorLogger(),
     ],
   }).overrideComponent(NewProjectFormComponent, {
     set: { schemas: [CUSTOM_ELEMENTS_SCHEMA] },

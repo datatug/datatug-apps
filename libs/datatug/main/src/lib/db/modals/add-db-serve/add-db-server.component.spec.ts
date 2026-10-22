@@ -1,12 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 
 import { AddDbServerComponent } from './add-db-server.component';
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { IDbServerSummary } from '../../../models/definition/apis/database';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('AddDbServerComponent', () => {
   let component: AddDbServerComponent;
@@ -22,13 +22,7 @@ describe('AddDbServerComponent', () => {
           useValue: { create: vi.fn(), dismiss: vi.fn() },
         },
         { provide: DbServerService, useValue: { addDbServer: vi.fn() } },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     })
       .overrideComponent(AddDbServerComponent, {
@@ -88,13 +82,7 @@ describe('AddDbServerComponent re-enables the submit button after a failed submi
           provide: DbServerService,
           useValue: { addDbServer: vi.fn(() => addDbServer$.asObservable()) },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     }).compileComponents();
 

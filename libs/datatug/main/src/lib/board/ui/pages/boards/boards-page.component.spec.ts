@@ -15,6 +15,7 @@ import { IFolder } from '../../../../models/definition/folder';
 import { folderItemsAsList } from '../../../../models/definition/folder';
 import { IProjectRef } from '../../../../core/project-context';
 import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 const projectAssetsFromFolderReader = (
   watchFolder: (
@@ -48,13 +49,7 @@ describe('DataboardsPage', () => {
       imports: [BoardsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {
@@ -137,13 +132,7 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
       imports: [BoardsPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: {

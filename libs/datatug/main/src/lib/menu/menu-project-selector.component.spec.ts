@@ -10,6 +10,7 @@ import { MenuProjectSelectorComponent } from './menu-project-selector.component'
 import { IProjectContext } from '../nav/nav-models';
 import { IProjectBase } from '../models/definition/project';
 import { DatatugStoreService } from '../services/repo/datatug-store.service';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('MenuProjectSelectorComponent', () => {
   it('refreshes project options when the current store changes', async () => {
@@ -21,13 +22,7 @@ describe('MenuProjectSelectorComponent', () => {
       imports: [MenuProjectSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: NewProjectService,
           useValue: { navigateToNewProjectPage: vi.fn() },
@@ -87,13 +82,7 @@ describe('MenuProjectSelectorComponent', () => {
       imports: [MenuProjectSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: NewProjectService,
           useValue: { navigateToNewProjectPage: vi.fn() },
@@ -154,7 +143,7 @@ describe('MenuProjectSelectorComponent', () => {
       imports: [MenuProjectSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        provideMockErrorLogger(),
         { provide: NewProjectService, useValue: { navigateToNewProjectPage: vi.fn() } },
         { provide: DatatugNavContextService, useValue: { currentStoreId, currentProject, setCurrentProject } },
         { provide: DatatugNavService, useValue: { goProject } },
@@ -187,7 +176,7 @@ describe('MenuProjectSelectorComponent', () => {
       imports: [MenuProjectSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        provideMockErrorLogger(),
         { provide: NewProjectService, useValue: { navigateToNewProjectPage: vi.fn() } },
         { provide: DatatugNavContextService, useValue: { currentStoreId, currentProject, setCurrentProject: vi.fn() } },
         { provide: DatatugNavService, useValue: { goProject: vi.fn() } },
@@ -226,7 +215,7 @@ describe('MenuProjectSelectorComponent', () => {
       imports: [MenuProjectSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+        provideMockErrorLogger(),
         { provide: NewProjectService, useValue: { navigateToNewProjectPage: vi.fn() } },
         { provide: DatatugNavContextService, useValue: { currentStoreId, currentProject, setCurrentProject: vi.fn() } },
         { provide: DatatugNavService, useValue: { goProject: vi.fn() } },
@@ -317,13 +306,7 @@ describe('MenuProjectSelectorComponent', () => {
       imports: [MenuProjectSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: NewProjectService,
           useValue: { navigateToNewProjectPage },

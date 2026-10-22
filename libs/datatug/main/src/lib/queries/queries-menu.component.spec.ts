@@ -1,12 +1,12 @@
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, Router } from '@angular/router';
-import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
 import { QueriesMenuComponent } from './queries-menu.component';
 import { ProjectContextService } from '../services/project/project-context.service';
 import { QueriesUiService } from './queries-ui.service';
 import { QueryEditorStateService } from './query-editor-state-service';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('QueriesMenuComponent live sidebar actions', () => {
   it('offers active queries and a qualified catalog link without placeholder tabs', async () => {
@@ -25,13 +25,7 @@ describe('QueriesMenuComponent live sidebar actions', () => {
       imports: [QueriesMenuComponent],
       providers: [
         provideRouter([]),
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ProjectContextService,
           useValue: { current: ref, current$: of(ref) },

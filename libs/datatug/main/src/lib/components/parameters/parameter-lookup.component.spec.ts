@@ -1,12 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 import { Subject } from 'rxjs';
 
 import { ParameterLookupComponent } from './parameter-lookup.component';
 import { DatatugStoreService } from '../../services/repo/datatug-store.service';
 import { IExecuteResponse } from '../../dto/execute';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('ParameterLookupComponent', () => {
   let component: ParameterLookupComponent;
@@ -18,13 +18,7 @@ describe('ParameterLookupComponent', () => {
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: DatatugStoreService, useValue: {} },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ModalController,
           useValue: { dismiss: vi.fn(() => Promise.resolve()) },
@@ -86,13 +80,7 @@ describe('ParameterLookupComponent renders the grid once the lookup response arr
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         { provide: DatatugStoreService, useValue: {} },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ModalController,
           useValue: { dismiss: vi.fn(() => Promise.resolve()) },

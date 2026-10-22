@@ -1,13 +1,14 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { NavigationEnd, Router } from '@angular/router';
-import { AnalyticsService, ErrorLogger } from '@sneat/core';
+import { AnalyticsService } from '@sneat/core';
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
 import { Subject } from 'rxjs';
 
 import { DatatugMenuComponent } from './datatug-menu.component';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugUserService } from '../services/base/datatug-user-service';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 // isLoginPage / currentStoreId / currentProject / datatugUserState /
 // onProjectChanged are `protected` (template-only). Cast to read them in tests.
@@ -55,13 +56,7 @@ describe('DatatugMenuComponent', () => {
       imports: [DatatugMenuComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: Router, useValue: routerMock },
         {
           provide: DatatugNavContextService,

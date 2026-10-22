@@ -15,6 +15,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 import { EnvironmentsPageComponent } from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { ProjectAssetsReadService } from '../../../services/project/project-assets-read.service';
 import { ProjectEnvironmentStateService } from '../../../services/project/project-environment-state.service';
@@ -130,6 +131,7 @@ describe('Environments management', () => {
     await TestBed.configureTestingModule({
       imports: [EnvironmentsPageComponent],
       providers: [
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: { currentProject: project },

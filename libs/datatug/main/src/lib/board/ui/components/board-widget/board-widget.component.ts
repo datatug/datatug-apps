@@ -8,6 +8,7 @@ import {
 import { HttpErrorResponse } from '@angular/common/http';
 import { HeldRowEvidenceComponent } from '../../../../evidence/held-row-evidence.component';
 import { RetainedEvidenceViewerComponent } from '../../../../evidence/retained-evidence-viewer.component';
+import { frozenComparison } from '../../../../evidence/retained-comparison-contract';
 import { heldEvidenceIdentity } from '../../../../evidence/retained-evidence-contract';
 import { requireAppliedInputMatch } from '../../../../evidence/applied-evidence';
 import { useNativeRunLifetime } from '../../../../evidence/native-run-lifetime';
@@ -169,6 +170,10 @@ export class BoardWidgetComponent {
           ? 'Query results'
           : this.widgetDef()?.name || 'Widget'),
   );
+  readonly comparisonCaption = computed(() => {
+    const pair = this.heldSnapshot()?.evidenceIdentity?.comparison?.members;
+    return pair?.length === 2 ? `${pair[1].value} vs ${pair[0].value}` : undefined;
+  });
   readonly hasHeaderActions = computed(
     () =>
       !this.executionOnly() &&
@@ -672,7 +677,7 @@ export class BoardWidgetComponent {
       this.evidenceError.set(null);
       this.preparingEvidence.set(false);
       if (!chart || !this.evidenceKind() || !result || running) return;
-      if (Object.hasOwn(this.definition() ?? {}, 'comparison')) {
+      if (Object.hasOwn(this.definition() ?? {}, 'comparison') && !held?.evidenceIdentity?.comparison) {
         this.evidenceError.set('Comparison chart unavailable. This result has no verified comparison; source rows remain available.');
         return;
       }
@@ -1136,7 +1141,8 @@ export class BoardWidgetComponent {
           throw new Error(
             'Choose applied context for this current hosted environment.',
           );
-        requireAppliedInputMatch(selection.choice, parameters);
+        const comparison = frozenComparison(definition, parameters);
+        requireAppliedInputMatch(selection.choice, comparison ? { [comparison.primaryInput]: parameters[comparison.primaryInput] } : parameters);
       }
       const intent = hosted
         ? await this.retainedIntent.prepare(
@@ -1152,6 +1158,7 @@ export class BoardWidgetComponent {
             {
               queryId,
               parameters,
+              ...(definition.comparison ? { comparison: frozenComparison(definition, parameters) } : {}),
               ...(selection ? { evidence: selection.choice.evidence } : {}),
             },
           )

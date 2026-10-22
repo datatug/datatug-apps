@@ -1,21 +1,15 @@
 import { TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 
 import { QueryContextSqlService } from './query-context-sql.service';
 import { TableService } from '../services/unsorted/table.service';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('QueryContextSqlService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         QueryContextSqlService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: TableService,
           useValue: {

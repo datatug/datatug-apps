@@ -1,6 +1,5 @@
 import coreComparison from './testdata/core-v070-query-comparison.json';
 import { TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 import { defer, EMPTY, firstValueFrom, from, of, Subject } from 'rxjs';
 
 import { QueryEditorStateService } from './query-editor-state-service';
@@ -13,6 +12,7 @@ import {
   createHostedDemoDbQuery,
   withHostedDemoDbSource,
 } from './hosted-demo-db-query';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 it('clears private GitHub query state on the backend reauthorization authority event', () => {
   const project = {
@@ -28,7 +28,7 @@ it('clears private GitHub query state on the backend reauthorization authority e
   TestBed.configureTestingModule({
     providers: [
       QueryEditorStateService,
-      { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+      provideMockErrorLogger(),
       {
         provide: QueriesService,
         useValue: {
@@ -61,13 +61,7 @@ describe('QueryEditorStateService', () => {
     TestBed.configureTestingModule({
       providers: [
         QueryEditorStateService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: QueriesService,
           useValue: { getQuery: vi.fn(), updateQuery: vi.fn() },
@@ -180,13 +174,7 @@ describe('QueryEditorStateService — hosted DemoDB query creation and save', ()
     TestBed.configureTestingModule({
       providers: [
         QueryEditorStateService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: QueriesService,
           useValue: { getQuery: vi.fn(), createQuery, updateQuery: vi.fn() },
@@ -271,13 +259,7 @@ describe('QueryEditorStateService — GitHub public SQLite save', () => {
     TestBed.configureTestingModule({
       providers: [
         QueryEditorStateService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: QueriesService,
           useValue: {
@@ -339,7 +321,7 @@ describe('QueryEditorStateService — Space-owned saved SQL', () => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({ providers: [
       QueryEditorStateService,
-      { provide: ErrorLogger, useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) } },
+      provideMockErrorLogger(),
       { provide: QueriesService, useValue: {
         capabilities: () => of({ querySave: true }), saveRevision, branches,
         authorityDenied: () => EMPTY,
@@ -449,13 +431,7 @@ describe('QueryEditorStateService — loadQuery falls back to project_full when 
     TestBed.configureTestingModule({
       providers: [
         QueryEditorStateService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: QueriesService, useValue: { getQuery: getQueryMock } },
         { provide: ProjectService, useValue: { getFull: getFullMock } },
         {
@@ -523,13 +499,7 @@ describe('QueryEditorStateService — loadQuery succeeds via the primary get_que
     TestBed.configureTestingModule({
       providers: [
         QueryEditorStateService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: QueriesService, useValue: { getQuery: getQueryMock } },
         { provide: ProjectService, useValue: { getFull: getFullMock } },
         {
@@ -611,13 +581,7 @@ describe('QueryEditorStateService — findQueryInProjectFull matches both id for
     TestBed.configureTestingModule({
       providers: [
         QueryEditorStateService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: QueriesService, useValue: { getQuery: getQueryMock } },
         { provide: ProjectService, useValue: { getFull: getFullMock } },
         {

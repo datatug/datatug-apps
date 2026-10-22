@@ -84,6 +84,25 @@ async function stubExternal(
 const dialogRequested = (external: External[]): boolean =>
   external.some((request) => request.url.includes('/api/embed/error-page'));
 
+/**
+ * Resolves once Sentry has sent the report of an error thrown after this call (its next request to the ingest
+ * host), or after `ms` if none comes. Start it before throwing the probe: the report usually leaves within
+ * milliseconds, so a fixed multi-second sleep only slowed every privacy test down.
+ */
+async function sentryReport(page: Page, ms = 3000): Promise<void> {
+  await page
+    .waitForRequest((request) => new URL(request.url()).hostname.includes('sentry.io'), { timeout: ms })
+    .catch(() => undefined);
+}
+
+/**
+ * Lets an asynchronous reaction (Sentry's crash dialog, a late request) happen before an absence is asserted:
+ * waits until the page has had no network traffic for 500 ms instead of sleeping a fixed time.
+ */
+async function settle(page: Page): Promise<void> {
+  await page.waitForLoadState('networkidle');
+}
+
 function consoleErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on(
@@ -215,12 +234,13 @@ async function openAndWatch(
   await page.goto(`${HANDOFF_HOST}${path}`);
   await ready();
   // Make Sentry report something, so that its breadcrumbs and request URL are on the wire too.
+  const reported = sentryReport(page);
   await page.evaluate(() =>
     setTimeout(() => {
       throw new Error('R2 probe: an uncaught error');
     }),
   );
-  await page.waitForTimeout(2500);
+  await reported;
   return { external, requests };
 }
 
@@ -371,7 +391,7 @@ test.describe('the hand-off holding page', () => {
           // One main landmark, nothing scrolls sideways, no crash.
           await expect(page.getByRole('main')).toHaveCount(1);
           await noHorizontalScroll(page);
-          await page.waitForTimeout(1500); // Sentry injects its dialog asynchronously: look again after a beat
+          await settle(page); // Sentry injects its dialog asynchronously
           await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
           expect(dialogRequested(external)).toBe(false);
           expect(errors).toEqual([]);
@@ -501,7 +521,7 @@ test.describe('the hand-off holding page', () => {
       );
       expect(new URL(page.url()).search).toBe('');
       expect(page.url()).not.toContain(MARKER);
-      await page.waitForTimeout(1500);
+      await settle(page); // Sentry injects its dialog asynchronously
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
       expect(dialogRequested(external)).toBe(false);
       expect(errors).toEqual([]);
@@ -617,7 +637,7 @@ test.describe('the hand-off holding page', () => {
     );
     await expect(page).not.toHaveURL(/\/demo/, { timeout: 20_000 });
     expect(new URL(page.url()).search).toBe('');
-    await page.waitForTimeout(1500);
+    await settle(page); // Sentry injects its dialog asynchronously
     await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
     expect(dialogRequested(external)).toBe(false);
     expect(errors.filter((e) => e.includes('NG04002'))).toEqual([]);
@@ -680,7 +700,7 @@ test.describe('the hand-off holding page', () => {
       expect(new URL(page.url()).pathname + new URL(page.url()).search).toBe(
         CANONICAL_START_CHAT,
       );
-      await page.waitForTimeout(1500);
+      await settle(page); // Sentry injects its dialog asynchronously
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
       expect(dialogRequested(external)).toBe(false);
       // No "Something went wrong" toast and no logged error either (the nav context used to throw on this address).
@@ -739,7 +759,7 @@ test.describe('the hand-off holding page', () => {
         JSON.stringify(Object.entries(sessionStorage)),
       );
       expect(kept).not.toContain(MARKER);
-      await page.waitForTimeout(1000);
+      await settle(page);
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
       expect(dialogRequested(external)).toBe(false);
       await expect(page.locator('ion-toast')).toHaveCount(0);
@@ -767,7 +787,7 @@ test.describe('the hand-off holding page', () => {
     await expect(page.locator('blockquote')).toHaveCount(0);
     await expect(page).not.toHaveTitle('DataTug live demo');
     expect(new URL(page.url()).pathname).toBe(TRUSTED);
-    await page.waitForTimeout(1500);
+    await settle(page); // Sentry injects its dialog asynchronously
     await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
     expect(dialogRequested(external)).toBe(false);
   });
@@ -857,7 +877,7 @@ test.describe('the hand-off holding page', () => {
         TRUSTED,
       );
       await expect(page.locator('#demo-holding-message')).toHaveCount(0);
-      await page.waitForTimeout(1500);
+      await settle(page); // Sentry injects its dialog asynchronously
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
       expect(dialogRequested(external)).toBe(false);
       expect(errors.filter((e) => e.includes('NG04002'))).toEqual([]);
@@ -876,7 +896,7 @@ test.describe('the hand-off holding page', () => {
         timeout: 20_000,
       });
       expect(new URL(page.url()).search).toBe('');
-      await page.waitForTimeout(1500);
+      await settle(page); // Sentry injects its dialog asynchronously
       await expect(page.locator(SENTRY_DIALOG)).toHaveCount(0);
       expect(dialogRequested(external)).toBe(false);
       expect(errors).toEqual([]);
@@ -1152,7 +1172,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     page.on('request', (request) => referrers.push(request.headers()['referer'] ?? ''));
     await page.goto(`${TRUSTED_ROOT}/start-chat#msg=${enc}&lang=en`);
     await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
-    await page.waitForTimeout(1000);
+    await settle(page);
     expect(urls.filter(hasMarker)).toEqual([]);
     expect(referrers.filter(hasMarker)).toEqual([]);
     expect(leaks(external)).toEqual([]);
@@ -1168,7 +1188,7 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     });
     await page.goto(`${TRUSTED_ROOT}/start-chat?msg=${enc}&lang=en`);
     await expect(page.locator('blockquote')).toHaveText(MARKER, { timeout: 20_000 });
-    await page.waitForTimeout(1000);
+    await settle(page);
     expect(later.filter(hasMarker)).toEqual([]);
     expect(leaks(external)).toEqual([]);
   });
@@ -1343,12 +1363,13 @@ test.describe('the question reaches no analytics or error report', () => {
     expect(page.url()).toBe(`${HOST}/demo`);
 
     // Make Sentry send something, with its breadcrumbs and request URL.
+    const reported = sentryReport(page);
     await page.evaluate(() =>
       setTimeout(() => {
         throw new Error('G-0 probe: an uncaught error on the holding page');
       }),
     );
-    await page.waitForTimeout(3000);
+    await reported;
 
     await expectDiagnosticsWithoutOptionalTracking(page, external);
     expect(leaks(external)).toEqual([]);
@@ -1403,22 +1424,26 @@ test.describe('a question on a project address that is not a hand-off address is
       await expect(page.locator('ion-header').first()).toBeVisible({
         timeout: 20_000,
       });
+      const reported = sentryReport(page);
       await page.evaluate(() =>
         setTimeout(() => {
           throw new Error('S2 probe: an uncaught error on a project page');
         }),
       );
-      await page.waitForTimeout(3000);
+      await reported;
 
-      const url = new URL(page.url());
-      expect(url.searchParams.has('msg')).toBe(false);
-      expect(url.searchParams.has('q')).toBe(false);
+      // The app rewrites the address after it has rendered: wait for the end state, not a fixed time.
+      const url = () => new URL(page.url());
+      await expect.poll(() => url().searchParams.has('msg')).toBe(false);
+      await expect.poll(() => url().searchParams.has('q')).toBe(false);
       // Only an ordinary project page keeps unrelated query keys. Nested chat is now a hand-off,
       // and the exact old repository root redirects to the shared project; both clear the query.
-      expect(url.searchParams.get('x')).toBe(path.endsWith('/queries') ? '1' : null);
+      await expect
+        .poll(() => url().searchParams.get('x'))
+        .toBe(path.endsWith('/queries') ? '1' : null);
       // The queries page and hand-off capture clear the fragment; the old root alias also
       // redirects to the shared project without carrying the fragment forward.
-      expect(url.hash).toBe('');
+      await expect.poll(() => url().hash).toBe('');
       expect(page.url()).not.toContain(MARKER);
       await expectDiagnosticsWithoutOptionalTracking(page, external);
       const leaked = external.filter((request) =>
@@ -1692,12 +1717,13 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
     await expect(page.locator('blockquote')).toHaveText(EN_QUESTION, {
       timeout: 20_000,
     });
+    const reported = sentryReport(page);
     await page.evaluate(() =>
       setTimeout(() => {
         throw new Error('G-0 probe: an uncaught error on the holding page');
       }),
     );
-    await page.waitForTimeout(3000);
+    await reported;
     await expectDiagnosticsWithoutOptionalTracking(page, external);
     const leaked = external.filter((request) =>
       [request.url, request.body].some(

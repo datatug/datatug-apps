@@ -12,6 +12,7 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import { EntityService } from '../../services/unsorted/entity.service';
 import { EnvironmentService } from '../../services/unsorted/environment.service';
 import { SchemaService } from '../../services/unsorted/schema.service';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('DatatugFolderComponent', () => {
   let fixture: ComponentFixture<DatatugFolderComponent>;
@@ -138,13 +139,7 @@ describe('DatatugFolderComponent.numberOf()', () => {
     await TestBed.configureTestingModule({
       imports: [DatatugFolderComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugFoldersService,
           useValue: { watchFolder: vi.fn(() => of(null)) },
@@ -212,13 +207,7 @@ describe('DatatugFolderComponent renders the Boards card once the folder arrives
     await TestBed.configureTestingModule({
       imports: [DatatugFolderComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugFoldersService,
           useValue: { watchFolder: vi.fn(() => watchFolder$.asObservable()) },

@@ -7,6 +7,7 @@ import { IDatatugUser } from '../models/interfaces';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { MenuStoreSelectorComponent } from './menu-store-selector.component';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('MenuStoreSelectorComponent', () => {
   it('keeps the routed project store selected before and after store metadata loads', async () => {
@@ -81,13 +82,7 @@ describe('MenuStoreSelectorComponent', () => {
       imports: [MenuStoreSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: DatatugNavContextService, useValue: { currentStoreId } },
         { provide: DatatugNavService, useValue: { goStore } },
       ],

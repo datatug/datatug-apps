@@ -1,5 +1,6 @@
 import { BrowserContext, Locator, Page } from '@playwright/test';
 import { DEMODB_HOST, expect, test } from './helpers/demodb-guard';
+import { hasOpfs, trackDemodbRequests } from './helpers/demo-sqlite';
 import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -112,29 +113,6 @@ test.beforeEach(async ({ context, baseURL }) => {
     return route.abort();
   });
 });
-
-/** Every request any page or worker of the context makes to demodb.dev. */
-function trackDemodbRequests(context: BrowserContext): string[] {
-  const urls: string[] = [];
-  context.on('request', (request) => {
-    if (DEMODB.test(new URL(request.url()).hostname)) urls.push(request.url());
-  });
-  return urls;
-}
-
-/** Whether this browser context gives pages OPFS (asked of the browser itself, on the app's origin). */
-async function hasOpfs(page: Page): Promise<boolean> {
-  await page.goto('/demo/sqlite');
-  await expect(page.getByTestId('demo-sqlite-datasets')).toBeVisible();
-  return page.evaluate(async () => {
-    try {
-      await navigator.storage.getDirectory();
-      return true;
-    } catch {
-      return false;
-    }
-  });
-}
 
 async function openDataset(page: Page, dataset: string, table?: string): Promise<void> {
   await page.goto(`/demo/sqlite/${dataset}${table ? `/table/${table}` : ''}`);

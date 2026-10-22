@@ -137,6 +137,20 @@
           }
         </ion-list>
       }
+      @if (suggestedDocs().length) {
+        <ion-list>
+          <ion-list-header>
+            <ion-label>Open a known module</ion-label>
+          </ion-list-header>
+          <ion-item lines="none">
+            @for (docId of suggestedDocs(); track docId) {
+              <ion-button fill="outline" size="small" (click)="openDoc(docId)">
+                {{ docId }}
+              </ion-button>
+            }
+          </ion-item>
+        </ion-list>
+      }
     }
   }
 </ion-content>

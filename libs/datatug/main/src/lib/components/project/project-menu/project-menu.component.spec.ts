@@ -2,7 +2,6 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { provideRouter, Router, RouterLink } from '@angular/router';
 import { By } from '@angular/platform-browser';
-import { ErrorLogger } from '@sneat/core';
 import { of } from 'rxjs';
 
 import { PRODUCT_PROFILE, PRODUCT_PROFILES } from '@datatug/product-profiles';
@@ -10,6 +9,7 @@ import { ProjectMenuComponent } from './project-menu.component';
 import { ProjectContextService } from '../../../services/project/project-context.service';
 import { QueriesUiService } from '../../../queries/queries-ui.service';
 import { QueryEditorStateService } from '../../../queries/query-editor-state-service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('ProjectContextMenuComponent', () => {
   let component: ProjectMenuComponent;
@@ -73,13 +73,7 @@ describe('ProjectMenuComponent — Active Queries tab renders QueriesMenuCompone
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
         provideRouter([]),
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ProjectContextService,
           useValue: { current: undefined, current$: of(undefined) },
@@ -155,13 +149,7 @@ describe('shared project menu refuses active-query tab', () => {
         { provide: DatatugNavService, useValue: nav },
         { provide: DatatugUserService, useValue: { datatugUserState: of({}) } },
         { provide: PRODUCT_PROFILE, useValue: PRODUCT_PROFILES.datatug },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: QueriesUiService, useValue: queryActions },
         { provide: QueryEditorStateService, useValue: queryState },
       ],

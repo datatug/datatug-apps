@@ -1,22 +1,16 @@
 import { TestBed } from '@angular/core/testing';
 import { ModalController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 
 import { ParameterLookupService } from './parameter-lookup.service';
 import { AgentService } from '../../services/repo/agent.service';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('ParameterLookupService', () => {
   beforeEach(() => {
     TestBed.configureTestingModule({
       providers: [
         ParameterLookupService,
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ModalController,
           useValue: {

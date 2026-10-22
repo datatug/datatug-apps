@@ -13,6 +13,7 @@ import { DatatugApiService } from '../base/datatug-api.service';
 import { firstValueFrom, Observable, Subject, of } from 'rxjs';
 
 import { ProjectService } from './project.service';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 import { DatatugStoreServiceFactory } from '../repo/datatug-store-service-factory.service';
 import { IProjectRef, projectRefToString } from '../../core/project-context';
 import { IProjectSummary } from '../../models/definition/project';
@@ -48,13 +49,7 @@ describe('ProjectService', () => {
           },
         },
         { provide: HttpClient, useValue: http },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: PrivateTokenStoreService, useValue: {} },
         { provide: DatatugApiService, useValue: sneatApi },
         {
@@ -320,13 +315,7 @@ describe('ProjectService local summary HTTP context', () => {
         },
         provideHttpClient(),
         provideHttpClientTesting(),
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: PrivateTokenStoreService, useValue: {} },
         { provide: DatatugApiService, useValue: { post: vi.fn() } },
         {
@@ -467,13 +456,7 @@ describe('ProjectService DataTug API base URL', () => {
           },
         },
         ...datatugApiRealProviders(),
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: PrivateTokenStoreService, useValue: {} },
         {
           provide: DatatugStoreServiceFactory,

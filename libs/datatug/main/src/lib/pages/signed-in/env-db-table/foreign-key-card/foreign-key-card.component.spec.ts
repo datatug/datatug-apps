@@ -1,11 +1,11 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ErrorLogger } from '@sneat/core';
 
 import { ForeignKeyCardComponent } from './foreign-key-card.component';
 import { ProjectService } from '../../../../services/project/project.service';
 import { DatatugNavService } from '../../../../services/nav/datatug-nav.service';
 import { AgentService } from '../../../../services/repo/agent.service';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 describe('ForeignKeyCardComponent', () => {
   let component: ForeignKeyCardComponent;
@@ -16,13 +16,7 @@ describe('ForeignKeyCardComponent', () => {
       imports: [ForeignKeyCardComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ProjectService, useValue: { getFull: vi.fn() } },
         { provide: DatatugNavService, useValue: { goTable: vi.fn() } },
         { provide: AgentService, useValue: { select: vi.fn() } },

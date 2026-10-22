@@ -100,6 +100,7 @@ export interface CaseEventsPage {
 }
 
 export interface HostedQueryResponse {
+  readonly comparison?: import('../evidence/retained-comparison-contract').RetainedComparison;
   sourcePin?: RetainedSourcePin;
   appliedManifestRef?: string;
   attachedIncidentRef?: string;
@@ -627,7 +628,7 @@ export class DetectiveClientService {
     queryId: string,
     environment: string,
     inputs: Record<string, import('./models').DetectiveInputValue>,
-    intent?: { evidence?: AppliedEvidenceRequest; operationId?: string; signal?: AbortSignal },
+    intent?: { evidence?: AppliedEvidenceRequest; operationId?: string; signal?: AbortSignal; comparison?: import('../queries/query-comparison').QueryComparison },
   ): Observable<HostedQueryResponse> {
     const payload = structuredClone({
       storage: context.storage,
@@ -637,6 +638,7 @@ export class DetectiveClientService {
       environment,
       inputs,
       ...(intent?.evidence ? { evidence: intent.evidence } : {}),
+      ...(intent?.comparison ? { comparison: intent.comparison } : {}),
     });
     const key = JSON.stringify(['hosted-run', context, payload]);
     const operationId =

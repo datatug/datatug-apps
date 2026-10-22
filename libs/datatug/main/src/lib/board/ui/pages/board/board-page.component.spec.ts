@@ -16,6 +16,7 @@ import { QueryParamsService } from '../../../../core/services/QueryParamsService
 import { Board } from '@datatug/board-models';
 import { IProjectContext } from '../../../../nav/nav-models';
 import { QualifiedLocalReadVersionError } from '../../../../services/project/project-query-api.service';
+import { provideMockErrorLogger } from '../../../../testing/error-logger.spec-helper';
 
 describe('BoardPage', () => {
   let component: BoardPageComponent;
@@ -26,13 +27,7 @@ describe('BoardPage', () => {
       imports: [BoardPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: ProjectAssetsReadService, useValue: { board: vi.fn() } },
         {
           provide: ActivatedRoute,
@@ -158,13 +153,7 @@ describe('BoardPage - qualified read errors', () => {
       imports: [BoardPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ProjectAssetsReadService,
           useValue: { board: vi.fn(() => throwError(() => error)) },
@@ -348,13 +337,7 @@ describe('BoardPage renders the board once it arrives asynchronously (zoneless)'
       imports: [BoardPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ProjectAssetsReadService,
           useValue: { board: vi.fn(() => getBoard$.asObservable()) },

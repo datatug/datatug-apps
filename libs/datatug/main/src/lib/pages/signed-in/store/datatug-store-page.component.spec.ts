@@ -46,6 +46,7 @@ import {
   DatatugUserService,
   IDatatugUserState,
 } from '../../../services/base/datatug-user-service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 // The app registers its icon set in main.ts. Register only those used by the
 // real store template so happy-dom embeds SVGs without network fetches.
@@ -108,13 +109,7 @@ describe('StorePageComponent', () => {
       imports: [DatatugStorePageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -490,13 +485,7 @@ describe('StorePageComponent', () => {
           provideZonelessChangeDetection(),
           provideRouter([]),
           provideIonicAngular(),
-          {
-            provide: ErrorLogger,
-            useValue: {
-              logError: vi.fn(),
-              logErrorHandler: vi.fn(() => vi.fn()),
-            },
-          },
+          provideMockErrorLogger(),
           {
             provide: ActivatedRoute,
             useValue: {
