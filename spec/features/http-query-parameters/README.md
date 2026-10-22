@@ -32,11 +32,11 @@ The web rules below are NEW and stricter than the CLI's: no placeholders in host
 
 #### REQ: placeholder-syntax
 
-A placeholder is `{name}` where `name` matches `[a-zA-Z0-9_]+` (the dalgo2http and CLI expression `\{([a-zA-Z0-9_]+)\}`). `{{name}}`, `:name`, `$name` and `${name}` are NOT placeholders. There is no escape for a literal `{name}`; text that must contain braces uses JSON objects (`{"`), which never match. Placeholders are allowed only in: URL path segments, URL query-string values (including a value fragment such as `ref=ord-{id}`), header values and the body. They are NOT allowed in the scheme, userinfo, host or port, the fragment, a query-string name, a header name or the method; such a template is invalid.
+A placeholder is `{name}` where `name` matches `[a-zA-Z0-9_]+` (the dalgo2http and CLI expression `\{([a-zA-Z0-9_]+)\}`). `{{name}}`, `:name`, `$name` and `${name}` are NOT placeholders. There is no escape for a literal `{name}`; text that must contain braces uses JSON objects (`{"`), which never match. Placeholders are allowed only in: URL path segments, URL query-string values (including a value fragment such as `ref=ord-{id}`), header values and the body. They are NOT allowed in the scheme, userinfo, host or port, the fragment, a query-string name, a header name or the method, the value of the `Content-Type` header (it decides how the body is encoded), or the value of a routing or transport header the network layer controls (`Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `X-Forwarded-*`, `X-Original-URL`, `X-Rewrite-URL`, `X-Host` and the other entries of core `reservedHTTPHeaders`); such a template is invalid. A URL that contains a placeholder must also be an absolute `http` or `https` URL, with no spaces, control characters or backslashes. A URL without a placeholder is not subject to this check.
 
 #### REQ: placeholder-semantics
 
-Substitution is a single pass over the template: substituted text is never rescanned, so a value containing `{other}` is inserted literally. A placeholder with a value that cannot be resolved follows `declare-parameters` (`isRequired`); a missing required value fails the run naming the parameter (dalgo2http `ErrMissingParam`, `request.go:45`) and is never sent empty or as `{name}`. Every placeholder appears in the declared parameters and every declared parameter appears as a placeholder in at least one position; the CLI already rejects both mismatches (`params.go:41-59`) and the web app MUST apply the same rule on save. Declared parameters absent from the template are NOT appended as extra query pairs (dalgo2http appends them, `request.go:61-69` in v0.2.1, `61-77` in v0.4.0, but that path is unreachable from the CLI because of the same rule, and is not adopted).
+Substitution is a single pass over the template: substituted text is never rescanned, so a value containing `{other}` is inserted literally. A placeholder with a value that cannot be resolved follows `declare-parameters` (`isRequired`); a missing required value fails the run naming the parameter (dalgo2http `ErrMissingParam`, `request.go:45`) and is never sent empty or as `{name}`. An empty string, like null, is a missing value: it falls through to the next source in `binding-sources`, then to the default, else the run fails, so a request such as `?q=` cannot be sent on purpose. Every placeholder appears in the declared parameters and every declared parameter appears as a placeholder in at least one position; the CLI already rejects both mismatches (`params.go:41-59`) and the web app MUST apply the same rule on save. Declared parameters absent from the template are NOT appended as extra query pairs (dalgo2http appends them, `request.go:61-69` in v0.2.1, `61-77` in v0.4.0, but that path is unreachable from the CLI because of the same rule, and is not adopted).
 
 The web substituter preserves the author's query-pair order and the template's text outside placeholders, and only encodes substituted values. dalgo2http instead ends with `parsed.RawQuery = q.Encode()` (`request.go:70` in v0.2.1, `:78` in v0.4.0), which sorts keys and re-encodes the whole query; the CLI and web requests are therefore equivalent (same method, scheme, host, path and query parameters as a multiset), not byte-identical.
 
@@ -52,7 +52,7 @@ The editor's Params table (`params-synced-with-url` in [HTTP Query Editor](../ht
 
 #### REQ: declare-parameters
 
-An HTTP query MAY declare `QueryDef.Parameters` using the existing `ParameterDef` shape (`id`, `type`, `title`, `defaultValue`, `isRequired`, `meta`) with these rules: `id` is the placeholder name and matches the placeholder syntax; ids are unique; `type` is one of `string`, `integer`, `number`, `boolean`, `bit`, `date`, `datetime`; `isMultiValue`, `lookup`, `minLength` and `maxLength` are rejected on HTTP queries in this version; `defaultValue` must match `type` per the existing `ParameterDef.Validate`.
+An HTTP query MAY declare `QueryDef.Parameters` using the existing `ParameterDef` shape (`id`, `type`, `title`, `defaultValue`, `isRequired`, `isCredential`, `meta`; `isCredential` marks a parameter used only in credential headers, see `credentials-run-time-only`) with these rules: `id` is the placeholder name and matches the placeholder syntax; ids are unique; `type` is one of `string`, `integer`, `number`, `boolean`, `bit`, `date`, `datetime`; `isMultiValue`, `lookup`, `minLength` and `maxLength` are rejected on HTTP queries in this version; `defaultValue` must match `type` per the existing `ParameterDef.Validate`.
 
 `isRequired` means: required (true) means a missing value, after the precedence of `binding-sources` including the default, is a run error. Not required (false, the default) means an absent value substitutes `defaultValue`; a not-required parameter with no `defaultValue` is rejected on save in every position. Every placeholder therefore always receives a value or the run fails, matching the CLI, which fails with `ErrMissingParam` on any missing value (dalgo2http v0.2.1 request.go:45); a query pair is never silently dropped. The editor shows a Parameters section that lists every placeholder found in the template, adds the declaration with one action, and flags declared-but-unused parameters.
 
@@ -72,7 +72,7 @@ From a query result grid, a "Run HTTP query" action for the selected row lists s
 
 #### REQ: multi-row-selection
 
-A run binds from exactly one row. When several rows are selected the action is disabled with the reason "select one row", and no request is sent; the editor never runs once per row and never merges rows. Multi-value parameters and fan-out over rows are a later feature (see Open questions).
+A run binds from exactly one row: the single checked row when exactly one row is checked in the grid, otherwise the focused row. When several rows are checked the action is disabled with the reason "select one row", and no request is sent; the editor never runs once per row and never merges rows. Multi-value parameters and fan-out over rows are a later feature (see Open questions).
 
 #### REQ: context-bag-binding
 
@@ -90,7 +90,7 @@ Values are encoded for the position they land in: a URL path segment uses `url.P
 
 #### REQ: header-injection
 
-After substitution, a header value containing CR, LF or NUL is a run error naming the header and the parameter. Characters are never stripped or escaped to make the value pass. Header names and the method cannot contain placeholders, so a value cannot add a header.
+After substitution, a header value containing any ASCII control character other than TAB (this includes CR, LF and NUL), or DEL, is a run error naming the header and the parameter. Characters are never stripped or escaped to make the value pass. Header names and the method cannot contain placeholders, so a value cannot add a header.
 
 #### REQ: body-substitution
 
@@ -102,7 +102,7 @@ Form mode: each value uses query-value escaping. Text mode: the value is inserte
 
 #### REQ: credentials-run-time-only
 
-Saved templates and `defaultValue` fields pass the existing embedded-secret screen (`embeddedCredentialReasonWithoutDSN`), and credential headers are still never saved (`credential-headers-unsaved`). A placeholder in the URL userinfo is rejected. A credential header (per `isCredentialHTTPHeader`) may use a placeholder only in the session-only editor value. A parameter used in a credential header MUST NOT be used in any other position (URL, other header, body), so a credential value cannot leak elsewhere, and it takes typed run-time values only: it MUST be declared `isRequired: true` with no `defaultValue` (a not-required credential parameter is rejected on save), and values from a row, a board binding or the context bag are refused. History and run logs never contain a credential parameter's value; they keep parameter ids and sources, and values only for non-credential parameters.
+Saved templates and `defaultValue` fields pass the existing embedded-secret screen (`embeddedCredentialReasonWithoutDSN`), and credential headers are still never saved (`credential-headers-unsaved`). A placeholder in the URL userinfo is rejected. A credential header (per `isCredentialHTTPHeader`) may use a placeholder only in the session-only editor value. A parameter used in a credential header MUST be declared `isCredential: true`, and a parameter declared `isCredential` MUST NOT be used in any other position (URL, other header, body), so a credential value cannot leak elsewhere. It takes typed run-time values only: it MUST be declared `isRequired: true` with no `defaultValue` and no `meta` (a not-required credential parameter is rejected on save), and values from a row, a board binding or the context bag are refused. The record of a run never contains a credential parameter's value; it keeps parameter ids and sources, and values only for non-credential parameters. Today that record is the parameter line shown with the result of the run; the spec places no value of a credential in any other store, and when a run history is added it MUST follow the same rule. The credential field in the editor MUST ask the browser not to save the value (`autocomplete="new-password"`).
 
 #### REQ: substitution-location
 
@@ -110,7 +110,7 @@ Substitution is performed by one shared implementation with the same results in 
 
 #### REQ: server-template-endpoint
 
-`POST /v0/datatug/http/run` keeps accepting a literal request unchanged. A request that carries a `parameters` field, even an empty array, is in template mode: `url`, `headers` and `body` are templates, `parameters` is a list of `{id, type, value}` (the existing `datatug.Parameter` shape) with scalar values, and the server applies `placeholder-syntax` through `body-substitution`. In template mode a placeholder without a supplied value, a supplied id with no placeholder, an invalid type or value, or a rejected position returns a 400 naming the parameter; no outbound request is made. Existing limits (256 KiB request body, 50 headers) apply to the substituted request.
+`POST /v0/datatug/http/run` keeps accepting a literal request unchanged. A request that carries a `parameters` field, even an empty array, is in template mode: `url`, `headers` and `body` are templates, `parameters` is a list of `{id, type, value}` (the existing `datatug.Parameter` shape) with scalar values, and the server applies `placeholder-syntax` through `body-substitution`. In template mode a placeholder without a supplied value, a supplied id with no placeholder, an invalid type or value, or a rejected position returns a 400 with a structured body, and no outbound request is made. The body is `{"error": {"code": "http_template", "message": <fixed text>, "templateCode": <core error code>, "parameter": <id>, "position": <position>, "header": <name>}}`. `parameter`, `position` and `header` are present only when they apply, and the server drops a parameter id or header name that is not plain (`[a-zA-Z0-9_]+` for an id, an HTTP token for a header), never echoing a caller-chosen string. The body never holds a parameter value or free-text detail, so the web app writes its own plain sentence for each `templateCode` (see `error-copy`). Existing limits (256 KiB request body, 50 headers) apply to the substituted request.
 
 #### REQ: cli-parity
 
@@ -118,7 +118,11 @@ Today the CLI runs only the URL template as a GET, with `parameters` from the qu
 
 #### REQ: preview
 
-The editor shows the resolved request (final URL, header values with credential values masked, body) for the current values before and after a run, marks each substituted segment with its source, and keeps the template as the only saved form.
+The editor shows the resolved request (final URL, header values with credential values masked, body) for the current values before and after a run, marks each substituted segment with its source (a segment shows its source on hover and by underline style, not by colour alone), and keeps the template as the only saved form.
+
+#### REQ: error-copy
+
+Every problem the editor reports about a template, a value or a server template error is one plain sentence naming the placeholder as `{name}` and, where it helps, the part of the request, followed by one piece of advice. It is built from the structured fields (`templateCode`, `parameter`, `position`, `header`) and never from server text or a value. It does not chain clauses with colons and does not mention a value source the user cannot use yet, so the hint on the Parameters section lists only the sources that are live. A placeholder in the host is reported as "can't be in the web address's host", with the advice to use a separate query for each host, also for a query with no declared parameters, where it is shown instead of the legacy-brace note because it can never work.
 
 
 
@@ -210,7 +214,7 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 
 **Given** a template-mode request `https://x.test/r?u={u}` whose resolved URL redirects to a private address, and a template-mode request `http://{host}/`
 **When** the server runs each
-**Then** the first is stopped by the SSRF guard exactly as the same literal URL would be, with no request to the private address, and the second returns 400 naming the host position.
+**Then** the first is stopped by the SSRF guard exactly as the same literal URL would be, with no request to the private address, and the second returns the structured 400 with `templateCode` `forbidden-position`, `parameter` `host` and `position` `host`.
 
 ### AC: literal-request-unchanged (verifies REQ:server-template-endpoint)
 
@@ -302,23 +306,29 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 **When** the user saves
 **Then** save is refused; and with `token` used only in the credential header, a row, board or bag value is refused and a typed run-time value is accepted.
 
-### AC: history-redaction (verifies REQ:credentials-run-time-only)
+### AC: run-record-redaction (verifies REQ:credentials-run-time-only)
 
 **Given** a run with a typed credential parameter and a row-bound `order_id`
-**When** the run is recorded in history or logs
-**Then** the record holds both parameter ids and sources, the value of `order_id`, and no credential value.
+**When** the result view shows the run's parameter line
+**Then** the line holds both parameter ids and sources and the value of `order_id`, shows the credential as hidden, and no credential value appears in the line or in any saved query. (A run history does not exist yet; see Deferred.)
 
 ### AC: server-rejects-bad-template-input (verifies REQ:server-template-endpoint)
 
 **Given** a template-mode request
 **When** a placeholder has no supplied value, or a supplied id has no placeholder, or a value does not match its declared type
-**Then** the server returns 400 naming the parameter and makes no outbound request.
+**Then** the server returns the structured 400 (`code` `http_template`, with `templateCode`, and `parameter` when plain) and makes no outbound request; and a rejected parameter id that is not plain is absent from the body.
 
 ### AC: body-limit-after-substitution (verifies REQ:server-template-endpoint)
 
 **Given** a template body just under 256 KiB
 **When** substitution makes the body exceed 256 KiB
 **Then** the server rejects the request and sends nothing.
+
+### AC: structured-error-copy (verifies REQ:server-template-endpoint, REQ:error-copy)
+
+**Given** the server answers a run with `templateCode` `forbidden-position`, `parameter` `host` and `position` `host`
+**When** the editor shows the failure
+**Then** it reads "{host} can't be used in the web address's host. Use a separate query for each host." and shows no server text.
 
 ### AC: precedence-order (verifies REQ:binding-sources)
 
@@ -331,6 +341,12 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 **Given** a bound row whose column for a required parameter is null
 **When** the user runs
 **Then** the parameter is a missing value and the run is blocked.
+
+### AC: empty-value-is-missing (verifies REQ:placeholder-semantics)
+
+**Given** a required parameter `q` with no default and an empty typed value
+**When** the user runs
+**Then** the run is blocked naming `q`, and nothing is sent.
 
 ### AC: set-bag-entry-ignored (verifies REQ:context-bag-binding)
 
@@ -350,13 +366,20 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 **When** the user runs from that row
 **Then** the parameter binds from the column by case-insensitive name and the run panel shows source "row".
 
-## Open Questions
+## Resolved decisions
 
-- **Run once per selected row (fan-out)?** Recommend no for v1 (`multi-row-selection` rejects it); revisit with multi-value parameters and a per-row result table.
-- **Should the CLI also run header/body placeholders and non-GET methods?** Recommend no; dalgo2http is read-only GET-only by design, so the CLI reports such queries unsupported.
-- **Literal braces escape (`{{`/`\{`)?** Recommend none; the identifier-only expression makes JSON bodies safe, and an escape would diverge from dalgo2http.
-- **Per-query origin pin / allowlist (only send to the saved query's origin)?** Recommend yes; the host is fixed by the template since host placeholders are forbidden, so this is already implied; confirm.
-- **Should a placeholder be allowed in the host for per-tenant APIs?** Recommend no (SSRF); use a different saved query per host.
+Founder-approved on 2026-10-22, as recorded in the header of datatug-core `pkg/datatug/query_http_template.go`:
+
+- **No fan-out.** One run binds one row (`multi-row-selection`). Running once per selected row waits for multi-value parameters and a per-row result table.
+- **The CLI stays URL-only and GET-only.** Header and body placeholders and non-GET methods are web-only; the CLI reports such queries unsupported (`cli-parity`).
+- **No brace escape.** The identifier-only expression keeps JSON bodies safe, and an escape would diverge from dalgo2http.
+- **No host placeholders.** The host is fixed by the saved template, so the query's origin is pinned and no allowlist is needed. Use a separate saved query for each host.
+
+## Deferred
+
+- The board and card source of `binding-sources` item 3 ships with the board HTTP feature (`board-widget-deferred`). Until then the editor lists no board source and a board value is never supplied.
+- A run history, and with it the redaction of its records, has not been built (`credentials-run-time-only`).
+- The CLI change in `cli-parity` and its acceptance criterion `cli-rejects-non-url-placeholders`.
 
 ---
 *This document follows the https://specscore.md/feature-specification*
