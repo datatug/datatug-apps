@@ -101,6 +101,7 @@ describe('parameter lookup model', () => {
     expect(matchesNamePattern({ type: 'regexp', value: '(' }, 'x')).toBe(false);
     expect(matchesNamePattern({ type: 'glob', value: '*' }, 'x')).toBe(false);
     expect(matchesNamePattern({ type: 'exact' }, 'x')).toBe(false);
+    expect(matchesNamePattern({ type: 'regexp', value: '' }, 'x')).toBe(false);
     expect(matchesNamePattern(null, 'x')).toBe(false);
   });
 
@@ -114,6 +115,9 @@ describe('parameter lookup model', () => {
       entity: 'Customer', field: 'ID', provenance: 'inferred', rule: 'namePattern:regexp:^\\w*CustomerID$',
     });
     expect(resolveParameterMeaning([nw], { id: 'Region' })).toBeUndefined();
+    // A blank meta part never falls back to the name (Core twin: semantic.ResolveParameterMeaning).
+    expect(resolveParameterMeaning([nw], { id: 'ShipCustomerID', meta: { entity: 'Customer', field: ' ' } })).toBeUndefined();
+    expect(resolveParameterMeaning([nw], { id: 'ShipCustomerID', meta: { entity: '', field: 'ID' } })).toBeUndefined();
     expect(resolveParameterMeaning([nw], { id: '@' })).toBeUndefined();
     expect(resolveParameterMeaning([keyed('Customer', 'CustomerID', false)], { id: 'CustomerID' })).toBeUndefined();
     expect(resolveParameterMeaning([nw, keyed('Account', 'CustomerID')], { id: 'CustomerID' })).toBeUndefined();

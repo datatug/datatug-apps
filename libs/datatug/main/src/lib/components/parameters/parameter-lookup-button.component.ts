@@ -16,9 +16,9 @@ import { IonButton, IonIcon } from '@ionic/angular';
 import { ErrorLogger, type IErrorLogger } from '@sneat/core';
 import type { TypedValue } from '@sneat/datatug-semantic';
 import type { IParameterDef } from '../../models/definition/parameter';
-import { AgentService } from '../../services/repo/agent.service';
-import { pickedParameterValue } from './parameter-lookup-model';
-import { ParameterLookupService, type ParameterLookupHost } from './parameter-lookup.service';
+import { isScalarLookupParameter, pickedParameterValue } from './parameter-lookup-model';
+import { PARAMETER_LOOKUP_LOADER, type ParameterLookupApi } from './parameter-lookup-loader';
+import type { ParameterLookupHost } from './parameter-lookup.service';
 
 /** What the host writes into its input after a pick. */
 export interface ParameterLookupPick {
@@ -37,7 +37,6 @@ export interface ParameterLookupPick {
 @Component({
   selector: 'sneat-datatug-parameter-lookup-button',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [ParameterLookupService, AgentService],
   imports: [IonButton, IonIcon],
   template: `
     @if (available()) {
@@ -58,8 +57,12 @@ export interface ParameterLookupPick {
   styles: [':host { display: contents; }'],
 })
 export class ParameterLookupButtonComponent {
-  private readonly lookup = inject(ParameterLookupService);
   private readonly injector = inject(Injector);
+  private readonly loader = inject(PARAMETER_LOOKUP_LOADER);
+  /** The lookup machinery, loaded on first need (a separate chunk; never at route start). */
+  // Signals, not plain fields: they are written from async callbacks (zoneless rule), though no template reads them.
+  private readonly lookupApi = signal<Promise<ParameterLookupApi> | undefined>(undefined);
+  private readonly destroyed = signal(false);
 
   readonly parameter = input.required<IParameterDef>();
   readonly context = input<ParameterLookupHost>({});
@@ -80,13 +83,21 @@ export class ParameterLookupButtonComponent {
 
   constructor() {
     // A dialog must not outlive the input it fills (for example, the board navigated away).
-    inject(DestroyRef).onDestroy(() => this.lookup.dispose());
+    inject(DestroyRef).onDestroy(() => {
+      this.destroyed.set(true);
+      void this.lookupApi()?.then((api) => api.dispose(), () => undefined);
+    });
     effect(() => {
       const parameter = this.parameter();
       const host = this.context();
       // No reset to false here: a new context object with the same content must not make the button flicker.
       const generation = ++this.availabilityGeneration;
-      this.lookup.availability(parameter, host).then(
+      // A parameter that can never have a picker loads nothing.
+      if (!parameter.lookup && !isScalarLookupParameter(parameter)) {
+        this.available.set(false);
+        return;
+      }
+      this.lookup().then((api) => api.availability(parameter, host)).then(
         ({ available, inferred }) => {
           if (generation !== this.availabilityGeneration) return;
           this.available.set(available);
@@ -102,7 +113,9 @@ export class ParameterLookupButtonComponent {
     this.opening.set(true);
     try {
       const parameter = this.parameter();
-      const result = await this.lookup.open(parameter, this.context(), this.currentValue());
+      const api = await this.lookup();
+      if (this.destroyed()) return;
+      const result = await api.open(parameter, this.context(), this.currentValue());
       if (result) {
         const checked = pickedParameterValue(parameter, result.value);
         if ('value' in checked) this.picked.emit({ value: checked.value, key: result.value });
@@ -114,6 +127,23 @@ export class ParameterLookupButtonComponent {
       this.opening.set(false);
       setTimeout(() => this.focusButton(), 0);
     }
+  }
+
+  private lookup(): Promise<ParameterLookupApi> {
+    let api = this.lookupApi();
+    if (!api) {
+      api = this.loader(this.injector).then((loaded) => {
+        if (this.destroyed()) loaded.dispose();
+        return loaded;
+      });
+      const pending = api;
+      // A failed chunk load is retried on the next need.
+      pending.catch(() => {
+        if (this.lookupApi() === pending) this.lookupApi.set(undefined);
+      });
+      this.lookupApi.set(api);
+    }
+    return api;
   }
 
   private focusButton(): void {

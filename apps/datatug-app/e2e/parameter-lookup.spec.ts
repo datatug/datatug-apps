@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { test, expect } from './helpers/demodb-guard';
@@ -12,39 +12,25 @@ import { activePage } from './journey/helpers/active-page';
  * AC pick-returns-typed-key, AC anonymous-visitor-can-pick).
  *
  * The pinned demo checkout predates the Northwind customer queries, so this
- * spec serves a copy of it with the Act 1 data added: the saved query
- * `northwind/customer-by-id` (whose `CustomerID` parameter means
- * `Customer.ID`) and a `Customer` entity keyed by Northwind's text
- * `Customers.CustomerID`. The rows come from the app's own pinned
- * `assets/showcase/northwind.sqlite`.
+ * spec serves a copy of it with the real Act 1 files of the demo project
+ * added (fixtures/parameter-lookup, copied verbatim at f81ca04): the saved
+ * query `northwind/customer-by-id`, whose `CustomerID` parameter means
+ * `Customer.ID`, and the `Customer` entity keyed by Northwind's text
+ * `Customers.CustomerID` with `display`. Bumping the shared demo pin instead
+ * would change the data under every other e2e lane. The rows come from the
+ * app's own pinned `assets/showcase/northwind.sqlite`.
  */
 
 const QUERY_URL =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/northwind%2Fcustomer-by-id?id=northwind%2Fcustomer-by-id&env=dev';
 
-const OVERLAY: Record<string, string> = {
-  'demo-project-1/entities/Customer/Customer.entity.json': JSON.stringify({
-    id: 'Customer',
-    display: ['CompanyName', 'ContactName', 'City'],
-    fields: [
-      { id: 'ID', type: 'string', isKeyField: true,
-        mappings: [{ source: 'northwind-sqlite', collection: 'Customers', column: 'CustomerID' }] },
-      ...['CompanyName', 'ContactName', 'City'].map((id) => ({
-        id, type: 'string', mappings: [{ source: 'northwind-sqlite', collection: 'Customers', column: id }],
-      })),
-    ],
-  }, null, 2),
-  'demo-project-1/queries/northwind/customer-by-id.query.json': JSON.stringify({
-    id: 'customer-by-id',
-    title: 'Northwind customer by ID',
-    type: 'SQL',
-    connectionId: 'northwind-sqlite',
-    parameters: [{ id: 'CustomerID', type: 'string', isRequired: true, meta: { entity: 'Customer', field: 'ID' } }],
-    recordsets: [{ columns: ['CustomerID', 'CompanyName', 'ContactName', 'City'].map((name) => ({ name, type: 'string' })) }],
-  }, null, 2),
-  'demo-project-1/queries/northwind/customer-by-id.query.sql':
-    'SELECT CustomerID, CompanyName, ContactName, City\nFROM Customers\nWHERE CustomerID = @CustomerID\n',
-};
+// Verbatim copies of datatug/datatug-demo-project at f81ca04 (after #83), the commit that added these files.
+const FIXTURES = join(__dirname, 'fixtures', 'parameter-lookup');
+const OVERLAY: Record<string, string> = Object.fromEntries([
+  ['demo-project-1/entities/Customer/Customer.entity.json', 'Customer.entity.json'],
+  ['demo-project-1/queries/northwind/customer-by-id.query.json', 'customer-by-id.query.json'],
+  ['demo-project-1/queries/northwind/customer-by-id.query.sql', 'customer-by-id.query.sql'],
+].map(([path, file]) => [path, readFileSync(join(FIXTURES, file), 'utf8')]));
 
 /** A throwaway git repository: the base checkout's tracked files plus OVERLAY, committed with plumbing only. */
 function lookupDemoRepository(base: string): string {
@@ -108,6 +94,9 @@ test('an anonymous visitor picks BOTTM for @CustomerID with the keyboard, and no
   await expect(dialog.getByTestId('parameter-lookup-status')).toContainText('Showing the first 50 matches');
   await expect(dialog).toContainText('Northwind sample, pinned');
   await expect(dialog).not.toContainText('Columns guessed');
+  // The demo entity declares display: CompanyName, ContactName, City, headed in plain words.
+  await expect(dialog).toContainText('Company name');
+  await expect(dialog).toContainText('Contact name');
 
   await page.keyboard.type('bott');
   const rows = dialog.getByTestId('parameter-lookup-row');

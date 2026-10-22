@@ -107,7 +107,7 @@ export class PublicParameterLookupService {
    * meta-less parameter reads the project's entity declarations, once per project.
    */
   async meaning(ref: IProjectRef, parameter: IParameterDef): Promise<ParameterMeaning | undefined> {
-    if (parameter.meta?.entity && parameter.meta.field) return resolveParameterMeaning([], parameter);
+    if (parameter.meta) return resolveParameterMeaning([], parameter);
     const entities = await this.projectEntities(ref);
     // An incomplete entity set could hide a second match and turn an ambiguous name into a guess.
     return entities ? resolveParameterMeaning(entities, parameter) : undefined;
