@@ -78,6 +78,25 @@ describe('query dispatch planning', () => {
     expect(resolveQueryDispatchPlan(local, undefined).target).toEqual({ kind: 'local-agent', agentStoreId: 'localhost:8989' });
   });
 
+  it('infers an unqualified local route without a catalog and keeps revision/security guards', () => {
+    const local = request({
+      projectRef: { storeId: 'http-127.0.0.1:18989', projectId: 'demo' },
+      queryId: 'reports/by-region', securityContextId: 'principal-1',
+    });
+    expect(resolveQueryDispatchPlan(local, undefined).target)
+      .toEqual({ kind: 'local-agent', agentStoreId: local.projectRef.storeId });
+    for (const missing of [{ securityContextId: undefined }, { environment: undefined }, { queryId: undefined }]) {
+      expect(() => resolveQueryDispatchPlan({ ...local, ...missing }, undefined))
+        .toThrow(/exact saved query path, environment and security context/u);
+    }
+    expect(() => resolveQueryDispatchPlan({ ...local, projectRef: { ...local.projectRef, branch: 'feature' } }, undefined))
+      .toThrow(/revision-aware runtime/u);
+    expect(() => resolveQueryDispatchPlan({ ...local, projectRef: { ...local.projectRef, projectApi: 'cloud' } }, undefined))
+      .toThrow(/missing from this project/u);
+    expect(resolveQueryDispatchPlan({ ...local, target: { kind: 'browser-sqlite' } }, catalog).target)
+      .toEqual({ kind: 'browser-sqlite' });
+  });
+
   it('rejects sending a GitHub branch definition to an unrelated or revision-unaware local agent', () => {
     expect(() => resolveQueryDispatchPlan(request({
       queryId: 'queries/folder/query',

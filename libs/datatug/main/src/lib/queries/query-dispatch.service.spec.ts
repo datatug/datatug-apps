@@ -149,6 +149,27 @@ describe('QueryDispatchService transport boundary', () => {
     expect(browser).not.toHaveBeenCalled();
   });
 
+  it('sends an unqualified local route to its agent and preserves source admission refusal', async () => {
+    const request: QueryDispatchRequest = {
+      projectRef: { storeId: 'http-127.0.0.1:18989', projectId: 'demo' },
+      definition: { ...sqlDefinition(), connectionId: 'server-owned-unpublished-source' },
+      queryId: 'folder/report', environment: 'LOCAL', securityContextId: 'sctx',
+    };
+    const session = service.start(request);
+    const rejected = expect(session.result).rejects.toMatchObject({ status: 403 });
+    await Promise.resolve();
+    await Promise.resolve();
+    const pending = http.expectOne('http://127.0.0.1:18989/datatug/exec/run_query');
+    expect(pending.request.body).toMatchObject({ project: 'demo', queryId: 'folder/report', environment: 'LOCAL', securityContextId: 'sctx' });
+    pending.flush({ error: 'source admission required' }, { status: 403, statusText: 'Forbidden' });
+    await rejected;
+    expect(catalog).not.toHaveBeenCalled();
+    expect(github).not.toHaveBeenCalled();
+    expect(browser).not.toHaveBeenCalled();
+    expect(hosted).not.toHaveBeenCalled();
+    await session.dispose();
+  });
+
   it('rejects contradictory displayed inputs and origins before sending a local agent request', async () => {
     const request: QueryDispatchRequest = {
       projectRef: { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local' },

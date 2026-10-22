@@ -155,7 +155,13 @@ export function serverOwnsSourceAdmission(request: QueryDispatchRequest): boolea
   if (request.target) return request.target.kind === 'hosted-cloud' || request.target.kind === 'local-agent';
   if (request.runtimeBinding || request.runtimeSelectionId) return false;
   return request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID ||
-    request.projectRef.projectApi === 'local' && !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId);
+    isLocalAgentProject(request.projectRef);
+}
+
+/** Unqualified agent routes use local transport; projectApi qualifies branch reads. */
+function isLocalAgentProject(ref: QueryDispatchRequest['projectRef']): boolean {
+  return ref.projectApi !== 'cloud' && ref.spaceID === undefined &&
+    !['github', 'github.com', 'firestore'].includes(ref.storeId);
 }
 
 function inferRuntimeTarget(
@@ -169,8 +175,7 @@ function inferRuntimeTarget(
   };
   if (request.projectRef.storeId === 'firestore' && request.projectRef.spaceID)
     return { kind: 'hosted-cloud' };
-  if (request.projectRef.projectApi === 'local' &&
-    !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId))
+  if (isLocalAgentProject(request.projectRef))
     return { kind: 'local-agent', agentStoreId: request.projectRef.storeId };
   if (request.definition.federation) return { kind: 'ovdb-federation' };
   if (connection?.storage === 'sqlite' && connection.browserFixture)
