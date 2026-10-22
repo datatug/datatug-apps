@@ -54,7 +54,7 @@ The editor's Params table (`params-synced-with-url` in [HTTP Query Editor](../ht
 
 An HTTP query MAY declare `QueryDef.Parameters` using the existing `ParameterDef` shape (`id`, `type`, `title`, `defaultValue`, `isRequired`, `meta`) with these rules: `id` is the placeholder name and matches the placeholder syntax; ids are unique; `type` is one of `string`, `integer`, `number`, `boolean`, `bit`, `date`, `datetime`; `isMultiValue`, `lookup`, `minLength` and `maxLength` are rejected on HTTP queries in this version; `defaultValue` must match `type` per the existing `ParameterDef.Validate`.
 
-`isRequired` means: required (true) means a missing value, after the precedence of `binding-sources` including the default, is a run error. Not required (false, the default) means an absent value substitutes `defaultValue`; with no default, a placeholder that is a whole query value (`name={p}`) removes that query pair from the request, and a not-required parameter with no default whose placeholder sits in a path segment, header value, body, or a query value fragment (`ref=ord-{p}`) is rejected on save, because dropping it would change the request's shape. The editor shows a Parameters section that lists every placeholder found in the template, adds the declaration with one action, and flags declared-but-unused parameters.
+`isRequired` means: required (true) means a missing value, after the precedence of `binding-sources` including the default, is a run error. Not required (false, the default) means an absent value substitutes `defaultValue`; a not-required parameter with no `defaultValue` is rejected on save in every position. Every placeholder therefore always receives a value or the run fails, matching the CLI, which fails with `ErrMissingParam` on any missing value (dalgo2http v0.2.1 request.go:45); a query pair is never silently dropped. The editor shows a Parameters section that lists every placeholder found in the template, adds the declaration with one action, and flags declared-but-unused parameters.
 
 #### REQ: parameter-meta
 
@@ -102,7 +102,7 @@ Form mode: each value uses query-value escaping. Text mode: the value is inserte
 
 #### REQ: credentials-run-time-only
 
-Saved templates and `defaultValue` fields pass the existing embedded-secret screen (`embeddedCredentialReasonWithoutDSN`), and credential headers are still never saved (`credential-headers-unsaved`). A placeholder in the URL userinfo is rejected. A credential header (per `isCredentialHTTPHeader`) may use a placeholder only in the session-only editor value. A parameter used in a credential header MUST NOT be used in any other position (URL, other header, body), so a credential value cannot leak elsewhere, and it takes typed run-time values only: it can have no `defaultValue`, and values from a row, a board binding or the context bag are refused. History and run logs never contain a credential parameter's value; they keep parameter ids and sources, and values only for non-credential parameters.
+Saved templates and `defaultValue` fields pass the existing embedded-secret screen (`embeddedCredentialReasonWithoutDSN`), and credential headers are still never saved (`credential-headers-unsaved`). A placeholder in the URL userinfo is rejected. A credential header (per `isCredentialHTTPHeader`) may use a placeholder only in the session-only editor value. A parameter used in a credential header MUST NOT be used in any other position (URL, other header, body), so a credential value cannot leak elsewhere, and it takes typed run-time values only: it MUST be declared `isRequired: true` with no `defaultValue` (a not-required credential parameter is rejected on save), and values from a row, a board binding or the context bag are refused. History and run logs never contain a credential parameter's value; they keep parameter ids and sources, and values only for non-credential parameters.
 
 #### REQ: substitution-location
 
@@ -250,9 +250,9 @@ This feature does not add a board HTTP editor or make the new-card-dialog "HTTP 
 
 ### AC: not-required-semantics (verifies REQ:declare-parameters)
 
-**Given** `https://x.test/r?a={a}&b={b}` with `a` not required with no default, and `b` not required with default `7`
-**When** the user runs with no values
-**Then** the request is `https://x.test/r?b=7`; and given `a` placed in a path segment or in `x-{a}` with no default, save is refused.
+**Given** `https://x.test/r?a={a}&b={b}` with `a` required and `b` not required with default `7`
+**When** the user runs with `a=1` and no value for `b`
+**Then** the request is `https://x.test/r?a=1&b=7`; running with no value for `a` fails naming `a`; and declaring any parameter (in a query value, path segment, header or body) as not required with no default is refused on save.
 
 ### AC: required-missing (verifies REQ:declare-parameters, REQ:placeholder-semantics)
 
