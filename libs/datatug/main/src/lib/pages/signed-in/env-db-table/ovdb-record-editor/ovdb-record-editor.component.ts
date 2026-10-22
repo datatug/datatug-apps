@@ -144,7 +144,7 @@ export type OvdbRecordChange = 'saved' | 'deleted';
   `,
   styles: `
     .ovdb-value { padding: 4px 0 8px; white-space: pre-wrap; word-break: break-word; }
-    .ovdb-null { color: var(--ion-color-medium); font-style: italic; }
+    .ovdb-null { color: var(--dt-text-muted); font-style: italic; }
     .ovdb-error { color: var(--ion-color-danger); }
   `,
 })

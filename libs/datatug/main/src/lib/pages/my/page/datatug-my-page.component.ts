@@ -19,6 +19,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { DatatugServicesStoreModule } from '../../../services/repo/datatug-services-store.module';
+import { ThemeSwitcherComponent } from '../../../services/theme/theme-switcher.component';
 import { HostedCloudLogsAccessService } from '../cloud-logs/hosted-cloud-logs-access.service';
 
 @Component({
@@ -28,6 +29,7 @@ import { HostedCloudLogsAccessService } from '../cloud-logs/hosted-cloud-logs-ac
     FormsModule,
     RouterLink,
     SubscriptionRecoveryComponent,
+    ThemeSwitcherComponent,
     DatatugServicesStoreModule,
     IonHeader,
     IonToolbar,

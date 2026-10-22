@@ -26,6 +26,7 @@ import { DatatugServicesStoreModule } from '../../services/repo/datatug-services
 import { MyDatatugProjectsComponent } from './my-projects/my-datatug-projects.component';
 import { MyStoresComponent } from './my-stores/my-stores.component';
 import { PlatformBlockComponent } from './platform-block/platform-block.component';
+import { ThemeSwitcherComponent } from '../../services/theme/theme-switcher.component';
 import { DetectiveDemoStarterComponent } from '../../detective/detective-demo-starter.component';
 
 @Component({
@@ -43,6 +44,7 @@ import { DetectiveDemoStarterComponent } from '../../detective/detective-demo-st
     MyStoresComponent,
     PlatformBlockComponent,
     DetectiveDemoStarterComponent,
+    ThemeSwitcherComponent,
     IonHeader,
     IonItem,
     IonLabel,

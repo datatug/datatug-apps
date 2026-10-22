@@ -41,6 +41,9 @@
   cursor: pointer;
   color: #174b7c;
 }
+:host-context(.ion-palette-dark) .tutorial-about summary {
+  color: #9cc8f5;
+}
 .tutorial-about summary:focus-visible {
   outline: 3px solid #2563eb;
   outline-offset: 2px;
@@ -218,7 +221,7 @@ h1[data-board-page-heading]:focus-visible,
 .parameter-help {
   flex-basis: 100%;
   margin: 0;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.85rem;
 }
 .board-parameter {

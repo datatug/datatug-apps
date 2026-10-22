@@ -540,7 +540,7 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
     article p {
       margin: 5px 0;
       overflow-wrap: anywhere;
-      color: var(--ion-color-medium);
+      color: var(--dt-text-muted);
     }
     .revoke-confirm {
       max-width: 520px;
@@ -581,7 +581,7 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
     }
     .view-name {
       overflow-wrap: anywhere;
-      color: var(--ion-color-medium);
+      color: var(--dt-text-muted);
     }
     .details {
       padding: 12px;

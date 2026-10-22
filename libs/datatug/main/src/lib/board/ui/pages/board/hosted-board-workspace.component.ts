@@ -453,7 +453,7 @@ interface QueryFolder {
         flex-basis: 100%;
         margin: 0;
         font-size: .85rem;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
       }
       .runtime-parameter { flex: 0 1 22rem; min-width: 0; max-width: 100%; }
       .runtime-parameter ion-item { --padding-start: 0; --inner-padding-end: 0; }

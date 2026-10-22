@@ -161,7 +161,7 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
         margin-block: 0.35rem;
       }
       dt {
-        color: var(--ion-color-medium);
+        color: var(--dt-text-muted);
       }
       dd {
         margin: 0;

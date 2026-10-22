@@ -182,10 +182,10 @@ import { ovdbCollectionSchema } from './ovdb-connection';
     .ovdb-grid th, .ovdb-grid td { border-bottom: 1px solid var(--ion-color-light-shade); padding: 4px 8px; text-align: left; white-space: nowrap; max-width: 24em; overflow: hidden; text-overflow: ellipsis; }
     .ovdb-grid tbody tr { cursor: pointer; }
     .ovdb-grid tbody tr:focus-visible { outline: 2px solid var(--ion-color-primary); outline-offset: -2px; }
-    .ovdb-null { color: var(--ion-color-medium); font-style: italic; }
+    .ovdb-null { color: var(--dt-text-muted); font-style: italic; }
     .ovdb-grid tr.selected { background: var(--ion-color-primary-tint); color: var(--ion-color-primary-contrast); }
     .ovdb-error { color: var(--ion-color-danger); }
-    .ovdb-subtitle { margin: 4px 0 0; color: var(--ion-color-medium); font-size: 14px; }
+    .ovdb-subtitle { margin: 4px 0 0; color: var(--dt-text-muted); font-size: 14px; }
   `,
 })
 export class OvdbDatabaseBrowserComponent {

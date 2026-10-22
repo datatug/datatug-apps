@@ -223,7 +223,7 @@ echarts.use([
     .scope,
     .meaning {
       font-size: 0.8rem;
-      color: var(--ion-color-medium-shade, #53657a);
+      color: var(--dt-text-muted, #53657a);
     }
     .scope {
       overflow-wrap: anywhere;
@@ -271,7 +271,7 @@ echarts.use([
     small {
       display: block;
       font-weight: 400;
-      color: var(--ion-color-medium-shade, #53657a);
+      color: var(--dt-text-muted, #53657a);
     }
     button {
       cursor: pointer;

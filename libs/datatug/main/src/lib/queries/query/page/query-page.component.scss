@@ -128,7 +128,7 @@
 .previous-run-disclosure > summary::before {
   width: 1rem;
   content: '▸';
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
 }
 .previous-run-disclosure[open] > summary::before {
   content: '▾';
@@ -142,7 +142,7 @@
   margin: 0 0 0.5rem;
 }
 .author-preview-empty p {
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
 }
 .result-grid-viewport {
   height: 420px;

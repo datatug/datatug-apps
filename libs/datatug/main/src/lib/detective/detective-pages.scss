@@ -105,7 +105,7 @@
   background: var(--ion-color-light, #f6f8fa);
 }
 .muted {
-  color: var(--ion-color-medium, #68737d);
+  color: var(--dt-text-muted, #68737d);
 }
 .scenario-link {
   display: block;
@@ -151,7 +151,7 @@
   font-size: 0.78rem;
 }
 .detective-card-header > ion-icon {
-  color: var(--ion-color-medium, #68737d);
+  color: var(--dt-text-muted, #68737d);
   font-size: 1.15rem;
 }
 .check-detail-card-content {
@@ -166,7 +166,7 @@
 .check-detail-lede,
 .check-detail-intro {
   margin-block: 0 12px;
-  color: var(--ion-color-step-700, #3f4a54);
+  color: var(--dt-text-muted);
 }
 .check-detail-overview .check-detail-card-content > h2 {
   margin-top: 12px;
@@ -210,7 +210,7 @@
 }
 .check-detail-execution summary small {
   margin-inline-start: 8px;
-  color: var(--ion-color-medium, #68737d);
+  color: var(--dt-text-muted, #68737d);
   font-weight: 400;
 }
 .check-detail-execution summary:focus-visible {
@@ -243,7 +243,7 @@
   margin: 0;
 }
 .check-detail-run-field-label p {
-  color: var(--ion-color-medium, #68737d);
+  color: var(--dt-text-muted, #68737d);
   font-size: 0.75rem;
   line-height: 1.3;
 }
