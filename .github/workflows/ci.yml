@@ -251,6 +251,8 @@ jobs:
   e2e-checkout:
     if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 75
     needs: [preflight, build]
     permissions:
       actions: read
@@ -326,6 +328,8 @@ jobs:
   e2e-cloud-logs:
     if: always()
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -395,6 +399,8 @@ jobs:
   e2e-app:
     if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -510,6 +516,8 @@ jobs:
   e2e-query-mobile:
     if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -612,6 +620,8 @@ jobs:
   e2e-demo-sqlite:
     if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -719,6 +729,8 @@ jobs:
   e2e-demo-handoff:
     if: always() && github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -847,6 +859,8 @@ jobs:
     # env var below in sync when bumping DATATUG_CLI_REF.
     name: journey e2e (real datatug-cli agent)
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     permissions:
       actions: read
       contents: read
@@ -1013,6 +1027,8 @@ jobs:
     name: card-link e2e (real datatug daemon)
     if: ${{ always() && vars.DATATUG_LINKS_CLI_REF != '' }}
     runs-on: ubuntu-latest
+    # A hung browser lane must fail, not hold the PR for the 6 h default.
+    timeout-minutes: 45
     permissions:
       actions: read
       contents: read
