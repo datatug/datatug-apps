@@ -1,3 +1,4 @@
+import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
 import { NativeSemanticApiService } from './native-semantic-api.service';
 import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
@@ -65,6 +66,10 @@ describe('Shipping workspace native DOM lifecycle', () => {
     TestBed.configureTestingModule({
       imports: [ShippingWorkspaceComponent],
       providers: [
+        {
+          provide: RetainedEvidenceApiService,
+          useValue: { sourceOperations: vi.fn() },
+        },
         { provide: NativeSemanticApiService, useValue: {} },
         { provide: ProjectAssetsApiService, useValue: {} },
         {

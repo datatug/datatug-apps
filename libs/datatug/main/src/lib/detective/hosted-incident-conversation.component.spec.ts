@@ -13,6 +13,7 @@ import { HostedIncidentConversationComponent } from './hosted-incident-conversat
 import { IncidentEvent } from '../incidents/models';
 import { HostedIncidentEvents } from './hosted-linkage.models';
 
+import sourceOperationFixture from '../evidence/testdata/source-operation.facade.go.json';
 const context = {
   kind: 'cloud' as const,
   storage: 'firestore' as const,
@@ -109,6 +110,15 @@ describe('HostedIncidentConversationComponent', () => {
   });
   const page = (f: ComponentFixture<HostedIncidentConversationComponent>) =>
     f.componentInstance as unknown as Page;
+  it('offers typed current-account source receipt opening from cold Incident history without a fabricated URL or cross-account opener', async () => {
+    const reference = {...sourceOperationFixture.request.reference, spaceID:context.spaceID, projectId:context.project, receiptActorId:context.principal};
+    history = {events:[{...message(2),refs:[{kind:'source-operation',sourceOperation:reference}]},{...message(3),refs:[{kind:'source-operation',sourceOperation:{...reference,operationId:'other-operation',receiptActorId:'other-account'}}]}],nextAfterSeq:3,hasMore:false};
+    const f = await mount();
+    await vi.waitFor(() => expect(f.nativeElement.textContent).toContain('Source operation: source-op-replay · Open actual retained receipt'));
+    expect(f.nativeElement.textContent).toContain('Source operation: other-operation · No supported evidence view');
+    expect(f.nativeElement.querySelectorAll('a')).toHaveLength(0);
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
   it('renders asynchronously returned messages with server attribution without another change detection call', async () => {
     const pending = new Subject<HostedIncidentEvents>();
     client.incidentEvents.mockReturnValue(pending.asObservable());

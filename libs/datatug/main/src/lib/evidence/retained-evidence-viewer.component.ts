@@ -27,6 +27,7 @@ import {
   RetainedCheckView,
   RetainedExecutionView,
 } from './retained-open-contract';
+import { RetainedSourceOperationView } from './source-operation-contract';
 import { useNativeRunLifetime } from './native-run-lifetime';
 import { HeldResultPresentationComponent } from '../board/ui/components/held-result-presentation/held-result-presentation.component';
 import { ValidationRunResultsComponent } from '../detective/validation-run-results.component';
@@ -42,7 +43,13 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<section aria-label="Retained execution evidence">
     <header class="evidence-header">
-      <h3>Retained execution evidence</h3>
+      <h3>
+        {{
+          target()?.kind === 'source-operation'
+            ? 'Source operation receipt'
+            : 'Retained execution evidence'
+        }}
+      </h3>
       @if (error()) {
         <ion-buttons slot="end"
           ><ion-button
@@ -61,8 +68,13 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       }
     </header>
     <p>
-      Opens the original admitted run and selected audit records after a current
-      rights check. Opening does not run a query or Check.
+      @if (target()?.kind === 'source-operation') {
+        Opens the original receipt after a current rights check. Opening makes
+        no source change and does not prove recovery.
+      } @else {
+        Opens the original admitted run and selected audit records after a
+        current rights check. Opening does not run a query or Check.
+      }
     </p>
     @if (loading()) {
       <p role="status">Checking current evidence access…</p>
@@ -70,7 +82,59 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
     @if (error()) {
       <p role="alert">{{ error() }}</p>
     }
-    @if (current(); as data) {
+    @if (operation(); as data) {
+      <section
+        aria-label="Historical source operation"
+        class="source-operation"
+      >
+        <p>
+          <strong>{{ data.receipt.action }}</strong> ·
+          {{
+            data.receipt.outcome === 'already-applied'
+              ? 'No new change'
+              : 'Applied'
+          }}
+          ·
+          <time [attr.datetime]="data.receipt.acceptedAt">{{
+            data.receipt.acceptedAt
+          }}</time>
+        </p>
+        <p>
+          Actor {{ data.receipt.actorId }} · operation
+          {{ data.receipt.operationId }}
+        </p>
+        <p>
+          Generation {{ data.reference.result.generation }} · revision
+          {{ data.reference.result.revision }}
+        </p>
+        @if (data.receipt.outcome === 'already-applied') {
+          <p>No new processing attempt is established by this receipt.</p>
+        }
+        <details>
+          <summary>Immutable receipt details</summary>
+          <p>
+            Source {{ data.reference.sourceId }} · SHA-256
+            {{ data.reference.result.sha256 }}
+          </p>
+          <p>Request SHA-256 {{ data.reference.requestSHA256 }}</p>
+          <p>
+            Revision producer {{ data.receipt.revision.actorId }} · accepted
+            {{ data.receipt.revision.acceptedAt }}
+          </p>
+          <p>
+            Routing configuration {{ data.receipt.revision.configuration }} ·
+            fixture business clock {{ data.receipt.revision.businessClock }}
+          </p>
+          @for (
+            artifact of data.receipt.revision.artifacts;
+            track artifact.id
+          ) {
+            <p>{{ artifact.id }} · SHA-256 {{ artifact.sha256 }}</p>
+          }
+        </details>
+      </section>
+    }
+    @if (runEvidence(); as data) {
       <p>
         Original actor {{ data.manifest.actorId }} · Incident
         {{ data.manifest.incidentRef }} · Session
@@ -230,6 +294,14 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
         gap: 0.15rem 0.75rem;
         margin-block: 0.25rem 0.5rem;
       }
+      .source-operation {
+        color: var(--ion-text-color);
+        overflow-wrap: anywhere;
+        font-size: 0.85rem;
+      }
+      .source-operation p {
+        margin-block: 0.35rem;
+      }
       .route-validity {
         color: var(--ion-color-medium-shade);
       }
@@ -271,7 +343,13 @@ export class RetainedEvidenceViewerComponent {
   private readonly native = useNativeRunLifetime();
   private readonly destroy = inject(DestroyRef);
   private readonly held = signal<
-    | { key: string; value: RetainedExecutionView | RetainedCheckView }
+    | {
+        key: string;
+        value:
+          | RetainedExecutionView
+          | RetainedCheckView
+          | RetainedSourceOperationView;
+      }
     | undefined
   >(undefined);
   protected readonly loading = signal(false);
@@ -292,12 +370,20 @@ export class RetainedEvidenceViewerComponent {
   protected readonly current = computed(() =>
     this.held()?.key === this.key() ? this.held()?.value : undefined,
   );
-  protected readonly check = computed(() => {
+  protected readonly operation = computed(() => {
     const value = this.current();
+    return value && 'receipt' in value ? value : undefined;
+  });
+  protected readonly runEvidence = computed(() => {
+    const value = this.current();
+    return value && !('receipt' in value) ? value : undefined;
+  });
+  protected readonly check = computed(() => {
+    const value = this.runEvidence();
     return value && 'run' in value ? value : undefined;
   });
   protected readonly queries = computed(() => {
-    const value = this.current();
+    const value = this.runEvidence();
     return !value ? [] : 'run' in value ? value.results : [value];
   });
   protected readonly logText = originalLogText;
@@ -344,7 +430,13 @@ export class RetainedEvidenceViewerComponent {
         // Historical retained evidence is immutable. Keep only current
         // actor/project lifecycle fences here; source publication and reset
         // invalidate current held results, not an authorized cold-open.
-        const current = this.native.capture(ref);
+        const current = this.native.capture(
+          ref,
+          undefined,
+          target?.kind === 'source-operation'
+            ? { sourceId: 'shipping-working-copy', environment }
+            : undefined,
+        );
         actor = current.actor;
         signal = AbortSignal.any([controller.signal, current.signal]);
       } catch (error) {

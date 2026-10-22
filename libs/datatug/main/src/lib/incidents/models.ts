@@ -8,6 +8,7 @@
 // and is not a hostname.
 
 import type {
+  SourceOperationRef,
   ContextCondition,
   FactLayer,
   FactRole,
@@ -123,6 +124,7 @@ export interface IncidentParticipant {
 }
 
 export type IncidentArtifactRefKind =
+  | 'source-operation'
   | 'check-run'
   | 'execution'
   | 'snapshot'
@@ -153,7 +155,15 @@ export interface IncidentComparisonRef {
 }
 
 export interface IncidentArtifactRef {
-  readonly checkRun?: { readonly storeId: string; readonly projectId: string; readonly environment: string; readonly checkId: string; readonly checkVersion: number; readonly runId: string; };
+  readonly sourceOperation?: SourceOperationRef;
+  readonly checkRun?: {
+    readonly storeId: string;
+    readonly projectId: string;
+    readonly environment: string;
+    readonly checkId: string;
+    readonly checkVersion: number;
+    readonly runId: string;
+  };
   readonly kind: IncidentArtifactRefKind;
   readonly id?: string;
   readonly incident?: IncidentRef;
@@ -328,7 +338,10 @@ export interface IncidentEvent {
     | { readonly status: IncidentStatus }
     | { readonly outcome: IncidentOutcome }
     | { readonly into: IncidentRef; readonly mergeId: string }
-    | { readonly body: string; readonly presentation?: IncidentNotePresentation }
+    | {
+        readonly body: string;
+        readonly presentation?: IncidentNotePresentation;
+      }
     | { readonly fact: IncidentFactInput }
     | {
         readonly fact: IncidentContextFactRef;

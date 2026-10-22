@@ -15,6 +15,7 @@ import {
   originalContractPin,
 } from './original-evidence.spec-helper';
 import fixture from './testdata/backend-v044-retained.json';
+import sourceFixture from './testdata/source-operation.http.go.json';
 const scope = {
   projectRef: {
     storeId: 'firestore',
@@ -69,6 +70,91 @@ describe('Retained evidence real native HTTP reads', () => {
     }),
   );
   afterEach(() => TestBed.resetTestingModule());
+  it('uses exact source history GET scope and POST-only reference bodies with real Go response parity', async () => {
+    const http = TestBed.inject(HttpTestingController),
+      api = TestBed.inject(RetainedEvidenceApiService);
+    const sourceScope = {
+      projectRef: {
+        storeId: 'firestore',
+        spaceID: sourceFixture.request.spaceID,
+        projectId: sourceFixture.request.projectId,
+      },
+      environment: sourceFixture.request.environment,
+      actor: sourceFixture.request.reference.receiptActorId,
+    };
+    const history = api.sourceOperations(
+      sourceScope,
+      new AbortController().signal,
+    );
+    const list = await nextRequest(http, '/shipping/source-operations');
+    expect(list.request.method).toBe('GET');
+    expect(
+      Object.fromEntries(
+        list.request.params.keys().map((k) => [k, list.request.params.get(k)]),
+      ),
+    ).toEqual({
+      storage: 'firestore',
+      spaceID: sourceScope.projectRef.spaceID,
+      project: sourceScope.projectRef.projectId,
+      environment: 'demo',
+    });
+    list.flush(sourceFixture.discovery);
+    expect(await history).toEqual(sourceFixture.discovery.operations);
+    const opened = api.read(
+      sourceScope,
+      {
+        kind: 'source-operation',
+        sourceOperation: sourceFixture.request.reference,
+      },
+      new AbortController().signal,
+    );
+    const post = await nextRequest(http, '/shipping/source-operation/open');
+    expect(post.request.method).toBe('POST');
+    expect(post.request.params.keys()).toEqual([]);
+    expect(post.request.body).toEqual(sourceFixture.request);
+    post.flush(sourceFixture.open);
+    expect(await opened).toEqual(sourceFixture.open);
+    http.verify();
+  });
+  it('refuses source-reference account mismatch before dispatch and aborts an in-flight historical read', async () => {
+    const http = TestBed.inject(HttpTestingController),
+      api = TestBed.inject(RetainedEvidenceApiService);
+    const sourceScope = {
+      projectRef: {
+        storeId: 'firestore',
+        spaceID: sourceFixture.request.spaceID,
+        projectId: sourceFixture.request.projectId,
+      },
+      environment: 'demo',
+      actor: sourceFixture.request.reference.receiptActorId,
+    };
+    await expect(
+      api.read(
+        { ...sourceScope, actor: 'other' },
+        {
+          kind: 'source-operation',
+          sourceOperation: sourceFixture.request.reference,
+        },
+        new AbortController().signal,
+      ),
+    ).rejects.toThrow();
+    http.verify();
+    const controller = new AbortController(),
+      pending = api.read(
+        sourceScope,
+        {
+          kind: 'source-operation',
+          sourceOperation: sourceFixture.request.reference,
+        },
+        controller.signal,
+      );
+    const post = await nextRequest(http, '/shipping/source-operation/open'),
+      rejected = expect(pending).rejects.toThrow();
+    controller.abort();
+    await rejected;
+    expect(post.cancelled).toBe(true);
+    http.verify();
+  });
   it('cold-opens the exact original execution using current scope without any mutation or rerun', async () => {
     const http = TestBed.inject(HttpTestingController),
       api = TestBed.inject(RetainedEvidenceApiService);

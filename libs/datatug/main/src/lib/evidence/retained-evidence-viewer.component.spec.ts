@@ -11,12 +11,113 @@ import {
   originalContractPin,
 } from './original-evidence.spec-helper';
 import fixture from './testdata/backend-v044-retained.json';
+import sourceFixture from './testdata/source-operation.facade.go.json';
+import { readSourceOperation } from './source-operation-contract';
 const ref = {
   storeId: 'firestore',
   spaceID: 'fixture-space',
   projectId: 'fixture-project',
 };
 describe('Retained evidence native cold-open presentation', () => {
+  it.each(['reset', 'account', 'ignored-abort'] as const)(
+    'opens actual historical source receipts and clears them on %s',
+    async (mode) => {
+      const sourceRef = {
+        storeId: 'firestore',
+        spaceID: sourceFixture.request.spaceID,
+        projectId: sourceFixture.request.projectId,
+      };
+      const actor = sourceFixture.request.reference.receiptActorId,
+        auth = new BehaviorSubject({
+          status: 'authenticated',
+          user: { uid: actor },
+        }),
+        read = vi.fn();
+      const wire = structuredClone(sourceFixture.open);
+      wire.receipt.outcome = 'already-applied';
+      wire.receipt.revision.actorId = 'earlier-producer';
+      wire.receipt.revision.acceptedAt = '2026-10-21T11:00:00Z';
+      const value = readSourceOperation(
+        wire,
+        { projectRef: sourceRef, environment: 'demo', actor },
+        sourceFixture.request.reference,
+      );
+      let finish: (v: unknown) => void = () => undefined;
+      if (mode === 'ignored-abort')
+        read.mockImplementation(
+          () =>
+            new Promise((resolve) => {
+              finish = resolve;
+            }),
+        );
+      else read.mockResolvedValue(value);
+      TestBed.configureTestingModule({
+        imports: [RetainedEvidenceViewerComponent],
+        providers: [
+          { provide: SneatAuthStateService, useValue: { authState: auth } },
+          {
+            provide: DatatugNavContextService,
+            useValue: {
+              currentProject: new BehaviorSubject({ ref: sourceRef }),
+            },
+          },
+          {
+            provide: RetainedEvidenceApiService,
+            useValue: { read, openRow: vi.fn() },
+          },
+        ],
+      });
+      const f = TestBed.createComponent(RetainedEvidenceViewerComponent);
+      f.componentRef.setInput('projectRef', sourceRef);
+      f.componentRef.setInput('environment', 'demo');
+      f.componentRef.setInput('target', {
+        kind: 'source-operation',
+        sourceOperation: sourceFixture.request.reference,
+      });
+      f.detectChanges();
+      await f.whenStable();
+      await vi.waitFor(() => expect(read).toHaveBeenCalledOnce());
+      if (mode !== 'ignored-abort') {
+        await vi.waitFor(() =>
+          expect(f.nativeElement.textContent).toContain('No new change'),
+        );
+        expect(f.nativeElement.textContent).toContain('earlier-producer');
+        expect(f.nativeElement.textContent).not.toContain('Passing');
+      }
+      const signal = read.mock.calls[0][2] as AbortSignal;
+      if (mode === 'account')
+        auth.next({
+          status: 'authenticated',
+          user: { uid: 'another-account' },
+        });
+      else
+        TestBed.inject(NativeSourceInvalidationService).invalidate({
+          projectRef: sourceRef,
+          actor,
+          sourceId: 'shipping-working-copy',
+          action: 'reset',
+        });
+      if (mode === 'ignored-abort') finish(value);
+      await f.whenStable();
+      expect(signal.aborted).toBe(true);
+      expect(f.nativeElement.textContent).not.toContain('earlier-producer');
+      if (mode === 'reset') {
+        const button = Array.from(
+          f.nativeElement.querySelectorAll('ion-button'),
+        ).find((el) =>
+          (el as HTMLElement).textContent?.includes('Retry read'),
+        ) as HTMLElement | undefined;
+        expect(button).toBeDefined();
+        button?.click();
+        await f.whenStable();
+        await vi.waitFor(() =>
+          expect(f.nativeElement.textContent).toContain('No new change'),
+        );
+        expect(read).toHaveBeenCalledTimes(2);
+      }
+      f.destroy();
+    },
+  );
   it.each([
     { change: 'actor', invalidates: true, original: 'available' },
     { change: 'actor', invalidates: true, original: 'unavailable' },

@@ -157,8 +157,20 @@ function evidenceTarget(
           ? `${ref.kind} ${ref.execution.executionId}`
           : ref.kind,
       };
+    case 'source-operation':
+      return {
+        kind: ref.kind,
+        label: ref.sourceOperation
+          ? `Source operation ${ref.sourceOperation.operationId}`
+          : 'Source operation unavailable',
+      };
     case 'check-run':
-      return { kind: ref.kind, label: ref.checkRun ? `Check run ${ref.checkRun.runId}` : 'Check run unavailable' };
+      return {
+        kind: ref.kind,
+        label: ref.checkRun
+          ? `Check run ${ref.checkRun.runId}`
+          : 'Check run unavailable',
+      };
     case 'check':
     case 'annotation':
       return {
