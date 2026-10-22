@@ -11,6 +11,8 @@ export interface IParameterDef {
   readonly isMultiValue?: boolean;
   readonly meta?: IEntityFieldRef;
   readonly lookup?: IParameterLookup;
+  /** A declared default (for example a demo value) the page pre-fills; Run still stays explicit. */
+  readonly defaultValue?: ParameterValue;
 }
 
 export interface IParamWithDefAndValue {

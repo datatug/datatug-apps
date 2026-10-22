@@ -4,4 +4,7 @@
   } @else {
     <strong>{{ pageTitle() }}</strong>
   }
+  @if (subtitle(); as text) {
+    <span class="dt-page-subtitle" data-testid="page-subtitle">{{ text }}</span>
+  }
 </ion-title>

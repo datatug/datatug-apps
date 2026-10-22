@@ -1,14 +1,38 @@
 .query-page-title {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: min(54vw, 38rem);
 }
 .query-mobile-title {
   display: none;
 }
 .query-save-state {
-  margin-inline: 0.5rem;
   white-space: nowrap;
+}
+.query-read-only-note {
+  margin: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  color: var(--ion-color-medium-shade, #5f6368);
+}
+.workspace-tab-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding-inline-end: 0.75rem;
+}
+.workspace-tab-row .workspace-main-tabs {
+  flex: 1 1 auto;
+  width: auto;
+}
+.workspace-more,
+.workspace-run {
+  flex: none;
+  margin: 0;
+}
+.http-source-steps {
+  padding-block: 0;
+  background: transparent;
 }
 .author-receipt-details ion-note[slot='end'] {
   max-width: 55%;

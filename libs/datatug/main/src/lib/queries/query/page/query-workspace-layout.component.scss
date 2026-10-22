@@ -14,8 +14,17 @@
   --padding-start: var(--ion-padding, 16px);
   --inner-padding-end: var(--ion-padding, 16px);
 }
-:host ::ng-deep .author-card :is(.author-sql-preview, .author-preview-empty, .query-sql-editor .cm-content) {
+:host ::ng-deep .author-card :is(.author-sql-preview, .author-preview-empty) {
   padding: var(--ion-padding, 16px);
+}
+// Block padding on the content, inline padding on each line: the active-line
+// highlight then runs from border to border.
+:host ::ng-deep .author-card .query-sql-editor .cm-content {
+  padding-block: var(--ion-padding, 16px);
+  padding-inline: 0;
+}
+:host ::ng-deep .author-card .query-sql-editor .cm-line {
+  padding-inline: var(--ion-padding, 16px);
 }
 :host ::ng-deep [data-testid='author-parameters-panel'] > p {
   padding-inline: var(--ion-padding, 16px);
