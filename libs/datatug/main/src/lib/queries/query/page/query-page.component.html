@@ -960,7 +960,6 @@
           <div class="workspace-tab-row">
             <ng-container *ngTemplateOutlet="workspaceTabs" />
             <ion-button class="workspace-run" data-testid="workspace-run" aria-label="Run query" size="default" color="primary"
-              [fill]="nativeRunDisabled() && !running() ? 'outline' : 'solid'"
               [disabled]="nativeRunDisabled()"
               [attr.aria-describedby]="nativeRunBlockedReason() ? 'workspace-run-readiness' : null"
               (click)="runQuery()">
@@ -1387,16 +1386,14 @@
   <ng-template #executionRuntime>
       @if (!isHostedProject && queryDef()?.connectionId; as connectionId) {
         @if (usesFixedPublicQuerySource()) {
-        <p class="ion-padding-horizontal query-runtime-note">
-            Selected source: {{ connectionId }}. This query uses the fixed public Northwind OVDB API.
-            Project environment is not used for execution. Run validates the saved definition and publisher evidence.
+        <p class="ion-padding-horizontal query-runtime-note" data-testid="query-runtime-note">
+          Runs on the public Northwind OVDB API; the project environment is not used.
         </p>
         }
-        @if (!isTugqlAuthorJourney() && !isQueryReadOnly()) {
+        @if (!isTugqlAuthorJourney()) {
           <ion-item lines="none" class="query-runtime-row">
             <ion-select label="Runtime" labelPlacement="start" interface="popover" aria-label="Execution runtime"
               data-testid="query-execution-runtime"
-              [helperText]="'Checked against ' + connectionId + ' before Run'"
               [value]="selectedWorkingCopy()" (ionChange)="selectWorkingCopy($event.detail.value)">
               <ion-select-option value="project">Project runtime</ion-select-option>
               @if (unavailableWorkingCopy()) {
@@ -1410,6 +1407,9 @@
               {{ workingCopyLoading() ? 'Checking…' : 'Find working copies' }}
             </ion-button>
           </ion-item>
+          @if (!usesFixedPublicQuerySource()) {
+            <p class="query-runtime-hint" data-testid="query-runtime-hint">Checked against {{ connectionId }} before Run.</p>
+          }
           @if (workingCopyError(); as error) { <ion-note color="danger" class="ion-padding-horizontal" role="alert">{{ error }}</ion-note> }
         }
       }

@@ -151,3 +151,29 @@ h3 {
   border-top: 1px solid var(--ion-color-step-150, #d9d9d9);
   padding-top: 0.5rem;
 }
+
+.related-list {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.related-list li {
+  display: flex;
+  gap: 0.5rem;
+  align-items: baseline;
+  min-width: 0;
+}
+.related-list a {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ion-color-primary);
+}
+.related-kind {
+  flex: none;
+  min-width: 3.5rem;
+  font-size: 0.8rem;
+  color: var(--ion-color-medium-shade);
+}

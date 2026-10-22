@@ -238,13 +238,11 @@ test.describe('results grid toolbar', () => {
       .poll(async () => (await headerNames(grid)).length)
       .toBeGreaterThan(3);
     const original = await headerNames(grid);
-    for (const id of [
-      'columns-button',
-      'autosize',
-      'density',
-      'export-csv',
-      'copy',
-    ]) {
+    // Filter and CSV stay on the bar; the rarer actions sit under "More".
+    await expect(grid.getByTestId('results-grid-export-csv')).toBeVisible();
+    await expect(grid.getByTestId('results-grid-autosize')).toBeHidden();
+    await grid.getByTestId('results-grid-more').click();
+    for (const id of ['columns-button', 'autosize', 'density', 'copy']) {
       await expect(grid.getByTestId(`results-grid-${id}`)).toBeVisible();
     }
     await expect(grid.getByTestId('results-grid-copy')).toBeDisabled();
@@ -288,6 +286,7 @@ test.describe('results grid toolbar', () => {
     await expect.poll(() => headerNames(grid)).toEqual(expected);
 
     // Show all brings the hidden column back (at its place in the remembered order); Reset restores the table order.
+    await grid.getByTestId('results-grid-more').click();
     await grid.getByTestId('results-grid-columns-button').click();
     await grid.getByTestId('results-grid-show-all').click();
     await expect
@@ -371,6 +370,7 @@ test.describe('results grid toolbar', () => {
       ),
     ).toHaveAttribute('aria-sort', 'descending');
     // Autosize all fits every column to its content again.
+    await grid.getByTestId('results-grid-more').click();
     await grid.getByTestId('results-grid-autosize').click();
     await expect.poll(width).toBeLessThan(widened);
   });
@@ -414,6 +414,7 @@ test.describe('results grid toolbar', () => {
     expect(csv.trim().split('\n')).toHaveLength(3);
     expect(csv.split('\n')[0]).not.toContain('$key');
 
+    await grid.getByTestId('results-grid-more').click();
     await grid.getByTestId('results-grid-copy').click();
     await expect(grid.getByTestId('results-grid-status')).toContainText(
       'Copied 2 rows',
@@ -458,6 +459,7 @@ test.describe('results grid toolbar', () => {
           ?.height ?? 0,
       );
     const comfortable = await rowHeight();
+    await grid.getByTestId('results-grid-more').click();
     await grid.getByTestId('results-grid-density').click();
     await expect.poll(rowHeight).toBeLessThan(comfortable);
     await expect.poll(rowHeight).toBeLessThanOrEqual(30);
@@ -487,6 +489,7 @@ test.describe('results grid toolbar', () => {
     }
     await grid.getByTestId('results-grid-quick-filter').fill('');
     // Back to comfortable leaves the density remembered as such.
+    await grid.getByTestId('results-grid-more').click();
     await grid.getByTestId('results-grid-density').click();
     await expect.poll(rowHeight).toBe(comfortable);
   });
@@ -550,7 +553,9 @@ test.describe('results grid toolbar', () => {
       (el) => el.scrollWidth - el.clientWidth,
     );
     expect(overflow).toBeLessThanOrEqual(1);
+    await page.getByTestId('results-grid-more').first().click();
     for (const id of [
+      'more-menu',
       'columns-button',
       'autosize',
       'density',
@@ -558,6 +563,7 @@ test.describe('results grid toolbar', () => {
       'copy',
     ]) {
       const box = await boxOf(page.getByTestId(`results-grid-${id}`).first());
+      expect(box.x).toBeGreaterThanOrEqual(-1);
       expect(box.x + box.width).toBeLessThanOrEqual(361);
     }
     await page.getByTestId('results-grid-columns-button').first().click();

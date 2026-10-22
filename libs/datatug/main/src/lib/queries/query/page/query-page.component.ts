@@ -2083,7 +2083,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
 
   /** `true` when this visitor cannot save the query, so authoring actions
-   * (Save, Validators, runtime choice) are hidden instead of shown inert. */
+   * (Save, Validators) are hidden instead of shown inert. */
   public isQueryReadOnly(): boolean {
     if (isDevicePersonalQuery(this.queryState.id ?? '')) return false;
     if (this.queryState.saveSupported === false || !this.canSaveQuery())
@@ -2110,7 +2110,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       !ref.projectApi &&
       this.authStatus() !== 'authenticated'
     )
-      return 'Read-only: sign in to save changes or pick a runtime. You can still run this query here.';
+      return 'Read-only: sign in to save changes. You can still run this query here.';
     return 'Read-only: this project does not accept saves from here. You can still run this query.';
   }
 
@@ -6895,14 +6895,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               ? 'dtql'
               : 'tugql',
         );
-        // No dead end: a saved query that cannot run until a required
-        // parameter is set opens on Parameters, where the reason is shown.
+        // No dead end: a saved query with a required parameter opens on
+        // Parameters, where its value (pre-filled from a declared demo value
+        // when there is one) and any reason Run is off are visible.
         afterNextRender(
           () => {
             if (
               this.loadedTextRepresentation()?.scope !== representationScope ||
               this.isTugqlAuthorJourney() ||
-              !this.nativeMissingRequiredParameters().length
+              !(this.queryDef()?.parameters ?? []).some((p) => p.isRequired)
             )
               return;
             const tab = this.workspaceTab();

@@ -10,7 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, UrlTree } from '@angular/router';
 import {
   AlertController,
   IonBackButton,
@@ -74,6 +74,7 @@ import {
   uniqueCardId,
 } from './card-model';
 import { injectCardsContext } from './cards-context';
+import { cardEntityNames, cardQueryIds } from './related-links';
 import { ProjectCardViewComponent } from './project-card-view.component';
 import {
   CardNotFoundError,
@@ -192,6 +193,19 @@ export class CardPageComponent {
   private readonly view = viewChild(ProjectCardViewComponent);
 
   protected readonly finished = computed(() => finishCard(this.card()));
+  /** Entities this card shows, for its Related list. */
+  protected readonly relatedEntities = computed(() =>
+    cardEntityNames(this.card()),
+  );
+  /** Saved queries this card's widgets read, for its Related list. */
+  protected readonly relatedQueries = computed(() => cardQueryIds(this.card()));
+
+  /** A saved query's page: the id rides in `?id=` (see the `query/**` route). */
+  protected queryUrl(queryId: string): UrlTree | undefined {
+    const tree = this.ctx.url(['query', ...queryId.split('/')]);
+    if (tree) tree.queryParams = { ...tree.queryParams, id: queryId };
+    return tree;
+  }
   protected readonly problem = computed<string | undefined>(() => {
     const card = this.finished();
     if (!card.title.trim()) return 'Give the card a title.';

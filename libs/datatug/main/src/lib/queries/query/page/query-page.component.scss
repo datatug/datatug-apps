@@ -318,3 +318,29 @@
     border-color: Highlight;
   }
 }
+
+.query-runtime-note,
+.query-runtime-hint {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--ion-color-medium-shade, #5f6368);
+}
+.query-runtime-note {
+  padding-block: 0.5rem 0;
+}
+.query-runtime-hint {
+  padding: 0 var(--ion-padding, 16px) 0.5rem;
+}
+.query-runtime-row ion-select {
+  max-width: 100%;
+}
+// Run that cannot run reads as off, not merely pale: neutral surface, muted
+// text, full opacity and a not-allowed cursor; the reason sits right below.
+ion-button.workspace-run.button-disabled,
+ion-button.workspace-run[disabled] {
+  opacity: 1;
+  --background: var(--ion-color-step-100, #e8eaed);
+  --border-color: var(--ion-color-step-250, #c4c7cc);
+  --color: var(--ion-color-step-550, #6b6f76);
+  cursor: not-allowed;
+}
