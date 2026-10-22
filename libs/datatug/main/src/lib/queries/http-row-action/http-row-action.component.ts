@@ -117,7 +117,7 @@ export class HttpRowActionComponent {
     { initialValue: [] as Candidate[] },
   );
 
-  /** HTTP queries whose parameters bind from the focused row (any row when none is focused). */
+  /** HTTP queries whose parameters bind from the focused row (none while no row is offered). */
   protected readonly candidates = computed(() => {
     const row = this.row();
     return row

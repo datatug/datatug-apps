@@ -4144,7 +4144,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const columns = this.displayedRecordset()?.columns;
     const row = this.httpCheckedRow ?? this.httpFocusedRow;
     if (columns && row) this.setHttpActionRow(columns, row.values, row.position);
+    else this.httpActionRow.set(undefined);
   }
+
+  /** A new result shows other rows, so none of the remembered ones applies to it. */
+  private readonly forgetHttpRowsOnNewResult = effect(() => {
+    this.displayedRecordset();
+    untracked(() => {
+      this.httpFocusedRow = undefined;
+      this.httpCheckedRow = undefined;
+      this.httpCheckedRows.set(0);
+      this.httpActionRow.set(undefined);
+    });
+  });
 
   private setHttpActionRow(
     columns: readonly { readonly name: string; readonly meta?: unknown }[],

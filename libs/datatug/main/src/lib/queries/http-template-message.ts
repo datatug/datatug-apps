@@ -46,7 +46,7 @@ export function httpTemplateMessage(
   const h = header ? ` in the ${trim(header)} header` : '';
   switch (code as HttpTemplateErrorCode) {
     case 'forbidden-position':
-      return `${p} can't be used in ${where ?? 'that part of the request'}.${FORBIDDEN_ADVICE[position as HttpPosition] ?? ''}`;
+      return `${p} can't be in ${where ?? 'that part of the request'}.${FORBIDDEN_ADVICE[position as HttpPosition] ?? ''}`;
     case 'invalid-url':
       return 'With placeholders, the web address must be a complete http or https address without spaces or backslashes, such as https://host/path.';
     case 'invalid-json':

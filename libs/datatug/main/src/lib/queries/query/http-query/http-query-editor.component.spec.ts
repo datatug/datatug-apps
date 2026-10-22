@@ -7,7 +7,6 @@ import {
 } from '../../../models/definition/query-def';
 import {
   HttpQueryEditorComponent,
-  markSegments,
   parseDefault,
 } from './http-query-editor.component';
 import type { IParameterDef } from '../../../models/definition/parameter';
@@ -385,7 +384,8 @@ describe('HttpQueryEditorComponent', () => {
       await fixture.whenStable();
       expect(el().querySelector('.http-origin')?.textContent?.trim()).toBe('context bag');
       const seg = el().querySelector('.http-preview-url mark') as HTMLElement;
-      expect(seg.textContent).toBe('bag-1');
+      expect(seg.firstChild?.textContent).toBe('bag-1');
+      expect(seg.querySelector('.http-seg-tag')?.textContent).toBe('context bag');
       expect(seg.getAttribute('data-source')).toBe('bag');
       fixture.componentRef.setInput('rowBinding', {
         columns: [{ name: 'a' }, { name: 'b' }],
@@ -394,7 +394,7 @@ describe('HttpQueryEditorComponent', () => {
       fixture.detectChanges();
       protectedApi()['pickColumn']('request_id', new CustomEvent('ionChange', { detail: { value: 'b' } }));
       fixture.detectChanges();
-      expect(el().querySelector('.http-preview-url mark')?.textContent).toBe('picked');
+      expect(el().querySelector('.http-preview-url mark')?.firstChild?.textContent).toBe('picked');
     });
 
     it('keeps the browser from saving a credential and refuses a placeholder in the host', async () => {
@@ -483,19 +483,5 @@ describe('HttpQueryEditorComponent', () => {
     expect(parseDefault('boolean', 'maybe')).toBe('maybe');
     expect(parseDefault('date', '2026-01-01')).toBe('2026-01-01');
     expect(parseDefault('string', '')).toBeUndefined();
-  });
-});
-
-describe('markSegments', () => {
-  it('splits a resolved text around the substituted values', () => {
-    expect(markSegments('/a/{x}/b?q={y}', '/a/1/b?q=two', (id) => (id === 'x' ? 'row' : 'typed'))).toEqual([
-      { text: '/a/' },
-      { text: '1', id: 'x', source: 'row' },
-      { text: '/b?q=' },
-      { text: 'two', id: 'y', source: 'typed' },
-    ]);
-  });
-  it('falls back to one unmarked piece when the text does not line up', () => {
-    expect(markSegments('/a/{x}', 'other', () => 'row')).toEqual([{ text: 'other' }]);
   });
 });

@@ -3,7 +3,7 @@ import { httpTemplateMessage } from './http-template-message';
 describe('httpTemplateMessage', () => {
   it('writes one plain sentence from the structured fields', () => {
     expect(httpTemplateMessage('forbidden-position', 'host', 'host')).toBe(
-      "{host} can't be used in the web address's host. Use a separate query for each host.",
+      "{host} can't be in the web address's host. Use a separate query for each host.",
     );
     expect(httpTemplateMessage('missing-value', 'q')).toBe('{q} needs a value.');
   });

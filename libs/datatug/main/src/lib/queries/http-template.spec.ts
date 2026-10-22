@@ -9,6 +9,7 @@ import {
   placeholderNames,
   renderHttpParameterValue,
   substituteHttpTemplate,
+  substituteHttpTemplateParts,
   validateHttpTemplate,
   type HttpParameterDecl,
   type HttpRequestTemplate,
@@ -102,5 +103,44 @@ describe('HTTP template helpers', () => {
     expect(formatHttpNumber(-1.5e-7)).toBe('-0.00000015');
     expect(formatHttpNumber(1.25e22)).toBe('12500000000000000000000');
     expect(formatHttpNumber(-0)).toBe('0');
+  });
+});
+
+describe('substituteHttpTemplateParts', () => {
+  const decl = (id: string) => ({ id, type: 'string', isRequired: true });
+
+  it('attributes adjacent placeholders and a value that holds the next literal', () => {
+    const t = { url: 'https://x.test/{a}{b}/p?q={c}&r=1' };
+    const values = { a: 'one', b: 'two', c: '&r=1' };
+    const parts = substituteHttpTemplateParts(t, [decl('a'), decl('b'), decl('c')], values);
+    expect(parts.url).toEqual([
+      { text: 'https://x.test/' },
+      { text: 'one', name: 'a' },
+      { text: 'two', name: 'b' },
+      { text: '/p?q=' },
+      { text: '%26r%3D1', name: 'c' },
+      { text: '&r=1' },
+    ]);
+    expect(parts.url.map((p) => p.text).join('')).toBe(
+      substituteHttpTemplate(t, [decl('a'), decl('b'), decl('c')], values).url,
+    );
+  });
+
+  it('covers header and body fields', () => {
+    const parts = substituteHttpTemplateParts(
+      {
+        method: 'POST',
+        url: 'https://x.test/',
+        headers: [
+          { name: 'Content-Type', value: 'application/json' },
+          { name: 'X-Ref', value: 'r-{a}' },
+        ],
+        body: '{"k":"{a}"}',
+      },
+      [decl('a')],
+      { a: 'v' },
+    );
+    expect(parts.headers[1]).toEqual([{ text: 'r-' }, { text: 'v', name: 'a' }]);
+    expect(parts.body).toEqual([{ text: '{"k":"' }, { text: 'v', name: 'a' }, { text: '"}' }]);
   });
 });

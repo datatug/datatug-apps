@@ -833,17 +833,11 @@ function spliceField(
   return out + tail;
 }
 
-/**
- * Validates the template like {@link validateHttpTemplate} and replaces each
- * placeholder with its value encoded for its position. A missing, null or
- * empty value takes the declared default, else fails with missing-value.
- * Substituted text is never rescanned. Throws HttpTemplateError.
- */
-export function substituteHttpTemplate(
+function prepareSubstitution(
   t: HttpRequestTemplate,
   params: readonly HttpParameterDecl[],
   values: Readonly<Record<string, unknown>>,
-): HttpRequestTemplate {
+): { all: Span[]; encoded: string[] } {
   validateHttpParameterDecls(params);
   const all = spans(t);
   const defs = checkUses(all, params);
@@ -913,6 +907,21 @@ export function substituteHttpTemplate(
     cache.set(key, e);
     return e;
   });
+  return { all, encoded };
+}
+
+/**
+ * Validates the template like {@link validateHttpTemplate} and replaces each
+ * placeholder with its value encoded for its position. A missing, null or
+ * empty value takes the declared default, else fails with missing-value.
+ * Substituted text is never rescanned. Throws HttpTemplateError.
+ */
+export function substituteHttpTemplate(
+  t: HttpRequestTemplate,
+  params: readonly HttpParameterDecl[],
+  values: Readonly<Record<string, unknown>>,
+): HttpRequestTemplate {
+  const { all, encoded } = prepareSubstitution(t, params, values);
   return {
     ...(t.method !== undefined ? { method: t.method } : {}),
     url: spliceField(asciiTrim(t.url), all, encoded, 'url', 0, MAX_HTTP_TEMPLATE_URL_BYTES, 'path'),
@@ -929,6 +938,51 @@ export function substituteHttpTemplate(
           body: spliceField(t.body, all, encoded, 'body', 0, MAX_HTTP_TEMPLATE_BODY_BYTES, 'body'),
         }
       : {}),
+  };
+}
+
+/** A piece of a substituted text: literal template text, or a value filled for one placeholder. */
+export interface HttpSubstitutedPart {
+  readonly text: string;
+  /** The parameter id when this piece is a substituted value. */
+  readonly name?: string;
+}
+
+function partsOf(
+  text: string,
+  all: readonly Span[],
+  encoded: readonly string[],
+  field: Field,
+  headerIndex: number,
+): HttpSubstitutedPart[] {
+  const parts: HttpSubstitutedPart[] = [];
+  let last = 0;
+  all.forEach((s, i) => {
+    if (s.field !== field || s.headerIndex !== headerIndex) return;
+    if (s.start > last) parts.push({ text: text.slice(last, s.start) });
+    if (encoded[i] !== '') parts.push({ text: encoded[i], name: s.name });
+    last = s.end;
+  });
+  if (last < text.length) parts.push({ text: text.slice(last) });
+  return parts;
+}
+
+/**
+ * The substituted request as pieces, attributed by the substitution's own
+ * spans, so adjacent placeholders and values that contain the neighbouring
+ * literal text are attributed exactly. Concatenating a field's pieces gives
+ * the same text as {@link substituteHttpTemplate}. Throws like it.
+ */
+export function substituteHttpTemplateParts(
+  t: HttpRequestTemplate,
+  params: readonly HttpParameterDecl[],
+  values: Readonly<Record<string, unknown>>,
+): { url: HttpSubstitutedPart[]; headers: HttpSubstitutedPart[][]; body?: HttpSubstitutedPart[] } {
+  const { all, encoded } = prepareSubstitution(t, params, values);
+  return {
+    url: partsOf(asciiTrim(t.url), all, encoded, 'url', 0),
+    headers: (t.headers ?? []).map((h, i) => partsOf(h.value, all, encoded, 'header', i)),
+    ...(t.body !== undefined ? { body: partsOf(t.body, all, encoded, 'body', 0) } : {}),
   };
 }
 

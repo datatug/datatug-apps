@@ -43,6 +43,8 @@ import {
   httpTemplatePlaceholders,
   placeholderNames,
   substituteHttpTemplate,
+  substituteHttpTemplateParts,
+  type HttpSubstitutedPart,
   validateHttpTemplate,
   type HttpPlaceholder,
   type HttpRequestTemplate,
@@ -124,50 +126,6 @@ export interface PreviewSegment {
   readonly text: string;
   readonly id?: string;
   readonly source?: HttpValueSource;
-}
-
-/**
- * Splits a resolved text into literal and substituted pieces by walking the
- * template's literal parts in order. A text that cannot be aligned comes back
- * as one unmarked piece.
- */
-export function markSegments(
-  template: string,
-  resolved: string,
-  sourceOf: (id: string) => HttpValueSource | undefined,
-): PreviewSegment[] {
-  const re = /\{([a-zA-Z0-9_]+)\}/g;
-  const literals: string[] = [];
-  const ids: string[] = [];
-  let last = 0;
-  for (let m = re.exec(template); m; m = re.exec(template)) {
-    literals.push(template.slice(last, m.index));
-    ids.push(m[1]);
-    last = m.index + m[0].length;
-  }
-  literals.push(template.slice(last));
-  if (!ids.length) return [{ text: resolved }];
-  const out: PreviewSegment[] = [];
-  let pos = 0;
-  if (!resolved.startsWith(literals[0])) return [{ text: resolved }];
-  if (literals[0]) out.push({ text: literals[0] });
-  pos = literals[0].length;
-  for (let i = 0; i < ids.length; i++) {
-    const next = literals[i + 1];
-    const end =
-      i === ids.length - 1
-        ? resolved.length - next.length
-        : next
-          ? resolved.indexOf(next, pos)
-          : pos;
-    if (end < pos || (i === ids.length - 1 && !resolved.endsWith(next)))
-      return [{ text: resolved }];
-    const source = sourceOf(ids[i]);
-    out.push({ text: resolved.slice(pos, end), id: ids[i], ...(source ? { source } : {}) });
-    if (next) out.push({ text: next });
-    pos = end + next.length;
-  }
-  return out;
 }
 
 @Component({
@@ -393,23 +351,34 @@ export class HttpQueryEditorComponent {
     if (!this.hasParameters() || this.templateProblem() || this.valueProblem()) return undefined;
     try {
       const out = substituteHttpTemplate(this.template(), this.parameters(), this.runValues());
-      const template = this.template();
       const sources = new Map(this.resolved().map((r) => [r.id, r.source]));
-      const segs = (tpl: string, text: string) =>
-        markSegments(tpl, text, (id) => sources.get(id));
+      const parts = substituteHttpTemplateParts(
+        this.template(),
+        this.parameters(),
+        this.runValues(),
+      );
+      const segs = (list: readonly HttpSubstitutedPart[]): PreviewSegment[] =>
+        list.map((part) => {
+          const source = part.name ? sources.get(part.name) : undefined;
+          return {
+            text: part.text,
+            ...(part.name ? { id: part.name } : {}),
+            ...(source ? { source } : {}),
+          };
+        });
       return {
         url: out.url,
-        urlSegments: segs(template.url, out.url),
+        urlSegments: segs(parts.url),
         headers: (out.headers ?? []).map((h, i) => ({
           name: h.name,
           value: isCredentialHttpHeader(h.name) ? '••••••' : h.value,
           segments: isCredentialHttpHeader(h.name)
             ? [{ text: '••••••' }]
-            : segs(template.headers?.[i]?.value ?? '', h.value),
+            : segs(parts.headers[i] ?? []),
         })),
         body: out.body,
         bodySegments:
-          out.body !== undefined ? segs(template.body ?? '', out.body) : undefined,
+          parts.body !== undefined ? segs(parts.body) : undefined,
       };
     } catch (e) {
       return { error: e instanceof HttpTemplateError ? e.message : String(e) };
