@@ -275,6 +275,10 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'env',
+    // Exact match only: `env/:environmentId/...` (the agent-link table, records and record pages) is a route of its
+    // own below. A prefix redirect would turn it into `environments/<id>/...`, which the project-wide `**` 404 now
+    // answers, so the real route would never be tried.
+    pathMatch: 'full',
     redirectTo: 'environments',
   },
   {
