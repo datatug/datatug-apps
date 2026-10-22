@@ -11,6 +11,7 @@ import type { DetectiveInputValue } from './models';
 
 export interface HostedIncidentView {
   resolutionCriterion?: IncidentResolutionCriterion;
+  resolution?: import('../incidents/models').IncidentResolution;
   ref: { storeId: string; incidentId: string };
   uid: string;
   title: string;
@@ -72,7 +73,19 @@ export type HostedCriterionAction =
       criterionVersion: number;
     };
 
+export interface HostedResolveAction {
+  readonly type: 'resolve';
+  readonly incidentRef: string;
+  readonly environment: string;
+  readonly expectedSeq: number;
+  readonly criterionVersion: number;
+  readonly run: Extract<import('@sneat/datatug-semantic').ArtifactRef, { kind: 'check-run' }>['checkRun'];
+  readonly recovery: import('@sneat/datatug-semantic').SourceOperationRef;
+  readonly humanNote: string;
+}
+
 export type HostedIncidentAction =
+  | HostedResolveAction
   | HostedCriterionAction
   | {
       type: 'append-message';

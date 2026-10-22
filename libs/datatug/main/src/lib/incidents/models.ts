@@ -219,8 +219,24 @@ export interface IncidentResolutionCriterion {
   readonly maxAgeSeconds: number;
 }
 
+/** Actual Core public resolution projection; no private resolution event identity is exposed. */
+export interface IncidentResolution {
+  readonly humanNote: string;
+  readonly proof: {
+    readonly definitionDigest: string;
+    readonly criterionVersion: number;
+    readonly scope: IncidentResolutionCriterion['scope'];
+    readonly run: Extract<import('@sneat/datatug-semantic').ArtifactRef, { kind: 'check-run' }>['checkRun'];
+    readonly evaluatedAt: string;
+    readonly outcome: 'pass';
+    readonly observationRefs: readonly import('@sneat/datatug-semantic').ArtifactRef[];
+    readonly recoveryRefs: readonly import('@sneat/datatug-semantic').ArtifactRef[];
+  };
+}
+
 export interface IncidentSummary {
   readonly resolutionCriterion?: IncidentResolutionCriterion;
+  readonly resolution?: IncidentResolution;
   readonly ref: IncidentRef;
   readonly uid: string;
   readonly title: string;
@@ -311,6 +327,7 @@ export interface IncidentEvent {
   };
   readonly actor: IncidentActor;
   readonly type:
+    | 'incident.resolved'
     | 'incident.criterion-set'
     | 'incident.created'
     | 'incident.status'
@@ -325,6 +342,7 @@ export interface IncidentEvent {
   readonly refs?: readonly IncidentArtifactRef[];
   readonly payload:
     | IncidentResolutionCriterion
+    | IncidentResolution
     | {
         readonly uid: string;
         readonly title: string;

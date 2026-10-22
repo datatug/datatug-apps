@@ -58,7 +58,9 @@ export function isIncidentResolutionCriterion(
       v['finalizedAt'].startsWith('0001-'))
   )
     return false;
-  const scope = v['scope'];
+  return isIncidentResolutionScope(v['scope']);
+}
+export function isIncidentResolutionScope(scope: unknown): scope is IncidentResolutionCriterion['scope'] {
   if (
     !criterionObject(scope) ||
     !keys(scope, [

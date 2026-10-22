@@ -1,3 +1,5 @@
+import { SessionContextApiService } from '../session-context/session-context-api.service';
+import { MappedContextInputComponent } from './mapped-context-input.component';
 import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By } from '@angular/platform-browser';
@@ -23,6 +25,7 @@ const caseRecord = {
 };
 
 describe('HostedIncidentsPageComponent', () => {
+  const contextApi = { capabilities: vi.fn() };
   const client = {
     state: vi.fn(), incidentEvents: vi.fn(), projectIncidents: vi.fn(), projectIncident: vi.fn(), incidentAction: vi.fn(),
   };
@@ -48,6 +51,7 @@ describe('HostedIncidentsPageComponent', () => {
       imports: [HostedIncidentsPageComponent],
       providers: [
         { provide: DetectiveClientService, useValue: client },
+        { provide: SessionContextApiService, useValue: contextApi },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: {
           snapshot: { data, paramMap: params, queryParamMap: queryParams },
@@ -69,6 +73,7 @@ describe('HostedIncidentsPageComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    contextApi.capabilities.mockReset().mockResolvedValue({actorId:'sarah',subjects:[]});
     sessionStorage.clear();
     router.navigate.mockResolvedValue(true);
     router.navigateByUrl.mockResolvedValue(true);
@@ -297,24 +302,29 @@ describe('HostedIncidentsPageComponent', () => {
       .toBe('/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1');
   });
 
-  it('creates an Incident without a Case, preserves numeric OrderID, and opens its returned full ref', async () => {
+  it('creates an Incident without a Case, preserves the selected mapped integer input, and opens its returned full ref', async () => {
     client.incidentAction.mockReturnValue(of({ incident, receipt: 'saved' }));
     const fixture = await mount('new', []);
     const page = fixture.componentInstance as unknown as {
       title: { set(value: string): void };
       description: { set(value: string): void };
-      orderId: { set(value: string): void };
+      loadMappedInputs(): Promise<void>;
       create(): Promise<void>;
     };
     page.title.set('Order 11039 is missing');
     page.description.set('Customer reported a missing order.');
-    page.orderId.set('11039');
+    // Owner-capability-shaped unit metadata; labels and canonical field come from the adapter, never page branches.
+    contextApi.capabilities.mockResolvedValue({actorId:'sarah', subjects:[{id:'shipping-order-id',label:'Order ID',type:'integer',shape:'scalar',scope:{environmentId:'demo',identityDomain:'unit-source'},subject:{conceptId:'shipping-order',fieldId:'order_id',fieldMappingRef:'unit-mapping'}}]});
+    await page.loadMappedInputs(); await fixture.whenStable();
+    const input = fixture.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent;
+    input.choose('shipping-order-id'); input.text.set('11045'); input.add();
+    await fixture.whenStable();
     await page.create();
     expect(client.incidentAction).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'cloud', project: 'private-project' }),
       expect.objectContaining({
         type: 'create', environment: 'demo', title: 'Order 11039 is missing',
-        context: { OrderID: { type: 'number', value: 11039 } },
+        context: { order_id: { type: 'integer', value: '11045' } },
       }),
       expect.stringMatching(/^operation-/),
       expect.any(AbortSignal),
@@ -324,6 +334,43 @@ describe('HostedIncidentsPageComponent', () => {
       ['/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1'],
       { queryParams: { environment: 'demo' }, replaceUrl: true },
     );
+  });
+
+  it('uses a second neutral mapped subject and never displays a hardcoded business input', async () => {
+    client.incidentAction.mockReturnValue(of({incident,receipt:'saved'}));
+    contextApi.capabilities.mockResolvedValue({actorId:'sarah',subjects:[{id:'asset-key',label:'Asset key',type:'string',shape:'scalar',scope:{environmentId:'demo',identityDomain:'assets'},subject:{conceptId:'asset',fieldId:'asset_key',fieldMappingRef:'unit-asset-mapping'}},{id:'other-env',label:'Unavailable environment field',type:'integer',shape:'scalar',scope:{environmentId:'staging',identityDomain:'assets'},subject:{conceptId:'asset',fieldId:'foreign',fieldMappingRef:'unit-foreign-mapping'}}]});
+    const f=await mount('new',[]);
+    const page=f.componentInstance as unknown as {title:{set(value:string):void};loadMappedInputs():Promise<void>;create():Promise<void>};
+    expect(f.nativeElement.textContent).not.toContain('Legacy OrderID');
+    expect(f.nativeElement.querySelector('[aria-label="Order ID"]')).toBeNull();
+    await page.loadMappedInputs(); await f.whenStable();
+    const control=f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent;
+    expect(control.choices().map(item=>item.id)).toEqual(['asset-key']);
+    control.choose('asset-key');control.text.set('ASSET-A');control.add();page.title.set('Investigate asset');await page.create();
+    expect(client.incidentAction.mock.calls[0][1].context).toEqual({asset_key:{type:'string',value:'ASSET-A'}});
+  });
+  it('keeps absent or denied mapping metadata explicit and creates no implicit business context', async () => {
+    const f=await mount('new',[]);
+    const page=f.componentInstance as unknown as {title:{set(value:string):void};loadMappedInputs():Promise<void>;create():Promise<void>};
+    await page.loadMappedInputs(); await f.whenStable();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    expect((f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent).choices()).toEqual([]);
+    contextApi.capabilities.mockRejectedValue(new Error('Mapping access unavailable'));
+    await page.loadMappedInputs();await f.whenStable();expect(f.nativeElement.textContent).toContain('Mapping access unavailable');
+    client.incidentAction.mockReturnValue(of({incident,receipt:'saved'}));page.title.set('Context can be added later');await page.create();
+    expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('context');
+  });
+  it('denies ignored-abort late metadata after canceling the draft in the same project and environment', async () => {
+    const f=await mount('new',[]);
+    let finish:(value:unknown)=>void=()=>undefined;
+    contextApi.capabilities.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    const page=f.componentInstance as unknown as {loadMappedInputs():Promise<void>;cancelDraft():void};
+    const pending=page.loadMappedInputs();const signal=contextApi.capabilities.mock.calls[0][1] as AbortSignal;
+    page.cancelDraft();expect(signal.aborted).toBe(true);
+    finish({actorId:'sarah',subjects:[{id:'late',label:'Late field',type:'integer',shape:'scalar',scope:{environmentId:'demo',identityDomain:'late'},subject:{conceptId:'record',fieldId:'record_id',fieldMappingRef:'late'}}]});
+    await pending;await f.whenStable();
+    expect((f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent).choices()).toEqual([]);
+    expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('cold-loads the exact non-Firestore IncidentRef, shows its linked Case, and starts a distinct Case', async () => {

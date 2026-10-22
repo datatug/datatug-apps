@@ -154,12 +154,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                 <ion-textarea aria-label="Incident description" [value]="description()"
                   (ionInput)="description.set($event.detail.value || '')" />
               </ion-item>
-              <ion-item>
-                <ion-label position="stacked">Order ID (number, optional)</ion-label>
-                <ion-input aria-label="Order ID" type="number" inputmode="numeric"
-                  [value]="orderId()" (ionInput)="orderId.set($event.detail.value || '')" />
-              </ion-item>
-              <p>Legacy OrderID is saved as number context. Mapped inputs keep their explicit canonical name and type.</p>
+              <p>Optionally add context using fields mapped in this project and environment.</p>
               <ion-button fill="outline" (click)="loadMappedInputs()" [disabled]="busy() || !canWrite() || !environment()">Choose mapped incident inputs</ion-button>
               @if (mappedError()) { <p role="alert">{{mappedError()}}</p> }
               <sneat-datatug-mapped-context-input [choices]="mappedChoices()" [disabled]="busy()" (valuesChanged)="setMappedInputs($event)" />
@@ -274,13 +269,11 @@ export class HostedIncidentsPageComponent {
     if (this.busy()) return;
     this.title.set('');
     this.description.set('');
-    this.orderId.set('');
     this.clearMappedInputs();
     this.pendingCreate = undefined;
     this.savedIncident.set(undefined);
     this.saveError.set('');
   }
-  protected readonly orderId = signal('');
   private readonly mutationLifetime = useNativeRunLifetime();
   private readonly contextApi = inject(SessionContextApiService);
   private mappedLifetime = new AbortController();
@@ -324,7 +317,7 @@ export class HostedIncidentsPageComponent {
     const signal = this.mappedLifetime.signal;
     try {
       const capabilities = await this.contextApi.capabilities(ref, signal);
-      if (key !== this.mappedKey() || this.destroyRef.destroyed) return;
+      if (signal.aborted || key !== this.mappedKey() || this.destroyRef.destroyed) return;
       if (capabilities.actorId !== this.scope.context()?.principal) throw new Error('Mapped inputs are not available for this signed-in actor.');
       this.mappedHeld.set({
         key,
@@ -333,7 +326,7 @@ export class HostedIncidentsPageComponent {
         ),
       });
     } catch (error) {
-      if (key === this.mappedKey() && !this.destroyRef.destroyed)
+      if (!signal.aborted && key === this.mappedKey() && !this.destroyRef.destroyed)
         this.mappedError.set(detectiveErrorMessage(error, true));
     }
   }
@@ -450,11 +443,6 @@ export class HostedIncidentsPageComponent {
     if (!context || context.kind !== 'cloud' || !this.canWrite() || !title || !environment || this.busy() || this.savedIncident()) return;
     const identity = this.scope.identity();
     const projectRef = this.scope.ref();
-    const rawOrder = this.orderId().trim();
-    if (rawOrder && (!/^\d+$/.test(rawOrder) || !Number.isSafeInteger(Number(rawOrder)))) {
-      this.saveError.set('Order ID must be a whole number.');
-      return;
-    }
     this.busy.set(true);
     this.saveError.set('');
     try {
@@ -464,16 +452,7 @@ export class HostedIncidentsPageComponent {
         this.mappedValues()?.key === this.mappedKey()
           ? this.mappedValues()?.values
           : {};
-      if (rawOrder && mapped?.['OrderID'])
-        throw new Error(
-          'Choose either the legacy OrderID field or a mapped OrderID input.',
-        );
-      const inputs = {
-        ...(rawOrder
-          ? { OrderID: { type: 'number' as const, value: Number(rawOrder) } }
-          : {}),
-        ...mapped,
-      };
+      const inputs = mapped ?? {};
       const action: HostedIncidentAction = {
         type: 'create',
         title,

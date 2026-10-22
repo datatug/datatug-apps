@@ -1,3 +1,4 @@
+import { isHostedResolveAction } from './hosted-resolve-contract';
 import {
   criterionObject,
   criterionID,
@@ -5,7 +6,7 @@ import {
   criterionVersion,
   isCriterionEvidence,
 } from '../incidents/resolution-criterion';
-import type { HostedCriterionAction } from './hosted-linkage.models';
+import type { HostedCriterionAction, HostedResolveAction } from './hosted-linkage.models';
 import { decodeEvidenceArtifactRef } from '@sneat/datatug-semantic';
 import type {
   IncidentCharacterID,
@@ -21,15 +22,15 @@ export const INCIDENT_CHARACTERS: readonly IncidentCharacterID[] = [
   'maya',
   'daniel',
 ];
-export type PendingCriterion = {
+export type PendingIncidentAction = {
   operationId: string;
   expectedSeq: number;
-  action: HostedCriterionAction;
+  action: HostedCriterionAction | HostedResolveAction;
   message?: never;
 };
 export type PendingIncidentOperation =
   | PendingIncidentMessage
-  | PendingCriterion;
+  | PendingIncidentAction;
 export type PendingIncidentMessage = {
   action?: never;
   operationId: string;
@@ -179,7 +180,7 @@ export function isPendingIncidentOperation(
     /^operation-[A-Za-z0-9_-]+$/.test(value['operationId']) &&
     value['operationId'].length <= 128 &&
     criterionVersion(value['expectedSeq']) &&
-    isHostedCriterionAction(value['action']) &&
+    (isHostedCriterionAction(value['action']) || isHostedResolveAction(value['action'])) &&
     value['action'].expectedSeq === value['expectedSeq']
   );
 }

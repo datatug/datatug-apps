@@ -1,6 +1,7 @@
 import type { IncidentEvent } from './models';
 
 export function incidentEventSummary(event: IncidentEvent): string {
+  if (event.type === 'incident.resolved' && 'humanNote' in event.payload) return `Resolved · ${event.payload.humanNote}`;
   if (event.type === 'incident.criterion-set' && 'checkID' in event.payload)
     return `${event.payload.finalized ? 'Criterion finalized' : 'Criterion draft saved'} · ${event.payload.checkID} · Check version ${event.payload.checkVersion} · criterion ${event.payload.version}`;
   if (
