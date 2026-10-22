@@ -284,4 +284,36 @@ describe('Original evidence approved contract (contract-only extension, pending 
       ),
     ).rejects.toThrow();
   });
+  it('rejects a self-consistent same-order event chain for a different exact selected event', async () => {
+    const value = originalContractFixture();
+    const unrelated = {
+      type: 'string' as const,
+      value: 'other-event-same-order',
+    };
+    const records = value.records.map((record, index) =>
+      index
+        ? record
+        : {
+            ...record,
+            key: unrelated,
+            fields: { ...record.fields, event_id: unrelated },
+          },
+    );
+    await expect(
+      readOriginalEvidence({ ...value, records }, result, selector),
+    ).rejects.toThrow();
+  });
+  it.each(['reason-array', 'parse-status-array'] as const)(
+    'rejects nonstring enum %s without coercion',
+    async (mode) => {
+      const value = originalContractFixture();
+      const wire =
+        mode === 'reason-array'
+          ? { version: 1, status: 'unavailable', reason: ['not-admitted'] }
+          : { ...value, log: { ...value.log, parseStatus: ['parsed'] } };
+      await expect(
+        readOriginalEvidence(wire, result, selector),
+      ).rejects.toThrow();
+    },
+  );
 });

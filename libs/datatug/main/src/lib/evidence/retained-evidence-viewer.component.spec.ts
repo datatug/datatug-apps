@@ -87,7 +87,7 @@ describe('Retained evidence native cold-open presentation', () => {
         expect(
           section.querySelector('pre[aria-label="Original log text"]')
             .textContent,
-        ).toContain('"event_id":"event-blocked"');
+        ).toContain('"event_id":"fixture-row"');
         expect(section.textContent).toContain(
           'actual-reader-reference-required-at-parity',
         );
@@ -184,7 +184,7 @@ describe('Retained evidence native cold-open presentation', () => {
         resolve(value);
       } else {
         await vi.waitFor(() =>
-          expect(page.nativeElement.textContent).toContain('event-blocked'),
+          expect(page.nativeElement.textContent).toContain('fixture-row'),
         );
         // Read retries clear the previous protected result before dispatch.
         (
@@ -199,7 +199,7 @@ describe('Retained evidence native cold-open presentation', () => {
           page.nativeElement.querySelector('[aria-label="Original evidence"]'),
         ).toBeNull(),
       );
-      expect(page.nativeElement.textContent).not.toContain('event-blocked');
+      expect(page.nativeElement.textContent).not.toContain('fixture-row');
       expect(page.nativeElement.textContent).not.toContain(
         'actual-reader-reference-required-at-parity',
       );

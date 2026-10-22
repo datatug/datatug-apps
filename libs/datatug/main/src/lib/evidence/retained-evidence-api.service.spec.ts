@@ -183,7 +183,15 @@ describe('Retained evidence real native HTTP reads', () => {
     });
     http.verify();
   });
-  it.each(['available', 'missing', 'malformed', 'pin-forgery'] as const)(
+  it.each([
+    'available',
+    'missing',
+    'malformed',
+    'pin-forgery',
+    'selected-event',
+    'reason-array',
+    'parse-status-array',
+  ] as const)(
     'validates the contract-only original extension via actual HTTP client: %s',
     async (mode) => {
       const http = TestBed.inject(HttpTestingController),
@@ -215,7 +223,39 @@ describe('Retained evidence real native HTTP reads', () => {
             }),
       };
       if (mode === 'pin-forgery') wire.sourcePin.revision.generation = 'other';
-      request.flush(wire);
+      const response: Record<string, unknown> = wire;
+      if (mode === 'selected-event') {
+        const original = originalContractFixture();
+        const other = {
+          type: 'string' as const,
+          value: 'unrelated-same-order-event',
+        };
+        response['originalEvidence'] = {
+          ...original,
+          records: original.records.map((record, index) =>
+            index
+              ? record
+              : {
+                  ...record,
+                  key: other,
+                  fields: { ...record.fields, event_id: other },
+                },
+          ),
+        };
+      } else if (mode === 'reason-array')
+        response['originalEvidence'] = {
+          version: 1,
+          status: 'unavailable',
+          reason: ['not-admitted'],
+        };
+      else if (mode === 'parse-status-array') {
+        const original = originalContractFixture();
+        response['originalEvidence'] = {
+          ...original,
+          log: { ...original.log, parseStatus: ['parsed'] },
+        };
+      }
+      request.flush(response);
       await outcome;
       http.verify();
     },

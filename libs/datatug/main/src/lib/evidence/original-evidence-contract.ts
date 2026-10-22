@@ -148,8 +148,9 @@ function log(value: unknown): OriginalLog {
   if (
     byteEnd - byteStart > 16 * 1024 ||
     raw['parser'] !== 'jsonl' ||
+    typeof raw['parseStatus'] !== 'string' ||
     !['parsed', 'missing_timestamp', 'invalid_timestamp'].includes(
-      String(raw['parseStatus']),
+      raw['parseStatus'],
     )
   )
     return fail();
@@ -208,13 +209,14 @@ export async function readOriginalEvidence(
   if (raw['status'] === 'unavailable') {
     if (
       Object.keys(raw).length !== 3 ||
+      typeof raw['reason'] !== 'string' ||
       ![
         'not-admitted',
         'not-observed',
         'original-missing',
         'original-invalid',
         'limit',
-      ].includes(String(raw['reason']))
+      ].includes(raw['reason'])
     )
       return fail();
     return {
@@ -290,6 +292,8 @@ export async function readOriginalEvidence(
   const same = (a: TypedValue, b: TypedValue) => {
     if (!equal(a, b)) fail();
   };
+  same(records[0].key, selection.rowKey);
+  same(event['event_id'], selection.rowKey);
   same(event['attempt_id'], attempt['attempt_id']);
   same(attempt['request_id'], request['request_id']);
   same(attempt['config_revision'], config['revision']);

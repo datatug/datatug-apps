@@ -18,7 +18,7 @@ export function originalContractFixture(): Extract<
     fields: Record<string, TypedValue>,
   ): OriginalRecord => ({ collection, key: Object.values(fields)[0], fields });
   const raw =
-    '{"event_id":"event-blocked","attempt_id":"attempt-1","kind":"routing.blocked","order_id":11045,"occurred_at":"2026-10-22T12:00:00Z"}\r\n';
+    '{"event_id":"fixture-row","attempt_id":"attempt-1","kind":"routing.blocked","order_id":11045,"occurred_at":"2026-10-22T12:00:00Z"}\r\n';
   const hash = 'a'.repeat(64);
   return {
     version: 1,
@@ -26,7 +26,7 @@ export function originalContractFixture(): Extract<
     selection: structuredClone(fixture.selector) as RowEvidenceSelector,
     records: [
       make('events', {
-        event_id: str('event-blocked'),
+        event_id: str('fixture-row'),
         attempt_id: str('attempt-1'),
         sequence: int('1'),
         kind: str('routing.blocked'),
