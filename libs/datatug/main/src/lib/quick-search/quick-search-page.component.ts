@@ -53,6 +53,7 @@ import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import {
   checkMetadataTarget,
   classifySearchError,
+  isCompletionUnknown,
   mutationMessage,
   SearchDocument,
   SearchKind,
@@ -453,6 +454,9 @@ import {
         @if (!checkDetail()) {
           <p aria-live="polite" [hidden]="!showCount()">
             @if (showCount()) {
+              @if (submittedQuery()) {
+                Results for “{{ submittedQuery() }}” ·
+              }
               {{ groups().length }}
               {{ groups().length === 1 ? 'name' : 'names' }} ·
               {{ items().length }} items
@@ -470,7 +474,9 @@ import {
             {{
               discovery
                 ? 'No items with this tag were found in this index.'
-                : 'No matching items.'
+                : submittedQuery()
+                  ? 'No matches for “' + submittedQuery() + '”.'
+                  : 'No matching items.'
             }}
           </p>
         }
@@ -690,6 +696,8 @@ export class QuickSearchPageComponent {
   readonly problem = signal<SearchProblem | undefined>(undefined);
   readonly canManage = computed(() => this.status()?.canManage !== false);
   readonly searched = signal(false);
+  /** The query the shown results belong to, which may differ from the text being typed. */
+  readonly submittedQuery = signal('');
   readonly kinds = searchKinds;
   readonly names = kindNames;
   readonly icons = kindIcons;
@@ -788,6 +796,7 @@ export class QuickSearchPageComponent {
         this.snapshot.set(undefined);
         this.consent.set(false);
         if (this.checkDetail()) this.loadStatus();
+        else if (this.schemaDetail) void this.schemaPreview();
       }
     });
     this.route.queryParamMap?.pipe(takeUntilDestroyed()).subscribe((params) => {
@@ -857,6 +866,7 @@ export class QuickSearchPageComponent {
     this.items.set([]);
     this.busy.set(false);
     this.searched.set(false);
+    this.submittedQuery.set('');
     this.problem.set(undefined);
   }
   private invalidatePreview() {
@@ -957,6 +967,7 @@ export class QuickSearchPageComponent {
       return;
     }
     this.loaded.search = this.searchKey();
+    const submitted = this.query().trim();
     const generation = ++this.generation;
     this.request?.unsubscribe();
     this.busy.set(true);
@@ -975,6 +986,7 @@ export class QuickSearchPageComponent {
         next: (result) => {
           if (generation !== this.generation) return;
           this.items.set(result.items);
+          this.submittedQuery.set(submitted);
           this.searched.set(true);
           this.busy.set(false);
         },
@@ -1107,13 +1119,22 @@ export class QuickSearchPageComponent {
     if (this.checkDetail()) return;
     const ref = this.project();
     if (!ref || this.mutationBusy()) return;
+    const before = this.status();
+    const hadResults = this.searched();
     this.invalidateSearch();
     this.status.update((status) =>
       status ? { ...status, state: 'deleting' } : status,
     );
-    this.mutate(this.api.disable(ref));
+    this.mutate(this.api.disable(ref), () => {
+      // Roll the optimistic state back; the status reload is authoritative.
+      this.status.set(before);
+      if (hadResults) this.autoSearch();
+    });
   }
-  private mutate(operation: ReturnType<QuickSearchApiService['disable']>) {
+  private mutate(
+    operation: ReturnType<QuickSearchApiService['disable']>,
+    rollback?: () => void,
+  ) {
     const generation = ++this.mutationGeneration;
     this.mutationRequest?.unsubscribe();
     // The operation's status is authoritative: cancel any in-flight status load.
@@ -1134,8 +1155,19 @@ export class QuickSearchPageComponent {
       },
       error: (failure: unknown) => {
         if (generation !== this.mutationGeneration) return;
-        this.error.set(mutationMessage(classifySearchError(failure)));
+        const unknown = isCompletionUnknown(failure);
+        this.error.set(
+          unknown
+            ? 'The operation may have completed — refreshing status…'
+            : mutationMessage(classifySearchError(failure)),
+        );
         this.mutationBusy.set(false);
+        rollback?.();
+        if (unknown) this.loadStatus();
+      },
+      complete: () => {
+        if (generation === this.mutationGeneration)
+          this.mutationBusy.set(false);
       },
     });
   }

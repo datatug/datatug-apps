@@ -5,7 +5,7 @@ import {
   ActivatedRoute,
   convertToParamMap,
 } from '@angular/router';
-import { BehaviorSubject, Subject, of, throwError } from 'rxjs';
+import { BehaviorSubject, EMPTY, Subject, of, throwError } from 'rxjs';
 import { QuickSearchPageComponent } from './quick-search-page.component';
 import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
@@ -718,6 +718,113 @@ describe('Quick Search consent and async state', () => {
       page.refresh();
       expect(page.error().toLowerCase()).toContain(text.toLowerCase());
       expect(page.mutationBusy()).toBe(false);
+    });
+    it('labels results with the submitted query, not the text being typed', async () => {
+      withQuery('Customers');
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      page.query.set('Custom');
+      await fixture.whenStable();
+      expect(page.submittedQuery()).toBe('Customers');
+      expect(fixture.nativeElement.textContent).toContain(
+        'Results for “Customers”',
+      );
+      api.search.mockReturnValue(of({ items: [], tags: [], itemCount: 0 }));
+      page.query.set('Nothing');
+      page.search();
+      await fixture.whenStable();
+      expect(fixture.nativeElement.textContent).toContain(
+        'No matches for “Nothing”',
+      );
+    });
+    it('rolls back a failed disable and re-runs the cleared search', async () => {
+      withQuery('Customers');
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      api.disable.mockReturnValue(throwError(() => ({ status: 503 })));
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      page.disable();
+      expect(page.status()?.state).toBe('ready');
+      expect(api.search).toHaveBeenCalledTimes(2);
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+      expect(page.mutationBusy()).toBe(false);
+    });
+    it('reloads status when the provider cannot confirm an operation', () => {
+      api.refresh.mockReturnValue(
+        throwError(() => ({
+          status: 503,
+          error: { error: { code: 'provider_completion_unknown' } },
+        })),
+      );
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      page.snapshot.set({ documents: [], sourceCoverage: [] });
+      const calls = api.status.mock.calls.length;
+      page.refresh();
+      expect(page.error()).toContain('may have completed');
+      expect(api.status).toHaveBeenCalledTimes(calls + 1);
+    });
+    it('clears mutation busy when the operation completes without a value', () => {
+      api.disable.mockReturnValue(EMPTY);
+      const page = TestBed.createComponent(
+        QuickSearchPageComponent,
+      ).componentInstance;
+      page.disable();
+      expect(page.mutationBusy()).toBe(false);
+    });
+    it('re-runs the schema preview when the environment changes', async () => {
+      const env = new BehaviorSubject<{ id: string } | undefined>(undefined);
+      const params = new BehaviorSubject(
+        convertToParamMap({ dbModelId: 'db' }),
+      );
+      const query = new BehaviorSubject(
+        convertToParamMap({ schema: 'dbo', table: 'A' }),
+      );
+      const preview = vi.fn(async () => ({
+        documents: [
+          {
+            kind: 'table',
+            id: 'A',
+            name: 'A',
+            tags: [],
+            reference: { dbModelId: 'db', schema: 'dbo', table: 'A' },
+          },
+        ],
+        sourceCoverage: [],
+      }));
+      TestBed.overrideProvider(ActivatedRoute, {
+        useValue: {
+          snapshot: {
+            data: { schemaDetail: true },
+            paramMap: params.value,
+            queryParamMap: query.value,
+          },
+          paramMap: params,
+          queryParamMap: query,
+        },
+      });
+      TestBed.overrideProvider(DatatugNavContextService, {
+        useValue: { currentProject: context, currentEnv: env },
+      });
+      TestBed.overrideProvider(QuickSearchSnapshotService, {
+        useValue: { preview },
+      });
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      expect(page.items().length).toBe(1);
+      env.next({ id: 'e2' });
+      await fixture.whenStable();
+      expect(preview).toHaveBeenCalledTimes(2);
+      expect(page.items().length).toBe(1);
     });
     const httpError = (status: number, code: string) => ({
       status,

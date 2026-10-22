@@ -309,3 +309,12 @@ export function mutationMessage(problem: SearchProblem): string {
       return 'Index operation failed. Retry the operation; deletion remains available.';
   }
 }
+
+/** True when the provider could not confirm whether an operation completed. */
+export function isCompletionUnknown(error: unknown): boolean {
+  const failure = error as { error?: { error?: unknown } } | undefined;
+  const inner = failure?.error?.error;
+  const code =
+    typeof inner === 'string' ? inner : (inner as { code?: unknown })?.code;
+  return code === 'provider_completion_unknown';
+}
