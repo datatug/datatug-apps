@@ -139,6 +139,7 @@ export class SourceActionFormComponent {
   private readonly inputKey = computed(() =>
     JSON.stringify([
       this.contextKey(),
+      this.interaction().actionId,
       this.interaction().reviewId,
       this.interaction().phase,
       this.interaction().fields,

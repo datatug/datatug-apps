@@ -1,10 +1,10 @@
-import { Component, signal } from '@angular/core';
+import { signal } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
 import { Subject } from 'rxjs';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
-import { datatugProjectRoutes } from '../routes/datatug-routing-proj';
+import { datatugRoutes } from '../routes/datatug-routing.module';
 import {
   SOURCE_ADAPTER_REGISTRATIONS,
   type SourceAdapterRegistration,
@@ -18,8 +18,6 @@ const context = vi.hoisted(() => ({ current: undefined as unknown }));
 vi.mock('../detective/detective-page-context', () => ({
   useDetectivePageContext: () => context.current,
 }));
-@Component({ template: 'Project overview' })
-class OverviewStub {}
 const base = '/space/S1/store/firestore/project/p';
 const ref = { storeId: 'firestore', spaceID: 'S1', projectId: 'p' };
 // Independent neutral descriptor fixtures prove composition only, never a second backend.
@@ -159,18 +157,12 @@ describe('neutral source host cold navigation and owner lifetimes', () => {
     };
     first = registration('dataset-copy', 'Dataset copy');
     second = registration('document-archive', 'Document archive');
-    const route = datatugProjectRoutes.find(
-      (r) => r.path === 'sources/:sourceId',
-    );
-    if (!route) throw new Error('Missing actual source route');
     TestBed.configureTestingModule({
       providers: [
-        provideRouter([
-          {
-            path: 'space/:spaceID/store/:storeId/project/:projectId',
-            children: [route, { path: 'overview', component: OverviewStub }],
-          },
-        ]),
+        // Use the actual signed parent, its canMatch guard and actual children.
+        provideRouter(
+          datatugRoutes.filter((route) => route.path?.startsWith('space/')),
+        ),
         {
           provide: SOURCE_ADAPTER_REGISTRATIONS,
           useValue: [first.adapter, second.adapter],
@@ -221,7 +213,10 @@ describe('neutral source host cold navigation and owner lifetimes', () => {
     expect(first.instances[0].handle).toHaveBeenLastCalledWith({
       type: 'retry-original',
     });
-    await h.navigateByUrl(`${base}/overview`, OverviewStub);
+    await h.navigateByUrl(
+      `${base}/sources/document-archive?environment=test`,
+      SourceWorkspacePageComponent,
+    );
     expect(first.instances[0].signal.aborted).toBe(true);
     expect(first.instances[0].destroy).toHaveBeenCalledOnce();
   });
@@ -349,6 +344,27 @@ describe('neutral source host cold navigation and owner lifetimes', () => {
       'protected provider diagnostic',
     );
   });
+  it.each([
+    `${base}/sources`,
+    `${base}/sources/dataset-copy/extra`,
+    `${base}/sources/dataset.copy`,
+    `${base}/sources/${'x'.repeat(129)}`,
+    `${base}/sources/%2F`,
+    `${base}/sources/dataset-copy;x=1`,
+    `${base};x=1/sources/dataset-copy`,
+    '/space/S1/store/github.com/project/p/sources/dataset-copy',
+    '/space/%2F/store/firestore/project/p/sources/dataset-copy',
+  ])(
+    'rejects malformed production signed source route %s before adapter creation',
+    async (url) => {
+      const h = await RouterTestingHarness.create();
+      await expect(h.navigateByUrl(url)).rejects.toThrow(
+        /NG04002|Cannot match/,
+      );
+      expect(first.instances).toHaveLength(0);
+      expect(second.instances).toHaveLength(0);
+    },
+  );
   it('shows unsupported registration as unavailable without a mutation or speculative default', async () => {
     const h = await RouterTestingHarness.create();
     await h.navigateByUrl(

@@ -119,6 +119,16 @@ describe('neutral source action input', () => {
     await f.whenStable();
     expect(f.componentInstance.values()).toEqual({});
   });
+  it('clears values and touched state when a different action reuses the same review ID and fields', async () => {
+    const f = await mount();
+    f.componentInstance.change('revision', '17');
+    f.componentInstance.submit(new Event('submit'));
+    expect(f.componentInstance.touched()).toBe(true);
+    f.componentRef.setInput('interaction', { ...review, actionId: 'restore' });
+    await f.whenStable();
+    expect(f.componentInstance.values()).toEqual({});
+    expect(f.componentInstance.touched()).toBe(false);
+  });
   it('exposes only supplied uncertain retry and explicit conflict-review controls, with no submit/edit input', async () => {
     const f = await mount({
         ...review,
