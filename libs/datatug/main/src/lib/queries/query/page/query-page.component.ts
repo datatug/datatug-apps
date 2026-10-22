@@ -130,6 +130,7 @@ import { addIcons } from 'ionicons';
 import {
   copyOutline,
   informationCircleOutline,
+  openOutline,
   shieldCheckmarkOutline,
 } from 'ionicons/icons';
 import {
@@ -6301,7 +6302,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           });
       });
     });
-    addIcons({ copyOutline, informationCircleOutline, shieldCheckmarkOutline });
+    addIcons({ copyOutline, informationCircleOutline, openOutline, shieldCheckmarkOutline });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;

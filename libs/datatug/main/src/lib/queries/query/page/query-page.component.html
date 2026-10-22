@@ -1696,6 +1696,32 @@
             recorded local output · {{ result.provenance.source }}
           }
         </ion-text>
+        @for (git of result.gitSources ?? []; track git.repositoryUrl) {
+          <p class="git-source" data-testid="result-git-source">
+            <ion-text>
+              <strong>{{ git.title }} comes from inGitDB on GitHub.</strong>
+              It is a public database kept as plain files in a Git repository. An
+              OpenVaultDB (OVDB) descriptor tells DataTug where it is, and your
+              browser reads it straight from GitHub, with no server in between.
+            </ion-text>
+            <ion-text color="medium">
+              <a href="https://ingitdb.com" target="_blank" rel="noopener">inGitDB</a>
+              ·
+              <a href="https://openvaultdb.com" target="_blank" rel="noopener">OpenVaultDB</a>
+            </ion-text>
+            <ion-button
+              data-testid="result-git-source-link"
+              fill="clear"
+              size="small"
+              [href]="git.repositoryUrl + '/tree/' + git.revision"
+              target="_blank"
+              rel="noopener"
+            >
+              See the source
+              <ion-icon slot="end" name="open-outline" aria-hidden="true" />
+            </ion-button>
+          </p>
+        }
 
         @if (
           !selectedHistoricalResult() &&

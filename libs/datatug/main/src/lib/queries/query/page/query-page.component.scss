@@ -294,3 +294,21 @@
     border-color: Highlight;
   }
 }
+// Where an inGitDB source came from: one flat row under the provenance line,
+// not a card; the single action wraps below the text on narrow screens.
+.git-source {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  margin: 8px 0 0;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  ion-text {
+    flex: 1 1 100%;
+  }
+  ion-button {
+    margin: 0;
+    --padding-start: 0;
+  }
+}

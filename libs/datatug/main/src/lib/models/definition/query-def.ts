@@ -58,6 +58,8 @@ export interface IQueryDef extends IQueryItem {
     readonly nativeGraph?: import('../../queries/public-data/native-graph-executor').NativeGraphPlan;
     /** Descriptive historical pages/pins; reopening never executes them. */
     readonly readReceipt?: import('../../queries/public-data/immutable-federation').RuntimeReadReport;
+    /** inGitDB databases the browser reads straight from GitHub, each described by an OVDB descriptor URL. */
+    readonly ingitdbSources?: readonly import('../../queries/ingitdb-github-source').IngitdbSourceRef[];
     readonly tables: readonly {
       readonly name: string;
       readonly database?: string;

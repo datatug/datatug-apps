@@ -1,5 +1,6 @@
 import { nativeHttpFailure, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
 import { currentDemoDbOvdbUrl } from './demodb-ovdb';
+import { IngitdbGithubSources } from './ingitdb-github-source';
 import { preflightSourceRights, type FederatedSourceRights } from './federated-source-rights';
 import {
   executeJoinedDTQLQuery,
@@ -207,6 +208,8 @@ export type FederatedQueryResult = Omit<RunQueryResponse, 'provenance'> & {
   readonly hasMore?: boolean;
   readonly publicDataExceptions?: PublicDataExceptions;
   readonly publicDataBytes?: number;
+  /** inGitDB databases this run read straight from GitHub, for the provenance line. */
+  readonly gitSources?: readonly import('./ingitdb-github-source').IngitdbGitSource[];
   readonly runtimeRead?: import('./public-data/immutable-federation').RuntimeReadReport;
   readonly providerReads?: unknown;
   readonly nativeStream?: true;
@@ -282,7 +285,9 @@ function ovdbBaseUrl(raw: string): string {
 
 function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: PlannedNativeSource[] } | undefined {
   const config = definition.federation;
-  if (!config || config.lookups?.length || config.bounds || definition.request.queryType !== 'DTQL') return undefined;
+  // An inGitDB source on GitHub is read by the browser, so the plan cannot run on the OVDB server.
+  if (!config || config.lookups?.length || config.bounds || config.ingitdbSources?.length ||
+    definition.request.queryType !== 'DTQL') return undefined;
   const parsed = parseDTQL((definition.request as ITextQueryRequest).text, { tables: config.tables });
   const configured = new Set(config.tables.map((table) => table.database).filter((database): database is string => !!database));
   const implicit = configured.size === 1 && config.tables.every((table) => table.database)
@@ -816,8 +821,17 @@ async function runFederatedQueryInternal(
     for (const joined of relation.joins) visit(joined.from);
   };
   visit(parsed.from);
+  // Late-bound like httpFetch; GitHub reads are anonymous and never carry the OVDB token.
+  const gitSources = new IngitdbGithubSources(config.ingitdbSources, httpFetch, signal);
+  // Name only what this run reads: OVDB, GitHub, or both.
+  const readsOvdb = relations.some((relation) => !gitSources.has(relation.database));
+  const sourceLabel = [
+    ...(readsOvdb ? [`${baseUrl} (direct OVDB)`] : []),
+    ...(relations.some((relation) => gitSources.has(relation.database)) ? ['GitHub (direct, no server)'] : []),
+  ].join(' and ');
   const rights = capturedRights ?? await preflightSourceRights(baseUrl,
-    [...relations.map((relation) => ({ database: relation.database as string, name: relation.name })),
+    [...relations.filter((relation) => !gitSources.has(relation.database))
+      .map((relation) => ({ database: relation.database as string, name: relation.name })),
       ...(config.lookups ?? []).map((lookup) => ({ database: lookup.database, name: lookup.collection }))],
     httpFetch, authHeaders, signal, undefined, config.expectedSourceRights, expectedServerId);
   const storeName = `datatug-federated-${observer?.storageId ?? `${Date.now()}-${crypto.randomUUID()}`}`;
@@ -1007,6 +1021,7 @@ async function runFederatedQueryInternal(
     };
     const pagedResponse = (): FederatedQueryResult => ({
       ...rights.evidence(),
+      ...(gitSources.sources.length ? { gitSources: gitSources.sources } : {}),
       recordset: {
         columns: (
           outputNames ??
@@ -1022,7 +1037,7 @@ async function runFederatedQueryInternal(
       bindingsApplied: [],
       truncated: false,
       provenance: {
-        source: `${baseUrl} (direct OVDB)`,
+        source: sourceLabel,
         queryId: definition.id,
         mode: 'live',
         observedAt: new Date().toISOString(),
@@ -1035,6 +1050,27 @@ async function runFederatedQueryInternal(
       const ordered = query.orders;
       let remaining = query.limit;
       if (remaining === 0) return;
+      if (gitSources.has(relation.database)) {
+        // One published view file per collection; DALgo orders and filters the cached rows.
+        const sourceStarted = performance.now();
+        stage = 'preparing';
+        report();
+        const rows = await gitSources.read(relation.database as string, relation.name);
+        // A view has no server-side order: limit only an unordered scan here.
+        const records = remaining === undefined || ordered.length ? rows : rows.slice(0, remaining);
+        rowsLoaded += records.length;
+        stage = 'loading';
+        report();
+        yield { records };
+        observer?.onSourceLoaded?.({
+          database: relation.database || '',
+          name: relation.name,
+          rows: records.length,
+          requests: 1,
+          elapsedMs: performance.now() - sourceStarted,
+        });
+        return;
+      }
       const pageSize = Math.min(
         remaining ?? (mode === 'visible' ? 100 : 500),
         mode === 'visible' ? 100 : 500,
@@ -1274,6 +1310,7 @@ async function runFederatedQueryInternal(
           []);
       return {
         ...rights.evidence(),
+        ...(gitSources.sources.length ? { gitSources: gitSources.sources } : {}),
         recordset: {
           columns: names.map((name) => ({ name, type: 'unknown' })),
           rows: records.map((row) =>
@@ -1284,7 +1321,7 @@ async function runFederatedQueryInternal(
         bindingsApplied: [],
         truncated: false,
         provenance: {
-          source: `${baseUrl} (direct OVDB)`,
+          source: sourceLabel,
           queryId: definition.id,
           mode: 'live',
           observedAt: new Date().toISOString(),
@@ -1393,6 +1430,7 @@ async function runFederatedQueryInternal(
     if (records.length) observer?.onFirstRecord?.();
     return {
       ...rights.evidence(),
+      ...(gitSources.sources.length ? { gitSources: gitSources.sources } : {}),
       recordset: {
         columns: names.map((name) => ({ name, type: 'unknown' })),
         rows: records.map((row) => names.map((name) => typed(row.data[name]))),
@@ -1401,7 +1439,7 @@ async function runFederatedQueryInternal(
       bindingsApplied: [],
       truncated: false,
       provenance: {
-        source: `${baseUrl} (direct OVDB)`,
+        source: sourceLabel,
         queryId: definition.id,
         mode: 'live',
         observedAt: new Date().toISOString(),
