@@ -19,6 +19,7 @@ describe('neutral source action input', () => {
   async function mount(interaction = review) {
     const f = TestBed.createComponent(SourceActionFormComponent);
     f.componentRef.setInput('interaction', interaction);
+    f.componentRef.setInput('contextKey', 'scope-a');
     f.detectChanges();
     await f.whenStable();
     return f;
@@ -80,7 +81,7 @@ describe('neutral source action input', () => {
       expect(f.nativeElement.textContent).toContain('canonical integer');
     },
   );
-  it('requires an actual offered choice, allows cancel, and resets only when the review identity/fields/phase changes', async () => {
+  it('requires an actual offered choice, allows cancel, and resets on context or review identity/fields/phase changes', async () => {
     const f = await mount({
         ...review,
         fields: [
@@ -110,6 +111,10 @@ describe('neutral source action input', () => {
     });
     f.nativeElement.querySelector('header ion-button').click();
     expect(cancel).toHaveBeenCalledOnce();
+    f.componentRef.setInput('contextKey', 'scope-b');
+    await f.whenStable();
+    expect(f.componentInstance.values()).toEqual({});
+    f.componentInstance.change('revision', '17');
     f.componentRef.setInput('interaction', { ...review, reviewId: 'review-2' });
     await f.whenStable();
     expect(f.componentInstance.values()).toEqual({});

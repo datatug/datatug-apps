@@ -136,6 +136,7 @@ import {
         @if (current.interaction; as interaction) {
           <sneat-source-action-form
             [interaction]="interaction"
+            [contextKey]="formContextKey()"
             [busy]="current.busy || current.loading"
             (submitted)="submit(interaction.actionId, $event)"
             (cancelReview)="dispatch({ type: 'cancel-review' })"
@@ -233,6 +234,7 @@ export class SourceWorkspacePageComponent {
       this.page.currentEnvironment()?.id,
     ]),
   );
+  readonly formContextKey = computed(() => this.key());
   readonly view = computed(() =>
     this.active()?.key === this.key()
       ? this.active()?.controller.view()

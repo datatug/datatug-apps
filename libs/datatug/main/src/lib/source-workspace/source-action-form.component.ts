@@ -128,6 +128,7 @@ import {
 })
 export class SourceActionFormComponent {
   readonly interaction = input.required<SourceInteraction>();
+  readonly contextKey = input.required<string>();
   readonly busy = input(false);
   readonly submitted = output<Readonly<Record<string, SourceFieldValue>>>();
   readonly cancelReview = output<void>();
@@ -137,6 +138,7 @@ export class SourceActionFormComponent {
   readonly touched = signal(false);
   private readonly inputKey = computed(() =>
     JSON.stringify([
+      this.contextKey(),
       this.interaction().reviewId,
       this.interaction().phase,
       this.interaction().fields,
