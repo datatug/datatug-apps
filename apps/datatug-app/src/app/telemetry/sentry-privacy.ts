@@ -1,6 +1,11 @@
 import type { Breadcrumb, BrowserOptions, ErrorEvent } from '@sentry/browser';
 import { loopbackAgentOrigin } from '../agent-access/agent-link-code';
-import { onLinkRoute, scrubDeep, scrubUrl, hasQuickSearchOrigin } from './link-privacy';
+import {
+  onLinkRoute,
+  scrubDeep,
+  scrubUrl,
+  hasQuickSearchOrigin,
+} from './link-privacy';
 
 /** The transaction event of `beforeSendTransaction` (not exported by `@sentry/browser` itself). */
 export type TransactionEvent = Parameters<
@@ -37,8 +42,12 @@ function scrubRequestBreadcrumb(
 }
 
 /** Sentry's `beforeBreadcrumb`: see {@link withSentryLinkPrivacy}. */
-export function scrubSentryBreadcrumb(breadcrumb: Breadcrumb, sourceSensitive = false): Breadcrumb | null {
-  const dropQuery = sourceSensitive || onLinkRoute() || hasQuickSearchOrigin(breadcrumb);
+export function scrubSentryBreadcrumb(
+  breadcrumb: Breadcrumb,
+  sourceSensitive = false,
+): Breadcrumb | null {
+  const dropQuery =
+    sourceSensitive || onLinkRoute() || hasQuickSearchOrigin(breadcrumb);
   const category = breadcrumb.category ?? '';
   if (dropQuery && PAGE_TEXT_CATEGORIES.has(category)) {
     return null;
@@ -84,8 +93,12 @@ export function scrubSentryEvent<T extends ErrorEvent | TransactionEvent>(
  * `extra`; on every page a request to a loopback agent keeps only its method, status and address without query.
  */
 export function withSentryLinkPrivacy(options: BrowserOptions): BrowserOptions {
-  const { beforeSend, beforeSendTransaction, beforeBreadcrumb, beforeSendSpan } =
-    options;
+  const {
+    beforeSend,
+    beforeSendTransaction,
+    beforeBreadcrumb,
+    beforeSendSpan,
+  } = options;
   return {
     ...options,
     sendDefaultPii: false,
@@ -100,7 +113,10 @@ export function withSentryLinkPrivacy(options: BrowserOptions): BrowserOptions {
         : scrubbed;
     },
     beforeSendSpan: (span) => {
-      const scrubbed = scrubDeep(span, onLinkRoute() || hasQuickSearchOrigin(span));
+      const scrubbed = scrubDeep(
+        span,
+        onLinkRoute() || hasQuickSearchOrigin(span),
+      );
       return beforeSendSpan ? beforeSendSpan(scrubbed) : scrubbed;
     },
     beforeBreadcrumb: (breadcrumb, hint) => {

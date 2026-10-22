@@ -103,19 +103,63 @@ export function scrubUsageValue(value: string): string {
 /** PostHog events allowed besides the closed usage list: the scrubbed page view only. */
 const POSTHOG_EVENTS: ReadonlySet<string> = new Set(['$pageview']);
 
-/** Properties that can carry a page title, element text or person data: never sent. */
-const DROPPED_PROPERTIES = [
-  'title',
-  '$title',
-  '$el_text',
-  '$elements',
-  '$elements_chain',
-  '$set',
-  '$set_once',
-  '$unset',
-  '$user_id',
-  '$groups',
-];
+/**
+ * The only event properties that leave the browser: the closed usage parameters and a fixed set of PostHog's own
+ * technical properties. Everything else is dropped, so a new SDK default (campaign and click ids, referrers, initial
+ * person data, element text, titles) can never pass by default.
+ */
+const ALLOWED_PROPERTIES: ReadonlySet<string> = new Set([
+  // Usage parameters (USAGE_EVENT_NAMES) and Sneat's scrubbed `$pageview` path.
+  'page',
+  'project',
+  'outcome',
+  'kind',
+  'access',
+  'reason',
+  'act',
+  'walkthrough_id',
+  'walkthrough_version',
+  'mode',
+  'chapter_id',
+  'step_id',
+  'requirement',
+  'page_path',
+  // PostHog technical properties: delivery, the anonymous browser id, and coarse device facts.
+  'token',
+  'distinct_id',
+  '$device_id',
+  '$session_id',
+  '$window_id',
+  '$insert_id',
+  '$time',
+  '$lib',
+  '$lib_version',
+  '$process_person_profile',
+  '$is_identified',
+  '$pageview_id',
+  '$current_url',
+  '$host',
+  '$pathname',
+  '$browser',
+  '$browser_version',
+  '$os',
+  '$os_version',
+  '$device_type',
+  '$screen_height',
+  '$screen_width',
+  '$viewport_height',
+  '$viewport_width',
+  '$browser_language',
+  '$timezone',
+]);
+
+/** The only top-level keys of an event that leave the browser. */
+const ALLOWED_EVENT_KEYS: ReadonlySet<string> = new Set([
+  'uuid',
+  'event',
+  'properties',
+  'timestamp',
+]);
 
 const MAX_DEPTH = 10;
 
@@ -140,8 +184,8 @@ type PosthogEvent = {
 
 /**
  * Every PostHog event of DataTug: only `$pageview` and the closed usage list leave the browser (`$identify`,
- * `$create_alias`, `$set`, `$groupidentify`, autocapture, recordings and every other event are dropped), person
- * properties and titles are removed, and every address in it loses its query, fragment and identifiers.
+ * `$create_alias`, `$set`, `$groupidentify`, autocapture, recordings and every other event are dropped), only
+ * allowlisted properties stay (ALLOWED_PROPERTIES), and every address in them loses its query, fragment and ids.
  */
 export function scrubUsagePosthogEvent<T extends PosthogEvent | null>(
   event: T,
@@ -149,13 +193,16 @@ export function scrubUsagePosthogEvent<T extends PosthogEvent | null>(
   if (!event) return event;
   if (!POSTHOG_EVENTS.has(event.event) && !isUsageEventName(event.event))
     return null;
-  const rest: Record<string, unknown> = { ...event };
-  delete rest['$set'];
-  delete rest['$set_once'];
-  const scrubbed = scrubValues(rest) as T & PosthogEvent;
-  if (scrubbed.properties)
-    for (const key of DROPPED_PROPERTIES) delete scrubbed.properties[key];
-  return scrubbed;
+  const kept: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(event))
+    if (ALLOWED_EVENT_KEYS.has(key)) kept[key] = value;
+  if (event.properties) {
+    const properties: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(event.properties))
+      if (ALLOWED_PROPERTIES.has(key)) properties[key] = value;
+    kept['properties'] = properties;
+  }
+  return scrubValues(kept) as T & PosthogEvent;
 }
 
 /**
@@ -173,6 +220,10 @@ export function anonymousUsagePosthog(
     config: {
       ...settings.config,
       person_profiles: 'never',
+      // No utm_*, click ids (gclid, fbclid, msclkid…) or referrer as super-properties; mask personal URL params.
+      save_campaign_params: false,
+      save_referrer: false,
+      mask_personal_data_properties: true,
       autocapture: false,
       disable_session_recording: true,
       capture_pageview: false,

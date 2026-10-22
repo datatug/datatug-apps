@@ -34,7 +34,7 @@ describe('usage privacy', () => {
     expect(scrubUsageValue('rows')).toBe('rows');
   });
 
-  it('drops every event off the closed list, person data and titles', () => {
+  it('drops every event off the closed list, and every property off the allowlist', () => {
     for (const event of [
       '$identify',
       '$create_alias',
@@ -49,6 +49,7 @@ describe('usage privacy', () => {
     expect(scrubUsagePosthogEvent(null)).toBeNull();
     const at = new Date(0);
     const event = scrubUsagePosthogEvent({
+      uuid: 'u-1',
       event: '$pageview',
       timestamp: at,
       $set: { email: 'a@b.c' },
@@ -58,22 +59,34 @@ describe('usage privacy', () => {
         $title: 'acme/secret',
         $el_text: 'secret',
         $set: { email: 'a@b.c' },
+        utm_source: 'newsletter',
+        gclid: 'click-1',
+        fbclid: 'click-2',
+        $referrer: 'https://news.example/?id=7',
+        $raw_user_agent: 'UA',
+        $initial_current_url: 'https://datatug.app/?gclid=click-1',
+        $session_entry_url: 'https://datatug.app/?utm_source=x',
         page_path: '/project/github.com/acme/secret/-/query?x=1',
-        nested: [{ url: 'https://datatug.app/demo/logs?order=11045' }],
-        deep: {
+        $current_url: 'https://datatug.app/demo/logs?order=11045',
+        kind: [{ url: 'https://datatug.app/demo/logs?order=11045' }],
+        project: {
           a: { b: { c: { d: { e: { f: { g: { h: { i: { j: 'x' } } } } } } } } },
         },
-        count: 3,
+        $screen_width: 1024,
       },
     });
     expect(event).toEqual({
+      uuid: 'u-1',
       event: '$pageview',
       timestamp: at,
       properties: {
         page_path: '/project/github.com/:owner/:repo/-/query',
-        nested: [{ url: 'https://datatug.app/demo/logs' }],
-        deep: { a: { b: { c: { d: { e: { f: { g: { h: undefined } } } } } } } },
-        count: 3,
+        $current_url: 'https://datatug.app/demo/logs',
+        kind: [{ url: 'https://datatug.app/demo/logs' }],
+        project: {
+          a: { b: { c: { d: { e: { f: { g: { h: undefined } } } } } } },
+        },
+        $screen_width: 1024,
       },
     });
     expect(scrubUsagePosthogEvent({ event: 'source_reset' } as never)).toEqual({
@@ -99,6 +112,9 @@ describe('usage privacy', () => {
       disable_session_recording: true,
       capture_pageview: false,
       capture_pageleave: false,
+      save_campaign_params: false,
+      save_referrer: false,
+      mask_personal_data_properties: true,
     });
     const send = settings?.config?.before_send as (e: unknown) => unknown;
     expect(send({ event: '$identify', properties: {} })).toBeNull();
