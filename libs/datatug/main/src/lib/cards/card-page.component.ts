@@ -10,7 +10,7 @@ import {
   viewChild,
 } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
-import { ActivatedRoute, Router, RouterLink } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink, UrlTree } from '@angular/router';
 import {
   AlertController,
   IonBackButton,
@@ -74,6 +74,12 @@ import {
   uniqueCardId,
 } from './card-model';
 import { injectCardsContext } from './cards-context';
+import {
+  cardEntityNames,
+  cardQueryIds,
+  queryTitlesById,
+  type RelatedQueryFolder,
+} from './related-links';
 import { ProjectCardViewComponent } from './project-card-view.component';
 import {
   ParameterLookupButtonComponent,
@@ -199,6 +205,24 @@ export class CardPageComponent {
   private readonly view = viewChild(ProjectCardViewComponent);
 
   protected readonly finished = computed(() => finishCard(this.card()));
+  /** Entities this card shows, for its Related list. */
+  protected readonly relatedEntities = computed(() =>
+    cardEntityNames(this.card()),
+  );
+  /** Saved queries this card's widgets read, for its Related list. */
+  protected readonly relatedQueries = computed(() => cardQueryIds(this.card()));
+  /** Saved query titles by folder-qualified id, for the Related list. */
+  private readonly queryTitles = signal<ReadonlyMap<string, string>>(new Map());
+  protected queryTitle(queryId: string): string {
+    return this.queryTitles().get(queryId) ?? queryId;
+  }
+
+  /** A saved query's page: the id rides in `?id=` (see the `query/**` route). */
+  protected queryUrl(queryId: string): UrlTree | undefined {
+    const tree = this.ctx.url(['query', ...queryId.split('/')]);
+    if (tree) tree.queryParams = { ...tree.queryParams, id: queryId };
+    return tree;
+  }
   protected readonly problem = computed<string | undefined>(() => {
     const card = this.finished();
     if (!card.title.trim()) return 'Give the card a title.';
@@ -314,7 +338,12 @@ export class CardPageComponent {
       const subscription = this.queriesService
         .getQueriesFolder(ref, '~')
         .subscribe({
-          next: (folder) => this.queries.set(flattenQueryFolder(folder)),
+          next: (folder) => {
+            this.queries.set(flattenQueryFolder(folder));
+            this.queryTitles.set(
+              queryTitlesById(folder as RelatedQueryFolder | null | undefined),
+            );
+          },
           error: () =>
             this.queriesError.set('Saved queries could not be loaded.'),
         });

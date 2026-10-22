@@ -12,6 +12,7 @@ describe('savedQueryIsMissing', () => {
     url: string;
     state?: unknown;
     hasQuery?: Observable<boolean>;
+    id?: string;
   }): Promise<boolean> {
     const tree = new DefaultUrlSerializer().parse(options.url);
     const hasQuery = vi.fn(() => options.hasQuery ?? of(false));
@@ -31,8 +32,9 @@ describe('savedQueryIsMissing', () => {
     });
     const segments = [
       new UrlSegment('query', {}),
-      new UrlSegment('does', {}),
-      new UrlSegment('not-exist', {}),
+      ...(options.id
+        ? [new UrlSegment(options.id, {})]
+        : [new UrlSegment('does', {}), new UrlSegment('not-exist', {})]),
     ];
     return TestBed.runInInjectionContext(
       () => savedQueryIsMissing({} as never, segments, {} as never) as Promise<boolean>,

@@ -130,10 +130,17 @@ import {
 import { gridStateKey } from '../../../components/results-grid/results-grid-state';
 import { addIcons } from 'ionicons';
 import {
+  checkmarkOutline,
   copyOutline,
+  createOutline,
+  ellipsisHorizontal,
+  globeOutline,
   informationCircleOutline,
+  saveOutline,
+  searchOutline,
   shieldCheckmarkOutline,
 } from 'ionicons/icons';
+import { SneatAuthStateService } from '@sneat/auth-core';
 import {
   type ColDef,
   type CellFocusedEvent,
@@ -430,6 +437,7 @@ import {
   fromEvent,
   map,
   merge,
+  of,
   Subject,
   Subscription,
   timeout,
@@ -464,10 +472,10 @@ import {
   IonSegmentButton,
   IonSpinner,
   IonText,
-  IonTextarea,
   IonTitle,
   IonToolbar,
   ViewDidEnter,
+  AlertController,
 } from '@ionic/angular';
 import {
   AgentContextService,
@@ -816,6 +824,69 @@ export function extractLinkedEntityNames(
 
 let queryParameterEditorId = 0;
 
+/** Decodes a native parameter's text value into a typed value; throws when invalid. */
+function nativeTypedValue(parameter: IParameterDef, raw: string): TypedValue {
+    const kind =
+      parameter.type === 'integer'
+        ? 'integer'
+        : parameter.type === 'decimal' || parameter.type === 'money'
+          ? 'decimal'
+          : parameter.type === 'number' || parameter.type === 'float'
+            ? 'number'
+            : parameter.type === 'boolean' || parameter.type === 'bit'
+              ? 'boolean'
+              : parameter.type === 'date'
+                ? 'date'
+                : parameter.type === 'datetime'
+                  ? 'datetime'
+                  : ['string', 'text', 'UUID', 'GUID'].includes(parameter.type)
+                    ? 'string'
+                    : undefined;
+    if (!kind || parameter.isMultiValue)
+        throw new Error('This parameter type needs a supported editor.');
+      const candidate = {
+        type: kind,
+        value:
+          kind === 'number'
+            ? Number(raw)
+            : kind === 'boolean'
+              ? raw === 'true'
+                ? true
+                : raw === 'false'
+                  ? false
+                  : raw
+              : raw,
+      };
+      const value = decodeTypedValue(candidate);
+      if (
+        value.type === 'integer' &&
+        !Number.isSafeInteger(Number(value.value))
+      )
+        throw new Error(
+          'This integer cannot be represented losslessly by SQL.',
+        );
+  return value;
+}
+
+/** A parameter's declared default (the saved demo value), typed; undefined when absent or invalid. */
+function declaredParameterDefault(
+  parameter: IParameterDef,
+): TypedValue | undefined {
+  const declared = parameter.defaultValue;
+  if (
+    declared === undefined ||
+    declared === null ||
+    Array.isArray(declared) ||
+    typeof declared === 'object'
+  )
+    return undefined;
+  try {
+    return nativeTypedValue(parameter, String(declared));
+  } catch {
+    return undefined;
+  }
+}
+
 @Component({
   selector: 'sneat-datatug-sql-editor',
   templateUrl: './query-page.component.html',
@@ -902,7 +973,6 @@ let queryParameterEditorId = 0;
     IonNote,
     IonSpinner,
     IonText,
-    IonTextarea,
     SourceRightsNoticeComponent,
     LimitationHeaderComponent,
   ],
@@ -2003,6 +2073,292 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public editorState?: IQueryEditorState = undefined;
   /** Current selected query's header label; normalized only for presentation. */
   public readonly queryPageTitle = signal('Query');
+
+  /** The header's second line: what kind of query this is and the source it reads. */
+  public readonly querySourceSubtitle = computed(() => {
+    const def = this.queryDef();
+    if (!def) return '';
+    const type = def.request.queryType;
+    const kind =
+      type === QueryType.SQL
+        ? 'SQL'
+        : type === QueryType.HTTP
+          ? 'HTTP'
+          : type === QueryType.DTQL && this.isNativeDtqlWorkspace()
+            ? 'DTQL'
+            : type === QueryType.DTQL || type === QueryType.TugQL
+              ? 'TugQL'
+              : String(type ?? '');
+    const source = def.connectionId;
+    return source ? `${kind} · ${source}` : kind;
+  });
+
+  private readonly alertController = inject(AlertController);
+  private readonly authStatus = toSignal(
+    inject(SneatAuthStateService, { optional: true })?.authState.pipe(
+      map((state) => state.status),
+    ) ?? of(undefined),
+    { initialValue: undefined },
+  );
+
+  /** `true` when this visitor cannot save the query, so authoring actions
+   * (Save, Validators) are hidden instead of shown inert. */
+  public isQueryReadOnly(): boolean {
+    if (isDevicePersonalQuery(this.queryState.id ?? '')) return false;
+    if (this.queryState.saveSupported === false || !this.canSaveQuery())
+      return true;
+    const ref = this.project?.ref;
+    return (
+      !!ref &&
+      isGithubStoreId(ref.storeId) &&
+      !ref.projectApi &&
+      this.authStatus() !== 'authenticated'
+    );
+  }
+
+  /** The one line that tells a read-only visitor why the authoring actions are hidden. */
+  public queryReadOnlyReason(): string {
+    const reason = (this.queryState as { unsupportedSaveReason?: string })
+      .unsupportedSaveReason;
+    if (this.queryState.saveSupported === false && reason)
+      return `Read-only: ${reason}`;
+    const ref = this.project?.ref;
+    if (
+      ref &&
+      isGithubStoreId(ref.storeId) &&
+      !ref.projectApi &&
+      this.authStatus() !== 'authenticated'
+    )
+      return 'Read-only: sign in to save changes. You can still run this query here.';
+    return 'Read-only: this project does not accept saves from here. You can still run this query.';
+  }
+
+  /** The Save button carries the save state: "Saved" (done), "Save" (changes), "Saving". */
+  public saveButtonLabel(): string {
+    const state = this.querySaveState();
+    return state.startsWith('Unsaved') ? 'Save' : state;
+  }
+
+  /** The views that are not tabs of their own for a saved SQL/DTQL query. */
+  public readonly workspaceOverflowTabs = computed<
+    readonly { readonly value: WorkspaceTab; readonly label: string }[]
+  >(() => {
+    if (this.isTugqlAuthorJourney()) return [];
+    const native = this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace();
+    const tabs: { value: WorkspaceTab; label: string }[] = [
+      { value: 'compose', label: 'Compose' },
+    ];
+    if (native) tabs.push({ value: 'tugql', label: 'TugQL' });
+    tabs.push(
+      { value: 'preview', label: 'Preview SQL' },
+      { value: 'sources', label: 'Sources' },
+      { value: 'related', label: 'Related' },
+    );
+    return tabs;
+  });
+
+  /** Whether a workspace view gets a segment button: always in the author
+   * journey, otherwise only primary views and the overflow view that is open. */
+  public showWorkspaceTab(tab: WorkspaceTab): boolean {
+    if (this.isTugqlAuthorJourney()) return true;
+    if (
+      tab === 'tugql' &&
+      !this.isNativeSqlWorkspace() &&
+      !this.isNativeDtqlWorkspace()
+    )
+      return true;
+    return this.workspaceTab() === tab;
+  }
+
+  /** Required parameters of a saved SQL/DTQL query that still have no value. */
+  public readonly nativeMissingRequiredParameters = computed(() => {
+    if (this.isTugqlAuthorJourney()) return [];
+    const bindings = this.bindings();
+    return (this.queryDef()?.parameters ?? []).filter((p) => {
+      if (!p.isRequired) return false;
+      const binding = bindings.find((b) => b.parameterId === p.id);
+      return !binding || binding.value === undefined;
+    });
+  });
+
+  /** Why parameters keep Run off for a saved SQL/DTQL query, if they do. */
+  private readonly nativeParameterBlock = computed<
+    { readonly message: string; readonly action: string } | undefined
+  >(() => {
+    if (this.isTugqlAuthorJourney()) return undefined;
+    const parameters = this.queryDef()?.parameters ?? [];
+    if (!parameters.length) return undefined;
+    const errors = this.nativeParameterErrors();
+    const invalid = parameters.filter((p) => errors.has(p.id));
+    if (invalid.length)
+      return {
+        message: `Run is off: enter a valid value for ${invalid
+          .map((p) => p.title || p.id)
+          .join(', ')}.`,
+        action: 'Set parameters',
+      };
+    const missing = this.nativeMissingRequiredParameters();
+    if (missing.length)
+      return {
+        message: `Run is off until you set ${missing
+          .map((p) => p.title || p.id)
+          .join(', ')}.`,
+        action: 'Set parameters',
+      };
+    if (this.bindings().some((b) => b.blocked))
+      return {
+        message: 'Run is off: confirm the highlighted parameter value first.',
+        action: 'Review parameters',
+      };
+    return undefined;
+  });
+
+  /** Why Run is off for a saved SQL/DTQL query, in the visitor's words, for
+   * every cause `nativeRunDisabled()` checks; `action` names the Parameters
+   * recovery when parameters are the cause. */
+  public nativeRunBlock():
+    | { readonly message: string; readonly action?: string }
+    | undefined {
+    if (this.isTugqlAuthorJourney() || this.running()) return undefined;
+    if (this.demoDraftLoading())
+      return { message: 'Loading the browser copy of this query…' };
+    if (this.demoDraftRecovery())
+      return {
+        message: 'Run is off: the browser copy of this query is unavailable.',
+      };
+    if (!this.queryId || !this.project)
+      return { message: 'Run is off while the query loads.' };
+    if (this.unavailableWorkingCopy())
+      return {
+        message:
+          'Run is off: the selected working copy is not open. Choose another runtime.',
+      };
+    const parameters = this.nativeParameterBlock();
+    if (parameters) return parameters;
+    if (this.hasBlockedBindings())
+      return {
+        message: 'Run is off: confirm the highlighted parameter value first.',
+        action: 'Review parameters',
+      };
+    if (this.isHostedProject) {
+      if (!this.hostedDetectiveState()?.capabilities?.canRun)
+        return { message: 'Run is off: this project does not allow you to run queries.' };
+      if (!this.hostedEnvironment())
+        return { message: 'Run is off: choose an environment first.' };
+      if (this.queryState.isNew)
+        return { message: 'Run is off: save this query first.' };
+      if (this.queryState.isSaving) return { message: 'Saving…' };
+      if (this.isChanged)
+        return {
+          message:
+            'Run is off: save your changes first. Hosted runs use the saved query.',
+        };
+    }
+    if (
+      !this.queryDef()?.connectionId &&
+      this.availableTargets().length > 0 &&
+      !this.selectedSource()
+    )
+      return { message: 'Run is off: choose a source to run against.' };
+    return undefined;
+  }
+
+  /** The polite announcement for the Save button's progress. */
+  public saveAnnouncement(): string {
+    const state = this.querySaveState();
+    return state === 'Saving' || state.startsWith('Saved') ? state : '';
+  }
+
+  /** Whether the More views popover is open (for aria-expanded). */
+  public readonly workspaceMoreOpen = signal(false);
+
+  /** A saved SQL/DTQL query outside the author journey: views from More open
+   * as one extra tab after Parameters. */
+  public nativeOverflowLayout(): boolean {
+    return (
+      !this.isTugqlAuthorJourney() &&
+      (this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace())
+    );
+  }
+
+  /** The header offers Rename wherever the page shows no title field (that
+   * field is only for naming a new or untitled saved SQL/DTQL query). */
+  public canRenameQuery(): boolean {
+    if (!this.queryDef() && !this.queryState.def) return false;
+    return (
+      this.isTugqlAuthorJourney() ||
+      (!this.queryState.isNew && !!this.queryState.title)
+    );
+  }
+
+  /** Renames a saved query from the header (writers only). */
+  public async renameQuery(): Promise<void> {
+    const alert = await this.alertController.create({
+      header: 'Rename query',
+      inputs: [
+        {
+          name: 'title',
+          type: 'text',
+          value: this.queryState.title ?? this.queryPageTitle(),
+          attributes: { 'aria-label': 'Query title', maxlength: 200 },
+        },
+      ],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Rename', role: 'confirm' },
+      ],
+    });
+    await alert.present();
+    const { data, role } = await alert.onDidDismiss<{
+      values?: { title?: string };
+    }>();
+    const title = data?.values?.title?.trim();
+    if (role !== 'confirm' || !title || title === this.queryState.title)
+      return;
+    this.queryTitleChanged(new CustomEvent('ionChange', { detail: { value: title } }));
+  }
+
+  /** Whether Run is unavailable for a saved SQL/DTQL query right now. */
+  public nativeRunDisabled(): boolean {
+    return (
+      this.running() ||
+      this.demoDraftLoading() ||
+      !!this.demoDraftRecovery() ||
+      this.unavailableWorkingCopy() ||
+      !this.queryId ||
+      !this.project ||
+      this.hasBlockedBindings() ||
+      (this.isHostedProject &&
+        (!this.hostedDetectiveState()?.capabilities?.canRun ||
+          !this.hostedEnvironment() ||
+          !!this.queryState.isNew ||
+          !!this.queryState.isSaving ||
+          this.isChanged)) ||
+      (!this.queryDef()?.connectionId &&
+        this.availableTargets().length > 0 &&
+        !this.selectedSource())
+    );
+  }
+
+  /** Saved HTTP record lookups, labelled so the HTTP step is visible. */
+  public readonly httpLookupSteps = computed(() => {
+    const federation = this.queryDef()?.federation;
+    if (!federation?.lookups?.length) return [];
+    let host = '';
+    try {
+      host = new URL(federation.ovdbBaseUrl).host;
+    } catch {
+      host = '';
+    }
+    return federation.lookups.map((lookup) => {
+      const fields = lookup.fields
+        .map((field) => `${field.source} → ${field.target}`)
+        .join(', ');
+      return `Looks up ${lookup.database}.${lookup.collection} for each ${lookup.fromColumn}${
+        fields ? ` · ${fields}` : ''
+      }${host ? ` · ${host}` : ''}`;
+    });
+  });
   public queryState: IQueryState = {
     id: '',
     queryType: QueryType.SQL,
@@ -6443,7 +6799,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
           });
       });
     });
-    addIcons({ copyOutline, informationCircleOutline, shieldCheckmarkOutline });
+    addIcons({
+      checkmarkOutline,
+      copyOutline,
+      createOutline,
+      ellipsisHorizontal,
+      globeOutline,
+      informationCircleOutline,
+      saveOutline,
+      searchOutline,
+      shieldCheckmarkOutline,
+    });
     this.observedSecurityContextId = this.agentContext.securityContextId();
     this.hasObservedSecurityContext = true;
     const navigationQuery = history.state.query as IQueryDef | undefined;
@@ -6793,6 +7159,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             : legacyDtql
               ? 'dtql'
               : 'tugql',
+        );
+        // No dead end: a saved query with a required parameter opens on
+        // Parameters, where its value (pre-filled from a declared demo value
+        // when there is one) and any reason Run is off are visible.
+        afterNextRender(
+          () => {
+            if (
+              this.loadedTextRepresentation()?.scope !== representationScope ||
+              this.isTugqlAuthorJourney() ||
+              !!this.savedResultId() ||
+              !(this.queryDef()?.parameters ?? []).some((p) => p.isRequired)
+            )
+              return;
+            const tab = this.workspaceTab();
+            if (tab === 'sql' || tab === 'dtql' || tab === 'tugql')
+              this.selectWorkspaceTab('parameters');
+          },
+          { injector: this.injector },
         );
       }
       const nextPlanIdentity = graphStableIdentity(
@@ -7923,11 +8307,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
    */
   private updateBindings(explicitlyResolvedParameterId?: string): void {
     const parameterDefs = this.queryState.def?.parameters || [];
-    const parameters: BindingParameterRef[] = parameterDefs.map((p) => ({
-      id: p.id,
-      meta: p.meta,
-      required: p.isRequired,
-    }));
+    const parameters: BindingParameterRef[] = parameterDefs.map((p) => {
+      const defaultValue = declaredParameterDefault(p);
+      return {
+        id: p.id,
+        meta: p.meta,
+        required: p.isRequired,
+        ...(defaultValue ? { defaultValue } : {}),
+      };
+    });
     if (!parameters.length) {
       if (this.isHostedProject && this.bindings().length)
         this.retainedScope.invalidate();
@@ -8319,46 +8707,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.clearNativeParameter(parameter.id);
       return;
     }
-    const kind =
-      parameter.type === 'integer'
-        ? 'integer'
-        : parameter.type === 'decimal' || parameter.type === 'money'
-          ? 'decimal'
-          : parameter.type === 'number' || parameter.type === 'float'
-            ? 'number'
-            : parameter.type === 'boolean' || parameter.type === 'bit'
-              ? 'boolean'
-              : parameter.type === 'date'
-                ? 'date'
-                : parameter.type === 'datetime'
-                  ? 'datetime'
-                  : ['string', 'text', 'UUID', 'GUID'].includes(parameter.type)
-                    ? 'string'
-                    : undefined;
     try {
-      if (!kind || parameter.isMultiValue)
-        throw new Error('This parameter type needs a supported editor.');
-      const candidate = {
-        type: kind,
-        value:
-          kind === 'number'
-            ? Number(raw)
-            : kind === 'boolean'
-              ? raw === 'true'
-                ? true
-                : raw === 'false'
-                  ? false
-                  : raw
-              : raw,
-      };
-      const value = decodeTypedValue(candidate);
-      if (
-        value.type === 'integer' &&
-        !Number.isSafeInteger(Number(value.value))
-      )
-        throw new Error(
-          'This integer cannot be represented losslessly by SQL.',
-        );
+      const value = nativeTypedValue(parameter, raw);
       this.nativeParameterErrors.set(
         new Map(
           [...this.nativeParameterErrors()].filter(

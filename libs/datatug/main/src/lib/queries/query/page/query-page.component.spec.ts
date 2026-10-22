@@ -2802,6 +2802,29 @@ select i.InvoiceId
     expect(prepare).not.toHaveBeenCalled();
   });
 
+  it('carries the save state on the Save button, announces progress outside it, and renames from the header', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.queryState = {
+      ...component.queryState,
+      title: component.queryDef()?.title,
+      saveSupported: true,
+    };
+    expect(component.isChanged).toBe(false);
+    expect(component.saveButtonLabel()).toBe(component.querySaveState());
+    expect(component.saveButtonLabel()).not.toBe('Save');
+    expect(component.canRenameQuery()).toBe(true);
+    component.queryTitleChanged(
+      new CustomEvent('ionChange', { detail: { value: 'Renamed query' } }),
+    );
+    expect(component.queryState.title).toBe('Renamed query');
+    expect(component.isChanged).toBe(true);
+    expect(component.saveButtonLabel()).toBe('Save');
+    expect(component.saveAnnouncement()).toBe('');
+    component.queryState = { ...component.queryState, isSaving: true };
+    expect(component.saveButtonLabel()).toBe('Saving');
+    expect(component.saveAnnouncement()).toBe('Saving');
+  });
+
   it('applies the singleton admitted join immediately without outputs and undoes its source and binding together', async () => {
     component = await createTugQLAuthor(authorSource);
     component.queryState = {
@@ -9064,7 +9087,7 @@ select (
           .split('<ion-content color="light">')[1]
           .split('  <ng-template #queryEditor>')[1]
           .split(
-            '  @if (!isTugqlAuthorJourney()) {\n    <ion-card>\n      <ion-item>\n        <ion-input',
+            '  @if (!isTugqlAuthorJourney() && (queryState.isNew || !queryState.title)) {',
           )[0];
         native.http.mockClear();
         component = await createComponent({}, definition, template);
@@ -11096,29 +11119,32 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     fx.dispatchBrowserResponse.mockReset();
   });
 
-  it('uses the shared CodeMirror editor for native SQL and keeps textareas for other queries', () => {
+  it('uses the shared CodeMirror editor for both native SQL and saved DTQL sources', () => {
     const template = readFileSync(
       resolve(
         'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
       ),
       'utf8',
     );
-    const sqlBranch = template.indexOf('@if (isNativeSqlWorkspace()) {', template.indexOf('data-testid="unified-text-workspace"'));
+    const workspace = template.indexOf('data-testid="unified-text-workspace"');
+    const sqlBranch = template.indexOf('@if (isNativeSqlWorkspace()) {', workspace);
     const sqlEditor = template.indexOf('<sneat-datatug-sql', sqlBranch);
-    const fallbackTextarea = template.indexOf('<ion-textarea', sqlEditor);
+    const dtqlBranch = template.indexOf('@if (isNativeDtqlWorkspace()) {', sqlEditor);
+    const dtqlEditor = template.indexOf('<sneat-datatug-sql', dtqlBranch);
 
     expect(sqlBranch).toBeGreaterThanOrEqual(0);
     expect(sqlEditor).toBeGreaterThan(sqlBranch);
     expect(
       template.indexOf('(sqlChanged)="sqlTextChanged($event)"', sqlEditor),
     ).toBeGreaterThan(sqlEditor);
-    expect(fallbackTextarea).toBeGreaterThan(sqlEditor);
+    expect(dtqlBranch).toBeGreaterThan(sqlEditor);
+    expect(dtqlEditor).toBeGreaterThan(dtqlBranch);
     expect(
-      template.indexOf(
-        '(ionInput)="queryTextChanged($event)"',
-        fallbackTextarea,
-      ),
-    ).toBeGreaterThan(fallbackTextarea);
+      template.indexOf('(sqlChanged)="sqlTextChanged($event)"', dtqlEditor),
+    ).toBeGreaterThan(dtqlEditor);
+    expect(template.slice(workspace, dtqlEditor + 600)).not.toContain(
+      '<ion-textarea data-testid="query-body-text"',
+    );
   });
 
   it('mounts SQL editor bindings and preserves the editable non-SQL textarea branch', async () => {
@@ -11141,24 +11167,19 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     expect(component.queryBodyText()).toBe('SELECT 2;');
   });
 
-  it('keeps the non-SQL query textarea editable and connected to queryTextChanged', async () => {
+  it('shows a saved DTQL source in the shared code editor, connected to the draft', async () => {
     component = await createComponent(dtqlDef, queryTextEditorTemplate(), [
       SqlEditorHostStub,
     ]);
     fixture.detectChanges();
-    expect(
-      fixture.debugElement.query(By.directive(SqlEditorHostStub)),
-    ).toBeNull();
-    const textarea = fixture.nativeElement.querySelector(
-      '[data-testid="query-body-text"]',
-    ) as HTMLElement;
-    expect(textarea.tagName.toLowerCase()).toBe('ion-textarea');
-    textarea.dispatchEvent(
-      new CustomEvent('ionInput', {
-        detail: { value: 'from:\n  name: Artist\n' },
-        bubbles: true,
-      }),
+    const editors = fixture.debugElement.queryAll(
+      By.directive(SqlEditorHostStub),
     );
+    const dtqlEditor = editors.find(
+      (e) => e.componentInstance.ariaLabel() === 'DTQL source',
+    );
+    expect(dtqlEditor).toBeDefined();
+    dtqlEditor?.componentInstance.sqlChanged.emit('from:\n  name: Artist\n');
     fixture.detectChanges();
     expect(component.queryBodyText()).toBe('from:\n  name: Artist\n');
   });

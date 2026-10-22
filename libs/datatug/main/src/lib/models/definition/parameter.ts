@@ -9,7 +9,8 @@ export interface IParameterDef {
   readonly minLength?: number;
   readonly isRequired?: boolean;
   readonly isMultiValue?: boolean;
-  /** Used when no source supplies a value (HTTP query parameters). */
+  /** Used when no source supplies a value (HTTP query parameters); the query
+   * page also pre-fills it (for example a demo value). Run stays explicit. */
   readonly defaultValue?: ParameterValue;
   /**
    * An HTTP query parameter used only in credential headers: required, no

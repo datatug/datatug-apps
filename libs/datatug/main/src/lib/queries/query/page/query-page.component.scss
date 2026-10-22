@@ -1,14 +1,28 @@
 .query-page-title {
   flex: 1 1 auto;
   min-width: 0;
-  max-width: min(54vw, 38rem);
 }
 .query-mobile-title {
   display: none;
 }
 .query-save-state {
-  margin-inline: 0.5rem;
   white-space: nowrap;
+}
+.workspace-tab-row {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  min-width: 0;
+  padding-inline-end: 0.75rem;
+}
+.workspace-tab-row .workspace-main-tabs {
+  flex: 1 1 auto;
+  width: auto;
+}
+.workspace-more,
+.workspace-run {
+  flex: none;
+  margin: 0;
 }
 .author-receipt-details ion-note[slot='end'] {
   max-width: 55%;
@@ -281,6 +295,7 @@
     padding: 0;
     text-align: start;
     min-width: 0;
+    flex: 1 1 auto;
   }
   .query-action ion-icon {
     margin-inline: 0;
@@ -302,4 +317,36 @@
   border-radius: 6px;
   background: var(--ion-color-light);
   color: var(--ion-text-color);
+}
+
+// Small grey notes: read-only reason, fixed public source, runtime hint.
+.query-read-only-note,
+.query-runtime-note,
+.query-runtime-hint {
+  margin: 0;
+  padding: 0.5rem var(--ion-padding, 16px);
+  font-size: 0.8125rem;
+  color: var(--ion-color-medium-shade);
+}
+.query-runtime-hint {
+  padding-top: 0;
+}
+// A Run that cannot run reads as off, not merely pale (Ionic's
+// .ion-color-* classes set these with !important).
+.workspace-run.button-disabled {
+  opacity: 1;
+  --ion-color-base: var(--ion-background-color-step-150, #e0e2e6) !important;
+  --ion-color-contrast: var(--ion-text-color-step-400, #5c6066) !important;
+  cursor: not-allowed;
+}
+// Narrow screens: tabs fit beside More and Run; buttons keep their icon only.
+.workspace-tab-row ion-segment-button {
+  min-width: auto;
+  --padding-start: 10px;
+  --padding-end: 10px;
+}
+@media (max-width: 575.98px) {
+  .narrow-hidden {
+    display: none;
+  }
 }

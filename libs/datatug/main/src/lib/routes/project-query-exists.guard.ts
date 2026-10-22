@@ -2,6 +2,7 @@ import { inject } from '@angular/core';
 import { CanMatchFn, Router } from '@angular/router';
 import { catchError, firstValueFrom, of } from 'rxjs';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
+import { isDevicePersonalQuery } from '../queries/device-personal-queries';
 import { readShortGithubAddress } from './github-project-address-check';
 
 /** Query-string flags of an editor that holds a query the project does not (yet) have saved. */
@@ -28,6 +29,8 @@ export const savedQueryIsMissing: CanMatchFn = async (_route, segments) => {
     .join('/');
   const id = fromPath || String(typed.queryParams['id'] ?? '');
   if (!id) return false;
+  // A device-personal copy lives only in this browser, never in the project's file tree.
+  if (isDevicePersonalQuery(id)) return false;
   const reader = inject(GithubProjectReaderService);
   const exists = await firstValueFrom(
     reader

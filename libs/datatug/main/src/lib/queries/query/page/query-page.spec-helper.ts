@@ -112,6 +112,7 @@ export class SqlEditorHostStub {
   readonly disabled = input(false);
   readonly lineNumbers = input(true);
   readonly autoCloseBrackets = input(true);
+  readonly ariaLabel = input('SQL query');
   readonly sqlChanged = output<string>();
 }
 
