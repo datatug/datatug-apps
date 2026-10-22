@@ -1741,7 +1741,8 @@ test.describe('every other route behaves as it does on main', () => {
   for (const path of [
     '/no-such-route-xyz?q=1',
     // (`/project/github.com/datatug/chinook-demo` used to be here: since G-A1b it is the project, at its short address.)
-    '/project/github.com/datatug/chinook-demo/chat/extra',
+    // (`/project/github.com/datatug/chinook-demo/chat/extra` used to be here: an unknown page under a project now
+    // shows the project's not-found page instead of NG04002, see project-page-not-found.component.spec.ts.)
     '/demo/other?q=1',
     '/demo(menu:x)?q=1', // an outlet group: not a hand-off address, for the script and the router alike
   ]) {
