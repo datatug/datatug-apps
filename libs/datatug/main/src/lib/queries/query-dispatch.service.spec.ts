@@ -1,3 +1,5 @@
+import { decodeTypedValue } from '@sneat/datatug-semantic';
+import { fromProjectQueryWire } from './project-query-contract';
 import comparisonFixture from '../evidence/testdata/comparison-http.go.json';
 import { decodeQueryComparison } from './query-comparison';
 import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
@@ -17,6 +19,18 @@ import type { OvdbConnection } from '../ovdb/ovdb-connection';
 import { QueryRuntimeRegistry } from './query-runtime-registry.service';
 import { FederatedQueryService } from './federated-query.service';
 import { createHostedDemoDbQuery } from './hosted-demo-db-query';
+
+function comparisonDefinition(wire: typeof comparisonFixture.open.savedQuery) {
+  if (wire.type !== QueryType.SQL) throw new Error('Expected actual SQL fixture');
+  return fromProjectQueryWire({ ...wire, type: QueryType.SQL });
+}
+function comparisonFixtureInputs(wire: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(wire).map(([key, raw]) => {
+    const value = decodeTypedValue(raw);
+    if (value.type !== 'integer') throw new Error('Expected actual integer fixture');
+    return [key, { ...value }];
+  }));
+}
 
 const sqlDefinition = (): IQueryDef => ({
   id: 'report', title: 'Report',
@@ -249,12 +263,12 @@ describe('QueryDispatchService transport boundary', () => {
   it('freezes the full actual comparison pair and saved declaration before hosted dispatch',async()=>{
     const wire=structuredClone(comparisonFixture),q=wire.open.savedQuery;
     hosted.mockReturnValue(of(wire.run));
-    const definition={...q,request:{queryType:QueryType.SQL,text:q.text}} as IQueryDef;
-    const declaration=decodeQueryComparison(q.comparison),inputs=structuredClone(wire.request.inputs);
+    const definition=comparisonDefinition(q);
+    const declaration=decodeQueryComparison(q.comparison),inputs=comparisonFixtureInputs(wire.request.inputs);
     const session=service.start({projectRef:{storeId:'firestore',spaceID:wire.request.spaceID,projectId:wire.request.project},
       definition,queryId:wire.request.queryId,environment:wire.request.environment,target:{kind:'hosted-cloud'},principal:'actor',
       parameters:inputs,operationId:wire.request.operationId,evidence:wire.request.evidence as unknown as AppliedEvidenceRequest});
-    inputs.order_id.value='11062';
+    inputs['order_id'].value='11062';
     const result=await session.hostedResponse;
     expect(result?.comparison).toEqual(wire.run.comparison);
     expect(hosted.mock.calls[0][3]).toEqual(wire.request.inputs);
@@ -264,11 +278,11 @@ describe('QueryDispatchService transport boundary', () => {
   it.each(['no-evidence','equal','missing','changed-response'] as const)('refuses %s comparative dispatch/admission',async mode=>{
     const wire=structuredClone(comparisonFixture),q=wire.open.savedQuery;
     hosted.mockReturnValue(of(mode==='changed-response'?{...wire.run,comparison:{...wire.run.comparison,queryRevision:'other'}}:wire.run));
-    const inputs:Record<string,import('@sneat/datatug-semantic').TypedValue>=structuredClone(wire.request.inputs) as Record<string,import('@sneat/datatug-semantic').TypedValue>;
+    const inputs=comparisonFixtureInputs(wire.request.inputs);
     if(mode==='equal')inputs['comparison_order_id']={type:'integer',value:'11045'};
     if(mode==='missing')Reflect.deleteProperty(inputs,'comparison_order_id');
     const session=service.start({projectRef:{storeId:'firestore',spaceID:wire.request.spaceID,projectId:wire.request.project},
-      definition:{...q,request:{queryType:QueryType.SQL,text:q.text}} as IQueryDef,queryId:wire.request.queryId,environment:wire.request.environment,target:{kind:'hosted-cloud'},principal:'actor',
+      definition:comparisonDefinition(q),queryId:wire.request.queryId,environment:wire.request.environment,target:{kind:'hosted-cloud'},principal:'actor',
       parameters:inputs,...(mode!=='no-evidence'?{evidence:wire.request.evidence as unknown as AppliedEvidenceRequest}:{})});
     await expect(Promise.all([session.result,session.hostedResponse])).rejects.toThrow();
     if(mode!=='changed-response')expect(hosted).not.toHaveBeenCalled();
