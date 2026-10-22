@@ -294,13 +294,7 @@ export class BoardWidgetComponent {
       const lifetime = this.nativeRunLifetime.capture(
         ref,
         this.choices.actor(),
-        this.definition()?.connectionId === 'shipping-working-copy' ||
-          this.boardContext()?.evidenceSelection
-          ? {
-              sourceId: 'shipping-working-copy',
-              environment: this.boardContext()?.environment || '',
-            }
-          : undefined,
+        { environment: this.boardContext()?.environment || '' },
       );
       await firstValueFrom(
         read(ref, id).pipe(
@@ -985,13 +979,7 @@ export class BoardWidgetComponent {
           ? this.nativeRunLifetime.capture(
               ref,
               actor,
-              this.definition()?.connectionId === 'shipping-working-copy' ||
-                this.boardContext()?.evidenceSelection
-                ? {
-                    sourceId: 'shipping-working-copy',
-                    environment: this.boardContext()?.environment || '',
-                  }
-                : undefined,
+              { environment: this.boardContext()?.environment || '' },
             )
           : undefined;
       const readSignal = originalNative
@@ -1123,12 +1111,7 @@ export class BoardWidgetComponent {
         ? this.nativeRunLifetime.capture(
             ref,
             actor,
-            selection || definition.connectionId === 'shipping-working-copy'
-              ? {
-                  sourceId: 'shipping-working-copy',
-                  environment: context?.environment || '',
-                }
-              : undefined,
+            { environment: context?.environment || '' },
           )
         : undefined;
       if (selection) {

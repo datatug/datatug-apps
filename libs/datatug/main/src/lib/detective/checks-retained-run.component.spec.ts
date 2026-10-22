@@ -469,7 +469,7 @@ describe('Ordinary Check retained evidence before a Case', () => {
     held.complete();
     fixture.destroy();
   });
-  it('cancels a pending shared Check on matching source reset, clears the current selection, and preserves historical runs', async () => {
+  it.each(['shipping-working-copy', 'telemetry-source'])('cancels a pending shared Check on matching %s reset, clears the current selection, and preserves historical runs', async (sourceId) => {
     client.state.mockReturnValue(
       of({
         checks: [check],
@@ -540,7 +540,7 @@ describe('Ordinary Check retained evidence before a Case', () => {
     TestBed.inject(NativeSourceInvalidationService).invalidate({
       projectRef: ref,
       actor: 'fixture-actor',
-      sourceId: 'shipping-working-copy',
+      sourceId,
       action: 'reset',
     });
     expect(signal.aborted).toBe(true);

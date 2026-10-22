@@ -1377,9 +1377,7 @@ export class ChecksPageComponent {
           this.nativeRunLifetime.capture(
             ref,
             context.principal,
-            selection
-              ? { sourceId: 'shipping-working-copy', environment }
-              : undefined,
+            { environment },
           ).signal,
         ]);
       } catch (error) {
