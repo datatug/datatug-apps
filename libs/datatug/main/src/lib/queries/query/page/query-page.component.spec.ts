@@ -2987,6 +2987,27 @@ select (
     expect(component.canChoosePublicSqliteSource()).toBe(true);
   });
 
+  it('shows the local-OVDB card, not the generic offline copy, when a local federation run fails with a real fetch TypeError', async () => {
+    component = await createComponent();
+    component.queryDef.set({
+      ...queryDef,
+      federation: {
+        ovdbBaseUrl: 'http://127.0.0.1:50501',
+        tables: [{ name: 'Invoice', database: 'orders', fields: ['id'] }],
+      },
+    } as IQueryDef);
+    const scope = { project: 'p', environment: 'e', securityContextId: 's' };
+    vi.spyOn(TestBed.inject(InvestigationContextService), 'isCurrentScope').mockReturnValue(true);
+    (component as unknown as {
+      handleRunError(err: unknown, request: unknown, scope: unknown): void;
+    }).handleRunError(new TypeError('Failed to fetch'), { mode: 'live' }, scope);
+    expect(component.runError()).not.toMatch(/failed to fetch/i);
+    expect(component.localOvdbNeeded()).toMatchObject({ baseUrl: 'http://127.0.0.1:50501', databases: ['orders'] });
+    // A later, unrelated error replaces the text: the card must go.
+    component.runError.set('Save this query before running its hosted revision.');
+    expect(component.localOvdbNeeded()).toBeUndefined();
+  });
+
   it('keeps a Space query draft editable but refuses to execute unsaved SQL in the browser', async () => {
     component = await createComponent();
     component.project = {

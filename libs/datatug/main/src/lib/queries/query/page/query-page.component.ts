@@ -2253,8 +2253,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   });
   /** A failed run of a query that reads an OVDB server on this computer: say what to start instead of "Failed to fetch". */
   public readonly localOvdbNeeded = computed(() =>
-    localOvdbRequirement(this.queryDef(), this.runError(), globalThis.location?.origin ?? ''),
+    localOvdbRequirement(
+      this.queryDef(),
+      this.runError(),
+      globalThis.location?.origin ?? '',
+      // Only while the shown text is still the one this classification was made for.
+      this.runConnectionFailure()?.text === this.runError(),
+    ),
   );
+  /** The rendered run-failure text paired with whether the raw error was a lost connection (the text no longer says so). */
+  private readonly runConnectionFailure = signal<{ text: string } | undefined>(undefined);
   public readonly localOvdbCopyStatus = signal('');
   public async copyLocalOvdbCommand(command: string): Promise<void> {
     try {
@@ -10572,7 +10580,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       return;
     }
-    this.runError.set(this.runFailureText(err, envelope?.error.message));
+    const failureText = this.runFailureText(err, envelope?.error.message);
+    this.runConnectionFailure.set(
+      !envelope && this.isConnectionFailure(err) ? { text: failureText } : undefined,
+    );
+    this.runError.set(failureText);
     // The card above is this failure's one place on the page: no toast on top of it.
     this.errorLogger.logError(err, 'Failed to run query', { show: false });
   }
@@ -10631,6 +10643,15 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return redactErrorText(this.extractErrorMessage(err)) || 'The query could not be run.';
     }
     return `${friendly.title}. ${friendly.hint}`;
+  }
+
+  private isConnectionFailure(err: unknown): boolean {
+    return (
+      friendlyError(err, 'the query').kind === 'offline' ||
+      /failed to fetch|networkerror|load failed|network request failed|err_connection/i.test(
+        this.extractErrorMessage(err),
+      )
+    );
   }
 
   private extractErrorMessage(err: unknown): string {

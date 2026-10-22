@@ -18,9 +18,11 @@ export function localOvdbRequirement(
   definition: Pick<IQueryDef, 'federation'> | undefined,
   error: string | undefined,
   pageOrigin: string,
+  /** The failure was classified as a lost connection (e.g. friendlyError kind 'offline') before its text was reworded. */
+  connectionFailure = false,
 ): LocalOvdbRequirement | undefined {
   const base = definition?.federation?.ovdbBaseUrl;
-  if (!base || !error || !CONNECTION_FAILURE.test(error)) return undefined;
+  if (!base || !error || !(connectionFailure || CONNECTION_FAILURE.test(error))) return undefined;
   let url: URL;
   try { url = new URL(base); } catch { return undefined; }
   if (url.protocol !== 'http:' || !LOOPBACK.includes(url.hostname)) return undefined;
