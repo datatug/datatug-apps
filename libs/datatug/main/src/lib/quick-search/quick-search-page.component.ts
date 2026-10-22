@@ -1156,13 +1156,15 @@ export class QuickSearchPageComponent {
       error: (failure: unknown) => {
         if (generation !== this.mutationGeneration) return;
         const unknown = isCompletionUnknown(failure);
+        this.mutationBusy.set(false);
+        // Roll back (which may re-run search and clear errors) before setting
+        // the mutation error, so the explanation survives.
+        rollback?.();
         this.error.set(
           unknown
             ? 'The operation may have completed — refreshing status…'
             : mutationMessage(classifySearchError(failure)),
         );
-        this.mutationBusy.set(false);
-        rollback?.();
         if (unknown) this.loadStatus();
       },
       complete: () => {

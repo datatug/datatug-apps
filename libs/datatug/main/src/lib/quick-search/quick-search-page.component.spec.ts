@@ -755,6 +755,7 @@ describe('Quick Search consent and async state', () => {
       expect(api.search).toHaveBeenCalledTimes(2);
       expect(page.items().map((i) => i.name)).toEqual(['Customers']);
       expect(page.mutationBusy()).toBe(false);
+      expect(page.error()).not.toBe('');
     });
     it('reloads status when the provider cannot confirm an operation', () => {
       api.refresh.mockReturnValue(
