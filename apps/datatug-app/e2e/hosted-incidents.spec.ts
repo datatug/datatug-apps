@@ -85,7 +85,10 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
       await route.fulfill({status: 200, json: {incident: savedIncident, event, receipt: body['operationId']}});
     } else if (endpoint === 'incident_action' && body?.['type'] === 'create') {
       expect(body['caseId']).toBeUndefined();
-      expect(body['context']).toEqual({ OrderID: { type: 'number', value: 11039 } });
+      // ea440351 removed the legacy free-typed Order ID field: context comes only from
+      // inputs mapped in the project (covered by the page's unit specs), so a plain
+      // report carries none.
+      expect(body['context']).toBeUndefined();
       expect(body['operationId']).toEqual(expect.stringMatching(/^operation-/));
       savedIncident = {
         ref: incidentRef, uid: 'INC-1', title: 'Order 11039 is missing',
@@ -122,7 +125,8 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   await expect(page).toHaveURL(new RegExp(`${list}/new\\?environment=demo$`));
   await page.getByRole('textbox', { name: 'Incident title' }).fill('Order 11039 is missing');
   await page.getByRole('textbox', { name: 'Incident description' }).fill('Customer reported a missing order.');
-  await page.getByRole('spinbutton', { name: 'Order ID' }).fill('11039');
+  await expect(page.getByRole('spinbutton', { name: 'Order ID' })).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Choose mapped incident inputs' })).toBeVisible();
   await page.getByRole('button', { name: 'Create incident' }).click();
   const detail = `${list}/${incidentRef.storeId}/${incidentRef.incidentId}?environment=demo`;
   await expect(page).toHaveURL(detail);
