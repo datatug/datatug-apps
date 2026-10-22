@@ -3,8 +3,15 @@ import '@angular/compiler';
 import '@analogjs/vitest-angular/setup-snapshots';
 import '@analogjs/vitest-angular/setup-serializers';
 import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
+import { getTestBed } from '@angular/core/testing';
 
 export function setupAngularTestingEnvironment() {
+  // setupTestBed initialises the test environment once per process, behind a global flag. When spec files share
+  // a worker and one of them reloaded the module registry, this file sees a fresh TestBed with no platform while
+  // the flag is still set: clear the flag so the environment is set up again.
+  if (!getTestBed().platform) {
+    delete (globalThis as any)[Symbol.for('testbed-setup')];
+  }
   try {
     setupTestBed();
   } catch {

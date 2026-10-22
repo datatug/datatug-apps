@@ -12,8 +12,9 @@ export interface BaseViteConfigOptions {
    * `shared`: run spec files without a fresh module graph per file (`isolate: false`), so Angular, Ionic and
    * the app's own modules are evaluated once per worker instead of once per file, which is most of a TestBed
    * spec's run time. `src/test-setup.ts` must reset shared globals per file (see `resetSharedGlobals` in
-   * libs/testing). Files that call `vi.mock`/`vi.doMock` are left out, because a module mock cannot apply to a
-   * module an earlier file in the same worker already loaded; `mocking-only` runs just those files, isolated.
+   * libs/testing). Files that call `vi.mock`/`vi.doMock`/`vi.doUnmock`/`vi.resetModules` are left out: a module
+   * mock cannot apply to a module an earlier file in the same worker already loaded, and a reset reloads Angular
+   * itself for every later file (no test environment). `mocking-only` runs just those files, isolated.
    * They are two runs, not two Vitest projects: each project starts its own Vite server and Angular compiler,
    * which doubles the main process's memory past Node's default heap.
    */
@@ -22,9 +23,10 @@ export interface BaseViteConfigOptions {
 
 const SPEC_FILES = ['src/**/*.spec.ts'];
 const SPEC_FILE = /\.spec\.ts$/;
-const MODULE_MOCK = /\bvi\.(do)?[mM]ock\(/;
+// A module mock, or a reset of the module registry: either changes the module graph that later files would share.
+const MODULE_MOCK = /\bvi\.((do)?[mM]ock|doUnmock|resetModules)\(/;
 
-/** The spec files under `src` (relative to `dirname`) that mock modules, and so need a module graph of their own. */
+/** The spec files under `src` (relative to `dirname`) that mock or reset modules, and so need a module graph of their own. */
 export function specFilesMockingModules(dirname: string): string[] {
   const files: string[] = [];
   const walk = (dir: string): void => {
