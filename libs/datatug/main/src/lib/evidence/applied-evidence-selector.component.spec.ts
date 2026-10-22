@@ -17,7 +17,7 @@ import {
 } from './applied-context.spec-helper';
 const ref = { storeId: 'firestore', spaceID: 'space', projectId: 'project' };
 describe('Explicit current applied context DOM selection', () => {
-  it.each(['actor', 'source-reset', 'inspect'] as const)(
+  it.each(['actor', 'source-reset', 'source-replacement', 'inspect'] as const)(
     'selects an actual applied revision before any Case, then clears matching %s without hidden writes',
     async (change) => {
       const snapshot = appliedSnapshot(),
@@ -110,7 +110,11 @@ describe('Explicit current applied context DOM selection', () => {
       expect(api.command).not.toHaveBeenCalled();
       if (change === 'actor')
         auth.next({ status: 'authenticated', user: { uid: 'maya' } });
-      else
+      else if (change === 'source-replacement') {
+        page.componentRef.setInput('sourceId', 'independent-source');
+        page.detectChanges();
+        await page.whenStable();
+      } else
         TestBed.inject(NativeSourceInvalidationService).invalidate({
           projectRef: ref,
           actor: 'sarah',

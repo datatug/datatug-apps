@@ -1,36 +1,20 @@
 .environment-warning {
-  color: #806000;
+  color: color-mix(in srgb, var(--ion-color-warning) 45%, var(--ion-text-color) 55%);
 }
 .environment-danger {
-  color: var(--ion-color-danger-shade);
+  color: var(--ion-color-danger);
 }
 ion-chip.severity-warning {
-  --background: #fff1bf;
-  --color: #594300;
+  --background: var(--ion-color-warning);
+  --color: var(--ion-color-warning-contrast);
 }
 ion-chip.severity-danger {
-  --background: #ffe5e8;
-  --color: #a31630;
+  --background: var(--ion-color-danger);
+  --color: var(--ion-color-danger-contrast);
 }
 ion-chip.severity-warning ion-icon,
 ion-chip.severity-danger ion-icon {
   color: inherit;
-}
-:host-context(.ion-palette-dark) {
-  .environment-danger {
-    color: #ffb4c1;
-  }
-  .environment-warning {
-    color: #ffd866;
-  }
-  ion-chip.severity-warning {
-    --background: #4a3900;
-    --color: #ffe49b;
-  }
-  ion-chip.severity-danger {
-    --background: #591525;
-    --color: #ffd8df;
-  }
 }
 .page-note,
 .page-actions {

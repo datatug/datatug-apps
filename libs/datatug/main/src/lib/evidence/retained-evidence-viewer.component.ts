@@ -12,10 +12,9 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { IonButton, IonButtons, IonIcon } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { refreshOutline } from 'ionicons/icons';
-import {
-  originalLogText,
-  type OriginalRecord,
-} from './original-evidence-contract';
+import { OriginalEvidencePanelComponent } from './original-evidence-panel.component';
+import { SOURCE_EVIDENCE_PRESENTERS, sourceEvidencePresenter } from './source-evidence-presentation';
+import { SourceDetailsComponent } from '../source-workspace/source-details.component';
 import {
   decodeResult,
   type ArtifactRef,
@@ -39,6 +38,8 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
     IonIcon,
     HeldResultPresentationComponent,
     ValidationRunResultsComponent,
+    OriginalEvidencePanelComponent,
+    SourceDetailsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<section aria-label="Retained execution evidence">
@@ -83,55 +84,8 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       <p role="alert">{{ error() }}</p>
     }
     @if (operation(); as data) {
-      <section
-        aria-label="Historical source operation"
-        class="source-operation"
-      >
-        <p>
-          <strong>{{ data.receipt.action }}</strong> ·
-          {{
-            data.receipt.outcome === 'already-applied'
-              ? 'No new change'
-              : 'Applied'
-          }}
-          ·
-          <time [attr.datetime]="data.receipt.acceptedAt">{{
-            data.receipt.acceptedAt
-          }}</time>
-        </p>
-        <p>
-          Actor {{ data.receipt.actorId }} · operation
-          {{ data.receipt.operationId }}
-        </p>
-        <p>
-          Generation {{ data.reference.result.generation }} · revision
-          {{ data.reference.result.revision }}
-        </p>
-        @if (data.receipt.outcome === 'already-applied') {
-          <p>No new processing attempt is established by this receipt.</p>
-        }
-        <details>
-          <summary>Immutable receipt details</summary>
-          <p>
-            Source {{ data.reference.sourceId }} · SHA-256
-            {{ data.reference.result.sha256 }}
-          </p>
-          <p>Request SHA-256 {{ data.reference.requestSHA256 }}</p>
-          <p>
-            Revision producer {{ data.receipt.revision.actorId }} · accepted
-            {{ data.receipt.revision.acceptedAt }}
-          </p>
-          <p>
-            Routing configuration {{ data.receipt.revision.configuration }} ·
-            fixture business clock {{ data.receipt.revision.businessClock }}
-          </p>
-          @for (
-            artifact of data.receipt.revision.artifacts;
-            track artifact.id
-          ) {
-            <p>{{ artifact.id }} · SHA-256 {{ artifact.sha256 }}</p>
-          }
-        </details>
+      <section aria-label="Historical source operation" class="source-operation">
+        <sneat-source-details [details]="data" />
       </section>
     }
     @if (runEvidence(); as data) {
@@ -155,96 +109,8 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
           Saved query {{ query.queryId }} · revision {{ query.queryRevision }} ·
           execution {{ query.result.execution?.executionId }}
         </p>
-        @if (query.originalEvidence; as original) {
-          <section aria-label="Original evidence" class="original-evidence">
-            <header class="evidence-header">
-              <h4>Original evidence</h4>
-              <span class="evidence-state">{{
-                original.status === 'available'
-                  ? original.log.parseStatus
-                  : 'Unavailable'
-              }}</span>
-            </header>
-            @if (original.status === 'unavailable') {
-              <p role="status">
-                Original evidence unavailable: {{ original.reason }}. The
-                authorized retained result remains below.
-              </p>
-            } @else {
-              <p>
-                Synthetic Shipping source · historical configuration
-                {{ original.records[3].key.value }}
-              </p>
-              <p>
-                Route candidates show actual validity intervals without a
-                current-time status. Multiple candidates do not establish a
-                unique causal route.
-              </p>
-              @for (
-                record of original.records;
-                track record.collection + ':' + record.key.value
-              ) {
-                <h5>{{ record.collection }} · {{ record.key.value }}</h5>
-                <dl>
-                  @for (field of facts(record); track field[0]) {
-                    <dt>{{ field[0] }}</dt>
-                    <dd
-                      [class.route-validity]="
-                        record.collection === 'routes' &&
-                        field[0].startsWith('valid_')
-                      "
-                    >
-                      {{ field[1].type === 'null' ? 'NULL' : field[1].value }}
-                    </dd>
-                  }
-                </dl>
-                <details>
-                  <summary>
-                    Complete original {{ record.collection }} record
-                  </summary>
-                  <dl>
-                    @for (field of fields(record); track field[0]) {
-                      <dt>{{ field[0] }}</dt>
-                      <dd>
-                        {{ field[1].type === 'null' ? 'NULL' : field[1].value }}
-                      </dd>
-                    }
-                  </dl>
-                </details>
-              }
-              @if (original.records.length === 4) {
-                <p>No route candidates in this historical configuration.</p>
-              }
-              <details>
-                <summary>Original log bytes and provenance</summary>
-                <p>
-                  {{ original.log.artifact }} · bytes [{{
-                    original.log.byteStart
-                  }}, {{ original.log.byteEnd }}) of
-                  {{ original.log.artifactBytes }} · {{ original.log.parser }} /
-                  {{ original.log.parseStatus }}
-                </p>
-                <p>
-                  SHA256 <code>{{ original.log.artifactSHA256 }}</code>
-                </p>
-                <p>
-                  Source reference <code>{{ original.log.sourceRef }}</code>
-                </p>
-                @if (logText(original.log); as raw) {
-                  <pre aria-label="Original log text">{{ raw }}</pre>
-                } @else {
-                  <p role="status">
-                    Original bytes are not valid UTF8 text. Exact bytes remain
-                    available as base64 below.
-                  </p>
-                }
-                <details>
-                  <summary>Exact original bytes (base64)</summary>
-                  <pre>{{ original.log.rawBase64 }}</pre>
-                </details>
-              </details>
-            }
-          </section>
+        @if (query.originalEvidence) {
+          <sneat-original-evidence-panel [presentation]="originalPresentation(query)" />
         }
         <sneat-datatug-held-result-presentation
           [result]="query.result"
@@ -274,16 +140,8 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       .evidence-header h4 {
         margin: 0;
       }
-      .evidence-state {
-        margin-inline-start: auto;
-        color: var(--ion-color-medium);
-        font-size: 0.875rem;
-      }
       .evidence-header ion-buttons {
         margin-inline-start: auto;
-      }
-      .original-evidence {
-        margin-block: 0.75rem;
       }
       h5 {
         margin-block: 0.75rem 0.25rem;
@@ -301,9 +159,6 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       }
       .source-operation p {
         margin-block: 0.35rem;
-      }
-      .route-validity {
-        color: var(--ion-color-medium-shade);
       }
       dt {
         color: var(--ion-color-medium);
@@ -340,6 +195,7 @@ export class RetainedEvidenceViewerComponent {
   protected readonly retry = signal(0);
   protected readonly increment = (value: number) => value + 1;
   private readonly api = inject(RetainedEvidenceApiService);
+  private readonly presenters = inject(SOURCE_EVIDENCE_PRESENTERS);
   private readonly native = useNativeRunLifetime();
   private readonly destroy = inject(DestroyRef);
   private readonly held = signal<
@@ -372,7 +228,9 @@ export class RetainedEvidenceViewerComponent {
   );
   protected readonly operation = computed(() => {
     const value = this.current();
-    return value && 'receipt' in value ? value : undefined;
+    if (!value || !('receipt' in value)) return undefined;
+    const presenter = sourceEvidencePresenter(this.presenters, value.reference.sourceId);
+    return presenter?.operation(value) || { title: 'Source receipt unavailable', summary: 'No unique presentation adapter is registered for this source.', sections: [] };
   });
   protected readonly runEvidence = computed(() => {
     const value = this.current();
@@ -386,22 +244,9 @@ export class RetainedEvidenceViewerComponent {
     const value = this.runEvidence();
     return !value ? [] : 'run' in value ? value.results : [value];
   });
-  protected readonly logText = originalLogText;
-  protected readonly facts = (record: OriginalRecord) => {
-    const names: Record<string, readonly string[]> = {
-      events: ['kind', 'occurred_at'],
-      attempts: ['state', 'attempt_no', 'config_revision'],
-      requests: ['order_id', 'shipper_id'],
-      configurations: ['published_at'],
-      routes: ['partner_id', 'valid_from', 'valid_until'],
-      partners: ['enabled'],
-    };
-    return Object.entries(record.fields).filter(([name]) =>
-      names[record.collection]?.includes(name),
-    );
-  };
-  protected readonly fields = (record: OriginalRecord) =>
-    Object.entries(record.fields);
+  protected originalPresentation(query: RetainedExecutionView) {
+    return sourceEvidencePresenter(this.presenters, query.sourcePin.sourceId)?.original(query.originalEvidence) || { status: 'unavailable' as const, reason: 'No unique presentation adapter is registered for this source.' };
+  }
   constructor() {
     addIcons({ refreshOutline });
     this.native.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
@@ -434,7 +279,7 @@ export class RetainedEvidenceViewerComponent {
           ref,
           undefined,
           target?.kind === 'source-operation'
-            ? { sourceId: 'shipping-working-copy', environment }
+            ? { sourceId: target.sourceOperation.sourceId, environment }
             : undefined,
         );
         actor = current.actor;

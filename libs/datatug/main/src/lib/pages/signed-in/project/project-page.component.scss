@@ -68,11 +68,18 @@
 .environment-label {
   font-weight: 600;
 }
+.environment-danger,
+.environment-warning {
+  border-radius: 0.3rem;
+  padding-inline: 0.35rem;
+}
 .environment-danger {
-  color: var(--ion-color-danger-shade);
+  background: var(--ion-color-danger);
+  color: var(--ion-color-danger-contrast);
 }
 .environment-warning {
-  color: #806000;
+  background: var(--ion-color-warning);
+  color: var(--ion-color-warning-contrast);
 }
 .environment-shortcut small {
   font-size: 0.75rem;
@@ -140,15 +147,6 @@
 
 .project-metadata-error {
   color: var(--ion-color-danger);
-}
-
-:host-context(.ion-palette-dark) {
-  .environment-danger {
-    color: #ffb4c1;
-  }
-  .environment-warning {
-    color: #ffd866;
-  }
 }
 
 .overview-tab-count {

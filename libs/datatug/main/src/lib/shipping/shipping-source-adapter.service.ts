@@ -31,7 +31,8 @@ import { ShippingWorkspaceController } from './shipping-workspace.controller';
 import { ShippingPublicationController } from './shipping-publication.controller';
 import { ShippingInstallationController } from './shipping-installation.controller';
 import { ShippingHistoryController } from './shipping-history.controller';
-import { NativeSemanticBrowserComponent } from './native-semantic-browser.component';
+import { SemanticBrowserComponent } from '../semantic-browser/semantic-browser.component';
+import { NativeSemanticBrowserController } from './native-semantic-browser.controller';
 
 /** Protocol adapter only: no domain template/component or singleton mutable source state. */
 @Injectable({ providedIn: 'root' })
@@ -94,13 +95,15 @@ export class ShippingSourceAdapterService {
         ShippingPublicationController,
         ShippingInstallationController,
         ShippingHistoryController,
+        NativeSemanticBrowserController,
       ],
       this.parent,
     );
     const workspace = child.get(ShippingWorkspaceController),
       publication = child.get(ShippingPublicationController),
       installation = child.get(ShippingInstallationController),
-      history = child.get(ShippingHistoryController);
+      history = child.get(ShippingHistoryController),
+      semantic = child.get(NativeSemanticBrowserController);
     if (workspace.page.identity() !== scope.identity) {
       child.destroy();
       throw new Error('Source scope changed.');
@@ -133,6 +136,12 @@ export class ShippingSourceAdapterService {
         const names = workspace.environments();
         publication.environments.set(names);
         history.environments.set(names);
+        semantic.environments.set(
+          names.filter(
+            (name) => !scope.environment || name === scope.environment,
+          ),
+        );
+        semantic.canWrite.set(workspace.canWrite());
         publication.canWrite.set(workspace.canWrite());
         if (scope.environment && names.includes(scope.environment)) {
           if (!publication.environment() && !publication.pending())
@@ -438,11 +447,8 @@ export class ShippingSourceAdapterService {
         ...(!denied && workspace.native()
           ? {
               browser: {
-                component: NativeSemanticBrowserComponent,
-                inputs: {
-                  environments: workspace.environments(),
-                  canWrite: workspace.canWrite(),
-                },
+                component: SemanticBrowserComponent,
+                inputs: { model: semantic },
               },
             }
           : {}),

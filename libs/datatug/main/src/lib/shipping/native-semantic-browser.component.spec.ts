@@ -1,5 +1,5 @@
 import { webcrypto } from 'node:crypto';
-import { Component, input, output, signal } from '@angular/core';
+import { Component, input, output, signal, EnvironmentInjector, createEnvironmentInjector } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import {
   ActivatedRoute,
@@ -8,7 +8,8 @@ import {
 } from '@angular/router';
 import { BehaviorSubject, Subject, of } from 'rxjs';
 import { HttpErrorResponse } from '@angular/common/http';
-import { NativeSemanticBrowserComponent } from './native-semantic-browser.component';
+import { SemanticBrowserComponent } from '../semantic-browser/semantic-browser.component';
+import { NativeSemanticBrowserController } from './native-semantic-browser.controller';
 import preflightFixture from './testdata/native-check-applicable.go.json';
 import { NativeSemanticApiService } from './native-semantic-api.service';
 import { ProjectAssetsApiService } from '../services/project/project-assets-api.service';
@@ -30,6 +31,7 @@ vi.mock('../detective/detective-page-context', () => ({
 @Component({ selector: 'sneat-datatug-evidence-share-panel', template: '' })
 class ContextPicker {
   readonly mode = input('');
+  readonly sourceId = input<string>();
   readonly environment = input('');
   readonly caseId = input<string>();
   readonly disabled = input(false);
@@ -164,7 +166,7 @@ describe('Native physical inspection and durable mapping DOM', () => {
     assets.entities.mockReturnValue(of([{ id: 'ShippingRequest' }]));
     assets.entity.mockReturnValue(of({ entity, revision }));
     TestBed.configureTestingModule({
-      imports: [NativeSemanticBrowserComponent],
+      imports: [SemanticBrowserComponent],
       providers: [
         provideRouter([]),
         { provide: NativeSemanticApiService, useValue: api },
@@ -173,23 +175,37 @@ describe('Native physical inspection and durable mapping DOM', () => {
         { provide: ActivatedRoute, useValue: { queryParamMap: query } },
       ],
     });
-    TestBed.overrideComponent(NativeSemanticBrowserComponent, {
+    TestBed.overrideComponent(SemanticBrowserComponent, {
       remove: { imports: [EvidenceSharePanelComponent] },
       add: { imports: [ContextPicker] },
     });
   });
   afterEach(() => vi.unstubAllGlobals());
   async function mount() {
-    const f = TestBed.createComponent(NativeSemanticBrowserComponent);
-    f.componentRef.setInput('environments', ['demo']);
-    f.componentRef.setInput('canWrite', true);
+    const f = TestBed.createComponent(SemanticBrowserComponent);
+    const child = createEnvironmentInjector([NativeSemanticBrowserController], TestBed.inject(EnvironmentInjector));
+    const controller = child.get(NativeSemanticBrowserController);
+    f.componentRef.onDestroy(() => child.destroy());
+    controller.environments.set(['demo']);
+    controller.canWrite.set(true);
+    f.componentRef.setInput('model', controller);
     f.detectChanges();
     await f.whenStable();
-    f.componentInstance.changeEnvironment('demo');
+    controller.changeEnvironment('demo');
     f.detectChanges();
     await f.whenStable();
-    await vi.waitFor(() => expect(f.componentInstance.restoring()).toBe(false));
-    return f;
+    await vi.waitFor(() => expect(controller.restoring()).toBe(false));
+    return {
+      componentInstance: controller,
+      nativeElement: f.nativeElement as HTMLElement,
+      detectChanges: () => f.detectChanges(),
+      whenStable: () => f.whenStable(),
+      destroy: () => f.destroy(),
+      componentRef: { setInput: (key: 'environments' | 'canWrite', value: unknown) => {
+        if (key === 'environments') controller.environments.set(value as readonly string[]);
+        else controller.canWrite.set(value as boolean);
+      } },
+    };
   }
   async function inspect(f: Awaited<ReturnType<typeof mount>>) {
     await f.componentInstance.chooseContext(choice());
@@ -694,6 +710,7 @@ describe('Native physical inspection and durable mapping DOM', () => {
     const inspector = f.nativeElement.querySelector(
       '[aria-label="Selected physical cell"]',
     );
+    if (!inspector) throw new Error('Selected cell inspector is absent');
     expect(inspector.textContent).toMatch(/string\s*·\s*request-11045/);
     expect(inspector.textContent).toContain(
       'Meaning resolution is unavailable',
@@ -720,6 +737,7 @@ describe('Native physical inspection and durable mapping DOM', () => {
     const inspector = f.nativeElement.querySelector(
       '[aria-label="Selected physical cell"]',
     );
+    if (!inspector) throw new Error('Selected cell inspector is absent');
     expect(inspector.textContent).toMatch(/null\s*·\s*NULL/);
     expect(inspector.textContent).toContain('NULL cells cannot be mapped');
     expect(inspector.textContent).not.toContain(

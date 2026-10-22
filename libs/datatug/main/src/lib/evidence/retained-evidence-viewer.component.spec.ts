@@ -1,3 +1,5 @@
+import { SOURCE_EVIDENCE_PRESENTERS } from './source-evidence-presentation';
+import { shippingEvidencePresenter } from '../shipping/shipping-evidence-presenter';
 import { NativeSourceInvalidationService } from './native-source-invalidation';
 import { TestBed } from '@angular/core/testing';
 import { SneatAuthStateService } from '@sneat/auth-core';
@@ -54,6 +56,7 @@ describe('Retained evidence native cold-open presentation', () => {
       TestBed.configureTestingModule({
         imports: [RetainedEvidenceViewerComponent],
         providers: [
+          { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
           { provide: SneatAuthStateService, useValue: { authState: auth } },
           {
             provide: DatatugNavContextService,
@@ -152,6 +155,7 @@ describe('Retained evidence native cold-open presentation', () => {
       await TestBed.configureTestingModule({
         imports: [RetainedEvidenceViewerComponent],
         providers: [
+          { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
           { provide: SneatAuthStateService, useValue: { authState: auth } },
           {
             provide: DatatugNavContextService,
@@ -267,6 +271,7 @@ describe('Retained evidence native cold-open presentation', () => {
       await TestBed.configureTestingModule({
         imports: [RetainedEvidenceViewerComponent],
         providers: [
+          { provide: SOURCE_EVIDENCE_PRESENTERS, useValue: [shippingEvidencePresenter] },
           { provide: SneatAuthStateService, useValue: { authState: auth } },
           {
             provide: DatatugNavContextService,
