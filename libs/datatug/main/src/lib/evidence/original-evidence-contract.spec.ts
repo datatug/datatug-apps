@@ -303,17 +303,25 @@ describe('Original evidence approved contract (contract-only extension, pending 
       readOriginalEvidence({ ...value, records }, result, selector),
     ).rejects.toThrow();
   });
-  it.each(['reason-array', 'parse-status-array'] as const)(
-    'rejects nonstring enum %s without coercion',
-    async (mode) => {
-      const value = originalContractFixture();
-      const wire =
-        mode === 'reason-array'
-          ? { version: 1, status: 'unavailable', reason: ['not-admitted'] }
-          : { ...value, log: { ...value.log, parseStatus: ['parsed'] } };
-      await expect(
-        readOriginalEvidence(wire, result, selector),
-      ).rejects.toThrow();
-    },
-  );
+  it.each([
+    'reason-array',
+    'reason-object',
+    'reason-number',
+    'parse-status-array',
+    'parse-status-object',
+    'parse-status-number',
+  ] as const)('rejects nonstring enum %s without coercion', async (mode) => {
+    const value = originalContractFixture();
+    const invalid = mode.endsWith('array')
+      ? [mode.startsWith('reason') ? 'not-admitted' : 'parsed']
+      : mode.endsWith('object')
+        ? { value: 'parsed' }
+        : 1;
+    const wire = mode.startsWith('reason')
+      ? { version: 1, status: 'unavailable', reason: invalid }
+      : { ...value, log: { ...value.log, parseStatus: invalid } };
+    await expect(
+      readOriginalEvidence(wire, result, selector),
+    ).rejects.toThrow();
+  });
 });
