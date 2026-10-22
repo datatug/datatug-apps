@@ -70,6 +70,9 @@ function sharedQueryPage(rest: string): boolean {
     rest === '/boards' ||
     rest === '/boards/new' ||
     /^\/board\/[A-Za-z0-9_-]+$/.test(rest) ||
+    rest === '/cards' ||
+    rest === '/cards/new' ||
+    /^\/card\/[A-Za-z0-9_-]{1,128}$/.test(rest) ||
     rest === '/checks' ||
     rest === '/detective' ||
     rest === '/incidents' ||

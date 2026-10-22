@@ -8,6 +8,7 @@ import { DatatugNavContextService } from '../services/nav/datatug-nav-context.se
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { EnvironmentService } from '../services/unsorted/environment.service';
 import { MenuEnvSelectorComponent } from './menu-env-selector.component';
+import { provideMockErrorLogger } from '../testing/error-logger.spec-helper';
 
 describe('MenuEnvSelectorComponent', () => {
   beforeEach(() => {
@@ -87,13 +88,7 @@ describe('MenuEnvSelectorComponent', () => {
       imports: [MenuEnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: { setCurrentEnvironment, clearCurrentEnvironment: vi.fn() },
@@ -140,13 +135,7 @@ describe('MenuEnvSelectorComponent', () => {
       imports: [MenuEnvSelectorComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: DatatugNavContextService,
           useValue: { setCurrentEnvironment: vi.fn(), clearCurrentEnvironment },

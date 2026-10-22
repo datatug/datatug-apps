@@ -12,8 +12,10 @@ export default defineConfig({
   testDir: './e2e',
   testMatch: 'demo-handoff.spec.ts',
   outputDir: '../../coverage/apps/datatug-app-demo-handoff-e2e/results',
-  fullyParallel: false,
-  workers: 1,
+  // Every test opens its own browser context against one static production build and shares no state with
+  // another, so they run in parallel (Playwright's default: half the CPU cores in CI). On one worker the
+  // 116 tests took 9 minutes.
+  fullyParallel: true,
   globalSetup: './e2e/helpers/demodb-state-setup.ts',
   reporter: [
     ['list'],

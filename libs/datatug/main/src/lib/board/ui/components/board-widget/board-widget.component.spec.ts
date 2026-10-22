@@ -527,7 +527,7 @@ describe('BoardWidgetComponent', () => {
     });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain(
-      'To be implemented: HTTP',
+      'Unsupported widget: HTTP',
     );
     expect(fixture.nativeElement.textContent).not.toContain('Run on board');
     const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
@@ -535,7 +535,7 @@ describe('BoardWidgetComponent', () => {
     tabs.select('id:grid');
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).not.toContain(
-      'To be implemented: HTTP',
+      'Unsupported widget: HTTP',
     );
     expect(fixture.nativeElement.textContent).toContain('Run on board');
     expect(tabs.activePath()).toEqual(['id:grid']);

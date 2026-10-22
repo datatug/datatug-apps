@@ -13,6 +13,7 @@ import {
   computed,
   effect,
   inject,
+  Injector,
   signal,
   untracked,
 } from '@angular/core';
@@ -34,7 +35,9 @@ import {
   BoardCard,
   canonicalBoardQueryIds,
 } from '@datatug/board-models';
-import { filter, firstValueFrom, map, merge, takeUntil, tap } from 'rxjs';
+import { filter, firstValueFrom, map, merge, switchMap, takeUntil, tap } from 'rxjs';
+import { cardFromBoardCard } from '../../../../cards/card-model';
+import { ProjectCardsService } from '../../../../cards/project-cards.service';
 import {
   ProjectAssetsApiService,
   BoardAssetSnapshot,
@@ -303,6 +306,14 @@ interface QueryFolder {
                     preserved.
                   </p>
                 }
+                @if (card.widget) {
+                  <ion-button
+                    fill="outline"
+                    (click)="saveAsProjectCard(card)"
+                    [disabled]="saving() || !!pending() || savingCardId() === card.id"
+                    >Save {{ card.title || card.id }} as project card</ion-button
+                  >
+                }
                 <ion-button
                   (click)="edit({ type: 'remove-card', cardId: card.id })"
                   [disabled]="saving() || !!pending()"
@@ -518,6 +529,57 @@ export class HostedBoardWorkspaceComponent {
     });
   }
   readonly selectedQuery = signal('');
+  /** The inline card being copied into a project card right now. */
+  readonly savingCardId = signal<string | undefined>(undefined);
+  private readonly injector = inject(Injector);
+  /**
+   * "Save as project card" (spec REQ: dashboard-reference): creates a
+   * project card from this inline card and its bound board parameters, then
+   * turns the cell into a reference to it. The board itself is saved with
+   * its own Save, like every other edit.
+   */
+  saveAsProjectCard(card: BoardCard) {
+    const ref = this.scope.page.ref();
+    const board = this.draft();
+    if (!ref || !board || !this.editing() || !card.widget || this.savingCardId())
+      return;
+    const cards = this.injector.get(ProjectCardsService);
+    const environment = this.scope.environment();
+    this.error.set('');
+    this.notice.set('');
+    this.savingCardId.set(card.id);
+    cards
+      .listCards(ref, environment, true)
+      .pipe(
+        switchMap((briefs) => {
+          const made = cardFromBoardCard(
+            card,
+            board,
+            briefs.map((b) => b.id),
+          );
+          return cards
+            .createCard(ref, made.card, environment)
+            .pipe(map(() => made));
+        }),
+      )
+      .subscribe({
+        next: ({ card: created, ref: cardRef }) => {
+          this.savingCardId.set(undefined);
+          this.edit({ type: 'set-card-ref', cardId: card.id, ref: cardRef });
+          this.notice.set(
+            `Saved project card "${created.title}" (${created.id}). Save the board to use it in this dashboard.`,
+          );
+        },
+        error: (error: unknown) => {
+          this.savingCardId.set(undefined);
+          this.error.set(
+            error instanceof Error && error.message
+              ? error.message
+              : 'The project card could not be saved.',
+          );
+        },
+      });
+  }
   readonly loading = signal(false);
   readonly saving = signal(false);
   readonly error = signal('');

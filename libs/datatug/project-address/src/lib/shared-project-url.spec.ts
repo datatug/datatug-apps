@@ -16,6 +16,9 @@ describe('Space-qualified metadata addresses', () => {
     'boards/new',
     'board/new',
     'board/shipping-1',
+    'cards',
+    'cards/new',
+    'card/customer',
     'query/q',
     'checks',
     'checks/invoice-check',
@@ -43,6 +46,9 @@ describe('Space-qualified metadata addresses', () => {
     'meanings/entity/extra',
     'boards/other',
     'board/a/b',
+    'cards/other',
+    'card/a/b',
+    'card',
     'public-data',
   ])('refuses unsupported %s', (page) => {
     expect(tryProjectUrl(ref, page)).toMatchObject({ ok: false });

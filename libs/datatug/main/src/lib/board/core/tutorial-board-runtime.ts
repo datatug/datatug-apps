@@ -131,7 +131,7 @@ export class TutorialBoardRuntime {
       return false;
     const queries = new Set(canonicalBoardQueryIds(canonical));
     if (widget.name === 'SQL')
-      return queries.has((widget.data as SQLWidgetDef).sql.queryId ?? '');
+      return queries.has((widget.data as SQLWidgetDef).sql?.queryId ?? '');
     if (widget.name !== 'chart') return false;
     const sources = (widget.data as ChartWidgetDef).sources;
     // Composition is not admitted by the single-source execution path.

@@ -361,6 +361,21 @@ export class ProjectQueryApiService {
     });
   }
 
+  cards<T>(ref: IProjectRef): Observable<T> {
+    return this.qualifiedRead(
+      ref,
+      'cards/all_cards',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
+  card<T>(ref: IProjectRef, id: string): Observable<T> {
+    return this.qualifiedRead(ref, 'cards/card', {
+      id,
+      ...(ref.branch ? { branch: ref.branch } : {}),
+    });
+  }
+
   entities<T>(ref: IProjectRef): Observable<T> {
     return this.qualifiedRead(
       ref,

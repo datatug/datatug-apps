@@ -2,7 +2,6 @@ import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ActivatedRoute } from '@angular/router';
 import { NavController, ToastController } from '@ionic/angular';
-import { ErrorLogger } from '@sneat/core';
 import { IRecord } from '@sneat/data';
 import { of, Subject } from 'rxjs';
 
@@ -13,6 +12,7 @@ import { EntityService } from '../../../services/unsorted/entity.service';
 import { IEntity } from '../../../models/definition/metapedia/entity';
 import { IProjectContext } from '../../../nav/nav-models';
 import { parseProjectUrl } from '../../../nav/nav-models';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 describe('EntitiesPage', () => {
   let component: EntitiesPageComponent;
@@ -31,13 +31,7 @@ describe('EntitiesPage', () => {
             snapshot: { paramMap: { get: () => null } },
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: NavController,
           useValue: { navigateForward: vi.fn(() => Promise.resolve(true)) },
@@ -128,13 +122,7 @@ describe('EntitiesPage replaces "Loading..." once entities arrive (zoneless)', (
             snapshot: { paramMap: { get: () => null } },
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: NavController,
           useValue: { navigateForward: vi.fn(() => Promise.resolve(true)) },

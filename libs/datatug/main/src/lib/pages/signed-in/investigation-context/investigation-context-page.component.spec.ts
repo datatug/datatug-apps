@@ -28,6 +28,7 @@ import { DatatugServicesStoreModule } from '../../../services/repo/datatug-servi
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { EntityService } from '../../../services/unsorted/entity.service';
 import { QualifiedLocalReadVersionError } from '../../../services/project/project-query-api.service';
+import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
 const project: IProjectContext = {
   ref: { storeId: 'localhost:8989', projectId: 'demo-project' },
@@ -179,13 +180,7 @@ describe('InvestigationContextPageComponent', () => {
           provide: NavController,
           useValue: { navigateForward: vi.fn(() => Promise.resolve(true)) },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         { provide: AgentContextService, useValue: agentContextStub() },
         { provide: EntityService, useValue: entityService },
       ],

@@ -5,7 +5,6 @@ import { ActivatedRoute, Params } from '@angular/router';
 import { Router } from '@angular/router';
 import { NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
-import { ErrorLogger } from '@sneat/core';
 import { BehaviorSubject, NEVER, of } from 'rxjs';
 import { By } from '@angular/platform-browser';
 
@@ -18,6 +17,7 @@ import { QueriesTabComponent } from './queries-tab.component';
 import { SqlEditorComponent } from '../../components/sqleditor/sql-editor.component';
 import { IProjectContext } from '../../nav/nav-models';
 import { IQueryDef, IQueryFolder, QueryType } from '../../models/definition/query-def';
+import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('SqlQueriesPage', () => {
   let component: QueriesPageComponent;
@@ -45,13 +45,7 @@ describe('SqlQueriesPage', () => {
             events: of(),
           },
         },
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
       ],
     })
       .overrideComponent(QueriesPageComponent, {
@@ -146,13 +140,7 @@ describe('QueriesPage dependency injection', () => {
     TestBed.configureTestingModule({
       imports: [QueriesPageComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -229,13 +217,7 @@ describe('QueriesPage -> QueriesTab project hand-off', () => {
     await TestBed.configureTestingModule({
       imports: [QueriesPageComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -293,10 +275,7 @@ describe('QueriesPage back button (G-A1c)', () => {
     await TestBed.configureTestingModule({
       imports: [QueriesPageComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {
@@ -436,13 +415,7 @@ describe('QueriesPage tab switching keeps personal-tab items (S154)', () => {
     await TestBed.configureTestingModule({
       imports: [QueriesPageComponent],
       providers: [
-        {
-          provide: ErrorLogger,
-          useValue: {
-            logError: vi.fn(),
-            logErrorHandler: vi.fn(() => vi.fn()),
-          },
-        },
+        provideMockErrorLogger(),
         {
           provide: ActivatedRoute,
           useValue: {

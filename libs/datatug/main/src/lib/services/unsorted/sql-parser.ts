@@ -70,28 +70,26 @@ export class SqlParser {
   }
 
   public commentOutJoin(text: string, join: IAstJoin): string {
-    if (!join.match.index || join.match.index !== 0) {
+    if (join.match.index === undefined || join.disabled) {
       return text;
     }
-    const joinSql = text.substr(join.match.index, join.match.length);
-
-    return (
-      text.substr(0, join.match.index) +
-      '--' +
-      joinSql +
-      text.substring(join.match.index + join.match.length)
-    );
+    // match[0] is the matched JOIN clause; match.length is only the number of groups.
+    const start = join.match.index;
+    const end = start + join.match[0].length;
+    return text.substring(0, start) + '-- ' + text.substring(start, end) + text.substring(end);
   }
 
   public uncommentJoin(text: string, join: IAstJoin): string {
-    if (!join.match.index && join.match.index !== 0) {
+    if (join.match.index === undefined) {
       return text;
     }
-    const joinSql = text.substr(join.match.index, join.match.length);
+    const start = join.match.index;
+    const end = start + join.match[0].length;
+    const joinSql = text.substring(start, end);
     return (
-      text.substr(0, join.match.index) +
+      text.substring(0, start) +
       (join.comment ? joinSql.replace(join.comment, '') : joinSql) +
-      text.substring(join.match.index + join.match.length)
+      text.substring(end)
     );
   }
 }

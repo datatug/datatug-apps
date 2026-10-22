@@ -223,6 +223,8 @@
         [columns]="grid()?.columns"
         [groupBy]="grid()?.groupBy"
         [rowClick]="onGridRowClick"
+        [selectableRange]="1"
+        (cellSelected)="onGridCellSelected($event)"
       />
     </ion-card-content>
   </ion-card>
@@ -306,7 +308,7 @@
   </div>
 </ion-content>
 </div>
-@if (hasSelection() && !contextSessionId) {
+@if (paneOpen() && !contextSessionId) {
 <div class="ion-page context-panel-pane">
   <ion-header>
     <ion-toolbar>
@@ -319,13 +321,17 @@
     </ion-toolbar>
   </ion-header>
   <ion-content>
-    <sneat-datatug-context-panel
-      [project]="project?.ref?.projectId || ''"
-      [environment]="envId || ''"
-      [selection]="selection()"
-      (openQuery)="onOpenQuery($event)"
-    />
+    <sneat-datatug-cell-card-panel />
+    @if (hasSelection()) {
+      <sneat-datatug-context-panel
+        [project]="project?.ref?.projectId || ''"
+        [environment]="envId || ''"
+        [selection]="selection()"
+        (openQuery)="onOpenQuery($event)"
+      />
+    }
   </ion-content>
 </div>
 }
+<sneat-datatug-cell-card-popover />
 </ion-split-pane>
