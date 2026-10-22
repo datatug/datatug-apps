@@ -1,3 +1,4 @@
+import coreComparison from './testdata/core-v070-query-comparison.json';
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { defer, EMPTY, firstValueFrom, from, of, Subject } from 'rxjs';
@@ -595,7 +596,7 @@ describe('QueryEditorStateService — findQueryInProjectFull matches both id for
     },
   };
 
-  function setUp(getQueryMock: () => ReturnType<typeof throwErrorLike>) {
+  function setUp(getQueryMock: () => ReturnType<typeof throwErrorLike>, full: unknown = projectFullFixture) {
     const project = {
       ref: { storeId: 'localhost:8989', projectId: 'datatug-demo-project' },
       summary: {
@@ -604,7 +605,7 @@ describe('QueryEditorStateService — findQueryInProjectFull matches both id for
         access: 'public' as const,
       },
     };
-    const getFullMock = vi.fn(() => from(Promise.resolve(projectFullFixture)));
+    const getFullMock = vi.fn(() => from(Promise.resolve(full)));
 
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
@@ -631,6 +632,16 @@ describe('QueryEditorStateService — findQueryInProjectFull matches both id for
     return { project, getFullMock };
   }
 
+  it('preserves the Core70 comparison declaration and schema on the legacy project-full fallback', async () => {
+    setUp(() => throwErrorLike('missing direct read'), { queries: { folders: [{ id: 'archive', items: [{ ...coreComparison, id: 'comparison-fallback' }, { ...coreComparison, id: 'comparison-tugql', type: 'TugQL' }] }] } });
+    const service = TestBed.inject(QueryEditorStateService);
+    service.openQuery('archive/comparison-fallback');
+    await Promise.resolve(); await Promise.resolve();
+    expect(service.getQueryState('archive/comparison-fallback')?.def).toMatchObject({ comparison: coreComparison.comparison, parameters: coreComparison.parameters, recordsets: coreComparison.recordsets });
+    service.openQuery('archive/comparison-tugql');
+    await Promise.resolve(); await Promise.resolve();
+    expect(service.getQueryState('archive/comparison-tugql')?.def?.request.queryType).toBe('TugQL');
+  });
   it('matches the bare id', async () => {
     const getQueryMock = vi.fn(() => throwErrorLike('boom'));
     setUp(getQueryMock);
