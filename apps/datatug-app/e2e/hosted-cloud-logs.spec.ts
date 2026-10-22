@@ -78,7 +78,7 @@ test('malformed demo log entries explain and clear retained identifier filters',
     .getByRole('checkbox', { name: /Include untimed or malformed entries/ })
     .check();
   await expect(
-    page.getByText(/Order, correlation, and severity filters still apply/),
+    page.getByText(/Identifier, correlation, and severity filters still apply/),
   ).toBeVisible();
   await expect(
     page.getByText(/Malformed entries may not contain those fields/),

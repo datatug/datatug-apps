@@ -5,8 +5,8 @@
 ion-chip.severity-warning {
   --environment-tone: color-mix(
     in srgb,
-    var(--ion-color-warning) 55%,
-    var(--ion-text-color) 45%
+    var(--ion-color-warning) 50%,
+    var(--ion-text-color) 50%
   );
 }
 .environment-danger,
