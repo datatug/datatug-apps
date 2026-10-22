@@ -1,6 +1,11 @@
 import { TestBed } from '@angular/core/testing';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { DARK_CLASS, THEME_STORAGE_KEY, ThemeService } from './theme.service';
+import {
+  DARK_CLASS,
+  THEME_MODE_ATTRIBUTE,
+  THEME_STORAGE_KEY,
+  ThemeService,
+} from './theme.service';
 
 class FakeMediaQuery {
   private listeners: Array<(e: { matches: boolean }) => void> = [];
@@ -113,6 +118,12 @@ describe('ThemeService', () => {
     s.setMode('dark');
     expect(s.resolved()).toBe('dark');
     expect(root.classList.contains(DARK_CLASS)).toBe(true);
+  });
+
+  it('records the live mode on <html> for the inline script', () => {
+    const s = create(false);
+    s.setMode('dark');
+    expect(root.getAttribute(THEME_MODE_ATTRIBUTE)).toBe('dark');
   });
 
   it('works without matchMedia', () => {

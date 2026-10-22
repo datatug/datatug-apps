@@ -14,6 +14,8 @@ export const DEFAULT_THEME_MODE: ThemeMode = 'auto';
  */
 export const THEME_STORAGE_KEY = 'datatug.theme.v1';
 export const DARK_CLASS = 'ion-palette-dark';
+/** `<html data-theme-mode>`: the live choice, so the inline script in index.html does not re-read blocked storage. */
+export const THEME_MODE_ATTRIBUTE = 'data-theme-mode';
 const DARK_QUERY = '(prefers-color-scheme: dark)';
 
 export function isThemeMode(value: unknown): value is ThemeMode {
@@ -84,5 +86,6 @@ export class ThemeService {
     const root = this.doc.documentElement;
     root.classList.toggle(DARK_CLASS, dark);
     root.style.colorScheme = dark ? 'dark' : 'light';
+    root.setAttribute(THEME_MODE_ATTRIBUTE, this._mode());
   }
 }

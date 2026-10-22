@@ -153,7 +153,7 @@ const SEGMENT_MAX = 3;
       }
       .panel {
         padding: 0.25rem 0 0.75rem;
-        border-bottom: 1px solid var(--ion-color-step-150, #d9d9d9);
+        border-bottom: 1px solid var(--ion-background-color-step-150, #d9d9d9);
       }
       .bar {
         display: flex;

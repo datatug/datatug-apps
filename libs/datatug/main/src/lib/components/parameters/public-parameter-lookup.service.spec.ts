@@ -104,6 +104,7 @@ describe('PublicParameterLookupService', () => {
     expect(provider.meaningNote).toBe('Meaning guessed from the name @ShipCustomerID: Customer.ID. Declare meta on this parameter to confirm it.');
     expect(service.provider(param, { projectRef: ref }, [], keyed).meaningNote).toBeUndefined();
     expect(await service.sources({ id: 'Region', type: 'string' }, { projectRef: ref })).toEqual([]);
+    expect(await service.sources({ ...bare, meta: { entity: 'Customer', field: '' } }, { projectRef: ref })).toEqual([]);
     expect(await service.sources({ ...bare, isMultiValue: true }, { projectRef: ref })).toEqual([]);
     // A second project lists Customer and Supplier: two key fields match, so the name is ambiguous.
     entities.mockReturnValueOnce(of([{ id: 'Customer' }, { id: 'Supplier' }]));

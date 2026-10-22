@@ -102,7 +102,7 @@ export const createTugqlCompletionExtension = (
         maxWidth: 'min(24rem, calc(100vw - 1rem))',
         backgroundColor: 'var(--ion-background-color, #ffffff)',
         color: 'var(--ion-color-dark, #1f2937)',
-        border: '1px solid var(--ion-color-step-250, #cbd5e1)',
+        border: '1px solid var(--ion-background-color-step-250, #cbd5e1)',
         boxShadow: '0 0.25rem 0.75rem rgb(15 23 42 / 22%)',
       },
       '.cm-tooltip.cm-tooltip-autocomplete ul': {

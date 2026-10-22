@@ -55,7 +55,7 @@ import type { IndependentBars } from './independent-bars';
     }
     li {
       padding: 0.65rem 0;
-      border-bottom: 1px solid var(--ion-color-step-150, #ddd);
+      border-bottom: 1px solid var(--ion-background-color-step-150, #ddd);
     }
     .series {
       display: grid;

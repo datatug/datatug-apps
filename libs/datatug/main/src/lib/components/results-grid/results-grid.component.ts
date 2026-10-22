@@ -446,7 +446,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     }
     .dt-rg-filter {
       background: var(--ion-item-background, #fff);
-      border: 1px solid var(--ion-color-step-250, #c8c8c8);
+      border: 1px solid var(--ion-background-color-step-250, #c8c8c8);
       border-radius: 0.35rem;
       color: var(--ion-text-color, inherit);
       flex: 1 1 10rem;
@@ -476,7 +476,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     }
     .dt-rg-button {
       background: transparent;
-      border: 1px solid var(--ion-color-step-250, #c8c8c8);
+      border: 1px solid var(--ion-background-color-step-250, #c8c8c8);
       border-radius: 0.35rem;
       color: var(--ion-color-primary, inherit);
       cursor: pointer;
@@ -530,7 +530,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     }
     .dt-rg-chooser {
       background: var(--ion-item-background, #fff);
-      border: 1px solid var(--ion-color-step-250, #c8c8c8);
+      border: 1px solid var(--ion-background-color-step-250, #c8c8c8);
       border-radius: 0.5rem;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
       left: 0;
@@ -581,7 +581,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       padding: 0.1rem 0.35rem;
     }
     .dt-rg-icon-button[aria-pressed='true'] {
-      border-color: var(--ion-color-step-250, #c8c8c8);
+      border-color: var(--ion-background-color-step-250, #c8c8c8);
     }
     sneat-datatug-results-grid.dt-rg-enterprise {
       height: auto;
