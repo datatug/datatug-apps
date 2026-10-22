@@ -55,7 +55,7 @@ type MutableDashboardWidgets = { -readonly [Key in keyof DashboardView['widgets'
       @for (run of history(); track run.id) { <ion-item><ion-label>{{ run.state }} · {{ run.createdAt }}<p>{{ run.inputSnapshotId }} · {{ run.outcomeOrigin || 'Awaiting outcome' }}</p></ion-label></ion-item> }
       @if (hasMoreHistory()) { <ion-item><ion-button (click)="loadMoreHistory()">Load more saved runs</ion-button></ion-item> }
     </ion-content> } @else { <ion-content><ion-item role="alert"><ion-label>Session access is unavailable. Saved rows are hidden.</ion-label></ion-item></ion-content> }`,
-  styles: [`:host{display:block;height:100%}figure{margin:16px}figcaption{color:var(--ion-color-medium);font-size:.8rem;margin-top:12px}.chart-row{display:grid;grid-template-columns:minmax(90px,160px) minmax(0,1fr) 70px;align-items:center;gap:12px;margin:12px 0}.bar{height:24px;background:var(--ion-color-primary);min-width:2px}.chart-row strong{text-align:right}`],
+  styles: [`:host{display:block;height:100%}figure{margin:16px}figcaption{color:var(--dt-text-muted);font-size:.8rem;margin-top:12px}.chart-row{display:grid;grid-template-columns:minmax(90px,160px) minmax(0,1fr) 70px;align-items:center;gap:12px;margin:12px 0}.bar{height:24px;background:var(--ion-color-primary);min-width:2px}.chart-row strong{text-align:right}`],
 })
 export class InvoiceDashboardComponent {
   readonly workspace = inject(SessionWorkspaceService);

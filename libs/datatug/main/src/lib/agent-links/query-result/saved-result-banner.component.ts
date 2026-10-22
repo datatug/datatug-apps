@@ -164,7 +164,7 @@ const VIEW_LABEL: Record<string, string> = {
       margin: 0.4rem 0 0;
     }
     .saved-result-summary {
-      color: var(--ion-color-medium, #666);
+      color: var(--dt-text-muted, #666);
       margin: 0.4rem 0 0;
       padding-left: 1.2rem;
     }

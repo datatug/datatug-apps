@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
@@ -138,7 +139,8 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
   imports: [AgGridAngular, AgGridReadyDirective],
   host: {
     '(document:click)': 'onDocumentClick($event)',
-    '(keydown.escape)': 'closeChooser()',
+    '(keydown.escape)': 'closeChooser(); closeMore(true)',
+    '(keydown)': 'onMenuKeydown($event)',
     '[class.dt-rg-enterprise]': 'enterprise()',
   },
   template: `
@@ -160,39 +162,6 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
           <button
             type="button"
             class="dt-rg-button"
-            data-testid="results-grid-columns-button"
-            aria-haspopup="true"
-            [attr.aria-expanded]="chooserOpen()"
-            (click)="toggleChooser($event)"
-          >
-            Columns
-          </button>
-          <button
-            type="button"
-            class="dt-rg-button"
-            data-testid="results-grid-autosize"
-            title="Fit every column to its content"
-            (click)="autosizeAll()"
-          >
-            Autosize
-          </button>
-          <button
-            type="button"
-            class="dt-rg-button"
-            data-testid="results-grid-density"
-            [attr.aria-pressed]="density() === 'compact'"
-            [title]="
-              density() === 'compact'
-                ? 'Compact rows (press for comfortable)'
-                : 'Comfortable rows (press for compact)'
-            "
-            (click)="toggleDensity()"
-          >
-            {{ density() === 'compact' ? 'Compact' : 'Comfortable' }}
-          </button>
-          <button
-            type="button"
-            class="dt-rg-button"
             data-testid="results-grid-export-csv"
             [title]="
               selectedCount() > 0
@@ -203,36 +172,98 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
           >
             {{ selectedCount() > 0 ? 'CSV selected' : 'CSV' }}
           </button>
-          <button
-            type="button"
-            class="dt-rg-button"
-            data-testid="results-grid-copy"
-            title="Copy the selected rows, with a header line, as tab-separated text"
-            [disabled]="selectedCount() === 0"
-            (click)="copySelected()"
-          >
-            Copy selected
-          </button>
-          @if (enterprise()) {
+          <!-- Filter and CSV stay on the bar; the rarer actions sit under "More". -->
+          <div class="dt-rg-more">
             <button
               type="button"
-              class="dt-rg-button"
-              data-testid="results-grid-chart"
-              [disabled]="!chartRangeReady()"
-              (click)="chartSelectedRange()"
-              title="Select cells containing a numeric measure, then chart that range"
+              class="dt-rg-button dt-rg-more-button"
+              data-testid="results-grid-more"
+              aria-haspopup="menu"
+              aria-label="More result actions"
+              title="More result actions"
+              [attr.aria-expanded]="moreOpen()"
+              (click)="toggleMore($event)"
             >
-              Chart selected range
+              ⋯
             </button>
-            <button
-              type="button"
-              class="dt-rg-button"
-              data-testid="results-grid-export-excel"
-              (click)="exportExcel()"
+            <div
+              class="dt-rg-menu"
+              role="menu"
+              aria-label="More result actions"
+              data-testid="results-grid-more-menu"
+              [hidden]="!moreOpen()"
             >
-              Excel
-            </button>
-          }
+              <button
+                type="button"
+                role="menuitem"
+                class="dt-rg-menu-item"
+                data-testid="results-grid-columns-button"
+                aria-haspopup="true"
+                [attr.aria-expanded]="chooserOpen()"
+                (click)="closeMore(true); toggleChooser($event)"
+              >
+                Columns…
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="dt-rg-menu-item"
+                data-testid="results-grid-autosize"
+                title="Fit every column to its content"
+                (click)="closeMore(true); autosizeAll()"
+              >
+                Autosize columns
+              </button>
+              <button
+                type="button"
+                role="menuitemcheckbox"
+                class="dt-rg-menu-item"
+                data-testid="results-grid-density"
+                [attr.aria-checked]="density() === 'compact'"
+                [title]="
+                  density() === 'compact'
+                    ? 'Compact rows (press for comfortable)'
+                    : 'Comfortable rows (press for compact)'
+                "
+                (click)="closeMore(true); toggleDensity()"
+              >
+                {{ density() === 'compact' ? 'Compact' : 'Comfortable' }} rows
+              </button>
+              <button
+                type="button"
+                role="menuitem"
+                class="dt-rg-menu-item"
+                data-testid="results-grid-copy"
+                title="Copy the selected rows, with a header line, as tab-separated text"
+                [disabled]="selectedCount() === 0"
+                (click)="closeMore(true); copySelected()"
+              >
+                Copy selected
+              </button>
+              @if (enterprise()) {
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="dt-rg-menu-item"
+                  data-testid="results-grid-chart"
+                  [disabled]="!chartRangeReady()"
+                  (click)="closeMore(true); chartSelectedRange()"
+                  title="Select cells containing a numeric measure, then chart that range"
+                >
+                  Chart selected range
+                </button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  class="dt-rg-menu-item"
+                  data-testid="results-grid-export-excel"
+                  (click)="closeMore(true); exportExcel()"
+                >
+                  Excel
+                </button>
+              }
+            </div>
+          </div>
         </div>
         <span
           class="dt-rg-status"
@@ -424,7 +455,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       padding: 0.3rem 0.5rem;
     }
     .dt-rg-count {
-      color: var(--ion-color-medium, #666);
+      color: var(--dt-text-muted, #666);
       flex: 1 1 auto;
       font-size: 0.8rem;
     }
@@ -432,10 +463,11 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       display: flex;
       flex-wrap: wrap;
       gap: 0.35rem;
+      margin-inline-start: auto;
       min-width: 0;
     }
     .dt-rg-status {
-      color: var(--ion-color-medium, #666);
+      color: var(--dt-text-muted, #666);
       flex: 1 0 100%;
       font-size: 0.8rem;
     }
@@ -449,6 +481,47 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       color: var(--ion-color-primary, inherit);
       cursor: pointer;
       padding: 0.25rem 0.6rem;
+    }
+    .dt-rg-more {
+      position: relative;
+    }
+    .dt-rg-more-button {
+      color: var(--ion-color-medium, #666);
+      font-weight: 700;
+      line-height: 1;
+    }
+    .dt-rg-menu {
+      background: var(--ion-item-background, #fff);
+      border: 1px solid var(--ion-color-step-250, #c8c8c8);
+      border-radius: 0.5rem;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+      display: flex;
+      flex-direction: column;
+      min-width: 12rem;
+      padding: 0.25rem 0;
+      position: absolute;
+      right: 0;
+      top: calc(100% + 0.25rem);
+      z-index: 31;
+    }
+    .dt-rg-menu[hidden] {
+      display: none;
+    }
+    .dt-rg-menu-item {
+      background: transparent;
+      border: 0;
+      color: var(--ion-text-color, inherit);
+      cursor: pointer;
+      padding: 0.5rem 0.9rem;
+      text-align: start;
+    }
+    .dt-rg-menu-item:hover:not(:disabled),
+    .dt-rg-menu-item:focus-visible {
+      background: var(--ion-color-step-100, rgba(0, 0, 0, 0.06));
+    }
+    .dt-rg-menu-item:disabled {
+      cursor: default;
+      opacity: 0.45;
     }
     .dt-rg-button:disabled,
     .dt-rg-icon-button:disabled {
@@ -522,7 +595,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       min-height: 0;
     }
     sneat-datatug-results-grid .dt-rg-null {
-      color: var(--ion-color-medium, #888);
+      color: var(--dt-text-muted, #888);
       font-style: italic;
       opacity: 0.6;
     }
@@ -536,7 +609,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
       font-size: 0.85em;
     }
     sneat-datatug-results-grid .dt-rg-row-number {
-      color: var(--ion-color-medium, #888);
+      color: var(--dt-text-muted, #888);
     }
     /* A short number needs no 16px gutters: the row-number column fits its digits at about 45px instead of 61px. */
     sneat-datatug-results-grid .ag-header-cell.dt-rg-row-number-header,
@@ -589,6 +662,8 @@ export class ResultsGridComponent {
 
   readonly density = signal<GridDensity>('comfortable');
   readonly chooserOpen = signal(false);
+  /** The toolbar's "More" menu: Columns, Autosize, density, Copy, Chart, Excel. */
+  readonly moreOpen = signal(false);
   readonly chooserColumns = signal<ChooserColumn[]>([]);
   readonly selectedCount = signal(0);
   /** A short named message about the last copy/export action (never a row value). */
@@ -598,6 +673,7 @@ export class ResultsGridComponent {
   private readonly chartIds = new Set<string>();
   private readonly shown = signal<number | undefined>(undefined);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private statusTimer?: ReturnType<typeof setTimeout>;
   private autosizeTimer?: ReturnType<typeof setTimeout>;
   private layoutScope?: LayoutScope;
@@ -917,9 +993,75 @@ export class ResultsGridComponent {
     this.chooserOpen.set(false);
   }
 
+  toggleMore(event: Event): void {
+    event.stopPropagation();
+    const opening = !this.moreOpen();
+    this.moreOpen.set(opening);
+    // Menu pattern: opening moves focus to the first available item.
+    if (opening) setTimeout(() => this.menuItems()[0]?.focus());
+  }
+
+  /** Closes the More menu; `restoreFocus` returns focus to its ⋯ trigger. */
+  closeMore(restoreFocus = false): void {
+    if (!this.moreOpen()) return;
+    this.moreOpen.set(false);
+    if (restoreFocus)
+      this.host.nativeElement
+        .querySelector<HTMLElement>('[data-testid="results-grid-more"]')
+        ?.focus();
+  }
+
+  /** Arrow keys, Home and End move between the menu's enabled items; Tab closes it. */
+  onMenuKeydown(event: KeyboardEvent): void {
+    if (
+      !this.moreOpen() ||
+      !(event.target instanceof Element) ||
+      !event.target.closest('.dt-rg-menu')
+    )
+      return;
+    const items = this.menuItems();
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    let next: number | undefined;
+    switch (event.key) {
+      case 'ArrowDown':
+        next = (current + 1) % items.length;
+        break;
+      case 'ArrowUp':
+        next = (current - 1 + items.length) % items.length;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = items.length - 1;
+        break;
+      case 'Tab':
+        this.closeMore();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    items[next]?.focus();
+  }
+
+  private menuItems(): HTMLElement[] {
+    return Array.from(
+      this.host.nativeElement.querySelectorAll<HTMLButtonElement>(
+        '.dt-rg-menu button:not(:disabled)',
+      ),
+    );
+  }
+
   onDocumentClick(event: Event): void {
-    if (!this.chooserOpen()) return;
     const target = event.target;
+    if (
+      this.moreOpen() &&
+      !(target instanceof Element && target.closest('.dt-rg-more'))
+    )
+      this.closeMore();
+    if (!this.chooserOpen()) return;
     if (
       target instanceof Element &&
       target.closest('[data-testid="results-grid-chooser"]')

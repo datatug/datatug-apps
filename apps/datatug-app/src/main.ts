@@ -2,10 +2,20 @@ import { takeAgentLinkCode } from './app/agent-access/agent-link-code';
 import { provideCheckoutPurchaseRecovery } from './app/checkout/checkout-purchase-recovery';
 import { provideSubscriptionSettings } from './app/checkout/subscription-settings-provider';
 import { bootstrapApplication } from '@angular/platform-browser';
-import { provideZonelessChangeDetection } from '@angular/core';
+import {
+  ErrorHandler,
+  inject,
+  provideZonelessChangeDetection,
+} from '@angular/core';
 import { provideHttpClient, withInterceptors } from '@angular/common/http';
 import { provideAnimationsAsync } from '@angular/platform-browser/animations/async';
-import { provideRouter, RouteReuseStrategy } from '@angular/router';
+import {
+  provideRouter,
+  RedirectCommand,
+  Router,
+  RouteReuseStrategy,
+  withNavigationErrorHandler,
+} from '@angular/router';
 import { IonicRouteStrategy } from '@ionic/angular/common';
 import { provideIonicAngular } from '@ionic/angular/provide';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
@@ -48,7 +58,9 @@ import { provideConsentGatedAnalytics } from './app/analytics-consent/consent-ga
 import { provideUsageEvents } from './app/analytics-consent/usage-events.provider';
 import { anonymousUsagePosthog } from './app/telemetry/usage-privacy';
 import { posthogStarted, registerPosthog } from './register-posthog';
-import { routes } from './app/datatug-app-routes';
+import { notFoundRoute, routes } from './app/datatug-app-routes';
+import { provideDatatugErrorLogger } from './app/errors/datatug-error-logger';
+import { datatugErrorHandler } from './app/errors/datatug-crash-handler';
 import { DatatugAppComponent } from './app/datatug-app.component';
 import { configureAgGrid } from '@datatug/ag-grid';
 import { AG_GRID_LICENSE_KEY } from './ag-grid-license';
@@ -263,7 +275,17 @@ bootstrapApplication(DatatugAppComponent, {
     provideBuildInfo(buildInfo),
     { provide: EnvConfigToken, useValue: datatugAppEnvironmentConfig },
     // Literal SSO routes must precede DataTug's root/catch-all feature routes.
-    provideRouter([...ssoRoutes, ...routes, ...authRoutes]),
+    provideRouter(
+      [...ssoRoutes, ...routes, ...authRoutes, notFoundRoute],
+      // An address the `**` route cannot answer either (a named-outlet group such as `/demo(menu:x)`) would raise
+      // NG04002 and leave a blank page; it lands on the same friendly not-found page, with its query dropped.
+      withNavigationErrorHandler(({ error }) => {
+        const text = error instanceof Error ? error.message : String(error);
+        return /NG04002|Cannot match any routes/i.test(text)
+          ? new RedirectCommand(inject(Router).parseUrl('/page-not-found'))
+          : undefined;
+      }),
+    ),
     ...(datatugAppEnvironmentConfig.sentry
       ? [provideSentryAppInitializer(datatugAppEnvironmentConfig.sentry)]
       : []),
@@ -278,6 +300,13 @@ bootstrapApplication(DatatugAppComponent, {
     // provider order in this array no longer matters. See
     // node_modules/@sneat/logging/README.md ("App-level defaults").
     ...provideErrorLogger({ feedback: false }),
+    // After every other ErrorLogger registration, so it is the one that wins: plain-language toasts that keep
+    // addresses, tokens and `undefined` off the screen.
+    provideDatatugErrorLogger(),
+    // Sentry's crash dialog only for a genuine crash, with friendly, optional-field copy.
+    ...(datatugAppEnvironmentConfig.sentry
+      ? [{ provide: ErrorHandler, useFactory: datatugErrorHandler }]
+      : []),
   ],
 }).catch((err) => console.error(err));
 

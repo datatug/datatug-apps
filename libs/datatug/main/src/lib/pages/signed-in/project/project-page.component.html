@@ -62,15 +62,28 @@
       address.
     </p>
   }
-  @if (metadataReadError(); as error) {
-    <p class="project-metadata-error" role="alert">{{ error }}</p>
+  @if (everythingFailed()) {
+    <!-- Every read failed (a rate limit, an outage): one state with one action, not a Retry per section. -->
+    <sneat-datatug-error-state
+      what="this project"
+      [error]="boardFailure()"
+      [hint]="boardErrorMessage()"
+      (retry)="retryMetadata()"
+    />
+  } @else if (metadataReadError(); as error) {
+    <sneat-datatug-error-state
+      what="the project details"
+      [error]="metadataFailure()"
+      [hint]="metadataGuidance()"
+      (retry)="retryMetadata()"
+    />
   }
 
   @if (project()?.ref; as projectRef) {
     <sneat-datatug-github-reauthorization-banner [projectRef]="projectRef" />
   }
 
-  @if (!project()?.ref?.spaceID) {
+  @if (!project()?.ref?.spaceID && !everythingFailed()) {
     <section class="overview-environments" aria-label="Project environments">
       <button
         type="button"
@@ -85,12 +98,13 @@
           branch.
         </p>
       } @else if (environmentError()) {
-        <p role="alert">
-          {{
-            environmentErrorMessage() ||
-              'Environments could not be loaded. Refresh to try again.'
-          }}
-        </p>
+        <sneat-datatug-error-state
+          compact
+          what="the environments"
+          [error]="environmentFailure()"
+          [hint]="environmentErrorMessage()"
+          (retry)="retryMetadata()"
+        />
       } @else if (environments(); as items) {
         <div class="environment-strip">
           @for (environment of items; track environment.id) {
@@ -183,7 +197,9 @@
   <!--							 (itemClick)="goEntity($event)"-->
   <!--							 (cardTitleClick)="goProjFolder(Entity)"/>-->
 
-  @if (project()?.ref?.spaceID) {
+  @if (everythingFailed()) {
+    <!-- shown above -->
+  } @else if (project()?.ref?.spaceID) {
     <ion-card>
       <ion-item><ion-label>Shared project</ion-label></ion-item>
       @if (metadataState() === 'available') {
@@ -218,12 +234,13 @@
       <ion-card
         ><ion-list>
           @if (boardError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                boardErrorMessage() ||
-                  'Boards could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
+            <sneat-datatug-error-state
+              compact
+              what="the boards"
+              [error]="boardFailure()"
+              [hint]="boardErrorMessage()"
+              (retry)="retryMetadata()"
+            />
           } @else if (boards(); as items) {
             @for (board of items; track board.id) {
               <ion-item button detail (click)="goBoard(board)"
@@ -281,12 +298,13 @@
       <ion-card>
         <ion-list>
           @if (entityError()) {
-            <ion-item
-              ><ion-label color="danger">{{
-                entityErrorMessage() ||
-                  'Entities could not be loaded. Refresh to try again.'
-              }}</ion-label></ion-item
-            >
+            <sneat-datatug-error-state
+              compact
+              what="the entities"
+              [error]="entityFailure()"
+              [hint]="entityErrorMessage()"
+              (retry)="retryMetadata()"
+            />
           } @else if (entities(); as items) {
             @for (entity of items; track entity.id) {
               <ion-item

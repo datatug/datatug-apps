@@ -11,6 +11,9 @@ import { decodeIncidentEvent } from '../incidents/incident-client.service';
 import { isHostedResolveAction } from './hosted-resolve-contract';
 import type { HostedResolveAction } from './hosted-linkage.models';
 import wire from './testdata/backend-resolve-complete.http.go.json';
+import { restoreStorageSpies } from '../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 // Exact source projections/history and proof bytes; only the unit success receipt echoes the UI-generated operation ID.
 const request = wire.request;
@@ -230,20 +233,4 @@ describe('human Resolve existing shared Incident journal and cold history', () =
     expect(f.nativeElement.textContent).toContain('Open retained Check run');
     expect(client.incidentAction).not.toHaveBeenCalled();
   });
-});
-
-// vi.restoreAllMocks() does not undo a spy on a happy-dom Storage, and this suite shares one environment across spec
-// files: restore each spied Storage method explicitly, so that a mock never leaks into the next file.
-afterEach(() => {
-  for (const storage of [sessionStorage, localStorage])
-    for (const method of [
-      'getItem',
-      'setItem',
-      'removeItem',
-      'clear',
-      'key',
-    ] as const) {
-      const fn: unknown = storage[method];
-      if (vi.isMockFunction(fn)) fn.mockRestore();
-    }
 });

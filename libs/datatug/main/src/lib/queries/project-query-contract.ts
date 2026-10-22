@@ -118,6 +118,8 @@ export function toProjectQueryWire(
   if (query.purpose !== undefined && typeof query.purpose !== 'string')
     throw new UnsupportedQueryContractError();
   const isHttp = query['request'].queryType === QueryType.HTTP;
+  for (const p of (isHttp ? query.parameters : undefined) ?? [])
+    assertFields(p, ['id', 'type', 'title', 'defaultValue', 'isRequired', 'isCredential', 'meta']);
   assertFields(
     query['request'],
     isHttp

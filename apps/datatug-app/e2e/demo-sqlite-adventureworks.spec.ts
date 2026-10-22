@@ -213,7 +213,7 @@ test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload,
 
   // 4. Read a table.
   await expect(page.getByTestId('ovdb-database-header')).toContainText('editable');
-  await expect(page.getByTestId('reset-database')).toBeVisible();
+  await expect(page.getByTestId('source-menu')).toBeVisible(); // Reset Database sits in its menu
   const target = tables.find(
     (recordset) =>
       (recordset.rowCount ?? 0) > 0 &&
@@ -258,6 +258,7 @@ test('AdventureWorks: download via gzip parts, verify, open, read, edit, reload,
 
   // 6. Reset Database, with its confirmation: downloads again (single-copy), restores the original.
   expect(entry.storagePolicy).toBe('single-copy');
+  await page.getByTestId('source-menu').click();
   await page.getByTestId('reset-database').click();
   const alert = page.locator('ion-alert');
   await expect(alert).toHaveCount(1);

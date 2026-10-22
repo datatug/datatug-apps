@@ -70,9 +70,16 @@ import {
   countProjectQueries,
 } from './project-queries-preview.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
+
+/** A read that failed only because nobody is signed in: a quiet "sign in" note, not a toast. */
+function signedOutReadFailure(error: unknown): boolean {
+  const message = (error as { message?: unknown } | null)?.message ?? error;
+  return /not authenticated yet|no Firebase ID token/i.test(String(message));
+}
 
 @Component({
   selector: 'sneat-datatug-project',
@@ -82,6 +89,7 @@ import { readGithubProjectId } from '@datatug/project-address';
     SharedEvidenceLinkComponent,
     BusinessClockChipComponent,
     RouterLink,
+    ErrorStateComponent,
     SourceEntriesComponent,
     DatatugCoreModule,
     DatatugServicesNavModule,
@@ -220,6 +228,9 @@ export class ProjectPageComponent
     'loading' | 'available' | 'unavailable'
   >('loading');
   protected readonly metadataReadError = signal<string | undefined>(undefined);
+  /** The failure behind `metadataReadError`, so the error state can word a rate limit or an outage plainly. */
+  protected readonly metadataFailure = signal<unknown>(undefined);
+  protected readonly metadataGuidance = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
     'boards' | 'queries' | 'entities' | 'databases'
   >('boards');
@@ -232,16 +243,27 @@ export class ProjectPageComponent
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
+  protected readonly environmentFailure = signal<unknown>(undefined);
   protected readonly environmentError = signal(false);
   protected readonly environmentErrorMessage = signal<string | undefined>(
     undefined,
   );
   protected readonly boards = signal<IProjBoard[] | undefined>(undefined);
+  protected readonly boardFailure = signal<unknown>(undefined);
+  /** All the overview reads failed together (a rate limit, an outage): the page shows one state, not one per section. */
+  protected readonly everythingFailed = computed(
+    () =>
+      !this.project()?.ref?.spaceID &&
+      this.environmentError() &&
+      this.boardError() &&
+      this.entityError(),
+  );
   protected readonly boardError = signal(false);
   protected readonly boardErrorMessage = signal<string | undefined>(undefined);
   protected readonly entities = signal<IRecord<IEntity>[] | undefined>(
     undefined,
   );
+  protected readonly entityFailure = signal<unknown>(undefined);
   protected readonly entityError = signal(false);
   protected readonly entityErrorMessage = signal<string | undefined>(undefined);
   protected readonly environmentPresentation = environmentPresentation;
@@ -285,6 +307,7 @@ export class ProjectPageComponent
       });
       this.metadataState.set('loading');
       this.metadataReadError.set(undefined);
+      this.metadataFailure.set(undefined);
       this.activeTab.set(isCanonicalDemoDbProject(ref) ? 'queries' : 'boards');
       this.queryCount.set(undefined);
       this.querySource.set(undefined);
@@ -293,10 +316,13 @@ export class ProjectPageComponent
       this.boards.set(undefined);
       this.environmentError.set(false);
       this.environmentErrorMessage.set(undefined);
+      this.environmentFailure.set(undefined);
       this.entityError.set(false);
       this.entityErrorMessage.set(undefined);
+      this.entityFailure.set(undefined);
       this.boardError.set(false);
       this.boardErrorMessage.set(undefined);
+      this.boardFailure.set(undefined);
       // These fixed-asset reads use the complete project ref so branch and
       // connection selectors stay aligned. Shared Space asset shortcuts remain
       // excluded because that API does not expose these asset collections.
@@ -316,14 +342,20 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.environmentError.set(true);
+              this.environmentFailure.set(error);
               this.environmentErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Environments could not be loaded. Refresh to try again.',
+                  (signedOutReadFailure(error)
+                    ? 'Sign in to see environments.'
+                    : undefined),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview environments',
-              );
+              if (!signedOutReadFailure(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview environments',
+                  { show: false },
+                );
+              }
               return of(undefined);
             }),
           )
@@ -334,14 +366,20 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.boardError.set(true);
+              this.boardFailure.set(error);
               this.boardErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Boards could not be loaded. Refresh to try again.',
+                  (signedOutReadFailure(error)
+                    ? 'Sign in to see boards.'
+                    : undefined),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview boards',
-              );
+              if (!signedOutReadFailure(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview boards',
+                  { show: false },
+                );
+              }
               return of(undefined);
             }),
           )
@@ -352,14 +390,20 @@ export class ProjectPageComponent
             takeUntil(cancel$),
             catchError((error) => {
               this.entityError.set(true);
+              this.entityFailure.set(error);
               this.entityErrorMessage.set(
                 qualifiedLocalReadVersionGuidance(error) ??
-                  'Entities could not be loaded. Refresh to try again.',
+                  (signedOutReadFailure(error)
+                    ? 'Sign in to see entities.'
+                    : undefined),
               );
-              this.errorLogger.logError(
-                error,
-                'Failed to load overview entities',
-              );
+              if (!signedOutReadFailure(error)) {
+                this.errorLogger.logError(
+                  error,
+                  'Failed to load overview entities',
+                  { show: false },
+                );
+              }
               return of(undefined);
             }),
           )
@@ -390,6 +434,10 @@ export class ProjectPageComponent
           error: (error) => {
             if (!equalProjectRef(this.project()?.ref, ref)) return;
             this.onProjectSummaryChanged(ref, undefined);
+            this.metadataFailure.set(error);
+            this.metadataGuidance.set(
+              qualifiedLocalReadVersionGuidance(error) ?? undefined,
+            );
             this.metadataReadError.set(
               qualifiedLocalReadVersionGuidance(error) ??
                 'Project details could not be loaded. Check access and refresh to try again.',
@@ -397,6 +445,7 @@ export class ProjectPageComponent
             this.errorLogger.logError(
               error,
               'Failed to load project summary for project page',
+              { show: false },
             );
           },
         });
@@ -539,6 +588,11 @@ export class ProjectPageComponent
       brief: { access: summary.access, title: summary.title },
       summary,
     });
+  }
+
+  protected retryMetadata(): void {
+    const ref = this.project()?.ref;
+    if (ref) this.setProjRef(ref);
   }
 
   private goProjItemPage(page: ProjectItemType): void {

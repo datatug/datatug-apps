@@ -1,4 +1,6 @@
 import type { IHttpQueryRequest } from '../models/definition/query-def';
+import type { IParameterDef } from '../models/definition/parameter';
+import { validateHttpTemplate } from './http-template';
 
 /** Mirrors datatug-core `MaxQueryHTTPHeaders` (pkg/datatug/query_http.go). */
 export const MAX_HTTP_HEADERS = 50;
@@ -19,7 +21,9 @@ export function isHttpToken(name: string): boolean {
 
 /** The first reason an HTTP request cannot be saved, or undefined when it can. */
 export function httpRequestSaveProblem(
-  request: Pick<IHttpQueryRequest, 'headers'>,
+  request: Pick<IHttpQueryRequest, 'headers'> &
+    Partial<Pick<IHttpQueryRequest, 'url' | 'method' | 'body'>>,
+  parameters?: readonly IParameterDef[],
 ): string | undefined {
   const named = (request.headers ?? []).filter((h) => h.name.trim() !== '');
   const bad = named.find((h) => !isHttpToken(h.name.trim()));
@@ -27,6 +31,24 @@ export function httpRequestSaveProblem(
     return `Header name "${bad.name.trim()}" is not valid: use letters, digits and !#$%&'*+-.^_\`|~ only.`;
   if (named.length > MAX_HTTP_HEADERS)
     return `A query can have at most ${MAX_HTTP_HEADERS} headers.`;
+  // A query that declares parameters follows the placeholder contract
+  // (http-query-parameters); one with none is a legacy literal request.
+  if (parameters?.length) {
+    const method = request.method ?? 'GET';
+    try {
+      validateHttpTemplate(
+        {
+          method,
+          url: request.url ?? '',
+          headers: named.map((h) => ({ name: h.name.trim(), value: h.value })),
+          ...(httpMethodAllowsBody(method) ? { body: request.body ?? '' } : {}),
+        },
+        parameters,
+      );
+    } catch (e) {
+      return e instanceof Error ? e.message : String(e);
+    }
+  }
   return undefined;
 }
 

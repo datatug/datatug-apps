@@ -47,6 +47,12 @@ export interface QueryDispatchRequest {
   };
   readonly parameters?: Readonly<Record<string, TypedValue>>;
   readonly bindingOrigins?: readonly ExecutionBindingOrigin[];
+  /**
+   * Browser SQLite only: a session that downloads each pinned fixture once and
+   * keeps one worker for several statements (for example one lookup dialog).
+   * Without it every statement fetches the fixture and starts its own worker.
+   */
+  readonly browserSqliteSession?: import('./browser-sqlite-query.service').BrowserSqliteSession;
   /** Called only once a browser worker has accepted the prepared request. */
   readonly onDispatched?: () => void;
   readonly signal?: AbortSignal;
@@ -95,7 +101,7 @@ export function captureQueryDispatchRequest(
 ): QueryDispatchRequest {
   if (!request.projectRef || !request.definition)
     throw new QueryDispatchError('A project reference and query definition are required to run this query.');
-  const { signal, runtimeBinding, federationRun, onDispatched, ...snapshot } = request;
+  const { signal, runtimeBinding, federationRun, onDispatched, browserSqliteSession, ...snapshot } = request;
   const captured = structuredClone({
     ...snapshot,
     projectRef: request.projectRef,
@@ -123,6 +129,8 @@ export function captureQueryDispatchRequest(
     ...(capturedBinding ? { runtimeBinding: capturedBinding } : {}),
     ...(capturedRun ? { federationRun: capturedRun } : {}),
     ...(onDispatched ? { onDispatched } : {}),
+    // A live session object (worker, cached bytes): passed by reference, never cloned.
+    ...(browserSqliteSession ? { browserSqliteSession } : {}),
     signal,
   });
 }

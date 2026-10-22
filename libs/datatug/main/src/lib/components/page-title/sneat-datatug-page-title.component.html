@@ -1,8 +1,11 @@
 <ion-title>
   @if (projectTitle(); as title) {
-    <strong>{{ pageTitle() }}</strong> &#64; {{ title }}
+    <strong [attr.role]="heading() ? 'heading' : null" [attr.aria-level]="heading() ? 1 : null">{{ pageTitle() }}</strong> &#64; {{ title }}
   } @else {
-    <strong>{{ pageTitle() }}</strong>
+    <strong [attr.role]="heading() ? 'heading' : null" [attr.aria-level]="heading() ? 1 : null">{{ pageTitle() }}</strong>
+  }
+  @if (subtitle(); as text) {
+    <span class="dt-page-subtitle" data-testid="page-subtitle">{{ text }}</span>
   }
   <sneat-datatug-business-clock />
 </ion-title>

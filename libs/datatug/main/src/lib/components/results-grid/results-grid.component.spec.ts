@@ -16,6 +16,9 @@ import {
   type GridApi,
 } from 'ag-grid-community';
 import { RowGroupingModule } from 'ag-grid-enterprise';
+import { restoreStorageSpies } from '../../restore-storage-spies.spec-helper';
+
+afterEach(restoreStorageSpies);
 
 /** A column as the grid's api hands it out. */
 const col = (
@@ -532,6 +535,46 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
     expect(saved.cols.map((c: { colId: string }) => c.colId)).toEqual(['c0']);
   });
 
+  it('runs the More menu by keyboard and returns focus to its trigger', async () => {
+    const { el, fixture } = await ready(KEY);
+    document.body.appendChild(el);
+    try {
+      vi.useFakeTimers();
+      const more = el.querySelector<HTMLElement>(
+        '[data-testid="results-grid-more"]',
+      );
+      more?.click();
+      fixture.detectChanges();
+      vi.advanceTimersByTime(1);
+      const item = (id: string) =>
+        el.querySelector<HTMLElement>(`[data-testid="results-grid-${id}"]`);
+      expect(more?.getAttribute('aria-expanded')).toBe('true');
+      expect(document.activeElement).toBe(item('columns-button'));
+      const menu = el.querySelector<HTMLElement>(
+        '[data-testid="results-grid-more-menu"]',
+      );
+      const key = (k: string) =>
+        menu?.dispatchEvent(
+          new KeyboardEvent('keydown', { key: k, bubbles: true }),
+        );
+      key('ArrowDown');
+      expect(document.activeElement).toBe(item('autosize'));
+      key('End');
+      key('ArrowDown');
+      expect(document.activeElement).toBe(item('columns-button'));
+      key('ArrowUp');
+      expect(document.activeElement).not.toBe(item('columns-button'));
+      item('density')?.click();
+      fixture.detectChanges();
+      expect(more?.getAttribute('aria-expanded')).toBe('false');
+      expect(document.activeElement).toBe(more);
+      expect(item('density')?.getAttribute('aria-checked')).toBe('true');
+      expect(item('density')?.hasAttribute('aria-pressed')).toBe(false);
+    } finally {
+      el.remove();
+    }
+  });
+
   it('toggles the density, shows it, and remembers it', async () => {
     const { el, grid, fixture } = await ready(KEY);
     vi.useFakeTimers();
@@ -1035,20 +1078,4 @@ describe('ResultsGridComponent layout, selection and chooser', () => {
       for (const host of hosts) host.remove();
     }
   });
-});
-
-// vi.restoreAllMocks() does not undo a spy on a happy-dom Storage, and this suite shares one environment across spec
-// files: restore each spied Storage method explicitly, so that a mock never leaks into the next file.
-afterEach(() => {
-  for (const storage of [sessionStorage, localStorage])
-    for (const method of [
-      'getItem',
-      'setItem',
-      'removeItem',
-      'clear',
-      'key',
-    ] as const) {
-      const fn: unknown = storage[method];
-      if (vi.isMockFunction(fn)) fn.mockRestore();
-    }
 });

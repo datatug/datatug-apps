@@ -38,6 +38,9 @@ p.firebase-emulator-warning {
   --ion-text-color: #000000;
   --ion-text-color-rgb: 0, 0, 0;
   color-scheme: light;
+  // Secondary text. Ionic's `--ion-color-medium` is ~3:1 on white and ~5:1 on
+  // the dark surfaces; this one is >= 6:1 on both. Use it for any muted text.
+  --dt-text-muted: #5b5e66;
 }
 
 html,
@@ -48,6 +51,7 @@ ion-split-pane {
 
 .ion-palette-dark {
   color-scheme: dark;
+  --dt-text-muted: #b8bac2;
 }
 
 // Padding-less grid for page layout (`.ion-grid-layout`): the grid, its rows
@@ -255,7 +259,7 @@ ion-popover.datatug-dialog
   .join-hint,
   .join-empty,
   .join-details p {
-    color: var(--ion-color-medium-shade);
+    color: var(--dt-text-muted);
     font-size: 0.78rem;
   }
 
@@ -298,13 +302,13 @@ sneat-datatug-chat-page {
     }
 
     ion-item p {
-      color: var(--ion-color-medium-shade);
+      color: var(--dt-text-muted);
       font-size: 0.8rem;
     }
   }
 
   .workspace-group-label {
-    color: var(--ion-color-medium-shade);
+    color: var(--dt-text-muted);
     font-size: 0.8rem;
     font-weight: 600;
     margin: 1rem 0 0.25rem;
@@ -312,7 +316,7 @@ sneat-datatug-chat-page {
   }
 
   .workspace-empty {
-    color: var(--ion-color-medium-shade);
+    color: var(--dt-text-muted);
     padding: 1rem 0.5rem;
   }
 
@@ -349,7 +353,7 @@ sneat-datatug-chat-page {
   }
 
   .selected-fields dt {
-    color: var(--ion-color-medium-shade);
+    color: var(--dt-text-muted);
   }
 
   .selected-fields dd {
@@ -375,7 +379,7 @@ sneat-datatug-chat-page {
     padding: 0.85rem;
 
     span {
-      color: var(--ion-color-medium-shade);
+      color: var(--dt-text-muted);
       font-size: 0.8rem;
     }
 
@@ -527,7 +531,7 @@ sneat-datatug-project ion-card > ion-list > ion-item:last-child {
 .semantic-marker {
   font-size: 0.8rem;
   vertical-align: middle;
-  color: var(--ion-color-medium, #92949c);
+  color: var(--dt-text-muted, #92949c);
   margin-inline-start: 4px;
 
   &--inferred {
@@ -645,7 +649,7 @@ datatug-cli-chat-page {
     margin-bottom: 0.75rem;
   }
   .version-badge {
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
     font-weight: 400;
     margin-left: 0.5rem;
   }
@@ -669,7 +673,7 @@ datatug-cli-chat-page {
     background: rgba(var(--ion-color-primary-rgb), 0.14);
   }
   .http-summary {
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
     font-size: 0.8rem;
     margin-top: 0.4rem;
     overflow-wrap: anywhere;
@@ -782,7 +786,7 @@ datatug-cli-chat-page {
     margin-left: 0.65rem;
   }
   .project-section > summary {
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
   }
   .project-columns summary {
     font-size: 0.85rem;
@@ -797,7 +801,7 @@ datatug-cli-chat-page {
     gap: 0.5rem;
   }
   .context-card-title small {
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
   }
   .context-card p,
   .context-card pre {
@@ -831,7 +835,7 @@ datatug-cli-chat-page {
     width: 100%;
   }
   .context-empty {
-    color: var(--ion-color-medium);
+    color: var(--dt-text-muted);
     padding: 0.5rem;
   }
   .selected-values div {
@@ -916,6 +920,35 @@ datatug-cli-chat-page {
 // (datatug-app.component, UX brief §1) which owns the menu affordance, so
 // per-page ion-menu-button bars would double it — hide the page-level ones
 // while the compact header is shown.
-ion-app.compact-header-mode ion-menu-button:not(.app-level-menu-button) {
+//
+// One header per page, at every width (founder, 2026-10-22): a routed page that has an `ion-header` of its own
+// (other than Home's, which yields to the shell) is its single header on narrow layouts. The shell's
+// compact bar is hidden for it, the page's own menu button is shown again, and page-toolbar-adoption.ts
+// adds Sign in (and a menu button where the toolbar has none) to the page's toolbar. A toolbar with
+// a back button keeps the menu too, at the end.
+$page-owns-header: 'ion-router-outlet > .ion-page:not(.ion-page-hidden) ion-header:not(.home-header)';
+
+ion-app.compact-header-mode:not(:has(#{$page-owns-header})) ion-menu-button:not(.app-level-menu-button) {
+  display: none;
+}
+
+ion-app.compact-header-mode:has(#{$page-owns-header}) {
+  > .compact-header {
+    display: none;
+  }
+  > ion-split-pane {
+    top: 0;
+    height: 100%;
+  }
+  // Back on the left, menu at the end (page-toolbar-adoption.ts mounts the end-slot menu): the page's own
+  // start-slot menu button would sit next to the back button, so it yields.
+  ion-toolbar:has(ion-back-button, .page-back-link) ion-menu-button:not(.app-level-menu-button) {
+    display: none;
+  }
+}
+
+// Sign in is adopted at every width (the side panel's own "Please sign in" is not in the page header);
+// the adopted menu button only where the side panel is hidden.
+ion-app:not(.compact-header-mode) .shell-adopted-menu {
   display: none;
 }

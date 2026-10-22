@@ -136,7 +136,7 @@ describe('project query overview', () => {
         ),
       );
       expect(
-        fixture.nativeElement.querySelector('[role="alert"]'),
+        fixture.nativeElement.querySelector('[role="status"]'),
       ).not.toBeNull();
       expect(titles(fixture.nativeElement)).toHaveLength(0);
     },
@@ -181,7 +181,7 @@ describe('project query overview', () => {
     fixture.detectChanges();
     await fixture.whenStable();
     expect(
-      fixture.nativeElement.querySelector('[role="alert"]'),
+      fixture.nativeElement.querySelector('[role="status"]'),
     ).not.toBeNull();
   });
 });
