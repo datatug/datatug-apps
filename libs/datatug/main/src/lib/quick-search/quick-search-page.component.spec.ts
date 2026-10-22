@@ -10,7 +10,7 @@ import { QuickSearchPageComponent } from './quick-search-page.component';
 import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { SearchStatus } from './quick-search-model';
+import { SearchDocument, SearchStatus } from './quick-search-model';
 
 const ready: SearchStatus = {
   state: 'ready',
@@ -150,7 +150,6 @@ describe('Quick Search consent and async state', () => {
     status.next(ready);
     await fixture.whenStable();
     expect(page.status()).toEqual(ready);
-    expect(fixture.nativeElement.textContent).toContain('0 names');
     const old = new Subject<unknown>(),
       current = new Subject<unknown>();
     api.search.mockReturnValueOnce(old).mockReturnValueOnce(current);
@@ -398,5 +397,201 @@ describe('Quick Search consent and async state', () => {
       [],
       [],
     );
+  });
+
+  describe('search without the status waterfall', () => {
+    const doc = (name: string): SearchDocument => ({
+      kind: 'tag',
+      id: name,
+      name,
+      tags: [],
+      reference: { objectId: name },
+    });
+    const withQuery = (q: string) =>
+      TestBed.overrideProvider(ActivatedRoute, {
+        useValue: {
+          snapshot: {
+            data: {},
+            queryParamMap: convertToParamMap({ q }),
+            paramMap: convertToParamMap({}),
+          },
+        },
+      });
+    it('starts the search before status resolves and keeps results when status arrives late', async () => {
+      const status = new Subject<SearchStatus>();
+      api.status.mockReturnValue(status);
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      withQuery('Customers');
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      expect(api.search).toHaveBeenCalledTimes(1);
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+      status.next(ready);
+      await fixture.whenStable();
+      expect(page.status()).toEqual(ready);
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+      expect(fixture.nativeElement.textContent).toContain('1 name');
+      expect(api.search).toHaveBeenCalledTimes(1);
+    });
+    it('keeps results when status fails and shows a status retry without touching them', async () => {
+      const status = new Subject<SearchStatus>();
+      api.status.mockReturnValue(status);
+      api.search.mockReturnValue(
+        of({ items: [doc('Customers')], tags: [], itemCount: 1 }),
+      );
+      withQuery('Customers');
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      await fixture.whenStable();
+      status.error(new Error('status down'));
+      await fixture.whenStable();
+      expect(page.statusError()).toContain('Could not load index status');
+      expect(page.error()).toBe('');
+      expect(page.items().map((i) => i.name)).toEqual(['Customers']);
+      expect(fixture.nativeElement.textContent).toContain('Retry status');
+    });
+    it('does not cancel an in-flight status load when searching', async () => {
+      const status = new Subject<SearchStatus>();
+      api.status.mockReturnValue(status);
+      const search = new Subject<unknown>();
+      api.search.mockReturnValue(search);
+      withQuery('x');
+      const fixture = TestBed.createComponent(QuickSearchPageComponent),
+        page = fixture.componentInstance;
+      page.query.set('y');
+      page.search();
+      status.next(ready);
+      expect(page.status()).toEqual(ready);
+      expect(page.busy()).toBe(true);
+      search.next({ items: [doc('y')], tags: [], itemCount: 1 });
+      await fixture.whenStable();
+      expect(page.items().map((i) => i.name)).toEqual(['y']);
+    });
+    it('ignores stale search responses after a project change', () => {
+      const old = new Subject<unknown>();
+      api.search.mockReturnValueOnce(old);
+      withQuery('Customers');
+      const page = TestBed.createComponent(QuickSearchPageComponent)
+        .componentInstance;
+      api.search.mockReturnValue(new Subject());
+      context.next({
+        ref: { storeId: 'firestore', spaceID: 's', projectId: 'other' },
+      });
+      old.next({ items: [doc('stale')], tags: [], itemCount: 1 });
+      expect(page.items()).toEqual([]);
+    });
+    it('ignores stale search responses after sign-out', () => {
+      const old = new Subject<unknown>();
+      api.search.mockReturnValueOnce(old);
+      withQuery('Customers');
+      const page = TestBed.createComponent(QuickSearchPageComponent)
+        .componentInstance;
+      api.search.mockReturnValue(new Subject());
+      auth.next({ status: 'notAuthenticated', user: { uid: '' } });
+      old.next({ items: [doc('stale')], tags: [], itemCount: 1 });
+      expect(page.items()).toEqual([]);
+    });
+    it('does not search while auth is still resolving', () => {
+      auth.next({ status: 'authenticating', user: { uid: '' } });
+      withQuery('Customers');
+      TestBed.createComponent(QuickSearchPageComponent);
+      expect(api.search).not.toHaveBeenCalled();
+      auth.next({ status: 'authenticated', user: { uid: 'first' } });
+      expect(api.search).toHaveBeenCalledTimes(1);
+    });
+    const httpError = (status: number, code: string) => ({
+      status,
+      error: { error: { code } },
+    });
+    it.each([
+      [409, 'consent_required', 'consent', 'Quick Search is disabled'],
+      [
+        409,
+        'quick_search_reindex_required',
+        'reindex',
+        'must be refreshed before it can be searched',
+      ],
+      [
+        409,
+        'quick_search_unsupported_storage',
+        'unsupported',
+        "isn't available yet for projects stored in DataTug cloud",
+      ],
+      [
+        409,
+        'quick_search_premium_required',
+        'premium',
+        'requires a Pro or Business plan',
+      ],
+      [403, 'project_denied', 'denied', "don't have access"],
+      [409, 'operation_in_progress', 'conflict', 'being changed right now'],
+      [503, 'provider_unavailable', 'unavailable', 'temporarily unavailable'],
+    ])(
+      'renders an explicit state for %s %s',
+      async (status, code, problem, text) => {
+        api.search.mockReturnValue(throwError(() => httpError(status, code)));
+        withQuery('Customers');
+        const fixture = TestBed.createComponent(QuickSearchPageComponent);
+        await fixture.whenStable();
+        expect(fixture.componentInstance.problem()).toBe(problem);
+        expect(fixture.nativeElement.textContent).toContain(text);
+        expect(fixture.componentInstance.items()).toEqual([]);
+        expect(fixture.nativeElement.textContent).not.toContain('0 names');
+        expect(fixture.nativeElement.textContent).not.toContain(
+          'No matching items',
+        );
+      },
+    );
+    it('gives non-managers a neutral reindex message without a settings link', async () => {
+      api.status.mockReturnValue(of({ ...ready, canManage: false }));
+      api.search.mockReturnValue(
+        throwError(() => httpError(409, 'quick_search_reindex_required')),
+      );
+      withQuery('Customers');
+      const fixture = TestBed.createComponent(QuickSearchPageComponent);
+      await fixture.whenStable();
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('A project manager needs to refresh it');
+      expect(text).not.toContain('Open Index settings');
+    });
+    it('shows disabled consent state to managers with an Index settings button', async () => {
+      api.search.mockReturnValue(
+        throwError(() => httpError(409, 'consent_required')),
+      );
+      withQuery('Customers');
+      const fixture = TestBed.createComponent(QuickSearchPageComponent);
+      await fixture.whenStable();
+      expect(fixture.nativeElement.textContent).toContain(
+        'Open Index settings',
+      );
+    });
+    it('labels counts as the last indexed snapshot and renders unavailable counts explicitly', async () => {
+      api.status.mockReturnValue(
+        of({
+          ...ready,
+          documentCount: 157,
+          lastIndexedAt: '2026-10-22T10:42:00',
+        }),
+      );
+      const fixture = TestBed.createComponent(QuickSearchPageComponent);
+      fixture.componentInstance.settings.set(true);
+      await fixture.whenStable();
+      expect(
+        (fixture.nativeElement.textContent as string).replace(/\s+/g, ' '),
+      ).toContain(
+        'Last indexed snapshot: 157 items · indexed 22 Oct 10:42',
+      );
+      api.status.mockReturnValue(
+        of({ ...ready, documentCount: 0, countsUnavailable: 'not_eligible' }),
+      );
+      fixture.componentInstance.loadStatus();
+      await fixture.whenStable();
+      const text = fixture.nativeElement.textContent;
+      expect(text).toContain('Item counts unavailable');
+      expect(text).not.toContain('0 items');
+    });
   });
 });

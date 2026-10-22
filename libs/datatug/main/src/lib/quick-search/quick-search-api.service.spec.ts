@@ -77,25 +77,113 @@ describe('QuickSearchApiService', () => {
   });
 });
 
-describe('authenticated Quick Search metadata preview',()=>{
-  it('uses only the established qualified identity and optional environment body',()=>{
-    const post=vi.fn(()=>of({documents:[],sourceCoverage:[]}));
-    TestBed.configureTestingModule({providers:[{provide:DatatugApiService,useValue:{post}}]});
-    const service=TestBed.inject(QuickSearchApiService),ref={storeId:'github.com',projectId:'repo@owner@folder',projectApi:'cloud' as const,branch:'private-ref'};
-    service.preview(ref,'env-1').subscribe();
-    const [path,body,options]=post.mock.calls[0] as unknown as [string,unknown,{params:import('@angular/common/http').HttpParams}];
+describe('authenticated Quick Search metadata preview', () => {
+  it('uses only the established qualified identity and optional environment body', () => {
+    const post = vi.fn(() => of({ documents: [], sourceCoverage: [] }));
+    TestBed.configureTestingModule({
+      providers: [{ provide: DatatugApiService, useValue: { post } }],
+    });
+    const service = TestBed.inject(QuickSearchApiService),
+      ref = {
+        storeId: 'github.com',
+        projectId: 'repo@owner@folder',
+        projectApi: 'cloud' as const,
+        branch: 'private-ref',
+      };
+    service.preview(ref, 'env-1').subscribe();
+    const [path, body, options] = post.mock.calls[0] as unknown as [
+      string,
+      unknown,
+      { params: import('@angular/common/http').HttpParams },
+    ];
     expect(path).toBe('datatug/project/quick-search/preview');
-    expect(body).toEqual({environmentId:'env-1'});
+    expect(body).toEqual({ environmentId: 'env-1' });
     expect(options.params.get('project')).toBe('repo@owner@folder');
     expect(options.params.get('branch')).toBe('private-ref');
     service.preview(ref).subscribe();
     expect((post.mock.calls[1] as unknown[])[1]).toEqual({});
   });
-  it.each([SneatApiNotAuthenticatedError,{status:403}])('never retries preview anonymously (%s)',error=>{
-    const api={post:vi.fn(()=>throwError(()=>error)),postAsAnonymous:vi.fn()};
-    TestBed.configureTestingModule({providers:[{provide:DatatugApiService,useValue:api}]});
-    TestBed.inject(QuickSearchApiService).preview({storeId:'github.com',projectId:'repo@owner@',projectApi:'cloud'}).subscribe({error:()=>undefined});
-    expect(api.postAsAnonymous).not.toHaveBeenCalled();
+  it.each([SneatApiNotAuthenticatedError, { status: 403 }])(
+    'never retries preview anonymously (%s)',
+    (error) => {
+      const api = {
+        post: vi.fn(() => throwError(() => error)),
+        postAsAnonymous: vi.fn(),
+      };
+      TestBed.configureTestingModule({
+        providers: [{ provide: DatatugApiService, useValue: api }],
+      });
+      TestBed.inject(QuickSearchApiService)
+        .preview({
+          storeId: 'github.com',
+          projectId: 'repo@owner@',
+          projectApi: 'cloud',
+        })
+        .subscribe({ error: () => undefined });
+      expect(api.postAsAnonymous).not.toHaveBeenCalled();
+      expect(api.post).toHaveBeenCalledOnce();
+    },
+  );
+});
+
+describe('Quick Search status fields and typed search errors', () => {
+  const ref = { storeId: 'firestore', spaceID: 's', projectId: 'p' };
+  it('passes schemaVersion and countsUnavailable through unchanged', () => {
+    const body = {
+      state: 'ready',
+      canManage: false,
+      eligible: false,
+      audience: 'private',
+      provider: 'Typesense',
+      documentCount: 0,
+      schemaVersion: 2,
+      countsUnavailable: 'not_eligible',
+    };
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: DatatugApiService,
+          useValue: { get: vi.fn(() => of(body)) },
+        },
+      ],
+    });
+    let received: unknown;
+    TestBed.inject(QuickSearchApiService)
+      .status(ref)
+      .subscribe((status) => (received = status));
+    expect(received).toEqual(body);
+  });
+  it('searches without any status call', () => {
+    const api = {
+      get: vi.fn(),
+      post: vi.fn(() => of({ items: [], tags: [], itemCount: 0 })),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: DatatugApiService, useValue: api }],
+    });
+    TestBed.inject(QuickSearchApiService).search(ref, 'x').subscribe();
     expect(api.post).toHaveBeenCalledOnce();
+    expect(api.get).not.toHaveBeenCalled();
+  });
+  it.each([
+    'quick_search_reindex_required',
+    'quick_search_unsupported_storage',
+    'quick_search_premium_required',
+    'consent_required',
+  ])('surfaces the %s error untouched with no anonymous retry', (code) => {
+    const failure = { status: 409, error: { error: { code } } };
+    const api = {
+      post: vi.fn(() => throwError(() => failure)),
+      postAsAnonymous: vi.fn(),
+    };
+    TestBed.configureTestingModule({
+      providers: [{ provide: DatatugApiService, useValue: api }],
+    });
+    let received: unknown;
+    TestBed.inject(QuickSearchApiService)
+      .search({ storeId: 'github.com', projectId: 'repo@owner@' }, 'x')
+      .subscribe({ error: (error) => (received = error) });
+    expect(received).toBe(failure);
+    expect(api.postAsAnonymous).not.toHaveBeenCalled();
   });
 });

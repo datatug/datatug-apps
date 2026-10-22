@@ -7,6 +7,7 @@ import {
   DestroyRef,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { DatePipe } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { RouterLink, ActivatedRoute, Router } from '@angular/router';
 import {
@@ -51,8 +52,10 @@ import { QuickSearchApiService } from './quick-search-api.service';
 import { QuickSearchSnapshotService } from './quick-search-snapshot.service';
 import {
   checkMetadataTarget,
+  classifySearchError,
   SearchDocument,
   SearchKind,
+  SearchProblem,
   SearchSnapshot,
   SearchStatus,
   groupSearchItems,
@@ -71,6 +74,7 @@ import {
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    DatePipe,
     FormsModule,
     RouterLink,
     IonHeader,
@@ -153,9 +157,7 @@ import {
                 [ngModel]="tag()"
                 (ngModelChange)="tag.set($event); invalidateSearch()"
                 name="tag"
-              /><ion-button
-                type="submit"
-                [disabled]="busy() || status()?.state !== 'ready'"
+              /><ion-button type="submit" [disabled]="busy()"
                 >Search</ion-button
               >
             </div>
@@ -175,18 +177,40 @@ import {
             }
             @if (status(); as s) {
               <p role="status">
-                {{ s.state }} · {{ s.documentCount }} indexed items
+                {{ s.state }}
+                @if (s.countsUnavailable) {
+                  · Item counts unavailable
+                } @else {
+                  · Last indexed snapshot: {{ s.documentCount }}
+                  {{ s.documentCount === 1 ? 'item' : 'items' }}
+                  @if (s.lastIndexedAt) {
+                    · indexed {{ s.lastIndexedAt | date: 'd MMM HH:mm' }}
+                  }
+                }
                 @if (s.revision !== undefined) {
                   · Revision {{ s.revision }}
                 }
               </p>
+              @if (s.sourceCoverage?.length) {
+                <ul aria-label="Last indexed snapshot by kind">
+                  @for (coverage of s.sourceCoverage; track coverage.kind) {
+                    <li>
+                      {{ names[coverage.kind] }}:
+                      @if (
+                        s.countsUnavailable || coverage.status !== 'complete'
+                      ) {
+                        unavailable
+                      } @else {
+                        {{ coverage.count }}
+                      }
+                    </li>
+                  }
+                </ul>
+              }
               <p>
                 Audience: {{ s.audience }} · Provider:
                 {{ s.provider || 'Not configured' }}
               </p>
-              @if (s.lastIndexedAt) {
-                <p>Last indexed: {{ s.lastIndexedAt }}</p>
-              }
               @if (!s.eligible) {
                 <p>
                   Quick Search requires a public project or a current Pro or
@@ -319,34 +343,105 @@ import {
         @if (busy()) {
           <p role="status"><ion-spinner /> Loading…</p>
         }
+        @if (statusBusy() && settings()) {
+          <p role="status">Loading index status…</p>
+        }
         @if (error()) {
           <p role="alert">{{ error() }}</p>
-          <ion-button (click)="loadStatus()" fill="clear"
-            >Retry status</ion-button
-          >
+        }
+        @if (statusError()) {
+          <p role="alert">{{ statusError() }}</p>
+          <ion-button (click)="retry()" fill="clear">Retry status</ion-button>
+        }
+        @switch (problem()) {
+          @case ('reindex') {
+            <p role="alert">
+              @if (canManage()) {
+                This project's index must be refreshed before it can be
+                searched. Open Index settings, preview the selected metadata and
+                choose Refresh selected snapshot.
+              } @else {
+                This project's index is being updated and cannot be searched
+                yet. A project manager needs to refresh it.
+              }
+            </p>
+            @if (canManage() && !schemaDetail) {
+              <ion-button (click)="settings.set(true)"
+                >Open Index settings</ion-button
+              >
+            }
+          }
+          @case ('unsupported') {
+            <p role="alert">
+              Quick Search isn't available yet for projects stored in DataTug
+              cloud.
+            </p>
+          }
+          @case ('premium') {
+            <p role="alert">Quick Search requires a Pro or Business plan.</p>
+          }
+          @case ('denied') {
+            <p role="alert">
+              You don't have access to search this project. Check your project
+              access.
+            </p>
+          }
+          @case ('conflict') {
+            <p role="alert">
+              The index is being changed right now. Try again in a moment.
+            </p>
+            <ion-button fill="clear" (click)="search()"
+              >Retry search</ion-button
+            >
+          }
+          @case ('unavailable') {
+            <p role="alert">
+              Search is temporarily unavailable. Try again in a moment.
+            </p>
+            <ion-button fill="clear" (click)="search()"
+              >Retry search</ion-button
+            >
+          }
         }
         @if (status()?.error) {
           <p role="alert">{{ status()?.error }}</p>
         }
-        @if (!checkDetail() && !busy() && status()?.state === 'disabled') {
-          <p role="status">
-            Quick Search is disabled. Open Index settings to preview metadata
-            and give indexing consent.
-          </p>
-          @if (!schemaDetail) {
-            <ion-button (click)="settings.set(true)"
-              >Open Index settings</ion-button
-            >
+        @if (
+          !checkDetail() &&
+          !busy() &&
+          (status()?.state === 'disabled' || problem() === 'consent')
+        ) {
+          @if (canManage()) {
+            <p role="status">
+              Quick Search is disabled. Open Index settings to preview metadata
+              and give indexing consent.
+            </p>
+            @if (!schemaDetail) {
+              <ion-button (click)="settings.set(true)"
+                >Open Index settings</ion-button
+              >
+            }
+          } @else {
+            <p role="status">
+              Quick Search is disabled for this project. A project manager can
+              enable it.
+            </p>
           }
         }
-        @if (!checkDetail() && (status()?.state === 'ready' || schemaDetail)) {
+        @if (!checkDetail() && (searched() || schemaDetail) && !problem()) {
           <p aria-live="polite">
             {{ groups().length }}
             {{ groups().length === 1 ? 'name' : 'names' }} ·
             {{ items().length }} items
           </p>
         }
-        @if (!checkDetail() && !busy() && searched() && !groups().length) {
+        @if (
+          !checkDetail() &&
+          !busy() &&
+          searched() &&
+          !problem() &&
+          !groups().length
+        ) {
           <p role="status">
             {{
               discovery
@@ -364,7 +459,7 @@ import {
               @if (item.tags.length) {
                 <p>Tags: {{ item.tags.join(', ') }}</p>
               }
-            } @else if (!busy() && !error()) {
+            } @else if (!busy() && !error() && !statusError()) {
               <p role="status">
                 This Check metadata is unavailable for the selected project.
               </p>
@@ -553,7 +648,12 @@ export class QuickSearchPageComponent {
   readonly consent = signal(false);
   readonly confirmDelete = signal(false);
   readonly error = signal('');
+  /** Busy for search and index operations; status loading has its own signal. */
   readonly busy = signal(false);
+  readonly statusBusy = signal(false);
+  readonly statusError = signal('');
+  readonly problem = signal<SearchProblem | undefined>(undefined);
+  readonly canManage = computed(() => this.status()?.canManage !== false);
   readonly searched = signal(false);
   readonly kinds = searchKinds;
   readonly names = kindNames;
@@ -562,7 +662,12 @@ export class QuickSearchPageComponent {
   readonly overviewHref = computed(() =>
     projectPageHref(this.project(), ['overview']),
   );
+  /** Guards search, check/schema reads and index operations. */
   private generation = 0;
+  /** Guards status loads only, so status and search never cancel each other. */
+  private statusGeneration = 0;
+  private readonly authReady = signal(false);
+  private statusRequest?: Subscription;
   private readonly authKey = signal<string | undefined>(undefined);
   private request?: Subscription;
   constructor() {
@@ -588,7 +693,12 @@ export class QuickSearchPageComponent {
       this.consent.set(false);
       this.confirmDelete.set(false);
       this.error.set('');
-      if (auth.status !== 'authenticating') this.loadStatus();
+      this.statusError.set('');
+      this.authReady.set(auth.status !== 'authenticating');
+      if (this.authReady()) {
+        this.loadStatus();
+        this.autoSearch();
+      }
     });
     if (this.schemaDetail && this.route.paramMap && this.route.queryParamMap) {
       combineLatest([this.route.paramMap, this.route.queryParamMap])
@@ -616,16 +726,15 @@ export class QuickSearchPageComponent {
     }
     this.nav.currentProject.pipe(takeUntilDestroyed()).subscribe((context) => {
       if (equalProjectRef(this.project(), context?.ref)) return;
-      this.generation++;
-      this.request?.unsubscribe();
+      this.invalidateSearch();
       this.project.set(context?.ref);
       this.status.set(undefined);
-      this.items.set([]);
       this.snapshot.set(undefined);
       this.consent.set(false);
       this.error.set('');
-      this.busy.set(false);
+      this.statusError.set('');
       this.loadStatus();
+      this.autoSearch();
     });
     this.nav.currentEnv?.pipe(takeUntilDestroyed()).subscribe((environment) => {
       if (this.environmentId() !== environment?.id) {
@@ -661,11 +770,14 @@ export class QuickSearchPageComponent {
     });
     this.destroy.onDestroy(() => {
       this.generation++;
+      this.statusGeneration++;
       this.request?.unsubscribe();
+      this.statusRequest?.unsubscribe();
     });
   }
   ionViewWillEnter(): void {
     this.loadStatus();
+    this.autoSearch();
   }
   ionViewWillLeave(): void {
     this.invalidateSearch();
@@ -692,41 +804,51 @@ export class QuickSearchPageComponent {
     this.items.set([]);
     this.busy.set(false);
     this.searched.set(false);
+    this.problem.set(undefined);
   }
+  /** Starts the search for the current query once project and auth are usable; never waits for status. */
+  private autoSearch() {
+    if (!this.schemaDetail && !this.checkDetail()) this.search();
+  }
+  /** Retries status and, when a query is present, the search too. */
+  retry() {
+    this.loadStatus();
+    this.autoSearch();
+  }
+  /** Loads index status independently: it never touches search results, busy or generation. */
   loadStatus() {
     const ref = this.project();
     if (!ref) return;
-    const generation = ++this.generation;
-    this.request?.unsubscribe();
-    this.busy.set(true);
-    this.items.set([]);
+    const generation = ++this.statusGeneration;
+    this.statusRequest?.unsubscribe();
+    this.statusBusy.set(true);
     this.status.set(undefined);
-    this.error.set('');
-    this.request = this.api.status(ref).subscribe({
+    this.statusError.set('');
+    this.statusRequest = this.api.status(ref).subscribe({
       next: (status) => {
-        if (generation !== this.generation) return;
+        if (generation !== this.statusGeneration) return;
         this.status.set(status);
-        this.busy.set(false);
+        this.statusBusy.set(false);
         if (this.checkDetail()) {
           void this.checkMetadata();
           return;
         }
-        if (!this.schemaDetail && status.state === 'ready') this.search();
         if (this.schemaDetail) void this.schemaPreview();
       },
       error: () => {
-        if (generation === this.generation) {
-          this.error.set(
+        if (generation === this.statusGeneration) {
+          this.statusError.set(
             'Could not load index status. Check your project access and retry.',
           );
-          this.busy.set(false);
+          this.statusBusy.set(false);
         }
       },
     });
   }
   search() {
     const ref = this.project();
-    if (!ref || this.checkDetail() || this.status()?.state !== 'ready') return;
+    if (!ref || !this.authReady() || this.checkDetail() || this.schemaDetail)
+      return;
     if (!this.query().trim()) {
       this.invalidateSearch();
       return;
@@ -735,7 +857,9 @@ export class QuickSearchPageComponent {
     this.request?.unsubscribe();
     this.busy.set(true);
     this.error.set('');
+    this.problem.set(undefined);
     this.items.set([]);
+    this.searched.set(false);
     this.request = this.api
       .search(
         ref,
@@ -750,13 +874,15 @@ export class QuickSearchPageComponent {
           this.searched.set(true);
           this.busy.set(false);
         },
-        error: () => {
-          if (generation === this.generation) {
+        error: (failure: unknown) => {
+          if (generation !== this.generation) return;
+          const problem = classifySearchError(failure);
+          if (problem === 'failed')
             this.error.set(
               'Search failed. Check your project access and try again.',
             );
-            this.busy.set(false);
-          }
+          else this.problem.set(problem);
+          this.busy.set(false);
         },
       });
   }
@@ -885,16 +1011,23 @@ export class QuickSearchPageComponent {
   private mutate(operation: ReturnType<QuickSearchApiService['disable']>) {
     const generation = ++this.generation;
     this.request?.unsubscribe();
+    // The operation's status is authoritative: cancel any in-flight status load.
+    this.statusGeneration++;
+    this.statusRequest?.unsubscribe();
+    this.statusBusy.set(false);
     this.busy.set(true);
     this.error.set('');
+    this.problem.set(undefined);
     this.request = operation.subscribe({
       next: (status) => {
         if (generation !== this.generation) return;
         this.status.set(status);
+        this.statusError.set('');
         this.busy.set(false);
         this.confirmDelete.set(false);
         this.consent.set(false);
         if (status.state === 'disabled') this.snapshot.set(undefined);
+        if (status.state === 'ready') this.autoSearch();
       },
       error: () => {
         if (generation === this.generation) {

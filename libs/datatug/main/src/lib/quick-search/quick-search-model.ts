@@ -59,6 +59,54 @@ export interface SearchStatus {
   revision?: number;
   error?: string;
   sourceCoverage?: SourceCoverage[];
+  /** Index schema version; absent for indexes written before versioning. */
+  schemaVersion?: number;
+  /** Why counts cannot be shown (e.g. `not_eligible`); counts are then unavailable, never 0. */
+  countsUnavailable?: string;
+}
+/** A typed Quick Search failure the page renders as an explicit state. */
+export type SearchProblem =
+  | 'consent'
+  | 'reindex'
+  | 'unsupported'
+  | 'premium'
+  | 'denied'
+  | 'conflict'
+  | 'unavailable'
+  | 'failed';
+/**
+ * Classifies a failed Quick Search call by the API's JSON error code
+ * (`{error:{code}}` or the legacy `{error:'code'}`), falling back to the HTTP status.
+ */
+export function classifySearchError(error: unknown): SearchProblem {
+  const failure = error as
+    | { status?: number; error?: { error?: unknown; code?: unknown } }
+    | undefined;
+  const inner = failure?.error?.error ?? failure?.error?.code;
+  const code =
+    typeof inner === 'string'
+      ? inner
+      : (inner as { code?: unknown } | undefined)?.code;
+  switch (code) {
+    case 'consent_required':
+      return 'consent';
+    case 'quick_search_reindex_required':
+      return 'reindex';
+    case 'quick_search_unsupported_storage':
+      return 'unsupported';
+    case 'quick_search_premium_required':
+      return 'premium';
+    case 'project_denied':
+      return 'denied';
+    case 'operation_in_progress':
+      return 'conflict';
+    case 'search_unavailable':
+    case 'provider_unavailable':
+      return 'unavailable';
+  }
+  if (failure?.status === 403) return 'denied';
+  if (failure?.status === 503) return 'unavailable';
+  return 'failed';
 }
 export interface SearchResponse {
   items: SearchDocument[];
