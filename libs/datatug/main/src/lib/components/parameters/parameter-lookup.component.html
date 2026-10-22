@@ -1,13 +1,136 @@
-<div>
-  <h2 class="ion-margin">{{ parameter()?.id }}</h2>
+<ion-header>
+  <ion-toolbar color="light">
+    <ion-title>{{ title() }}</ion-title>
+    <ion-buttons slot="end">
+      <ion-button (click)="cancel()" aria-label="Close" title="Close">
+        <ion-icon name="close-outline" slot="icon-only" />
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+  <ion-toolbar>
+    <ion-searchbar
+      #searchbar
+      data-testid="parameter-lookup-filter"
+      [placeholder]="'Filter ' + collection()"
+      [attr.aria-label]="'Filter ' + collection()"
+      [debounce]="250"
+      [disabled]="needsSource() || preparing() || !!noUsableSource()"
+      (ionInput)="onFilter($any($event).detail.value)"
+    />
+  </ion-toolbar>
+</ion-header>
 
-  <sneat-datatug-sql [sql]="parameter()?.lookup?.sql" />
-</div>
+<ion-content>
+  @if (sourceOptions().length > 1) {
+    <ion-item lines="full">
+      <ion-select
+        label="Look up in"
+        labelPlacement="fixed"
+        interface="popover"
+        placeholder="Choose a source"
+        [value]="sourceId()"
+        (ionChange)="chooseSource($any($event).detail.value)"
+      >
+        @for (source of sourceOptions(); track source.id) {
+          <ion-select-option [value]="source.id">{{ source.label }}</ion-select-option>
+        }
+      </ion-select>
+    </ion-item>
+  }
 
-<sneat-datagrid
-  layout="fitColumns"
-  height="500px"
-  [columns]="grid()?.columns"
-  [data]="grid()?.rows"
-  [rowClick]="rowClicked"
-/>
+  <div
+    class="lookup-status"
+    [class.lookup-status-error]="statusKind() === 'error' || statusKind() === 'unavailable'"
+    role="status"
+    aria-live="polite"
+    data-testid="parameter-lookup-status"
+  >
+    @if (loading() || preparing()) {
+      <ion-spinner name="lines-small" aria-hidden="true" />
+    }
+    <span>{{ status() }}</span>
+    @if (statusKind() === 'empty' && filter()) {
+      <ion-button size="small" fill="clear" (click)="clearFilter()">Clear filter</ion-button>
+    }
+    @if (statusKind() === 'error') {
+      <ion-button size="small" fill="clear" (click)="retry()">
+        <ion-icon name="refresh-outline" slot="start" />Retry
+      </ion-button>
+    }
+  </div>
+
+  @if (page()?.inferredNote; as note) {
+    <ion-note class="lookup-note">{{ note }}</ion-note>
+  }
+  @for (limitation of page()?.limitations ?? []; track $index) {
+    <ion-note class="lookup-note" color="warning">{{ limitation }}</ion-note>
+  }
+
+  @if (rows().length) {
+    <div
+      class="lookup-table"
+      [class.lookup-table-loading]="loading()"
+      [style.--lookup-grid]="gridTemplate()"
+    >
+      <div class="lookup-head" aria-hidden="true">
+        @for (column of displayColumns(); track column.name) {
+          <span class="lookup-cell" [class.lookup-key]="column.key">{{ column.label }}</span>
+        }
+      </div>
+      <ion-list lines="inset">
+        <ion-radio-group
+          [value]="selectedIndex()"
+          [attr.aria-label]="title()"
+          (ionChange)="onSelectionChange($any($event).detail.value)"
+          (keydown)="onListKeydown($event)"
+        >
+          @for (row of rows(); track $index; let i = $index) {
+            <ion-item
+              class="lookup-row"
+              data-testid="parameter-lookup-row"
+              (dblclick)="pickRow(i)"
+            >
+              <ion-radio
+                [value]="i"
+                justify="start"
+                labelPlacement="end"
+                [attr.aria-label]="rowLabel(row)"
+              >
+                <span class="lookup-cells">
+                  @for (cell of row; track $index; let c = $index) {
+                    <span class="lookup-cell" [class.lookup-key]="c === 0">{{ cellText(cell) }}</span>
+                  }
+                </span>
+              </ion-radio>
+            </ion-item>
+          }
+        </ion-radio-group>
+      </ion-list>
+    </div>
+  }
+
+  @if (sourceNote(); as note) {
+    <ion-note class="lookup-note lookup-source-note">{{ note }}</ion-note>
+  }
+</ion-content>
+
+<ion-footer>
+  <ion-toolbar>
+    @if (pickError(); as error) {
+      <p class="lookup-pick-error" role="alert">{{ error }}</p>
+    }
+    <ion-buttons slot="end">
+      <ion-button (click)="cancel()">Cancel</ion-button>
+      <ion-button
+        color="primary"
+        fill="solid"
+        data-testid="parameter-lookup-select"
+        [disabled]="selectedIndex() === undefined"
+        (click)="select()"
+      >
+        <ion-icon name="checkmark-outline" slot="start" />
+        Select
+      </ion-button>
+    </ion-buttons>
+  </ion-toolbar>
+</ion-footer>

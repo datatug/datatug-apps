@@ -1,0 +1,238 @@
+import { Injectable, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
+import type { TypedValue } from '@sneat/datatug-semantic';
+import type { IProjectRef } from '../../core/project-context';
+import type { IParameterDef } from '../../models/definition/parameter';
+import { QueryType, type IQueryDef, type ITextQueryRequest } from '../../models/definition/query-def';
+import { QueryDispatchService } from '../../queries/query-dispatch.service';
+import { serverOwnsSourceAdmission, type QueryConnectionDescriptor } from '../../queries/query-dispatch';
+import { ProjectAssetsReadService } from '../../services/project/project-assets-read.service';
+import {
+  LOOKUP_PAGE_SIZE,
+  LOOKUP_SCHEMA_SQL,
+  columnKeyKind,
+  isMeaningLookupParameter,
+  lookupCandidates,
+  lookupConnection,
+  lookupDisplayColumns,
+  lookupEnvironment,
+  lookupRowsSql,
+  orderCandidates,
+  parameterAcceptsKey,
+  type LookupCandidate,
+  type LookupColumn,
+  type LookupEntity,
+} from './parameter-lookup-model';
+import type {
+  ParameterLookupContext,
+  ParameterLookupPage,
+  ParameterLookupProvider,
+} from './parameter-lookup-provider';
+
+/** An eligible candidate bound to the browser-runnable connection that will read it. */
+export interface PublicLookupSource extends LookupCandidate {
+  readonly id: string;
+  readonly connection: QueryConnectionDescriptor;
+  readonly environment?: string;
+}
+
+interface SchemaProbe {
+  readonly columns: readonly LookupColumn[];
+  readonly primaryKey: readonly string[];
+}
+
+function refKey(ref: IProjectRef): string {
+  return JSON.stringify([ref.storeId, ref.projectId, ref.spaceID ?? '', ref.projectApi ?? '', ref.branch ?? '']);
+}
+
+/** Only public projects read in the browser take this path; agents and hosted projects need the server endpoint. */
+export function isPublicBrowserProject(ref: IProjectRef | undefined): ref is IProjectRef {
+  return !!ref && !serverOwnsSourceAdmission({
+    projectRef: ref,
+    definition: { id: '', request: { queryType: QueryType.SQL, text: '' } as ITextQueryRequest },
+  });
+}
+
+/**
+ * Meaning-keyed lookups for public projects (parameter-lookup
+ * REQ:runtime-execution, public browser path): resolves the parameter's
+ * meaning through the project's Core entity, binds each declared mapping to a
+ * browser-runnable catalog connection, and reads the pinned SQLite fixture
+ * through the existing query dispatcher and worker. Every identifier is
+ * checked against the fixture's own catalog before it is quoted into SQL.
+ */
+@Injectable({ providedIn: 'root' })
+export class PublicParameterLookupService {
+  private readonly dispatch = inject(QueryDispatchService);
+  private readonly assets = inject(ProjectAssetsReadService);
+  private readonly entities = new Map<string, Promise<LookupEntity | undefined>>();
+  private readonly catalogs = new Map<string, Promise<readonly QueryConnectionDescriptor[]>>();
+  private readonly schemas = new Map<string, Promise<SchemaProbe>>();
+
+  /** The eligible sources of a parameter; empty means no pick button. Never downloads a fixture. */
+  async sources(parameter: IParameterDef, context: ParameterLookupContext): Promise<PublicLookupSource[]> {
+    const ref = context.projectRef;
+    if (!isMeaningLookupParameter(parameter) || !isPublicBrowserProject(ref)) return [];
+    const [entity, catalog] = await Promise.all([this.entity(ref, parameter.meta.entity), this.catalog(ref)]);
+    const environment = context.environment ?? undefined;
+    const hostSource = context.hostConnectionId
+      ? catalog.find((c) => c.id === context.hostConnectionId)?.dataset ?? context.hostConnectionId
+      : undefined;
+    const result: PublicLookupSource[] = [];
+    for (const candidate of orderCandidates(lookupCandidates(entity, parameter), hostSource)) {
+      const connection = lookupConnection(catalog, candidate.source, context.hostConnectionId, environment);
+      if (!connection?.id) continue;
+      result.push({
+        ...candidate,
+        id: `${candidate.source}\u0000${candidate.collection}`,
+        connection,
+        environment: lookupEnvironment(connection, environment),
+      });
+    }
+    return result;
+  }
+
+  /** A dialog provider over already-resolved sources. */
+  provider(parameter: IParameterDef, context: ParameterLookupContext, sources: readonly PublicLookupSource[], entity: LookupEntity | undefined): ParameterLookupProvider {
+    const ref = context.projectRef as IProjectRef;
+    const hostSources = sources.filter((s) => !!context.hostConnectionId && s.connection.id === context.hostConnectionId);
+    const preselected = sources.length === 1
+      ? sources[0].id
+      : hostSources.length === 1 ? hostSources[0].id : undefined;
+    return {
+      subject: entity?.title || parameter.meta?.entity || parameter.title || parameter.id,
+      sources: sources.map((s) => ({ id: s.id, label: `${s.collection} · ${s.source}` })),
+      preselectedSourceId: preselected,
+      sourceNote: 'Read from the pinned public sample in your browser.',
+      ...(sources.length > 1 ? {
+        // Several mappings: keep only those whose fixture key really is the mapped column.
+        prepare: async (signal: AbortSignal) => {
+          const checks = await Promise.all(sources.map(async (source) => ({
+            source,
+            problem: this.keyProblem(parameter, source, await this.schema(ref, source, signal)),
+          })));
+          const usable = checks.filter((c) => !c.problem).map((c) => c.source);
+          const preselectedUsable = usable.length === 1
+            ? usable[0].id
+            : usable.find((s) => s.id === preselected)?.id;
+          return {
+            sources: usable.map((s) => ({ id: s.id, label: `${s.collection} · ${s.source}` })),
+            ...(preselectedUsable ? { preselectedSourceId: preselectedUsable } : {}),
+            ...(usable.length ? {} : { unavailable: `No table can be used for this lookup: ${checks.map((c) => `${c.source.collection} ${c.problem}`).join('; ')}.` }),
+          };
+        },
+      } : {}),
+      search: (sourceId, filter, signal) => {
+        const source = sources.find((s) => s.id === sourceId);
+        if (!source) return Promise.reject(new Error('Unknown lookup source.'));
+        return this.search(ref, parameter, entity ?? {}, source, filter, signal);
+      },
+    };
+  }
+
+  /** The entity a meaning names, read once per project. */
+  entity(ref: IProjectRef, entityId: string): Promise<LookupEntity | undefined> {
+    const key = `${refKey(ref)}\u0000${entityId}`;
+    let entity = this.entities.get(key);
+    if (!entity) {
+      entity = firstValueFrom(this.assets.entity(ref, entityId))
+        .then((e) => e as unknown as LookupEntity)
+        .catch(() => undefined);
+      this.entities.set(key, entity);
+    }
+    return entity;
+  }
+
+  private catalog(ref: IProjectRef): Promise<readonly QueryConnectionDescriptor[]> {
+    const key = refKey(ref);
+    let catalog = this.catalogs.get(key);
+    if (!catalog) {
+      catalog = this.dispatch.connectionCatalog({ projectRef: ref }).catch(() => {
+        this.catalogs.delete(key);
+        return [];
+      });
+      this.catalogs.set(key, catalog);
+    }
+    return catalog;
+  }
+
+  private async run(ref: IProjectRef, source: PublicLookupSource, sql: string, parameters: IQueryDef['parameters'], values: Record<string, TypedValue>, signal: AbortSignal) {
+    const definition: IQueryDef = {
+      id: 'parameter-lookup',
+      title: 'Parameter lookup',
+      connectionId: source.connection.id,
+      request: { queryType: QueryType.SQL, text: sql } as ITextQueryRequest,
+      ...(parameters?.length ? { parameters } : {}),
+    };
+    return this.dispatch.execute({
+      projectRef: ref,
+      definition,
+      target: { kind: 'browser-sqlite' },
+      ...(source.environment ? { environment: source.environment } : {}),
+      ...(Object.keys(values).length ? { parameters: values } : {}),
+      signal,
+    });
+  }
+
+  private schema(ref: IProjectRef, source: PublicLookupSource, signal: AbortSignal): Promise<SchemaProbe> {
+    const key = `${refKey(ref)}\u0000${source.connection.id}\u0000${source.collection}`;
+    let probe = this.schemas.get(key);
+    if (!probe) {
+      probe = this.run(ref, source, LOOKUP_SCHEMA_SQL, [{ id: 'collection', type: 'string', isRequired: true }],
+        { collection: { type: 'string', value: source.collection } }, signal)
+        .then((result) => {
+          const rows = result.recordset.rows;
+          const columns = rows.map((row) => ({ name: String(row[0]?.value ?? ''), type: String(row[1]?.value ?? '') }));
+          const primaryKey = rows
+            .filter((row) => Number(row[2]?.value ?? 0) > 0)
+            .sort((a, b) => Number(a[2]?.value) - Number(b[2]?.value))
+            .map((row) => String(row[0]?.value ?? ''));
+          return { columns, primaryKey };
+        });
+      probe.catch(() => this.schemas.delete(key));
+      this.schemas.set(key, probe);
+    }
+    return probe;
+  }
+
+  /** Why a source's fixture key cannot serve this parameter, or undefined when it can. */
+  private keyProblem(parameter: IParameterDef, source: PublicLookupSource, schema: SchemaProbe): string | undefined {
+    if (!schema.columns.length) return 'it is not in this sample';
+    if (schema.primaryKey.length !== 1 || schema.primaryKey[0] !== source.keyColumn)
+      return `it has no single-column primary key on ${source.keyColumn}`;
+    const keyKind = columnKeyKind(schema.columns.find((c) => c.name === source.keyColumn)?.type);
+    if (!keyKind) return `its key ${source.keyColumn} is neither integer nor text`;
+    if (!parameterAcceptsKey(parameter.type, keyKind))
+      return `its key is ${keyKind === 'string' ? 'text' : 'integer'} but this input expects ${parameter.type}`;
+    return undefined;
+  }
+
+  private async search(ref: IProjectRef, parameter: IParameterDef, entity: LookupEntity, source: PublicLookupSource, filter: string, signal: AbortSignal): Promise<ParameterLookupPage> {
+    const schema = await this.schema(ref, source, signal);
+    const collection = source.collection;
+    const problem = this.keyProblem(parameter, source, schema);
+    if (problem) return {
+      collection, columns: [], rows: [], limited: false,
+      unavailable: `${collection} cannot be used for this lookup: ${problem}.`,
+    };
+    const display = lookupDisplayColumns(entity, source, schema.columns);
+    const { sql, parameters, values } = lookupRowsSql(collection, source.keyColumn, display.columns.map((c) => c.column), filter);
+    const result = await this.run(ref, source, sql, parameters, values, signal);
+    const rows = result.recordset.rows;
+    const entityLabel = entity.id || parameter.meta?.entity || 'this entity';
+    return {
+      collection,
+      columns: [
+        { name: source.keyColumn, label: source.keyColumn, key: true },
+        ...display.columns.map((c) => ({ name: c.column, label: c.label, key: false })),
+      ],
+      rows: rows.slice(0, LOOKUP_PAGE_SIZE),
+      limited: rows.length > LOOKUP_PAGE_SIZE,
+      ...(display.inferred ? { inferredNote: `Columns guessed: declare display on entity ${entityLabel} to choose them.` } : {}),
+      // Only limitations that change what the list shows; chart-rights notes do not apply to a pick list.
+      ...(result.limitations?.some((l) => l.rowsFiltered || l.hiddenColumns?.length)
+        ? { limitations: result.limitations.filter((l) => l.rowsFiltered || l.hiddenColumns?.length).map((l) => l.policy) }
+        : {}),
+    };
+  }
+}

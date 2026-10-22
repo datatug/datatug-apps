@@ -93,6 +93,20 @@ export class QueryDispatchService {
     return declaration ? this.queryRuntimes.candidates(declaration).map(({ selectionId, title }) => ({ selectionId, title })) : [];
   }
 
+  /** Every connection the project's catalog declares (the same read a saved query's connection uses). */
+  async connectionCatalog(request: Pick<QueryDispatchRequest, 'projectRef' | 'signal'>): Promise<readonly QueryConnectionDescriptor[]> {
+    const source = usesProjectApi(request.projectRef)
+      ? this.projectApi.connectionCatalog<{ readonly connections?: readonly QueryConnectionDescriptor[] }>(request.projectRef)
+      : this.github.getRawJson<{ readonly connections?: readonly QueryConnectionDescriptor[] }>(
+          githubProjectAddressForRef(request.projectRef), 'connections/demo-db.json');
+    if (request.signal?.aborted) throw abortError();
+    const catalog = await firstValueFrom((request.signal
+      ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
+      : source).pipe(timeout({ first: 10_000 })));
+    if (request.signal?.aborted) throw abortError();
+    return catalog?.connections ?? [];
+  }
+
   private async connectionDeclaration(request: Pick<QueryDispatchRequest, 'projectRef' | 'definition' | 'environment' | 'signal'>): Promise<QueryConnectionDescriptor | undefined> {
     const connectionId = request.definition.connectionId;
     if (!connectionId) return undefined;

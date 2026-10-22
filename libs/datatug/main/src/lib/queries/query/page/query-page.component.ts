@@ -537,6 +537,11 @@ import { DatatugServicesNavModule } from '../../../services/nav/datatug-services
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatug-services-unsorted.module';
 import { DatatugExecutorModule } from '../../../executor/datatug-executor.module';
+import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../../../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../../../components/parameters/parameter-lookup.service';
 import { DatatugQueriesServicesModule } from '../../datatug-queries-services.module';
 import { QueriesService } from '../../queries.service';
 import {
@@ -850,6 +855,7 @@ let queryParameterEditorId = 0;
     DatatugQueriesServicesModule,
     DatatugExecutorModule,
     FormsModule,
+    ParameterLookupButtonComponent,
     ResultsGridComponent,
     SavedResultBannerComponent,
     HeldResultPresentationComponent,
@@ -2174,6 +2180,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   private readonly nativeParameterDrafts = signal<ReadonlyMap<string, string>>(
     new Map(),
   );
+  /** Native parameters whose current value was picked in the lookup ("from lookup"). */
+  private readonly lookupPickedParameters = signal<ReadonlySet<string>>(new Set());
+  private lookupContextCache?: { key: string; context: ParameterLookupHost };
   private readonly nativeParameterErrors = signal<ReadonlyMap<string, string>>(
     new Map(),
   );
@@ -6627,6 +6636,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.loadedTextRepresentation()?.scope !== representationScope
       ) {
         this.nativeParameterDrafts.set(new Map());
+        this.lookupPickedParameters.set(new Set());
         this.nativeParameterErrors.set(new Map());
         this.userBindingValues.set(new Map());
         this.clearedParamIds.set(new Set());
@@ -8080,11 +8090,46 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         : 'text';
   }
 
+  /** Where native parameter pickers look values up (parameter-lookup REQ:runtime-execution); stable per host. */
+  public parameterLookupContext(): ParameterLookupHost {
+    const ref = this.project?.ref;
+    const environment = this.queryState.activeEnv?.id ?? this.envId;
+    const hostConnectionId = this.queryDef()?.connectionId;
+    const key = JSON.stringify([ref?.storeId, ref?.projectId, ref?.spaceID, ref?.projectApi, ref?.branch, environment, hostConnectionId]);
+    if (this.lookupContextCache?.key !== key)
+      this.lookupContextCache = {
+        key,
+        context: {
+          ...(ref ? { projectRef: ref } : {}),
+          ...(environment ? { environment } : {}),
+          ...(hostConnectionId ? { hostConnectionId } : {}),
+        },
+      };
+    return this.lookupContextCache.context;
+  }
+
+  public onNativeParameterPicked(parameter: IParameterDef, pick: ParameterLookupPick): void {
+    this.setNativeParameterInput(parameter, String(pick.value));
+    if (!this.nativeParameterErrors().has(parameter.id) && this.nativeParameterValue(parameter.id) === String(pick.value))
+      this.lookupPickedParameters.set(new Set(this.lookupPickedParameters()).add(parameter.id));
+  }
+
+  private forgetLookupPick(parameterId: string): void {
+    if (!this.lookupPickedParameters().has(parameterId)) return;
+    const next = new Set(this.lookupPickedParameters());
+    next.delete(parameterId);
+    this.lookupPickedParameters.set(next);
+  }
+
   public nativeParameterHint(parameter: IParameterDef): string {
     const parts = [
       parameter.type,
       parameter.isRequired ? 'Required' : 'Optional',
     ];
+    if (this.lookupPickedParameters().has(parameter.id)) {
+      parts.push('from lookup');
+      return parts.join(' · ');
+    }
     const binding = this.nativeParameterBinding(parameter.id);
     if (
       binding?.value !== undefined &&
@@ -8109,6 +8154,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       );
       return;
     }
+    this.forgetLookupPick(parameterId);
     this.nativeParameterDrafts.set(
       new Map(this.nativeParameterDrafts()).set(parameterId, ''),
     );
@@ -8131,6 +8177,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       return;
     }
     const raw = input ?? '';
+    this.forgetLookupPick(parameter.id);
     this.nativeParameterDrafts.set(
       new Map(this.nativeParameterDrafts()).set(parameter.id, raw),
     );

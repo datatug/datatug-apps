@@ -52,7 +52,11 @@ import {
   ChartSpec,
   canonicalBoardQueryIds,
 } from '@datatug/board-models';
-import { ParameterLookupService } from '../../../../components/parameters/parameter-lookup.service';
+import {
+  ParameterLookupButtonComponent,
+  type ParameterLookupPick,
+} from '../../../../components/parameters/parameter-lookup-button.component';
+import type { ParameterLookupHost } from '../../../../components/parameters/parameter-lookup.service';
 import { DatatugCoreModule } from '../../../../core/datatug-core.module';
 import { routingParamBoard } from '../../../../core/datatug-routing-params';
 import {
@@ -148,8 +152,9 @@ interface TutorialStatus {
     IonItem,
     IonInput,
     BoardComponent,
+    ParameterLookupButtonComponent,
   ],
-  providers: [QueryParamsService, ParameterLookupService, TutorialBoardRuntime],
+  providers: [QueryParamsService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
@@ -163,7 +168,6 @@ export class BoardPageComponent implements OnInit, OnDestroy {
   private readonly assets = inject(ProjectAssetsReadService);
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router, { optional: true });
-  private readonly lookupService = inject(ParameterLookupService);
   private readonly dataTugNavContext = inject(DatatugNavContextService);
   private readonly queryParamsService = inject(QueryParamsService);
   private readonly agentContext = inject(AgentContextService);
@@ -331,6 +335,28 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     const ref = this.projectRef();
     return !!(ref?.projectApi || ref?.branch);
   });
+  /** The unavailable-lookup note concerns explicit (author SQL) lookups only. */
+  readonly explicitLookupUnavailable = computed(
+    () =>
+      this.lookupUnavailable() &&
+      !!this.parameters()?.some((p) => !!p.def.lookup),
+  );
+  /** Where this board's parameter pickers look up values (parameter-lookup REQ:runtime-execution). */
+  readonly lookupContext = computed<ParameterLookupHost>(() => {
+    const ref = this.projectRef();
+    const storeId = this.storeId();
+    const projectId = this.projectId();
+    const envId = this.envId();
+    return {
+      projectRef: ref,
+      environment: envId ?? undefined,
+      ...(ref && isLocalProjectRef(ref) && !this.lookupUnavailable() && storeId && projectId && envId
+        ? { explicitAgent: { storeId, projectId, envId } }
+        : {}),
+    };
+  });
+  /** Parameters whose current value was picked in the lookup ("from lookup"). */
+  readonly lookupOrigins = signal<Readonly<Record<string, true>>>({});
   readonly presentationReset = signal(0);
   readonly loading = signal(true);
   readonly loadError = signal<string | undefined>(undefined);
@@ -422,6 +448,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
           this.boardDef.set(undefined);
           this.projBoard.set(undefined);
           this.parameters.set(undefined);
+          this.lookupOrigins.set({});
           this.parameterErrors.set({});
           this.boardContext.update((context) => ({
             ...context,
@@ -457,6 +484,7 @@ export class BoardPageComponent implements OnInit, OnDestroy {
         this.projBoard.set(board as IProjBoard);
         this.boardDef.set(board);
         this.parameters.set(this.resolveParameters());
+        this.lookupOrigins.set({});
         for (const def of board?.parameters ?? []) {
           const parameter = this.parameters()?.find(
             (parameter) => parameter.def.id === def.id,
@@ -943,35 +971,26 @@ export class BoardPageComponent implements OnInit, OnDestroy {
     }
   }
 
-  lookup(p: IParamWithDefAndValue): void {
-    const ref = this.projectRef();
-    const boardId = this.boardId();
-    if (ref?.projectApi || ref?.branch) return;
-    const storeId = this.storeId();
-    const projectId = this.projectId();
-    const envId = this.envId();
-    if (!storeId) {
-      return;
-    }
-    if (!projectId) {
-      return;
-    }
-    if (!envId) {
-      return;
-    }
-    this.lookupService
-      .lookupParameterValue(p.def, storeId, projectId, envId)
-      .subscribe({
-        next: (v) => {
-          if (
-            equalProjectRef(ref, this.projectRef()) &&
-            this.boardId() === boardId
-          )
-            this.setParameterValue(p, v.value);
-        },
-        error: (err) =>
-          this.errorLogger.logError(err, 'Failed to lookup parameter value'),
-      });
+  /** A hand edit replaces the "from lookup" label. */
+  onParameterInput(parameter: IParamWithDefAndValue, raw: unknown): void {
+    this.forgetLookupOrigin(parameter.def.id);
+    this.setParameterValue(parameter, raw);
+  }
+
+  onLookupPicked(parameter: IParamWithDefAndValue, pick: ParameterLookupPick): void {
+    // setParameterValue ignores a parameter of a board that is no longer shown.
+    this.setParameterValue(parameter, pick.value);
+    if (!this.parameterErrors()[parameter.def.id])
+      this.lookupOrigins.update((origins) => ({ ...origins, [parameter.def.id]: true }));
+  }
+
+  private forgetLookupOrigin(id: string): void {
+    if (!this.lookupOrigins()[id]) return;
+    this.lookupOrigins.update((origins) => {
+      const next = { ...origins };
+      delete next[id];
+      return next;
+    });
   }
 
   ngOnDestroy(): void {
