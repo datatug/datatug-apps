@@ -516,7 +516,9 @@ import {
   IParameter,
   IParameterDef,
 } from '../../../models/definition/parameter';
+import { httpRequestSaveProblem } from '../../http-request-rules';
 import {
+  IHttpQueryRequest,
   IQueryDef,
   ISqlQueryRequest,
   ITextQueryRequest,
@@ -4063,6 +4065,27 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.ovdbToken.set(nextToken);
     this.ovdbCredentialGeneration.update((generation) => generation + 1);
     this.invalidateHistoryScope();
+  }
+
+  /** The request being edited when this is an HTTP query. */
+  public get httpRequest(): IHttpQueryRequest | undefined {
+    const request = this.queryState.request;
+    return request?.queryType === QueryType.HTTP
+      ? (request as IHttpQueryRequest)
+      : undefined;
+  }
+
+  /** Why the HTTP request being edited cannot be saved (e.g. an invalid header name). */
+  public get httpSaveProblem(): string | undefined {
+    const request = this.httpRequest;
+    return request ? httpRequestSaveProblem(request) : undefined;
+  }
+
+  public httpRequestChanged(request: IHttpQueryRequest): void {
+    if (!this.queryState.request) return;
+    this.reportGitHubQueryEdit(this.project?.ref);
+    this.queryState = { ...this.queryState, request };
+    this.queryEditorStateService.updateQueryState(this.queryState);
   }
 
   public queryTextChanged(event: Event, reportActivity = true): void {

@@ -102,10 +102,16 @@ export interface ISqlQueryRequest extends ITextQueryRequest {
   queryType: QueryType.SQL;
 }
 
+export interface IHttpHeader {
+  readonly name: string;
+  readonly value: string;
+}
+
 export interface IHttpQueryRequest extends IQueryRequest {
   queryType: QueryType.HTTP;
   url: string;
   method: HttpMethod;
+  headers?: readonly IHttpHeader[];
   body?: string;
 }
 

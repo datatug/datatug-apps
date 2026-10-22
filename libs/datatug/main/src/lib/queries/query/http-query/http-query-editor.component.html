@@ -1,123 +1,282 @@
 <ion-card>
-  <ion-item>
-    <ion-select [(ngModel)]="queryDef.method" interface="popover" slot="start">
-      <ion-select-option value="GET">GET</ion-select-option>
-      <ion-select-option value="POST">POST</ion-select-option>
-      <ion-select-option value="DELETE">DELETE</ion-select-option>
+  <ion-item lines="full" class="http-request-line">
+    <ion-select
+      slot="start"
+      class="http-method"
+      aria-label="HTTP method"
+      interface="popover"
+      [value]="method()"
+      (ionChange)="onMethod($event)"
+    >
+      @for (m of methods; track m) {
+        <ion-select-option [value]="m">{{ m }}</ion-select-option>
+      }
     </ion-select>
+    <ion-input
+      type="url"
+      aria-label="URL"
+      placeholder="https://api.example.com/path"
+      [value]="url()"
+      (ionInput)="onUrl($event)"
+      (keyup.enter)="run()"
+    />
     <ion-buttons slot="end">
-      <ion-button color="primary" (click)="run()">
+      <ion-button color="primary" [disabled]="!canRun()" (click)="run()">
         <ion-icon slot="start" name="play-circle-outline" />
-        <ion-label>Run</ion-label>
+        {{ running() ? 'Running…' : 'Run' }}
       </ion-button>
     </ion-buttons>
-    <ion-input type="text" placeholder="URL" [value]="queryDef.url" />
   </ion-item>
-  <ion-segment [(ngModel)]="tab">
+  @if (urlProblem(); as problem) {
+    <ion-item lines="none">
+      <ion-note color="danger" class="http-url-problem" role="alert">{{
+        problem
+      }}</ion-note>
+    </ion-item>
+  }
+  <ion-item lines="full">
+    <ion-label color="medium">Run via</ion-label>
+    <ion-segment
+      aria-label="Run via"
+      [value]="runVia()"
+      (ionChange)="onRunVia($event)"
+    >
+      <ion-segment-button value="browser">Browser</ion-segment-button>
+      <ion-segment-button value="server">DataTug server</ion-segment-button>
+    </ion-segment>
+  </ion-item>
+  @if (browserForbidden().length) {
+    <ion-item lines="none">
+      <ion-note class="http-forbidden-note ion-text-wrap"
+        >{{ browserForbidden().join(', ') }}: browsers block these headers, so
+        they are only sent when you run via the DataTug server.</ion-note
+      >
+    </ion-item>
+  }
+  @if (saveProblem(); as problem) {
+    <ion-item lines="none">
+      <ion-note
+        color="danger"
+        class="http-save-problem ion-text-wrap"
+        role="alert"
+        >Cannot save: {{ problem }}</ion-note
+      >
+    </ion-item>
+  }
+  <ion-segment
+    aria-label="Request section"
+    [value]="requestTab()"
+    (ionChange)="onRequestTab($event)"
+  >
+    <ion-segment-button value="params">Params</ion-segment-button>
     <ion-segment-button value="headers">Headers</ion-segment-button>
-    <ion-segment-button value="parameters">Parameters</ion-segment-button>
-    @if (takesBody) {
-      <ion-segment-button value="body">Body</ion-segment-button>
-    }
+    <ion-segment-button value="body">Body</ion-segment-button>
   </ion-segment>
-  <ion-item>
-    <ion-input type="text" name="name" slot="start" placeholder="Name" />
-    <ion-input type="text" name="value" placeholder="Value" />
-    <ion-buttons slot="end">
-      <ion-button color="medium">
-        <ion-icon name="close-outline" />
-      </ion-button>
-    </ion-buttons>
-  </ion-item>
+
+  @switch (requestTab()) {
+    @case ('params') {
+      @for (row of paramRows(); track $index) {
+        <ion-item>
+          <ion-input
+            slot="start"
+            aria-label="Parameter name"
+            placeholder="Name"
+            [value]="row.name"
+            (ionInput)="
+              setParam($index, { name: $any($event).detail.value ?? '' })
+            "
+          />
+          <ion-input
+            aria-label="Parameter value"
+            placeholder="Value"
+            [value]="row.value"
+            (ionInput)="
+              setParam($index, { value: $any($event).detail.value ?? '' })
+            "
+          />
+          <ion-buttons slot="end">
+            <ion-button
+              color="medium"
+              aria-label="Remove parameter"
+              (click)="removeParam($index)"
+            >
+              <ion-icon slot="icon-only" name="close-outline" />
+            </ion-button>
+          </ion-buttons>
+        </ion-item>
+      }
+      <ion-item lines="none">
+        <ion-button fill="clear" size="small" (click)="addParam()">
+          <ion-icon slot="start" name="add-outline" />
+          Add parameter
+        </ion-button>
+        <ion-note slot="end">Synced with the URL</ion-note>
+      </ion-item>
+    }
+    @case ('headers') {
+      @for (header of headers(); track $index) {
+        <ion-item>
+          <ion-input
+            slot="start"
+            aria-label="Header name"
+            placeholder="Name"
+            [value]="header.name"
+            (ionInput)="
+              setHeader($index, { name: $any($event).detail.value ?? '' })
+            "
+          />
+          <ion-input
+            aria-label="Header value"
+            placeholder="Value"
+            [value]="header.value"
+            (ionInput)="
+              setHeader($index, { value: $any($event).detail.value ?? '' })
+            "
+          />
+          @if (isInvalidHeaderName(header.name)) {
+            <ion-note
+              slot="end"
+              class="http-header-error"
+              color="danger"
+              role="alert"
+            >
+              not a valid header name
+            </ion-note>
+          } @else if (isCredential(header.name)) {
+            <ion-note slot="end" class="http-credential-hint" color="warning">
+              <ion-icon name="lock-closed-outline" /> not saved
+            </ion-note>
+          }
+          <ion-buttons slot="end">
+            <ion-button
+              color="medium"
+              aria-label="Remove header"
+              (click)="removeHeader($index)"
+            >
+              <ion-icon slot="icon-only" name="close-outline" />
+            </ion-button>
+          </ion-buttons>
+        </ion-item>
+      }
+      <ion-item lines="none">
+        <ion-button
+          fill="clear"
+          size="small"
+          [disabled]="!canAddHeader()"
+          (click)="addHeader()"
+        >
+          <ion-icon slot="start" name="add-outline" />
+          Add header
+        </ion-button>
+        <ion-note slot="end" class="http-save-hint ion-text-wrap"
+          >Saved bodies, header values and URLs are screened for secrets; auth
+          headers are never saved.</ion-note
+        >
+      </ion-item>
+      @if (!canAddHeader()) {
+        <ion-item lines="none">
+          <ion-note class="http-header-limit"
+            >A query can have at most {{ maxHeaders }} headers.</ion-note
+          >
+        </ion-item>
+      }
+    }
+    @case ('body') {
+      <ion-item lines="none">
+        <ion-textarea
+          class="http-body-input"
+          aria-label="Request body"
+          rows="8"
+          placeholder="Request body"
+          [value]="body()"
+          [disabled]="!takesBody()"
+          (ionInput)="onBody($event)"
+        />
+      </ion-item>
+      @if (!takesBody()) {
+        <ion-item lines="none">
+          <ion-note class="http-body-hint"
+            >{{ method() }} requests have no body. Your text is kept for this
+            session but is not sent or saved.</ion-note
+          >
+        </ion-item>
+      }
+    }
+  }
 </ion-card>
 
-@if (response) {
+@if (runError(); as error) {
   <ion-card>
-    <ion-grid class="ion-grid-layout">
-      <ion-row>
-        <ion-col size="4">
-          <h2 class="ion-margin-start">Response</h2>
-        </ion-col>
-        <ion-col size="8">
-          <ion-segment [(ngModel)]="responseTab">
-            <ion-segment-button value="headers">Headers</ion-segment-button>
-            <ion-segment-button value="raw">Body</ion-segment-button>
-            <!--					<ion-segment-button value="formatted">Formatted</ion-segment-button>-->
-            <ion-segment-button value="structured"
-              >Structured</ion-segment-button
-            >
-          </ion-segment>
-        </ion-col>
-      </ion-row>
-    </ion-grid>
-    @switch (responseTab) {
-      @case ("headers") {
-        <ion-card-content>
-          @for (headerKey of response.headers.keys(); track headerKey) {
-            <ion-item>
-              <ion-label color="medium">{{ headerKey }}</ion-label>
-              <ion-input
-                readonly="readonly"
-                [value]="response.headers.get(headerKey)"
-              />
-            </ion-item>
-          }
-        </ion-card-content>
+    <ion-card-content class="http-run-error">
+      <ion-note color="danger" class="http-error-message">{{ error }}</ion-note>
+      @if (offerServerRun()) {
+        <div>
+          <ion-button size="small" (click)="runViaServer()">
+            Run via DataTug server
+          </ion-button>
+        </div>
       }
-      @case ("raw") {
-        <ion-card-content>
-          <ion-textarea
-            style="border: 1px solid lightgray; background-color: whitesmoke"
-            rows="20"
-            [value]="response.body | json"
-            readonly="readonly"
-          />
-        </ion-card-content>
+    </ion-card-content>
+  </ion-card>
+}
+
+@if (result(); as response) {
+  <ion-card>
+    <ion-item lines="full">
+      <ion-label>
+        <h2>
+          Response
+          <span class="http-status"
+            >{{ response.status }} {{ response.statusText }}</span
+          >
+        </h2>
+      </ion-label>
+      <ion-chip slot="end" class="http-duration"
+        >{{ response.durationMs }} ms</ion-chip
+      >
+      <ion-chip slot="end" class="http-size"
+        >{{ response.sizeBytes }} B</ion-chip
+      >
+      @if (response.truncated) {
+        <ion-chip slot="end" color="warning" class="http-truncated"
+          >truncated</ion-chip
+        >
       }
-      @case ("structured") {
-        <ion-card-content>
-          <ion-list>
-            <ion-list-header>Widgets</ion-list-header>
-            <ion-item>
-              <ion-checkbox
-                [(ngModel)]="isCurrencyPipeEnabled"
-                value="currency_flag"
-                slot="start"
-              />
-              <ion-label>Currency flag on:</ion-label>
-              <ion-input value="data.#.id" />
-              <ion-select interface="popover" value="append">
-                <ion-select-option value="append">Append</ion-select-option>
-                <ion-select-option value="replace">Replace</ion-select-option>
-              </ion-select>
-            </ion-item>
-            <ion-item>
-              <ion-checkbox value="currency_country" slot="start" />
-              <ion-label>Currency country as:</ion-label>
-              <ion-input placeholder="property name" value="country_code" />
-            </ion-item>
-          </ion-list>
-          <sneat-datatug-json-table
-            [pipes]="isCurrencyPipeEnabled ? [currencyPipe] : undefined"
-            [json]="response.body"
-          />
-        </ion-card-content>
+    </ion-item>
+    <ion-segment
+      aria-label="Response section"
+      [value]="responseTab()"
+      (ionChange)="onResponseTab($event)"
+    >
+      <ion-segment-button value="body">Body</ion-segment-button>
+      <ion-segment-button value="headers">Headers</ion-segment-button>
+      <ion-segment-button value="structured">Structured</ion-segment-button>
+    </ion-segment>
+    @switch (responseTab()) {
+      @case ('headers') {
+        @for (header of response.headers; track $index) {
+          <ion-item>
+            <ion-label color="medium">{{ header.name }}</ion-label>
+            <ion-note slot="end">{{ header.value }}</ion-note>
+          </ion-item>
+        } @empty {
+          <ion-item lines="none"><ion-note>No headers.</ion-note></ion-item>
+        }
+      }
+      @case ('body') {
+        <pre class="http-response-body">{{ bodyDisplay() }}</pre>
+      }
+      @case ('structured') {
+        @if (structured(); as json) {
+          <sneat-datatug-json-table [json]="json" />
+        } @else {
+          <ion-item lines="none"
+            ><ion-note
+              >The body is not a JSON object or array.</ion-note
+            ></ion-item
+          >
+        }
       }
     }
   </ion-card>
 }
-
-<ion-card>
-  <ion-card-header>
-    <ion-card-title>Public APIs</ion-card-title>
-  </ion-card-header>
-  <!--	https://mixedanalytics.com/blog/list-actually-free-open-no-auth-needed-apis/ -->
-  @for (apiEndpoint of apiEndpoints; track apiEndpoint.url) {
-    <ion-item [title]="apiEndpoint.url">
-      <ion-label>{{ apiEndpoint.title }}</ion-label>
-      <ion-buttons>
-        <ion-button (click)="try($event, apiEndpoint)">Try</ion-button>
-      </ion-buttons>
-    </ion-item>
-  }
-</ion-card>

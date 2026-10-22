@@ -29,6 +29,7 @@ Feature specifications for this project.
 | [Hosted board authoring](hosted-board-authoring/README.md) | Draft | Create, edit, save and reload canonical boards in an explicitly scoped hosted project. |
 | [Project cards](project-cards/README.md) | Approved | Save a dashboard card as a standalone, parameterised project card; reference it from dashboards; and show the matching card beside a grid when the user selects a cell (for example a `CustomerID` on an orders list), with cached results. |
 | [Shipping working copy controls](shipping-working-copy-controls/README.md) | Draft | Expose the published Backend v0.42 working-copy lifecycle in the native hosted project web UI. This is one bounded part of the [shipping investigation story](https://github.com/datatug/backstage/tree/main/spec/features/unsigned-shipping-investigation), not recording-readiness proof. |
+| [HTTP Query Editor](http-query-editor/README.md) | Implementing | Postman-like create, edit, save and run of HTTP queries in the DataTug web app. |
 
 ## Open Questions
 
