@@ -7,10 +7,11 @@ import {
   Component,
   computed,
   signal,
+  inject,
   input,
   output,
 } from '@angular/core';
-import { RouterLink } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { IonButton, IonIcon } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import {
@@ -74,7 +75,12 @@ export interface ErrorStateLink {
           </ion-button>
         }
         @if (signInAction()) {
-          <ion-button routerLink="/login">Sign in</ion-button>
+          <ion-button
+            routerLink="/login"
+            [fragment]="returnPath()"
+            [queryParams]="{ reason: 'Sign in to see this' }"
+            >Sign in</ion-button
+          >
         }
         @for (link of links(); track link.href; let first = $first) {
           <ion-button
@@ -204,6 +210,11 @@ export class ErrorStateComponent {
   protected readonly signInAction = computed(
     () => this.kind() === 'unauthenticated' && this.links().length === 0,
   );
+  private readonly router = inject(Router);
+  /** Where the sign-in page sends the visitor back to: this very page, query and all. */
+  protected returnPath(): string {
+    return this.router.url;
+  }
   private readonly titleElement = viewChild<ElementRef<HTMLElement>>('title');
 
   protected readonly copied = signal(false);

@@ -117,6 +117,15 @@ export function serviceNameOf(url: string): string {
   return 'the server';
 }
 
+/**
+ * The forms a JavaScript programming slip leaves in a message: a bare `undefined`, `[object Object]`, "of null",
+ * "reading null", or a message that is only `null`/`NaN`. Case-sensitive on purpose: a database says `NOT NULL`,
+ * `IS NULL` or "null value in column", and that text is the cause the user needs. A message the caller knows comes
+ * from a database is never checked at all (`database: true`).
+ */
+const JAVASCRIPT_SLIP =
+  /\bundefined\b|\[object \w+\]|\b(?:of|reading|from) null\b|^(?:null|NaN)$/;
+
 const SECRET_WORDS =
   'token|key|secret|password|passwd|pwd|authorization|signature|credential|session';
 
@@ -130,7 +139,10 @@ const SECRET_WORDS =
  * cause worth reading out; deleting the word would leave a broken sentence, so such a text becomes empty and the
  * caller falls back to its generic sentence.
  */
-export function redactErrorText(text: string): string {
+export function redactErrorText(
+  text: string,
+  options: { readonly database?: boolean } = {},
+): string {
   let out = text
     .split('\n')
     .filter(
@@ -154,7 +166,8 @@ export function redactErrorText(text: string): string {
       '[address]',
     )
     .replace(/\blocalhost(?::\d+)?\b/gi, '[address]')
-    .replace(/\b(?=[\w-]*[a-z])[\w-]+:\d{2,5}\b/gi, '[address]')
+    .replace(/\b(?:[a-z0-9-]+\.)+[a-z]{2,}:\d{2,5}\b/gi, '[address]')
+    .replace(/(^|[^\w.-])(?=[\w-]*[a-z])[\w-]+:\d{2,5}\b/gi, '$1[address]')
     // A public host written without a scheme keeps no path or query.
     .replace(
       /\b[a-z0-9-]+(?:\.[a-z0-9-]+)+(?::\d+)?[/?#][^\s'"<>)]*/gi,
@@ -175,19 +188,28 @@ export function redactErrorText(text: string): string {
       /\b(?:gh[pousr]_|github_pat_|sk-|xox[bpa]-|AIza|eyJ)[\w-]{8,}/g,
       '[hidden]',
     )
-    // `access_token=…`, `api_key: …`, `"client_secret": "…"`, `password: x`: a secret-named key keeps no value.
+    // `access_token=…`, `api_key=…`: a secret-named key keeps no value. With a colon only the unmistakable names
+    // (`password: x`, `"token": "…"`, `Authorization: …`) are hidden, so "Primary key: id must be unique" stays.
     .replace(
       new RegExp(
-        `["']?([\\w-]*(?:${SECRET_WORDS})[\\w-]*)["']?\\s*[=:]\\s*("[^"]*"|'[^']*'|[^\\s,;&}]+)`,
+        `["']?([\\w-]*(?:${SECRET_WORDS})[\\w-]*)["']?\\s*=\\s*("[^"]*"|'[^']*'|[^\\s,;&}]+)`,
         'gi',
       ),
       '$1=[hidden]',
+    )
+    .replace(
+      new RegExp(
+        `["']?([\\w-]*(?:token|secret|password|passwd|pwd|authorization|api[-_]?key|apikey)[\\w-]*)["']\\s*:\\s*("[^"]*"|'[^']*'|[^\\s,;&}]+)|\\b([\\w-]*(?:token|secret|password|passwd|pwd|authorization|api[-_]?key|apikey)[\\w-]*)\\s*:\\s*("[^"]*"|'[^']*'|[^\\s,;&}]+)`,
+        'gi',
+      ),
+      (_m, quotedKey: string | undefined, _q, key: string | undefined) =>
+        `${quotedKey ?? key}=[hidden]`,
     )
     .replace(/\bcode=\S+/gi, 'code=[hidden]')
     .replace(/[A-Za-z0-9_-]{32,}/g, '[hidden]')
     .replace(/\s+/g, ' ')
     .trim();
-  if (/\b(?:undefined|null|NaN)\b|\[object \w+\]/i.test(out)) return '';
+  if (!options.database && JAVASCRIPT_SLIP.test(out)) return '';
   if (out.length > MAX_DETAIL)
     out = `${out.slice(0, MAX_DETAIL - 1).trimEnd()}…`;
   return out;

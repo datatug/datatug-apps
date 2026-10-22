@@ -1,10 +1,11 @@
 import {
+  afterNextRender,
   ChangeDetectionStrategy,
   Component,
   computed,
   inject,
 } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import {
   IonBackButton,
   IonButtons,
@@ -72,6 +73,21 @@ import { projectPageHref } from '../nav/project-page-href';
 })
 export class ProjectNotFoundPageComponent {
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router);
+  constructor() {
+    afterNextRender(() => this.removeQuestionFromAddress());
+  }
+
+  private removeQuestionFromAddress(): void {
+    // A visitor's question travels in `?q=` / `?msg=`. A page that never answers it must not keep it in the address
+    // bar (history, analytics, a copied link): it is removed here, as the project and holding addresses remove it.
+    const tree = this.router.parseUrl(this.router.url);
+    const { q, msg, ...kept } = tree.queryParams;
+    if (q === undefined && msg === undefined) return;
+    tree.queryParams = kept;
+    void this.router.navigateByUrl(tree, { replaceUrl: true });
+  }
+
   protected readonly isQuery = this.route.snapshot.data['what'] === 'query';
   protected readonly ref = computed(() => {
     const params: Record<string, string> = {};

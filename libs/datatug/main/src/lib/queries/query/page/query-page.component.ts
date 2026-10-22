@@ -10450,7 +10450,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const friendly = friendlyError(err, 'the query');
     const isOutage = err instanceof HttpErrorResponse && (err.status === 0 || err.status >= 500);
     if (databaseMessage && !isOutage) {
-      return redactErrorText(databaseMessage) || 'The query could not be run.';
+      return (
+        redactErrorText(databaseMessage, { database: true }) ||
+        'The query could not be run.'
+      );
     }
     if (friendly.kind === 'unknown') {
       return redactErrorText(this.extractErrorMessage(err)) || 'The query could not be run.';

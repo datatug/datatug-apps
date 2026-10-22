@@ -34,7 +34,11 @@ export class DatatugErrorLogger implements IErrorLogger {
     message?: string,
     options?: ILogErrorOptions,
   ): void => {
-    console.error(`logError: ${message || 'Error'}:`, e);
+    // An expected failure that needs no report (a 404, a limit, a missing sign-in) is a situation, not an error.
+    (reportLevelOf(e) === 'none' ? console.warn : console.error)(
+      `logError: ${message || 'Error'}:`,
+      e,
+    );
     if (typeof window === 'undefined' || e === true || e === false) return;
     const level = reportLevelOf(e);
     const report = options?.report ?? this.defaults?.report ?? level !== 'none';

@@ -154,9 +154,47 @@ describe('redactErrorText: private text', () => {
   it.each([
     "TypeError: Cannot read properties of undefined (reading 'id')",
     'Error: [object Object]',
-    'value is null',
+    'Cannot destructure property x of null',
   ])('returns nothing, not a broken sentence, for %s', (input) => {
     expect(redactErrorText(input)).toBe('');
+  });
+});
+
+describe('redactErrorText: database messages and false positives', () => {
+  it.each([
+    'NOT NULL constraint failed: orders.customer_id',
+    'null value in column "email" violates not-null constraint',
+    'IS NULL comparison not supported',
+    'Cannot divide by NaN rows',
+    'no such column: session_id',
+    'FOREIGN KEY constraint failed',
+    'near "SELEC": syntax error',
+  ])('keeps the database cause "%s"', (message) => {
+    expect(redactErrorText(message, { database: true })).toBe(message);
+    expect(redactErrorText(message)).toBe(message);
+  });
+
+  it('never empties a database message, even one that mentions undefined', () => {
+    expect(
+      redactErrorText('column "undefined" does not exist', { database: true }),
+    ).toBe('column "undefined" does not exist');
+  });
+
+  it('keeps ordinary words that contain a secret word, but hides real secret pairs', () => {
+    expect(redactErrorText('Primary key: id must be unique')).toBe(
+      'Primary key: id must be unique',
+    );
+    expect(redactErrorText('Error in session: expired')).toBe(
+      'Error in session: expired',
+    );
+    expect(redactErrorText('password: hunter2')).not.toMatch(/hunter2/);
+    expect(redactErrorText('{"api_key": "abc123"}')).not.toMatch(/abc123/);
+  });
+
+  it('hides a public host with a port in full', () => {
+    expect(redactErrorText('connect example.com:443 failed')).toBe(
+      'connect [address] failed',
+    );
   });
 });
 
