@@ -1,3 +1,5 @@
+import type { ChartSourceEdit } from '@datatug/board-models';
+import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
 import { EvidenceSharePanelComponent, EvidenceShareSelection } from '../../../../evidence/evidence-share-panel.component';
 import { BoardChartEditorComponent } from './board-chart-editor.component';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
@@ -73,7 +75,7 @@ interface QueryFolder {
   selector: 'sneat-datatug-hosted-board-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
-  imports: [
+  imports: [ChartSourceEditorComponent,
     EvidenceSharePanelComponent,
     BoardChartEditorComponent,
     RouterLink,
@@ -138,37 +140,39 @@ interface QueryFolder {
       <sneat-datatug-evidence-share-panel [environment]="scope.environment()" [disabled]="saving()" (selected)="evidenceSelection.set($event)" />
     }
     @if (scope.admitted() && parameters().length) {
-      <section aria-label="Board runtime parameters">
-        <p>
-          Parameter changes clear previous results. Run or refresh a card to use
-          the new values. These values are not saved with the board.
+      <section class="runtime-parameters" aria-label="Board runtime parameters">
+        <p class="parameter-help">
+          Change a value, then run or refresh a card. Previous results are cleared.
+          Values are not saved.
         </p>
         @for (parameter of parameters(); track parameter.def.id) {
-          <ion-item>
-            <ion-label>{{ parameter.def.title || parameter.def.id }}</ion-label>
-            <ion-input
-              [attr.aria-label]="'Board parameter ' + parameter.def.id"
-              [placeholder]="parameter.def.type"
-              [value]="parameterText(parameter)"
-              [attr.aria-invalid]="
-                parameterErrors()[parameter.def.id] ? 'true' : null
-              "
-              [attr.aria-describedby]="
-                parameterErrors()[parameter.def.id]
-                  ? 'hosted-board-parameter-error-' + parameter.def.id
-                  : null
-              "
-              (ionInput)="setParameterValue(parameter, $event.detail.value)"
-            />
-          </ion-item>
-          @if (parameterErrors()[parameter.def.id]; as error) {
-            <p
-              role="alert"
-              [id]="'hosted-board-parameter-error-' + parameter.def.id"
-            >
-              {{ error }}
-            </p>
-          }
+          <div class="runtime-parameter">
+            <ion-item>
+              <ion-input
+                [label]="parameter.def.title || parameter.def.id"
+                [labelPlacement]="'fixed'"
+                [placeholder]="parameter.def.type"
+                [value]="parameterText(parameter)"
+                [attr.aria-invalid]="
+                  parameterErrors()[parameter.def.id] ? 'true' : null
+                "
+                [attr.aria-describedby]="
+                  parameterErrors()[parameter.def.id]
+                    ? 'hosted-board-parameter-error-' + parameter.def.id
+                    : null
+                "
+                (ionInput)="setParameterValue(parameter, $event.detail.value)"
+              />
+            </ion-item>
+            @if (parameterErrors()[parameter.def.id]; as error) {
+              <p
+                role="alert"
+                [id]="'hosted-board-parameter-error-' + parameter.def.id"
+              >
+                {{ error }}
+              </p>
+            }
+          </div>
         }
       </section>
     }
@@ -248,6 +252,10 @@ interface QueryFolder {
                       })
                     "
                   />
+                }
+                @if (card.widget?.name === 'chart') {
+                  <sneat-datatug-chart-source-editor [definition]="$any(card.widget.data)" [queries]="queries()" [disabled]="saving() || !!pending()" (edit)="editSource(card.id, $event)" />
+                  <p>Save the board to run the updated source configuration.</p>
                 }
                 @if (card.widget?.name === 'SQL') {
                   <label
@@ -422,6 +430,28 @@ interface QueryFolder {
       :host {
         display: block;
         padding: 16px;
+      }
+      .runtime-parameters {
+        display: flex;
+        flex-wrap: wrap;
+        gap: .5rem 1rem;
+        align-items: start;
+        margin-block: .75rem;
+      }
+      .parameter-help {
+        flex-basis: 100%;
+        margin: 0;
+        font-size: .85rem;
+        color: var(--ion-color-medium-shade);
+      }
+      .runtime-parameter { flex: 0 1 22rem; min-width: 0; max-width: 100%; }
+      .runtime-parameter ion-item { --padding-start: 0; --inner-padding-end: 0; }
+      .runtime-parameter ion-input { --padding-top: .5rem; --padding-bottom: .5rem; }
+      .runtime-parameter ion-input::part(label) {
+        white-space: nowrap;
+        flex: 0 0 auto;
+        width: auto;
+        margin-inline-end: .75rem;
       }
       .board-heading {
         display: flex;
@@ -761,6 +791,7 @@ export class HostedBoardWorkspaceComponent {
   reload() {
     this.refresh.update((n) => n + 1);
   }
+  editSource(cardId: string, edit: ChartSourceEdit): void { this.edit({ ...edit, cardId }); }
   cardQuery(card: BoardCard) {
     return (
       (card.widget?.data as { sql?: { queryId?: string } })?.sql?.queryId || ''

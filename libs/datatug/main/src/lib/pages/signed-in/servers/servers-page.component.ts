@@ -699,10 +699,11 @@ export class ServersPageComponent implements OnDestroy {
    * matching this page's previous (hard-coded) all-checked look. */
   private loadEnvironments(target: IProjectRef, epoch: number): void {
     const request = ++this.environmentsRequest;
+    let initialized = false;
     this.environments.set(undefined);
     this.environmentsError.set(undefined);
     const environments$ = isGithubStoreId(target.storeId)
-      ? this.environmentService.listEnvironments(target.projectId)
+      ? this.environmentService.listEnvironments(target)
       : this.projectService
           .getFull(target)
           .pipe(map((full) => full.environments || []));
@@ -711,7 +712,15 @@ export class ServersPageComponent implements OnDestroy {
         if (epoch !== this.loadEpoch || request !== this.environmentsRequest)
           return;
         this.environments.set(environments);
-        this.selectedEnvironmentIds.set(new Set(environments.map((e) => e.id)));
+        const live = new Set(environments.map((environment) => environment.id));
+        this.selectedEnvironmentIds.set(
+          initialized
+            ? new Set(
+                [...this.selectedEnvironmentIds()].filter((id) => live.has(id)),
+              )
+            : live,
+        );
+        initialized = true;
       },
       error: (err) => {
         if (epoch !== this.loadEpoch || request !== this.environmentsRequest)

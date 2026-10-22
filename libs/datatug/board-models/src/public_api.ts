@@ -78,3 +78,5 @@ export {
   editBoardDefinition,
   BoardDefinitionEdit,
 } from './lib/board-definition-edit';
+
+export { editChartSources, seedChartSources, ChartSourceEdit } from './lib/chart-source-edit';

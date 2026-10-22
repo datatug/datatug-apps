@@ -1,4 +1,8 @@
 import {
+  readOriginalEvidence,
+  type OriginalEvidence,
+} from './original-evidence-contract';
+import {
   decodeEvidenceArtifactRef,
   decodeResult,
   decodeTypedValue,
@@ -9,6 +13,7 @@ import {
   type ArtifactRef,
   type ExecutionRef,
   type Result,
+  type RowEvidenceSelector,
   type TypedValue,
 } from '@sneat/datatug-semantic';
 import { CheckRun } from '../detective/models';
@@ -59,6 +64,7 @@ export interface RetainedOpenScope extends RetainedEvidenceScope {
   readonly nativeProjectId: string;
 }
 export interface RetainedExecutionView {
+  readonly originalEvidence?: OriginalEvidence;
   readonly result: Result;
   readonly inputs: Readonly<Record<string, TypedValue>>;
   readonly sourcePin: RetainedSourcePin;
@@ -205,7 +211,10 @@ export async function readRetainedExecution(
   value: unknown,
   scope: RetainedOpenScope,
   expected?: ExecutionRef,
+  selected?: RowEvidenceSelector,
 ): Promise<RetainedExecutionView> {
+  if (new TextEncoder().encode(JSON.stringify(value)).length > 512 * 1024)
+    throw new Error('Retained response exceeds its read bound.');
   const wire = obj(value, [
     'inputs',
     'manifest',
@@ -216,6 +225,7 @@ export async function readRetainedExecution(
     'appliedManifestRef',
     'queryRevision',
     'evidence',
+    'originalEvidence',
   ]);
   const result = decodeResult(wire['result']);
   if (
@@ -270,7 +280,29 @@ export async function readRetainedExecution(
     )
       throw new Error('Retained sidecar source mismatch.');
   }
+  if (selected && wire['originalEvidence'] === undefined)
+    throw new Error(
+      'Original evidence status is missing from the row response.',
+    );
+  const originalEvidence =
+    wire['originalEvidence'] === undefined
+      ? undefined
+      : await readOriginalEvidence(
+          wire['originalEvidence'],
+          result,
+          pin,
+          selected,
+        );
+  if (
+    originalEvidence?.status === 'available' &&
+    !exact(
+      originalEvidence.records[2].fields['order_id'],
+      manifest.inputs['order_id'],
+    )
+  )
+    throw new Error('Original order does not match the admitted manifest.');
   return {
+    ...(originalEvidence ? { originalEvidence } : {}),
     result,
     inputs,
     sourcePin: pin,

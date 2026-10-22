@@ -1,4 +1,4 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpParams, HttpClient } from '@angular/common/http';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
@@ -17,6 +17,7 @@ import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
 import { DatatugStoreServiceFactory } from '../../../services/repo/datatug-store-service-factory.service';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { EntityService } from '../../../services/unsorted/entity.service';
+import { EnvironmentState } from '../../../models/definition/environment-state';
 import { SchemaService } from '../../../services/unsorted/schema.service';
 import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 
@@ -48,7 +49,7 @@ function requiredRead(path: string): Subject<unknown> {
 describe('real cold shared overview route and metadata read', () => {
   let auth: BehaviorSubject<{ status: string; user: { uid: string } | null }>;
   const http = { get: vi.fn(), post: vi.fn(), put: vi.fn(), delete: vi.fn() };
-  const api = { post: vi.fn(), put: vi.fn() };
+  const api = { get: vi.fn(), post: vi.fn(), put: vi.fn() };
   const storeFactory = { getDatatugStoreService: vi.fn() };
   beforeEach(() => {
     docMock.mockClear();
@@ -56,6 +57,15 @@ describe('real cold shared overview route and metadata read', () => {
     Object.values(http).forEach((v) => v.mockClear());
     Object.values(api).forEach((v) => v.mockClear());
     storeFactory.getDatatugStoreService.mockClear();
+    api.get.mockImplementation((endpoint: string, params: HttpParams) => {
+      expect(endpoint).toBe('datatug/environments/state');
+      return of({
+        contract: 'environment-state/1',
+        scope: { storeId: 'firestore', projectId: params.get('project'), spaceID: params.get('spaceID'), authorityId: 'shared' },
+        scopeBinding: 'a'.repeat(64), revision: 'r1', environments: [], savedOrder: [], order: [], needsRepair: false,
+        capabilities: { canReadOrder: true, canWriteOrder: false, canCreateEnvironment: false },
+      });
+    });
     // Ionic loads SVG icons through fetch. Supply only those static assets; every other network request fails this offline fixture.
     vi.stubGlobal(
       'fetch',
@@ -125,6 +135,9 @@ describe('real cold shared overview route and metadata read', () => {
   const title = (h: RouterTestingHarness) =>
     h.routeNativeElement?.querySelector('h1.project-title')?.textContent?.trim();
   it('cold-loads actual metadata, clears A on B navigation, and ignores late A without unsupported calls', async () => {
+    const firstEnvironments = new Subject<EnvironmentState>();
+    const secondEnvironments = new Subject<EnvironmentState>();
+    api.get.mockReturnValueOnce(firstEnvironments).mockReturnValueOnce(secondEnvironments);
     const h = await RouterTestingHarness.create();
     await h.navigateByUrl(url('S1'), ProjectPageComponent);
     const first = requiredRead(path('S1'));
@@ -141,12 +154,29 @@ describe('real cold shared overview route and metadata read', () => {
       h.routeNativeElement?.querySelector('sneat-datatug-folder'),
     ).toBeNull();
     expect(h.routeNativeElement?.querySelector('ion-select')).toBeNull();
+    const firstState: EnvironmentState = {
+      contract: 'environment-state/1', scope: {storeId:'firestore',projectId:'same',spaceID:'S1',authorityId:'shared'},
+      scopeBinding:'a'.repeat(64),revision:'a',environments:[{id:'a-only',title:'A environment'}],savedOrder:['a-only'],order:['a-only'],needsRepair:false,
+      capabilities:{canReadOrder:true,canWriteOrder:false,canCreateEnvironment:false},
+    };
+    firstEnvironments.next(firstState);
+    await settle(h);
+    const currentEnvironments = () => (h.routeDebugElement?.componentInstance as {
+      project: () => {summary?: {environments?: {id:string}[]}};
+    }).project().summary?.environments;
+    expect(currentEnvironments()?.map(item => item.id)).toEqual(['a-only']);
     await h.navigateByUrl(url('S2'), ProjectPageComponent);
     expect(title(h)).not.toBe('First title');
     requiredRead(path('S2')).next(metadata('Second title'));
     await settle(h);
+    expect(currentEnvironments()).toBeUndefined();
     first.next(metadata('Late first title'));
+    firstEnvironments.next({...firstState,revision:'late-a'});
     await settle(h);
+    expect(currentEnvironments()).toBeUndefined();
+    secondEnvironments.next({...firstState, scope:{...firstState.scope,spaceID:'S2'},revision:'b',environments:[],savedOrder:[],order:[]});
+    await settle(h);
+    expect(currentEnvironments()).toEqual([]);
     expect(title(h)).toBe('Second title');
     expect(h.routeNativeElement?.textContent).toContain('Space: S2');
     expect(docMock.mock.calls.map((c) => c[1])).toEqual([
@@ -154,7 +184,9 @@ describe('real cold shared overview route and metadata read', () => {
       path('S2'),
     ]);
     Object.values(http).forEach((v) => expect(v).not.toHaveBeenCalled());
-    Object.values(api).forEach((v) => expect(v).not.toHaveBeenCalled());
+    expect(api.post).not.toHaveBeenCalled();
+    expect(api.put).not.toHaveBeenCalled();
+    expect(api.get.mock.calls.map((call) => (call[1] as HttpParams).get('spaceID'))).toEqual(['S1', 'S2']);
     expect(storeFactory.getDatatugStoreService).not.toHaveBeenCalled();
   });
   it('permission error and sign-out clear rendered metadata; next identity rereads', async () => {
@@ -176,6 +208,21 @@ describe('real cold shared overview route and metadata read', () => {
     requiredRead(path('S1')).next(metadata('Bob title'));
     await settle(h);
     expect(title(h)).toBe('Bob title');
+  });
+  it('keeps authorized metadata visible through a pending and failed environment read', async () => {
+    const environments = new Subject<EnvironmentState>();
+    api.get.mockReturnValueOnce(environments);
+    const h = await RouterTestingHarness.create();
+    await h.navigateByUrl(url('S1'), ProjectPageComponent);
+    requiredRead(path('S1')).next(metadata('Independent title'));
+    await settle(h);
+    expect(title(h)).toBe('Independent title');
+    environments.error({ status: 403 });
+    await settle(h);
+    expect(title(h)).toBe('Independent title');
+    auth.next({ status: 'notAuthenticated', user: null });
+    await settle(h);
+    expect(title(h)).toBe('same');
   });
   it.each(['chat', 'env/local', 'boards/other'])(
     'cold unsupported %s refuses before storage',

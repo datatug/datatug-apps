@@ -1,7 +1,12 @@
 import { Injectable, inject } from '@angular/core';
-import { firstValueFrom, fromEvent, last, takeUntil, type Observable } from 'rxjs';
+import {
+  firstValueFrom,
+  fromEvent,
+  last,
+  takeUntil,
+  type Observable,
+} from 'rxjs';
 import type { IProjectContext } from '../../nav/nav-models';
-import { ProjectService } from '../../services/project/project.service';
 import { EnvironmentService } from '../../services/unsorted/environment.service';
 import {
   GithubProjectReaderService,
@@ -46,7 +51,6 @@ async function read<T>(
 
 @Injectable({ providedIn: 'root' })
 export class ConfiguredPublicDataSourcesService {
-  private readonly projects = inject(ProjectService);
   private readonly environments = inject(EnvironmentService);
   private readonly github = inject(GithubProjectReaderService);
   private readonly metadata = inject(PublicDataService);
@@ -56,19 +60,11 @@ export class ConfiguredPublicDataSourcesService {
     signal: AbortSignal = new AbortController().signal,
     fresh = false,
   ): Promise<readonly ConfiguredPublicSource[]> {
-    const summary =
-      project.summary ??
-      (await read(this.projects.getSummary(project.ref), signal));
     const github = ['github', 'github.com'].includes(project.ref.storeId);
-    const envs = fresh && github
-      ? await read(this.environments.listEnvironments(project.ref.projectId), signal)
-      : summary?.environments ??
-      (github
-        ? await read(
-            this.environments.listEnvironments(project.ref.projectId),
-            signal,
-          )
-        : []);
+    const envs = await read(
+      this.environments.listEnvironments(project.ref),
+      signal,
+    );
     if (envs.length > 16)
       throw new Error(
         'Select a project with at most 16 configured environments for bounded discovery.',
@@ -76,7 +72,9 @@ export class ConfiguredPublicDataSourcesService {
     const result: ConfiguredPublicSource[] = [];
     for (const env of envs) {
       const detail = await read(
-        this.environments.getEnvSummary(project.ref, env.id, fresh).pipe(last()),
+        this.environments
+          .getEnvSummary(project.ref, env.id, fresh)
+          .pipe(last()),
         signal,
       );
       for (const server of detail.dbServers ?? [])

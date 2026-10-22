@@ -1,3 +1,4 @@
+import coreComparison from '../../../../queries/testdata/core-v070-query-comparison.json';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { PLATFORM_ID, signal } from '@angular/core';
@@ -127,6 +128,7 @@ describe('canonical Board evidence-chart consumer', () => {
   async function mount(
     data: ChartWidgetDef,
     profile: 'datatug' | 'dashboardius' = 'datatug',
+    comparative = false,
   ) {
     const run = vi.fn(),
       auth = new BehaviorSubject({
@@ -145,12 +147,13 @@ describe('canonical Board evidence-chart consumer', () => {
           useValue: {
             getQuery: () =>
               of({
-                id: 'events',
+                id: data.sources[0].queryId.split('/').at(-1),
                 request: {
                   queryType: QueryType.SQL,
                   text: 'select actual_saved_query',
                 },
                 connectionId: 'shipping',
+                ...(comparative ? { comparison: coreComparison.comparison } : {}),
                 recordsets: [],
               }),
           },
@@ -196,10 +199,14 @@ describe('canonical Board evidence-chart consumer', () => {
         fixture.detectChanges();
         await fixture.whenStable();
         await vi.waitFor(() =>
-          expect(fixture.componentInstance.preparingEvidence()).toBe(false),
+          expect(fixture.componentInstance.preparedEvidence()?.kind).toBe(data.chart.type),
         );
+        expect(fixture.componentInstance.preparingEvidence()).toBe(false);
+        await fixture.whenStable();
         fixture.detectChanges();
         expect(fixture.componentInstance.evidenceError()).toBeNull();
+        expect(fixture.componentInstance.unsupportedReason()).toBeUndefined();
+        expect(fixture.componentInstance.definition()?.id).toBe(data.sources[0].queryId.split('/').at(-1));
         expect(
           fixture.nativeElement.querySelector('datatug-evidence-chart table'),
         ).not.toBeNull();
@@ -238,9 +245,25 @@ describe('canonical Board evidence-chart consumer', () => {
       }
     },
   );
-  it('refuses missing expected source identity, forged sidecars, and immediately fences changed runtime context', async () => {
+  it('keeps declared comparisons unavailable without retained pair admission while exposing the exact held table', async () => {
+    const data = charts[0], { fixture, snapshot, run } = await mount(data, 'datatug', true);
+    const result = await held();
+    snapshot.set({ queryId: data.sources[0].queryId, result, identity: fixture.componentInstance.executionIdentity(), evidenceIdentity: identity });
+    await fixture.whenStable();
+    expect(fixture.componentInstance.preparedEvidence()).toBeNull();
+    expect(fixture.componentInstance.evidenceError()).toContain('verified comparison');
+    expect(fixture.nativeElement.querySelector('sneat-datatug-held-result-presentation')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).toContain('request-row');
+    expect(run).not.toHaveBeenCalled();
+  });
+  it.each([
+    { environment: 'other', securityContextId: 'original' },
+    { environment: 'demo', securityContextId: 'replacement' },
+    { environment: 'demo' },
+  ])('refuses missing expected source identity, forged sidecars, and fences context change %j', async (context) => {
     const data = charts[1],
       { fixture, snapshot, run } = await mount(data);
+    fixture.componentRef.setInput('boardContext', { environment: 'demo', securityContextId: 'original' });
     const result = await held();
     const write = (value: Result, expected?: HeldEvidenceIdentity) =>
       snapshot.set({
@@ -282,7 +305,7 @@ describe('canonical Board evidence-chart consumer', () => {
     if (!selection) throw new Error('fixture');
     const emit = vi.fn();
     fixture.componentInstance.inspectEvidence.subscribe(emit);
-    fixture.componentRef.setInput('boardContext', { environment: 'other' });
+    fixture.componentRef.setInput('boardContext', context);
     fixture.componentInstance.inspectHeldEvidence(selection);
     expect(emit).not.toHaveBeenCalled();
     fixture.detectChanges();

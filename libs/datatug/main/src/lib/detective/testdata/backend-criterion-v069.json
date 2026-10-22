@@ -1,0 +1,296 @@
+{
+  "draftRequest": {
+    "criterion": {
+      "version": 1,
+      "checkID": "fault-check",
+      "maxAgeSeconds": 3600
+    },
+    "evidence": {
+      "retention": "project-pinned",
+      "incidentRef": "detective-incidents-22047177749a3a34/INC-1",
+      "context": {
+        "sessionId": "shipping-session",
+        "expectedSessionVersion": 3,
+        "expectedContextSetId": "cs_c2d1cd2d90aeff3f8be507c8d32c8d99038acebdf7f0d192db1ed8c18a5a70b8",
+        "scope": {
+          "environmentId": "demo",
+          "identityDomain": "shipping-50f77bce80a90eb952581df6e6b7d38d"
+        },
+        "bindings": [
+          {
+            "inputName": "order_id",
+            "entryId": "shipping-order",
+            "revisionId": "shipping-order-r1"
+          }
+        ]
+      }
+    },
+    "storage": "firestore",
+    "spaceID": "space",
+    "project": "detective-demo-60096efa830907a862843995",
+    "operationId": "criterion-draft",
+    "expectedSeq": 1,
+    "type": "criterion-draft",
+    "incidentRef": "detective-incidents-22047177749a3a34/INC-1",
+    "environment": "demo"
+  },
+  "draftSuccess": {
+    "event": {
+      "id": "criterion-run-6d1d3c79699272623bbcb212376089b0",
+      "seq": 2,
+      "at": "2026-10-21T12:00:00Z",
+      "visibleAt": "2026-10-06T13:00:00Z",
+      "incident": {
+        "storeId": "detective-incidents-22047177749a3a34",
+        "incidentId": "INC-1"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "actor",
+        "via": "web"
+      },
+      "type": "incident.criterion-set",
+      "assertion": {
+        "kind": "claim"
+      },
+      "payload": {
+        "version": 1,
+        "finalized": false,
+        "enforcement": "required",
+        "scope": {
+          "project": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-60096efa830907a862843995",
+            "environment": "demo"
+          },
+          "sourceID": "shipping-working-copy",
+          "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+          "affectedInputs": {
+            "order_id": {
+              "type": "integer",
+              "value": "11045"
+            }
+          },
+          "sessionRef": "shipping-session",
+          "bagID": "shipping-bag",
+          "appliedManifestRef": "applied-ca3c4f0ad5b2af388485b403d7608a96e62ec0b9af437a24bca55a698f0bfb66"
+        },
+        "checkID": "fault-check",
+        "checkVersion": 1,
+        "definitionDigest": "9ff0d23863b57d00984138a2e287fbe1a9a7a5b12baf16f956befd947fb66e2c",
+        "maxAgeSeconds": 3600
+      }
+    },
+    "incident": {
+      "resolutionCriterion": {
+        "version": 1,
+        "finalized": false,
+        "enforcement": "required",
+        "scope": {
+          "project": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-60096efa830907a862843995",
+            "environment": "demo"
+          },
+          "sourceID": "shipping-working-copy",
+          "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+          "affectedInputs": {
+            "order_id": {
+              "type": "integer",
+              "value": "11045"
+            }
+          },
+          "sessionRef": "shipping-session",
+          "bagID": "shipping-bag",
+          "appliedManifestRef": "applied-ca3c4f0ad5b2af388485b403d7608a96e62ec0b9af437a24bca55a698f0bfb66"
+        },
+        "checkID": "fault-check",
+        "checkVersion": 1,
+        "definitionDigest": "9ff0d23863b57d00984138a2e287fbe1a9a7a5b12baf16f956befd947fb66e2c",
+        "maxAgeSeconds": 3600
+      },
+      "ref": {
+        "storeId": "detective-incidents-22047177749a3a34",
+        "incidentId": "INC-1"
+      },
+      "uid": "Detective-conversation-create",
+      "title": "Shipping request",
+      "status": "open",
+      "projects": [
+        {
+          "storeId": "firestore",
+          "projectId": "22047177749a3a348e22382ba1b8b2776ffaa2897dba8b0d05e7370ffa19ca0a",
+          "environment": "demo"
+        }
+      ],
+      "participants": [
+        {
+          "actor": {
+            "kind": "human",
+            "id": "actor",
+            "via": "web"
+          },
+          "role": "reporter"
+        }
+      ],
+      "canonicalContext": {
+        "facts": [
+          {
+            "id": "detective:scalar:order_id",
+            "entity": "case",
+            "field": "order_id",
+            "value": {
+              "type": "integer",
+              "value": "11045"
+            },
+            "origin": "context",
+            "enabled": false,
+            "scope": {
+              "storeId": "firestore",
+              "projectId": "22047177749a3a348e22382ba1b8b2776ffaa2897dba8b0d05e7370ffa19ca0a",
+              "environment": "demo"
+            }
+          }
+        ]
+      },
+      "lastSeq": 2
+    },
+    "receipt": "criterion-draft"
+  },
+  "finalizeRequest": {
+    "criterionVersion": 1,
+    "storage": "firestore",
+    "spaceID": "space",
+    "project": "detective-demo-60096efa830907a862843995",
+    "operationId": "criterion-finalize",
+    "expectedSeq": 2,
+    "type": "criterion-finalize",
+    "incidentRef": "detective-incidents-22047177749a3a34/INC-1",
+    "environment": "demo"
+  },
+  "finalizeSuccess": {
+    "event": {
+      "id": "criterion-run-0f1941c61ca49e75f8e4a0b0b18b810b",
+      "seq": 3,
+      "at": "2026-10-21T12:00:00Z",
+      "visibleAt": "2026-10-06T13:00:00Z",
+      "incident": {
+        "storeId": "detective-incidents-22047177749a3a34",
+        "incidentId": "INC-1"
+      },
+      "actor": {
+        "kind": "human",
+        "id": "actor",
+        "via": "web"
+      },
+      "type": "incident.criterion-set",
+      "assertion": {
+        "kind": "claim"
+      },
+      "payload": {
+        "finalizedAt": "2026-10-21T12:00:00Z",
+        "version": 2,
+        "finalized": true,
+        "enforcement": "required",
+        "scope": {
+          "project": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-60096efa830907a862843995",
+            "environment": "demo"
+          },
+          "sourceID": "shipping-working-copy",
+          "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+          "affectedInputs": {
+            "order_id": {
+              "type": "integer",
+              "value": "11045"
+            }
+          },
+          "sessionRef": "shipping-session",
+          "bagID": "shipping-bag",
+          "appliedManifestRef": "applied-ca3c4f0ad5b2af388485b403d7608a96e62ec0b9af437a24bca55a698f0bfb66"
+        },
+        "checkID": "fault-check",
+        "checkVersion": 1,
+        "definitionDigest": "9ff0d23863b57d00984138a2e287fbe1a9a7a5b12baf16f956befd947fb66e2c",
+        "maxAgeSeconds": 3600
+      }
+    },
+    "incident": {
+      "resolutionCriterion": {
+        "finalizedAt": "2026-10-21T12:00:00Z",
+        "version": 2,
+        "finalized": true,
+        "enforcement": "required",
+        "scope": {
+          "project": {
+            "storeId": "firestore",
+            "projectId": "detective-demo-60096efa830907a862843995",
+            "environment": "demo"
+          },
+          "sourceID": "shipping-working-copy",
+          "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+          "affectedInputs": {
+            "order_id": {
+              "type": "integer",
+              "value": "11045"
+            }
+          },
+          "sessionRef": "shipping-session",
+          "bagID": "shipping-bag",
+          "appliedManifestRef": "applied-ca3c4f0ad5b2af388485b403d7608a96e62ec0b9af437a24bca55a698f0bfb66"
+        },
+        "checkID": "fault-check",
+        "checkVersion": 1,
+        "definitionDigest": "9ff0d23863b57d00984138a2e287fbe1a9a7a5b12baf16f956befd947fb66e2c",
+        "maxAgeSeconds": 3600
+      },
+      "ref": {
+        "storeId": "detective-incidents-22047177749a3a34",
+        "incidentId": "INC-1"
+      },
+      "uid": "Detective-conversation-create",
+      "title": "Shipping request",
+      "status": "open",
+      "projects": [
+        {
+          "storeId": "firestore",
+          "projectId": "22047177749a3a348e22382ba1b8b2776ffaa2897dba8b0d05e7370ffa19ca0a",
+          "environment": "demo"
+        }
+      ],
+      "participants": [
+        {
+          "actor": {
+            "kind": "human",
+            "id": "actor",
+            "via": "web"
+          },
+          "role": "reporter"
+        }
+      ],
+      "canonicalContext": {
+        "facts": [
+          {
+            "id": "detective:scalar:order_id",
+            "entity": "case",
+            "field": "order_id",
+            "value": {
+              "type": "integer",
+              "value": "11045"
+            },
+            "origin": "context",
+            "enabled": false,
+            "scope": {
+              "storeId": "firestore",
+              "projectId": "22047177749a3a348e22382ba1b8b2776ffaa2897dba8b0d05e7370ffa19ca0a",
+              "environment": "demo"
+            }
+          }
+        ]
+      },
+      "lastSeq": 3
+    },
+    "receipt": "criterion-finalize"
+  }
+}

@@ -1,3 +1,5 @@
+import assignment from './testdata/shipping-assignment-outcome.query.json';
+import assignmentSQL from './testdata/shipping-assignment-outcome.query.sql?raw';
 import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { BehaviorSubject, Subject, firstValueFrom, of, throwError } from 'rxjs';
@@ -10,6 +12,7 @@ import {
   withHostedDemoDbSource,
 } from './hosted-demo-db-query';
 import {
+  fromProjectQueryWire,
   toProjectQueryWire,
   type ProjectQueryReadWire,
   type ProjectQueryRevision,
@@ -90,6 +93,78 @@ function harness() {
 }
 
 describe('Common API query editor journey', () => {
+  it('clones the installed typed Shipping diagnostic, retries exact intent, updates by CAS and cold reads without metadata loss', async () => {
+    const h = harness();
+    const shared = {
+      storeId: 'firestore',
+      spaceID: 'space_1',
+      projectId: 'project_1',
+    };
+    h.project.next({ ref: shared });
+    const installed = {
+      ...assignment,
+      type: QueryType.SQL,
+      folderPath: 'shipping',
+      text: assignmentSQL,
+    };
+    const original = structuredClone(installed);
+    const cloned = { ...installed, id: 'assignment-diagnostic' };
+    const definition = fromProjectQueryWire(cloned);
+    const id = 'shipping/assignment-diagnostic';
+    const state = h.service.newQuery({
+      id,
+      isNew: true,
+      title: definition.title,
+      queryType: QueryType.SQL,
+      def: definition,
+      request: definition.request,
+    });
+    h.queries.saveRevision.mockImplementation(() =>
+      throwError(() => ({ status: 0 })),
+    );
+    await expect(
+      firstValueFrom(h.service.saveQuery(state, shared)),
+    ).rejects.toBeDefined();
+    const first = h.queries.saveRevision.mock.calls[0][1];
+    expect(first).toMatchObject({ ifNoneMatch: true, query: cloned });
+    expect(first).not.toHaveProperty('branch');
+    const created = {
+      query: cloned,
+      revision: 'shipping-created',
+      saveSupported: true,
+    };
+    h.queries.saveRevision.mockImplementation(() => of(created));
+    await firstValueFrom(
+      h.service.saveQuery(required(h.service.getQueryState(id)), shared),
+    );
+    expect(h.queries.saveRevision.mock.calls[1][1]).toEqual(first);
+    const saved = required(h.service.getQueryState(id));
+    const updated = { ...cloned, title: 'Maya diagnostic copy' };
+    const final = {
+      query: updated,
+      revision: 'shipping-updated',
+      saveSupported: true,
+    };
+    h.queries.saveRevision.mockImplementation(() => of(final));
+    await firstValueFrom(
+      h.service.saveQuery({ ...saved, title: updated.title }, shared),
+    );
+    expect(h.queries.saveRevision.mock.calls[2][1]).toMatchObject({
+      ifMatch: 'shipping-created',
+      query: updated,
+    });
+    expect(h.queries.saveRevision.mock.calls[2][1].operationId).not.toBe(
+      first.operationId,
+    );
+    h.service.reloadQuery(id);
+    h.read.next(final);
+    expect(
+      toProjectQueryWire(required(h.service.getQueryState(id)?.def), id),
+    ).toEqual(updated);
+    expect(h.queries.branches).not.toHaveBeenCalled();
+    expect(installed).toEqual(original);
+  });
+
   it('does not expose cached private content before fresh same-UID read and clears it on revocation', () => {
     const h = harness();
     h.service.openQuery('q');
@@ -379,7 +454,7 @@ describe('Common API query editor journey', () => {
     const state = h.add();
     const enriched = {
       ...state,
-      def: { ...required(state.def), parameters: [] },
+      def: { ...required(state.def), dbModel: 'unsupported-legacy-model' },
     };
     h.service.updateQueryState(enriched);
     await expect(

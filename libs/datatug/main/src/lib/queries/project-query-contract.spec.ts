@@ -12,7 +12,10 @@ import {
   type IHttpQueryRequest,
   type ISqlQueryRequest,
 } from '../models/definition/query-def';
-import type { ProjectQueryReadWire, ProjectQueryWire } from './project-query-contract';
+import type {
+  ProjectQueryReadWire,
+  ProjectQueryWire,
+} from './project-query-contract';
 
 function asReadWire(wire: ProjectQueryWire): ProjectQueryReadWire {
   return { ...wire };
@@ -20,7 +23,10 @@ function asReadWire(wire: ProjectQueryWire): ProjectQueryReadWire {
 
 describe('common project query contract', () => {
   it('retains creation dates on reads without sending store-owned metadata on saves', () => {
-    const wire = { ...toProjectQueryWire(createHostedDemoDbQuery('q')), createdAt: '2026-10-21T12:00:00Z' };
+    const wire = {
+      ...toProjectQueryWire(createHostedDemoDbQuery('q')),
+      createdAt: '2026-10-21T12:00:00Z',
+    };
     const read = fromProjectQueryWire(wire);
     expect(read.createdAt).toBe(wire.createdAt);
     expect(toProjectQueryWire(read)).not.toHaveProperty('createdAt');
@@ -44,7 +50,10 @@ describe('common project query contract', () => {
     const query = {
       id: 'q',
       title: 'SQL',
-      request: { queryType: QueryType.SQL, text: '\nSELECT 1;\n' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: '\nSELECT 1;\n',
+      } as ISqlQueryRequest,
     };
     expect(toProjectQueryWire(query, 'folder/q')).toMatchObject({
       folderPath: 'folder',
@@ -62,7 +71,10 @@ describe('common project query contract', () => {
     const query = {
       id: 'chinook-customer-genre-mix',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT Genre FROM Genre' } as ISqlQueryRequest,
+      request: {
+        queryType: QueryType.SQL,
+        text: 'SELECT Genre FROM Genre',
+      } as ISqlQueryRequest,
     };
     const wire = toProjectQueryWire(query, 'demodb/chinook-customer-genre-mix');
     expect(wire.connectionId).toBe('chinook-sqlite');
@@ -125,11 +137,18 @@ describe('common project query contract', () => {
     expect(() =>
       toProjectQueryWire({
         id: 'q',
-        request: { queryType: QueryType.HTTP, url: '/foo', method: 'GET' } as IHttpQueryRequest,
+        request: {
+          queryType: QueryType.HTTP,
+          url: '/foo',
+          method: 'GET',
+        } as IHttpQueryRequest,
       }),
     ).toThrow(UnsupportedQueryContractError);
     expect(() =>
-      toProjectQueryWire({ ...createHostedDemoDbQuery('q'), parameters: [] }),
+      toProjectQueryWire({
+        ...createHostedDemoDbQuery('q'),
+        dbModel: 'legacy-model',
+      }),
     ).toThrow(UnsupportedQueryContractError);
   });
 });

@@ -169,7 +169,7 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'meanings'].includes(
+            ['overview', 'environments', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'meanings'].includes(
               segments[6].path,
             )) ||
           (segments.length === 8 && segments[6].path === 'meanings' && ['new-entity', 'entity', 'new-field', 'field'].includes(segments[7].path)) ||
@@ -206,6 +206,13 @@ export const datatugRoutes: Routes = [
             (m) => m.ProjectPageComponent,
           ),
       })),
+      {
+        path: 'environments',
+        loadComponent: () =>
+          import('../pages/signed-in/environments/environments-page.component').then(
+            (m) => m.EnvironmentsPageComponent,
+          ),
+      },
       {
         path: 'shipping',
         loadComponent: () => import('../shipping/shipping-workspace.component').then((m) => m.ShippingWorkspaceComponent),

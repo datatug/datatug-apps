@@ -37,12 +37,25 @@ export interface EvidenceShareSelection {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `@if (page.context()?.kind === 'cloud') {
     <section aria-label="Optional Incident evidence sharing">
-      <h3>Retain and attach this run</h3>
-      <p>
-        Ordinary Run does not share with an Incident. Select an existing
-        Incident and applied revision to explicitly retain the executed inputs
-        and result for current project contacts.
-      </p>
+      <h3>
+        {{
+          mode() === 'inspect'
+            ? 'Choose inspection context'
+            : 'Retain and attach this run'
+        }}
+      </h3>
+      @if (mode() === 'inspect') {
+        <p>
+          Choose an existing Incident and applied revision to inspect current
+          data. This does not run or attach evidence.
+        </p>
+      } @else {
+        <p>
+          Ordinary Run does not share with an Incident. Select an existing
+          Incident and applied revision to explicitly retain the executed inputs
+          and result for current project contacts.
+        </p>
+      }
       <ion-button
         fill="outline"
         (click)="loadIncidents()"
@@ -55,7 +68,9 @@ export interface EvidenceShareSelection {
         (ionChange)="chooseIncident($event.detail.value)"
         [disabled]="disabled() || loading()"
       >
-        <ion-select-option value="">Do not share</ion-select-option>
+        <ion-select-option value="">{{
+          mode() === 'inspect' ? 'Do not inspect' : 'Do not share'
+        }}</ion-select-option>
         @for (item of incidents(); track item.ref.incidentId) {
           <ion-select-option [value]="ref(item)"
             >{{ item.ref.incidentId }} · {{ item.title }}</ion-select-option
@@ -64,6 +79,7 @@ export interface EvidenceShareSelection {
       </ion-select>
       @if (incidentRef()) {
         <sneat-datatug-applied-evidence-selector
+          [mode]="mode()"
           [projectRef]="page.ref()"
           [actor]="actor()"
           [environment]="environment()"
@@ -80,6 +96,7 @@ export interface EvidenceShareSelection {
   }`,
 })
 export class EvidenceSharePanelComponent {
+  readonly mode = input<'share' | 'inspect'>('share');
   readonly environment = input('');
   readonly caseId = input<string>();
   readonly disabled = input(false);

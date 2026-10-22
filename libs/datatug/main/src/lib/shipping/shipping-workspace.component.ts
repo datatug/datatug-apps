@@ -1,3 +1,5 @@
+import { SourceOperationHistoryComponent } from './source-operation-history.component';
+import { NativeSemanticBrowserComponent } from './native-semantic-browser.component';
 import { ShippingComponentInstallerComponent } from './shipping-component-installer.component';
 import { ShippingQueryAccessComponent } from './shipping-query-access.component';
 import { HttpErrorResponse } from '@angular/common/http';
@@ -42,7 +44,9 @@ import {
   selector: 'sneat-datatug-shipping-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    SourceOperationHistoryComponent,
     ShippingQueryAccessComponent,
+    NativeSemanticBrowserComponent,
     RouterLink,
     IonButton,
     IonContent,
@@ -204,7 +208,12 @@ import {
         </p>
       }
       @if (native()) {
+        <sneat-source-operation-history [environments]="environments()" />
         <sneat-shipping-component-installer />
+        <sneat-native-semantic-browser
+          [environments]="environments()"
+          [canWrite]="canWrite()"
+        />
       }
     </ion-content>`,
 })

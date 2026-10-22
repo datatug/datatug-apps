@@ -117,7 +117,7 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   await page.getByRole('textbox', { name: 'Incident title' }).fill('Order 11039 is missing');
   await page.getByRole('textbox', { name: 'Incident description' }).fill('Customer reported a missing order.');
   await page.getByRole('spinbutton', { name: 'Order ID' }).fill('11039');
-  await page.getByRole('button', { name: 'Save Incident' }).click();
+  await page.getByRole('button', { name: 'Create incident' }).click();
   const detail = `${list}/${incidentRef.storeId}/${incidentRef.incidentId}?environment=demo`;
   await expect(page).toHaveURL(detail);
   expect(writes.find((body) => body['type'] === 'create')).toMatchObject({
