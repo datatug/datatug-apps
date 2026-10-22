@@ -60,8 +60,9 @@ export class ParameterLookupButtonComponent {
   private readonly injector = inject(Injector);
   private readonly loader = inject(PARAMETER_LOOKUP_LOADER);
   /** The lookup machinery, loaded on first need (a separate chunk; never at route start). */
-  private lookupApi?: Promise<ParameterLookupApi>;
-  private destroyed = false;
+  // Signals, not plain fields: they are written from async callbacks (zoneless rule), though no template reads them.
+  private readonly lookupApi = signal<Promise<ParameterLookupApi> | undefined>(undefined);
+  private readonly destroyed = signal(false);
 
   readonly parameter = input.required<IParameterDef>();
   readonly context = input<ParameterLookupHost>({});
@@ -83,8 +84,8 @@ export class ParameterLookupButtonComponent {
   constructor() {
     // A dialog must not outlive the input it fills (for example, the board navigated away).
     inject(DestroyRef).onDestroy(() => {
-      this.destroyed = true;
-      void this.lookupApi?.then((api) => api.dispose(), () => undefined);
+      this.destroyed.set(true);
+      void this.lookupApi()?.then((api) => api.dispose(), () => undefined);
     });
     effect(() => {
       const parameter = this.parameter();
@@ -113,7 +114,7 @@ export class ParameterLookupButtonComponent {
     try {
       const parameter = this.parameter();
       const api = await this.lookup();
-      if (this.destroyed) return;
+      if (this.destroyed()) return;
       const result = await api.open(parameter, this.context(), this.currentValue());
       if (result) {
         const checked = pickedParameterValue(parameter, result.value);
@@ -129,13 +130,20 @@ export class ParameterLookupButtonComponent {
   }
 
   private lookup(): Promise<ParameterLookupApi> {
-    this.lookupApi ??= this.loader(this.injector).then((api) => {
-      if (this.destroyed) api.dispose();
-      return api;
-    });
-    // A failed chunk load is retried on the next need.
-    this.lookupApi.catch(() => { this.lookupApi = undefined; });
-    return this.lookupApi;
+    let api = this.lookupApi();
+    if (!api) {
+      api = this.loader(this.injector).then((loaded) => {
+        if (this.destroyed()) loaded.dispose();
+        return loaded;
+      });
+      const pending = api;
+      // A failed chunk load is retried on the next need.
+      pending.catch(() => {
+        if (this.lookupApi() === pending) this.lookupApi.set(undefined);
+      });
+      this.lookupApi.set(api);
+    }
+    return api;
   }
 
   private focusButton(): void {

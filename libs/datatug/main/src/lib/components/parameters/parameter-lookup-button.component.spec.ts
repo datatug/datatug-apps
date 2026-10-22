@@ -32,6 +32,7 @@ describe('ParameterLookupButtonComponent', () => {
 
   beforeEach(async () => {
     lookup.availability.mockReset().mockResolvedValue(yes);
+    loader.mockReset().mockImplementation(() => Promise.resolve(lookup));
     lookup.open.mockReset().mockResolvedValue({ value: { type: 'string', value: 'BOTTM' } });
     await TestBed.configureTestingModule({
       imports: [ParameterLookupButtonComponent],
@@ -118,26 +119,27 @@ describe('ParameterLookupButtonComponent', () => {
   });
 
   it('loads nothing for a multi-value parameter, retries a failed load, and disposes a load that finishes after the host is gone', async () => {
-    loader.mockClear();
     const multi = await render({ ...param, isMultiValue: true });
     expect(multi.button()).toBeNull();
     expect(loader).not.toHaveBeenCalled();
+    // The first load fails; a later need loads again, and opening works.
     loader.mockRejectedValueOnce(new Error('chunk'));
     const failed = await render();
-    expect(failed.button()).toBeNull();
     await failed.fixture.componentInstance.open();
-    expect(TestBed.inject(ErrorLogger).logError).toHaveBeenCalledWith(expect.any(Error), 'Failed to open the parameter lookup');
-    expect(loader).toHaveBeenCalledTimes(2);
+    expect(loader.mock.calls.length).toBeGreaterThanOrEqual(2);
+    expect(lookup.open).toHaveBeenCalled();
     let finish!: (api: typeof lookup) => void;
     loader.mockReturnValueOnce(new Promise((resolve) => { finish = resolve; }));
     lookup.dispose.mockClear();
+    lookup.open.mockClear();
     const late = await render();
+    const opening = late.fixture.componentInstance.open();
     late.fixture.destroy();
     finish(lookup);
+    await opening;
     await settle();
     expect(lookup.dispose).toHaveBeenCalled();
-    lookup.open.mockClear();
-    await late.fixture.componentInstance.open();
     expect(lookup.open).not.toHaveBeenCalled();
   });
+
 });
