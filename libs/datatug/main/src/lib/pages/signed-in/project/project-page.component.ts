@@ -1,3 +1,4 @@
+import { SharedEvidenceLinkComponent } from '../../../evidence/shared-evidence-link.component';
 import { BusinessClockChipComponent } from '../../../source-workspace/business-clock-chip.component';
 import { SourceEntriesComponent } from '../../../source-workspace/source-entries.component';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
@@ -78,6 +79,7 @@ import { readGithubProjectId } from '@datatug/project-address';
   templateUrl: './project-page.component.html',
   styleUrls: ['./project-page.component.scss'],
   imports: [
+    SharedEvidenceLinkComponent,
     BusinessClockChipComponent,
     RouterLink,
     SourceEntriesComponent,

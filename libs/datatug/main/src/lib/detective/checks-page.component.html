@@ -1658,6 +1658,15 @@
                   @if (runLinkNotice()?.runId === run.id) {
                     <p role="status">{{ runLinkNotice()?.text }}</p>
                   }
+                  @if (retainedRunLink(); as shared) {
+                    @if (shared.runId === run.id) {
+                      <sneat-datatug-evidence-copy-link
+                        [projectRef]="scope.ref()"
+                        [environment]="shared.environment"
+                        [target]="shared.target"
+                      />
+                    }
+                  }
                   <sneat-validation-run-results [run]="run" />
                 </div>
               }

@@ -63,6 +63,13 @@ describe('scrubText', () => {
     expect(scrubText(`navigated to ${LINK_PAGES[3]}?schema=#pk=${KEY}`, false)).toBe(
       `navigated to ${LINK_PAGES[3]}`,
     );
+    // A copied evidence link's payload (evidence-records REQ:copyable-evidence-link), in text and as an address.
+    const overview = '/space/S1/store/firestore/project/p1/overview';
+    expect(scrubText(`opened ${overview}#evidence=eyJ2IjoxfQ`, false)).toBe(`opened ${overview}`);
+    expect(scrubText(`https://datatug.app${overview}#evidence=eyJ2IjoxfQ`, false)).toBe(
+      `https://datatug.app${overview}`,
+    );
+    expect(scrubText('state #evidence=eyJ2IjoxfQ kept', false)).toBe('state  kept');
   });
 });
 

@@ -1,3 +1,5 @@
+import { EvidenceCopyLinkComponent } from '../evidence/evidence-copy-link.component';
+import type { EvidenceLink } from '../evidence/evidence-link';
 import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import { HttpErrorResponse } from '@angular/common/http';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
@@ -110,12 +112,15 @@ interface QueryInputRow extends CheckInput {
   end: string;
 }
 
+type RetainedRunLink = EvidenceLink;
+
 @Component({
   selector: 'sneat-datatug-checks-page',
   templateUrl: './checks-page.component.html',
   styleUrl: './detective-pages.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    EvidenceCopyLinkComponent,
     BusinessClockChipComponent,
     SessionDetectiveRunComponent,
     EvidenceSharePanelComponent,
@@ -192,6 +197,7 @@ export class ChecksPageComponent {
     this.runLifetime.abort();
     this.runLifetime = new AbortController();
     this.selectedRun.set(undefined);
+    this.retainedRunLink.set(undefined);
     this.evidenceSelection.set(undefined);
     this.retainedIntent.clearHeld();
     this.retainedPending.set(false);
@@ -279,6 +285,10 @@ export class ChecksPageComponent {
     Record<string, { value: string; end: string }>
   >({});
   protected readonly selectedRun = signal<CheckRun | undefined>(undefined);
+  /** The retained (shared) run this page just admitted, for its Copy link. */
+  protected readonly retainedRunLink = signal<
+    (RetainedRunLink & { readonly runId: string }) | undefined
+  >(undefined);
   protected readonly runLinkNotice = signal<
     { runId: string; text: string } | undefined
   >(undefined);
@@ -321,6 +331,7 @@ export class ChecksPageComponent {
     this.queryInputRows.set([]);
     this.runInputText.set({});
     this.selectedRun.set(undefined);
+    this.retainedRunLink.set(undefined);
     this.runLinkNotice.set(undefined);
     this.queryDetails.set({});
     this.environment.set('');
@@ -1440,6 +1451,7 @@ export class ChecksPageComponent {
           'The actual retained Check run could not be verified. Retry the original operation.',
         );
       let admittedRun = response.run;
+      let retainedLink: RetainedRunLink | undefined;
       if (selection && response.run.executionStatus === 'completed') {
         const projectRef = this.scope.ref();
         if (
@@ -1450,21 +1462,22 @@ export class ChecksPageComponent {
           throw new Error(
             'The returned Check definition version is unavailable. Retry its original receipt.',
           );
+        const checkRunRef = {
+          kind: 'check-run' as const,
+          checkRun: {
+            storeId: projectRef.storeId,
+            projectId: projectRef.projectId,
+            environment,
+            checkId: response.run.checkId,
+            checkVersion: response.run.definition.version,
+            runId: response.run.id,
+          },
+        };
         const retained = await this.evidenceInjector
           .get(RetainedEvidenceApiService)
           .read(
             { projectRef, environment, actor: context.principal || '' },
-            {
-              kind: 'check-run',
-              checkRun: {
-                storeId: projectRef.storeId,
-                projectId: projectRef.projectId,
-                environment,
-                checkId: response.run.checkId,
-                checkVersion: response.run.definition.version,
-                runId: response.run.id,
-              },
-            },
+            checkRunRef,
             signal,
           );
         if (!('run' in retained))
@@ -1492,6 +1505,7 @@ export class ChecksPageComponent {
         )
           return;
         admittedRun = retained.run;
+        retainedLink = { environment, target: checkRunRef };
       }
       if (intent && response.run.executionStatus === 'completed') {
         this.retainedIntent.confirm();
@@ -1501,6 +1515,9 @@ export class ChecksPageComponent {
       await this.refresh();
       if (!this.isCurrentScope(identity)) return;
       this.selectedRun.set(admittedRun);
+      this.retainedRunLink.set(
+        retainedLink ? { ...retainedLink, runId: admittedRun.id } : undefined,
+      );
       const linkText = caseRunLinkMessage(
         this.caseId(),
         response.run.id,
@@ -1523,6 +1540,7 @@ export class ChecksPageComponent {
         [401, 403].includes(error.status)
       ) {
         this.selectedRun.set(undefined);
+        this.retainedRunLink.set(undefined);
         this.evidenceSelection.set(undefined);
         this.state.set(undefined);
       }

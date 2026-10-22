@@ -13,7 +13,12 @@ import { IonButton, IonButtons, IonIcon } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { refreshOutline } from 'ionicons/icons';
 import { OriginalEvidencePanelComponent } from './original-evidence-panel.component';
-import { SOURCE_EVIDENCE_PRESENTERS, sourceEvidencePresenter } from './source-evidence-presentation';
+import { EvidenceCopyLinkComponent } from './evidence-copy-link.component';
+import type { EvidenceLinkTarget } from './evidence-link';
+import {
+  SOURCE_EVIDENCE_PRESENTERS,
+  sourceEvidencePresenter,
+} from './source-evidence-presentation';
 import { SourceDetailsComponent } from '../source-workspace/source-details.component';
 import {
   decodeResult,
@@ -40,6 +45,7 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
     ValidationRunResultsComponent,
     OriginalEvidencePanelComponent,
     SourceDetailsComponent,
+    EvidenceCopyLinkComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<section aria-label="Retained execution evidence">
@@ -51,6 +57,15 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
             : 'Retained execution evidence'
         }}
       </h3>
+      @if (linkTarget(); as link) {
+        <sneat-datatug-evidence-copy-link
+          class="evidence-link"
+          [projectRef]="projectRef()"
+          [environment]="environment()"
+          [target]="link"
+          [label]="selector() ? 'Copy link to this run' : 'Copy link'"
+        />
+      }
       @if (error()) {
         <ion-buttons slot="end"
           ><ion-button
@@ -84,7 +99,10 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       <p role="alert">{{ error() }}</p>
     }
     @if (operation(); as data) {
-      <section aria-label="Historical source operation" class="source-operation">
+      <section
+        aria-label="Historical source operation"
+        class="source-operation"
+      >
         <sneat-source-details [details]="data" />
       </section>
     }
@@ -110,7 +128,9 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
           execution {{ query.result.execution?.executionId }}
         </p>
         @if (query.originalEvidence) {
-          <sneat-original-evidence-panel [presentation]="originalPresentation(query)" />
+          <sneat-original-evidence-panel
+            [presentation]="originalPresentation(query)"
+          />
         }
         <sneat-datatug-held-result-presentation
           [result]="query.result"
@@ -140,7 +160,8 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       .evidence-header h4 {
         margin: 0;
       }
-      .evidence-header ion-buttons {
+      .evidence-header ion-buttons,
+      .evidence-link {
         margin-inline-start: auto;
       }
       h5 {
@@ -229,9 +250,32 @@ export class RetainedEvidenceViewerComponent {
   protected readonly operation = computed(() => {
     const value = this.current();
     if (!value || !('receipt' in value)) return undefined;
-    const presenter = sourceEvidencePresenter(this.presenters, value.reference.sourceId);
-    return presenter?.operation(value) || { title: 'Source receipt unavailable', summary: 'No unique presentation adapter is registered for this source.', sections: [] };
+    const presenter = sourceEvidencePresenter(
+      this.presenters,
+      value.reference.sourceId,
+    );
+    return (
+      presenter?.operation(value) || {
+        title: 'Source receipt unavailable',
+        summary:
+          'No unique presentation adapter is registered for this source.',
+        sections: [],
+      }
+    );
   });
+  /** A loaded retained run can be linked; a selected row links to its run, never to the row's key. */
+  protected readonly linkTarget = computed<EvidenceLinkTarget | undefined>(
+    () => {
+      const value = this.current(),
+        target = this.target();
+      if (!value || 'receipt' in value) return undefined;
+      if (target?.kind === 'check-run') return target;
+      if (target?.kind === 'execution')
+        return { kind: 'execution', execution: target.execution };
+      const execution = 'run' in value ? undefined : value.result.execution;
+      return execution ? { kind: 'execution', execution } : undefined;
+    },
+  );
   protected readonly runEvidence = computed(() => {
     const value = this.current();
     return value && !('receipt' in value) ? value : undefined;
@@ -245,7 +289,15 @@ export class RetainedEvidenceViewerComponent {
     return !value ? [] : 'run' in value ? value.results : [value];
   });
   protected originalPresentation(query: RetainedExecutionView) {
-    return sourceEvidencePresenter(this.presenters, query.sourcePin.sourceId)?.original(query.originalEvidence) || { status: 'unavailable' as const, reason: 'No unique presentation adapter is registered for this source.' };
+    return (
+      sourceEvidencePresenter(
+        this.presenters,
+        query.sourcePin.sourceId,
+      )?.original(query.originalEvidence) || {
+        status: 'unavailable' as const,
+        reason: 'No unique presentation adapter is registered for this source.',
+      }
+    );
   }
   constructor() {
     addIcons({ refreshOutline });

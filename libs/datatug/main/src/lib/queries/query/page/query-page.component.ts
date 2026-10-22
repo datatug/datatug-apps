@@ -1,3 +1,4 @@
+import { EvidenceCopyLinkComponent } from '../../../evidence/evidence-copy-link.component';
 import {
   prepareLocalMeaningSave,
   type LocalMeaningSaveSnapshot,
@@ -808,6 +809,7 @@ let queryParameterEditorId = 0;
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    EvidenceCopyLinkComponent,
     ResultCellCardsComponent,
     SemanticMappingDialogComponent,
     GitHubReauthorizationBannerComponent,
