@@ -381,5 +381,9 @@ Founder-approved on 2026-10-22, as recorded in the header of datatug-core `pkg/d
 - A run history, and with it the redaction of its records, has not been built (`credentials-run-time-only`).
 - The CLI change in `cli-parity` and its acceptance criterion `cli-rejects-non-url-placeholders`.
 
+## Open Questions
+
+None open. The earlier questions are recorded under Resolved decisions.
+
 ---
 *This document follows the https://specscore.md/feature-specification*
