@@ -256,6 +256,33 @@ describe('OvdbDatabaseBrowserComponent', () => {
     expect(q('ovdb-unknown-table')?.textContent).toContain('There is no table “Nope”');
   });
 
+  it('keeps Reset database out of sight until the source menu is opened', async () => {
+    const { q, fixture, settle } = await setup('Artist');
+    expect(q('reset-database')).toBeNull();
+    q('source-menu')?.click();
+    await settle();
+    expect(q('reset-database')).not.toBeNull();
+    fixture.nativeElement.querySelector('[data-testid="source-menu"]')?.click();
+    await settle();
+    expect(q('reset-database')).toBeNull();
+  });
+
+  it('puts Create record inline with the table title and no All tables link in the card', async () => {
+    const { q, fixture, settle } = await setup('Artist');
+    await vi.waitFor(async () => { await settle(); expect(q('ovdb-table')).not.toBeNull(); });
+    const header = q('ovdb-table')?.querySelector('ion-card-header');
+    expect(header?.querySelector('[data-testid="record-create"]')).not.toBeNull();
+    expect(q('ovdb-table')?.textContent).not.toContain('All tables');
+    expect(fixture.nativeElement.querySelector('ion-card ion-card')).toBeNull();
+  });
+
+  it('right-aligns numeric columns', async () => {
+    const { q, settle } = await setup('Artist');
+    await vi.waitFor(async () => { await settle(); expect(q('row-0')).not.toBeNull(); });
+    const cells = q('ovdb-rows')?.querySelectorAll('td.ovdb-num');
+    expect(cells?.length).toBeGreaterThan(0);
+  });
+
   it('resets after confirmation, verifies the canonical copy and reloads', async () => {
     const { q, component, local, confirm, settle } = await setup('Artist');
     local.database.tables['Artist'][0]['Name'] = 'Changed';
@@ -299,6 +326,7 @@ describe('OvdbDatabaseBrowserComponent', () => {
     });
     const { q } = await setup(undefined, { database: readOnly });
     expect(q('reset-database')).toBeNull();
+    expect(q('source-menu')).toBeNull();
     expect(q('ovdb-database-header')?.textContent).toContain('read-only');
     expect(q('ovdb-table-list')).not.toBeNull();
   });

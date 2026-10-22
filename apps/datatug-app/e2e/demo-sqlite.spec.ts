@@ -281,6 +281,7 @@ test.describe('Chinook as a local SQLite copy', () => {
     await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
     if (persistent) await expect(nameCell(page, 'Created in browser')).toBeVisible();
     else await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
+    await page.getByTestId('source-menu').click();
     await page.getByTestId('reset-database').click();
     await confirmAlert(page, 'Reset Database');
     await expect(page.getByTestId('reset-message')).toContainText('reset');
@@ -345,6 +346,7 @@ test.describe('Chinook as a local SQLite copy', () => {
 
     // Reset Database warns, and on confirmation restores the canonical data, which survives a reload.
     await openDataset(page, 'chinook', 'Artist');
+    await page.getByTestId('source-menu').click();
     await page.getByTestId('reset-database').click();
     await expect(alert(page)).toHaveCount(1);
     await expect(alert(page)).toContainText('All your local changes to Chinook (local SQLite) will be lost');
@@ -383,7 +385,7 @@ test.describe('Chinook as a local SQLite copy', () => {
 
     // The follower writes; the leader sees it.
     await editName(follower, 'Accept', 'Accept (follower edit)');
-    await page.getByRole('link', { name: 'All tables' }).click();
+    await page.getByRole('button', { name: 'All tables' }).click();
     await page.getByTestId('table-Artist').click();
     await expect(nameCell(page, 'Accept (follower edit)')).toBeVisible();
 

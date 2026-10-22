@@ -916,6 +916,33 @@ datatug-cli-chat-page {
 // (datatug-app.component, UX brief §1) which owns the menu affordance, so
 // per-page ion-menu-button bars would double it — hide the page-level ones
 // while the compact header is shown.
-ion-app.compact-header-mode ion-menu-button:not(.app-level-menu-button) {
+//
+// One header per page (founder, 2026-10-22): a routed page that has an `ion-header` of its own
+// (other than Home's, which yields to the shell) is its single header on narrow layouts. The shell's
+// compact bar is hidden for it, the page's own menu button is shown again, and page-toolbar-adoption.ts
+// adds Sign in (and a menu button where the toolbar has none) to the page's toolbar. A toolbar with
+// a visible back button shows that instead of the menu: "menu or back".
+$page-owns-header: 'ion-router-outlet > .ion-page:not(.ion-page-hidden) ion-header:not(.home-header)';
+
+ion-app.compact-header-mode:not(:has(#{$page-owns-header})) ion-menu-button:not(.app-level-menu-button) {
+  display: none;
+}
+
+ion-app.compact-header-mode:has(#{$page-owns-header}) {
+  > .compact-header {
+    display: none;
+  }
+  > ion-split-pane {
+    top: 0;
+    height: 100%;
+  }
+  ion-toolbar:has(ion-back-button.show-back-button) ion-menu-button,
+  ion-toolbar:has(ion-back-button.show-back-button) .shell-adopted-menu {
+    display: none;
+  }
+}
+
+// Adopted toolbar extras only exist for the narrow layout.
+ion-app:not(.compact-header-mode) .shell-adopted {
   display: none;
 }

@@ -86,12 +86,16 @@ type OpenState =
     IonToolbar,
     OvdbDatabaseBrowserComponent,
   ],
+  styles: `
+    /* The back button leads to the table list: say so where there is room, keep the arrow only on a phone. */
+    @media (max-width: 575px) { .back-to-tables::part(text) { display: none; } }
+  `,
   template: `
     <ion-header>
       <ion-toolbar>
         <ion-buttons slot="start">
           <ion-menu-button />
-          <ion-back-button [defaultHref]="backHref()" />
+          <ion-back-button class="back-to-tables" [defaultHref]="backHref()" [text]="tableParam() ? 'All tables' : undefined" />
         </ion-buttons>
         <ion-title>{{
           entry()
@@ -162,6 +166,7 @@ type OpenState =
                 [basePath]="basePath()"
                 [table]="tableParam()"
                 [statusText]="label"
+                [showTitle]="false"
               />
             }
           }
