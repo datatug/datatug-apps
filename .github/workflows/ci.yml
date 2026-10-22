@@ -276,8 +276,6 @@ jobs:
     if: always() && github.event_name != 'workflow_dispatch' && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 60
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 75
     needs: [preflight, build]
     permissions:
       actions: read
@@ -354,8 +352,6 @@ jobs:
     if: always() && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -426,8 +422,6 @@ jobs:
     if: always() && github.event_name != 'workflow_dispatch' && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -518,8 +512,8 @@ jobs:
       # Independent chart sources need the per-database customer queries the
       # browser catalog revision above predates, so the spec runs against its
       # paired Demo revision (spec/features/independent-chart-sources/
-      # local-acceptance.md), in its own
-      # exploration lane, after the app suite has prepared the dependencies.
+      # local-acceptance.md), in its own exploration lane, after the app suite
+      # has prepared the dependencies.
       - name: Checkout paired independent-sources demo revision
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: actions/checkout@v6
@@ -564,8 +558,6 @@ jobs:
     if: always() && github.event_name != 'workflow_dispatch' && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 25
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -669,8 +661,6 @@ jobs:
     if: always() && github.event_name != 'workflow_dispatch' && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 60
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -779,8 +769,6 @@ jobs:
     if: always() && github.event_name != 'workflow_dispatch' && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     needs: [preflight, build]
     permissions:
       actions: read
@@ -912,8 +900,6 @@ jobs:
     # env var below in sync when bumping DATATUG_CLI_REF.
     name: journey e2e (real datatug-cli agent)
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     permissions:
       actions: read
       contents: read
@@ -1084,8 +1070,6 @@ jobs:
     if: ${{ always() && vars.DATATUG_LINKS_CLI_REF != '' && needs.preflight.outputs.e2e != 'false' }}
     timeout-minutes: 30
     runs-on: ubuntu-latest
-    # A hung browser lane must fail, not hold the PR for the 6 h default.
-    timeout-minutes: 45
     permissions:
       actions: read
       contents: read
