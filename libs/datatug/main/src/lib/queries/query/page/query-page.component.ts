@@ -2,6 +2,7 @@ import {
   prepareLocalMeaningSave,
   type LocalMeaningSaveSnapshot,
 } from '../../semantic-project-reference';
+import { localOvdbRequirement } from '../../local-ovdb-requirement';
 import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
 import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
 import { heldEvidenceIdentity } from '../../../evidence/retained-evidence-contract';
@@ -2233,6 +2234,19 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       ? federatedVisibleMode(definition)
       : { supported: false, defaultMode: 'full' as const };
   });
+  /** A failed run of a query that reads an OVDB server on this computer: say what to start instead of "Failed to fetch". */
+  public readonly localOvdbNeeded = computed(() =>
+    localOvdbRequirement(this.queryDef(), this.runError(), globalThis.location?.origin ?? ''),
+  );
+  public readonly localOvdbCopyStatus = signal('');
+  public async copyLocalOvdbCommand(command: string): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(command);
+      this.localOvdbCopyStatus.set('Copied.');
+    } catch {
+      this.localOvdbCopyStatus.set('Clipboard access is unavailable; select the command to copy it.');
+    }
+  }
   public readonly ovdbDestination = computed(() => {
     try {
       return new URL(this.queryDef()?.federation?.ovdbBaseUrl ?? '').origin;

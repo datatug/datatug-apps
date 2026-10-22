@@ -20,6 +20,7 @@ class GridStubComponent {
   readonly columnDefs = input<unknown>();
   readonly defaultColDef = input<unknown>();
   readonly rowSelection = input<unknown>();
+  readonly domLayout = input<unknown>();
   selectedRows(row: Record<string, unknown>) { return () => [row]; }
   readonly selectionChanged = output<unknown>();
   readonly gridReady = output<unknown>();
@@ -105,6 +106,8 @@ describe('DemoLogsPageComponent', () => {
     expect(el.textContent).not.toContain('Severity');
     expect(el.textContent).not.toContain('Correlation ID');
     expect(el.textContent).not.toContain('Include untimed');
+    // A short result fits the page: no empty fixed-height grid.
+    expect(el.querySelector('ag-grid-angular')?.classList.contains('fixed-height')).toBe(false);
     (el.querySelector('.grid-entry') as HTMLButtonElement).click();
     fixture.detectChanges();
     const details = el.querySelector('.entry-details')?.textContent ?? '';

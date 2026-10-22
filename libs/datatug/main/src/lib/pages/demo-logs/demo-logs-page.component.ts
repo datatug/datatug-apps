@@ -135,7 +135,8 @@ const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
         @if (state() === 'ready' && rows().length > 0) {
           <p role="status">{{ rows().length }} entries{{ rows().length === 100 ? ' · result limit reached' : '' }}</p>
           <p id="log-grid-help">Newest entries first. Select a row, or focus a cell and press Enter or Space, to inspect its evidence.</p>
-          <ag-grid-angular *datatugAgGridReady class="log-grid"
+          <ag-grid-angular *datatugAgGridReady class="log-grid" [class.fixed-height]="rows().length > autoHeightRows"
+            [domLayout]="rows().length > autoHeightRows ? 'normal' : 'autoHeight'"
             [rowData]="gridRows()" [columnDefs]="columns()" [defaultColDef]="defaultColumn"
             [rowSelection]="{ mode: 'singleRow', checkboxes: false, enableClickSelection: true }"
             (gridReady)="nameGrid($event)" (selectionChanged)="selectionChanged($event)" (cellKeyDown)="activateEntry($event)" />
@@ -186,7 +187,8 @@ const LOOPBACK = ['localhost', '127.0.0.1', '[::1]'];
     input, select, button { font: inherit; min-height: 38px; border: 1px solid var(--ion-color-medium-tint); border-radius: 6px; padding: 6px 9px; background: var(--ion-background-color, white); color: var(--ion-text-color); min-width: 0; }
     button { cursor: pointer; } button:focus-visible, a:focus-visible { outline: 3px solid var(--ion-color-primary); outline-offset: 2px; }
     .filter-note { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--ion-color-medium); }
-    .log-grid { display: block; height: 420px; width: 100%; min-width: 0; }
+    .log-grid { display: block; width: 100%; min-width: 0; }
+    .log-grid.fixed-height { height: 420px; }
     .entry-details { padding: 4px 16px 18px; border-top: 1px solid var(--ion-color-light-shade); }
     .entry-details a { display: inline-block; margin: 0 16px 8px 0; }
     dl { display: grid; grid-template-columns: minmax(90px, 130px) 1fr; gap: 6px 12px; } dt { font-weight: 700; } dd { margin: 0; overflow-wrap: anywhere; }
@@ -277,6 +279,8 @@ export class DemoLogsPageComponent {
     ];
   });
   readonly selectedRow = computed(() => this.rows().find((row) => row.key === this.selectedKey()));
+  /** A short result fits the page instead of leaving an empty fixed-height grid. */
+  readonly autoHeightRows = 12;
   readonly defaultColumn: ColDef = { resizable: true, sortable: false, minWidth: 120 };
   #request = 0;
 
