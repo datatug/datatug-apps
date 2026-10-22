@@ -23,8 +23,8 @@ import {
   ModalController,
   NavController,
 } from '@ionic/angular';
-import { Subject } from 'rxjs';
-import { map, takeUntil } from 'rxjs/operators';
+import { Observable, Subject, forkJoin, of, throwError } from 'rxjs';
+import { catchError, map, switchMap, takeUntil } from 'rxjs/operators';
 import {
   ErrorLogger,
   IErrorLogger,
@@ -52,6 +52,7 @@ import { DatatugServicesUnsortedModule } from '../../../services/unsorted/datatu
 import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
+import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
 import {
   ProjectDatabaseGroup,
   ProjectDatabaseSourcesComponent,
@@ -147,6 +148,7 @@ export class ServersPageComponent implements OnDestroy {
   private readonly environmentService = inject(EnvironmentService);
   private readonly projectService = inject(ProjectService);
   private readonly projectQueries = inject(ProjectQueryApiService);
+  private readonly githubReader = inject(GithubProjectReaderService);
 
   protected tab: 'db' | 'web' | 'api' = 'db';
 
@@ -743,8 +745,7 @@ export class ServersPageComponent implements OnDestroy {
       );
       return;
     }
-    this.projectQueries
-      .connectionCatalog<ProjectConnectionCatalog>(target)
+    this.connectionCatalog(target)
       .pipe(takeUntil(this.destroyed))
       .subscribe({
         next: (catalog) => {
@@ -763,6 +764,76 @@ export class ServersPageComponent implements OnDestroy {
       });
   }
 
+  /**
+   * The authenticated catalogue API answers 401 to a signed-out visitor, which
+   * hid every declared connection (e.g. the public demo's Northwind) behind
+   * "could not be loaded". A GitHub project's `connections/*.json` files are
+   * ordinary repository files, so when the API refuses (401/403) or has no
+   * such catalogue (404) fall back to the same browser-direct repository
+   * reader the other public pages use. Any other failure (outage, network,
+   * malformed response) is still surfaced as the error banner.
+   */
+  private connectionCatalog(
+    target: IProjectRef,
+  ): Observable<ProjectConnectionCatalog> {
+    const api$ =
+      this.projectQueries.connectionCatalog<ProjectConnectionCatalog>(target);
+    if (!isGithubStoreId(target.storeId)) return api$;
+    return api$.pipe(
+      catchError((error: unknown) =>
+        isCatalogueUnavailable(error)
+          ? this.readGithubConnections(target)
+          : throwError(() => error),
+      ),
+    );
+  }
+
+  private readGithubConnections(
+    target: IProjectRef,
+  ): Observable<ProjectConnectionCatalog> {
+    const reader = this.githubReader;
+    return reader.listDirectory(target.projectId, 'connections').pipe(
+      map((entries) =>
+        entries
+          .filter(
+            (entry) => entry.type === 'file' && /\.json$/i.test(entry.name),
+          )
+          .map((entry) => entry.name)
+          .sort(),
+      ),
+      switchMap((names) =>
+        names.length
+          ? forkJoin(
+              names.map((name) =>
+                reader.getRawText(target.projectId, `connections/${name}`),
+              ),
+            )
+          : of([] as (string | undefined)[]),
+      ),
+      map((texts) => {
+        // Files are read in sorted-name order; the first declaration of an
+        // id wins. A file that is not valid JSON is skipped, not fatal.
+        const byId = new Map<string, ProjectConnectionSource>();
+        const anonymous: ProjectConnectionSource[] = [];
+        for (const text of texts) {
+          if (!text) continue;
+          let parsed: ProjectConnectionCatalog;
+          try {
+            parsed = JSON.parse(text) as ProjectConnectionCatalog;
+          } catch {
+            continue;
+          }
+          for (const connection of parsed?.connections ?? []) {
+            if (connection.id === undefined) anonymous.push(connection);
+            else if (!byId.has(connection.id))
+              byId.set(connection.id, connection);
+          }
+        }
+        return { connections: [...byId.values(), ...anonymous] };
+      }),
+    );
+  }
+
   private clearLoadedState(): void {
     this.dbServers.set(undefined);
     this.dbServersError.set(undefined);
@@ -773,6 +844,9 @@ export class ServersPageComponent implements OnDestroy {
     this.catalogError.set(undefined);
   }
 }
+
+const isCatalogueUnavailable = (error: unknown): boolean =>
+  [401, 403, 404].includes((error as { status?: number } | null)?.status ?? 0);
 
 const serverId = (dbServer: IDbServer): string => serverKey(dbServer);
 
