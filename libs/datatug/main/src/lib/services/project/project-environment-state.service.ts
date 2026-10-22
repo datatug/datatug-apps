@@ -29,7 +29,14 @@ import { isHostedReadRefused } from './hosted-read-refused';
 
 type EnvironmentReadResult =
   | { status: 'pending' | 'unavailable' }
-  | { status: 'ready'; view: { state?: EnvironmentState; items: IEnvironmentFull[]; reason?: string } };
+  | {
+      status: 'ready';
+      view: {
+        state?: EnvironmentState;
+        items: IEnvironmentFull[];
+        reason?: string;
+      };
+    };
 
 @Injectable({ providedIn: 'root' })
 export class ProjectEnvironmentStateService {
@@ -59,7 +66,9 @@ export class ProjectEnvironmentStateService {
       switchMap(() =>
         defer(() => this.view(ref, legacy)).pipe(
           map((view): EnvironmentReadResult => ({ status: 'ready', view })),
-          catchError(() => of<EnvironmentReadResult>({ status: 'unavailable' })),
+          catchError(() =>
+            of<EnvironmentReadResult>({ status: 'unavailable' }),
+          ),
           startWith<EnvironmentReadResult>({ status: 'pending' }),
         ),
       ),

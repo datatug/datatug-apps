@@ -273,10 +273,10 @@ test.describe('J1 — first useful result (the null-action path)', () => {
     await page.goto(projectUrl);
     // The project heading proves the real summary request completed and the
     // address has the expected human-readable title.
-    await expect(
-      page
-        .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
 
     // "the user clicks Album": real in-app navigation (Task 17 item B.2,
     // S121b) — project -> Environments tab -> DEMO_ENV_ID ->
@@ -332,10 +332,10 @@ test.describe('J2 — from a value to related knowledge', () => {
     // journey below uses (Task 17 item B.2, S121b); see J1's own comment on
     // the title assertion mechanism.
     await page.goto(projectUrl);
-    await expect(
-      page
-        .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
 
     // "the user opens the Customer table" — real in-app navigation (Task 17
     // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
@@ -496,10 +496,10 @@ test.describe('J2b — HTTP reference source', () => {
     // S121b) — the single project-page entry point plus the click path
     // J1's own goToCatalogTables() doc comment describes.
     await page.goto(projectUrl);
-    await expect(
-      page
-        .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -571,10 +571,10 @@ test.describe('J2b — HTTP reference source', () => {
     // Real in-app navigation to the Customer table (Task 17 item B.2,
     // S121b) — same click path as the sub-test above.
     await page.goto(projectUrl);
-    await expect(
-      page
-        .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -651,10 +651,10 @@ test.describe('J3 — carrying context', () => {
     // S121b) — the single project-page entry point plus the click path
     // J1's own goToCatalogTables() doc comment describes.
     await page.goto(projectUrl);
-    await expect(
-      page
-        .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
     const customerRow = catalogTableRow(page, 'Customer');
     await expect(customerRow).toBeVisible({ timeout: 15_000 });
@@ -793,10 +793,10 @@ test.describe('J4 — restricted principal', () => {
     // straight to the table URL. See J1's own comment on the title
     // assertion mechanism.
     await page.goto(projectUrl);
-    await expect(
-      page
-        .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
 
     // "the user opens the Customer table" — real in-app navigation (Task 17
     // item B.2, S121b), the same click path J1's own goToCatalogTables() doc
@@ -937,7 +937,9 @@ test.describe('J4 — restricted principal', () => {
     // Scope to the query result's own header. The active page also contains a
     // nested chart-result header; Ionic may retain a hidden table page too.
     await expect(
-      activePage(page).locator('.author-results > sneat-datatug-limitation-header'),
+      activePage(page).locator(
+        '.author-results > sneat-datatug-limitation-header',
+      ),
     ).toBeVisible({ timeout: 10_000 });
 
     // "Run customer-invoices for a Brazilian ... fixture ID: the former
@@ -1041,9 +1043,10 @@ test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)
     // journey above uses; see J1's own comment on the title assertion
     // mechanism.
     await page.goto(projectUrl);
-    await expect(
-      page.locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    await expect(page.locator('h1.project-title')).toHaveText(
+      'DataTug Demo: DemoDB datasets',
+      { timeout: 15_000 },
+    );
 
     // "the user opens Queries" — the persistent "Queries" side-menu item
     // (ProjectMenuTopComponent, reachable from any project page — same
