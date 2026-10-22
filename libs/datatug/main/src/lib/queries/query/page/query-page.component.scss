@@ -295,6 +295,7 @@
     padding: 0;
     text-align: start;
     min-width: 0;
+    flex: 1 1 auto;
   }
   .query-action ion-icon {
     margin-inline: 0;
@@ -325,8 +326,8 @@
 // .ion-color-* classes set these with !important).
 .workspace-run.button-disabled {
   opacity: 1;
-  --ion-color-base: var(--ion-color-step-150) !important;
-  --ion-color-contrast: var(--ion-color-step-600) !important;
+  --ion-color-base: var(--ion-background-color-step-150, #e0e2e6) !important;
+  --ion-color-contrast: var(--ion-text-color-step-400, #5c6066) !important;
   cursor: not-allowed;
 }
 // Narrow screens: tabs fit beside More and Run; buttons keep their icon only.

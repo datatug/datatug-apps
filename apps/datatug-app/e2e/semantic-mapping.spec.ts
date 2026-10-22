@@ -87,7 +87,9 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     .getByRole('button', { name: 'Save personal copy', exact: true })
     .click();
   await expect(page).toHaveURL(/device-personal-/);
-  await expect(page.getByRole('link', { name: 'Edit query Validators' })).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Edit query Validators' }),
+  ).toHaveCount(0);
   await page.setViewportSize({ width: 1280, height: 900 });
   await expect(
     page.getByRole('button', {
@@ -98,6 +100,34 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await expect(page.getByTestId('query-save-state')).toContainText(
     'Saved on this device',
   );
+  // The Save button carries the save state: "Saved…" and disabled when clean,
+  // "Save" once there is a change (here a rename), then saved again.
+  const saveButton = activePage(page).locator('ion-button.query-save-button');
+  await expect(saveButton).toHaveAttribute('disabled', /.*/u);
+  await activePage(page).getByTestId('query-rename').click();
+  const renameAlert = page.locator('ion-alert').filter({ visible: true });
+  await renameAlert
+    .getByRole('textbox', { name: 'Query title' })
+    .fill('Invoices with meanings');
+  await renameAlert
+    .getByRole('button', { name: 'Rename', exact: true })
+    .click();
+  await expect(page.getByTestId('query-save-state')).toHaveText('Save');
+  await expect(saveButton).not.toHaveAttribute('disabled', /.*/u);
+  await expect(
+    activePage(page).getByRole('heading', {
+      level: 1,
+      name: 'Invoices with meanings',
+    }),
+  ).toBeVisible();
+  await saveButton.click();
+  await expect(page.getByTestId('query-save-state')).toContainText(
+    'Saved on this device',
+  );
+  await expect(page.getByTestId('query-save-announcement')).toContainText(
+    'Saved on this device',
+  );
+  await expect(saveButton).toHaveAttribute('disabled', /.*/u);
   await expect(
     page.getByRole('button', {
       name: 'Edit meaning of InvoiceId',
@@ -135,7 +165,9 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await expect(page.getByTestId('query-save-state')).toContainText(
     'Saved on this device',
   );
-  await expect(page.getByRole('link', { name: 'Edit query Validators' })).toHaveCount(0);
+  await expect(
+    page.getByRole('link', { name: 'Edit query Validators' }),
+  ).toHaveCount(0);
   const reopened = activePage(page);
   await reopened.getByTestId('workspace-parameters-tab').click();
   await reopened.getByTestId('author-customer-id').locator('input').fill('1');
@@ -145,7 +177,12 @@ test('column meaning saves a complete personal copy, stays visible and survives 
   await reopened.getByTestId('author-run').click();
   await expect(page.getByRole('grid')).toBeVisible({ timeout: 30000 });
   // The first result row: not the floating-filter row under the header (also role=row).
-  await expect(page.getByRole('grid').locator('[role="row"]:not(.ag-header-row-filter)').nth(1)).toBeVisible({
+  await expect(
+    page
+      .getByRole('grid')
+      .locator('[role="row"]:not(.ag-header-row-filter)')
+      .nth(1),
+  ).toBeVisible({
     timeout: 30000,
   });
   expect(databaseRequests).toBeGreaterThanOrEqual(2);

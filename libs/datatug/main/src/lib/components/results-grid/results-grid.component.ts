@@ -2,6 +2,7 @@ import {
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  ElementRef,
   ViewEncapsulation,
   computed,
   effect,
@@ -138,7 +139,8 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
   imports: [AgGridAngular, AgGridReadyDirective],
   host: {
     '(document:click)': 'onDocumentClick($event)',
-    '(keydown.escape)': 'closeChooser(); closeMore()',
+    '(keydown.escape)': 'closeChooser(); closeMore(true)',
+    '(keydown)': 'onMenuKeydown($event)',
     '[class.dt-rg-enterprise]': 'enterprise()',
   },
   template: `
@@ -198,7 +200,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
                 data-testid="results-grid-columns-button"
                 aria-haspopup="true"
                 [attr.aria-expanded]="chooserOpen()"
-                (click)="closeMore(); toggleChooser($event)"
+                (click)="closeMore(true); toggleChooser($event)"
               >
                 Columns…
               </button>
@@ -208,7 +210,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
                 class="dt-rg-menu-item"
                 data-testid="results-grid-autosize"
                 title="Fit every column to its content"
-                (click)="closeMore(); autosizeAll()"
+                (click)="closeMore(true); autosizeAll()"
               >
                 Autosize columns
               </button>
@@ -217,14 +219,13 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
                 role="menuitemcheckbox"
                 class="dt-rg-menu-item"
                 data-testid="results-grid-density"
-                [attr.aria-pressed]="density() === 'compact'"
                 [attr.aria-checked]="density() === 'compact'"
                 [title]="
                   density() === 'compact'
                     ? 'Compact rows (press for comfortable)'
                     : 'Comfortable rows (press for compact)'
                 "
-                (click)="closeMore(); toggleDensity()"
+                (click)="closeMore(true); toggleDensity()"
               >
                 {{ density() === 'compact' ? 'Compact' : 'Comfortable' }} rows
               </button>
@@ -235,7 +236,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
                 data-testid="results-grid-copy"
                 title="Copy the selected rows, with a header line, as tab-separated text"
                 [disabled]="selectedCount() === 0"
-                (click)="closeMore(); copySelected()"
+                (click)="closeMore(true); copySelected()"
               >
                 Copy selected
               </button>
@@ -246,7 +247,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
                   class="dt-rg-menu-item"
                   data-testid="results-grid-chart"
                   [disabled]="!chartRangeReady()"
-                  (click)="closeMore(); chartSelectedRange()"
+                  (click)="closeMore(true); chartSelectedRange()"
                   title="Select cells containing a numeric measure, then chart that range"
                 >
                   Chart selected range
@@ -256,7 +257,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
                   role="menuitem"
                   class="dt-rg-menu-item"
                   data-testid="results-grid-export-excel"
-                  (click)="closeMore(); exportExcel()"
+                  (click)="closeMore(true); exportExcel()"
                 >
                   Excel
                 </button>
@@ -672,6 +673,7 @@ export class ResultsGridComponent {
   private readonly chartIds = new Set<string>();
   private readonly shown = signal<number | undefined>(undefined);
   private readonly destroyRef = inject(DestroyRef);
+  private readonly host = inject<ElementRef<HTMLElement>>(ElementRef);
   private statusTimer?: ReturnType<typeof setTimeout>;
   private autosizeTimer?: ReturnType<typeof setTimeout>;
   private layoutScope?: LayoutScope;
@@ -993,11 +995,63 @@ export class ResultsGridComponent {
 
   toggleMore(event: Event): void {
     event.stopPropagation();
-    this.moreOpen.update((open) => !open);
+    const opening = !this.moreOpen();
+    this.moreOpen.set(opening);
+    // Menu pattern: opening moves focus to the first available item.
+    if (opening) setTimeout(() => this.menuItems()[0]?.focus());
   }
 
-  closeMore(): void {
+  /** Closes the More menu; `restoreFocus` returns focus to its ⋯ trigger. */
+  closeMore(restoreFocus = false): void {
+    if (!this.moreOpen()) return;
     this.moreOpen.set(false);
+    if (restoreFocus)
+      this.host.nativeElement
+        .querySelector<HTMLElement>('[data-testid="results-grid-more"]')
+        ?.focus();
+  }
+
+  /** Arrow keys, Home and End move between the menu's enabled items; Tab closes it. */
+  onMenuKeydown(event: KeyboardEvent): void {
+    if (
+      !this.moreOpen() ||
+      !(event.target instanceof Element) ||
+      !event.target.closest('.dt-rg-menu')
+    )
+      return;
+    const items = this.menuItems();
+    if (!items.length) return;
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    let next: number | undefined;
+    switch (event.key) {
+      case 'ArrowDown':
+        next = (current + 1) % items.length;
+        break;
+      case 'ArrowUp':
+        next = (current - 1 + items.length) % items.length;
+        break;
+      case 'Home':
+        next = 0;
+        break;
+      case 'End':
+        next = items.length - 1;
+        break;
+      case 'Tab':
+        this.closeMore();
+        return;
+      default:
+        return;
+    }
+    event.preventDefault();
+    items[next]?.focus();
+  }
+
+  private menuItems(): HTMLElement[] {
+    return Array.from(
+      this.host.nativeElement.querySelectorAll<HTMLButtonElement>(
+        '.dt-rg-menu button:not(:disabled)',
+      ),
+    );
   }
 
   onDocumentClick(event: Event): void {

@@ -74,7 +74,12 @@ import {
   uniqueCardId,
 } from './card-model';
 import { injectCardsContext } from './cards-context';
-import { cardEntityNames, cardQueryIds } from './related-links';
+import {
+  cardEntityNames,
+  cardQueryIds,
+  queryTitlesById,
+  type RelatedQueryFolder,
+} from './related-links';
 import { ProjectCardViewComponent } from './project-card-view.component';
 import {
   ParameterLookupButtonComponent,
@@ -206,6 +211,11 @@ export class CardPageComponent {
   );
   /** Saved queries this card's widgets read, for its Related list. */
   protected readonly relatedQueries = computed(() => cardQueryIds(this.card()));
+  /** Saved query titles by folder-qualified id, for the Related list. */
+  private readonly queryTitles = signal<ReadonlyMap<string, string>>(new Map());
+  protected queryTitle(queryId: string): string {
+    return this.queryTitles().get(queryId) ?? queryId;
+  }
 
   /** A saved query's page: the id rides in `?id=` (see the `query/**` route). */
   protected queryUrl(queryId: string): UrlTree | undefined {
@@ -328,7 +338,12 @@ export class CardPageComponent {
       const subscription = this.queriesService
         .getQueriesFolder(ref, '~')
         .subscribe({
-          next: (folder) => this.queries.set(flattenQueryFolder(folder)),
+          next: (folder) => {
+            this.queries.set(flattenQueryFolder(folder));
+            this.queryTitles.set(
+              queryTitlesById(folder as RelatedQueryFolder | null | undefined),
+            );
+          },
           error: () =>
             this.queriesError.set('Saved queries could not be loaded.'),
         });

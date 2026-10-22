@@ -131,6 +131,7 @@ import { addIcons } from 'ionicons';
 import {
   checkmarkOutline,
   copyOutline,
+  createOutline,
   ellipsisHorizontal,
   globeOutline,
   informationCircleOutline,
@@ -473,6 +474,7 @@ import {
   IonTitle,
   IonToolbar,
   ViewDidEnter,
+  AlertController,
 } from '@ionic/angular';
 import {
   AgentContextService,
@@ -2090,6 +2092,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return source ? `${kind} · ${source}` : kind;
   });
 
+  private readonly alertController = inject(AlertController);
   private readonly authStatus = toSignal(
     inject(SneatAuthStateService, { optional: true })?.authState.pipe(
       map((state) => state.status),
@@ -2177,27 +2180,132 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
   });
 
-  /** Why Run is off for a saved SQL/DTQL query, in the visitor's words. */
-  public readonly nativeRunBlockedReason = computed(() => {
+  /** Why parameters keep Run off for a saved SQL/DTQL query, if they do. */
+  private readonly nativeParameterBlock = computed<
+    { readonly message: string; readonly action: string } | undefined
+  >(() => {
     if (this.isTugqlAuthorJourney()) return undefined;
     const parameters = this.queryDef()?.parameters ?? [];
     if (!parameters.length) return undefined;
-    const bindings = this.bindings();
     const errors = this.nativeParameterErrors();
     const invalid = parameters.filter((p) => errors.has(p.id));
     if (invalid.length)
-      return `Run is off: enter a valid value for ${invalid
-        .map((p) => p.title || p.id)
-        .join(', ')}.`;
+      return {
+        message: `Run is off: enter a valid value for ${invalid
+          .map((p) => p.title || p.id)
+          .join(', ')}.`,
+        action: 'Set parameters',
+      };
     const missing = this.nativeMissingRequiredParameters();
     if (missing.length)
-      return `Run is off until you set ${missing
-        .map((p) => p.title || p.id)
-        .join(', ')}.`;
-    if (bindings.some((b) => b.blocked))
-      return 'Run is off: confirm the highlighted parameter value first.';
+      return {
+        message: `Run is off until you set ${missing
+          .map((p) => p.title || p.id)
+          .join(', ')}.`,
+        action: 'Set parameters',
+      };
+    if (this.bindings().some((b) => b.blocked))
+      return {
+        message: 'Run is off: confirm the highlighted parameter value first.',
+        action: 'Review parameters',
+      };
     return undefined;
   });
+
+  /** Why Run is off for a saved SQL/DTQL query, in the visitor's words, for
+   * every cause `nativeRunDisabled()` checks; `action` names the Parameters
+   * recovery when parameters are the cause. */
+  public nativeRunBlock():
+    | { readonly message: string; readonly action?: string }
+    | undefined {
+    if (this.isTugqlAuthorJourney() || this.running()) return undefined;
+    if (this.demoDraftLoading())
+      return { message: 'Loading the browser copy of this query…' };
+    if (this.demoDraftRecovery())
+      return {
+        message: 'Run is off: the browser copy of this query is unavailable.',
+      };
+    if (!this.queryId || !this.project)
+      return { message: 'Run is off while the query loads.' };
+    if (this.unavailableWorkingCopy())
+      return {
+        message:
+          'Run is off: the selected working copy is not open. Choose another runtime.',
+      };
+    const parameters = this.nativeParameterBlock();
+    if (parameters) return parameters;
+    if (this.hasBlockedBindings())
+      return {
+        message: 'Run is off: confirm the highlighted parameter value first.',
+        action: 'Review parameters',
+      };
+    if (this.isHostedProject) {
+      if (!this.hostedDetectiveState()?.capabilities?.canRun)
+        return { message: 'Run is off: this project does not allow you to run queries.' };
+      if (!this.hostedEnvironment())
+        return { message: 'Run is off: choose an environment first.' };
+      if (this.queryState.isNew)
+        return { message: 'Run is off: save this query first.' };
+      if (this.queryState.isSaving) return { message: 'Saving…' };
+      if (this.isChanged)
+        return {
+          message:
+            'Run is off: save your changes first. Hosted runs use the saved query.',
+        };
+    }
+    if (
+      !this.queryDef()?.connectionId &&
+      this.availableTargets().length > 0 &&
+      !this.selectedSource()
+    )
+      return { message: 'Run is off: choose a source to run against.' };
+    return undefined;
+  }
+
+  /** The polite announcement for the Save button's progress. */
+  public saveAnnouncement(): string {
+    const state = this.querySaveState();
+    return state === 'Saving' || state.startsWith('Saved') ? state : '';
+  }
+
+  /** Whether the More views popover is open (for aria-expanded). */
+  public readonly workspaceMoreOpen = signal(false);
+
+  /** A saved SQL/DTQL query outside the author journey: views from More open
+   * as one extra tab after Parameters. */
+  public nativeOverflowLayout(): boolean {
+    return (
+      !this.isTugqlAuthorJourney() &&
+      (this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace())
+    );
+  }
+
+  /** Renames a saved query from the header (writers only). */
+  public async renameQuery(): Promise<void> {
+    const alert = await this.alertController.create({
+      header: 'Rename query',
+      inputs: [
+        {
+          name: 'title',
+          type: 'text',
+          value: this.queryState.title ?? this.queryPageTitle(),
+          attributes: { 'aria-label': 'Query title', maxlength: 200 },
+        },
+      ],
+      buttons: [
+        { text: 'Cancel', role: 'cancel' },
+        { text: 'Rename', role: 'confirm' },
+      ],
+    });
+    await alert.present();
+    const { data, role } = await alert.onDidDismiss<{
+      values?: { title?: string };
+    }>();
+    const title = data?.values?.title?.trim();
+    if (role !== 'confirm' || !title || title === this.queryState.title)
+      return;
+    this.queryTitleChanged(new CustomEvent('ionChange', { detail: { value: title } }));
+  }
 
   /** Whether Run is unavailable for a saved SQL/DTQL query right now. */
   public nativeRunDisabled(): boolean {
@@ -6662,6 +6770,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     addIcons({
       checkmarkOutline,
       copyOutline,
+      createOutline,
       ellipsisHorizontal,
       globeOutline,
       informationCircleOutline,
@@ -7027,6 +7136,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             if (
               this.loadedTextRepresentation()?.scope !== representationScope ||
               this.isTugqlAuthorJourney() ||
+              !!this.savedResultId() ||
               !(this.queryDef()?.parameters ?? []).some((p) => p.isRequired)
             )
               return;

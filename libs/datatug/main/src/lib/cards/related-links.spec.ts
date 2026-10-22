@@ -3,6 +3,7 @@ import {
   cardQueryIds,
   cardShowsEntity,
   queriesForEntity,
+  queryTitlesById,
 } from './related-links';
 
 describe('related links', () => {
@@ -64,8 +65,13 @@ describe('related links', () => {
       ],
       folders: [
         {
+          id: 'd',
           items: [
-            { id: 'd/e', parameters: [{ meta: { entity: 'customer' } }] },
+            {
+              id: 'e',
+              title: 'E',
+              parameters: [{ meta: { entity: 'customer' } }],
+            },
           ],
         },
       ],
@@ -78,6 +84,10 @@ describe('related links', () => {
       'a',
     ]);
     expect(queriesForEntity(undefined, 'Customer')).toEqual([]);
+    expect(queryTitlesById(folder).get('d/e')).toBe('E');
+    expect(
+      queryTitlesById({ id: '~', items: [{ id: 'x', title: 'X' }] }).get('x'),
+    ).toBe('X');
     expect(queriesForEntity(folder, '')).toEqual([]);
   });
 });

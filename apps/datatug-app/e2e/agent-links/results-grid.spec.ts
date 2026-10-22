@@ -245,6 +245,14 @@ test.describe('results grid toolbar', () => {
     for (const id of ['columns-button', 'autosize', 'density', 'copy']) {
       await expect(grid.getByTestId(`results-grid-${id}`)).toBeVisible();
     }
+    // Menu keyboard: focus starts on the first item, arrows move, Escape returns to ⋯.
+    await expect(grid.getByTestId('results-grid-columns-button')).toBeFocused();
+    await page.keyboard.press('ArrowDown');
+    await expect(grid.getByTestId('results-grid-autosize')).toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(grid.getByTestId('results-grid-autosize')).toBeHidden();
+    await expect(grid.getByTestId('results-grid-more')).toBeFocused();
+    await grid.getByTestId('results-grid-more').click();
     await expect(grid.getByTestId('results-grid-copy')).toBeDisabled();
 
     await grid.getByTestId('results-grid-columns-button').click();
@@ -472,7 +480,7 @@ test.describe('results grid toolbar', () => {
     await expect(grid.locator('.ag-row')).toHaveCount(5, { timeout: 30_000 });
     await expect.poll(rowHeight).toBeLessThanOrEqual(30);
     await expect(grid.getByTestId('results-grid-density')).toHaveAttribute(
-      'aria-pressed',
+      'aria-checked',
       'true',
     );
 

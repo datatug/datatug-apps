@@ -11132,7 +11132,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       By.directive(SqlEditorHostStub),
     );
     const dtqlEditor = editors.find(
-      (e) => e.nativeElement.getAttribute('aria-label') === 'DTQL source',
+      (e) => e.componentInstance.ariaLabel() === 'DTQL source',
     );
     expect(dtqlEditor).toBeDefined();
     dtqlEditor?.componentInstance.sqlChanged.emit('from:\n  name: Artist\n');

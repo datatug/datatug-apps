@@ -106,7 +106,7 @@
               @for (queryId of relatedQueries(); track queryId) {
                 <li>
                   <span class="related-kind">Query</span>
-                  <a [routerLink]="queryUrl(queryId)" data-test="related-query">{{ queryId }}</a>
+                  <a [routerLink]="queryUrl(queryId)" data-test="related-query" [title]="queryId">{{ queryTitle(queryId) }}</a>
                 </li>
               }
             </ul>

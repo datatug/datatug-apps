@@ -236,7 +236,7 @@ describe('CardPageComponent', () => {
               {
                 id: 'orders',
                 title: 'Orders',
-                widgets: [{ name: 'SQL', data: { queryId: 'northwind/orders-by-customer' } }],
+                widgets: [{ name: 'SQL', data: { queryId: 'customers/by-id' } }],
               },
             ],
           },
@@ -249,7 +249,7 @@ describe('CardPageComponent', () => {
       ).toEqual(['Customer']);
       expect(
         Array.from(el().querySelectorAll('[data-test="related-query"]')).map((a) => a.textContent?.trim()),
-      ).toEqual(['northwind/orders-by-customer']);
+      ).toEqual(['Customer by id']);
     });
 
     it('says when the card does not exist', async () => {

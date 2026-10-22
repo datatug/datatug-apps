@@ -15,11 +15,18 @@
       [subtitle]="querySourceSubtitle()"
       [heading]="true"
     />
-    <ion-title class="query-mobile-title">Query</ion-title>
+    <!-- Narrow screens: the same name, truncated, stays the page's h1. -->
+    <ion-title class="query-mobile-title"><span role="heading" aria-level="1">{{ queryPageTitle() }}</span></ion-title>
     <!-- One header: the title has priority; the save state lives in the Save
          button itself, and read-only visitors see no authoring actions. -->
     @if (!isQueryReadOnly()) {
     <ion-buttons slot="end">
+      @if (!queryState.isNew && queryDef() && !isTugqlAuthorJourney()) {
+        <ion-button class="query-action" data-testid="query-rename" fill="clear" color="medium" aria-label="Rename query" title="Rename"
+          [disabled]="queryState.isSaving || queryState.saveSupported === false" (click)="renameQuery()">
+          <ion-icon name="create-outline" slot="icon-only" />
+        </ion-button>
+      }
       @if (queryValidatorsHref; as href) {
         <ion-button class="query-action" [href]="href" fill="clear" color="medium" aria-label="Edit query Validators" title="Validators">
           <ion-icon name="shield-checkmark-outline" slot="icon-only" />
@@ -40,9 +47,11 @@
         } @else {
           <ion-icon name="checkmark-outline" slot="start" />
         }
-        <span class="query-save-state" data-testid="query-save-state" role="status">{{ saveButtonLabel() }}</span>
+        <span class="query-save-state" data-testid="query-save-state">{{ saveButtonLabel() }}</span>
       </ion-button>
     </ion-buttons>
+    <!-- Save progress is announced from outside the button (button content is presentational). -->
+    <span style="position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap" role="status" aria-live="polite" data-testid="query-save-announcement">{{ saveAnnouncement() }}</span>
     }
   </ion-toolbar>
 </ion-header>
@@ -127,18 +136,28 @@
       @if (isNativeDtqlWorkspace()) {
         <ion-segment-button value="dtql" data-testid="workspace-dtql-tab" aria-label="DTQL source"><ion-label>Source</ion-label></ion-segment-button>
       }
-      @if (showWorkspaceTab('compose')) {
+      @if (showWorkspaceTab('compose') && !nativeOverflowLayout()) {
         <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
       }
-      @if (showWorkspaceTab('tugql')) {
+      @if (showWorkspaceTab('tugql') && !nativeOverflowLayout()) {
         <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>{{ isTugqlAuthorJourney() || (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) ? 'TugQL Query' : 'TugQL' }}</ion-label></ion-segment-button>
       }
-      @if (showWorkspaceTab('preview')) {
+      @if (showWorkspaceTab('preview') && !nativeOverflowLayout()) {
         <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
       }
       <ion-segment-button value="parameters" data-testid="workspace-parameters-tab">
         <ion-label [attr.aria-label]="'Parameters, ' + authorParameterCountLabel()">Parameters <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorParameterDeclarationCount() ?? '…' }}</ion-text></ion-chip></ion-label>
       </ion-segment-button>
+      <!-- An open view from More always follows Parameters, so the tab order stays stable. -->
+      @if (nativeOverflowLayout()) {
+        @if (workspaceTab() === 'compose') {
+          <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
+        } @else if (workspaceTab() === 'tugql') {
+          <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>TugQL</ion-label></ion-segment-button>
+        } @else if (workspaceTab() === 'preview') {
+          <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
+        }
+      }
       @if (showWorkspaceTab('sources')) {
         <ion-segment-button value="sources" data-testid="workspace-sources-tab">
           <ion-label [attr.aria-label]="'Sources, ' + authorSourceCountLabel()">Sources <ion-chip aria-hidden="true" class="ion-no-margin workspace-count"><ion-text color="medium">{{ authorSourceOccurrenceCount() ?? '…' }}</ion-text></ion-chip></ion-label>
@@ -151,11 +170,13 @@
       }
     </ion-segment>
     @if (workspaceOverflowTabs().length) {
-      <ion-button id="workspace-more-trigger" class="workspace-more" data-testid="workspace-more-tab" fill="clear" color="medium" size="small" aria-label="More query views">
+      <ion-button id="workspace-more-trigger" class="workspace-more" data-testid="workspace-more-tab" fill="clear" color="medium" size="small" aria-label="More query views"
+        aria-haspopup="menu" [attr.aria-expanded]="workspaceMoreOpen()">
         <ion-icon name="ellipsis-horizontal" slot="start" aria-hidden="true" />
         <span class="narrow-hidden">More</span>
       </ion-button>
-      <ion-popover trigger="workspace-more-trigger" [dismissOnSelect]="true" data-testid="workspace-more-menu">
+      <ion-popover trigger="workspace-more-trigger" [dismissOnSelect]="true" data-testid="workspace-more-menu"
+        (willPresent)="workspaceMoreOpen.set(true)" (didDismiss)="workspaceMoreOpen.set(false)">
         <ng-template>
           <ion-list lines="none" aria-label="More query views">
             @for (tab of workspaceOverflowTabs(); track tab.value) {
@@ -966,21 +987,21 @@
             <ng-container *ngTemplateOutlet="workspaceTabs" />
             <ion-button class="workspace-run" data-testid="workspace-run" aria-label="Run query" size="default" color="primary"
               [disabled]="nativeRunDisabled()"
-              [attr.aria-describedby]="nativeRunBlockedReason() ? 'workspace-run-readiness' : null"
+              [attr.aria-describedby]="nativeRunBlock() ? 'workspace-run-readiness' : null"
               (click)="runQuery()">
               @if (running()) { <ion-spinner name="dots" slot="start" /> }
               Run
             </ion-button>
           </div>
-          @if (nativeRunBlockedReason(); as reason) {
+          @if (nativeRunBlock(); as block) {
             <ion-item class="author-run-readiness" lines="none" data-testid="workspace-run-readiness-row">
               <ion-icon name="information-circle-outline" slot="start" color="medium" aria-hidden="true" />
               <ion-label class="ion-text-wrap">
-                <p id="workspace-run-readiness" data-testid="workspace-run-readiness" role="status">{{ reason }}</p>
+                <p id="workspace-run-readiness" data-testid="workspace-run-readiness" role="status">{{ block.message }}</p>
               </ion-label>
-              @if (workspaceTab() !== 'parameters') {
+              @if (block.action && workspaceTab() !== 'parameters') {
                 <ion-buttons slot="end">
-                  <ion-button fill="clear" data-testid="workspace-run-recovery" (click)="setWorkspaceTab('parameters')">Set parameters</ion-button>
+                  <ion-button fill="clear" data-testid="workspace-run-recovery" (click)="setWorkspaceTab('parameters')">{{ block.action }}</ion-button>
                 </ion-buttons>
               }
             </ion-item>
@@ -1014,7 +1035,7 @@
           @if (isNativeDtqlWorkspace()) {
             <section [hidden]="workspaceTab() !== 'dtql'" data-testid="workspace-dtql-pane" aria-label="DTQL source">
               <!-- DTQL shares the SQL source's code component, so both read the same. -->
-              <sneat-datatug-sql class="query-sql-editor" data-testid="query-body-text" aria-label="DTQL source"
+              <sneat-datatug-sql class="query-sql-editor" data-testid="query-body-text" ariaLabel="DTQL source"
                 [sql]="queryBodyText() ?? ''" [disabled]="queryState.isSaving || running()"
                 [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
                 [lineNumbers]="false" [autoCloseBrackets]="false" (sqlChanged)="sqlTextChanged($event)" />

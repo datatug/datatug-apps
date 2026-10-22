@@ -1269,9 +1269,17 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
   })).toBe(true);
   await page.screenshot({ path: testInfo.outputPath('unified-sql-390.png') });
   testInfo.annotations.push({ type: 'screenshot', description: 'unified-sql-390.png: expected the initially selected SQL source tab fully visible within one 48px scrollable Ionic row; observed it in view with the editable saved SQL below and no page overflow.' });
-  await page.setViewportSize({ width: 1280, height: 720 });
+  // A short desktop viewport so the page scrolls; resizing must keep the reader's place.
+  await page.setViewportSize({ width: 1280, height: 400 });
   // The tab row shares its line with More and Run.
   await expect.poll(() => tabs.evaluate((segment) => segment.getBoundingClientRect().width)).toBeGreaterThan(600);
+  const content = page.locator('sneat-datatug-sql-editor ion-content');
+  const verticalBefore = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    scroll.scrollTop = Math.min(80, scroll.scrollHeight - scroll.clientHeight);
+    return scroll.scrollTop;
+  });
+  expect(verticalBefore).toBeGreaterThan(20);
   await page.setViewportSize({ width: 390, height: 844 });
   await expect.poll(() => tabs.evaluate((segment) => {
     const selected = segment.querySelector('ion-segment-button[value="sql"]');
@@ -1282,11 +1290,23 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
       button.height >= 44 &&
       document.documentElement.scrollWidth <= innerWidth + 1;
   })).toBe(true);
-  // Two tabs fit at 390px: the selected Source tab needs no horizontal reveal.
+  const verticalAfterResize = await content.evaluate(async (host) => {
+    const scroll = await (host as HTMLIonContentElement).getScrollElement();
+    return scroll.scrollTop;
+  });
+  expect(verticalAfterResize).toBeGreaterThan(20);
+  // Two tabs fit at 390px: the selected Source tab needs no horizontal reveal,
+  // and opening a view from More neither scrolls the page nor reorders tabs.
   expect(await tabs.evaluate((segment) => segment.scrollWidth <= segment.clientWidth + 1)).toBe(true);
+  const verticalBeforeView = verticalAfterResize;
   await expectEditorSource(page, editor, saved);
 
   await openView('tugql');
+  await expect(tabs.locator('ion-segment-button')).toHaveCount(3);
+  expect(await tabs.locator('ion-segment-button').evaluateAll((buttons) =>
+    buttons.map((b) => b.getAttribute('value')))).toEqual(['sql', 'parameters', 'tugql']);
+  expect(Math.abs(await content.evaluate(async (host) =>
+    (await (host as HTMLIonContentElement).getScrollElement()).scrollTop) - verticalBeforeView)).toBeLessThanOrEqual(2);
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText('unavailable');
   await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/function|subquery|expression/iu);
   await sourceTab.click();
@@ -3423,7 +3443,8 @@ test('cold saved Chinook query previews and runs the same bound TugQL plan in th
     await expect(authorPageTitle).toContainText(LONG_HEADER_PROJECT_TITLE);
     await expect(activePage(page).locator('.query-mobile-title')).toBeVisible();
     const titleAccessibility = await activePage(page).locator('.query-mobile-title').ariaSnapshot();
-    expect(titleAccessibility).toContain('Query');
+    // Narrow screens keep the query's own name as the page's h1 (truncated if needed).
+    expect(titleAccessibility).toContain(`heading "${LONG_HEADER_QUERY_TITLE}" [level=1]`);
     const header = await activePage(page).evaluate((active) => {
       const bounds = (selector: string): DOMRect | undefined =>
         active.querySelector(selector)?.getBoundingClientRect();

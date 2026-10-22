@@ -78,13 +78,53 @@ export interface RelatedQueryShape {
   readonly parameters?: readonly RelatedParameter[] | null;
 }
 
-/** A folder listing: items plus nested folders. */
+/** A folder listing: items plus nested folders; a folder's `id` is its path segment. */
 export interface RelatedQueryFolder {
+  readonly id?: string;
   readonly items?: readonly RelatedQueryShape[] | null;
   readonly folders?: readonly unknown[] | null;
 }
 
-/** Saved queries with a parameter that means a field of the entity. */
+/** Walks a folder listing, giving each saved query its folder-qualified id
+ * (`northwind/orders-by-customer`, the id the query page and drafts key on). */
+function walkQueries(
+  folder: RelatedQueryFolder | null | undefined,
+  visit: (query: RelatedQueryShape) => boolean,
+): void {
+  const walk = (
+    node: RelatedQueryFolder | null | undefined,
+    prefix: string,
+    depth: number,
+  ): boolean => {
+    if (!node || depth > 8) return true;
+    for (const item of node.items ?? []) {
+      const id =
+        prefix && !item.id.startsWith(prefix) ? prefix + item.id : item.id;
+      if (!visit({ ...item, id })) return false;
+    }
+    for (const child of node.folders ?? []) {
+      const sub = child as RelatedQueryFolder;
+      const segment = sub.id && sub.id !== '~' ? `${sub.id}/` : '';
+      if (!walk(sub, prefix + segment, depth + 1)) return false;
+    }
+    return true;
+  };
+  walk(folder, '', 0);
+}
+
+/** Saved query titles by folder-qualified id. */
+export function queryTitlesById(
+  folder: RelatedQueryFolder | null | undefined,
+): ReadonlyMap<string, string> {
+  const titles = new Map<string, string>();
+  walkQueries(folder, (query) => {
+    if (query.title) titles.set(query.id, query.title);
+    return titles.size < 2000;
+  });
+  return titles;
+}
+
+/** Saved queries with a parameter that means a field of the entity, with folder-qualified ids. */
 export function queriesForEntity(
   folder: RelatedQueryFolder | null | undefined,
   entity: string,
@@ -93,20 +133,14 @@ export function queriesForEntity(
   const wanted = entity.trim().toLowerCase();
   const out: RelatedQueryShape[] = [];
   if (!wanted) return out;
-  const walk = (node: RelatedQueryFolder | null | undefined, depth: number) => {
-    if (!node || depth > 8) return;
-    for (const item of node.items ?? []) {
-      if (out.length >= limit) return;
-      if (
-        (item.parameters ?? []).some(
-          (p) => p.meta?.entity?.trim().toLowerCase() === wanted,
-        )
+  walkQueries(folder, (item) => {
+    if (
+      (item.parameters ?? []).some(
+        (p) => p.meta?.entity?.trim().toLowerCase() === wanted,
       )
-        out.push(item);
-    }
-    for (const child of node.folders ?? [])
-      walk(child as RelatedQueryFolder, depth + 1);
-  };
-  walk(folder, 0);
+    )
+      out.push(item);
+    return out.length < limit;
+  });
   return out;
 }
