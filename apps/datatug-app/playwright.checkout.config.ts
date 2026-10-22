@@ -32,6 +32,11 @@ export default defineConfig({
     {
       name: 'mobile-webkit',
       testMatch: 'checkout-journey.spec.ts',
+      // Chromium runs the whole matrix. The account situations and the error and recovery flows are app and server
+      // logic, the same in every browser; mobile WebKit keeps what renders or is entered differently on an iPhone:
+      // sign-up and the auth panel with its layout check for both plans, the business destination picker, and the
+      // payment form.
+      grep: /(pro|business): new unsigned user$|business: project and business space$|pro: payment form failure/u,
       // The test budget includes first-page initialization, which can take
       // over 15 seconds on CI before the multi-navigation journey begins.
       timeout: 60_000,
