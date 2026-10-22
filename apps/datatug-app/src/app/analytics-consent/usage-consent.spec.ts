@@ -79,12 +79,21 @@ describe('withUsageConsent', () => {
       [ANALYTICS_CONSENT_KEY]: 'denied',
       [USAGE_ANALYTICS_CONSENT_KEY]: 'granted',
     };
-    const consent = withUsageConsent(fakeGa(stored), env(stored).env, true);
+    const ga = fakeGa(stored);
+    const consent = withUsageConsent(ga, env(stored).env, true);
+    // Reading is pure: it keeps the feature off without writing anything.
     expect(consent.granted()).toBe(false);
-    // A later Google Analytics yes on the site never brings PostHog back.
+    expect(stored[USAGE_ANALYTICS_CONSENT_KEY]).toBe('granted');
+    // Starting records the withdrawal, so a later Google Analytics yes on the site never brings PostHog back.
+    consent.start();
     expect(stored[USAGE_ANALYTICS_CONSENT_KEY]).toBe('denied');
     stored[ANALYTICS_CONSENT_KEY] = 'granted';
     expect(consent.granted()).toBe(false);
+    // A withdrawal while running (another tab, the site's button) is recorded on the change.
+    stored[USAGE_ANALYTICS_CONSENT_KEY] = 'granted';
+    ga.choose('denied');
+    expect(stored[USAGE_ANALYTICS_CONSENT_KEY]).toBe('denied');
+    consent.stop();
   });
 
   it('is off on localhost, during checkout and where usage analytics are not configured', () => {

@@ -135,7 +135,6 @@ const ALLOWED_PROPERTIES: ReadonlySet<string> = new Set([
   '$lib',
   '$lib_version',
   '$process_person_profile',
-  '$is_identified',
   '$pageview_id',
   '$current_url',
   '$host',
@@ -210,15 +209,96 @@ export function scrubUsagePosthogEvent<T extends PosthogEvent | null>(
  * session recording, no automatic page view or page leave, no surveys or feature flags, and the usage scrubber as the
  * last `before_send` step. Undefined stays undefined: no key, no PostHog.
  */
+/** The store an earlier, identified PostHog client kept for this key: `ph_<key>_posthog` (cookie and localStorage). */
+export function legacyPosthogStoreName(token: string): string {
+  return `ph_${token}_posthog`;
+}
+
+/** The anonymous client's own store, which no earlier client ever wrote: `ph_<key>_anonymous`. */
+export function anonymousPosthogPersistenceName(token: string): string {
+  return `${token}_anonymous`;
+}
+
+/** Where {@link forgetLegacyPosthogStore} deletes from. */
+export interface LegacyStoreEnv {
+  storage(): Pick<Storage, 'removeItem'>;
+  document: { cookie: string };
+  hostname(): string;
+}
+
+const browserLegacyStoreEnv = (): LegacyStoreEnv => ({
+  storage: () => localStorage,
+  document,
+  hostname: () => location.hostname,
+});
+
+/**
+ * Deletes the store of an earlier PostHog client for this key. Earlier builds called `identify(uid)` with the same key
+ * (Incidentius, and DataTug before 8 October 2026), so that store can hold a Firebase uid as its `distinct_id`.
+ * Called at start-up, before any choice, and again when PostHog starts.
+ */
+export function forgetLegacyPosthogStore(
+  token: string | undefined,
+  env: LegacyStoreEnv = browserLegacyStoreEnv(),
+): void {
+  if (!token) return;
+  const name = legacyPosthogStoreName(token);
+  try {
+    env.storage().removeItem(name);
+  } catch {
+    // Storage refused: there is nothing PostHog could read from it either.
+  }
+  const host = env.hostname();
+  const labels = host.split('.');
+  const domains = [
+    undefined,
+    host,
+    ...(labels.length > 2 ? ['.' + labels.slice(-2).join('.')] : []),
+    ...(labels.length > 1 ? ['.' + host] : []),
+  ];
+  for (const domain of domains)
+    env.document.cookie =
+      name +
+      '=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/' +
+      (domain ? '; domain=' + domain : '');
+}
+
+/** The part of the PostHog client the start-up check needs. */
+export interface AnonymousPosthogClient {
+  get_property(name: string): unknown;
+  reset(resetDeviceId?: boolean): void;
+}
+
+/**
+ * Runs once PostHog has started, before its first capture: the legacy store is deleted, and any identified state
+ * (which the anonymous store should never hold) is reset to a fresh random id.
+ */
+export function startAnonymousPosthog(
+  client: AnonymousPosthogClient,
+  token: string,
+  env?: LegacyStoreEnv,
+): void {
+  forgetLegacyPosthogStore(token, env);
+  if (client.get_property('$user_state') === 'identified') client.reset(true);
+}
+
 export function anonymousUsagePosthog(
   settings: IPosthogSettings | undefined,
 ): IPosthogSettings | undefined {
   if (!settings?.token) return undefined;
   const before = settings.config?.before_send;
+  const loaded = settings.config?.loaded;
+  const token = settings.token;
   return {
     ...settings,
     config: {
       ...settings.config,
+      // Its own store: never the `ph_<key>_posthog` store an earlier, identified client left for the same key.
+      persistence_name: anonymousPosthogPersistenceName(token),
+      loaded: (client) => {
+        startAnonymousPosthog(client, token);
+        loaded?.(client);
+      },
       person_profiles: 'never',
       // No utm_*, click ids (gclid, fbclid, msclkid…) or referrer as super-properties; mask personal URL params.
       save_campaign_params: false,

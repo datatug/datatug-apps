@@ -97,6 +97,7 @@ import {
   withPosthogLinkPrivacy,
 } from './app/telemetry/link-telemetry-privacy';
 import { withSentryLinkPrivacy } from './app/telemetry/sentry-privacy';
+import { forgetLegacyPosthogStore } from './app/telemetry/usage-privacy';
 
 // First: take the one-time code of a card's link out of the address before Sentry, PostHog or the router read it.
 const agentLinkCode = takeAgentLinkCode(location, history);
@@ -114,6 +115,10 @@ const trackedEnvironmentConfig = withAnonymousUsageTracking(
   productProfile,
   datatugUsagePosthog,
 );
+// Earlier builds identified signed-in users against these keys: their PostHog stores can hold a Firebase uid.
+// Deleted at start-up, before any choice; the anonymous client keeps its own store.
+forgetLegacyPosthogStore(environmentConfig.posthog?.token);
+forgetLegacyPosthogStore(datatugUsagePosthog?.token);
 // REQ:ui-no-context-telemetry (claude-mod-web-links): no fragment, key, row or loopback agent request data reaches
 // PostHog or Sentry, whichever code starts them.
 const datatugAppEnvironmentConfig = {

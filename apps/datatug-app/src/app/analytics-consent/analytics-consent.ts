@@ -342,8 +342,21 @@ export function withUsageConsent(
   const notify = () => {
     for (const listener of [...listeners]) listener();
   };
+  /**
+   * A no on the shared key (the site's withdrawal button included) withdraws usage analytics for good: a later Google
+   * Analytics yes there never brings PostHog back, only a new yes in this app does. Run on start, on every change of
+   * either key, never from a read.
+   */
+  const reconcile = () => {
+    if (usageEnabled && ga.choice() === 'denied' && usageChoice() === 'granted')
+      writeUsage('denied');
+  };
+  let stopFollowingGa: (() => void) | undefined;
   const onStorage = (event: { key: string | null }) => {
-    if (event.key === null || event.key === usageKey) notify();
+    if (event.key === null || event.key === usageKey) {
+      reconcile();
+      notify();
+    }
   };
 
   return {
@@ -356,17 +369,9 @@ export function withUsageConsent(
       ga.choose(next);
     },
     pageView: ga.pageView,
-    granted: () => {
-      // A no on the shared key (the site's withdrawal button included) withdraws usage analytics for good: a later
-      // Google Analytics yes there never brings PostHog back, only a new yes in this app does.
-      if (
-        usageEnabled &&
-        ga.choice() === 'denied' &&
-        usageChoice() === 'granted'
-      )
-        writeUsage('denied');
-      return usageAllowed() && usageChoice() === 'granted';
-    },
+    // Pure: reconcile() records a withdrawal on the shared key, and a no there keeps this off until it has.
+    granted: () =>
+      usageAllowed() && usageChoice() === 'granted' && ga.choice() !== 'denied',
     subscribe(listener) {
       listeners.add(listener);
       const unsubscribe = ga.subscribe(listener);
@@ -377,10 +382,13 @@ export function withUsageConsent(
     },
     start() {
       env.window.addEventListener('storage', onStorage);
+      stopFollowingGa = ga.subscribe(reconcile);
+      reconcile();
       ga.start();
     },
     stop() {
       env.window.removeEventListener('storage', onStorage);
+      stopFollowingGa?.();
       ga.stop();
     },
   };
