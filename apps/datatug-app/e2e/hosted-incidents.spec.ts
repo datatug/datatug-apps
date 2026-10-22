@@ -113,9 +113,11 @@ test('signed-in Incident first: private setup, create, cold detail, distinct lin
   await expect(page).toHaveURL(new RegExp(`${list}$`));
   // A new private project has no Incidents yet: its list opens on the
   // empty-state welcome, whose primary action reports the first Incident.
-  await expect(page.getByRole('banner')).toContainText('Incidents');
-  await expect(page.getByRole('heading', { name: 'Follow the evidence. Find the cause.', level: 1 })).toBeVisible();
-  await page.getByRole('link', { name: 'Report an incident', exact: true }).click();
+  // Ionic keeps the previous /incidents page in the DOM, hidden: read the page in view.
+  const shown = page.locator('ion-router-outlet > .ion-page:not(.ion-page-hidden)');
+  await expect(shown.getByRole('banner')).toContainText('Incidents');
+  await expect(shown.getByRole('heading', { name: 'Follow the evidence. Find the cause.', level: 1 })).toBeVisible();
+  await shown.getByRole('link', { name: 'Report an incident', exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`${list}/new\\?environment=demo$`));
   await page.getByRole('textbox', { name: 'Incident title' }).fill('Order 11039 is missing');
   await page.getByRole('textbox', { name: 'Incident description' }).fill('Customer reported a missing order.');
