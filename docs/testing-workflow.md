@@ -12,9 +12,9 @@ There is no scheduled (nightly) CI run. Push, PR, and merge-group CI runs the of
 
 ## Keeping the suites fast
 
-Unit tests (`datatug-main`) share one module graph per worker (`isolate: false`, `shareModulesAcrossFiles` in `vite.config.base.ts`): Angular, Ionic and the app's modules are evaluated once per worker instead of once per spec file, which used to be most of the suite's run time. Two consequences for spec authors:
+Unit tests (`datatug-main`, `datatug-semantic`) share one module graph per worker (`isolate: false`, `moduleSharing` in `vite.config.base.ts`): Angular, Ionic and the app's modules are evaluated once per worker instead of once per spec file, which used to be most of the suite's run time. Two consequences for spec authors:
 
-- A spec file that calls `vi.mock`/`vi.doMock` runs in a separate isolated project, found automatically. It is slower, so prefer TestBed providers, injected fakes and `vi.stubGlobal` over module mocks.
+- A spec file that calls `vi.mock`/`vi.doMock` is found automatically and runs isolated, in the separate `test-isolated` target that `test` depends on. It is slower, so prefer TestBed providers, injected fakes and `vi.stubGlobal` over module mocks. `test-focused` runs any chosen files isolated, as before.
 - Every file starts from a clean set of shared globals: real timers, no stubbed globals or envs, no active spies, empty storage, the real `window.history` at `/`, and an empty body (`resetSharedGlobals` in `libs/testing`). Any other global a spec replaces (a `window` property, a prototype method) must be restored by that spec.
 
 Shared test doubles live in `libs/datatug/main/src/lib/testing/` (for example `provideMockErrorLogger()`); reuse them instead of copying a mock into each spec. Domain fixtures stay in `*.spec-helper.ts` files next to the code they serve.

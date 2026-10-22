@@ -1,19 +1,26 @@
 /// <reference types='vitest' />
 import { defineConfig, type ViteUserConfig } from 'vitest/config';
-import { createBaseViteConfig } from '../../../vite.config.base';
+import { createBaseViteConfig, type BaseViteConfigOptions } from '../../../vite.config.base';
 
-export function createDatatugMainViteConfig(coverageEnabled = true): ViteUserConfig {
+export function createDatatugMainViteConfig(
+	coverageEnabled = true,
+	moduleSharing?: BaseViteConfigOptions['moduleSharing'],
+): ViteUserConfig {
 	const config = createBaseViteConfig({
 		dirname: __dirname,
-		name: 'datatug-main',
-		shareModulesAcrossFiles: true,
+		name: moduleSharing === 'mocking-only' ? 'datatug-main:isolated' : 'datatug-main',
+		reportsDirectory:
+			moduleSharing === 'mocking-only'
+				? '../../../coverage/libs/datatug/main-isolated'
+				: undefined,
+		moduleSharing,
 	});
 	return {
 		...config,
 		test: {
 			...config.test,
 			reporters:
-				process.env['CI'] === 'true'
+				process.env['CI'] === 'true' && moduleSharing === 'shared'
 					? [
 							'default',
 							['json', { outputFile: '../../../coverage/libs/datatug/main/vitest-results.json' }],
@@ -29,4 +36,5 @@ export function createDatatugMainViteConfig(coverageEnabled = true): ViteUserCon
 	};
 }
 
-export default defineConfig(() => createDatatugMainViteConfig());
+// The `test` target: every spec file except those that mock modules (`vite.isolated.config.mts`).
+export default defineConfig(() => createDatatugMainViteConfig(true, 'shared'));

@@ -6,6 +6,6 @@ export default defineConfig(() =>
 	createBaseViteConfig({
 		dirname: __dirname,
 		name: 'datatug-semantic',
-		shareModulesAcrossFiles: true,
+		moduleSharing: 'shared',
 	}),
 );

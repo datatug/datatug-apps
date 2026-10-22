@@ -102,7 +102,7 @@ describe('firestore-observables', () => {
     ).resolves.toEqual([]);
   });
 
-  it.each([
+  it.each<[string, () => Observable<unknown>]>([
     ['docSnapshots', () => docSnapshots(doc(db, 'spaces/s1'))],
     ['collectionData', () => collectionData(collection(db, 'items'))],
   ])('%s forwards listener errors to the subscriber', async (_, source) => {

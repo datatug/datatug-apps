@@ -26,6 +26,15 @@
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
         "tsConfig": "libs/datatug/main/tsconfig.spec.json"
+      },
+      "dependsOn": ["test-isolated"]
+    },
+    "test-isolated": {
+      "executor": "@nx/vitest:test",
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}-isolated"],
+      "options": {
+        "tsConfig": "libs/datatug/main/tsconfig.spec.json",
+        "configFile": "libs/datatug/main/vite.isolated.config.mts"
       }
     },
     "test-focused": {

@@ -1,7 +1,10 @@
 import { ProblemCollector } from './project-file-problems';
 import { checkSourceModel } from './source-model-declaration';
 
-const field = (name: string, property = name.toLowerCase()) => ({
+const field = (
+  name: string,
+  property = name.toLowerCase(),
+): Record<string, unknown> => ({
   name,
   property,
   datatype: 'string',

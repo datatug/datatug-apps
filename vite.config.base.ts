@@ -9,13 +9,15 @@ export interface BaseViteConfigOptions {
   name: string;
   reportsDirectory?: string;
   /**
-   * Run spec files without a fresh module graph per file (`isolate: false`): Angular, Ionic and the app's own
-   * modules are evaluated once per worker instead of once per file, which is most of a TestBed spec's run time.
-   * `src/test-setup.ts` must reset shared globals per file (see `resetSharedGlobals` in libs/testing). Files
-   * that call `vi.mock`/`vi.doMock` still run isolated: a module mock cannot apply to a module an earlier
-   * file in the same worker already loaded.
+   * `shared`: run spec files without a fresh module graph per file (`isolate: false`), so Angular, Ionic and
+   * the app's own modules are evaluated once per worker instead of once per file, which is most of a TestBed
+   * spec's run time. `src/test-setup.ts` must reset shared globals per file (see `resetSharedGlobals` in
+   * libs/testing). Files that call `vi.mock`/`vi.doMock` are left out, because a module mock cannot apply to a
+   * module an earlier file in the same worker already loaded; `mocking-only` runs just those files, isolated.
+   * They are two runs, not two Vitest projects: each project starts its own Vite server and Angular compiler,
+   * which doubles the main process's memory past Node's default heap.
    */
-  shareModulesAcrossFiles?: boolean;
+  moduleSharing?: 'shared' | 'mocking-only';
 }
 
 const SPEC_FILES = ['src/**/*.spec.ts'];
@@ -40,7 +42,7 @@ export function specFilesMockingModules(dirname: string): string[] {
 export function createBaseViteConfig(
   options: BaseViteConfigOptions,
 ): ViteUserConfig {
-  const { dirname, name, reportsDirectory, shareModulesAcrossFiles } = options;
+  const { dirname, name, reportsDirectory, moduleSharing } = options;
 
   const rootPath = process.cwd();
   const relativeToRoot = join(
@@ -87,10 +89,16 @@ export function createBaseViteConfig(
       watch: false,
       globals: true,
       // vmThreads gives every file a fresh VM context, so sharing modules needs forks.
-      pool: shareModulesAcrossFiles ? 'forks' : 'vmThreads',
+      pool: moduleSharing === 'shared' ? 'forks' : 'vmThreads',
+      isolate: moduleSharing !== 'shared',
       environment: 'happy-dom',
-      // With projects, each one names its own files: `extends` would append to this list, not replace it.
-      include: shareModulesAcrossFiles ? [] : SPEC_FILES,
+      include:
+        moduleSharing === 'mocking-only'
+          ? specFilesMockingModules(dirname)
+          : SPEC_FILES,
+      ...(moduleSharing === 'shared' && {
+        exclude: specFilesMockingModules(dirname),
+      }),
       setupFiles: [join(dirname, 'src/test-setup.ts')],
       reporters: ['default'],
       printConsoleTrace: false,
@@ -108,26 +116,6 @@ export function createBaseViteConfig(
           'src/**/index.ts',
         ],
       },
-      ...(shareModulesAcrossFiles && {
-        projects: [
-          {
-            extends: true,
-            test: {
-              name,
-              isolate: false,
-              include: SPEC_FILES,
-              exclude: specFilesMockingModules(dirname),
-            },
-          },
-          {
-            extends: true,
-            test: {
-              name: `${name}:isolated`,
-              include: specFilesMockingModules(dirname),
-            },
-          },
-        ],
-      }),
       server: {
         deps: {
           inline: [
