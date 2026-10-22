@@ -1,3 +1,4 @@
+import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError } from 'rxjs';
@@ -88,5 +89,48 @@ describe('ProjectEnvironmentStateService scope', () => {
     expect(result.state).toBeUndefined();
     expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
     expect(result.reason).toContain('Update');
+  });
+  const github = { storeId: 'github.com', projectId: 'datatug/demo' };
+  it.each([
+    ['a signed-out visitor', SneatApiNotAuthenticatedError],
+    ['a refused visitor', { status: 401 }],
+    ['a forbidden visitor', { status: 403 }],
+    ['a project the hosted API does not know', { status: 404 }],
+  ])(
+    'reads a public GitHub project directly for %s, without management state',
+    async (_, error) => {
+      api.environmentState.mockReturnValue(throwError(() => error));
+      const legacy = vi.fn(() => of([{ id: 'dev', title: 'dev' }]));
+      const result = await firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(github, legacy),
+      );
+      expect(result).toEqual({ items: [{ id: 'dev', title: 'dev' }] });
+      expect(legacy).toHaveBeenCalledTimes(1);
+    },
+  );
+  it('still surfaces an outage of the hosted API for a GitHub project', async () => {
+    api.environmentState.mockReturnValue(throwError(() => ({ status: 500 })));
+    const legacy = vi.fn(() => of([]));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(github, legacy),
+      ),
+    ).rejects.toEqual({ status: 500 });
+    expect(legacy).not.toHaveBeenCalled();
+  });
+  it('does not read a cloud-API GitHub project from the repository', async () => {
+    api.environmentState.mockReturnValue(
+      throwError(() => SneatApiNotAuthenticatedError),
+    );
+    const legacy = vi.fn(() => of([]));
+    await expect(
+      firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(
+          { ...github, projectApi: 'cloud' },
+          legacy,
+        ),
+      ),
+    ).rejects.toBe(SneatApiNotAuthenticatedError);
+    expect(legacy).not.toHaveBeenCalled();
   });
 });

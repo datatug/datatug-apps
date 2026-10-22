@@ -25,6 +25,7 @@ import {
 } from '../../models/definition/environment-state';
 import { resolveEnvironmentOrder } from '../../models/definition/environment-order';
 import { ProjectQueryApiService } from './project-query-api.service';
+import { isHostedReadRefused } from './hosted-read-refused';
 
 type EnvironmentReadResult =
   | { status: 'pending' | 'unavailable' }
@@ -116,6 +117,12 @@ export class ProjectEnvironmentStateService {
     return this.read(ref).pipe(
       map((state) => ({ state, items: [...state.environments] })),
       catchError((error) => {
+        if (isPublicGithubRead(ref, error))
+          // A signed-out visitor (or one the hosted API refuses) can still read
+          // a public GitHub project's environments straight from the
+          // repository, exactly as the other public project pages do. There is
+          // no verified state, so management stays unavailable.
+          return legacy().pipe(map((items) => ({ items })));
         const local =
           !['github', 'github.com', 'firestore'].includes(ref.storeId) &&
           ref.projectApi !== 'cloud' &&
@@ -184,3 +191,9 @@ export class ProjectEnvironmentStateService {
     );
   }
 }
+
+const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
+  ['github', 'github.com'].includes(ref.storeId) &&
+  ref.projectApi !== 'cloud' &&
+  ref.spaceID === undefined &&
+  isHostedReadRefused(error);

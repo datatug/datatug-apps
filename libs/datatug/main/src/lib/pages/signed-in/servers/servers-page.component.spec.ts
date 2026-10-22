@@ -1,6 +1,7 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
+import { SneatApiNotAuthenticatedError } from '@sneat/api';
 import { ErrorLogger, STORE_ID_GITHUB_COM } from '@sneat/core';
 import { map, of, Subject, throwError } from 'rxjs';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
@@ -176,11 +177,16 @@ describe('ServersPage signed-out public GitHub declarations', () => {
     };
   }
 
-  it.each([401, 403, 404])(
-    'lists Northwind from connections/*.json when the catalogue API answers %s',
-    async (status) => {
+  it.each([
+    ['answers 401', { status: 401 }],
+    ['answers 403', { status: 403 }],
+    ['answers 404', { status: 404 }],
+    ['refuses a signed-out visitor', SneatApiNotAuthenticatedError],
+  ])(
+    'lists Northwind from connections/*.json when the catalogue API %s',
+    async (_, apiError) => {
       const view = await render({
-        apiError: { status },
+        apiError,
         files: {
           'connections/demo-db.json': JSON.stringify({
             connections: [

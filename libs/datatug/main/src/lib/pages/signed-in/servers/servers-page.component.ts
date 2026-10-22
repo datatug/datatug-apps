@@ -53,6 +53,7 @@ import { DbServerService } from '../../../services/unsorted/db-server.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
+import { isHostedReadRefused } from '../../../services/project/hosted-read-refused';
 import {
   ProjectDatabaseGroup,
   ProjectDatabaseSourcesComponent,
@@ -765,7 +766,8 @@ export class ServersPageComponent implements OnDestroy {
   }
 
   /**
-   * The authenticated catalogue API answers 401 to a signed-out visitor, which
+   * The authenticated catalogue API refuses a signed-out visitor (the client
+   * rejects before sending, or the API answers 401), which
    * hid every declared connection (e.g. the public demo's Northwind) behind
    * "could not be loaded". A GitHub project's `connections/*.json` files are
    * ordinary repository files, so when the API refuses (401/403) or has no
@@ -781,7 +783,7 @@ export class ServersPageComponent implements OnDestroy {
     if (!isGithubStoreId(target.storeId)) return api$;
     return api$.pipe(
       catchError((error: unknown) =>
-        isCatalogueUnavailable(error)
+        isHostedReadRefused(error)
           ? this.readGithubConnections(target)
           : throwError(() => error),
       ),
@@ -844,9 +846,6 @@ export class ServersPageComponent implements OnDestroy {
     this.catalogError.set(undefined);
   }
 }
-
-const isCatalogueUnavailable = (error: unknown): boolean =>
-  [401, 403, 404].includes((error as { status?: number } | null)?.status ?? 0);
 
 const serverId = (dbServer: IDbServer): string => serverKey(dbServer);
 
