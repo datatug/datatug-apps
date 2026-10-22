@@ -164,10 +164,8 @@ import { ovdbCollectionSchema } from './ovdb-connection';
           (created)="recordCreated($event)" (cancelled)="creating.set(false)"
         />
       } @else if (selected(); as row) {
-        @if (relatedEvidence(); as link) {
-          @if (table() === link.collection && row.data[link.field] !== null && row.data[link.field] !== undefined) {
-            <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="{ order: row.data[link.field] }">Related log evidence</ion-button>
-          }
+        @if (relatedEvidenceTarget(); as link) {
+          <ion-button size="small" fill="outline" [routerLink]="link.path" [queryParams]="link.queryParams">Related log evidence</ion-button>
         }
         <sneat-datatug-ovdb-record-editor
           [connection]="liveConnection()"
@@ -199,7 +197,14 @@ export class OvdbDatabaseBrowserComponent {
   readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
   /** Optional explicit mapping supplied by a demo/project, never inferred from the OVDB engine. */
-  readonly relatedEvidence = input<{ readonly collection: string; readonly field: string; readonly path: string } | undefined>();
+  readonly relatedEvidence = input<{ readonly collection: string; readonly field: string; readonly path: string; readonly queryParam: string } | undefined>();
+  protected readonly relatedEvidenceTarget = computed(() => {
+    const link = this.relatedEvidence(), row = this.selected();
+    if (!link || !row || this.table() !== link.collection ||
+      typeof link.queryParam !== 'string' || !link.queryParam ||
+      row.data[link.field] === null || row.data[link.field] === undefined) return undefined;
+    return { path: link.path, queryParams: { [link.queryParam]: row.data[link.field] } };
+  });
   /** Deep-linked record id. Local keyed sources may load it beyond the first grid page. */
   readonly focusRecordId = input<string | undefined>();
   /** Extra status shown in the header (for example "Local copy ready"). */

@@ -40,6 +40,6 @@ export const DEMO_LOG_SOURCE_ADAPTER = new InjectionToken<DemoLogSourceAdapter>(
 /** Existing SQLite-demo entry link, owned by the same source presentation. */
 export function demoLogEvidenceMapping(dataset: string | undefined) {
   return dataset === 'northwind'
-    ? { collection: 'Orders', field: 'OrderID', path: '/demo/logs' } as const
+    ? { collection: 'Orders', field: 'OrderID', path: '/demo/logs', queryParam: 'order' } as const
     : undefined;
 }
