@@ -14,6 +14,9 @@ describe('ValueToContextPipe', () => {
     ['a', { a: { x: 1 } }, { x: 1 }],
     ['missing', { a: 1 }, undefined],
     ['', { '': 'empty-key' }, 'empty-key'],
+    ['a.b', { a: { b: 'nested' }, b: 'top-level' }, 'nested'],
+    ['a.b.c', { a: { b: { c: 3 } } }, 3],
+    ['a.missing.c', { a: { b: 1 } }, undefined],
   ])('process(from=%j) on %j outputs %j', (from, input, expected) => {
     expect(pipe(from).process(input)).toEqual({ output: expected });
   });

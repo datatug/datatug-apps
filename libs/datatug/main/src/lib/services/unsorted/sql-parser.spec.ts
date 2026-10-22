@@ -82,5 +82,32 @@ describe('SqlParser', () => {
       const join = { match: ['x'] as RegExpMatchArray } as IAstJoin;
       expect(parser.uncommentJoin(sql, join)).toBe(sql);
     });
+
+    it('removes a comment prefix longer than the number of regex groups', () => {
+      const long = 'SELECT *\nFROM dbo.A a\n--------    LEFT JOIN B b ON b.ID = a.ID\n';
+      const join = parser.parseQuery(long).joins?.[0] as IAstJoin;
+      expect(parser.uncommentJoin(long, join)).toBe(
+        'SELECT *\nFROM dbo.A a\nLEFT JOIN B b ON b.ID = a.ID\n',
+      );
+    });
+  });
+
+  describe('commentOutJoin', () => {
+    const sql =
+      'SELECT *\nFROM dbo.A a\nINNER JOIN B b ON b.ID = a.ID\nLEFT JOIN C c ON c.ID = a.ID\n';
+
+    it.each([0, 1])('comments out join #%i only, and uncommentJoin restores it', (i) => {
+      const join = parser.parseQuery(sql).joins?.[i] as IAstJoin;
+      const commented = parser.commentOutJoin(sql, join);
+      const joins = parser.parseQuery(commented).joins ?? [];
+      expect(joins.map((j) => j.disabled)).toEqual([i === 0, i === 1]);
+      expect(parser.uncommentJoin(commented, joins[i])).toBe(sql);
+    });
+
+    it('leaves an already disabled join as it is', () => {
+      const disabled = sql.replace('INNER', '-- INNER');
+      const join = parser.parseQuery(disabled).joins?.[0] as IAstJoin;
+      expect(parser.commentOutJoin(disabled, join)).toBe(disabled);
+    });
   });
 });

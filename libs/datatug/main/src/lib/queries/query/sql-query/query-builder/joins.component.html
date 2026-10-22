@@ -49,10 +49,10 @@
   </ion-list>
 </ion-card>
 
-@if (this.suggestedJoins?.length) {
+@if (suggestedJoins()?.length) {
   <ion-card>
     <ion-list>
-      @for (sj of suggestedJoins; track $index) {
+      @for (sj of suggestedJoins(); track $index) {
         <ion-item>
           @if (sj.to?.recordset; as recordset) {
             <ion-label>{{ recordset.schema }}.{{ recordset.name }}</ion-label>

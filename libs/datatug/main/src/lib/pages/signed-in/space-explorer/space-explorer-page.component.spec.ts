@@ -17,11 +17,14 @@ function streamFor<T>(streams: Streams<T>, segments: readonly string[]): Observa
   return streams.get(key) as Subject<T>;
 }
 
-async function setup(options: { throwOnCollection?: boolean } = {}) {
+async function setup(options: { throwOnCollection?: boolean; throwOnDocument?: boolean } = {}) {
   const docs: Streams<IExploreDoc> = new Map();
   const collections: Streams<IExploreCollectionItem[]> = new Map();
   const explorer = {
-    watchDocument$: vi.fn((segments: readonly string[]) => streamFor(docs, segments)),
+    watchDocument$: vi.fn((segments: readonly string[]) => {
+      if (options.throwOnDocument) throw new Error('Invalid document reference');
+      return streamFor(docs, segments);
+    }),
     watchCollection$: vi.fn((segments: readonly string[]) => {
       if (options.throwOnCollection) throw new Error('Invalid collection reference');
       return streamFor(collections, segments);
@@ -99,6 +102,33 @@ describe('SpaceExplorerPageComponent', () => {
     await click('space: family');
     expect(text()).not.toContain('Invalid collection reference');
     expect(text()).toContain('Loading document…');
+  });
+
+  it('keeps the error when the SDK throws synchronously for a document', async () => {
+    const { text } = await setup({ throwOnDocument: true });
+    expect(text()).toContain('Invalid document reference');
+    expect(text()).not.toContain('Loading document…');
+  });
+
+  it('shows loading, not the previous document, while the next one is on its way', async () => {
+    const { text, click, emitCollection, emitDoc } = await setup();
+    await emitDoc('spaces/family', { id: 'family', path: 'spaces/family', data: { root: true } });
+    await click('ext');
+    await emitCollection('spaces/family/ext', [{ id: 'contactus', path: 'spaces/family/ext/contactus', data: {} }]);
+    await click('contactus');
+    await emitDoc('spaces/family/ext/contactus', { id: 'contactus', path: 'spaces/family/ext/contactus', data: { a: 1 } });
+    await click('space: family');
+    expect(text()).toContain('Loading document…');
+    expect(text()).not.toContain('Document: spaces/family/ext/contactus');
+  });
+
+  it('offers the known modules on the ext collection, even when it lists nothing', async () => {
+    const { text, click, emitCollection, explorer } = await setup();
+    await click('ext');
+    await emitCollection('spaces/family/ext', []);
+    expect(text()).toContain('Open a known module');
+    await click('listus');
+    expect(explorer.watchDocument$).toHaveBeenLastCalledWith(['spaces', 'family', 'ext', 'listus']);
   });
 
   it('stringifies a non-object error', async () => {
