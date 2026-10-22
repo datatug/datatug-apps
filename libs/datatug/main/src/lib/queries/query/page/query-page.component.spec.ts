@@ -1,34 +1,15 @@
 import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { DemoTableDraftService } from '../../demo-table-draft.service';
-import * as publicChartQueries from '../../public-data/public-chart-query';
-import { QueryRuntimeRegistry } from '../../query-runtime-registry.service';
-import {
-  createHostedDemoDbQuery,
-  withHostedDemoDbSource,
-} from '../../hosted-demo-db-query';
-import {
-  toProjectQueryWire,
-  fromProjectQueryWire,
-} from '../../project-query-contract';
-import type { ProjectQueryReadWire } from '../../project-query-contract';
+import { createHostedDemoDbQuery, withHostedDemoDbSource } from '../../hosted-demo-db-query';
+import { toProjectQueryWire, fromProjectQueryWire } from '../../project-query-contract';
 import { readFileSync } from 'node:fs';
 import 'fake-indexeddb/auto';
-import { dirname, resolve as resolvePath } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { nativeFixture } from '../../public-data/native-fixture.spec-helper';
 import { PublicDataService } from '../../public-data/public-data.service';
 import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import {
-  ChangeDetectorRef,
-  Component,
-  CUSTOM_ELEMENTS_SCHEMA,
-  type Type,
-  input,
-  output,
-  signal,
-} from '@angular/core';
+import { ChangeDetectorRef, CUSTOM_ELEMENTS_SCHEMA, type Type } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { By, Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
@@ -37,37 +18,15 @@ import { Firestore } from 'firebase/firestore';
 import { parseDTQL, parseTugQL, resolveTugQL } from '@dalgo/core';
 import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
-import {
-  AgentContextService,
-  InvestigationContextService,
-  SemanticApiService,
-  type RunQueryResponse,
-} from '@sneat/datatug-semantic';
-import {
-  BehaviorSubject,
-  Observable,
-  Subject,
-  firstValueFrom,
-  of,
-  throwError,
-} from 'rxjs';
-
-import {
-  QueryPageComponent,
-  extractLinkedEntityNames,
-} from './query-page.component';
+import { AgentContextService, InvestigationContextService, SemanticApiService, type RunQueryResponse } from '@sneat/datatug-semantic';
+import { BehaviorSubject, Observable, Subject, firstValueFrom, of, throwError } from 'rxjs';
+import { QueryPageComponent, extractLinkedEntityNames } from './query-page.component';
 import { IQueryEditorState, IQueryState } from '../../../editor/models';
 import { IProjectContext } from '../../../nav/nav-models';
 import type { IProjectFull } from '../../../models/definition/project';
 import type { IProjectRef } from '../../../core/project-context';
 import type { IParameterDef } from '../../../models/definition/parameter';
-import {
-  IQueryDef,
-  IHttpQueryRequest,
-  ISqlQueryRequest,
-  ITextQueryRequest,
-  QueryType,
-} from '../../../models/definition/query-def';
+import { IQueryDef, IHttpQueryRequest, ISqlQueryRequest, ITextQueryRequest, QueryType } from '../../../models/definition/query-def';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { QueryContextSqlService } from '../../query-context-sql.service';
 import { QueriesService } from '../../queries.service';
@@ -75,30 +34,15 @@ import { Coordinator } from '../../../executor/coordinator';
 import { ProjectService } from '../../../services/project/project.service';
 import { PUBLIC_CHINOOK_CUSTOMER_FK } from '../../public-sqlite-tugql';
 import { QueryEditorStateService } from '../../query-editor-state-service';
-import {
-  AgentLinkApiService,
-  LinkProblemError,
-} from '../../../agent-links/agent-link-api.service';
+import { AgentLinkApiService, LinkProblemError } from '../../../agent-links/agent-link-api.service';
 import { decodeStoredResult } from '../../../agent-links/query-result/query-result';
-import {
-  DTQL_TEXT,
-  PROMPT_TEXT,
-  editorReadyResult,
-  invoiceCustomerResult,
-} from '../../../agent-links/query-result/query-result.spec-helper';
+import { DTQL_TEXT, PROMPT_TEXT, editorReadyResult, invoiceCustomerResult } from '../../../agent-links/query-result/query-result.spec-helper';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
 import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { EnvironmentService } from '../../../services/unsorted/environment.service';
-import {
-  FederatedQueryService,
-  type FederatedQueryProgress,
-  type FederatedQueryResult,
-} from '../../federated-query.service';
-import {
-  PublicSqliteQueryService,
-  type PublicSqliteSourceDiscovery,
-} from '../../public-sqlite-query.service';
+import { FederatedQueryService, type FederatedQueryProgress, type FederatedQueryResult } from '../../federated-query.service';
+import { PublicSqliteQueryService, type PublicSqliteSourceDiscovery } from '../../public-sqlite-query.service';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 import { PUBLIC_CHINOOK_COMPARISON_TARGETS } from '../../public-sqlite-comparison';
 import type { ComparisonWorkerObservation } from '../../public-sqlite-comparison';
@@ -113,544 +57,13 @@ import type { QueryDispatchRequest } from '../../query-dispatch';
 import type { DetectiveState } from '../../../detective/models';
 import { graphFixturePlan } from '../../public-data/native-graph.spec-helper';
 import { graphStableIdentity } from '../../public-data/native-graph-executor';
-import {
-  createOutputStores,
-  replaceGraphOutput,
-  openLocalResult,
-  deleteLocalResult,
-  type LocalResultDescriptor,
-} from '../../federated-local-results';
+import { createOutputStores, replaceGraphOutput, openLocalResult, deleteLocalResult, type LocalResultDescriptor } from '../../federated-local-results';
 import { INITIAL_CANONICAL_PINS } from '../../public-data/canonical-metadata';
-import {
-  SAVED_SCENARIO_PUBLICATION_BLOCKER,
-  type PublicDataScenario,
-} from '../../public-data/public-data-scenario';
+import { SAVED_SCENARIO_PUBLICATION_BLOCKER, type PublicDataScenario } from '../../public-data/public-data-scenario';
 import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
+import { SqlEditorHostStub, agentContextStub, asReadWire, clearCurrentRouterNavigation, createDispatchFixtures, detectiveClientStub, githubProjectActivityStub, queryDispatchTestStub, resolve, setRouteId, setRouterNavigation } from './query-page.spec-helper';
 
-const repositoryRoot = resolvePath(
-  dirname(fileURLToPath(import.meta.url)),
-  '../../../../../../../../',
-);
-const resolve = (path: string): string => resolvePath(repositoryRoot, path);
-
-const detectiveClientStub = () => ({
-  state: vi.fn((): Observable<DetectiveState> =>
-    of({
-      checks: [],
-      validators: [],
-      queryValidators: [],
-      cases: [],
-      runs: [],
-      scenarios: [],
-      runsHasMore: false,
-      environments: [],
-      capabilities: {
-        localOnly: false,
-        canRead: true,
-        canWrite: false,
-        canRun: false,
-        maxRows: 0,
-        maxFanout: 0,
-      },
-    }),
-  ),
-  runHostedQuery: vi.fn(),
-  action: vi.fn(),
-});
-
-let localResultFixture = vi.fn();
-let federationResultFixture = vi.fn();
-let dispatchPageResponse = vi.fn();
-const dispatchBrowserResponse = vi.fn();
-const dispatchOvdbResponse = vi.fn();
-const dispatchHostedResponse = vi.fn();
-const dispatchStart = vi.fn();
-const dispatchCancel = vi.fn(async () => undefined);
-
-function fixturePromise<T>(source: Observable<T> | Promise<T> | T | undefined): Promise<T> {
-  if (source === undefined) return new Promise<T>(() => undefined);
-  if (source instanceof Observable) return firstValueFrom(source);
-  return Promise.resolve(source);
-}
-
-/** A session-level fake: transport behavior is exercised in query-dispatch.service.spec.ts. */
-function queryDispatchTestStub() {
-  const revision = signal(0);
-  return { runtimeRevision: revision.asReadonly(), advanceRevision: () => revision.update((value) => value + 1),
-    availableWorkingCopies: vi.fn(async () => []), start: (request: QueryDispatchRequest) => {
-    dispatchStart(request);
-    const target = request.target?.kind;
-    const shared = {
-      cancel: dispatchCancel,
-      dispose: dispatchCancel,
-      getPage: dispatchPageResponse,
-      associateLocalResult: vi.fn(async () => undefined),
-    };
-    if (target === 'local-agent') return {
-      ...shared,
-      result: fixturePromise<FederatedQueryResult>(localResultFixture(request)),
-    };
-    if (target === 'hosted-cloud') {
-      const hostedResponse = fixturePromise(dispatchHostedResponse(request));
-      return { ...shared, hostedResponse, result: hostedResponse.then((response) => response.result) };
-    }
-    if (target === 'browser-sqlite') {
-      let response: ReturnType<typeof dispatchBrowserResponse>;
-      try { response = dispatchBrowserResponse(request); }
-      catch (error) { return { ...shared, result: Promise.reject(error) }; }
-      if (response !== undefined) request.onDispatched?.();
-      return { ...shared, result: fixturePromise<FederatedQueryResult>(response) };
-    }
-    if (request.runtimeSelectionId) return {
-      ...shared, result: fixturePromise<FederatedQueryResult>(dispatchOvdbResponse(request)),
-    };
-    if (target === 'ovdb-federation') return {
-      ...shared,
-      result: fixturePromise<FederatedQueryResult>(federationResultFixture(request)),
-    };
-    throw new Error(`Unexpected query dispatch target in test: ${target ?? 'none'}`);
-  } };
-}
-
-@Component({ selector: 'sneat-datatug-sql', standalone: true, template: '' })
-class SqlEditorHostStub {
-  readonly sql = input('');
-  readonly readonly = input(false);
-  readonly disabled = input(false);
-  readonly lineNumbers = input(true);
-  readonly autoCloseBrackets = input(true);
-  readonly sqlChanged = output<string>();
-}
-
-function agentContextStub(
-  securityContextId: string | undefined | null = 'sctx-1',
-) {
-  const scopedSecurityContextId = signal<string | undefined>(
-    securityContextId === null ? undefined : securityContextId,
-  );
-  return {
-    securityContextId: scopedSecurityContextId,
-    contextFor: vi.fn(() => ({ securityContextId: scopedSecurityContextId })),
-    refresh: vi.fn(() => of(undefined)),
-  };
-}
-
-function asReadWire(
-  wire: ReturnType<typeof toProjectQueryWire>,
-): ProjectQueryReadWire {
-  return { ...wire } as ProjectQueryReadWire;
-}
-
-function githubProjectActivityStub() {
-  return {
-    bindingGeneration: 0,
-    resolve: vi.fn(() => of(undefined)),
-    reportForCurrentProject: vi.fn(() => of(undefined)),
-  };
-}
-
-function setRouterNavigation(
-  router: Router,
-  info: unknown,
-  id: number,
-  successful = false,
-): void {
-  const currentNavigation = router.currentNavigation as unknown as ReturnType<
-    typeof vi.fn
-  >;
-  const lastSuccessfulNavigation =
-    router.lastSuccessfulNavigation as unknown as ReturnType<typeof vi.fn>;
-  currentNavigation.mockReturnValue({ id, extras: { info } });
-  if (successful) {
-    lastSuccessfulNavigation.mockReturnValue({ id, extras: { info } });
-  }
-}
-
-function clearCurrentRouterNavigation(router: Router): void {
-  const currentNavigation = router.currentNavigation as unknown as ReturnType<
-    typeof vi.fn
-  >;
-  currentNavigation.mockReturnValue(null);
-}
-
-function setRouteId(id: string): void {
-  Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', {
-    configurable: true,
-    value: { queryParamMap: convertToParamMap({ id }) },
-  });
-}
-
-
-describe('copied browser table query entry', () => {
-  beforeEach(() => {
-    Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, writable: true, configurable: true });
-  });
-
-  it.each([
-    { priorDraft: false, pendingChange: undefined },
-    { priorDraft: true, pendingChange: undefined },
-    { priorDraft: false, pendingChange: 'runtime' },
-    { priorDraft: false, pendingChange: 'env' },
-    { priorDraft: false, pendingChange: 'id' },
-  ] as const)('retains the table editor through delayed restoration and scope changes: %o', async ({ priorDraft, pendingChange }) => {
-    const ref: IProjectRef = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud', branch: 'main' };
-    const project = new BehaviorSubject<IProjectContext | undefined>({ ref } as IProjectContext);
-    const original = { demoDraft: 'token', runtime: 'runtime-edited', env: 'demo', branch: 'main', projectApi: 'cloud' };
-    const params = new BehaviorSubject(convertToParamMap(original));
-    const routeIds = convertToParamMap({ storeId: ref.storeId, projectId: ref.projectId });
-    const route = { queryParamMap: params, paramMap: of(routeIds),
-      snapshot: { paramMap: routeIds, queryParamMap: convertToParamMap(original), params: {} } };
-    const router = { navigate: vi.fn<Router['navigate']>(async () => true), events: of(), currentNavigation: vi.fn(() => null),
-      lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } };
-    const auth = { status: 'authenticated', user: { uid: 'actor' } };
-    const read = new Subject<IQueryDef>();
-    const drafts = { read: vi.fn((_token: string, _ref: IProjectRef, runtime: string | null, environment: string | null, _actor: string) =>
-      runtime === original.runtime && environment === original.env && _actor === auth.user.uid
-        ? firstValueFrom(read) : Promise.reject(new Error('The table draft scope changed.'))), consume: vi.fn() };
-    let generatedIds = 0;
-    const newRandomId = vi.fn(() => ++generatedIds === 1 ? 'table-draft-query' : `another-query-${generatedIds}`);
-    const activityError = new HttpErrorResponse({ status: 0 });
-    const activity = { ...githubProjectActivityStub(), resolve: vi.fn(() => throwError(() => activityError)) };
-    const logger = { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) };
-    const dispatch = queryDispatchTestStub();
-    dispatchStart.mockClear();
-    await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
-        { provide: ProjectMeaningsService, useValue: {} },
-      { provide: ErrorLogger, useValue: logger },
-      { provide: RandomIdService, useValue: { newRandomId } },
-      { provide: ActivatedRoute, useValue: route }, { provide: Router, useValue: router },
-      { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv: of(undefined), setCurrentEnvironment: vi.fn() } },
-      { provide: QueriesService, useValue: { authentication: () => of(auth), devicePersonal: { list: vi.fn(async () => []) } } },
-      { provide: ProjectService, useValue: { getFull: vi.fn() } },
-      { provide: QueryEditorStateService, useClass: QueryEditorStateService },
-      { provide: QueryContextSqlService, useValue: { setSql: vi.fn(), setTarget: vi.fn() } },
-      { provide: DemoTableDraftService, useValue: drafts },
-      { provide: GitHubProjectActivityService, useValue: activity },
-      { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of({ id: 'demo' })) } },
-      { provide: Coordinator, useValue: { execute: vi.fn() } },
-      { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
-      { provide: DetectiveClientService, useValue: detectiveClientStub() },
-      { provide: QueryDispatchService, useValue: dispatch },
-      { provide: AgentContextService, useValue: agentContextStub() },
-    ] }).overrideComponent(QueryPageComponent, { set: { imports: [], providers: [],
-      template: '<output>{{ queryId }}|{{ queryState.activeEnv?.id }}|{{ queryDef()?.request?.queryType }}</output>',
-    } }).compileComponents();
-    const editor = TestBed.inject(QueryEditorStateService);
-    const old = priorDraft ? editor.newQuery({ id: 'my-other-draft', isNew: true, queryType: QueryType.SQL,
-      request: { queryType: QueryType.SQL, text: 'SELECT keep_my_edits' } as ISqlQueryRequest }) : undefined;
-    const fixture = TestBed.createComponent(QueryPageComponent);
-    const component = fixture.componentInstance;
-    fixture.detectChanges();
-    route.snapshot.queryParamMap = convertToParamMap(original);
-    params.next(route.snapshot.queryParamMap);
-    component.ionViewDidEnter();
-    await fixture.whenStable();
-    expect(component.queryId).toBe('table-draft-query');
-    expect(component.queryState.isNew).toBe(true);
-    expect(component.queryState.isLoading).not.toBe(true);
-    expect(component.queryState.activeEnv?.id).toBe('demo');
-    const navigation = router.navigate.mock.calls.at(-1)?.[1] as { queryParams: Record<string, unknown> } | undefined;
-    expect(navigation?.queryParams['id']).toBeUndefined();
-    expect(navigation?.queryParams['env']).toBe('demo');
-    // Model Angular Router's merge and its real queryParamMap re-emission while authentication/catalog work is pending.
-    const normalized = { ...original, ...navigation?.queryParams };
-    route.snapshot.queryParamMap = convertToParamMap(Object.fromEntries(Object.entries(normalized).filter(([, value]) => value !== undefined)));
-    params.next(route.snapshot.queryParamMap);
-    expect(component.queryId).toBe('table-draft-query');
-    const definition: IQueryDef = { id: '', title: 'Artist (browser copy)', connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } as ITextQueryRequest };
-    if (pendingChange) {
-      if (pendingChange === 'runtime') component.selectWorkingCopy('another-runtime');
-      route.snapshot.queryParamMap = convertToParamMap({ ...original, [pendingChange]: pendingChange === 'runtime' ? 'another-runtime' : pendingChange === 'env' ? 'another-env' : 'table-draft-query' });
-      params.next(route.snapshot.queryParamMap);
-      await fixture.whenStable();
-      expect(component.queryId).toBe('table-draft-query');
-      expect(component.runError()).toContain(pendingChange === 'id' ? 'cannot replace an existing saved query' : 'table draft scope changed');
-      expect(drafts.consume).not.toHaveBeenCalled();
-      // Neither an old success nor an old failure can replace the current scope outcome.
-      if (pendingChange === 'env') read.error(new Error('obsolete table read failed'));
-      else read.next(definition);
-      await fixture.whenStable();
-      expect(component.queryDef()).toBeUndefined();
-      expect(component.runError()).toContain(pendingChange === 'id' ? 'cannot replace an existing saved query' : 'table draft scope changed');
-      expect(drafts.consume).not.toHaveBeenCalled();
-      drafts.read.mockResolvedValueOnce(definition);
-      route.snapshot.queryParamMap = convertToParamMap(original);
-      params.next(route.snapshot.queryParamMap);
-    } else read.next(definition);
-    await fixture.whenStable();
-    expect(drafts.read).toHaveBeenCalledWith('token', ref, 'runtime-edited', 'demo', 'actor');
-    expect(drafts.read).toHaveBeenCalledTimes(pendingChange === 'id' ? 2 : pendingChange ? 3 : 1);
-    expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('token');
-    if (priorDraft) expect(editor.getQueryState('my-other-draft')).toEqual(old);
-    expect(component.queryDef()).toMatchObject({ id: 'table-draft-query', request: definition.request, connectionId: definition.connectionId });
-    expect(component.selectedWorkingCopy()).toBe('runtime-edited');
-    expect(component.runError()).toBeUndefined();
-    expect(fixture.nativeElement.querySelector('output').textContent).toBe('table-draft-query|demo|DTQL');
-    component.ionViewDidEnter();
-    expect(router.navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined, env: 'demo' } });
-    const edited = { ...component.queryState.request, text: 'from: Artist\nlimit: 25' } as ITextQueryRequest;
-    editor.updateQueryState({ ...component.queryState, request: edited });
-    component.selectWorkingCopy('project');
-    expect(router.navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { runtime: 'project' } });
-    route.snapshot.queryParamMap = convertToParamMap({ ...original, runtime: 'project' });
-    params.next(route.snapshot.queryParamMap);
-    route.snapshot.queryParamMap = convertToParamMap({ ...original, runtime: 'project', env: 'another-env' });
-    params.next(route.snapshot.queryParamMap);
-    await fixture.whenStable();
-    expect(component.queryId).toBe('table-draft-query');
-    expect(component.queryState.request).toEqual(edited);
-    expect(component.queryState.activeEnv?.id).toBe('another-env');
-    expect(component.selectedWorkingCopy()).toBe('project');
-    expect(drafts.read).toHaveBeenCalledTimes(pendingChange === 'id' ? 2 : pendingChange ? 3 : 1);
-    expect(drafts.consume).toHaveBeenCalledExactlyOnceWith('token');
-    expect(newRandomId).toHaveBeenCalledOnce();
-    expect(activity.resolve).toHaveBeenCalledExactlyOnceWith(ref);
-    expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to resolve GitHub Business query activity context', { show: false, feedback: false });
-    activity.reportForCurrentProject.mockReturnValue(throwError(() => activityError));
-    component['reportGitHubQueryDispatch'](ref);
-    component['reportGitHubQueryEdit'](ref);
-    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, expect.any(String), 'query_execution_dispatched');
-    expect(activity.reportForCurrentProject).toHaveBeenCalledWith(ref, expect.any(String), 'query_edit');
-    expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to record GitHub Business query activity', { show: false, feedback: false });
-    expect(logger.logError).toHaveBeenCalledWith(activityError, 'Failed to record GitHub Business query edit activity', { show: false, feedback: false });
-    expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
-    expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
-    expect(dispatchStart).not.toHaveBeenCalled();
-    const previousEditor = editor.getQueryState('table-draft-query');
-    drafts.read.mockResolvedValueOnce(definition);
-    route.snapshot.queryParamMap = convertToParamMap({ ...original, demoDraft: 'next-token' });
-    params.next(route.snapshot.queryParamMap);
-    await fixture.whenStable();
-    expect(component.queryId).not.toBe('table-draft-query');
-    expect(editor.getQueryState('table-draft-query')).toEqual(previousEditor);
-    expect(drafts.read).toHaveBeenLastCalledWith('next-token', ref, 'runtime-edited', 'demo', 'actor');
-    expect(drafts.consume).toHaveBeenLastCalledWith('next-token');
-    expect(dispatchStart).not.toHaveBeenCalled();
-    fixture.destroy();
-  });
-});
-
-describe('QueryPage terminal handoff and public saved query integration', () => {
-  const template = readFileSync(resolve('libs/datatug/main/src/lib/queries/query/page/query-page.component.html'), 'utf8');
-  const cloudRef: IProjectRef = { storeId: 'github.com', projectId: 'repo@owner@folder', projectApi: 'cloud', branch: 'main' };
-  const sha = 'a'.repeat(64);
-  const declaration = { id: 'chinook-sqlite', dataset: 'chinook', fixtureSha256: sha, storage: 'sqlite', environments: ['dev'] };
-
-  beforeEach(() => {
-    // Ionic icons in the actual template request SVG assets; this suite has no network.
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { 'Content-Type': 'image/svg+xml' } })));
-  });
-
-  async function setup(savedId?: string, queryType = QueryType.DTQL, options: {
-    projectEnvironments?: boolean; environment?: string; contextEnvironment?: string;
-  } = {}) {
-    Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, configurable: true, writable: true });
-    const ref = savedId ? { storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' } : cloudRef;
-    const project = new BehaviorSubject<IProjectContext | undefined>({ ref,
-      ...(options.projectEnvironments ? { summary: { environments: [{ id: 'local' }, { id: 'dev' }, { id: 'prod' }] } } : {}),
-    } as IProjectContext);
-    const currentEnv = new BehaviorSubject(options.contextEnvironment ? { id: options.contextEnvironment } : undefined);
-    const auth = new BehaviorSubject({ status: 'authenticated', user: { uid: 'actor' } });
-    const denied = new Subject<IProjectRef>();
-    const params = new BehaviorSubject(convertToParamMap({}));
-    const routeIds = convertToParamMap({ storeId: ref.storeId, projectId: ref.projectId, ...(savedId ? { queryId: savedId } : {}) });
-    const route = { queryParamMap: params, paramMap: of(routeIds), snapshot: { paramMap: routeIds, queryParamMap: params.value, params: {} } };
-    const browser = vi.fn();
-    const catalog = vi.fn(() => of({ connections: [declaration] }));
-    let ids = 0;
-    await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
-        { provide: ProjectMeaningsService, useValue: {} },
-      provideMockErrorLogger(),
-      { provide: RandomIdService, useValue: { newRandomId: () => `handoff-${++ids}` } },
-      { provide: ActivatedRoute, useValue: route },
-      { provide: Router, useValue: { navigate: vi.fn(async () => true), events: of(), currentNavigation: vi.fn(() => null), lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } } },
-      { provide: DatatugNavContextService, useValue: { currentProject: project, currentEnv, setCurrentEnvironment: vi.fn() } },
-      { provide: QueriesService, useValue: { authentication: () => auth, authorityDenied: () => denied, getQuery: vi.fn(() => of(definition)), devicePersonal: { list: vi.fn(async () => []) } } },
-      { provide: ProjectService, useValue: { getFull: vi.fn() } },
-      { provide: QueryEditorStateService, useClass: QueryEditorStateService },
-      { provide: QueryContextSqlService, useValue: { setSql: vi.fn(), setTarget: vi.fn() } },
-      { provide: GitHubProjectActivityService, useValue: githubProjectActivityStub() },
-      { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn(() => of({ id: 'dev' })) } },
-      { provide: Coordinator, useValue: { execute: vi.fn() } },
-      { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
-      { provide: DetectiveClientService, useValue: detectiveClientStub() },
-      { provide: AgentContextService, useValue: agentContextStub() },
-      { provide: HttpClient, useValue: { post: vi.fn() } },
-      { provide: ProjectQueryApiService, useValue: { connectionCatalog: catalog } },
-      { provide: GithubProjectReaderService, useValue: { getRawJson: vi.fn() } },
-      { provide: BrowserSqliteQueryService, useValue: { execute: browser } },
-      { provide: QueryDispatchService, useClass: QueryDispatchService },
-    ] }).overrideComponent(QueryPageComponent, { set: {
-      imports: [NgTemplateOutlet], providers: [], schemas: [CUSTOM_ELEMENTS_SCHEMA], template,
-    } }).compileComponents();
-    const editor = TestBed.inject(QueryEditorStateService);
-    const drafts = TestBed.inject(DemoTableDraftService);
-    const registry = TestBed.inject(QueryRuntimeRegistry);
-    const runtime = registry.register({ id: 'edited', title: 'Edited Chinook', databaseId: 'chinook', baseUrl: 'https://browser.local/v1', fetch: vi.fn(), descriptor: { id: 'chinook', canonical: { sha256: sha, bytes: 10, url: 'https://demo/file' }, capabilities: { dtql: true }, collections: ['Artist'] } } as never);
-    const token = drafts.create({ actorID: 'actor', projectRef: ref, connection: declaration, table: 'Artist', runtimeSelectionId: runtime.selectionId, environment: 'dev' });
-    const definition: IQueryDef | undefined = savedId ? { id: savedId.split('/').at(-1) ?? savedId, title: 'Saved public query', connectionId: 'northwind-sqlite', request: { queryType, text: 'changed text' } as ITextQueryRequest } : undefined;
-    if (definition && savedId) editor.newQuery({ id: savedId, isNew: false, def: definition, request: definition.request, queryType });
-    const queryParams = savedId ? { id: savedId, runtime: 'project', ...(options.environment ? { env: options.environment } : {}) } : { demoDraft: token, runtime: runtime.selectionId, env: 'dev', projectApi: 'cloud', branch: 'main' };
-    route.snapshot.queryParamMap = convertToParamMap(queryParams);
-    params.next(route.snapshot.queryParamMap);
-    const create = async () => {
-      const fixture = TestBed.createComponent(QueryPageComponent);
-      fixture.detectChanges();
-      fixture.componentInstance.ionViewDidEnter();
-      await fixture.whenStable();
-      await vi.waitFor(() => expect(fixture.componentInstance.querySaveState()).not.toBe('Loading'));
-      return fixture;
-    };
-    return { fixture: await create(), create, editor, drafts, token, ref, route, params, auth, denied, catalog, browser, runtime, definition };
-  }
-
-  afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
-
-  it('shows terminal recovery after recreating a consumed handoff without replacing existing edits', async () => {
-    const h = await setup();
-    const id = h.fixture.componentInstance.queryId;
-    if (!id) throw new Error('Expected restored query identity');
-    const old = h.editor.getQueryState(id);
-    if (!old) throw new Error('Expected restored editor');
-    h.editor.updateQueryState({ ...old, request: { queryType: QueryType.DTQL, text: 'from: Artist\nlimit: 25' } as ITextQueryRequest });
-    const edited = h.editor.getQueryState(id);
-    h.fixture.destroy();
-    const recreated = await h.create();
-    expect(h.editor.getQueryState(id)).toEqual(edited);
-    expect(recreated.nativeElement.querySelector('[data-testid="query-save-state"]').textContent).toBe('Unavailable');
-    expect(recreated.nativeElement.querySelector('[data-testid="browser-query-recovery"]').textContent).toContain('Query this table again');
-    recreated.nativeElement.querySelector('[data-testid="browser-query-recovery"] ion-button').click();
-    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith(['/demo/sqlite']);
-    expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
-    // Explicitly selecting the still-held original editor clears this URL's recovery state.
-    h.route.snapshot.queryParamMap = convertToParamMap({ id, runtime: h.runtime.selectionId, env: 'dev', projectApi: 'cloud', branch: 'main' });
-    h.params.next(h.route.snapshot.queryParamMap);
-    await recreated.whenStable();
-    expect(recreated.nativeElement.querySelector('[data-testid="browser-query-recovery"]')).toBeNull();
-    expect(recreated.nativeElement.querySelector('[data-testid="query-save-state"]').textContent).toBe('Unsaved');
-    expect(recreated.componentInstance.queryBodyText()).toBe('from: Artist\nlimit: 25');
-  });
-
-  it.each(['account', 'denied'] as const)('shows terminal recovery after %s scope clearing without replaying the token', async (scope) => {
-    const h = await setup();
-    const read = vi.spyOn(h.drafts, 'read');
-    if (scope === 'account') h.auth.next({ status: 'authenticated', user: { uid: 'another-actor' } });
-    else h.denied.next(h.ref);
-    await h.fixture.whenStable();
-    expect(h.fixture.componentInstance.queryDef()).toBeUndefined();
-    expect(h.fixture.nativeElement.querySelector('[data-testid="query-save-state"]').textContent).toBe('Unavailable');
-    expect(h.fixture.nativeElement.querySelector('[data-testid="browser-query-recovery"]').textContent).toContain('Query this table again');
-    h.params.next(h.route.snapshot.queryParamMap);
-    await h.fixture.whenStable();
-    expect(read).not.toHaveBeenCalled();
-    expect(h.fixture.componentInstance.queryDef()).toBeUndefined();
-  });
-
-  it('bounds pending restoration and ignores a catalog completion after timeout', async () => {
-    const h = await setup();
-    const pending = new Subject<{ connections: typeof declaration[] }>();
-    h.catalog.mockReturnValue(pending);
-    const token = h.drafts.create({ actorID: 'actor', projectRef: h.ref, connection: declaration, table: 'Artist', runtimeSelectionId: h.runtime.selectionId, environment: 'dev' });
-    vi.useFakeTimers();
-    h.route.snapshot.queryParamMap = convertToParamMap({ demoDraft: token, runtime: h.runtime.selectionId, env: 'dev', projectApi: 'cloud', branch: 'main' });
-    h.params.next(h.route.snapshot.queryParamMap);
-    await vi.advanceTimersByTimeAsync(30_001);
-    vi.useRealTimers();
-    await h.fixture.whenStable();
-    expect(h.fixture.nativeElement.querySelector('[data-testid="query-save-state"]').textContent).toBe('Unavailable');
-    expect(h.fixture.nativeElement.querySelector('[data-testid="browser-query-recovery"]').textContent).toContain('Query this table again');
-    pending.next({ connections: [declaration] });
-    await h.fixture.whenStable();
-    expect(h.fixture.componentInstance.queryDef()).toBeUndefined();
-  });
-
-  it.each([publicChartQueries.PUBLIC_ORDERS_QUERY_ID, publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID])('dispatches exact public saved query %s through shared admission from actual Run', async (id) => {
-    const result = { recordset: { columns: [{ name: 'OrderID', type: 'integer' }], rows: [[{ type: 'integer', value: '10248' }]] }, limitations: [], bindingsApplied: [], truncated: false, totalRows: 1, hasMore: false, provenance: { source: 'northwind', mode: 'live', observedAt: '2026-10-20T00:00:00Z' } };
-    const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery').mockResolvedValue(result as never);
-    const h = await setup(id);
-    const run = Array.from(h.fixture.nativeElement.querySelectorAll('ion-button') as NodeListOf<HTMLElement>).find(button => button.textContent?.trim() === 'Run');
-    expect(run).toBeTruthy();
-    if (!run) throw new Error('Expected Run button');
-    run.click();
-    await h.fixture.whenStable();
-    expect(admission).toHaveBeenCalledWith(id, expect.objectContaining({ connectionId: 'northwind-sqlite' }), { signal: expect.any(AbortSignal) });
-    expect(h.fixture.componentInstance.runResult()?.recordset.rows).toEqual(result.recordset.rows);
-    expect(h.fixture.nativeElement.textContent).not.toContain('running a query needs a DataTug agent');
-    expect(h.browser).not.toHaveBeenCalled();
-  });
-
-  it.each([QueryType.DTQL, QueryType.SQL])('retains real publisher admission for edited %s text/type without loading SQLite', async (type) => {
-    const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, type);
-    h.fixture.componentInstance.runQuery();
-    await vi.waitFor(() => expect(h.fixture.nativeElement.textContent).toMatch(/differs from the admitted definition|changed identity or execution scope/));
-    expect(h.browser).not.toHaveBeenCalled();
-  });
-
-  it.each([publicChartQueries.PUBLIC_ORDERS_QUERY_ID, publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID])('keeps omitted project environment out of fixed public query %s through Run and URL normalization', async (id) => {
-    const result = { recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [], truncated: false, hasMore: false, provenance: { source: 'northwind', mode: 'live' } };
-    const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery').mockResolvedValue(result as never);
-    const h = await setup(id, QueryType.DTQL, { projectEnvironments: true });
-    const page = h.fixture.componentInstance;
-    expect(page.activeEnv).toBeUndefined();
-    expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).not.toHaveBeenCalledWith('local');
-    expect(h.fixture.nativeElement.textContent).toContain('fixed public Northwind OVDB API');
-    expect(h.fixture.nativeElement.textContent).toContain('Project environment is not used for execution');
-    expect(h.fixture.nativeElement.textContent).not.toContain('The selected runtime is checked against this connection');
-    page.runQuery();
-    await h.fixture.whenStable();
-    page.updateUrl();
-    expect(admission).toHaveBeenCalledOnce();
-    const navigations = vi.mocked(TestBed.inject(Router).navigate).mock.calls;
-    expect(navigations.some(([, extras]) => extras?.queryParams?.['id'] === id)).toBe(true);
-    expect(navigations.every(([, extras]) => extras?.queryParams?.['env'] === undefined)).toBe(true);
-    expect(page.activeEnv).toBeUndefined();
-    expect(h.browser).not.toHaveBeenCalled();
-  });
-
-  it('retains working-copy admission and source copy when leaving the fixed public runtime', async () => {
-    const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery');
-    const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, QueryType.DTQL, { projectEnvironments: true });
-    h.fixture.componentInstance.selectWorkingCopy(h.runtime.selectionId);
-    await h.fixture.whenStable();
-    expect(h.fixture.nativeElement.textContent).toContain('The selected runtime is checked against this connection');
-    expect(h.fixture.nativeElement.textContent).not.toContain('fixed public Northwind OVDB API');
-    h.fixture.componentInstance.runQuery();
-    await h.fixture.whenStable();
-    expect(admission).not.toHaveBeenCalled();
-    expect(h.fixture.componentInstance.runError()).toMatch(/unavailable|Refresh the open working copies/);
-    expect(h.browser).not.toHaveBeenCalled();
-  });
-
-  it('retains first-environment defaults and ordinary source copy for other saved DTQL', async () => {
-    const h = await setup('other/dtql', QueryType.DTQL, { projectEnvironments: true });
-    expect(h.fixture.componentInstance.activeEnv?.id).toBe('local');
-    h.fixture.componentInstance.updateUrl();
-    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: 'local' }) }));
-    expect(h.fixture.nativeElement.textContent).toContain('The selected runtime is checked against this connection');
-    expect(h.fixture.nativeElement.textContent).not.toContain('fixed public Northwind OVDB API');
-  });
-
-  it.each(['url', 'context'] as const)('preserves explicit %s environment for a fixed public query', async (entry) => {
-    const h = await setup(publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID, QueryType.DTQL, {
-      projectEnvironments: true,
-      ...(entry === 'url' ? { environment: 'prod', contextEnvironment: 'dev' } : { contextEnvironment: 'dev' }),
-    });
-    const expected = entry === 'url' ? 'prod' : 'dev';
-    expect(h.fixture.componentInstance.activeEnv?.id).toBe(expected);
-    h.fixture.componentInstance.updateUrl();
-    expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: expected }) }));
-    expect(h.fixture.nativeElement.textContent).toContain('Project environment is not used for execution');
-  });
-
-  it('retains the agent notice for arbitrary GitHub DTQL', async () => {
-    const h = await setup('other/dtql');
-    h.fixture.componentInstance.runQuery();
-    await h.fixture.whenStable();
-    expect(h.fixture.nativeElement.textContent).toContain('running a query needs a DataTug agent');
-    expect(h.browser).not.toHaveBeenCalled();
-  });
-});
+const fx = createDispatchFixtures();
 
 describe('SqlEditorPage', () => {
   let component: QueryPageComponent;
@@ -726,7 +139,7 @@ describe('SqlEditorPage', () => {
           useValue: { runQuery: vi.fn() },
         },
         { provide: DetectiveClientService, useValue: detectiveClientStub() },
-        { provide: QueryDispatchService, useValue: queryDispatchTestStub() },
+        { provide: QueryDispatchService, useValue: queryDispatchTestStub(fx) },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
@@ -1112,7 +525,7 @@ describe('QueryPageComponent — new SQL draft navigation', () => {
           { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
           { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
           { provide: DetectiveClientService, useValue: detectiveClientStub() },
-        { provide: QueryDispatchService, useValue: queryDispatchTestStub() },
+        { provide: QueryDispatchService, useValue: queryDispatchTestStub(fx) },
           { provide: AgentContextService, useValue: agentContextStub() },
         ],
       })
@@ -2188,7 +1601,7 @@ select i.InvoiceId
     component.authorResultRowClicked({ data: rows[0] } as never);
     expect(component.currentAuthorResultRow()?.row).toBe(firstRaw);
 
-    dispatchPageResponse.mockResolvedValue([pageRaw as never]);
+    fx.dispatchPageResponse.mockResolvedValue([pageRaw as never]);
     await component.changeResultPage(1);
     expect(component.currentAuthorResultRow()).toBeUndefined();
     expect(component.resultPageLoading()).toBe(false);
@@ -2211,6 +1624,84 @@ select i.InvoiceId
     expect(component.resultTotalRowsKnown()).toBe(false);
   });
 
+  it('hands the focused result cell to the project cards pane by column name', async () => {
+    component = await createTugQLAuthor(authorSource);
+    component.runResult.set({
+      ...historyResultFor(queryDef),
+      recordset: {
+        columns: [
+          { name: 'InvoiceId', type: 'integer' },
+          { name: 'CustomerID', type: 'string' },
+        ],
+        rows: [
+          [
+            { type: 'integer', value: '7' },
+            { type: 'string', value: 'ALFKI' },
+          ],
+          [
+            { type: 'integer', value: '8' },
+            { type: 'null' },
+          ],
+        ],
+      },
+    } as unknown as FederatedQueryResult);
+    await component.changeRelatedResultSet('affiliations');
+    const rows = component.resultGridRows();
+    const cards = { focusCell: vi.fn(), clear: vi.fn() };
+    Object.defineProperty(component, 'resultCellCards', { value: () => cards });
+    const api = { getDisplayedRowAtIndex: (i: number) => ({ data: rows[i] }) };
+    try {
+      component.authorResultCellFocused({
+        rowIndex: 0,
+        column: { getColId: () => 'result_1' },
+        api,
+      } as never);
+      expect(cards.focusCell).toHaveBeenCalledWith(
+        {
+          identity: { column: 'CustomerID' },
+          value: 'ALFKI',
+          row: { InvoiceId: '7', CustomerID: 'ALFKI' },
+        },
+        expect.any(Function),
+      );
+      // the anchor is looked up inside this page's grid, not in the whole document
+      const anchorOf = cards.focusCell.mock.calls[0][1] as () => Element | null;
+      const host = (component as never as { pageHost: { nativeElement: HTMLElement } }).pageHost.nativeElement;
+      const own = document.createElement('div');
+      own.className = 'result-grid-viewport';
+      own.innerHTML = '<div class="ag-cell-focus"></div>';
+      host.appendChild(own);
+      const foreign = document.createElement('div');
+      foreign.className = 'result-grid-viewport';
+      foreign.innerHTML = '<div class="ag-cell-focus" id="foreign"></div>';
+      document.body.appendChild(foreign);
+      expect(anchorOf()).toBe(own.firstElementChild);
+      foreign.remove();
+      own.remove();
+      // a NULL cell is handed over as it is; the lookup itself skips it
+      component.authorResultCellFocused({
+        rowIndex: 1,
+        column: 'result_1',
+        api,
+      } as never);
+      expect(cards.focusCell).toHaveBeenLastCalledWith(
+        expect.objectContaining({ identity: { column: 'CustomerID' }, value: null }),
+        expect.any(Function),
+      );
+      // no row, a group row, or an unknown column clear the pane
+      component.authorResultCellFocused({ rowIndex: null, column: 'result_0', api } as never);
+      component.authorResultCellFocused({
+        rowIndex: 0,
+        column: 'result_0',
+        api: { getDisplayedRowAtIndex: () => ({ group: true }) },
+      } as never);
+      component.authorResultCellFocused({ rowIndex: 0, column: 'ag-Grid-SelectionColumn', api } as never);
+      expect(cards.clear).toHaveBeenCalledTimes(3);
+    } finally {
+      /* nothing to restore */
+    }
+  });
+
   it('clears the accepted page request after empty or short final pages update the result snapshot', async () => {
     component = await createTugQLAuthor(authorSource);
     const originalRow = [{ type: 'integer', value: '1' }] as const;
@@ -2223,7 +1714,7 @@ select i.InvoiceId
       totalRows: undefined,
       hasMore: true,
     } as FederatedQueryResult);
-    dispatchPageResponse.mockResolvedValueOnce([]);
+    fx.dispatchPageResponse.mockResolvedValueOnce([]);
 
     await component.changeResultPage(1);
 
@@ -2240,7 +1731,7 @@ select i.InvoiceId
       totalRows: 200,
       hasMore: true,
     });
-    dispatchPageResponse.mockResolvedValueOnce([originalRow] as never);
+    fx.dispatchPageResponse.mockResolvedValueOnce([originalRow] as never);
     await component.changeResultPage(1);
     expect(component.resultPageIndex()).toBe(1);
     expect(component.resultPageLoading()).toBe(false);
@@ -2258,7 +1749,7 @@ select i.InvoiceId
       } as FederatedQueryResult;
       component.runResult.set(firstResult);
       let rejectPage!: (error: Error) => void;
-      dispatchPageResponse.mockImplementationOnce(
+      fx.dispatchPageResponse.mockImplementationOnce(
         () =>
           new Promise((_resolve, reject) => {
             rejectPage = reject;
@@ -3707,7 +3198,7 @@ select (
       applicationId: 'application-local',
       stepId: 'step-local',
     });
-    localResultFixture.mockReturnValue(
+    fx.localResultFixture.mockReturnValue(
       of({
         recordset: { columns: [], rows: [] },
         limitations: [],
@@ -3728,7 +3219,7 @@ select (
       }),
     );
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       agentRequest: expect.objectContaining({ queryId: queryDef.id, record: true }),
     }));
   });
@@ -3743,7 +3234,7 @@ select (
     component.project={ref};component.queryDef.set(definition);component.queryState={...component.queryState,id:definition.id,def:definition,title:definition.title,request:definition.request,isNew:false};
     expect(component.canChoosePublicSqliteSource()).toBe(false);expect(component.selectedWorkingCopy()).toBe('project');
     await runFixture.whenStable();expect({environment:component.hostedEnvironment(),admitted:component.hostedDetectiveState()?.environments,calls:nativeClient.state.mock.calls.length}).toEqual({environment:'demo',admitted:['demo'],calls:expect.any(Number)});
-    component.runQuery();await vi.waitFor(()=>expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({queryId:'shipping/events',environment:'demo',target:{kind:'hosted-cloud'},principal:'sarah'})));
+    component.runQuery();await vi.waitFor(()=>expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({queryId:'shipping/events',environment:'demo',target:{kind:'hosted-cloud'},principal:'sarah'})));
   });
 
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
@@ -3810,7 +3301,7 @@ select (
       },
       execution,
     };
-    dispatchHostedResponse.mockReturnValue(
+    fx.dispatchHostedResponse.mockReturnValue(
       {
         result: result as never,
         queryRevision: 'rev-1',
@@ -3852,7 +3343,7 @@ select (
     expect(component.isChanged).toBe(false);
     component.runQuery();
     await runFixture.whenStable();
-    await vi.waitFor(()=>expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    await vi.waitFor(()=>expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       target: { kind: 'hosted-cloud' }, queryId: queryDef.id,
     })));
     await runFixture.whenStable();
@@ -4053,7 +3544,7 @@ select (
         GitHubProjectActivityService,
       ) as unknown as ReturnType<typeof githubProjectActivityStub>;
       activity.reportForCurrentProject.mockClear();
-      dispatchBrowserResponse.mockImplementation(() => {
+      fx.dispatchBrowserResponse.mockImplementation(() => {
         expect(activity.reportForCurrentProject).not.toHaveBeenCalled();
         if (outcome === 'source rejected') throw new Error('Source refused');
         if (outcome === 'worker failed')
@@ -4073,7 +3564,7 @@ select (
         };
       });
       component.runQuery();
-      expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+      expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
         target: { kind: 'browser-sqlite' }, definition: expect.objectContaining({ connectionId: 'chinook-sqlite' }),
       }));
       await vi.waitFor(() => expect(component.running()).toBe(false));
@@ -4253,7 +3744,7 @@ select (
     const rows = Array.from({ length: 150 }, (_, index) => [
       { type: 'integer' as const, value: String(index) },
     ]);
-    dispatchBrowserResponse.mockImplementation(() => {
+    fx.dispatchBrowserResponse.mockImplementation(() => {
       return {
         recordset: { columns: [{ name: 'n', type: 'integer' }], rows },
         limitations: [],
@@ -4269,7 +3760,7 @@ select (
       };
     });
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       target: { kind: 'browser-sqlite' },
     }));
     expect(activity.reportForCurrentProject).toHaveBeenCalledWith(
@@ -4283,7 +3774,7 @@ select (
     expect(component.visibleResultRows()).toHaveLength(50);
     expect(component.visibleResultRows()[0][0].value).toBe('100');
     expect(component.committedRun()?.scope.target).toBe('Browser SQLite snapshot (Chinook)');
-    expect(dispatchPageResponse).not.toHaveBeenCalled();
+    expect(fx.dispatchPageResponse).not.toHaveBeenCalled();
   });
 
   it('selects a registered working copy for an ordinary structured query and clears its result when switched', async () => {
@@ -4307,9 +3798,9 @@ select (
       browserExecution: { runtime: 'ovdb-connection', connectionId: 'logical-ledger-v7', databaseId: 'copy-1', workingCopyModified: true },
       provenance: { source: 'Working copy Edited copy', queryId: definition.id, mode: 'live', observedAt: '2026-10-16T00:00:00Z' },
     };
-    dispatchOvdbResponse.mockResolvedValue(result);
+    fx.dispatchOvdbResponse.mockResolvedValue(result);
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       projectRef: component.project.ref,
       runtimeSelectionId: 'runtime-17',
       definition,
@@ -4329,9 +3820,9 @@ select (
     await component.loadWorkingCopies();
     component.selectWorkingCopy('runtime-18');
     let complete!: (value: FederatedQueryResult) => void;
-    dispatchOvdbResponse.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
+    fx.dispatchOvdbResponse.mockImplementation(() => new Promise((resolve) => { complete = resolve; }));
     component.runQuery();
-    expect(dispatchStart).toHaveBeenLastCalledWith(expect.objectContaining({ runtimeSelectionId: 'runtime-18' }));
+    expect(fx.dispatchStart).toHaveBeenLastCalledWith(expect.objectContaining({ runtimeSelectionId: 'runtime-18' }));
     dispatcher.availableWorkingCopies.mockResolvedValue([]);
     dispatcher.advanceRevision();
     runFixture.detectChanges();
@@ -4369,7 +3860,7 @@ select (
     expect(component.selectedWorkingCopy()).toBe('missing-runtime');
     expect(component.unavailableWorkingCopy()).toBe(true);
     component.runQuery();
-    expect(dispatchStart).not.toHaveBeenCalled();
+    expect(fx.dispatchStart).not.toHaveBeenCalled();
     component.selectWorkingCopy('project');
     expect(component.unavailableWorkingCopy()).toBe(false);
     params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'project' }));
@@ -4408,10 +3899,10 @@ select (
     runFixture.detectChanges();
     await runFixture.whenStable();
     const pending = new Subject<RunQueryResponse>();
-    localResultFixture.mockReturnValue(pending);
+    fx.localResultFixture.mockReturnValue(pending);
 
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       target: expect.objectContaining({ kind: 'local-agent' }),
     }));
     expect(component.running()).toBe(true);
@@ -4419,7 +3910,7 @@ select (
     params.next(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
     expect(component.selectedWorkingCopy()).toBe('runtime-17');
     expect(component.running()).toBe(false);
-    expect(dispatchCancel).toHaveBeenCalled();
+    expect(fx.dispatchCancel).toHaveBeenCalled();
 
     pending.next({
       recordset: { columns: [{ name: 'Name', type: 'string' }], rows: [[{ type: 'string', value: 'stale' }]] },
@@ -4488,7 +3979,7 @@ select (
         result: Awaited<ReturnType<PublicSqliteQueryService['run']>>,
       ) => void;
       let rejectRun!: (error: Error) => void;
-      dispatchBrowserResponse.mockImplementation(
+      fx.dispatchBrowserResponse.mockImplementation(
         () =>
           new Promise((resolve, reject) => {
             resolveRun = resolve;
@@ -4537,14 +4028,14 @@ select (
       component.queryDef.set({ ...queryDef, connectionId: 'chinook-sqlite', parameters: [],
         request: { queryType: QueryType.SQL, text: 'SELECT 1' } as ISqlQueryRequest });
       let resolveRun!: (value: FederatedQueryResult) => void;
-      dispatchBrowserResponse.mockImplementation(() => new Promise((resolve) => { resolveRun = resolve; }));
+      fx.dispatchBrowserResponse.mockImplementation(() => new Promise((resolve) => { resolveRun = resolve; }));
       component.runQuery();
-      const captured = dispatchStart.mock.lastCall?.[0] as QueryDispatchRequest;
+      const captured = fx.dispatchStart.mock.lastCall?.[0] as QueryDispatchRequest;
       expect(captured.projectRef).toEqual(ref);
       expect(captured.environment).toBe('dev');
       if (change === 'branch') {
         (component as unknown as { onProjRefChanged(ref: IProjectRef): void }).onProjRefChanged({ ...ref, branch: 'release' });
-        expect(dispatchCancel).toHaveBeenCalled();
+        expect(fx.dispatchCancel).toHaveBeenCalled();
       } else {
         component.envId = 'prod';
       }
@@ -5797,7 +5288,7 @@ select (
         },
       }),
     );
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
   });
 
   it('cancels scheduled lookup focus when CustomerId changes before the next render', async () => {
@@ -6216,7 +5707,7 @@ select (
     expect(component.authorCustomerId()).toBe('2');
     expect(component.authorError()).toBeUndefined();
     expect(scenario.editor.openAuthorizedQuery).not.toHaveBeenCalled();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
   });
 
   it('aborts and invalidates an active author run when Code is edited', async () => {
@@ -6622,7 +6113,7 @@ select (
       await runFixture.whenStable();
       expect(runFixture.nativeElement.textContent).toContain('true:1');
       expect(created.queryState.authorBindings?.['CustomerId']).toBe('1');
-      expect(localResultFixture).not.toHaveBeenCalled();
+      expect(fx.localResultFixture).not.toHaveBeenCalled();
       created.authorCustomerIdChanged(
         new CustomEvent('ionInput', { detail: { value: '' } }),
       );
@@ -6804,14 +6295,14 @@ select (
       writable: true,
       configurable: true,
     });
-    localResultFixture = vi.fn();
-    federationResultFixture = vi.fn();
-    dispatchPageResponse = vi.fn();
-    dispatchBrowserResponse.mockReset();
-    dispatchOvdbResponse.mockReset();
-    dispatchHostedResponse.mockReset();
-    dispatchStart.mockReset();
-    dispatchCancel.mockReset().mockResolvedValue(undefined);
+    fx.localResultFixture = vi.fn();
+    fx.federationResultFixture = vi.fn();
+    fx.dispatchPageResponse = vi.fn();
+    fx.dispatchBrowserResponse.mockReset();
+    fx.dispatchOvdbResponse.mockReset();
+    fx.dispatchHostedResponse.mockReset();
+    fx.dispatchStart.mockReset();
+    fx.dispatchCancel.mockReset().mockResolvedValue(undefined);
     agentContext = agentContextStub(navigation?.securityContextId);
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
@@ -6934,12 +6425,12 @@ select (
           { provide: GithubProjectReaderService, useValue: { getRawJson: vi.fn() } },
           { provide: BrowserSqliteQueryService, useValue: { execute: vi.fn() } },
           { provide: QueryDispatchService, useClass: QueryDispatchService },
-        ] : [{ provide: QueryDispatchService, useValue: queryDispatchTestStub() }]),
+        ] : [{ provide: QueryDispatchService, useValue: queryDispatchTestStub(fx) }]),
         {
           provide: FederatedQueryService,
           useValue: {
             run: vi.fn(),
-            getPage: dispatchPageResponse,
+            getPage: fx.dispatchPageResponse,
             dispose: vi.fn().mockResolvedValue(undefined),
             listLocalResults: vi.fn().mockResolvedValue([]),
             openLocalResult: vi.fn(),
@@ -7003,7 +6494,7 @@ select (
     await vi.waitFor(() =>
       expect(component.agentRunEnvironments()).toHaveLength(2),
     );
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     component.selectAgentRunEnvironment('not-admitted');
     expect(component.envId).toBeUndefined();
     component.selectAgentRunEnvironment('qa');
@@ -7018,7 +6509,7 @@ select (
     expect(component.runError()).toContain(
       'agent security context is unavailable',
     );
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
   });
 
   const selectionBinding = {
@@ -7157,8 +6648,8 @@ select (
 
   beforeEach(() => {
     sessionStorage.clear();
-    dispatchStart.mockReset();
-    dispatchBrowserResponse.mockReset();
+    fx.dispatchStart.mockReset();
+    fx.dispatchBrowserResponse.mockReset();
   });
 
   it('clears the rendered private editor on same-UID read revocation instead of rendering cached content', async () => {
@@ -7273,17 +6764,17 @@ select (
         },
       };
       component.envId = undefined;
-      federationResultFixture.mockResolvedValue(historyResultFor(definition));
+      fx.federationResultFixture.mockResolvedValue(historyResultFor(definition));
       component.runQuery();
       await runFixture.whenStable();
-      expect(dispatchStart.mock.calls[0][0].definition).toEqual(definition);
+      expect(fx.dispatchStart.mock.calls[0][0].definition).toEqual(definition);
       expect(definition.federation?.ovdbBaseUrl).toBe(
         'https://ovdb.demodb.dev',
       );
       expect(definition.federation?.tables[0].name).toBe(
         source === 'chinook.Customer' ? 'Customer' : 'Person.Person',
       );
-      expect(localResultFixture).not.toHaveBeenCalled();
+      expect(fx.localResultFixture).not.toHaveBeenCalled();
       expect(TestBed.inject(Coordinator).execute).not.toHaveBeenCalled();
       expect(component.runError()).toBeUndefined();
     },
@@ -7311,28 +6802,28 @@ select (
       };
       component.envId = undefined;
       const result = historyResultFor(definition);
-      federationResultFixture.mockResolvedValue(result);
-      dispatchBrowserResponse.mockResolvedValue(result);
+      fx.federationResultFixture.mockResolvedValue(result);
+      fx.dispatchBrowserResponse.mockResolvedValue(result);
       const detective = TestBed.inject(DetectiveClientService);
       expect(component.isHostedProject).toBe(false);
       expect(component.queryValidatorsHref).toBeUndefined();
       component.runQuery();
       await vi.waitFor(() => expect(component.running()).toBe(false));
       if (execution === 'federation') {
-        expect(federationResultFixture).toHaveBeenCalledOnce();
-        expect(dispatchStart.mock.calls[0][0].definition).toEqual(definition);
-        expect(dispatchBrowserResponse).not.toHaveBeenCalled();
+        expect(fx.federationResultFixture).toHaveBeenCalledOnce();
+        expect(fx.dispatchStart.mock.calls[0][0].definition).toEqual(definition);
+        expect(fx.dispatchBrowserResponse).not.toHaveBeenCalled();
       } else {
-        expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+        expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
           projectRef: component.project.ref,
           definition,
           target: { kind: 'browser-sqlite' },
         }));
-        expect(federationResultFixture).not.toHaveBeenCalled();
+        expect(fx.federationResultFixture).not.toHaveBeenCalled();
       }
       expect(detective.runHostedQuery).not.toHaveBeenCalled();
       expect(detective.action).not.toHaveBeenCalled();
-      expect(localResultFixture).not.toHaveBeenCalled();
+      expect(fx.localResultFixture).not.toHaveBeenCalled();
       expect(component.runError()).toBeUndefined();
     },
   );
@@ -7543,11 +7034,11 @@ select (
         }));
         expect(created.runResult()?.provenance.mode).toBe('snapshot');
         expect(created.savedResultBanner()).toMatchObject({ kind: 'shown', mode: 'saved' });
-        expect(dispatchStart).not.toHaveBeenCalled();
+        expect(fx.dispatchStart).not.toHaveBeenCalled();
 
         if (unavailable) {
           created.runQuery();
-          expect(dispatchStart).not.toHaveBeenCalled();
+          expect(fx.dispatchStart).not.toHaveBeenCalled();
           expect(created.runResult()?.provenance.mode).toBe('snapshot');
           return;
         }
@@ -7556,11 +7047,11 @@ select (
           provenance: { source: 'Edited copy', queryId: definition.id, mode: 'live' as const,
             observedAt: '2026-10-16T00:00:00Z' },
         } as FederatedQueryResult;
-        dispatchOvdbResponse.mockResolvedValue(edited);
+        fx.dispatchOvdbResponse.mockResolvedValue(edited);
         created.runQuery();
         expect(created.runError()).toBeUndefined();
         expect(created.queryId).toBe(definition.id);
-        expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+        expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
           runtimeSelectionId: 'runtime-17', definition,
         }));
         await runFixture.whenStable();
@@ -7621,10 +7112,10 @@ select (
       expect(created.runResult()?.provenance.mode).toBe('snapshot');
 
       const pending = new Subject<RunQueryResponse>();
-      localResultFixture.mockReturnValue(pending);
+      fx.localResultFixture.mockReturnValue(pending);
       created.runQuery();
       expect(created.running()).toBe(true);
-      expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+      expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
         target: expect.objectContaining({ kind: 'local-agent' }),
       }));
 
@@ -7633,7 +7124,7 @@ select (
       expect(created.savedResultId()).toBe('rid-b');
       expect(created.runResult()?.provenance.mode).toBe('snapshot');
       expect(created.running()).toBe(false);
-      expect(dispatchCancel).toHaveBeenCalled();
+      expect(fx.dispatchCancel).toHaveBeenCalled();
 
       pending.next({
         recordset: { columns: [{ name: 'Name', type: 'string' }],
@@ -8099,15 +7590,15 @@ select (
     await runFixture.whenStable();
     expect(component.resultTotalRows()).toBe(115);
     expect(runFixture.nativeElement.textContent).toContain('original-alias');
-    dispatchPageResponse.mockResolvedValue([
+    fx.dispatchPageResponse.mockResolvedValue([
       [{ type: 'string', value: 'alias-page-2' }],
     ]);
     await component.changeResultPage(1);
     await runFixture.whenStable();
-    expect(dispatchPageResponse).toHaveBeenCalledWith(1, 'aliases', ref);
+    expect(fx.dispatchPageResponse).toHaveBeenCalledWith(1, 'aliases', ref);
     expect(runFixture.nativeElement.textContent).toContain('alias-page-2');
-    expect(federationResultFixture).not.toHaveBeenCalled();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.federationResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     expect(loadMetadata).not.toHaveBeenCalled();
   });
 
@@ -8119,7 +7610,7 @@ select (
     );
     await component.openHistoricalResult('missing');
     expect(component.localHistoryError()).toContain('No local result');
-    expect(federationResultFixture).not.toHaveBeenCalled();
+    expect(fx.federationResultFixture).not.toHaveBeenCalled();
     const result: FederatedQueryResult = {
       localResult: { id: 'old', generation: 1 },
       recordset: { columns: [], rows: [] },
@@ -8138,7 +7629,7 @@ select (
     component.runResult.set(result);
     component.selectedHistoricalResult.set(result.localResult);
     let release!: (rows: unknown) => void;
-    dispatchPageResponse.mockImplementation(
+    fx.dispatchPageResponse.mockImplementation(
       () =>
         new Promise((resolve) => {
           release = resolve;
@@ -8165,7 +7656,7 @@ select (
     expect(component.resultPageIndex()).toBe(0);
 
     let rejectPage!: (error: Error) => void;
-    dispatchPageResponse.mockImplementationOnce(
+    fx.dispatchPageResponse.mockImplementationOnce(
       () =>
         new Promise((_resolve, reject) => {
           rejectPage = reject;
@@ -8283,7 +7774,7 @@ select (
     let finishLate!: (
       result: Awaited<ReturnType<FederatedQueryService['run']>>,
     ) => void;
-    federationResultFixture
+    fx.federationResultFixture
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -8315,7 +7806,7 @@ select (
       );
 
     component.runQuery();
-    const firstRunOptions = dispatchStart.mock.calls[0][0].federationRun?.extras as {
+    const firstRunOptions = fx.dispatchStart.mock.calls[0][0].federationRun?.extras as {
       onFirstRecord?: (at: number) => void;
     };
     now = 20;
@@ -8393,12 +7884,12 @@ select (
   it('applies a late federated row count only to the still-current completed receipt', async () => {
     const definition = historyDefinition();
     component = await createComponent({}, definition, historyResultTemplate());
-    federationResultFixture.mockResolvedValue(historyResultFor(definition));
+    fx.federationResultFixture.mockResolvedValue(historyResultFor(definition));
 
     component.runQuery();
     await runFixture.whenStable();
     const originalReceipt = component.committedRun();
-    const onFinished = dispatchStart.mock.calls.at(-1)?.[0].federationRun?.onFinished as
+    const onFinished = fx.dispatchStart.mock.calls.at(-1)?.[0].federationRun?.onFinished as
       | ((totalRows: number) => void)
       | undefined;
     expect(originalReceipt?.result.totalRows).toBe(150);
@@ -8430,7 +7921,7 @@ select (
       { editor, project: new BehaviorSubject(project) },
     );
     const result = historyResultFor(definition);
-    federationResultFixture.mockResolvedValue(result);
+    fx.federationResultFixture.mockResolvedValue(result);
 
     component.runQuery();
     await runFixture.whenStable();
@@ -8480,7 +7971,7 @@ select (
     let finishAfterClear!: (
       result: Awaited<ReturnType<FederatedQueryService['run']>>,
     ) => void;
-    federationResultFixture
+    fx.federationResultFixture
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -8501,7 +7992,7 @@ select (
       );
 
     component.runQuery();
-    expect(dispatchStart.mock.calls.at(-1)?.[0].federationRun?.token).toBe('first-secret-token');
+    expect(fx.dispatchStart.mock.calls.at(-1)?.[0].federationRun?.token).toBe('first-secret-token');
     finishInitial(historyResultFor(definition));
     await runFixture.whenStable();
     const receipt = component.committedRun();
@@ -8521,7 +8012,7 @@ select (
     expect(component.committedRun()).toBeUndefined();
 
     component.runQuery();
-    expect(dispatchStart.mock.calls.at(-1)?.[0].federationRun?.token).toBe(
+    expect(fx.dispatchStart.mock.calls.at(-1)?.[0].federationRun?.token).toBe(
       'replacement-secret-token',
     );
     setToken('');
@@ -8554,7 +8045,7 @@ select (
       ),
       { editor, project: new BehaviorSubject(project) },
     );
-    federationResultFixture.mockResolvedValue(historyResultFor(definition));
+    fx.federationResultFixture.mockResolvedValue(historyResultFor(definition));
 
     component.runQuery();
     await runFixture.whenStable();
@@ -8633,7 +8124,7 @@ select (
         executionProfile: 'protected',
       },
     };
-    localResultFixture.mockReturnValueOnce(of(response));
+    fx.localResultFixture.mockReturnValueOnce(of(response));
 
     component.runQuery();
     await runFixture.whenStable();
@@ -8716,12 +8207,12 @@ select (
         executionProfile: 'protected',
       },
     };
-    localResultFixture.mockReturnValueOnce(of(response));
+    fx.localResultFixture.mockReturnValueOnce(of(response));
     component.runQuery();
     await runFixture.whenStable();
     expect(component.committedRun()).toBeDefined();
 
-    localResultFixture.mockReturnValueOnce(
+    fx.localResultFixture.mockReturnValueOnce(
       throwError(
         () =>
           new HttpErrorResponse({
@@ -8748,12 +8239,12 @@ select (
   it('clears a retained OVDB result when the next federated attempt is denied', async () => {
     const definition = historyDefinition();
     component = await createComponent({}, definition, historyResultTemplate());
-    federationResultFixture.mockResolvedValueOnce(historyResultFor(definition));
+    fx.federationResultFixture.mockResolvedValueOnce(historyResultFor(definition));
     component.runQuery();
     await runFixture.whenStable();
     expect(component.committedRun()).toBeDefined();
 
-    federationResultFixture.mockRejectedValueOnce(
+    fx.federationResultFixture.mockRejectedValueOnce(
       new Error('OVDB database whole-query execution failed (403).'),
     );
     component.runQuery();
@@ -8773,7 +8264,7 @@ select (
     let complete!: (
       result: Awaited<ReturnType<FederatedQueryService['run']>>,
     ) => void;
-    federationResultFixture.mockImplementation(
+    fx.federationResultFixture.mockImplementation(
       () =>
         new Promise((resolve) => {
           complete = resolve;
@@ -8781,7 +8272,7 @@ select (
     );
 
     component.runQuery();
-    const extras = dispatchStart.mock.calls[0][0].federationRun?.extras as {
+    const extras = fx.dispatchStart.mock.calls[0][0].federationRun?.extras as {
       onFirstRecord?: (at: number) => void;
     };
     now = 20;
@@ -8809,7 +8300,7 @@ select (
     let complete!: (
       result: Awaited<ReturnType<FederatedQueryService['run']>>,
     ) => void;
-    federationResultFixture.mockImplementation(
+    fx.federationResultFixture.mockImplementation(
       () =>
         new Promise((resolve) => {
           complete = resolve;
@@ -8843,7 +8334,7 @@ select (
     let now = 5;
     const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
     let fail!: (error: Error) => void;
-    federationResultFixture.mockImplementation(
+    fx.federationResultFixture.mockImplementation(
       () =>
         new Promise((_resolve, reject) => {
           fail = reject;
@@ -8851,7 +8342,7 @@ select (
     );
 
     component.runQuery();
-    const extras = dispatchStart.mock.calls[0][0].federationRun?.extras as {
+    const extras = fx.dispatchStart.mock.calls[0][0].federationRun?.extras as {
       onFirstRecord?: (at: number) => void;
     };
     now = 12;
@@ -8873,7 +8364,7 @@ select (
     const definition = historyDefinition();
     component = await createComponent({}, definition, historyResultTemplate());
     component.federatedMode.set('visible');
-    federationResultFixture.mockResolvedValue(historyResultFor(definition));
+    fx.federationResultFixture.mockResolvedValue(historyResultFor(definition));
 
     component.runQuery();
     await runFixture.whenStable();
@@ -8912,7 +8403,7 @@ select (
         definition,
         historyResultTemplate(),
       );
-      federationResultFixture.mockResolvedValue({
+      fx.federationResultFixture.mockResolvedValue({
         ...historyResultFor(definition),
         ...incomplete,
       });
@@ -8937,7 +8428,7 @@ select (
     let finish!: (
       result: Awaited<ReturnType<FederatedQueryService['run']>>,
     ) => void;
-    federationResultFixture.mockImplementation(
+    fx.federationResultFixture.mockImplementation(
       () =>
         new Promise((resolve) => {
           finish = resolve;
@@ -8945,7 +8436,7 @@ select (
     );
 
     component.runQuery();
-    const extras = dispatchStart.mock.calls[0][0].federationRun?.extras as {
+    const extras = fx.dispatchStart.mock.calls[0][0].federationRun?.extras as {
       onFirstRecord?: (at: number) => void;
     };
     now = 12;
@@ -8975,7 +8466,7 @@ select (
     let finishNew!: (
       result: Awaited<ReturnType<FederatedQueryService['run']>>,
     ) => void;
-    federationResultFixture
+    fx.federationResultFixture
       .mockImplementationOnce(
         () =>
           new Promise((resolve) => {
@@ -8990,14 +8481,14 @@ select (
       );
 
     component.runQuery();
-    const oldExtras = dispatchStart.mock.calls[0][0].federationRun?.extras as {
+    const oldExtras = fx.dispatchStart.mock.calls[0][0].federationRun?.extras as {
       onFirstRecord?: (at: number) => void;
     };
     Object.assign(definition.federation?.nativeGraph ?? {}, { aliases: false });
     editor.next(historyStateFor(definition));
     now = 20;
     component.runQuery();
-    const newExtras = dispatchStart.mock.calls[1][0].federationRun?.extras as {
+    const newExtras = fx.dispatchStart.mock.calls[1][0].federationRun?.extras as {
       onFirstRecord?: (at: number) => void;
     };
     oldExtras.onFirstRecord?.(performance.timeOrigin + 15);
@@ -9091,8 +8582,8 @@ select (
       expect(
         component.resultGridRows().flatMap((row) => Object.values(row)),
       ).toContain('original-row');
-      expect(federationResultFixture).not.toHaveBeenCalled();
-      expect(localResultFixture).not.toHaveBeenCalled();
+      expect(fx.federationResultFixture).not.toHaveBeenCalled();
+      expect(fx.localResultFixture).not.toHaveBeenCalled();
     } finally {
       await deleteLocalResult(descriptor.id);
     }
@@ -9111,7 +8602,7 @@ select (
         { editor, project: of(project) },
       );
       const result = historyResultFor(definition);
-      federationResultFixture.mockResolvedValue(result);
+      fx.federationResultFixture.mockResolvedValue(result);
       component.runQuery();
       await runFixture.whenStable();
       expect(
@@ -9158,9 +8649,9 @@ select (
           '[data-testid="result-provenance"]',
         ).textContent,
       ).not.toContain('live');
-      expect(dispatchCancel).toHaveBeenCalled();
-      expect(federationResultFixture).toHaveBeenCalledOnce();
-      expect(localResultFixture).not.toHaveBeenCalled();
+      expect(fx.dispatchCancel).toHaveBeenCalled();
+      expect(fx.federationResultFixture).toHaveBeenCalledOnce();
+      expect(fx.localResultFixture).not.toHaveBeenCalled();
     },
   );
 
@@ -9176,12 +8667,12 @@ select (
         { editor, project: of(project) },
       );
       let release!: (result: FederatedQueryResult) => void;
-      federationResultFixture.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+      fx.federationResultFixture.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
       vi.mocked(TestBed.inject(FederatedQueryService).openLocalResult).mockRejectedValue(
         new Error('Fixture unavailable.'),
       );
       component.runQuery();
-      expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'ovdb-federation' } }));
+      expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'ovdb-federation' } }));
         if (action === 'edit') {
           Object.assign(definition.federation?.nativeGraph ?? {}, {
             aliases: false,
@@ -9197,7 +8688,7 @@ select (
         expect(component.runResult()).toBeUndefined();
         release(historyResultFor(definition));
         await runFixture.whenStable();
-        expect(dispatchCancel).toHaveBeenCalled();
+        expect(fx.dispatchCancel).toHaveBeenCalled();
         expect(component.runResult()).toBeUndefined();
         expect(component.runError()).toBeUndefined();
     },
@@ -9234,7 +8725,7 @@ select (
       limitations: [], bindingsApplied: [], truncated: false,
       provenance: { source: 'agent', queryId: queryDef.id, mode: 'live', observedAt: '2026-10-16T00:00:00Z', executionProfile: 'protected' },
     };
-    localResultFixture.mockReturnValueOnce(of(result));
+    fx.localResultFixture.mockReturnValueOnce(of(result));
     component.runQuery();
     await runFixture.whenStable();
     expect(component.runResult()).toEqual(result);
@@ -9258,14 +8749,14 @@ select (
       let finish!: (
         value: Awaited<ReturnType<FederatedQueryService['run']>>,
       ) => void;
-      federationResultFixture.mockImplementation(
+      fx.federationResultFixture.mockImplementation(
         () =>
           new Promise((resolve) => {
             finish = resolve;
           }),
       );
       component.runQuery();
-      const oldCall = dispatchStart.mock.calls.at(-1)?.[0] as QueryDispatchRequest | undefined;
+      const oldCall = fx.dispatchStart.mock.calls.at(-1)?.[0] as QueryDispatchRequest | undefined;
       Object.assign(definition.federation?.nativeGraph ?? {}, {
         aliases: false,
       });
@@ -9309,7 +8800,7 @@ select (
       let finishNew!: (
         value: Awaited<ReturnType<FederatedQueryService['run']>>,
       ) => void;
-      federationResultFixture
+      fx.federationResultFixture
         .mockImplementationOnce(
           () =>
             new Promise((resolve, reject) => {
@@ -9400,8 +8891,8 @@ select (
       expect(component.historicalDefinition()).toBeUndefined();
       expect(component.localHistoryError()).toBeUndefined();
       expect(component.localHistoryLoading()).toBe(false);
-      expect(federationResultFixture).not.toHaveBeenCalled();
-      expect(localResultFixture).not.toHaveBeenCalled();
+      expect(fx.federationResultFixture).not.toHaveBeenCalled();
+      expect(fx.localResultFixture).not.toHaveBeenCalled();
     },
   );
 
@@ -9435,7 +8926,7 @@ select (
       });
       if (!other.localResult) throw new Error('Missing other graph result.');
       await component.openHistoricalResult(other.localResult.id);
-      dispatchPageResponse.mockResolvedValue([
+      fx.dispatchPageResponse.mockResolvedValue([
         [{ type: 'string', value: 'other-page' }],
       ]);
       await component.changeResultPage(1);
@@ -9489,13 +8980,13 @@ select (
     component = await createComponent({}, definition);
     expect(component.queryDef()?.publicData).toEqual(saved);
     expect(component.publicDataRevisionChanges()).toEqual(['directory']);
-    expect(federationResultFixture).not.toHaveBeenCalled();
+    expect(fx.federationResultFixture).not.toHaveBeenCalled();
     component.runQuery();
     expect(component.runError()).toMatch(/revisions changed/);
     component.publicDataRevisionAcknowledged.set(true);
     component.runQuery();
     expect(component.runError()).toBe(SAVED_SCENARIO_PUBLICATION_BLOCKER);
-    expect(federationResultFixture).not.toHaveBeenCalled();
+    expect(fx.federationResultFixture).not.toHaveBeenCalled();
   });
 
   it.each(['canonical', 'data-only', 'configuration-only'] as const)(
@@ -9603,7 +9094,7 @@ select (
           );
           expect(create).not.toHaveBeenCalled();
           expect(component.queryDef()).toEqual(original);
-          expect(federationResultFixture).not.toHaveBeenCalled();
+          expect(fx.federationResultFixture).not.toHaveBeenCalled();
           return;
         }
         expect(component.savedPlanReview.review()?.compatible).toBe(true);
@@ -9664,7 +9155,7 @@ select (
         ) as HTMLButtonElement;
         expect(save.disabled).toBe(true);
         expect(create).not.toHaveBeenCalled();
-        expect(federationResultFixture).not.toHaveBeenCalled();
+        expect(fx.federationResultFixture).not.toHaveBeenCalled();
         await click('Acknowledge this metadata check');
         await click('Save separate pending plan');
         expect(create).toHaveBeenCalledOnce();
@@ -9673,8 +9164,8 @@ select (
         component.resultPageIndex.set(1);
         component.runQuery();
         expect(component.resultPageIndex()).toBe(1);
-        expect(federationResultFixture).not.toHaveBeenCalled();
-        expect(localResultFixture).not.toHaveBeenCalled();
+        expect(fx.federationResultFixture).not.toHaveBeenCalled();
+        expect(fx.localResultFixture).not.toHaveBeenCalled();
       } finally {
         vi.unstubAllGlobals();
       }
@@ -9709,7 +9200,7 @@ select (
         executionProfile: 'protected',
       },
     };
-    federationResultFixture.mockImplementation(
+    fx.federationResultFixture.mockImplementation(
       (request: QueryDispatchRequest) => {
         request.federationRun?.onProgress?.({
           stage: 'processing',
@@ -9724,8 +9215,8 @@ select (
     );
     component.runQuery();
     await Promise.resolve();
-    expect(federationResultFixture).toHaveBeenCalledOnce();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.federationResultFixture).toHaveBeenCalledOnce();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     expect(component.federatedProgress()).toEqual(expect.objectContaining({
       rowsLoaded: 103,
       rowsProcessed: 100,
@@ -9778,7 +9269,7 @@ select (
     component = await createComponent({}, definition);
     expect(component.federatedMode()).toBe('visible');
     expect(component.ovdbDestination()).toBe('http://127.0.0.1:50501');
-    federationResultFixture.mockResolvedValue({
+    fx.federationResultFixture.mockResolvedValue({
       recordset: { columns: [], rows: [] },
       limitations: [],
       bindingsApplied: [],
@@ -9786,7 +9277,7 @@ select (
     });
     component.federatedMode.set('full');
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       definition,
       target: { kind: 'ovdb-federation' },
       federationRun: expect.objectContaining({
@@ -9809,7 +9300,7 @@ select (
       parameters: [],
     };
     component = await createComponent({}, definition);
-    federationResultFixture.mockResolvedValue({
+    fx.federationResultFixture.mockResolvedValue({
       recordset: {
         columns: [{ name: 'id', type: 'integer' }],
         rows: Array.from({ length: 205 }, (_, index) => [
@@ -9853,7 +9344,7 @@ select (
       parameters: [],
     };
     component = await createComponent({}, definition);
-    federationResultFixture.mockResolvedValue({
+    fx.federationResultFixture.mockResolvedValue({
       recordset: {
         columns: [{ name: 'id', type: 'integer' }],
         rows: [[{ type: 'integer', value: '1' }]],
@@ -9870,7 +9361,7 @@ select (
         executionProfile: 'protected',
       },
     });
-    dispatchPageResponse.mockResolvedValue([
+    fx.dispatchPageResponse.mockResolvedValue([
       [{ type: 'integer', value: '101' }],
     ]);
     component.runQuery();
@@ -9878,7 +9369,7 @@ select (
     expect(component.resultTotalRows()).toBe(120_000);
     expect(component.visibleResultRows()).toHaveLength(1);
     await component.changeResultPage(1);
-    expect(dispatchPageResponse).toHaveBeenCalledWith(1, 'affiliations');
+    expect(fx.dispatchPageResponse).toHaveBeenCalledWith(1, 'affiliations');
     expect(component.visibleResultRows()).toEqual([
       [{ type: 'integer', value: '101' }],
     ]);
@@ -9886,12 +9377,12 @@ select (
 
     // A cached Ionic page keeps its dispatcher session for paging, then must
     // release that same owner when navigation leaves the route.
-    expect(dispatchCancel).not.toHaveBeenCalled();
+    expect(fx.dispatchCancel).not.toHaveBeenCalled();
     component.selectedHistoricalResult.set(historyResultFor(historyDefinition()).localResult);
     component.historicalDefinition.set(definition);
     component.ionViewWillLeave();
     await runFixture.whenStable();
-    expect(dispatchCancel).toHaveBeenCalledOnce();
+    expect(fx.dispatchCancel).toHaveBeenCalledOnce();
     expect(component.runResult()).toBeUndefined();
     expect(component.visibleResultRows()).toEqual([]);
     expect(component.committedRun()).toBeUndefined();
@@ -10150,7 +9641,7 @@ select (
     resolvePin({ runId: 'run_original', run: { executionAuthority: 'client' }, input: { id: 'input_original' } } as never);
     await run;
 
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     expect(reportClientRun).toHaveBeenCalledWith('session-a', 'run_original', 'query', [
       { id: 'query', state: 'failed', errorCode: 'CLIENT_DISPATCH_REJECTED' },
     ]);
@@ -10312,7 +9803,7 @@ select (
 
     component.project = project;
     component.runQuery();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     expect(component.runError()).toBeTruthy();
   });
 
@@ -10331,7 +9822,7 @@ select (
 
     component.project = project;
     component.runQuery();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
 
     component.confirmConflict('CustomerId');
 
@@ -10390,12 +9881,12 @@ select (
       role: 'affected',
     });
     TestBed.tick();
-    localResultFixture.mockReturnValue(of(response));
+    fx.localResultFixture.mockReturnValue(of(response));
     component.project = project;
 
     component.runQuery();
 
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({ agentRequest: {
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({ agentRequest: {
       project: 'demo-project',
       environment: 'production',
       securityContextId: 'sctx-1',
@@ -10449,9 +9940,9 @@ select (
       limitations: [], bindingsApplied: [], truncated: false,
       provenance: { source: 'chinook', mode: 'live', observedAt: '2026-10-14T00:00:00Z', executionProfile: 'protected' },
     };
-    localResultFixture.mockReturnValue(of(response));
+    fx.localResultFixture.mockReturnValue(of(response));
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       agentRequest: expect.objectContaining({
         queryId: definition.id,
         parameters: { CustomerId: { type: 'integer', value: '7' } },
@@ -10538,7 +10029,7 @@ select (
       projectId: 'demo-project',
       executionId: 'local-execution-1',
     };
-    localResultFixture.mockReturnValue(
+    fx.localResultFixture.mockReturnValue(
       of({
         recordset: { columns: [], rows: [] },
         limitations: [],
@@ -10555,7 +10046,7 @@ select (
       }),
     );
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       agentRequest: expect.objectContaining({ queryId: queryDef.id, record: true }),
     }));
     await runFixture.whenStable();
@@ -10629,7 +10120,7 @@ select (
       },
       truncated: false,
     });
-    localResultFixture.mockReturnValueOnce(earlier).mockReturnValueOnce(later);
+    fx.localResultFixture.mockReturnValueOnce(earlier).mockReturnValueOnce(later);
 
     component.runQuery();
     component.runQuery();
@@ -10655,7 +10146,7 @@ select (
       source: 'grid',
     });
     TestBed.tick();
-    localResultFixture.mockReturnValue(
+    fx.localResultFixture.mockReturnValue(
       of({
         recordset: { columns: [], rows: [] },
         limitations: [],
@@ -10674,7 +10165,7 @@ select (
 
     component.runQuery();
 
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       agentRequest: expect.objectContaining({ parameters: {}, bindingOrigins: [] }),
     }));
   });
@@ -10687,13 +10178,13 @@ select (
 
     component.runQuery();
 
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     expect(component.runError()).toContain('provenance');
   });
 
   it('runQuery reports the failure without hiding it', async () => {
     component = await createComponent({});
-    localResultFixture.mockReturnValue(
+    fx.localResultFixture.mockReturnValue(
       throwError(() => ({ message: 'ACCESS_DENIED' })),
     );
     component.project = project;
@@ -10711,7 +10202,7 @@ select (
     runFixture.detectChanges();
     await runFixture.whenStable();
     const pending = new Subject<never>();
-    localResultFixture.mockReturnValue(pending);
+    fx.localResultFixture.mockReturnValue(pending);
     component.runQuery();
     pending.error(
       new HttpErrorResponse({
@@ -10766,7 +10257,7 @@ select (
     expect(runFixture.nativeElement.textContent).toContain(
       'openvaultdb: ACCESS_DENIED',
     );
-    localResultFixture.mockReturnValue(new Subject<never>());
+    fx.localResultFixture.mockReturnValue(new Subject<never>());
     component.runQuery();
     expect(component.accessBlockers()).toEqual([]);
   });
@@ -10777,7 +10268,7 @@ select (
 
     component.runQuery();
 
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
   });
 
   it('runQuery does nothing without an environment (envId unset)', async () => {
@@ -10787,7 +10278,7 @@ select (
 
     component.runQuery();
 
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
   });
 
   it('TARGET_REQUIRED populates availableTargets from the error, never a hidden source', async () => {
@@ -10807,7 +10298,7 @@ select (
         },
       },
     });
-    localResultFixture.mockReturnValue(throwError(() => targetRequired));
+    fx.localResultFixture.mockReturnValue(throwError(() => targetRequired));
 
     component.runQuery();
 
@@ -10844,7 +10335,7 @@ select (
         },
       },
     });
-    localResultFixture.mockReturnValue(throwError(() => sourceUnavailable));
+    fx.localResultFixture.mockReturnValue(throwError(() => sourceUnavailable));
 
     component.runQuery();
 
@@ -10854,8 +10345,8 @@ select (
       snapshotId: 'exchange-rates-2026-09-01',
       recordedAt: '2026-09-01T00:00:00Z',
     });
-    expect(localResultFixture).toHaveBeenCalledTimes(1);
-    expect(dispatchStart.mock.calls[0][0].agentRequest).toMatchObject({ mode: 'live' });
+    expect(fx.localResultFixture).toHaveBeenCalledTimes(1);
+    expect(fx.dispatchStart.mock.calls[0][0].agentRequest).toMatchObject({ mode: 'live' });
 
     const snapshotResponse = {
       recordset: { columns: [], rows: [] },
@@ -10870,13 +10361,13 @@ select (
       },
       truncated: false,
     };
-    localResultFixture.mockReturnValue(of(snapshotResponse));
+    fx.localResultFixture.mockReturnValue(of(snapshotResponse));
 
     component.runSnapshot();
 
     await runFixture.whenStable();
-    expect(localResultFixture).toHaveBeenCalledTimes(2);
-    expect(dispatchStart.mock.calls[1][0].agentRequest).toMatchObject({
+    expect(fx.localResultFixture).toHaveBeenCalledTimes(2);
+    expect(fx.dispatchStart.mock.calls[1][0].agentRequest).toMatchObject({
       mode: 'snapshot',
       snapshotId: 'exchange-rates-2026-09-01',
     });
@@ -10898,19 +10389,19 @@ select (
         // No "details" key at all — this query has no recorded fixture.
       },
     });
-    localResultFixture.mockReturnValue(throwError(() => sourceUnavailableNoFixture));
+    fx.localResultFixture.mockReturnValue(throwError(() => sourceUnavailableNoFixture));
 
     component.runQuery();
 
     await runFixture.whenStable();
     expect(component.sourceUnavailable()).toBe(true);
     expect(component.availableSnapshot()).toBeUndefined();
-    expect(localResultFixture).toHaveBeenCalledTimes(1);
+    expect(fx.localResultFixture).toHaveBeenCalledTimes(1);
 
     component.runSnapshot();
 
     // Never sends a mode:snapshot request with a fabricated/empty snapshotId.
-    expect(localResultFixture).toHaveBeenCalledTimes(1);
+    expect(fx.localResultFixture).toHaveBeenCalledTimes(1);
   });
 
   it('a late run response for a scope the user has since left is discarded (Task 15 item 4)', async () => {
@@ -10930,7 +10421,7 @@ select (
     };
     // Don't resolve synchronously — simulate an in-flight request.
     let resolveRun!: (value: typeof response) => void;
-    localResultFixture.mockReturnValue(
+    fx.localResultFixture.mockReturnValue(
       new Observable<typeof response>((subscriber) => {
         resolveRun = (value) => {
           subscriber.next(value);
@@ -10967,7 +10458,7 @@ select (
         error: { code: 'STALE_CONTEXT', message: 'stale', requestId: 'req-3' },
       },
     });
-    localResultFixture.mockReturnValue(throwError(() => staleContext));
+    fx.localResultFixture.mockReturnValue(throwError(() => staleContext));
 
     component.runQuery();
 
@@ -11044,7 +10535,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
       writable: true,
       configurable: true,
     });
-    localResultFixture = vi.fn();
+    fx.localResultFixture = vi.fn();
     await TestBed.configureTestingModule({
       imports: [QueryPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
@@ -11102,7 +10593,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
         { provide: DetectiveClientService, useValue: detectiveClientStub() },
-        { provide: QueryDispatchService, useValue: queryDispatchTestStub() },
+        { provide: QueryDispatchService, useValue: queryDispatchTestStub(fx) },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
@@ -11151,7 +10642,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
 
     component.project = project;
     component.runQuery();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
     expect(component.runError()).toBeTruthy();
   });
 
@@ -11173,7 +10664,7 @@ describe('QueryPageComponent — clearing a required parameter blocks Run (S96)'
 
     component.project = project;
     component.runQuery();
-    expect(localResultFixture).not.toHaveBeenCalled();
+    expect(fx.localResultFixture).not.toHaveBeenCalled();
   });
 
   it('disabling the Investigation Context chip (not clearing the page-local binding) empties a required from-context binding the same way (AC:context-carries "disabling the chip empties it")', async () => {
@@ -11543,7 +11034,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
         { provide: EnvironmentService, useValue: { getEnvSummary: vi.fn() } },
         { provide: SemanticApiService, useValue: { runQuery: vi.fn() } },
         { provide: DetectiveClientService, useValue: detectiveClientStub() },
-        { provide: QueryDispatchService, useValue: queryDispatchTestStub() },
+        { provide: QueryDispatchService, useValue: queryDispatchTestStub(fx) },
         { provide: AgentContextService, useValue: agentContextStub() },
       ],
     })
@@ -11580,8 +11071,8 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
   }
   beforeEach(() => {
     sessionStorage.clear();
-    dispatchStart.mockReset();
-    dispatchBrowserResponse.mockReset();
+    fx.dispatchStart.mockReset();
+    fx.dispatchBrowserResponse.mockReset();
   });
 
   it('uses the shared CodeMirror editor for native SQL and keeps textareas for other queries', () => {
@@ -11788,22 +11279,22 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     };
     component = await createComponent(definition);
     component.project = project;
-    dispatchBrowserResponse.mockImplementation(() => new Promise<FederatedQueryResult>(() => undefined));
+    fx.dispatchBrowserResponse.mockImplementation(() => new Promise<FederatedQueryResult>(() => undefined));
 
     component.setNativeParameterInput(albumId, '0');
     component.runQuery();
     expect(component.runError()).toContain('needs values for its required declared parameters');
-    expect(dispatchStart).not.toHaveBeenCalled();
+    expect(fx.dispatchStart).not.toHaveBeenCalled();
 
     component.setNativeParameterInput(artistId, '9007199254740992');
     component.runQuery();
     expect(component.nativeParameterError('ArtistId')).toContain('valid integer');
-    expect(dispatchStart).not.toHaveBeenCalled();
+    expect(fx.dispatchStart).not.toHaveBeenCalled();
 
     component.setNativeParameterInput(artistId, '-5');
     component.runQuery();
-    expect(dispatchStart).toHaveBeenCalledOnce();
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledOnce();
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       projectRef: project.ref,
       definition,
       target: { kind: 'browser-sqlite' },
@@ -11869,7 +11360,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     expect(component.envId).toBeUndefined();
     component.runQuery();
 
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       projectRef: browserProject.ref,
       definition,
       environment: undefined,
@@ -11892,13 +11383,13 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
       limitations: [], bindingsApplied: [], truncated: false,
       provenance: { source: 'Pinned public Chinook SQLite fixture', queryId: definition.id, mode: 'snapshot', observedAt: '2026-10-14T00:00:00Z', executionProfile: 'protected' },
     } as FederatedQueryResult;
-    dispatchBrowserResponse.mockResolvedValue(result);
+    fx.dispatchBrowserResponse.mockResolvedValue(result);
 
     component.setNativeParameterInput(albumId, '0');
     component.setNativeParameterInput(artistId, '-5');
     component.runQuery();
     await vi.waitFor(() => expect(component.runResult()).toBeDefined());
-    expect(dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
+    expect(fx.dispatchStart).toHaveBeenCalledWith(expect.objectContaining({
       target: { kind: 'browser-sqlite' },
       parameters: {
         AlbumId: { type: 'integer', value: '0' },

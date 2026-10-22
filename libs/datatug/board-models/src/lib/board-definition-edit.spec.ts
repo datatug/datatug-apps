@@ -95,6 +95,34 @@ describe('canonical durable board definition edits', () => {
     );
     expect(next.rows?.flatMap((row) => row.cards ?? []).length).toBe(2);
   });
+  it('turns an inline card into a project card reference', () => {
+    const next = editBoardDefinition(
+      board(),
+      {
+        type: 'set-card-ref',
+        cardId: 'tabs',
+        ref: { cardId: 'evidence', parameters: [{ id: 'p', boardParameterId: 'p' }] },
+      },
+      [],
+    );
+    const cell = next.rows?.[0].cards?.[0];
+    expect(cell?.widget).toBeUndefined();
+    expect(cell?.ref?.cardId).toBe('evidence');
+    expect(() =>
+      editBoardDefinition(
+        board(),
+        { type: 'set-card-ref', cardId: 'tabs', ref: { cardId: 'bad id' } },
+        [],
+      ),
+    ).toThrow();
+    expect(() =>
+      editBoardDefinition(
+        board(),
+        { type: 'set-card-ref', cardId: 'nope', ref: { cardId: 'x' } },
+        [],
+      ),
+    ).toThrow();
+  });
   it('refuses source text, unsupported graph fields and unlisted saved queries without loss', () => {
     expect(() =>
       validateHostedBoardDefinition({ id: 'missing-title' } as Board),

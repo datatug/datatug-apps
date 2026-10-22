@@ -254,6 +254,14 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
         producers.add(selection);
       }
     } else if (widget['name'] === 'SQL') {
+      // Parameter-sourced rows carry no saved query and nothing to filter on.
+      if (
+        record(data) &&
+        data['sql'] === undefined &&
+        record(data['source']) &&
+        keys(data['source'], ['parameter'])
+      )
+        return;
       if (!record(data) || !record(data['sql'])) return fail();
       if (
         Object.keys(data['sql']).some(
@@ -285,6 +293,10 @@ export function validateBoardPresentation(board: unknown): readonly string[] {
       for (const tab of data['tabs']) {
         if (!record(tab)) return fail();
         visit(tab['widget'], depth + 1);
+        if (tab['widgets'] != null) {
+          if (!Array.isArray(tab['widgets'])) return fail();
+          for (const inner of tab['widgets']) visit(inner, depth + 1);
+        }
       }
     }
   };

@@ -169,11 +169,13 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'meanings'].includes(
+            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'cards', 'card', 'meanings'].includes(
               segments[6].path,
             )) ||
           (segments.length === 8 && segments[6].path === 'meanings' && ['new-entity', 'entity', 'new-field', 'field'].includes(segments[7].path)) ||
           (segments.length === 8 && segments[6].path === 'boards' && segments[7].path === 'new') ||
+          (segments.length === 8 && segments[6].path === 'cards' && segments[7].path === 'new') ||
+          (segments.length === 8 && segments[6].path === 'card' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 && segments[6].path === 'board' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
           (segments.length === 8 &&
             ['checks', 'detective', 'incidents', 'search-schema'].includes(segments[6].path) &&
@@ -219,6 +221,19 @@ export const datatugRoutes: Routes = [
         loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
       },
       { path: 'board', pathMatch: 'full', redirectTo: 'boards' },
+      {
+        path: 'cards/new', data: { newCard: true },
+        loadComponent: () => import('../cards/card-page.component').then((m) => m.CardPageComponent),
+      },
+      {
+        path: 'card/:cardId',
+        loadComponent: () => import('../cards/card-page.component').then((m) => m.CardPageComponent),
+      },
+      { path: 'card', pathMatch: 'full', redirectTo: 'cards' },
+      {
+        path: 'cards',
+        loadComponent: () => import('../cards/cards-page.component').then((m) => m.CardsPageComponent),
+      },
       {
         path: 'boards',
         loadComponent: () => import('../board/ui/pages/boards/boards-page.component').then((m) => m.BoardsPageComponent),

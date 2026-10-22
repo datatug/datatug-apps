@@ -37,9 +37,13 @@ import { PRODUCT_PROFILE } from '@datatug/product-profiles';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
 import { addIcons } from 'ionicons';
-import { chatbubblesOutline, warningOutline } from 'ionicons/icons';
+import {
+  chatbubblesOutline,
+  idCardOutline,
+  warningOutline,
+} from 'ionicons/icons';
 
-addIcons({ chatbubblesOutline, warningOutline });
+addIcons({ chatbubblesOutline, idCardOutline, warningOutline });
 
 interface IProjectTopLevelPage {
   path: ProjectTopLevelPage;
@@ -179,6 +183,11 @@ export class ProjectMenuTopComponent implements OnDestroy {
         path: 'chat',
         title: 'Chat',
         icon: 'chatbubbles-outline',
+      },
+      {
+        path: 'cards',
+        title: 'Cards',
+        icon: 'id-card-outline',
       },
       {
         path: 'checks',
@@ -345,6 +354,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
           'detective',
           'sessions',
           'boards',
+          'cards',
         ].includes(page))
     )
       return false;

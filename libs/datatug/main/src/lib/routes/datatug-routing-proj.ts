@@ -227,6 +227,26 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
+    path: 'cards/new',
+    data: { newCard: true },
+    loadComponent: () =>
+      import('../cards/card-page.component').then((m) => m.CardPageComponent),
+  },
+  {
+    path: 'card/:cardId',
+    loadComponent: () =>
+      import('../cards/card-page.component').then((m) => m.CardPageComponent),
+  },
+  {
+    path: 'card',
+    redirectTo: 'cards',
+  },
+  {
+    path: 'cards',
+    loadComponent: () =>
+      import('../cards/cards-page.component').then((m) => m.CardsPageComponent),
+  },
+  {
     path: 'entities',
     loadComponent: () =>
       import('../pages/signed-in/entities/entities-page.component').then(

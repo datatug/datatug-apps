@@ -11,7 +11,7 @@ import {
 import { SegmentPanelDirective } from './segment-panel.directive';
 import { NgComponentOutlet } from '@angular/common';
 import { IonLabel, IonSegment, IonSegmentButton } from '@ionic/angular';
-import { TabsWidgetDef } from '@datatug/board-models';
+import { BoardWidget, TabsWidgetDef } from '@datatug/board-models';
 import { IBoardContext } from '../../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../../core/project-context';
 import { BoardReadForRun } from '../../../../core/board-read-for-run';
@@ -19,8 +19,10 @@ import { TutorialBoardRuntime } from '../../../../core/tutorial-board-runtime';
 import type { BoardResultSnapshot } from '../../board-widget/board-widget.component';
 import {
   MAX_NESTED_TAB_DEPTH,
+  stackedWidgetKey,
   tabKey,
 } from '../../board-widget/nested-tab-path';
+import type { BoardQueryResults } from '../../../../core/board-query-results.service';
 
 @Component({
   selector: 'sneat-datatug-tabs-widget',
@@ -47,6 +49,9 @@ export class TabsWidgetComponent {
   readonly resultSnapshot =
     input.required<WritableSignal<BoardResultSnapshot | undefined>>();
   readonly autoRunAttempts = input<WritableSignal<ReadonlySet<string>>>();
+  /** Standalone project-card rendering, passed down to every widget. */
+  readonly cardMode = input(false);
+  readonly resultCache = input<BoardQueryResults>();
   readonly maxDepth = MAX_NESTED_TAB_DEPTH;
   readonly selectedKey = signal<string | undefined>(undefined);
   readonly tabs = computed(() =>
@@ -70,18 +75,44 @@ export class TabsWidgetComponent {
     const active = this.active();
     return active ? [...this.widgetPath(), active.key] : this.widgetPath();
   });
-  readonly childInputs = computed(() => ({
-    level: this.level() + 1,
-    widgetDef: this.active()?.tab.widget,
-    boardContext: this.boardContext(),
-    projectRef: this.projectRef(),
-    boardId: this.boardId(),
-    cardId: this.cardId(),
-    readBoardForRun: this.readBoardForRun(),
-    widgetPath: this.activePath(),
-    resultSnapshot: this.resultSnapshot(),
-    autoRunAttempts: this.autoRunAttempts(),
-  }));
+  /**
+   * The active tab's widgets, stacked in order: the legacy single `widget`
+   * first (path = the tab path, unchanged), then `widgets[]` (path + `w:<i>`).
+   */
+  readonly children = computed(() => {
+    const active = this.active();
+    if (!active) return [];
+    const entries: { key: string; widget: BoardWidget; path: readonly string[] }[] = [];
+    if (active.tab.widget)
+      entries.push({ key: 'legacy', widget: active.tab.widget, path: this.activePath() });
+    (Array.isArray(active.tab.widgets) ? active.tab.widgets : []).forEach((widget, index) => {
+      if (widget)
+        entries.push({
+          key: stackedWidgetKey(index),
+          widget,
+          path: [...this.activePath(), stackedWidgetKey(index)],
+        });
+    });
+    return entries.map((entry) => ({
+      key: entry.key,
+      inputs: {
+        level: this.level() + 1,
+        widgetDef: entry.widget,
+        boardContext: this.boardContext(),
+        projectRef: this.projectRef(),
+        boardId: this.boardId(),
+        cardId: this.cardId(),
+        readBoardForRun: this.readBoardForRun(),
+        widgetPath: entry.path,
+        resultSnapshot: this.resultSnapshot(),
+        autoRunAttempts: this.autoRunAttempts(),
+        cardMode: this.cardMode(),
+        resultCache: this.resultCache(),
+      },
+    }));
+  });
+  /** One tab needs no strip. */
+  readonly showStrip = computed(() => this.tabs().length > 1);
 
   select(key: string): void {
     if (!this.tabs().some((tab) => tab.key === key)) return;

@@ -38,6 +38,7 @@ export interface BoardParameterDef {
  */
 export function validBoardParameterDefinitions(
   value: unknown,
+  options?: { allowMatch?: boolean },
 ): value is BoardParameterDef[] | null | undefined {
   const record = (item: unknown): item is Record<string, unknown> =>
     !!item && typeof item === 'object' && !Array.isArray(item);
@@ -62,6 +63,7 @@ export function validBoardParameterDefinitions(
             'minLength',
             'meta',
             'lookup',
+            ...(options?.allowMatch ? ['match'] : []),
           ]) ||
           typeof item['id'] !== 'string' ||
           !item['id'] ||
@@ -76,6 +78,7 @@ export function validBoardParameterDefinitions(
           )
         )
           return false;
+        if (options?.allowMatch && !validMatchRules(item['match'])) return false;
         const meta = item['meta'];
         if (
           meta != null &&
@@ -114,5 +117,30 @@ export function validBoardParameterDefinitions(
             return true;
         }
       }))
+  );
+}
+
+/**
+ * Structural admission of a card parameter's `match` rules: a list of objects
+ * holding only the string keys entity/field/table/column. Semantically
+ * malformed combinations are admitted on purpose; matching ignores them
+ * (spec REQ: input-matching).
+ */
+export function validMatchRules(value: unknown): boolean {
+  if (value == null) return true;
+  return (
+    Array.isArray(value) &&
+    value.length <= 64 &&
+    value.every(
+      (rule) =>
+        !!rule &&
+        typeof rule === 'object' &&
+        !Array.isArray(rule) &&
+        Object.entries(rule as Record<string, unknown>).every(
+          ([key, v]) =>
+            ['entity', 'field', 'table', 'column'].includes(key) &&
+            typeof v === 'string',
+        ),
+    )
   );
 }

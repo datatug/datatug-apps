@@ -30,13 +30,15 @@ import {
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
-import { IonButton } from '@ionic/angular';
+import { IonButton, IonSkeletonText } from '@ionic/angular';
 import {
   BoardWidget,
   ChartWidgetDef,
   ChartSpec,
+  FieldsWidgetDef,
   SQLWidgetDef,
   TabsWidgetDef,
+  TextWidgetDef,
 } from '@datatug/board-models';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { IProjectRef } from '../../../../core/project-context';
@@ -84,7 +86,15 @@ import { isSavedPublicChartQueryId } from '../../../../queries/public-data/publi
 import {
   BoardQueryResults,
   boardExecutionCacheKey,
+  cardResultKey,
+  cardResultScope,
+  canonicalJson,
 } from '../../../core/board-query-results.service';
+import { TextWidgetComponent } from '../widgets/text-widget/text-widget.component';
+import {
+  FieldsViewComponent,
+  type FieldPair,
+} from '../widgets/fields-widget/fields-view.component';
 import { BoardChoicesService } from '../../../core/board-choices.service';
 import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
@@ -124,6 +134,9 @@ export interface BoardResultSnapshot {
     OrdersMonthlyTrendComponent,
     HeldResultPresentationComponent,
     SourceRightsNoticeComponent,
+    IonSkeletonText,
+    TextWidgetComponent,
+    FieldsViewComponent,
   ],
 })
 export class BoardWidgetComponent {
@@ -134,7 +147,7 @@ export class BoardWidgetComponent {
     this.presentationSelection?.value(this.chartWidgetDef()?.chart.selectionId),
   );
   readonly filteredPresentation = computed(() => {
-    const filter = this.sqlWidgetDef()?.sql.presentationFilter;
+    const filter = this.sqlWidgetDef()?.sql?.presentationFilter;
     return filterHeldOrders(
       this.result(),
       this.queryId() ?? '',
@@ -144,7 +157,7 @@ export class BoardWidgetComponent {
   });
   clearCountry(): void {
     this.presentationSelection?.clear(
-      this.sqlWidgetDef()?.sql.presentationFilter?.selectionId ??
+      this.sqlWidgetDef()?.sql?.presentationFilter?.selectionId ??
         this.chartWidgetDef()?.chart.selectionId,
     );
   }
@@ -162,7 +175,112 @@ export class BoardWidgetComponent {
   });
   private readonly queries = inject(QueriesService);
   private readonly dispatcher = inject(QueryDispatchService);
-  private readonly heldQueries = inject(BoardQueryResults, { optional: true });
+  private readonly injectedQueries = inject(BoardQueryResults, {
+    optional: true,
+  });
+  /** A cache handed in by a standalone card view wins over the board-scoped one. */
+  readonly resultCache = input<BoardQueryResults>();
+  private get heldQueries(): BoardQueryResults | null {
+    return this.resultCache() ?? this.injectedQueries;
+  }
+  /**
+   * Standalone project-card rendering: no board to revalidate against, runs
+   * start by themselves, and every widget shows loading / error / empty states.
+   * Card parameter values arrive as `boardContext().parameters`.
+   */
+  readonly cardMode = input(false);
+  readonly textWidgetDef = computed(() =>
+    this.widgetDef()?.name === 'text'
+      ? (this.widgetDef()?.data as TextWidgetDef | undefined)
+      : undefined,
+  );
+  readonly fieldsWidgetDef = computed(() =>
+    this.widgetDef()?.name === 'fields'
+      ? (this.widgetDef()?.data as FieldsWidgetDef | undefined)
+      : undefined,
+  );
+  /** Parameter values by id, for `text` placeholders and parameter-sourced widgets. */
+  readonly parameterValues = computed<Record<string, unknown>>(() => {
+    const out: Record<string, unknown> = {};
+    for (const [id, item] of Object.entries(
+      this.boardContext()?.parameters ?? {},
+    ))
+      out[id] = item?.value;
+    return out;
+  });
+  /** Label/value pairs of the `fields` widget, or undefined while there is no record. */
+  readonly fieldPairs = computed<FieldPair[] | undefined>(() => {
+    const def = this.fieldsWidgetDef();
+    if (!def?.source) return undefined;
+    let record: Record<string, unknown> | undefined;
+    if ('parameter' in def.source) {
+      const value = this.parameterValues()[def.source.parameter];
+      const row = Array.isArray(value) ? value[0] : value;
+      record =
+        row && typeof row === 'object'
+          ? (row as Record<string, unknown>)
+          : undefined;
+    } else {
+      const answer = this.result()?.recordset;
+      const first = answer?.rows[0];
+      if (!answer || !first) return undefined;
+      record = {};
+      answer.columns.forEach((column, i) => {
+        (record as Record<string, unknown>)[column.name] = first[i]?.value;
+      });
+    }
+    if (!record) return undefined;
+    const source = record;
+    const wanted = def.fields?.length
+      ? def.fields
+      : Object.keys(source).map((column) => ({ column, label: undefined }));
+    return wanted.map((f) => ({
+      label: f.label || f.column,
+      value:
+        source[f.column] == null
+          ? ''
+          : typeof source[f.column] === 'object'
+            ? JSON.stringify(source[f.column])
+            : String(source[f.column]),
+    }));
+  });
+  readonly fieldsSourceIsParameter = computed(() => {
+    const source = this.fieldsWidgetDef()?.source;
+    return !!source && 'parameter' in source;
+  });
+  /** Id of the card parameter a grid (`SQL`) widget takes its rows from, if any. */
+  readonly sqlSourceParameter = computed(
+    () => this.sqlWidgetDef()?.source?.parameter,
+  );
+  /** Rows of a parameter-sourced grid: a `recordset` (array) or one `record`. */
+  readonly sqlParameterGrid = computed<
+    { columns: string[]; rows: unknown[][] } | undefined
+  >(() => {
+    const id = this.sqlSourceParameter();
+    if (!id) return undefined;
+    const value = this.parameterValues()[id];
+    const list = (Array.isArray(value) ? value : value ? [value] : []).filter(
+      (row): row is Record<string, unknown> =>
+        !!row && typeof row === 'object' && !Array.isArray(row),
+    );
+    const columns: string[] = [];
+    for (const row of list.slice(0, 200))
+      for (const key of Object.keys(row))
+        if (!columns.includes(key)) columns.push(key);
+    return {
+      columns,
+      rows: list.slice(0, 200).map((row) => columns.map((c) => row[c])),
+    };
+  });
+  /** Template switch key: parameter-sourced grids render without any query. */
+  readonly widgetCase = computed(() =>
+    this.sqlSourceParameter() ? 'SQL-parameter' : this.widgetDef()?.name,
+  );
+  readonly cardQueryWidget = computed(
+    () =>
+      !this.sqlSourceParameter() &&
+      ['SQL', 'chart', 'fields'].includes(this.widgetKind() ?? ''),
+  );
   private readonly nativeRunLifetime = useNativeRunLifetime();
   private readonly retainedIntent = new RetainedRunIntent();
   readonly retainedPending = signal(false);
@@ -474,8 +592,14 @@ export class BoardWidgetComponent {
       ? this.chartWidgetDef()?.sources?.length === 1
         ? this.chartWidgetDef()?.sources[0]?.queryId?.trim()
         : undefined
-      : this.sqlWidgetDef()?.sql?.queryId?.trim(),
+      : this.widgetDef()?.name === 'fields'
+        ? this.fieldsQuerySource()?.queryId?.trim()
+        : this.sqlWidgetDef()?.sql?.queryId?.trim(),
   );
+  private readonly fieldsQuerySource = computed(() => {
+    const source = this.fieldsWidgetDef()?.source;
+    return source && 'queryId' in source ? source : undefined;
+  });
   readonly boardId = input<string>();
   readonly cardId = input<string>();
   readonly readBoardForRun = input<BoardReadForRun>();
@@ -621,7 +745,7 @@ export class BoardWidgetComponent {
       this.choiceError.set(undefined);
       this.running.set(false);
       this.unsupportedReason.set(undefined);
-      if (!ref || !id || !['SQL', 'chart'].includes(this.widgetKind() ?? ''))
+      if (!ref || !id || !this.cardQueryWidget())
         return;
       // The existing public GitHub query reader ignores branch. The qualified
       // reader and board revalidation must both be available before Run.
@@ -674,11 +798,13 @@ export class BoardWidgetComponent {
             }
           }
         },
-        error: () => {
+        error: (error: unknown) => {
           if (this.generation !== generation) return;
           this.definitionLoading.set(false);
           this.unsupportedReason.set(
-            'This saved query could not be checked. Open it to inspect its source.',
+            error instanceof HttpErrorResponse && error.status === 404
+              ? `Query not found: ${id}`
+              : 'This saved query could not be checked. Open it to inspect its source.',
           );
         },
       });
@@ -691,10 +817,9 @@ export class BoardWidgetComponent {
       const definition = this.definition();
       const identity = this.executionIdentity();
       const eligible =
-        this.showcase() &&
         definition &&
         !this.unsupportedReason() &&
-        this.readBoardForRun();
+        ((this.showcase() && this.readBoardForRun()) || this.cardMode());
       if (!eligible) return;
       untracked(() => {
         if (this.result() || this.attemptsStore()().has(identity)) return;
@@ -716,7 +841,7 @@ export class BoardWidgetComponent {
     cardId: string,
     queryId: string,
     actor: string | undefined,
-    readBoard: BoardReadForRun,
+    readBoard: BoardReadForRun | undefined,
     path: readonly string[],
   ): boolean {
     return (
@@ -728,7 +853,7 @@ export class BoardWidgetComponent {
       this.boardId() === boardId &&
       this.cardId() === cardId &&
       this.queryId() === queryId &&
-      ['SQL', 'chart'].includes(this.widgetDef()?.name ?? '') &&
+      this.cardQueryWidget() &&
       this.choices.actor() === actor &&
       this.readBoardForRun() === readBoard &&
       this.widgetPath() === path
@@ -787,12 +912,13 @@ export class BoardWidgetComponent {
     const readBoard = this.readBoardForRun();
     const path = this.widgetPath();
     const actor = this.choices.actor();
+    const standalone = this.cardMode();
     if (
       !ref ||
       !boardId ||
       !cardId ||
       !queryId ||
-      !readBoard ||
+      (!readBoard && !standalone) ||
       !this.definition() ||
       this.running() ||
       this.unsupportedReason()
@@ -851,76 +977,87 @@ export class BoardWidgetComponent {
       const readSignal = originalNative
         ? AbortSignal.any([controller.signal, originalNative.signal])
         : controller.signal;
-      const board = await firstValueFrom(
-        readBoard(ref, boardId).pipe(
-          takeUntil(fromEvent(readSignal, 'abort')),
-          timeout(15000),
-        ),
-      );
-      if (
-        !this.stillCurrent(
-          generation,
-          ref,
-          boardId,
-          cardId,
-          queryId,
-          actor,
-          readBoard,
-          path,
-        )
-      )
-        return;
-      const matchingCards = board.rows
-        ?.flatMap((row) => row.cards || [])
-        .filter((card) => card.id === cardId);
-      const currentCard =
-        matchingCards?.length === 1 ? matchingCards[0] : undefined;
-      const currentWidget = widgetAtTabPath(currentCard?.widget, path);
-      const expectedWidget = this.widgetDef();
-      const sessionRequested = this.sessionOnly() && !!this.tutorialRuntime;
-      const sessionAdmitted =
-        sessionRequested &&
-        expectedWidget &&
-        this.tutorialRuntime?.activeFor(ref, boardId)
-          ? await this.tutorialRuntime.admit(
-              board,
-              ref,
-              cardId,
-              path,
-              expectedWidget,
-            )
-          : false;
-      if (
-        !this.stillCurrent(
-          generation,
-          ref,
-          boardId,
-          cardId,
-          queryId,
-          actor,
-          readBoard,
-          path,
-        )
-      )
-        return;
-      if (
-        board.id !== boardId ||
-        (sessionRequested
-          ? !sessionAdmitted
-          : !currentWidget ||
-            currentWidget.name !== widgetName ||
-            (widgetName === 'chart'
-              ? JSON.stringify(currentWidget.data) !== chartDefinition
-              : JSON.stringify(
-                  (currentWidget.data as SQLWidgetDef | undefined)?.sql,
-                ) !==
-                JSON.stringify(
-                  (expectedWidget?.data as SQLWidgetDef | undefined)?.sql,
-                )))
-      )
-        throw new Error(
-          'This board card changed. Reopen the board before running it.',
+      if (!standalone && readBoard) {
+        const board = await firstValueFrom(
+          readBoard(ref, boardId).pipe(
+            takeUntil(fromEvent(readSignal, 'abort')),
+            timeout(15000),
+          ),
         );
+        if (
+          !this.stillCurrent(
+            generation,
+            ref,
+            boardId,
+            cardId,
+            queryId,
+            actor,
+            readBoard,
+            path,
+          )
+        )
+          return;
+        const matchingCards = board.rows
+          ?.flatMap((row) => row.cards || [])
+          .filter((card) => card.id === cardId);
+        const currentCard =
+          matchingCards?.length === 1 ? matchingCards[0] : undefined;
+        const currentWidget = widgetAtTabPath(currentCard?.widget, path);
+        const expectedWidget = this.widgetDef();
+        const sessionRequested = this.sessionOnly() && !!this.tutorialRuntime;
+        const sessionAdmitted =
+          sessionRequested &&
+          expectedWidget &&
+          this.tutorialRuntime?.activeFor(ref, boardId)
+            ? await this.tutorialRuntime.admit(
+                board,
+                ref,
+                cardId,
+                path,
+                expectedWidget,
+              )
+            : false;
+        if (
+          !this.stillCurrent(
+            generation,
+            ref,
+            boardId,
+            cardId,
+            queryId,
+            actor,
+            readBoard,
+            path,
+          )
+        )
+          return;
+        if (
+          board.id !== boardId ||
+          (sessionRequested
+            ? !sessionAdmitted
+            : !currentWidget ||
+              currentWidget.name !== widgetName ||
+              (widgetName === 'chart'
+                ? JSON.stringify(currentWidget.data) !== chartDefinition
+                : widgetName === 'fields'
+                  ? JSON.stringify(
+                      (currentWidget.data as FieldsWidgetDef | undefined)
+                        ?.source,
+                    ) !==
+                    JSON.stringify(
+                      (expectedWidget?.data as FieldsWidgetDef | undefined)
+                        ?.source,
+                    )
+                  : JSON.stringify(
+                      (currentWidget.data as SQLWidgetDef | undefined)?.sql,
+                    ) !==
+                    JSON.stringify(
+                      (expectedWidget?.data as SQLWidgetDef | undefined)?.sql,
+                    )))
+        )
+          throw new Error(
+            'This board card changed. Reopen the board before running it.',
+          );
+      }
       const queryRef = this.queryReadRef(ref);
       const definition = await firstValueFrom(
         this.queries.getQuery(queryRef, queryId).pipe(timeout(15000)),
@@ -1049,18 +1186,38 @@ export class BoardWidgetComponent {
           { maxRows: 1000 },
         );
       };
-      const scope = JSON.stringify({
-        ref,
-        boardId,
-        context,
-        actor,
-        tutorial: this.sessionOnly(),
-        revision: this.dispatcher.runtimeRevision(),
-      });
-      const key = boardExecutionCacheKey(
-        { queryId, definition, selectedRuntimeId, parameters },
-        intent?.operationId,
-      );
+      const scope = standalone
+        ? cardResultScope({
+            actor: JSON.stringify([actor, this.dispatcher.runtimeRevision()]),
+            project: JSON.stringify(ref),
+            environment: context?.environment,
+            securityContextId: context?.securityContextId,
+            executionTarget: context?.executionTarget,
+            runtimeBinding: context?.runtimeBinding,
+          })
+        : JSON.stringify({
+            ref,
+            boardId,
+            context,
+            actor,
+            tutorial: this.sessionOnly(),
+            revision: this.dispatcher.runtimeRevision(),
+          });
+      const key = standalone
+        ? cardResultKey({
+            queryId,
+            // No backend revision yet: the definition itself versions the entry.
+            variant: canonicalJson({
+              definition,
+              selectedRuntimeId,
+              operationId: intent?.operationId,
+            }),
+            parameters,
+          })
+        : boardExecutionCacheKey(
+            { queryId, definition, selectedRuntimeId, parameters },
+            intent?.operationId,
+          );
       const rawResult = this.heldQueries
         ? await this.heldQueries.readExecution(
             scope,
@@ -1232,6 +1389,12 @@ export class BoardWidgetComponent {
     };
   }
 
+  /** Card-mode retry after a failed run or an unavailable query definition. */
+  retry(): void {
+    this.runError.set(undefined);
+    void this.run(false);
+  }
+
   setChartView(view: 'chart' | 'grid' | 'trend'): void {
     // Manual view choices are ephemeral even in a tutorial. Guide actions own replay.
     if (view === 'trend' && !this.raceDefinition()?.transform) return;
@@ -1268,7 +1431,9 @@ export class BoardWidgetComponent {
     const values: Record<string, TypedValue> = {};
     const chartSource = this.chartWidgetDef()?.sources?.[0];
     const bindings =
-      chartSource?.parameters ?? this.sqlWidgetDef()?.sql?.parameters;
+      chartSource?.parameters ??
+      this.sqlWidgetDef()?.sql?.parameters ??
+      this.fieldsQuerySource()?.parameters;
     const boundParameters = !!chartSource || bindings !== undefined;
     const bindingKind = chartSource ? 'chart' : 'saved-query widget';
     const boundValues = new Map<string, unknown>();
@@ -1423,6 +1588,7 @@ export class BoardWidgetComponent {
   }
 
   rememberChoice(): void {
+    if (this.cardMode()) return;
     const ref = this.projectRef();
     const boardId = this.boardId();
     const queryId = this.queryId();
@@ -1432,6 +1598,14 @@ export class BoardWidgetComponent {
           ? undefined
           : 'This browser could not remember the selected query.',
       );
+  }
+
+  displayParameterCell(value: unknown): string {
+    return value === null || value === undefined
+      ? ''
+      : typeof value === 'object'
+        ? JSON.stringify(value)
+        : String(value);
   }
 
   displayCell(cell: { readonly value?: unknown }): string {
