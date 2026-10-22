@@ -162,6 +162,7 @@ export class RetainedEvidenceApiService {
         wire,
         admittedScope,
         captured.execution,
+        captured,
       ),
       current = await resolveRowEvidence(result.result, captured);
     const response = wire as Record<string, unknown>;

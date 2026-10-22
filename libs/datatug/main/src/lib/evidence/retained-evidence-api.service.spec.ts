@@ -10,6 +10,7 @@ import {
 } from '@sneat/datatug-semantic';
 import { datatugApiRealProviders } from '../services/base/datatug-api.test-helpers';
 import { RetainedEvidenceApiService } from './retained-evidence-api.service';
+import { originalContractFixture } from './original-evidence.spec-helper';
 import fixture from './testdata/backend-v044-retained.json';
 const scope = {
   projectRef: {
@@ -165,7 +166,15 @@ describe('Retained evidence real native HTTP reads', () => {
       expect(request).toBeDefined();
     });
     if (!request) throw new Error('Missing exact row request');
-    request.flush(fixture.row);
+    // Contract-only extension until Backend emits the required original status.
+    request.flush({
+      ...fixture.row,
+      originalEvidence: {
+        version: 1,
+        status: 'unavailable',
+        reason: 'not-admitted',
+      },
+    });
     const result = await pending;
     expect(result.result.execution?.executionId).toBe('fixture-execution');
     expect(result.result.recordset.rows[0][3]).toEqual({
@@ -174,6 +183,43 @@ describe('Retained evidence real native HTTP reads', () => {
     });
     http.verify();
   });
+  it.each(['available', 'missing', 'malformed', 'pin-forgery'] as const)(
+    'validates the contract-only original extension via actual HTTP client: %s',
+    async (mode) => {
+      const http = TestBed.inject(HttpTestingController),
+        api = TestBed.inject(RetainedEvidenceApiService);
+      const pending = api.openRow(
+        scope,
+        decodeResult(fixture.execution.result),
+        fixture.selector as RowEvidenceSelector,
+        new AbortController().signal,
+      );
+      const outcome =
+        mode === 'available'
+          ? expect(pending).resolves.toHaveProperty(
+              'originalEvidence.status',
+              'available',
+            )
+          : expect(pending).rejects.toThrow();
+      await admit(http);
+      const request = await nextRequest(http, '/shipping/evidence/open');
+      expect(request.request.method).toBe('POST');
+      expect(request.request.body.selector).toEqual(fixture.selector);
+      const wire = {
+        ...structuredClone(fixture.row),
+        ...(mode === 'missing'
+          ? {}
+          : {
+              originalEvidence:
+                mode === 'malformed' ? null : originalContractFixture(),
+            }),
+      };
+      if (mode === 'pin-forgery') wire.sourcePin.revision.generation = 'other';
+      request.flush(wire);
+      await outcome;
+      http.verify();
+    },
+  );
   it('returns no protected fallback on current denial and cancels an outstanding original read', async () => {
     const http = TestBed.inject(HttpTestingController),
       api = TestBed.inject(RetainedEvidenceApiService);

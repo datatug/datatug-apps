@@ -1,0 +1,287 @@
+import {
+  decodeResult,
+  type RowEvidenceSelector,
+} from '@sneat/datatug-semantic';
+import fixture from './testdata/backend-v044-retained.json';
+import { originalContractFixture } from './original-evidence.spec-helper';
+import {
+  readOriginalEvidence,
+  originalLogText,
+} from './original-evidence-contract';
+import { readRetainedExecution } from './retained-open-contract';
+const result = decodeResult(fixture.row.result);
+const selector = fixture.selector as RowEvidenceSelector;
+const scope = {
+  projectRef: {
+    storeId: 'firestore',
+    spaceID: 'fixture-space',
+    projectId: 'fixture-project',
+  },
+  environment: 'demo',
+  actor: 'current-reader',
+  nativeDatabaseId: 'fixture-db',
+  nativeProjectId: 'fixture-project',
+};
+describe('Original evidence approved contract (contract-only extension, pending actual Backend parity)', () => {
+  it('keeps exact CRLF bytes, integer schema, historical config and expired candidate', async () => {
+    const wire = originalContractFixture();
+    const value = await readOriginalEvidence(wire, result, selector);
+    expect(value).toEqual(wire);
+    expect(originalLogText(wire.log)).toMatch(/}\r\n$/);
+    expect(wire.records[3].key).toEqual({ type: 'integer', value: '17' });
+    expect(wire.records[4].fields['valid_until'].value).toBe(
+      '2026-10-21T00:00:00Z',
+    );
+  });
+  it('requires POST status, permits GET omission, rejects malformed present data', async () => {
+    await expect(
+      readRetainedExecution(fixture.row, scope, undefined, selector),
+    ).rejects.toThrow('status is missing');
+    await expect(
+      readRetainedExecution(fixture.execution, scope),
+    ).resolves.toHaveProperty('queryId');
+    await expect(
+      readRetainedExecution({ ...fixture.row, originalEvidence: null }, scope),
+    ).rejects.toThrow();
+    const unavailable = {
+      version: 1,
+      status: 'unavailable',
+      reason: 'not-admitted',
+    };
+    const value = await readRetainedExecution(
+      { ...fixture.row, originalEvidence: unavailable },
+      scope,
+      undefined,
+      selector,
+    );
+    expect(value.originalEvidence).toEqual(unavailable);
+    expect(value.result.recordset.rows).toEqual(result.recordset.rows);
+  });
+  it.each([
+    'version',
+    'unknown',
+    'selection',
+    'selection-extra',
+    'hash',
+    'span',
+    'unsafe',
+    'base64',
+    'padding',
+    'length',
+    'size',
+    'path',
+    'schema',
+    'typed',
+    'key',
+    'relation',
+    'candidate',
+    'duplicate',
+    'order',
+    'malformed',
+    'partial-unavailable',
+  ])('fails closed for %s', async (change) => {
+    const value = originalContractFixture();
+    const wire = value as unknown as Record<string, unknown>;
+    switch (change) {
+      case 'version':
+        wire['version'] = 2;
+        break;
+      case 'unknown':
+        wire['pass'] = true;
+        break;
+      case 'selection':
+        (value.selection.scope as unknown as Record<string, unknown>)[
+          'environment'
+        ] = 'other';
+        break;
+      case 'selection-extra':
+        (value.selection as unknown as Record<string, unknown>)['latest'] =
+          true;
+        break;
+      case 'hash':
+        (value.log as unknown as Record<string, unknown>)['artifactSHA256'] =
+          'A'.repeat(64);
+        break;
+      case 'span':
+        (value.log as unknown as Record<string, unknown>)['byteStart'] = 1;
+        break;
+      case 'unsafe':
+        (value.log as unknown as Record<string, unknown>)['artifactBytes'] =
+          Number.MAX_SAFE_INTEGER + 1;
+        break;
+      case 'base64':
+        (value.log as unknown as Record<string, unknown>)['rawBase64'] = '!!!!';
+        break;
+      case 'padding':
+        (value.log as unknown as Record<string, unknown>)['rawBase64'] = 'Zh==';
+        break;
+      case 'length':
+        (value.log as unknown as Record<string, unknown>)['rawBase64'] = 'YQ==';
+        break;
+      case 'size':
+        (value.log as unknown as Record<string, unknown>)['sourceRef'] =
+          'x'.repeat(513);
+        break;
+      case 'path':
+        (value.log as unknown as Record<string, unknown>)['artifact'] =
+          '../baseline.jsonl';
+        break;
+      case 'schema':
+        delete (value.records[0].fields as Record<string, unknown>)['kind'];
+        break;
+      case 'typed':
+        (value.records[3].fields as Record<string, unknown>)['revision'] = {
+          type: 'number',
+          value: 17,
+        };
+        break;
+      case 'key':
+        (value.records[3] as unknown as Record<string, unknown>)['key'] = {
+          type: 'integer',
+          value: '18',
+        };
+        break;
+      case 'relation':
+        (value.records[1].fields as Record<string, unknown>)[
+          'config_revision'
+        ] = { type: 'integer', value: '18' };
+        break;
+      case 'candidate':
+        (value.records[4].fields as Record<string, unknown>)['shipper_id'] = {
+          type: 'integer',
+          value: '3',
+        };
+        break;
+      case 'duplicate':
+        wire['records'] = [
+          ...value.records.slice(0, 5),
+          value.records[4],
+          value.records[5],
+        ];
+        break;
+      case 'order':
+        wire['records'] = [
+          value.records[1],
+          value.records[0],
+          ...value.records.slice(2),
+        ];
+        break;
+      case 'malformed':
+        (value.log as unknown as Record<string, unknown>)['parseStatus'] =
+          'malformed';
+        break;
+      case 'partial-unavailable':
+        wire['status'] = 'unavailable';
+        wire['reason'] = 'original-invalid';
+        break;
+    }
+    await expect(
+      readOriginalEvidence(value, result, selector),
+    ).rejects.toThrow();
+  });
+  it.each(['missing_timestamp', 'invalid_timestamp'] as const)(
+    'preserves %s without invented normalized time',
+    async (parseStatus) => {
+      const value = originalContractFixture();
+      const log = { ...value.log, parseStatus };
+      expect(
+        await readOriginalEvidence({ ...value, log }, result, selector),
+      ).toHaveProperty('log.parseStatus', parseStatus);
+    },
+  );
+  it('never presents replacement text as original invalid UTF8 bytes', () => {
+    expect(
+      originalLogText({ ...originalContractFixture().log, rawBase64: '/w==' }),
+    ).toBeUndefined();
+  });
+  it('admits the 16KiB raw span with base64 metadata within 24KiB and rejects one extra byte', async () => {
+    const value = originalContractFixture();
+    const bounded = (length: number) => ({
+      ...value,
+      records: value.records.map((record, index) =>
+        index
+          ? record
+          : {
+              ...record,
+              fields: {
+                ...record.fields,
+                byte_end: { type: 'integer' as const, value: String(length) },
+              },
+            },
+      ),
+      log: {
+        ...value.log,
+        artifactBytes: length,
+        byteEnd: length,
+        rawBase64: btoa('x'.repeat(length)),
+      },
+    });
+    await expect(
+      readOriginalEvidence(bounded(16384), result, selector),
+    ).resolves.toHaveProperty('log.byteEnd', 16384);
+    await expect(
+      readOriginalEvidence(bounded(16385), result, selector),
+    ).rejects.toThrow();
+  });
+  it('rejects originals for another manifest order even when the internal record chain is consistent', async () => {
+    const original = originalContractFixture();
+    const records = original.records.map((record, index) =>
+      index !== 2
+        ? record
+        : {
+            ...record,
+            fields: {
+              ...record.fields,
+              order_id: { type: 'integer' as const, value: '11062' },
+            },
+          },
+    );
+    await expect(
+      readRetainedExecution(
+        { ...fixture.row, originalEvidence: { ...original, records } },
+        scope,
+        undefined,
+        selector,
+      ),
+    ).rejects.toThrow('Original order');
+  });
+  it('preserves multiple historical candidates, including SQL NULL interval ends, and rejects a seventeenth route', async () => {
+    const value = originalContractFixture();
+    const routes = Array.from({ length: 17 }, (_, index) => {
+      const key = {
+        type: 'string' as const,
+        value: `route-${String(index).padStart(2, '0')}`,
+      };
+      return {
+        ...value.records[4],
+        key,
+        fields: {
+          ...value.records[4].fields,
+          route_id: key,
+          valid_until: { type: 'null' as const, value: null },
+        },
+      };
+    });
+    const within = {
+      ...value,
+      records: [
+        ...value.records.slice(0, 4),
+        ...routes.slice(0, 16),
+        value.records[5],
+      ],
+    };
+    const decoded = await readOriginalEvidence(within, result, selector);
+    expect(decoded).toHaveProperty('records.length', 21);
+    expect(decoded).toHaveProperty('records.4.fields.valid_until.type', 'null');
+    await expect(
+      readOriginalEvidence(
+        {
+          ...within,
+          records: [...value.records.slice(0, 4), ...routes, value.records[5]],
+        },
+        result,
+        selector,
+      ),
+    ).rejects.toThrow();
+  });
+});
