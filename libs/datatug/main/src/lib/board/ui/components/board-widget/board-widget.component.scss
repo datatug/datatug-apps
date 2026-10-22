@@ -81,6 +81,13 @@ th {
   outline-offset: 2px;
 }
 
+.card-chart-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-block: 0.25rem 0.5rem;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -88,4 +95,19 @@ th {
   overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
+}
+
+:host {
+  display: block;
+  min-width: 0;
+  container: datatug-board-header / inline-size;
+}
+
+.widget-header {
+  --min-height: 3rem;
+}
+@container datatug-board-header (max-width: 42rem) {
+  .header-action-text {
+    display: none;
+  }
 }

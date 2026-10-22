@@ -1,4 +1,9 @@
 import {
+  projectQueryMetadataForSave,
+  type ProjectQueryMetadataWire,
+} from './project-query-metadata';
+import { validateQueryComparison } from './query-comparison';
+import {
   type IQueryDef,
   type ITextQueryRequest,
   type IHttpQueryRequest,
@@ -8,11 +13,13 @@ import { savableHttpHeaders } from './http-credential-headers';
 import { httpMethodAllowsBody } from './http-request-rules';
 
 /** The supported Core query envelope. Richer browser plans must refuse a lossy save. */
-export interface ProjectQueryWire {
-  readonly semanticModel?: IQueryDef["semanticModel"];
+export interface ProjectQueryWire extends ProjectQueryMetadataWire {
+  readonly comparison?: IQueryDef['comparison'];
+  readonly semanticModel?: IQueryDef['semanticModel'];
   readonly folderPath: string;
   readonly id: string;
   readonly title?: string;
+  readonly purpose?: string;
   readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL | QueryType.HTTP;
   /** The query text; for an HTTP query, its URL. */
   readonly text: string;
@@ -31,7 +38,10 @@ export interface ProjectQueryHttpWire {
   readonly body?: string;
 }
 
-export type ProjectQueryReadWire = Omit<ProjectQueryWire, 'type'> & {
+export type ProjectQueryReadWire = Omit<
+  ProjectQueryWire,
+  'type' | 'comparison' | 'parameters' | 'recordsets'
+> & {
   readonly type: QueryType;
   readonly [key: string]: unknown;
 };
@@ -84,9 +94,17 @@ export function toProjectQueryWire(
   query: IQueryDef,
   location = query.id,
 ): ProjectQueryWire {
+  validateQueryComparison(query);
+  let metadata: ProjectQueryMetadataWire;
+  try {
+    metadata = projectQueryMetadataForSave(query);
+  } catch {
+    throw new UnsupportedQueryContractError();
+  }
   assertFields(query, [
     'id',
     'title',
+    'purpose',
     // Server-managed metadata may round-trip through the editor but is never sent on save.
     'createdAt',
     'request',
@@ -94,8 +112,13 @@ export function toProjectQueryWire(
     'connectionId',
     'federation',
     'semanticModel',
-    ...(query['request'].queryType === QueryType.HTTP ? ['parameters'] : []),
+    'comparison',
+    'parameters',
+    'recordsets',
   ]);
+  // Core owns credential screening and the bounded whole-query save admission.
+  if (query.purpose !== undefined && typeof query.purpose !== 'string')
+    throw new UnsupportedQueryContractError();
   const isHttp = query['request'].queryType === QueryType.HTTP;
   for (const p of (isHttp ? query.parameters : undefined) ?? [])
     assertFields(p, ['id', 'type', 'title', 'defaultValue', 'isRequired', 'isCredential', 'meta']);
@@ -144,10 +167,13 @@ export function toProjectQueryWire(
   )
     throw new UnsupportedQueryContractError();
   return structuredClone({
+    ...metadata,
+    ...(query.comparison ? { comparison: query.comparison } : {}),
     ...(query.semanticModel ? { semanticModel: query.semanticModel } : {}),
     folderPath,
     id,
     ...(query.title !== undefined ? { title: query.title } : {}),
+    ...(query.purpose !== undefined ? { purpose: query.purpose } : {}),
     type: query['request'].queryType as ProjectQueryWire['type'],
     text,
     ...(httpRequest ? { http: httpWire(httpRequest) } : {}),
@@ -209,5 +235,6 @@ export function fromProjectQueryWire(query: ProjectQueryReadWire): IQueryDef {
     ...(query.draft !== undefined ? { draft: query.draft } : {}),
     ...(query.federation ? { federation: query.federation } : {}),
   };
+  validateQueryComparison(mapped);
   return structuredClone(mapped);
 }

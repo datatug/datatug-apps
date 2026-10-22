@@ -20,6 +20,25 @@ import { BoardCardComponent } from '../../components/board-card/board-card.compo
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { IProjectRef } from '../../../../core/project-context';
 
+// This fixture exercises tutorial layout/focus, while the real BoardCard still
+// consumes the widget's public title and projected-header contract.
+@Component({ selector: 'sneat-datatug-board-widget', template: '' })
+class TutorialWidgetDom {
+  readonly embedded = input(false);
+  readonly cardTitle = input<string>();
+  readonly level = input<number>();
+  readonly cardTab = input<unknown>();
+  readonly widgetDef = input<unknown>();
+  readonly boardContext = input<unknown>();
+  readonly projectRef = input<IProjectRef>();
+  readonly boardId = input<string>();
+  readonly cardId = input<string>();
+  readonly readBoardForRun = input<unknown>();
+  readonly displayTitle = () => this.cardTitle() || '';
+  readonly hasHeaderActions = () => false;
+  readonly headerActions = () => null;
+}
+
 @Component({
   selector: 'sneat-datatug-board',
   imports: [BoardCardComponent],
@@ -130,7 +149,7 @@ describe('BoardPage same-route tutorial overlay', () => {
         },
       })
       .overrideComponent(BoardCardComponent, {
-        set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+        set: { imports: [TutorialWidgetDom], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
       })
       .compileComponents();
     const fixture = TestBed.createComponent(BoardPageComponent);
@@ -530,7 +549,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     );
     expect(
       fixture.nativeElement.querySelector('.tutorial-card-guide').textContent,
-    ).toContain('Adding a second source is unavailable');
+    ).toContain('This dashboard has no independent-source comparison configured');
     expect(
       fixture.nativeElement.querySelector('[aria-live="polite"]').textContent,
     ).toContain('Inspect PostgreSQL');
@@ -546,15 +565,8 @@ describe('BoardPage same-route tutorial overlay', () => {
     expect(
       document.activeElement?.hasAttribute('data-tutorial-authoring-focus'),
     ).toBe(true);
-    const unavailable = fixture.nativeElement.querySelector(
-      'button[aria-disabled="true"]',
-    ) as HTMLButtonElement;
-    expect(unavailable.disabled).toBe(false);
-    unavailable.focus();
-    expect(document.activeElement).toBe(unavailable);
-    unavailable.click();
-    expect(document.activeElement?.id).toContain('source-composition-limit-');
-    expect(document.activeElement?.textContent).toContain('unavailable');
+    expect(fixture.nativeElement.querySelector('sneat-datatug-chart-source-editor')).not.toBeNull();
+    expect(fixture.nativeElement.textContent).not.toContain('Add another source (unavailable)');
     await activate('Restart');
     expect(
       document.activeElement?.hasAttribute('data-tutorial-empty-focus'),
@@ -681,7 +693,7 @@ describe('BoardPage same-route tutorial overlay', () => {
     await click('Next Step');
     expect(page.tutorialGuide()?.step.title).toBe('Inspect PostgreSQL');
     await click('Next Step');
-    expect(page.tutorialGuide()?.step.limitation).toContain('unavailable');
+    expect(page.tutorialGuide()?.step.limitation).toContain('no independent-source comparison configured');
     await click('Take Control');
     expect(
       Array.from(

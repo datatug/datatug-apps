@@ -205,7 +205,7 @@ for (const [name, viewport] of [
         race.getByRole('spinbutton', { name: 'Top', exact: true }),
       ).toHaveValue('5');
       const details = paired.locator('.source-details');
-      await details.locator('summary').click();
+      await details.locator(':scope > summary').click();
       await expect(details).toContainText(
         'https://cloud.openvaultdb.com/v1/dtql',
       );

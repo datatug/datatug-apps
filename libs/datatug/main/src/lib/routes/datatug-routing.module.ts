@@ -1,3 +1,4 @@
+import { SOURCE_ADAPTER_PROVIDERS } from './source-adapter-providers';
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { NgModule } from '@angular/core';
 import { RouterModule, Routes } from '@angular/router';
@@ -24,8 +25,20 @@ const loadDatatugHomePage = () =>
   );
 
 export const datatugRoutes: Routes = [
-  { path: 'native-check-status/:recoveryId', loadComponent: () => import('../session-context/session-detective-recovery.component').then(m => m.SessionDetectiveRecoveryComponent) },
-  { path: 'store/:storeId/native-check-status/:recoveryId', loadComponent: () => import('../session-context/session-detective-recovery.component').then(m => m.SessionDetectiveRecoveryComponent) },
+  {
+    path: 'native-check-status/:recoveryId',
+    loadComponent: () =>
+      import('../session-context/session-detective-recovery.component').then(
+        (m) => m.SessionDetectiveRecoveryComponent,
+      ),
+  },
+  {
+    path: 'store/:storeId/native-check-status/:recoveryId',
+    loadComponent: () =>
+      import('../session-context/session-detective-recovery.component').then(
+        (m) => m.SessionDetectiveRecoveryComponent,
+      ),
+  },
 
   {
     path: 'new-project',
@@ -169,16 +182,46 @@ export const datatugRoutes: Routes = [
         }) &&
         (segments.length === 6 ||
           (segments.length === 7 &&
-            ['overview', 'quick-search', 'tags', 'queries', 'checks', 'detective', 'incidents', 'shipping', 'boards', 'board', 'cards', 'card', 'meanings'].includes(
-              segments[6].path,
-            )) ||
-          (segments.length === 8 && segments[6].path === 'meanings' && ['new-entity', 'entity', 'new-field', 'field'].includes(segments[7].path)) ||
-          (segments.length === 8 && segments[6].path === 'boards' && segments[7].path === 'new') ||
-          (segments.length === 8 && segments[6].path === 'cards' && segments[7].path === 'new') ||
-          (segments.length === 8 && segments[6].path === 'card' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
-          (segments.length === 8 && segments[6].path === 'board' && /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
+            [
+              'overview',
+              'environments',
+              'quick-search',
+              'tags',
+              'queries',
+              'checks',
+              'detective',
+              'incidents',
+              'shipping',
+              'boards',
+              'board',
+              'cards',
+              'card',
+              'meanings',
+            ].includes(segments[6].path)) ||
           (segments.length === 8 &&
-            ['checks', 'detective', 'incidents', 'search-schema'].includes(segments[6].path) &&
+            segments[6].path === 'cards' &&
+            segments[7].path === 'new') ||
+          (segments.length === 8 &&
+            segments[6].path === 'card' &&
+            /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'meanings' &&
+            ['new-entity', 'entity', 'new-field', 'field'].includes(
+              segments[7].path,
+            )) ||
+          (segments.length === 8 &&
+            segments[6].path === 'boards' &&
+            segments[7].path === 'new') ||
+          (segments.length === 8 &&
+            segments[6].path === 'board' &&
+            /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'sources' &&
+            /^[A-Za-z0-9_-]{1,128}$/.test(segments[7].path)) ||
+          (segments.length === 8 &&
+            ['checks', 'detective', 'incidents', 'search-schema'].includes(
+              segments[6].path,
+            ) &&
             /^[A-Za-z0-9_-]+$/.test(segments[7].path)) ||
           (segments.length === 9 &&
             segments[6].path === 'incidents' &&
@@ -191,15 +234,52 @@ export const datatugRoutes: Routes = [
           (segments.length === 8 &&
             segments[6].path === 'query' &&
             /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[7].path)) ||
-          (segments[6]?.path === 'sessions' && (segments.length === 7 ||
-            (/^[A-Za-z0-9_-]{1,128}$/.test(segments[7]?.path ?? '') &&
-              (segments.length === 8 || (segments.length === 9 && ['overview', 'queries', 'invoice-overview', 'invoice-explorer', 'composer', 'checks', 'detective'].includes(segments[8].path)) ||
-                (segments.length === 10 && ['query', 'checks', 'detective'].includes(segments[8].path) && /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(segments[9].path))))))),
+          (segments[6]?.path === 'sessions' &&
+            (segments.length === 7 ||
+              (/^[A-Za-z0-9_-]{1,128}$/.test(segments[7]?.path ?? '') &&
+                (segments.length === 8 ||
+                  (segments.length === 9 &&
+                    [
+                      'overview',
+                      'queries',
+                      'invoice-overview',
+                      'invoice-explorer',
+                      'composer',
+                      'checks',
+                      'detective',
+                    ].includes(segments[8].path)) ||
+                  (segments.length === 10 &&
+                    ['query', 'checks', 'detective'].includes(
+                      segments[8].path,
+                    ) &&
+                    /^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)*$/.test(
+                      segments[9].path,
+                    ))))))),
     ],
     children: [
-      {path: 'quick-search', loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
-      {path: 'tags', data: {discovery: true}, loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
-      {path: 'search-schema/:dbModelId', data: {schemaDetail: true}, loadComponent: () => import('../quick-search/quick-search-page.component').then(m => m.QuickSearchPageComponent)},
+      {
+        path: 'quick-search',
+        loadComponent: () =>
+          import('../quick-search/quick-search-page.component').then(
+            (m) => m.QuickSearchPageComponent,
+          ),
+      },
+      {
+        path: 'tags',
+        data: { discovery: true },
+        loadComponent: () =>
+          import('../quick-search/quick-search-page.component').then(
+            (m) => m.QuickSearchPageComponent,
+          ),
+      },
+      {
+        path: 'search-schema/:dbModelId',
+        data: { schemaDetail: true },
+        loadComponent: () =>
+          import('../quick-search/quick-search-page.component').then(
+            (m) => m.QuickSearchPageComponent,
+          ),
+      },
       ...projectMeaningsRoutes,
       ...['', 'overview'].map((path) => ({
         path,
@@ -209,16 +289,38 @@ export const datatugRoutes: Routes = [
           ),
       })),
       {
-        path: 'shipping',
-        loadComponent: () => import('../shipping/shipping-workspace.component').then((m) => m.ShippingWorkspaceComponent),
+        path: 'environments',
+        loadComponent: () =>
+          import('../pages/signed-in/environments/environments-page.component').then(
+            (m) => m.EnvironmentsPageComponent,
+          ),
       },
       {
-        path: 'boards/new', data: { createBoard: true },
-        loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
+        path: 'sources/:sourceId',
+        loadComponent: () =>
+          import('../source-workspace/source-workspace-page.component').then(
+            (m) => m.SourceWorkspacePageComponent,
+          ),
+      },
+      {
+        path: 'shipping',
+        pathMatch: 'full',
+        redirectTo: 'sources/shipping-working-copy',
+      },
+      {
+        path: 'boards/new',
+        data: { createBoard: true },
+        loadComponent: () =>
+          import('../board/ui/pages/board/board-page.component').then(
+            (m) => m.BoardPageComponent,
+          ),
       },
       {
         path: 'board/:board',
-        loadComponent: () => import('../board/ui/pages/board/board-page.component').then((m) => m.BoardPageComponent),
+        loadComponent: () =>
+          import('../board/ui/pages/board/board-page.component').then(
+            (m) => m.BoardPageComponent,
+          ),
       },
       { path: 'board', pathMatch: 'full', redirectTo: 'boards' },
       {
@@ -236,32 +338,132 @@ export const datatugRoutes: Routes = [
       },
       {
         path: 'boards',
-        loadComponent: () => import('../board/ui/pages/boards/boards-page.component').then((m) => m.BoardsPageComponent),
+        loadComponent: () =>
+          import('../board/ui/pages/boards/boards-page.component').then(
+            (m) => m.BoardsPageComponent,
+          ),
       },
       {
-        path: 'sessions', providers: [SessionWorkspaceService],
-        loadComponent: () => import('../session-context/session-workspace-shell.component').then((m) => m.SessionWorkspaceShellComponent),
-        children: [{ path: ':sessionId', canActivateChild: [admitSessionWorkspace], children: [
-          { path: '', pathMatch: 'full', redirectTo: 'overview' },
-          { path: 'overview', loadComponent: () => import('../pages/signed-in/project/project-page.component').then((m) => m.ProjectPageComponent) },
-          { path: 'queries', loadComponent: () => import('../queries/queries/queries-page.component').then((m) => m.QueriesPageComponent) },
-          { path: 'invoice-overview', loadComponent: () => import('../session-context/invoice-dashboard.component').then((m) => m.InvoiceDashboardComponent) },
-          { path: 'invoice-explorer', loadComponent: () => import('../session-context/invoice-explorer.component').then((m) => m.InvoiceExplorerComponent) },
-          { path: 'checks', loadComponent: () => import('../detective/checks-page.component').then(m => m.ChecksPageComponent) },
-          { path: 'checks/:checkId', loadComponent: () => import('../detective/checks-page.component').then(m => m.ChecksPageComponent) },
-          { path: 'detective', loadComponent: () => import('../detective/cases-page.component').then(m => m.CasesPageComponent) },
-          { path: 'detective/:caseId', loadComponent: () => import('../detective/cases-page.component').then(m => m.CasesPageComponent) },
-          { path: 'composer', loadComponent: () => import('../session-context/session-composer.component').then((m) => m.SessionComposerComponent) },
-          { path: 'query', children: [{ path: ':queryId', loadComponent: () => import('../queries/query/page/query-page.component').then((m) => m.QueryPageComponent) }] },
-        ] }],
+        path: 'sessions',
+        providers: [SessionWorkspaceService],
+        loadComponent: () =>
+          import('../session-context/session-workspace-shell.component').then(
+            (m) => m.SessionWorkspaceShellComponent,
+          ),
+        children: [
+          {
+            path: ':sessionId',
+            canActivateChild: [admitSessionWorkspace],
+            children: [
+              { path: '', pathMatch: 'full', redirectTo: 'overview' },
+              {
+                path: 'overview',
+                loadComponent: () =>
+                  import('../pages/signed-in/project/project-page.component').then(
+                    (m) => m.ProjectPageComponent,
+                  ),
+              },
+              {
+                path: 'queries',
+                loadComponent: () =>
+                  import('../queries/queries/queries-page.component').then(
+                    (m) => m.QueriesPageComponent,
+                  ),
+              },
+              {
+                path: 'invoice-overview',
+                loadComponent: () =>
+                  import('../session-context/invoice-dashboard.component').then(
+                    (m) => m.InvoiceDashboardComponent,
+                  ),
+              },
+              {
+                path: 'invoice-explorer',
+                loadComponent: () =>
+                  import('../session-context/invoice-explorer.component').then(
+                    (m) => m.InvoiceExplorerComponent,
+                  ),
+              },
+              {
+                path: 'checks',
+                loadComponent: () =>
+                  import('../detective/checks-page.component').then(
+                    (m) => m.ChecksPageComponent,
+                  ),
+              },
+              {
+                path: 'checks/:checkId',
+                loadComponent: () =>
+                  import('../detective/checks-page.component').then(
+                    (m) => m.ChecksPageComponent,
+                  ),
+              },
+              {
+                path: 'detective',
+                loadComponent: () =>
+                  import('../detective/cases-page.component').then(
+                    (m) => m.CasesPageComponent,
+                  ),
+              },
+              {
+                path: 'detective/:caseId',
+                loadComponent: () =>
+                  import('../detective/cases-page.component').then(
+                    (m) => m.CasesPageComponent,
+                  ),
+              },
+              {
+                path: 'composer',
+                loadComponent: () =>
+                  import('../session-context/session-composer.component').then(
+                    (m) => m.SessionComposerComponent,
+                  ),
+              },
+              {
+                path: 'query',
+                children: [
+                  {
+                    path: ':queryId',
+                    loadComponent: () =>
+                      import('../queries/query/page/query-page.component').then(
+                        (m) => m.QueryPageComponent,
+                      ),
+                  },
+                ],
+              },
+            ],
+          },
+        ],
       },
       {
         path: 'incidents',
         ...SNEAT_AUTH_GUARDS,
         children: [
-          { path: '', pathMatch: 'full', data: { incidentMode: 'list' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
-          { path: 'new', data: { incidentMode: 'new' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
-          { path: ':incidentStoreId/:incidentId', data: { incidentMode: 'detail' }, loadComponent: () => import('../detective/hosted-incidents-page.component').then(m => m.HostedIncidentsPageComponent) },
+          {
+            path: '',
+            pathMatch: 'full',
+            data: { incidentMode: 'list' },
+            loadComponent: () =>
+              import('../detective/hosted-incidents-page.component').then(
+                (m) => m.HostedIncidentsPageComponent,
+              ),
+          },
+          {
+            path: 'new',
+            data: { incidentMode: 'new' },
+            loadComponent: () =>
+              import('../detective/hosted-incidents-page.component').then(
+                (m) => m.HostedIncidentsPageComponent,
+              ),
+          },
+          {
+            path: ':incidentStoreId/:incidentId',
+            data: { incidentMode: 'detail' },
+            loadComponent: () =>
+              import('../detective/hosted-incidents-page.component').then(
+                (m) => m.HostedIncidentsPageComponent,
+              ),
+          },
         ],
       },
       {
@@ -356,5 +558,6 @@ export const datatugRoutes: Routes = [
 
 @NgModule({
   imports: [RouterModule.forChild(datatugRoutes)],
+  providers: SOURCE_ADAPTER_PROVIDERS,
 })
 export class DatatugRoutingModule {}

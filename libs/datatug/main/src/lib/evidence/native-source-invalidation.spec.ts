@@ -115,6 +115,34 @@ describe('Verified source receipt native invalidation', () => {
     http.expectNone(() => true);
     http.verify();
   });
+  it.each([
+    ['telemetry-source', 'publication'],
+    ['document-feed', 'reset'],
+  ] as const)('cancels an unbound generic run for %s %s without dispatching a queued credential', async (sourceId, action) => {
+    const http = TestBed.inject(HttpTestingController),
+      bridge = TestBed.inject(SneatApiAuthTokenBridge),
+      events = TestBed.inject(NativeSourceInvalidationService);
+    let finish: ((token: string) => void) | undefined;
+    bridge.beginAuthentication().resolveWithTokenResolver(() => new Promise<string>((resolve) => { finish = resolve; }));
+    const owner = TestBed.runInInjectionContext(() => useNativeRunLifetime()),
+      captured = owner.capture(ref, actor, { environment: 'demo' });
+    const pending = firstValueFrom(TestBed.inject(DetectiveClientService).runHostedQuery(
+      context, 'measurements/current', 'demo', {},
+      { operationId: 'generic-original', signal: captured.signal },
+    ));
+    const cancelled = expect(pending).rejects.toThrow();
+    events.invalidate({ projectRef: ref, actor, sourceId, environment: 'other', action });
+    events.invalidate({ projectRef: ref, actor: 'other', sourceId, environment: 'demo', action });
+    expect(captured.signal.aborted).toBe(false);
+    events.invalidate({ projectRef: ref, actor, sourceId, environment: 'demo', action });
+    expect(captured.signal.aborted).toBe(true);
+    bridge.setExplicitToken('replacement-token');
+    finish?.('old-token');
+    await cancelled;
+    http.expectNone(() => true);
+    http.verify();
+    expect(matchesNativeSourceInvalidation({ projectRef: ref, actor, sourceId, action }, ref, actor, undefined)).toBe(false);
+  });
   it.each(['malformed', 'unavailable'] as const)(
     'does not announce %s or uncertain action acknowledgements as source changes',
     async (failure) => {

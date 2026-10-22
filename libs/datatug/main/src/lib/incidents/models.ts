@@ -8,6 +8,7 @@
 // and is not a hostname.
 
 import type {
+  SourceOperationRef,
   ContextCondition,
   FactLayer,
   FactRole,
@@ -96,6 +97,12 @@ export interface IncidentContextInput {
   readonly facts: readonly IncidentFactInput[];
 }
 
+export type IncidentCharacterID = 'sarah' | 'maya' | 'daniel';
+export interface IncidentNotePresentation {
+  readonly kind: 'demo-character';
+  readonly characterId: IncidentCharacterID;
+}
+
 export interface IncidentActor {
   readonly kind: 'human' | 'agent' | 'system';
   readonly id: string;
@@ -117,6 +124,7 @@ export interface IncidentParticipant {
 }
 
 export type IncidentArtifactRefKind =
+  | 'source-operation'
   | 'check-run'
   | 'execution'
   | 'snapshot'
@@ -147,7 +155,15 @@ export interface IncidentComparisonRef {
 }
 
 export interface IncidentArtifactRef {
-  readonly checkRun?: { readonly storeId: string; readonly projectId: string; readonly environment: string; readonly checkId: string; readonly checkVersion: number; readonly runId: string; };
+  readonly sourceOperation?: SourceOperationRef;
+  readonly checkRun?: {
+    readonly storeId: string;
+    readonly projectId: string;
+    readonly environment: string;
+    readonly checkId: string;
+    readonly checkVersion: number;
+    readonly runId: string;
+  };
   readonly kind: IncidentArtifactRefKind;
   readonly id?: string;
   readonly incident?: IncidentRef;
@@ -183,7 +199,44 @@ export const INCIDENT_OUTCOMES = [
 export type IncidentOutcome = (typeof INCIDENT_OUTCOMES)[number];
 
 /** One row of `GET /datatug/incidents` (hub REQ:api-and-cli). */
+export interface IncidentResolutionCriterion {
+  readonly version: number;
+  readonly finalized: boolean;
+  readonly finalizedAt?: string;
+  readonly enforcement: 'required';
+  readonly scope: {
+    readonly project: IncidentProjectRef;
+    readonly sourceID: string;
+    readonly generation: string;
+    readonly affectedInputs: Readonly<Record<string, TypedValue>>;
+    readonly sessionRef: string;
+    readonly bagID: string;
+    readonly appliedManifestRef: string;
+  };
+  readonly checkID: string;
+  readonly checkVersion: number;
+  readonly definitionDigest: string;
+  readonly maxAgeSeconds: number;
+}
+
+/** Actual Core public resolution projection; no private resolution event identity is exposed. */
+export interface IncidentResolution {
+  readonly humanNote: string;
+  readonly proof: {
+    readonly definitionDigest: string;
+    readonly criterionVersion: number;
+    readonly scope: IncidentResolutionCriterion['scope'];
+    readonly run: Extract<import('@sneat/datatug-semantic').ArtifactRef, { kind: 'check-run' }>['checkRun'];
+    readonly evaluatedAt: string;
+    readonly outcome: 'pass';
+    readonly observationRefs: readonly import('@sneat/datatug-semantic').ArtifactRef[];
+    readonly recoveryRefs: readonly import('@sneat/datatug-semantic').ArtifactRef[];
+  };
+}
+
 export interface IncidentSummary {
+  readonly resolutionCriterion?: IncidentResolutionCriterion;
+  readonly resolution?: IncidentResolution;
   readonly ref: IncidentRef;
   readonly uid: string;
   readonly title: string;
@@ -274,6 +327,8 @@ export interface IncidentEvent {
   };
   readonly actor: IncidentActor;
   readonly type:
+    | 'incident.resolved'
+    | 'incident.criterion-set'
     | 'incident.created'
     | 'incident.status'
     | 'incident.outcome'
@@ -286,6 +341,8 @@ export interface IncidentEvent {
   readonly assertion: IncidentAssertion;
   readonly refs?: readonly IncidentArtifactRef[];
   readonly payload:
+    | IncidentResolutionCriterion
+    | IncidentResolution
     | {
         readonly uid: string;
         readonly title: string;
@@ -299,7 +356,10 @@ export interface IncidentEvent {
     | { readonly status: IncidentStatus }
     | { readonly outcome: IncidentOutcome }
     | { readonly into: IncidentRef; readonly mergeId: string }
-    | { readonly body: string }
+    | {
+        readonly body: string;
+        readonly presentation?: IncidentNotePresentation;
+      }
     | { readonly fact: IncidentFactInput }
     | {
         readonly fact: IncidentContextFactRef;

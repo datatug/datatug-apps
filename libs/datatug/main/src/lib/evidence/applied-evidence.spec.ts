@@ -40,6 +40,14 @@ describe('Explicit native applied evidence selection', () => {
       }),
     ).toThrow(/differs/);
   });
+
+  it('keeps two same-order Sessions as explicit distinct selection requests',()=>{
+    const one=appliedSnapshot(),snapshot=appliedSnapshot(),two={...snapshot,session:{...snapshot.session,id:'second-session'}};
+    const a=appliedEvidenceChoices(appliedCapabilities,one,'demo','incidents/INC-1')[0];
+    const b=appliedEvidenceChoices(appliedCapabilities,two,'demo','incidents/INC-1')[0];
+    expect(a.value).toEqual(b.value);
+    expect(a.evidence.context.sessionId).not.toBe(b.evidence.context.sessionId);
+  });
   it.each([
     'disabled',
     'generation',

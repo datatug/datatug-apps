@@ -1,3 +1,4 @@
+import { DEMO_LOG_SOURCE_ADAPTER, type AppliedLogQuery } from './demo-log-source-adapter';
 // A mapped presentation of ordinary OVDB query results. The server and wire
 // protocol do not know this collection contains logs.
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
@@ -15,7 +16,6 @@ import { ovdbDatabase, type OvdbRow } from '../../ovdb/ovdb-records';
 
 type LoadState = 'idle' | 'loading' | 'ready' | 'error';
 type Filter = { readonly field: string; readonly operator: '==' | '>=' | '<='; readonly value: string };
-type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; readonly collection: string; readonly orderId: string };
 
 @Component({
   selector: 'sneat-datatug-demo-logs-page',
@@ -29,18 +29,11 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
     <ion-content color="light">
       <main class="evidence-page">
         <header class="evidence-heading">
-          @if (isNorthwindSource()) {
-            <p class="eyebrow">Northwind investigation · synthetic log evidence</p>
-            @if (applied()!.orderId === '11039') { <h1>Why did order 11039 remain unshipped?</h1> }
-            @else if (applied()!.orderId) { <h1>Order {{ applied()!.orderId }} evidence</h1> }
-            @else { <h1>Northwind order evidence</h1> }
-            @if (applied()!.orderId === '11039') { <p>The database record is real. These log entries are a deterministic synthetic scenario for investigating it.</p> }
-            @else { <p>This source contains deterministic synthetic log entries. Check the selected database record separately.</p> }
-            @if (applied()!.orderId) { <a [routerLink]="['/demo', 'sqlite', 'northwind', 'table', 'Orders']" [queryParams]="{ record: applied()!.orderId }">Open the order record</a> }
-          } @else {
-            <p class="eyebrow">Evidence from an OVDB collection</p>
-            <h1>Log evidence timeline</h1>
-            @if (applied(); as query) { <p>Showing results from {{ query.databaseId }} / {{ query.collection }}{{ query.orderId ? ' for order ' + query.orderId : '' }}.</p> }
+          <p class="eyebrow">{{ heading().eyebrow }}</p>
+          <h1>{{ heading().title }}</h1>
+          <p>{{ heading().description }}</p>
+          @if (recordLink(); as link) {
+            <a [routerLink]="link.commands" [queryParams]="link.queryParams">{{ link.label }}</a>
           }
         </header>
 
@@ -53,7 +46,7 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
               <label>Local owner token (optional) <input type="password" [value]="ownerToken()" (input)="ownerToken.set(inputValue($event))" autocomplete="off" /></label>
             </div>
           </details>
-          <label>Order ID <input [value]="orderId()" (input)="orderId.set(inputValue($event))" /></label>
+          <label>{{ adapter.identifier.label }} <input [value]="identifier()" (input)="identifier.set(inputValue($event))" /></label>
           <label>Correlation ID <input [value]="correlationId()" (input)="correlationId.set(inputValue($event))" /></label>
           <label>From (RFC3339 UTC) <input [value]="fromTime()" (input)="fromTime.set(inputValue($event))" /></label>
           <label>To (RFC3339 UTC) <input [value]="toTime()" (input)="toTime.set(inputValue($event))" /></label>
@@ -63,14 +56,14 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
             </select>
           </label>
           <label class="untimed"><input type="checkbox" [checked]="includeUntimed()" (change)="includeUntimed.set(checked($event))" /> Include untimed or malformed entries (file source only; ignores time range)</label>
-          @if (includeUntimed() && (orderId().trim() || correlationId().trim())) {
+          @if (includeUntimed() && (identifier().trim() || correlationId().trim())) {
             <p class="filter-note" role="note">
-              Order, correlation, and severity filters still apply. Malformed
+              Identifier, correlation, and severity filters still apply. Malformed
               entries may not contain those fields. Clear the IDs and select
               All severity to include entries without those fields.
             </p>
             <button type="button" (click)="clearIdentifierFilters()">
-              Clear order and correlation filters
+              Clear identifier and correlation filters
             </button>
           }
           <button type="submit" [disabled]="state() === 'loading'">{{ state() === 'loading' ? 'Loading…' : 'Find evidence' }}</button>
@@ -91,15 +84,16 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
                   <section class="entry-details" aria-label="Entry details">
                     <dl>
                       <dt>Parse status</dt><dd>{{ status(row) }}</dd>
-                      <dt>Correlation</dt><dd>{{ text(row, 'correlation_id') || 'Not supplied' }}</dd>
-                      <dt>Order</dt><dd>{{ text(row, 'order_id') || 'Not supplied' }}</dd>
+                      @for (field of adapter.detailFields; track field.field) {
+                        <dt>{{ field.label }}</dt><dd>{{ text(row, field.field) || 'Not supplied' }}</dd>
+                      }
                       <dt>Reference</dt><dd><code>{{ text(row, 'source_ref') }}</code></dd>
                     </dl>
-                    @if (isNorthwindSource() && text(row, 'order_id')) {
-                      <a [routerLink]="['/demo', 'sqlite', 'northwind', 'table', 'Orders']" [queryParams]="{ record: text(row, 'order_id') }">Open related order {{ text(row, 'order_id') }}</a>
+                    @if (relatedRecord(row); as link) {
+                      <a [routerLink]="link.commands" [queryParams]="link.queryParams">{{ link.label }}</a>
                     }
                     <button type="button" (click)="copyReference(row)">Copy evidence reference</button>
-                    <h3>{{ text(row, 'parser') === 'google-cloud-logging' ? 'Provider entry (SDK reconstruction)' : 'Original file entry' }}</h3><pre>{{ text(row, 'raw') }}</pre>
+                    <h3>{{ adapter.originalLabel(text(row, 'parser')) }}</h3><pre>{{ text(row, 'raw') }}</pre>
                     @if (text(row, 'fields_json')) { <h3>Structured fields</h3><pre>{{ text(row, 'fields_json') }}</pre> }
                   </section>
           }
@@ -134,20 +128,21 @@ type AppliedQuery = { readonly baseUrl: string; readonly databaseId: string; rea
 export class DemoLogsPageComponent {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
-  readonly baseUrl = signal('http://127.0.0.1:6832');
-  readonly databaseId = signal('northwind_evidence');
-  readonly collection = signal('fulfillment_events');
+  readonly adapter = inject(DEMO_LOG_SOURCE_ADAPTER);
+  readonly baseUrl = signal(this.adapter.defaults.baseUrl);
+  readonly databaseId = signal(this.adapter.defaults.databaseId);
+  readonly collection = signal(this.adapter.defaults.collection);
   readonly ownerToken = signal('');
-  readonly orderId = signal(this.route.snapshot.queryParamMap.get('order') ?? '11039');
+  readonly identifier = signal(this.route.snapshot.queryParamMap.get(this.adapter.identifier.queryParam) ?? this.adapter.defaults.identifier);
   readonly correlationId = signal('');
-  readonly fromTime = signal('2018-04-21T09:12:00Z');
-  readonly toTime = signal('2018-04-21T09:14:00Z');
+  readonly fromTime = signal(this.adapter.defaults.from);
+  readonly toTime = signal(this.adapter.defaults.to);
   readonly severity = signal('');
   readonly includeUntimed = signal(false);
   readonly state = signal<LoadState>('idle');
   readonly error = signal('');
   readonly rows = signal<readonly OvdbRow[]>([]);
-  readonly applied = signal<AppliedQuery | null>(null);
+  readonly applied = signal<AppliedLogQuery | null>(null);
   readonly selectedKey = signal('');
   readonly gridRows = computed(() => this.rows().map(row => ({ ...row, ...Object.fromEntries(['timestamp', 'severity', 'service', 'source', 'message'].map(field => [field, this.text(row, field) || ({ timestamp: 'Time unavailable', severity: 'UNKNOWN', source: 'Source unavailable', message: 'Unparsed entry' } as Record<string, string>)[field] || ''])) })));
   readonly selectedRow = computed(() => this.rows().find(row => row.key === this.selectedKey()));
@@ -176,9 +171,9 @@ export class DemoLogsPageComponent {
 
   constructor() {
     this.route.queryParamMap.pipe(takeUntilDestroyed()).subscribe((params) => {
-      const orderId = params.get('order') ?? '11039';
-      if (this.applied()?.orderId === orderId) return;
-      this.orderId.set(orderId);
+      const identifier = params.get(this.adapter.identifier.queryParam) ?? this.adapter.defaults.identifier;
+      if (this.applied()?.identifier === identifier) return;
+      this.identifier.set(identifier);
       void this.load();
     });
   }
@@ -186,14 +181,19 @@ export class DemoLogsPageComponent {
   inputValue(event: Event): string { return (event.target as HTMLInputElement).value; }
   checked(event: Event): boolean { return (event.target as HTMLInputElement).checked; }
   clearIdentifierFilters(): void {
-    this.orderId.set('');
+    this.identifier.set('');
     this.correlationId.set('');
   }
   text(row: OvdbRow, field: string): string { const value = row.data[field]; return value == null ? '' : String(value); }
   status(row: OvdbRow): string { return this.text(row, 'parse_status') || 'parsed'; }
-  isNorthwindSource(): boolean {
+  readonly heading = computed(() => this.adapter.heading(this.applied()));
+  readonly recordLink = computed(() => {
     const query = this.applied();
-    return query?.baseUrl === 'http://127.0.0.1:6832' && query.databaseId === 'northwind_evidence' && ['fulfillment_events', 'carrier_events'].includes(query.collection);
+    return query ? this.adapter.relatedRecord(query, query.identifier, 'context') : undefined;
+  });
+  relatedRecord(row: OvdbRow) {
+    const query = this.applied();
+    return query ? this.adapter.relatedRecord(query, this.text(row, this.adapter.identifier.field)) : undefined;
   }
 
   private sourceFetch(baseUrl: string): typeof globalThis.fetch {
@@ -213,18 +213,18 @@ export class DemoLogsPageComponent {
   async load(event?: Event): Promise<void> {
     event?.preventDefault();
     if (event) {
-      const submittedOrder = this.orderId().trim();
-      const routeOrder = this.route.snapshot.queryParamMap.get('order') ?? '11039';
-      if (submittedOrder !== routeOrder) {
+      const submittedIdentifier = this.identifier().trim();
+      const routeIdentifier = this.route.snapshot.queryParamMap.get(this.adapter.identifier.queryParam) ?? this.adapter.defaults.identifier;
+      if (submittedIdentifier !== routeIdentifier) {
         try {
           const navigated = await this.router.navigate([], {
             relativeTo: this.route,
-            queryParams: { order: submittedOrder },
+            queryParams: { [this.adapter.identifier.queryParam]: submittedIdentifier },
             queryParamsHandling: 'merge',
           });
-          if (!navigated) throw new Error('The order URL could not be updated.');
+          if (!navigated) throw new Error('The identifier URL could not be updated.');
         } catch (error) {
-          this.error.set(error instanceof Error ? error.message : 'The order URL could not be updated.');
+          this.error.set(error instanceof Error ? error.message : 'The identifier URL could not be updated.');
           this.state.set('error');
         }
         return;
@@ -235,7 +235,7 @@ export class DemoLogsPageComponent {
     const from = this.fromTime();
     const to = this.toTime();
     const includeUntimed = this.includeUntimed();
-    const orderId = this.orderId().trim();
+    const identifier = this.identifier().trim();
     const correlationId = this.correlationId().trim();
     const severity = this.severity();
     const baseUrl = this.baseUrl().trim();
@@ -261,7 +261,7 @@ export class DemoLogsPageComponent {
         { field: 'timestamp', operator: '>=', value: from },
         { field: 'timestamp', operator: '<=', value: to },
       ];
-      if (orderId) filters.push({ field: 'order_id', operator: '==', value: orderId });
+      if (identifier) filters.push({ field: this.adapter.identifier.field, operator: '==', value: identifier });
       if (correlationId) filters.push({ field: 'correlation_id', operator: '==', value: correlationId });
       if (severity) filters.push({ field: 'severity', operator: '==', value: severity });
       const result = await ovdbDatabase(connection).query<Record<string, unknown>>({
@@ -270,7 +270,7 @@ export class DemoLogsPageComponent {
       });
       if (request !== this.#request) return;
       this.rows.set(result.records.map((record) => ({ key: record.key.path, data: record.data ?? {} })));
-      this.applied.set({ baseUrl, databaseId, collection, orderId });
+      this.applied.set({ baseUrl, databaseId, collection, identifier });
       this.state.set('ready');
     } catch (error) {
       if (request !== this.#request) return;

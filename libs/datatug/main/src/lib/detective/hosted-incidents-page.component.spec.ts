@@ -1,4 +1,9 @@
+import { SessionContextApiService } from '../session-context/session-context-api.service';
+import { MappedContextInputComponent } from './mapped-context-input.component';
+import { HostedIncidentConversationComponent } from './hosted-incident-conversation.component';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
+import { IncidentEmptyStateComponent } from '../incidents/incident-empty-state.component';
 import { convertToParamMap, ActivatedRoute, Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { AgentContextService } from '@sneat/datatug-semantic';
@@ -20,33 +25,37 @@ const caseRecord = {
 };
 
 describe('HostedIncidentsPageComponent', () => {
+  const contextApi = { capabilities: vi.fn() };
   const client = {
     state: vi.fn(), incidentEvents: vi.fn(), projectIncidents: vi.fn(), projectIncident: vi.fn(), incidentAction: vi.fn(),
   };
   const router = { events: of(), navigate: vi.fn().mockResolvedValue(true), navigateByUrl: vi.fn().mockResolvedValue(true) };
   let routeParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
+  let queryParams$: BehaviorSubject<ReturnType<typeof convertToParamMap>>;
 
-  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref) {
+  async function mount(mode: 'list' | 'new' | 'detail', cases = [caseRecord], requestedEnvironment = 'demo', canWrite = true, projectRef = ref, draft = '', initialIncidents = [incident], initialEnvironments = ['demo']) {
     const project = new BehaviorSubject({ ref: projectRef });
     const authState = new BehaviorSubject({ status: 'authenticated', user: { uid: 'sarah' } });
     client.incidentEvents.mockReturnValue(of({ events: [], nextAfterSeq: 1, hasMore: false }));
-    client.state.mockReturnValue(of({ environments: ['demo'], cases, capabilities: { canWrite } }));
-    client.projectIncidents.mockReturnValue(of({ incidents: [incident] }));
+    client.state.mockReturnValue(of({ environments: initialEnvironments, cases, capabilities: { canWrite } }));
+    client.projectIncidents.mockReturnValue(of({ incidents: initialIncidents }));
     client.projectIncident.mockReturnValue(of({ incident }));
     const data = { incidentMode: mode };
     const params = convertToParamMap(mode === 'detail' ? {
       incidentStoreId: incident.ref.storeId, incidentId: incident.ref.incidentId,
     } : {});
     routeParams$ = new BehaviorSubject(params);
-    const queryParams = convertToParamMap({ environment: requestedEnvironment });
+    const queryParams = convertToParamMap({ environment: requestedEnvironment, ...(draft ? { draft } : {}) });
+    queryParams$ = new BehaviorSubject(queryParams);
     await TestBed.configureTestingModule({
       imports: [HostedIncidentsPageComponent],
       providers: [
         { provide: DetectiveClientService, useValue: client },
+        { provide: SessionContextApiService, useValue: contextApi },
         { provide: Router, useValue: router },
         { provide: ActivatedRoute, useValue: {
           snapshot: { data, paramMap: params, queryParamMap: queryParams },
-          data: of(data), paramMap: routeParams$.asObservable(), queryParamMap: of(queryParams),
+          data: of(data), paramMap: routeParams$.asObservable(), queryParamMap: queryParams$.asObservable(),
         } },
         { provide: DatatugNavContextService, useValue: {
           currentProject: project.asObservable(), currentEnv: of(undefined),
@@ -64,6 +73,7 @@ describe('HostedIncidentsPageComponent', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    contextApi.capabilities.mockReset().mockResolvedValue({actorId:'sarah',subjects:[]});
     sessionStorage.clear();
     router.navigate.mockResolvedValue(true);
     router.navigateByUrl.mockResolvedValue(true);
@@ -71,6 +81,208 @@ describe('HostedIncidentsPageComponent', () => {
   afterEach(() => {
     TestBed.resetTestingModule();
     vi.restoreAllMocks();
+  });
+
+
+
+  it('gates parent Case and environment mutations while the real child owns an unresolved operation',async()=>{
+    const f=await mount('detail',[],'demo',true,ref,'',[incident],['demo','staging']);
+    await vi.waitFor(()=>expect(f.debugElement.query(By.directive(HostedIncidentConversationComponent))).not.toBeNull());
+    const child=f.debugElement.query(By.directive(HostedIncidentConversationComponent)).componentInstance as HostedIncidentConversationComponent;
+    const reply=new Subject<unknown>();client.incidentAction.mockReturnValue(reply.asObservable());
+    const conversation=child as unknown as {body:{set(value:string):void};send():Promise<void>};
+    conversation.body.set('Pending conversation write');const sending=conversation.send();
+    const parent=f.componentInstance as unknown as {startCase():Promise<void>;selectEnvironment(value:string):void;environment():string};
+    await parent.startCase();parent.selectEnvironment('staging');
+    expect(client.incidentAction).toHaveBeenCalledTimes(1);expect(parent.environment()).toBe('demo');
+    reply.error(new Error('Lost reply'));await sending;
+    // An unresolved journal keeps the parent locked even after transport ends.
+    parent.selectEnvironment('staging');expect(parent.environment()).toBe('demo');
+    child.mutationBusy.emit(false);
+    parent.selectEnvironment('staging');expect(parent.environment()).toBe('staging');
+  });
+
+  it('F1 keeps parent mutations locked when the mounted child cannot read the shared retry slot',async()=>{
+    const key='datatug:incident-message:'+JSON.stringify([{kind:'cloud',storage:'firestore',spaceID:ref.spaceID,project:ref.projectId,principal:'sarah'},'demo',incident.ref]);
+    const bytes=JSON.stringify({operationId:'operation-retained-criterion',expectedSeq:1,action:{type:'criterion-finalize',incidentRef:caseRecord.incidentRefs[0],environment:'demo',expectedSeq:1,criterionVersion:1}});
+    sessionStorage.setItem(key,bytes);const read=sessionStorage.getItem.bind(sessionStorage);
+    const get=vi.spyOn(sessionStorage,'getItem').mockImplementation(name=>{if(name===key)throw new Error('read denied');return read(name);});
+    const write=vi.spyOn(sessionStorage,'setItem');
+    const f=await mount('detail',[],'demo',true,ref,'',[incident],['demo','staging']);
+    await vi.waitFor(()=>expect(f.debugElement.query(By.directive(HostedIncidentConversationComponent))).not.toBeNull());
+    await f.whenStable();const parent=f.componentInstance as unknown as {startCase():Promise<void>;selectEnvironment(value:string):void;environment():string};
+    await parent.startCase();parent.selectEnvironment('staging');
+    expect(client.incidentAction).not.toHaveBeenCalled();expect(parent.environment()).toBe('demo');expect(write).not.toHaveBeenCalled();expect(read(key)).toBe(bytes);
+    get.mockRestore(); sessionStorage.removeItem(key);
+  });
+  it('offers the shared landing only for an empty hosted list', async () => {
+    const fixture = await mount('list', [], 'demo', true, ref, '', []);
+    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
+    expect(fixture.nativeElement.textContent).toContain('Report an incident');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
+  it('keeps the actual hosted Space, project and environment on empty entry and explicit creation', async () => {
+    const selected = {
+      storeId: 'firestore',
+      spaceID: 'team-space',
+      projectId: 'fulfilment-private',
+    };
+    const path =
+      '/space/team-space/store/firestore/project/fulfilment-private/incidents';
+    let fixture = await mount(
+      'list',
+      [],
+      'staging',
+      true,
+      selected,
+      '',
+      [],
+      ['staging'],
+    );
+    await vi.waitFor(() =>
+      expect(
+        fixture.debugElement.query(By.directive(IncidentEmptyStateComponent)),
+      ).toBeTruthy(),
+    );
+    const landing = fixture.debugElement.query(
+      By.directive(IncidentEmptyStateComponent),
+    ).componentInstance as IncidentEmptyStateComponent;
+    expect(landing.createLink()).toBe(path + '/new');
+    expect(landing.queryParams()).toEqual({ environment: 'staging' });
+    expect(client.projectIncidents).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'cloud',
+        storage: 'firestore',
+        spaceID: selected.spaceID,
+        project: selected.projectId,
+        principal: 'sarah',
+      }),
+      'staging',
+    );
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    fixture.destroy();
+    TestBed.resetTestingModule();
+    fixture = await mount(
+      'new',
+      [],
+      'staging',
+      true,
+      selected,
+      'test',
+      [],
+      ['staging'],
+    );
+    const page = fixture.componentInstance as unknown as {
+      listHref(): string;
+      environmentQuery(): Record<string, string>;
+      title: { set(value: string): void };
+      create(): Promise<void>;
+    };
+    expect(page.listHref()).toBe(path);
+    expect(page.environmentQuery()).toEqual({ environment: 'staging' });
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    page.title.set('My actual report');
+    const returned = {
+      ...incident,
+      ref: {
+        storeId: 'hosted-returned-store',
+        incidentId: 'INC-hosted-result',
+      },
+    };
+    client.incidentAction.mockReturnValue(of({ incident: returned }));
+    await page.create();
+    expect(client.incidentAction).toHaveBeenCalledWith(
+      expect.objectContaining({
+        kind: 'cloud',
+        storage: 'firestore',
+        spaceID: selected.spaceID,
+        project: selected.projectId,
+        principal: 'sarah',
+      }),
+      expect.objectContaining({
+        type: 'create',
+        environment: 'staging',
+        title: 'My actual report',
+      }),
+      expect.any(String),
+      expect.any(AbortSignal),
+    );
+    expect(router.navigate).toHaveBeenCalledWith(
+      [path + '/hosted-returned-store/INC-hosted-result'],
+      {
+        queryParams: { environment: 'staging' },
+        replaceUrl: true,
+      },
+    );
+  });
+
+  it('lets the user edit a test draft and only creates on explicit submission', async () => {
+    const fixture = await mount('new', [], 'demo', true, ref, 'test');
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void; (): string };
+      description: { set(value: string): void };
+      create(): Promise<void>;
+    };
+    expect(page.title()).toBe('[Test] Investigate a delayed delivery');
+    expect(fixture.nativeElement.textContent).toContain('editable example');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    page.title.set('[Test] Edited title');
+    page.description.set('Edited observation');
+    client.incidentAction.mockReturnValue(of({ incident }));
+    await page.create();
+    expect(client.incidentAction).toHaveBeenCalledWith(expect.objectContaining({ kind: 'cloud' }), expect.objectContaining({ title: '[Test] Edited title', description: 'Edited observation', environment: 'demo' }), expect.any(String), expect.any(AbortSignal));
+    expect(router.navigate).toHaveBeenCalledWith([expect.stringContaining('/incidents/detective-incidents-9c561d36/INC-1')], { queryParams: { environment: 'demo' }, replaceUrl: true });
+  });
+  it('keeps the test-draft marker, explanation and edits when selecting another environment', async () => {
+    const fixture = await mount('new', [], 'demo', true, ref, 'test', [], ['demo', 'staging']);
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void; (): string };
+      description: { set(value: string): void; (): string };
+      environment(): string;
+      selectEnvironment(value: string): void;
+    };
+    page.title.set('[Test] My edited delivery report');
+    page.description.set('An edited observation to keep while changing environment.');
+    page.selectEnvironment('staging');
+    expect(router.navigate).toHaveBeenCalledWith([], {
+      relativeTo: TestBed.inject(ActivatedRoute),
+      queryParams: { environment: 'staging', draft: 'test' },
+      replaceUrl: true,
+    });
+    // Deliver the query emitted by real Router navigation, so the explanation
+    // is checked after the route and environment state have both updated.
+    queryParams$.next(convertToParamMap(router.navigate.mock.calls.at(-1)?.[1]?.queryParams));
+    await fixture.whenStable();
+    expect(page.environment()).toBe('staging');
+    expect(page.title()).toBe('[Test] My edited delivery report');
+    expect(page.description()).toBe('An edited observation to keep while changing environment.');
+    await vi.waitFor(() => expect(fixture.nativeElement.textContent).toContain('Try a test incident'));
+    expect(fixture.nativeElement.textContent).toContain('This is an editable example.');
+    expect(fixture.nativeElement.textContent).toContain('Choosing Create incident saves a real incident');
+    expect(client.incidentAction).not.toHaveBeenCalled();
+  });
+
+  it('clears canceled sample text and preserves an unsaved hosted draft on query changes', async () => {
+    const fixture = await mount('new', [], 'demo', true, ref, 'test');
+    const page = fixture.componentInstance as unknown as {
+      title: { set(value: string): void; (): string };
+      description: { (): string };
+      cancelDraft(): void;
+    };
+    page.cancelDraft();
+    fixture.componentInstance.ionViewWillEnter();
+    expect(page.title()).toBe('[Test] Investigate a delayed delivery');
+    page.cancelDraft();
+    queryParams$.next(convertToParamMap({ environment: 'demo' }));
+    await fixture.whenStable();
+    expect(page.title()).toBe('');
+    expect(page.description()).toBe('');
+    page.title.set('Unsaved hosted report');
+    queryParams$.next(convertToParamMap({ environment: 'demo', draft: 'test' }));
+    await fixture.whenStable();
+    expect(page.title()).toBe('Unsaved hosted report');
+    expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('lists private Incidents after the scoped backend responds, with a route to create', async () => {
@@ -90,24 +302,29 @@ describe('HostedIncidentsPageComponent', () => {
       .toBe('/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1');
   });
 
-  it('creates an Incident without a Case, preserves numeric OrderID, and opens its returned full ref', async () => {
+  it('creates an Incident without a Case, preserves the selected mapped integer input, and opens its returned full ref', async () => {
     client.incidentAction.mockReturnValue(of({ incident, receipt: 'saved' }));
     const fixture = await mount('new', []);
     const page = fixture.componentInstance as unknown as {
       title: { set(value: string): void };
       description: { set(value: string): void };
-      orderId: { set(value: string): void };
+      loadMappedInputs(): Promise<void>;
       create(): Promise<void>;
     };
     page.title.set('Order 11039 is missing');
     page.description.set('Customer reported a missing order.');
-    page.orderId.set('11039');
+    // Owner-capability-shaped unit metadata; labels and canonical field come from the adapter, never page branches.
+    contextApi.capabilities.mockResolvedValue({actorId:'sarah', subjects:[{id:'shipping-order-id',label:'Order ID',type:'integer',shape:'scalar',scope:{environmentId:'demo',identityDomain:'unit-source'},subject:{conceptId:'shipping-order',fieldId:'order_id',fieldMappingRef:'unit-mapping'}}]});
+    await page.loadMappedInputs(); await fixture.whenStable();
+    const input = fixture.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent;
+    input.choose('shipping-order-id'); input.text.set('11045'); input.add();
+    await fixture.whenStable();
     await page.create();
     expect(client.incidentAction).toHaveBeenCalledWith(
       expect.objectContaining({ kind: 'cloud', project: 'private-project' }),
       expect.objectContaining({
         type: 'create', environment: 'demo', title: 'Order 11039 is missing',
-        context: { OrderID: { type: 'number', value: 11039 } },
+        context: { order_id: { type: 'integer', value: '11045' } },
       }),
       expect.stringMatching(/^operation-/),
       expect.any(AbortSignal),
@@ -117,6 +334,43 @@ describe('HostedIncidentsPageComponent', () => {
       ['/space/private-space/store/firestore/project/private-project/incidents/detective-incidents-9c561d36/INC-1'],
       { queryParams: { environment: 'demo' }, replaceUrl: true },
     );
+  });
+
+  it('uses a second neutral mapped subject and never displays a hardcoded business input', async () => {
+    client.incidentAction.mockReturnValue(of({incident,receipt:'saved'}));
+    contextApi.capabilities.mockResolvedValue({actorId:'sarah',subjects:[{id:'asset-key',label:'Asset key',type:'string',shape:'scalar',scope:{environmentId:'demo',identityDomain:'assets'},subject:{conceptId:'asset',fieldId:'asset_key',fieldMappingRef:'unit-asset-mapping'}},{id:'other-env',label:'Unavailable environment field',type:'integer',shape:'scalar',scope:{environmentId:'staging',identityDomain:'assets'},subject:{conceptId:'asset',fieldId:'foreign',fieldMappingRef:'unit-foreign-mapping'}}]});
+    const f=await mount('new',[]);
+    const page=f.componentInstance as unknown as {title:{set(value:string):void};loadMappedInputs():Promise<void>;create():Promise<void>};
+    expect(f.nativeElement.textContent).not.toContain('Legacy OrderID');
+    expect(f.nativeElement.querySelector('[aria-label="Order ID"]')).toBeNull();
+    await page.loadMappedInputs(); await f.whenStable();
+    const control=f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent;
+    expect(control.choices().map(item=>item.id)).toEqual(['asset-key']);
+    control.choose('asset-key');control.text.set('ASSET-A');control.add();page.title.set('Investigate asset');await page.create();
+    expect(client.incidentAction.mock.calls[0][1].context).toEqual({asset_key:{type:'string',value:'ASSET-A'}});
+  });
+  it('keeps absent or denied mapping metadata explicit and creates no implicit business context', async () => {
+    const f=await mount('new',[]);
+    const page=f.componentInstance as unknown as {title:{set(value:string):void};loadMappedInputs():Promise<void>;create():Promise<void>};
+    await page.loadMappedInputs(); await f.whenStable();
+    expect(client.incidentAction).not.toHaveBeenCalled();
+    expect((f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent).choices()).toEqual([]);
+    contextApi.capabilities.mockRejectedValue(new Error('Mapping access unavailable'));
+    await page.loadMappedInputs();await f.whenStable();expect(f.nativeElement.textContent).toContain('Mapping access unavailable');
+    client.incidentAction.mockReturnValue(of({incident,receipt:'saved'}));page.title.set('Context can be added later');await page.create();
+    expect(client.incidentAction.mock.calls[0][1]).not.toHaveProperty('context');
+  });
+  it('denies ignored-abort late metadata after canceling the draft in the same project and environment', async () => {
+    const f=await mount('new',[]);
+    let finish:(value:unknown)=>void=()=>undefined;
+    contextApi.capabilities.mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+    const page=f.componentInstance as unknown as {loadMappedInputs():Promise<void>;cancelDraft():void};
+    const pending=page.loadMappedInputs();const signal=contextApi.capabilities.mock.calls[0][1] as AbortSignal;
+    page.cancelDraft();expect(signal.aborted).toBe(true);
+    finish({actorId:'sarah',subjects:[{id:'late',label:'Late field',type:'integer',shape:'scalar',scope:{environmentId:'demo',identityDomain:'late'},subject:{conceptId:'record',fieldId:'record_id',fieldMappingRef:'late'}}]});
+    await pending;await f.whenStable();
+    expect((f.debugElement.query(By.directive(MappedContextInputComponent)).componentInstance as MappedContextInputComponent).choices()).toEqual([]);
+    expect(client.incidentAction).not.toHaveBeenCalled();
   });
 
   it('cold-loads the exact non-Firestore IncidentRef, shows its linked Case, and starts a distinct Case', async () => {
@@ -311,8 +565,11 @@ describe('HostedIncidentsPageComponent', () => {
     expect(client.incidentAction.mock.calls[2][2]).not.toBe(firstOperation);
   });
 
-  it('keeps exact create and start-case retry IDs in memory when session storage is disabled', async () => {
-    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('storage disabled'); });
+  it('keeps exact parent retry IDs in memory when their storage fails and the shared child slot is readable', async () => {
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation((key) => {
+      if (key.startsWith('datatug:incident-message:')) return null;
+      throw new Error('parent retry storage disabled');
+    });
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('storage disabled'); });
     vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => { throw new Error('storage disabled'); });
     client.incidentAction.mockReturnValue(throwError(() => new Error('connection lost')));

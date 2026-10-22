@@ -317,3 +317,14 @@ describe('whole-board presentation admission', () => {
     expect(() => replayBoardActions(invalid as Board, [])).toThrow();
   });
 });
+
+
+it('mirrors the closed Core70 elapsed mapping without loosening absolute or mixed arms', () => {
+  const fields = ['laneColumn', 'eventColumn', 'sequenceColumn', 'timeColumn', 'clockDomainColumn', 'precisionColumn', 'statusColumn', 'evidenceRefColumn'];
+  const timeline = Object.fromEntries(fields.map((field) => [field, field]));
+  const chart = { type: 'timeline', selectionId: 'events', timeline };
+  expect(validChartSpec(chart)).toBe(true);
+  expect(validChartSpec({ ...chart, timeline: { ...timeline, timeMode: 'elapsed', anchorColumn: 'anchor' } })).toBe(true);
+  for (const extra of [{ timeMode: null }, { timeMode: 'elapsed' }, { timeMode: 'absolute', anchorColumn: 'anchor' }, { timeMode: 'elapsed', anchorColumn: 'laneColumn' }])
+    expect(validChartSpec({ ...chart, timeline: { ...timeline, ...extra } })).toBe(false);
+});

@@ -9,7 +9,12 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import { IonButton } from '@ionic/angular';
+import { IonButton, IonButtons, IonIcon } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { refreshOutline } from 'ionicons/icons';
+import { OriginalEvidencePanelComponent } from './original-evidence-panel.component';
+import { SOURCE_EVIDENCE_PRESENTERS, sourceEvidencePresenter } from './source-evidence-presentation';
+import { SourceDetailsComponent } from '../source-workspace/source-details.component';
 import {
   decodeResult,
   type ArtifactRef,
@@ -21,6 +26,7 @@ import {
   RetainedCheckView,
   RetainedExecutionView,
 } from './retained-open-contract';
+import { RetainedSourceOperationView } from './source-operation-contract';
 import { useNativeRunLifetime } from './native-run-lifetime';
 import { HeldResultPresentationComponent } from '../board/ui/components/held-result-presentation/held-result-presentation.component';
 import { ValidationRunResultsComponent } from '../detective/validation-run-results.component';
@@ -28,26 +34,61 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
   selector: 'sneat-datatug-retained-evidence-viewer',
   imports: [
     IonButton,
+    IonButtons,
+    IonIcon,
     HeldResultPresentationComponent,
     ValidationRunResultsComponent,
+    OriginalEvidencePanelComponent,
+    SourceDetailsComponent,
   ],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `<section aria-label="Retained execution evidence">
-    <h3>Retained execution evidence</h3>
+    <header class="evidence-header">
+      <h3>
+        {{
+          target()?.kind === 'source-operation'
+            ? 'Source operation receipt'
+            : 'Retained execution evidence'
+        }}
+      </h3>
+      @if (error()) {
+        <ion-buttons slot="end"
+          ><ion-button
+            size="small"
+            title="Retry current evidence read"
+            aria-label="Retry current evidence read"
+            (click)="retry.update(increment)"
+          >
+            <ion-icon
+              slot="start"
+              name="refresh-outline"
+              aria-hidden="true"
+            /><span class="action-label">Retry read</span>
+          </ion-button></ion-buttons
+        >
+      }
+    </header>
     <p>
-      Opens the original admitted run and selected audit records after a current
-      rights check. Opening does not run a query or Check.
+      @if (target()?.kind === 'source-operation') {
+        Opens the original receipt after a current rights check. Opening makes
+        no source change and does not prove recovery.
+      } @else {
+        Opens the original admitted run and selected audit records after a
+        current rights check. Opening does not run a query or Check.
+      }
     </p>
     @if (loading()) {
       <p role="status">Checking current evidence access…</p>
     }
     @if (error()) {
       <p role="alert">{{ error() }}</p>
-      <ion-button (click)="retry.update(increment)"
-        >Retry current evidence read</ion-button
-      >
     }
-    @if (current(); as data) {
+    @if (operation(); as data) {
+      <section aria-label="Historical source operation" class="source-operation">
+        <sneat-source-details [details]="data" />
+      </section>
+    }
+    @if (runEvidence(); as data) {
       <p>
         Original actor {{ data.manifest.actorId }} · Incident
         {{ data.manifest.incidentRef }} · Session
@@ -68,6 +109,9 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
           Saved query {{ query.queryId }} · revision {{ query.queryRevision }} ·
           execution {{ query.result.execution?.executionId }}
         </p>
+        @if (query.originalEvidence) {
+          <sneat-original-evidence-panel [presentation]="originalPresentation(query)" />
+        }
         <sneat-datatug-held-result-presentation
           [result]="query.result"
           defaultView="grid"
@@ -76,6 +120,71 @@ import { ValidationRunResultsComponent } from '../detective/validation-run-resul
       }
     }
   </section>`,
+  styles: [
+    `
+      :host {
+        display: block;
+        container-type: inline-size;
+      }
+      .evidence-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        flex-wrap: wrap;
+        gap: 0.25rem 0.75rem;
+        background: var(--ion-color-light);
+        padding: 0.5rem 0.75rem;
+        border-bottom: 1px solid var(--ion-color-light-shade);
+      }
+      .evidence-header h3,
+      .evidence-header h4 {
+        margin: 0;
+      }
+      .evidence-header ion-buttons {
+        margin-inline-start: auto;
+      }
+      h5 {
+        margin-block: 0.75rem 0.25rem;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: minmax(7rem, auto) 1fr;
+        gap: 0.15rem 0.75rem;
+        margin-block: 0.25rem 0.5rem;
+      }
+      .source-operation {
+        color: var(--ion-text-color);
+        overflow-wrap: anywhere;
+        font-size: 0.85rem;
+      }
+      .source-operation p {
+        margin-block: 0.35rem;
+      }
+      dt {
+        color: var(--ion-color-medium);
+      }
+      dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+      pre,
+      code {
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+      }
+      details {
+        margin-block: 0.5rem;
+      }
+      @container (max-width: 26rem) {
+        .action-label {
+          display: none;
+        }
+        dl {
+          grid-template-columns: 1fr;
+        }
+      }
+    `,
+  ],
 })
 export class RetainedEvidenceViewerComponent {
   readonly projectRef = input<IProjectRef>();
@@ -86,10 +195,17 @@ export class RetainedEvidenceViewerComponent {
   protected readonly retry = signal(0);
   protected readonly increment = (value: number) => value + 1;
   private readonly api = inject(RetainedEvidenceApiService);
+  private readonly presenters = inject(SOURCE_EVIDENCE_PRESENTERS);
   private readonly native = useNativeRunLifetime();
   private readonly destroy = inject(DestroyRef);
   private readonly held = signal<
-    | { key: string; value: RetainedExecutionView | RetainedCheckView }
+    | {
+        key: string;
+        value:
+          | RetainedExecutionView
+          | RetainedCheckView
+          | RetainedSourceOperationView;
+      }
     | undefined
   >(undefined);
   protected readonly loading = signal(false);
@@ -110,15 +226,29 @@ export class RetainedEvidenceViewerComponent {
   protected readonly current = computed(() =>
     this.held()?.key === this.key() ? this.held()?.value : undefined,
   );
-  protected readonly check = computed(() => {
+  protected readonly operation = computed(() => {
     const value = this.current();
+    if (!value || !('receipt' in value)) return undefined;
+    const presenter = sourceEvidencePresenter(this.presenters, value.reference.sourceId);
+    return presenter?.operation(value) || { title: 'Source receipt unavailable', summary: 'No unique presentation adapter is registered for this source.', sections: [] };
+  });
+  protected readonly runEvidence = computed(() => {
+    const value = this.current();
+    return value && !('receipt' in value) ? value : undefined;
+  });
+  protected readonly check = computed(() => {
+    const value = this.runEvidence();
     return value && 'run' in value ? value : undefined;
   });
   protected readonly queries = computed(() => {
-    const value = this.current();
+    const value = this.runEvidence();
     return !value ? [] : 'run' in value ? value.results : [value];
   });
+  protected originalPresentation(query: RetainedExecutionView) {
+    return sourceEvidencePresenter(this.presenters, query.sourcePin.sourceId)?.original(query.originalEvidence) || { status: 'unavailable' as const, reason: 'No unique presentation adapter is registered for this source.' };
+  }
   constructor() {
+    addIcons({ refreshOutline });
     this.native.changes$.pipe(takeUntilDestroyed()).subscribe(() => {
       this.held.set(undefined);
       this.loading.set(false);
@@ -145,7 +275,13 @@ export class RetainedEvidenceViewerComponent {
         // Historical retained evidence is immutable. Keep only current
         // actor/project lifecycle fences here; source publication and reset
         // invalidate current held results, not an authorized cold-open.
-        const current = this.native.capture(ref);
+        const current = this.native.capture(
+          ref,
+          undefined,
+          target?.kind === 'source-operation'
+            ? { sourceId: target.sourceOperation.sourceId, environment }
+            : undefined,
+        );
         actor = current.actor;
         signal = AbortSignal.any([controller.signal, current.signal]);
       } catch (error) {

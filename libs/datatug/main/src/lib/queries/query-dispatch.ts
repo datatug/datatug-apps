@@ -1,7 +1,7 @@
 import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
 import type { IQueryDef } from '../models/definition/query-def';
 import type { ExecutionBindingOrigin, TypedValue } from '@sneat/datatug-semantic';
-import type { IProjectRef } from '../core/project-context';
+import { isLocalProjectRef, type IProjectRef } from '../core/project-context';
 import type { OvdbConnection } from '../ovdb/ovdb-connection';
 import { QueryType } from '../models/definition/query-def';
 import type { FederatedQueryMode, FederatedQueryProgress, FederatedQueryResult } from './federated-query-executor';
@@ -155,7 +155,7 @@ export function serverOwnsSourceAdmission(request: QueryDispatchRequest): boolea
   if (request.target) return request.target.kind === 'hosted-cloud' || request.target.kind === 'local-agent';
   if (request.runtimeBinding || request.runtimeSelectionId) return false;
   return request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID ||
-    request.projectRef.projectApi === 'local' && !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId);
+    isLocalProjectRef(request.projectRef);
 }
 
 function inferRuntimeTarget(
@@ -169,8 +169,7 @@ function inferRuntimeTarget(
   };
   if (request.projectRef.storeId === 'firestore' && request.projectRef.spaceID)
     return { kind: 'hosted-cloud' };
-  if (request.projectRef.projectApi === 'local' &&
-    !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId))
+  if (isLocalProjectRef(request.projectRef))
     return { kind: 'local-agent', agentStoreId: request.projectRef.storeId };
   if (request.definition.federation) return { kind: 'ovdb-federation' };
   if (connection?.storage === 'sqlite' && connection.browserFixture)

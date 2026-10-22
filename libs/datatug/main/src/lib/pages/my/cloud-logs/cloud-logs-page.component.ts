@@ -1,3 +1,4 @@
+import { PERSONAL_LOG_FIELDS, type PersonalLogField } from './cloud-logs-presentation';
 import { AgGridReadyDirective } from '@datatug/ag-grid';
 import { AgGridAngular } from 'ag-grid-angular';
 import type {
@@ -362,30 +363,16 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                       >
                     </ion-select></label
                   >
-                  <label for="cloud-logs-correlation-id"
-                    >Correlation ID
-                    <ion-input
-                      id="cloud-logs-correlation-id"
-                      aria-label="Correlation ID"
-                      [value]="correlationId()"
-                      (ionInput)="correlationId.set(inputValue($event))"
-                  /></label>
-                  <label for="cloud-logs-order-id"
-                    >Order ID
-                    <ion-input
-                      id="cloud-logs-order-id"
-                      aria-label="Order ID"
-                      [value]="orderId()"
-                      (ionInput)="orderId.set(inputValue($event))"
-                  /></label>
-                  <label for="cloud-logs-service"
-                    >Service
-                    <ion-input
-                      id="cloud-logs-service"
-                      aria-label="Service"
-                      [value]="service()"
-                      (ionInput)="service.set(inputValue($event))"
-                  /></label>
+                  @for (field of equalityFields; track field.key) {
+                    <label [attr.for]="field.elementId">{{ field.label }}
+                      <ion-input
+                        [id]="field.elementId"
+                        [attr.aria-label]="field.label"
+                        [value]="equalityValues()[field.key] || ''"
+                        (ionInput)="setEqualityField(field.key, inputValue($event))"
+                      />
+                    </label>
+                  }
                   <p class="filter-note">
                     Bounds are inclusive, with a maximum span of 24 hours.
                     Identifier and service equality is case-insensitive for
@@ -444,21 +431,10 @@ type QueryState = 'idle' | 'loading' | 'ready' | 'error';
                             <dl>
                               <dt>Source</dt>
                               <dd>{{ entry.source }}</dd>
-                              <dt>Correlation ID</dt>
-                              <dd>
-                                {{
-                                  entry.correlationId ||
-                                    field(entry, 'correlation_id')
-                                }}
-                              </dd>
-                              <dt>Order ID</dt>
-                              <dd>
-                                {{ entry.orderId || field(entry, 'order_id') }}
-                              </dd>
-                              <dt>Service</dt>
-                              <dd>
-                                {{ entry.service || field(entry, 'service') }}
-                              </dd>
+                              @for (field of equalityFields; track field.key) {
+                                <dt>{{ field.label }}</dt>
+                                <dd>{{ entry[field.key] || this.field(entry, field.sourceField) }}</dd>
+                              }
                               <dt>Trace ID</dt>
                               <dd>{{ entry.traceId || 'Not supplied' }}</dd>
                               <dt>Parse status</dt>
@@ -676,9 +652,12 @@ export class CloudLogsPageComponent {
   readonly fromTime = signal(defaultTime(24));
   readonly toTime = signal(defaultTime(0));
   readonly severity = signal('');
-  readonly correlationId = signal('');
-  readonly orderId = signal('');
-  readonly service = signal('');
+  readonly equalityFields = inject(PERSONAL_LOG_FIELDS);
+  readonly equalityValues = signal<Readonly<Record<string, string>>>({});
+  setEqualityField(key: PersonalLogField['key'], value: string): void {
+    if (this.equalityFields.some((field) => field.key === key))
+      this.equalityValues.update((values) => ({ ...values, [key]: value }));
+  }
   readonly activeGrants = () =>
     this.grants().filter((grant) => grant.state === 'active');
   readonly canConnect = () =>
@@ -961,9 +940,7 @@ export class CloudLogsPageComponent {
     this.inactiveReason.set(
       this.inactiveReasonsByConnection()[connection.id] ?? null,
     );
-    this.orderId.set('');
-    this.correlationId.set('');
-    this.service.set('');
+    this.equalityValues.set({});
     this.severity.set('');
   }
 
@@ -1063,12 +1040,12 @@ export class CloudLogsPageComponent {
       return;
     }
     if (
-      [this.correlationId(), this.orderId(), this.service()].some((value) =>
+      Object.values(this.equalityValues()).some((value) =>
         /[^\x20-\x7e]/.test(value.trim()),
       )
     ) {
       this.queryError.set(
-        'Non-ASCII correlation, order and service filters are unsupported.',
+        'Non-ASCII filter values are unsupported.',
       );
       this.queryState.set('error');
       return;
@@ -1084,11 +1061,10 @@ export class CloudLogsPageComponent {
           from,
           to,
           ...(this.severity() ? { severity: this.severity() } : {}),
-          ...(this.correlationId().trim()
-            ? { correlationId: this.correlationId().trim() }
-            : {}),
-          ...(this.orderId().trim() ? { orderId: this.orderId().trim() } : {}),
-          ...(this.service().trim() ? { service: this.service().trim() } : {}),
+          ...Object.fromEntries(this.equalityFields.flatMap((field) => {
+            const value = this.equalityValues()[field.key]?.trim();
+            return value ? [[field.key, value]] : [];
+          })),
         }),
       );
       if (

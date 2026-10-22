@@ -1,3 +1,4 @@
+import { frozenComparison } from '../evidence/retained-comparison-contract';
 import { readRetainedQueryResponse } from '../evidence/retained-evidence-contract';
 import { PUBLIC_OVDB_DEV_TRANSPORT } from '@sneat/datatug-semantic';
 import { createPublicOvdbDevFetch } from './public-ovdb-dev-transport';
@@ -345,9 +346,11 @@ export class QueryDispatchService {
     };
     if (request.hostedInputs && request.parameters && JSON.stringify(request.hostedInputs) !== JSON.stringify(request.parameters))
       throw new QueryDispatchError('Hosted inputs differ from the displayed parameter bindings.');
+    const comparison = frozenComparison(request.definition, request.hostedInputs ?? request.parameters ?? {});
+    if (comparison && !request.evidence) throw new QueryDispatchError('Comparison requires an explicit applied evidence selection.');
     const source = this.detectiveClient.runHostedQuery(context, request.queryId, request.environment, {
       ...(request.hostedInputs ?? request.parameters ?? {}),
-    }, { evidence: request.evidence, operationId: request.operationId, signal: request.signal });
+    }, { evidence: request.evidence, operationId: request.operationId, signal: request.signal, ...(comparison ? { comparison } : {}) });
     try {
       const response = await firstValueFrom((request.signal
         ? source.pipe(takeUntil(fromEvent(request.signal, 'abort')), throwIfEmpty(abortError))
@@ -357,7 +360,7 @@ export class QueryDispatchService {
         response.result.execution.projectId !== request.projectRef.projectId ||
         response.result.provenance.queryId !== request.queryId)
         throw new QueryDispatchError('The hosted query returned no matching retained execution receipt.');
-      const admitted = await readRetainedQueryResponse(response, { projectRef: request.projectRef, environment: request.environment, actor: request.principal || '' }, request.queryId, request.evidence);
+      const admitted = await readRetainedQueryResponse(response, { projectRef: request.projectRef, environment: request.environment, actor: request.principal || '' }, request.queryId, request.evidence, comparison ? { declaration: comparison, inputs: request.hostedInputs ?? request.parameters ?? {} } : undefined);
       if (request.signal?.aborted) throw abortError();
       return admitted;
     } catch (error) {

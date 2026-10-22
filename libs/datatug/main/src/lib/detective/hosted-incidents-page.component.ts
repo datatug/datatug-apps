@@ -1,3 +1,5 @@
+import { IncidentEmptyStateComponent } from '../incidents/incident-empty-state.component';
+import { incidentStarterDraft } from '../incidents/incident-starter-draft';
 import { useNativeRunLifetime } from '../evidence/native-run-lifetime';
 import { MappedContextInputComponent, MappedInputChoice } from './mapped-context-input.component';
 import { SessionContextApiService } from '../session-context/session-context-api.service';
@@ -9,6 +11,7 @@ import {
   effect,
   inject,
   signal,
+  untracked,
 } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
@@ -53,6 +56,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
     RouterLink,
+    IncidentEmptyStateComponent,
     HostedIncidentConversationComponent,
     MappedContextInputComponent,
     IonBackButton,
@@ -80,6 +84,11 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
           <ion-back-button [defaultHref]="listHref()" />
         </ion-buttons>
         <ion-title>Incidents</ion-title>
+        @if (mode() === 'list' && canWrite() && incidents()?.length && !loading() && !loadError() && !scopeLoading() && !scopeError()) {
+          <ion-buttons slot="end">
+            <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">Create Incident</ion-button>
+          </ion-buttons>
+        }
       </ion-toolbar>
     </ion-header>
     <ion-content color="light">
@@ -98,7 +107,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
           } @else {
             <ion-item>
               <ion-label>Environment</ion-label>
-              <ion-select aria-label="Incident environment" [value]="environment()" [disabled]="busy()"
+              <ion-select aria-label="Incident environment" [value]="environment()" [disabled]="busy() || conversationBusy()"
                 (ionChange)="selectEnvironment($event.detail.value)">
                 @for (name of environments(); track name) {
                   <ion-select-option [value]="name">{{ name }}</ion-select-option>
@@ -106,13 +115,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
               </ion-select>
             </ion-item>
             @if (mode() === 'list') {
-              <h1>Incidents</h1>
-              <p>Saved incidents in this private project and environment.</p>
-              @if (canWrite()) {
-                <ion-button [routerLink]="newHref()" [queryParams]="environmentQuery()">
-                  Create Incident
-                </ion-button>
-              } @else {
+              @if (!canWrite()) {
                 <p role="status">You can view Incidents in this project, but cannot create them.</p>
               }
               @if (loading()) {
@@ -131,12 +134,16 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                     }
                   </ion-list>
                 } @else {
-                  <p role="status">No Incidents yet. Create one to record the problem first.</p>
+                  <sneat-datatug-incident-empty-state [createLink]="newHref()" [queryParams]="environmentQuery()" [canCreate]="canWrite()" />
                 }
               }
             } @else if (mode() === 'new') {
-              <h1>New Incident</h1>
-              <p>Record the problem now. A Detective Case can be started later.</p>
+              <h1>{{ isTestDraft() ? 'Try a test incident' : 'New Incident' }}</h1>
+              @if (isTestDraft()) {
+                <p role="status">This is an editable example. Change the title and description below. Choosing Create incident saves a real incident in this private project and environment.</p>
+              } @else {
+                <p>Record the problem now. A Detective Case can be started later.</p>
+              }
               <ion-item>
                 <ion-label position="stacked">Title</ion-label>
                 <ion-input aria-label="Incident title" [value]="title()"
@@ -147,12 +154,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                 <ion-textarea aria-label="Incident description" [value]="description()"
                   (ionInput)="description.set($event.detail.value || '')" />
               </ion-item>
-              <ion-item>
-                <ion-label position="stacked">Order ID (number, optional)</ion-label>
-                <ion-input aria-label="Order ID" type="number" inputmode="numeric"
-                  [value]="orderId()" (ionInput)="orderId.set($event.detail.value || '')" />
-              </ion-item>
-              <p>Legacy OrderID is saved as number context. Mapped inputs keep their explicit canonical name and type.</p>
+              <p>Optionally add context using fields mapped in this project and environment.</p>
               <ion-button fill="outline" (click)="loadMappedInputs()" [disabled]="busy() || !canWrite() || !environment()">Choose mapped incident inputs</ion-button>
               @if (mappedError()) { <p role="alert">{{mappedError()}}</p> }
               <sneat-datatug-mapped-context-input [choices]="mappedChoices()" [disabled]="busy()" (valuesChanged)="setMappedInputs($event)" />
@@ -166,11 +168,11 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
               } @else {
               <ion-button (click)="create()" [disabled]="!canWrite() || busy() || !title().trim() || !environment()">
                 @if (busy()) { <ion-spinner slot="start" name="dots" /> }
-                Save Incident
+                Create incident
               </ion-button>
               }
-              <ion-button fill="clear" [routerLink]="listHref()"
-                [queryParams]="environmentQuery()">Cancel</ion-button>
+              <ion-button fill="clear" [routerLink]="listHref()" (click)="cancelDraft()"
+                [disabled]="busy()" [queryParams]="environmentQuery()">Cancel</ion-button>
             } @else {
               @if (loading()) {
                 <p role="status"><ion-spinner name="dots" /> Loading Incident…</p>
@@ -184,6 +186,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                 @if (scope.context(); as context) {
                   @if (context.kind === 'cloud') {
                     <sneat-datatug-hosted-incident-conversation [context]="context" [environment]="environment()"
+                      [parentBusy]="busy()" (mutationBusy)="conversationBusy.set($event)"
                       [incidentRef]="item.ref" [canWrite]="canWrite()" [checks]="state()?.checks || []"
                       (incidentUpdated)="updateConversationIncident($event)" />
                   }
@@ -208,7 +211,7 @@ import { DetectiveCase, DetectiveState, DetectiveInputValue } from './models';
                   <p role="status">Detective Case {{ saved.id }} saved for this Incident.</p>
                   <ion-button (click)="openSavedCase()">Open saved Detective Case</ion-button>
                 } @else {
-                <ion-button (click)="startCase()" [disabled]="!canWrite() || busy()">
+                <ion-button (click)="startCase()" [disabled]="!canWrite() || busy() || conversationBusy()">
                   @if (busy()) { <ion-spinner slot="start" name="dots" /> }
                   Investigate in a Detective Case
                 </ion-button>
@@ -249,9 +252,28 @@ export class HostedIncidentsPageComponent {
     const ref = item && `${item.ref.storeId}/${item.ref.incidentId}`;
     return ref ? (this.state()?.cases || []).filter((entry) => entry.incidentRefs.includes(ref)) : [];
   });
+  protected readonly isTestDraft = computed(() => this.routeQuery().get('draft') === 'test');
   protected readonly title = signal('');
   protected readonly description = signal('');
-  protected readonly orderId = signal('');
+  private readonly seedTestDraft = effect(() => {
+    const isTest = this.isTestDraft();
+    if (isTest) untracked(() => this.seedEmptyTestDraft());
+  });
+  private seedEmptyTestDraft(): void {
+    if (this.isTestDraft() && !this.title() && !this.description()) {
+      this.title.set(incidentStarterDraft.title);
+      this.description.set(incidentStarterDraft.description);
+    }
+  }
+  protected cancelDraft(): void {
+    if (this.busy()) return;
+    this.title.set('');
+    this.description.set('');
+    this.clearMappedInputs();
+    this.pendingCreate = undefined;
+    this.savedIncident.set(undefined);
+    this.saveError.set('');
+  }
   private readonly mutationLifetime = useNativeRunLifetime();
   private readonly contextApi = inject(SessionContextApiService);
   private mappedLifetime = new AbortController();
@@ -295,7 +317,7 @@ export class HostedIncidentsPageComponent {
     const signal = this.mappedLifetime.signal;
     try {
       const capabilities = await this.contextApi.capabilities(ref, signal);
-      if (key !== this.mappedKey() || this.destroyRef.destroyed) return;
+      if (signal.aborted || key !== this.mappedKey() || this.destroyRef.destroyed) return;
       if (capabilities.actorId !== this.scope.context()?.principal) throw new Error('Mapped inputs are not available for this signed-in actor.');
       this.mappedHeld.set({
         key,
@@ -304,11 +326,12 @@ export class HostedIncidentsPageComponent {
         ),
       });
     } catch (error) {
-      if (key === this.mappedKey() && !this.destroyRef.destroyed)
+      if (!signal.aborted && key === this.mappedKey() && !this.destroyRef.destroyed)
         this.mappedError.set(detectiveErrorMessage(error, true));
     }
   }
 
+  protected readonly conversationBusy = signal(false);
   protected readonly busy = signal(false);
   protected readonly saveError = signal('');
   protected readonly savedIncident = signal<{ href: string; environment: string } | undefined>(undefined);
@@ -397,18 +420,21 @@ export class HostedIncidentsPageComponent {
   }
   protected environmentQuery() { return { environment: this.environment() }; }
   protected selectEnvironment(value: string): void {
-    if (this.busy() || !this.environments().includes(value)) return;
+    if (this.busy() || this.conversationBusy() || !this.environments().includes(value)) return;
     this.clearMappedInputs();
     this.environment.set(value);
     void this.router.navigate([], {
       relativeTo: this.route,
-      queryParams: { environment: value },
+      queryParams: {
+        environment: value,
+        ...(this.mode() === 'new' && this.isTestDraft() ? { draft: 'test' } : {}),
+      },
       replaceUrl: true,
     });
   }
   protected retryLoad(): void { this.reloadKey.update((key) => key + 1); }
   protected reloadScope(): void { this.scopeKey.update((key) => key + 1); }
-  ionViewWillEnter(): void { this.reloadScope(); }
+  ionViewWillEnter(): void { this.seedEmptyTestDraft(); this.reloadScope(); }
 
   protected async create(): Promise<void> {
     const context = this.scope.context();
@@ -417,11 +443,6 @@ export class HostedIncidentsPageComponent {
     if (!context || context.kind !== 'cloud' || !this.canWrite() || !title || !environment || this.busy() || this.savedIncident()) return;
     const identity = this.scope.identity();
     const projectRef = this.scope.ref();
-    const rawOrder = this.orderId().trim();
-    if (rawOrder && (!/^\d+$/.test(rawOrder) || !Number.isSafeInteger(Number(rawOrder)))) {
-      this.saveError.set('Order ID must be a whole number.');
-      return;
-    }
     this.busy.set(true);
     this.saveError.set('');
     try {
@@ -431,16 +452,7 @@ export class HostedIncidentsPageComponent {
         this.mappedValues()?.key === this.mappedKey()
           ? this.mappedValues()?.values
           : {};
-      if (rawOrder && mapped?.['OrderID'])
-        throw new Error(
-          'Choose either the legacy OrderID field or a mapped OrderID input.',
-        );
-      const inputs = {
-        ...(rawOrder
-          ? { OrderID: { type: 'number' as const, value: Number(rawOrder) } }
-          : {}),
-        ...mapped,
-      };
+      const inputs = mapped ?? {};
       const action: HostedIncidentAction = {
         type: 'create',
         title,
@@ -497,7 +509,7 @@ export class HostedIncidentsPageComponent {
     const context = this.scope.context();
     const item = this.incident();
     const environment = this.environment();
-    if (!context || context.kind !== 'cloud' || !this.canWrite() || !item || !environment || this.busy() || this.loading() || this.loadError() || this.savedCase()) return;
+    if (!context || context.kind !== 'cloud' || !this.canWrite() || !item || !environment || this.busy() || this.conversationBusy() || this.loading() || this.loadError() || this.savedCase()) return;
     if (`${item.ref.storeId}/${item.ref.incidentId}` !== `${this.routeParams().get('incidentStoreId')}/${this.routeParams().get('incidentId')}`) return;
     const identity = this.scope.identity();
     const projectRef = this.scope.ref();

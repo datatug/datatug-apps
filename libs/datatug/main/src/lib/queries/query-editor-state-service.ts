@@ -696,6 +696,9 @@ export class QueryEditorStateService {
               text?: string;
               parameters?: readonly IParameterDef[];
               relationshipBindings?: IQueryDef['relationshipBindings'];
+              comparison?: IQueryDef['comparison'];
+              recordsets?: IQueryDef['recordsets'];
+              connectionId?: string;
             }[];
           }[];
         };
@@ -706,6 +709,11 @@ export class QueryEditorStateService {
         (i) => i.id === id || (folder.id && `${folder.id}/${i.id}` === id),
       );
       if (item) {
+        if (Object.hasOwn(item, 'comparison')) {
+          if (!Object.values(QueryType).includes(item.type as QueryType))
+            throw new UnsupportedQueryContractError();
+          return fromProjectQueryWire({ ...item, folderPath: folder.id || '~', type: item.type as QueryType, text: item.text ?? '' });
+        }
         return {
           id: item.id,
           title: item.title ?? item.id,

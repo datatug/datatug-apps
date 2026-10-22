@@ -1,4 +1,5 @@
 import { IonTextarea } from '@ionic/angular';
+import { Window } from 'happy-dom';
 import { By } from '@angular/platform-browser';
 import { EvidenceSharePanelComponent } from '../evidence/evidence-share-panel.component';
 import { readRetainedCheck } from '../evidence/retained-open-contract';
@@ -20,7 +21,7 @@ import { QueriesService } from '../queries/queries.service';
 import { SessionContextApiService } from '../session-context/session-context-api.service';
 import { RetainedEvidenceApiService } from '../evidence/retained-evidence-api.service';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
-import { CheckDefinition, CheckRun } from './models';
+import { CheckDefinition, CheckRun, DetectiveState } from './models';
 const ref = {
   storeId: 'firestore',
   spaceID: 'fixture-space',
@@ -81,6 +82,7 @@ describe('Ordinary Check retained evidence before a Case', () => {
     );
     client.projectIncidents.mockReturnValue(of({ incidents: [] }));
   });
+  afterEach(() => vi.unstubAllGlobals());
   const retainedRead = vi.fn();
   async function mount(actor = 'sarah') {
     auth = new BehaviorSubject({
@@ -128,9 +130,9 @@ describe('Ordinary Check retained evidence before a Case', () => {
   it('uses compact card headers, keeps the manual Run action in its header, and omits the duplicate catalog link', async () => {
     const fixture = await mount();
     expect(
-      fixture.nativeElement.querySelector('ion-header ion-toolbar')?.getAttribute(
-        'color',
-      ),
+      fixture.nativeElement
+        .querySelector('ion-header ion-toolbar')
+        ?.getAttribute('color'),
     ).toBe('light');
     const overview = fixture.nativeElement.querySelector(
       'ion-card.check-detail-overview',
@@ -189,6 +191,115 @@ describe('Ordinary Check retained evidence before a Case', () => {
     );
     fixture.destroy();
   });
+  it.each([
+    [true, false, 'Check execution is disabled on the connected local agent.'],
+    [
+      false,
+      true,
+      'Check execution is unavailable for this project on the connected service.',
+    ],
+  ])(
+    'explains unavailable execution with localOnly=%s and canWrite=%s',
+    async (localOnly, canWrite, message) => {
+      // The shared setup stubs observers; use a real one for Ionic ARIA forwarding.
+      vi.stubGlobal('MutationObserver', new Window().MutationObserver);
+      const states = new Subject<DetectiveState>();
+      client.state.mockReturnValue(states);
+      const fixture = await mount();
+      expect(
+        fixture.nativeElement.querySelector('#check-run-capability-hint'),
+      ).toBeNull();
+      states.next({
+        checks: [check],
+        cases: [],
+        runs: [],
+        runsHasMore: false,
+        validators: [],
+        queryValidators: [],
+        scenarios: [],
+        environments: ['demo'],
+        capabilities: {
+          localOnly,
+          canRead: true,
+          canRun: false,
+          canWrite,
+          maxRows: 500,
+          maxFanout: 100,
+        },
+      } as DetectiveState);
+      await fixture.whenStable();
+      const action = () =>
+        fixture.nativeElement.querySelector('[data-testid="run-check-action"]');
+      const hint = fixture.nativeElement.querySelector(
+        '#check-run-capability-hint',
+      );
+      expect(hint?.textContent).toBe(message);
+      expect(hint?.getAttribute('role')).toBe('status');
+      expect(action()?.disabled).toBe(true);
+      // Ionic forwards live host ARIA attributes to its native shadow button.
+      const nativeAction = () => action()?.shadowRoot?.querySelector('button');
+      await vi.waitFor(() =>
+        expect(nativeAction()?.getAttribute('aria-describedby')).toBe(hint?.id),
+      );
+      expect(hint?.closest('ion-card-content')).not.toBeNull();
+
+      states.next({
+        checks: [check],
+        cases: [],
+        runs: [],
+        runsHasMore: false,
+        validators: [],
+        queryValidators: [],
+        scenarios: [],
+        environments: ['demo'],
+        capabilities: {
+          localOnly,
+          canRead: true,
+          canRun: true,
+          canWrite: false,
+          maxRows: 500,
+          maxFanout: 100,
+        },
+      } as DetectiveState);
+      await fixture.whenStable();
+      expect(
+        fixture.nativeElement.querySelector('#check-run-capability-hint'),
+      ).toBeNull();
+      await vi.waitFor(() =>
+        expect(nativeAction()?.getAttribute('aria-describedby')).toBe(''),
+      );
+      expect(action()?.disabled).toBe(false);
+
+      states.next({
+        checks: [check],
+        cases: [],
+        runs: [],
+        runsHasMore: false,
+        validators: [],
+        queryValidators: [],
+        scenarios: [],
+        environments: ['demo'],
+        capabilities: {
+          localOnly,
+          canRead: true,
+          canRun: false,
+          canWrite,
+          maxRows: 500,
+          maxFanout: 100,
+        },
+      } as DetectiveState);
+      await fixture.whenStable();
+      expect(
+        fixture.nativeElement.querySelector('#check-run-capability-hint'),
+      ).not.toBeNull();
+      auth.next({ status: 'authenticated', user: { uid: 'another-actor' } });
+      await fixture.whenStable();
+      expect(
+        fixture.nativeElement.querySelector('#check-run-capability-hint'),
+      ).toBeNull();
+      fixture.destroy();
+    },
+  );
   it('keeps ordinary Run independent from Case creation and does not silently share', async () => {
     const fixture = await mount();
     const input = fixture.nativeElement.querySelector(
@@ -358,7 +469,7 @@ describe('Ordinary Check retained evidence before a Case', () => {
     held.complete();
     fixture.destroy();
   });
-  it('cancels a pending shared Check on matching source reset, clears the current selection, and preserves historical runs', async () => {
+  it.each(['shipping-working-copy', 'telemetry-source'])('cancels a pending shared Check on matching %s reset, clears the current selection, and preserves historical runs', async (sourceId) => {
     client.state.mockReturnValue(
       of({
         checks: [check],
@@ -429,7 +540,7 @@ describe('Ordinary Check retained evidence before a Case', () => {
     TestBed.inject(NativeSourceInvalidationService).invalidate({
       projectRef: ref,
       actor: 'fixture-actor',
-      sourceId: 'shipping-working-copy',
+      sourceId,
       action: 'reset',
     });
     expect(signal.aborted).toBe(true);
