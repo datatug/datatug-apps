@@ -137,22 +137,6 @@ describe('repository meanings reader with immutable real source fixtures', () =>
       referencesComplete: true,
     });
   });
-  it('verifies meaning uses of a legacy DTQL query ("<id>.query.dtql") against its declared type (removed in TugQL cutover step 9)', async () => {
-    const files = { ...data[demo].files };
-    const dir = 'demo-project-1/queries/customers/customer-invoices.query';
-    files[`${dir}.dtql`] = files[`${dir}.tugql.yaml`];
-    delete files[`${dir}.tugql.yaml`];
-    files[`${dir}.json`] = files[`${dir}.json`].replace('"type": "TugQL"', '"type": "DTQL"');
-    const uses = 'demo-project-1/datatug-meaning-uses.json';
-    // The hash the live demo project pins: computed with the declared type `DTQL`.
-    const legacyHash = '6a0b28cf717193bf96e3968fd47f9da2d701da156fdec103f3e4f7f0baf928ae';
-    files[uses] = files[uses].replaceAll('aa9ac43d5d07f367acfb711bc035909c58823865f858c1cbe2ab67bb43dcf5dd', legacyHash);
-    const { service, catalog } = setup({ ...data, [demo]: { ...data[demo], files } });
-    await expect(
-      service.enrich({ storeId: 'github.com', projectId: catalog.scope.project }, catalog),
-    ).resolves.toMatchObject({ revision: catalog.revision });
-  });
-
   it('verifies meaning uses of a TugQL query whose structured body is "<id>.query.tugql.yaml" against the declared type (demo#88)', async () => {
     const { service, catalog } = setup();
     await expect(

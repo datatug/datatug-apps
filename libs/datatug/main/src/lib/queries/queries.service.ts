@@ -1,4 +1,3 @@
-import { LEGACY_DTQL_QUERY_TYPE } from '../services/repo/github/legacy-dtql-query';
 import { validateQueryComparison } from './query-comparison';
 import { DevicePersonalQueries, isDevicePersonalQuery } from './device-personal-queries';
 import {
@@ -144,15 +143,6 @@ function toQueryRequest(
       method: 'GET',
     };
     return httpRequest;
-  }
-  // A legacy `DTQL` item is TugQL in either form; without a server-declared representation the body is sniffed
-  // (isTugqlYamlRequest). Removed in TugQL cutover step 9.
-  if (type === LEGACY_DTQL_QUERY_TYPE) {
-    return {
-      queryType: QueryType.TugQL,
-      text: text ?? '',
-      ...(representation ? { representation } : {}),
-    } as ITextQueryRequest;
   }
   // SQL and TugQL alike: the list/query-page views only ever branch on
   // `queryType === 'SQL'` for the inline-SQL-preview panel
