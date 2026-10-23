@@ -55,7 +55,9 @@ jobs:
           path: datatug-demo-project
 
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-install
+        with:
+          browsers: chromium
 
       - name: Run live smoke (Chromium, one worker, no retries, stop on first failure)
         env:
