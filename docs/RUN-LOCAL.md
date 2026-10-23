@@ -53,6 +53,11 @@ The launcher sets the Sneat API's `PORT` to 8090 because the app's local
 configuration calls that port; the backend's own default is 4300. The URL above
 is the address the local browser app calls.
 
+The `sneat-go` checkout serves the shared Sneat API (auth, AI decision, checkout).
+It does not serve the DataTug API routes (`/v0/datatug/...`): those are served in
+production by `datatug/datatug-cloud`, a separate Cloud Run service. To exercise
+them locally, run `datatug-cloud` (`cmd/datatug-cloud`) instead of, or beside, `sneat-go`.
+
 ## Repositories and shared guidance
 
 The launcher expects these sibling checkouts under `~/projects`:
