@@ -1,4 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
+import { chatDemoAgentMetadata } from './helpers/chat-demo-agent';
+
+test.beforeEach(async ({ page }) => chatDemoAgentMetadata(page));
 
 test('Chat workspace restores explicit context, selection, dock and a selected follow-up', async ({ page }) => {
   test.setTimeout(120_000);
@@ -173,20 +176,21 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
   await expect(workspace.locator('h3')).toHaveText('3 × 2 cells');
   await expect(workspace.locator('.workspace-grid')).toHaveCount(1);
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.getByLabel('Attached context')).toHaveCount(0);
   await expect(workspace.locator('.dock-item')).toHaveCount(0);
   await page.getByLabel('Ask about project data').fill('Use an old selection');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn')).toHaveCount(1);
   await expect(page.locator('.turn').first()).toContainText('The referenced Selection is not in this chat session.');
-  await page.locator('.session-toolbar ion-select').click();
+  await page.locator('.chat-header-toolbar ion-select').click();
   await page.getByRole('radio', { name: 'Show 10 customers' }).click();
   await expect(page.getByLabel('Attached context')).toContainText('CustomerId · row 1');
   await expect(workspace.locator('h3')).toHaveText('3 × 2 cells');
   await workspace.locator('ion-segment-button[value="docked"]').click();
   await expect(workspace.locator('.dock-item')).toHaveCount(1);
 
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
   await page.getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByLabel('Attached context')).toHaveCount(0);

@@ -1,4 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
+import { chatDemoAgentMetadata } from './helpers/chat-demo-agent';
+
+test.beforeEach(async ({ page }) => chatDemoAgentMetadata(page));
 
 test('FK JOIN candidates execute against real Chinook, chain, persist, and accept the agent action', async ({ page }) => {
   test.setTimeout(120_000);
@@ -167,14 +170,14 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await joinedBookmark.getByRole('button', { name: 'Open' }).click();
   await expect(workspace.locator('.bookmark-open ag-grid-angular')).toBeVisible();
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await joinedBookmark.getByRole('button', { name: 'Attach' }).click();
   await page.getByLabel('Ask about project data').fill('Invoices for joined bookmark customers');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows [1-9]/ })).toBeVisible();
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await page.getByLabel('Ask about project data').fill('Show five invoices');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').first().getByRole('tab', { name: 'Rows 5' })).toBeVisible();
@@ -182,7 +185,7 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().locator('.join-candidates')).toContainText('Employee');
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await page.getByLabel('Ask about project data').fill('Show five employees');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').first().getByRole('tab', { name: 'Rows 5' })).toBeVisible();

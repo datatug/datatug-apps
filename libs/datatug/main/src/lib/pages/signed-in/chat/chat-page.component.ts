@@ -10,11 +10,12 @@ import { AgGridAngular } from 'ag-grid-angular';
 import { type CellClickedEvent, type ColDef, type SelectionChangedEvent } from 'ag-grid-community';
 import {
   IonAlert, IonButton, IonButtons, IonCard, IonCardContent, IonCol, IonContent, IonFooter, IonGrid, IonHeader,
-  IonIcon, IonInput, IonItem, IonLabel, IonMenuButton, IonModal,
+  IonPopover, IonIcon, IonInput, IonItem, IonLabel, IonMenuButton, IonModal,
   IonRow, IonSelect, IonSelectOption, IonSegment, IonSegmentButton, IonSpinner, IonText, IonTextarea, IonTitle, IonToolbar,
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
-import { sendOutline } from 'ionicons/icons';
+import { addOutline, ellipsisVerticalOutline, sendOutline } from 'ionicons/icons';
+import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { ProjectAIService, type ProjectAIContext } from '../../../chat/project-ai.service';
 import { ManagedAIGatewayService } from '../../../chat/managed-ai-gateway.service';
 import { isChinookChatProject } from '../../../chat/chinook-chat-project';
@@ -31,7 +32,6 @@ import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
 import { chatErrorView, type ChatErrorView } from '../../../chat/chat-error-message';
 import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
-import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
 import { IProjectRef, equalProjectRef, isSharedProjectRef, isLocalProjectRef } from '../../../core/project-context';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { ProjectAIEligibilityService, type ProjectAIEligibility } from '../../../services/project/project-ai-eligibility.service';
@@ -41,7 +41,7 @@ type SponsorEligibilityCheck =
   | { readonly kind: 'stale' }
   | { readonly kind: 'denied'; readonly message: string };
 
-addIcons({ sendOutline });
+addIcons({ addOutline, ellipsisVerticalOutline, sendOutline });
 
 @Component({
   selector: 'sneat-datatug-chat-page',
@@ -51,7 +51,7 @@ addIcons({ sendOutline });
   imports: [
     FormsModule, DecimalPipe, NgTemplateOutlet, AgGridAngular, AgGridReadyDirective, IonHeader, IonToolbar, IonButtons, IonMenuButton,
     IonTitle, IonContent, IonCard, IonCardContent, IonFooter, IonModal, IonGrid, IonRow, IonCol,
-    IonSelect, IonSelectOption, IonIcon, IonInput, IonButton, IonItem, IonLabel, IonText,
+    IonSelect, IonSelectOption, IonPopover, IonIcon, IonInput, IonButton, IonItem, IonLabel, IonText,
     IonSpinner, IonSegment, IonSegmentButton, IonTextarea, IonAlert, SneatDatatugPageTitleComponent,
   ],
 })

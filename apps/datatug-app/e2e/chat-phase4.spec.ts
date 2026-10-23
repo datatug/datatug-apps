@@ -151,7 +151,7 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
     return bookmark.data.id;
   });
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   const selectedBookmark = workspace.locator('.bookmark-item').filter({ hasText: 'selection ·' });
   await selectedBookmark.getByRole('button', { name: 'Attach' }).click();
@@ -167,9 +167,10 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
   expect(followupContext).toContain('columns: CustomerId');
   expect(followupContext).not.toContain('Luís');
 
-  await page.locator('.session-toolbar ion-select').click();
+  await page.locator('.chat-header-toolbar ion-select').click();
   await page.getByRole('radio', { name: 'Show 10 customers' }).click();
-  await page.locator('.session-toolbar').getByRole('button', { name: 'Delete' }).click();
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
+  await page.getByRole('button', { name: 'Delete', exact: true }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await expect(workspace.locator('.bookmark-item')).toHaveCount(3);

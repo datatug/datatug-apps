@@ -1,4 +1,7 @@
 import { expect, test } from './helpers/demodb-guard';
+import { chatDemoAgentMetadata } from './helpers/chat-demo-agent';
+
+test.beforeEach(async ({ page }) => chatDemoAgentMetadata(page));
 
 const withoutOpaqueUuids = (content: string) => content.replace(
   /\b[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}\b/gi,
@@ -97,11 +100,11 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   await expect(page.locator('.turn').first().locator('.ag-row[row-index="0"] .ag-cell[col-id="CustomerId"]')).toHaveText(firstCustomerId || '');
   expect(providerCalls).toBe(1);
 
-  await page.getByRole('button', { name: 'New', exact: true }).click();
+  await page.getByRole('button', { name: 'New chat', exact: true }).click();
   await expect(page.locator('.turn')).toHaveCount(0);
   await ask('Show 5 genres', 5);
   expect(await databaseCounts()).toEqual({ ChatSessions: 2, ChatTurns: 2, ChatQueries: 2, ChatRecordSets: 2 });
-  await page.locator('.session-toolbar ion-select').click({ timeout: 5000 });
+  await page.locator('.chat-header-toolbar ion-select').click({ timeout: 5000 });
   await page.getByRole('radio', { name: 'Show last 20 invoices' }).click();
   await expect(page.locator('.question-bubble')).toHaveText('Show last 20 invoices');
   await page.getByLabel('Ask about project data').fill('Show the customers associated with those orders');
@@ -133,6 +136,7 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   expect(continuationHasMetadata).toBe(true);
   expect(providerCalls).toBe(3);
 
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
   await page.getByRole('button', { name: 'Rename' }).click();
   await page.getByLabel('Session name').fill('Invoice research');
   await page.getByRole('button', { name: 'Save name' }).click();
@@ -141,11 +145,13 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   await expect(page.locator('.question-bubble')).toHaveCount(2);
   expect(providerCalls).toBe(3);
 
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
   await page.getByRole('button', { name: 'Clear' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('alertdialog')).toBeHidden();
   await expect(page.locator('.turn')).toHaveCount(0);
   expect(await databaseCounts()).toEqual({ ChatSessions: 2, ChatTurns: 1, ChatQueries: 1, ChatRecordSets: 1 });
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
   await page.getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByRole('button', { name: /Chat session, Show 5 genres/ })).toBeVisible();
@@ -194,6 +200,7 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Retry loading chats' })).toBeVisible();
   expect(providerCalls).toBe(1);
+  await page.getByRole('button', { name: 'Chat session actions', exact: true }).click();
   await page.getByRole('button', { name: 'Delete' }).click();
   await page.getByRole('alertdialog').getByRole('button', { name: 'Confirm' }).click();
   await expect(page.getByText('This chat session has missing saved messages or result snapshots.')).toBeHidden();
