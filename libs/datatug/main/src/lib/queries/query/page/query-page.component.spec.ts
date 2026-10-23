@@ -277,7 +277,7 @@ describe('SqlEditorPage', () => {
     expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
     component.resultChartView.set('chart');
     component.runResult.set({ ...held, usedSourceIds: undefined });
-    expect(component.resultChartReason()).toContain('rights');
+    expect(component.resultChartReason()).toContain('allows charting');
     expect(component.resultChartVisible()).toBe(false);
   });
 
