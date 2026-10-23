@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installFakeGithub } from './helpers/fake-github';
+import { GITHUB_HOST, installFakeGithub } from './helpers/fake-github';
 import { demoProjectPin } from './helpers/github-pins';
 import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
@@ -106,8 +106,9 @@ test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    // demodb.dev requests fall through to the guard in helpers/demodb-guard.ts (local fixtures by default).
-    if (DEMODB.test(url.hostname)) return route.fallback();
+    // demodb.dev and GitHub requests fall through to the guard in helpers/demodb-guard.ts (local fixtures and the
+    // pinned GitHub checkouts by default).
+    if (DEMODB.test(url.hostname) || GITHUB_HOST.test(url.hostname)) return route.fallback();
     if (url.origin === own || url.protocol === 'data:' || url.protocol === 'blob:') {
       return route.continue();
     }
