@@ -10,6 +10,8 @@
     "e2e:error-dialog": "playwright test -c apps/datatug-app/playwright.error-dialog.config.ts",
     "e2e:demo-handoff": "playwright test -c apps/datatug-app/playwright.demo-handoff.config.ts",
     "check:zoneless": "node tools/check-zoneless-fields.mjs",
+    "check:card-headers": "node tools/check-card-headers.mjs",
+    "test:check-card-headers": "node --test tools/__tests__/check-card-headers.test.mjs",
     "test:check-zoneless-fields": "node --test tools/__tests__/check-zoneless-fields.test.mjs",
     "test:stamp-ag-grid-license": "node --test tools/__tests__/stamp-ag-grid-license.test.mjs",
     "test:wrangler-routes": "node --test scripts/wrangler-routes.test.mjs",

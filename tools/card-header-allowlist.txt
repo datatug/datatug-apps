@@ -1,0 +1,69 @@
+# Cards that still violate the header rule (see tools/check-card-headers.mjs and
+# AGENTS.md "Card headers"). Format: `<repo-relative path>: <violating cards>`.
+# This list may only SHRINK: convert the card's header to
+# <ion-item-divider color="light"> and lower or delete the entry. The check
+# fails on a new violation and on a stale entry. Never add a new file or raise
+# a count. project-page.component.html is being converted by another lane and
+# is removed when that lane merges.
+apps/datatug-app/src/app/checkout/checkout-page.component.html: 3
+apps/datatug-app/src/app/checkout/checkout-price-summary.component.ts: 1
+libs/datatug/main/src/lib/agent-links/link-problem/link-problem.component.ts: 1
+libs/datatug/main/src/lib/agent-links/query-result/query-result.page.html: 5
+libs/datatug/main/src/lib/agent-links/record-hops.component.ts: 1
+libs/datatug/main/src/lib/agent-links/table-metadata/table-metadata.component.ts: 5
+libs/datatug/main/src/lib/agent-links/table-record/table-record.page.html: 3
+libs/datatug/main/src/lib/agent-links/table-records/table-records.page.html: 2
+libs/datatug/main/src/lib/board/ui/components/board-card/board-card.component.html: 1
+libs/datatug/main/src/lib/board/ui/modals/new-card-dialog/new-card-dialog.component.html: 1
+libs/datatug/main/src/lib/components/project/project-menu/project-menu.component.html: 1
+libs/datatug/main/src/lib/detective/cases-page.component.html: 14
+libs/datatug/main/src/lib/detective/checks-page.component.html: 11
+libs/datatug/main/src/lib/detective/detective-ai-panel.component.html: 2
+libs/datatug/main/src/lib/detective/public-demo-checks.component.html: 7
+libs/datatug/main/src/lib/detective/public-demo-investigation-preview.component.html: 4
+libs/datatug/main/src/lib/detective/public-scenarios-page.component.html: 4
+libs/datatug/main/src/lib/detective/scenario-detail-page.component.html: 4
+libs/datatug/main/src/lib/folders/ui/datatug-folder.component.html: 2
+libs/datatug/main/src/lib/meanings/meanings-page.component.html: 12
+libs/datatug/main/src/lib/menu/datatug-menu.component.html: 3
+libs/datatug/main/src/lib/ovdb/ovdb-database-browser.component.ts: 4
+libs/datatug/main/src/lib/pages/demo-ovdb/demo-ovdb-page.component.ts: 4
+libs/datatug/main/src/lib/pages/demo-sqlite/demo-sqlite-page.component.ts: 10
+libs/datatug/main/src/lib/pages/home/datatug-home-page.component.html: 2
+libs/datatug/main/src/lib/pages/home/my-projects/my-datatug-projects.component.html: 1
+libs/datatug/main/src/lib/pages/home/my-stores/my-stores.component.html: 1
+libs/datatug/main/src/lib/pages/home/platform-block/platform-block.component.html: 1
+libs/datatug/main/src/lib/pages/incidents/create/incident-create-page.component.html: 1
+libs/datatug/main/src/lib/pages/incidents/detail/incident-detail-page.component.html: 5
+libs/datatug/main/src/lib/pages/incidents/detail/incident-read-panels.component.html: 7
+libs/datatug/main/src/lib/pages/incidents/list/incident-list-page.component.html: 3
+libs/datatug/main/src/lib/pages/incidents/record/incident-resolution-record-page.component.html: 5
+libs/datatug/main/src/lib/pages/signed-in/chat/chat-page.component.html: 1
+libs/datatug/main/src/lib/pages/signed-in/db-schema/db-model-page.component.html: 2
+libs/datatug/main/src/lib/pages/signed-in/dbserver/dbserver-page.component.html: 3
+libs/datatug/main/src/lib/pages/signed-in/demo-db-sandbox/demo-db-sandbox-page.component.ts: 6
+libs/datatug/main/src/lib/pages/signed-in/entities/entities-page.component.html: 2
+libs/datatug/main/src/lib/pages/signed-in/entity-edit/entity-edit-page.component.html: 2
+libs/datatug/main/src/lib/pages/signed-in/entity/entity-page.component.html: 6
+libs/datatug/main/src/lib/pages/signed-in/env-db-table/env-db-table.page.html: 10
+libs/datatug/main/src/lib/pages/signed-in/env-db-table/foreign-key-card/foreign-key-card.component.html: 1
+libs/datatug/main/src/lib/pages/signed-in/env-db-table/ovdb-record-editor/ovdb-record-editor.component.ts: 1
+libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.html: 2
+libs/datatug/main/src/lib/pages/signed-in/environment/environment-page.component.html: 1
+libs/datatug/main/src/lib/pages/signed-in/environments/environments-page.component.html: 1
+libs/datatug/main/src/lib/pages/signed-in/project/demo-db-connections.component.ts: 3
+libs/datatug/main/src/lib/pages/signed-in/project/project-database-servers-preview.component.ts: 1
+libs/datatug/main/src/lib/pages/signed-in/project/project-page.component.html: 7
+libs/datatug/main/src/lib/pages/signed-in/project/project-queries-preview.component.ts: 1
+libs/datatug/main/src/lib/pages/signed-in/servers/servers-page.component.html: 2
+libs/datatug/main/src/lib/pages/signed-in/store/datatug-store-page.component.html: 3
+libs/datatug/main/src/lib/pages/signed-out/datatug-signed-out-page.component.html: 1
+libs/datatug/main/src/lib/project/new-project/github-reauthorization-banner.component.ts: 1
+libs/datatug/main/src/lib/project/new-project/project-copy-offer.component.ts: 1
+libs/datatug/main/src/lib/queries/public-data/public-data-page.component.html: 7
+libs/datatug/main/src/lib/queries/queries/queries-page.component.html: 2
+libs/datatug/main/src/lib/queries/query/http-query/http-query-editor.component.html: 3
+libs/datatug/main/src/lib/queries/query/page/query-page.component.html: 15
+libs/datatug/main/src/lib/queries/query/sql-query/query-builder/columns.component.html: 1
+libs/datatug/main/src/lib/queries/query/sql-query/query-builder/joins.component.html: 2
+libs/datatug/main/src/lib/queries/query/sql-query/sql-query-editor.component.html: 6

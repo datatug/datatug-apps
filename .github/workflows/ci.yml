@@ -187,6 +187,33 @@ jobs:
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:check-zoneless-fields
 
+      # Every <ion-card> starts with <ion-item-divider color="light"> (AGENTS.md
+      # "Card headers"). Whole-repo template scan; the allowlist
+      # tools/card-header-allowlist.txt may only shrink (new and stale entries
+      # both fail).
+      - name: check:card-headers (card header rule)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        run: pnpm run check:card-headers
+
+      # Shrink-only: compare the allowlist with the base branch's copy. A raised
+      # count or an added file fails. Skipped when the base has no allowlist yet.
+      - name: card-header allowlist is shrink-only (vs base)
+        if: ${{ (github.event_name == 'pull_request' || github.event_name == 'merge_group') && needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+        run: |
+          git cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || git fetch --no-tags --depth=1 origin "$BASE_SHA"
+          if git cat-file -e "$BASE_SHA:tools/card-header-allowlist.txt" 2>/dev/null; then
+            git show "$BASE_SHA:tools/card-header-allowlist.txt" > "$RUNNER_TEMP/card-allowlist-base.txt"
+            node tools/check-card-headers.mjs --base-allowlist "$RUNNER_TEMP/card-allowlist-base.txt"
+          else
+            echo "base has no card-header allowlist yet; nothing to compare"
+          fi
+
+      - name: test:check-card-headers (checker's own unit tests)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        run: pnpm run test:check-card-headers
+
       - name: test:stamp-ag-grid-license (optional AG Grid key stamping)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:stamp-ag-grid-license
