@@ -246,17 +246,6 @@
         "buildTarget": "datatug-app:build"
       }
     },
-    "lint": {
-      "inputs": [
-        "default",
-        "{workspaceRoot}/.eslintrc.json",
-        "{workspaceRoot}/.eslintignore",
-        "{workspaceRoot}/eslint.config.mjs",
-        {
-          "externalDependencies": ["eslint"]
-        }
-      ]
-    },
     "e2e": {
       "executor": "nx:run-commands",
       "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-e2e"],
