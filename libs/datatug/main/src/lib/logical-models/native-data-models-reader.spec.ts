@@ -209,9 +209,11 @@ describe('immutable native logical model reader', () => {
       f.http,
       signal(),
     );
-    const record = detail.records.find((value) => value.name === recordName)!,
-      field = record.fields.find((value) => value.name === fieldName)!,
-      address = 'modelspec://github.com/acme/sourcenames/SourceNames';
+    const record = detail.records.find((value) => value.name === recordName);
+    if (!record) throw new Error(`Expected record ${recordName}`);
+    const field = record.fields.find((value) => value.name === fieldName);
+    if (!field) throw new Error(`Expected field ${fieldName}`);
+    const address = 'modelspec://github.com/acme/sourcenames/SourceNames';
     expect(record.name).toBe(recordName);
     expect(field.type).toBe(`component ${componentName}`);
     expect(field.origin).toBe(

@@ -7201,9 +7201,6 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.selectedContextFactKeys.set(new Map());
         this.confirmedConflicts.set(new Map());
         this.bindingSnapshotKey = '';
-        const original =
-          (queryState.def?.request as ITextQueryRequest | undefined)?.text ??
-          '';
         const legacyTugql = isTugqlYamlRequest(
           queryState.def?.request ?? effectiveDefinition.request,
         );
