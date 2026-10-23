@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, test } from 'node:test';
@@ -11,7 +11,7 @@ const script = join(import.meta.dirname, '../../../../scripts/fetch-github-pins.
 const { fetchPins } = (await import(script)) as {
   fetchPins: (
     ids: string[] | undefined,
-    options: { pins: Pin[]; remoteUrl: (repo: string) => string },
+    options: { pins: Pin[]; remoteUrl: (repo: string) => string; beforePublish?: (dir: string) => Promise<void> },
   ) => Promise<{ results: { pin: Pin; dir: string; how: string }[]; checkouts: number }>;
 };
 type Pin = { id: string; repo: string; sha: string };
@@ -91,4 +91,25 @@ test('a half-written checkout (no marker) is replaced', async () => {
   const { results } = await fetchPins(undefined, { pins: [pin('p1', shaA)], remoteUrl });
   assert.equal(results[0].how, 'fetched');
   assert.equal(git(results[0].dir, 'rev-parse', 'HEAD'), shaA);
+});
+
+test('a complete checkout published by another process is never removed or replaced', async () => {
+  const dir = pinsDir('winner');
+  const pins = [pin('p1', shaA)];
+  const target = join(dir, 'acme', 'demo', shaA);
+  const marker = join(target, '.datatug-pin-complete');
+  let inodeAtHook = 0;
+  let missing = false;
+  // The other process publishes while this one is between its fetch and its publish.
+  const beforePublish = async () => {
+    await fetchPins(undefined, { pins, remoteUrl });
+    inodeAtHook = statSync(marker).ino;
+  };
+  await fetchPins(undefined, { pins, remoteUrl, beforePublish });
+  const watcher = setInterval(() => (missing ||= !existsSync(marker)), 0);
+  clearInterval(watcher);
+  assert.ok(inodeAtHook > 0);
+  assert.equal(statSync(marker).ino, inodeAtHook, 'the published checkout was replaced');
+  assert.equal(missing, false);
+  assert.deepEqual(readdirSync(join(dir, 'acme', 'demo')), [shaA]);
 });

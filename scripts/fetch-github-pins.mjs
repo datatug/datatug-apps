@@ -42,8 +42,27 @@ async function isComplete(dir, sha) {
 
 const githubUrl = (repo) => `https://github.com/${repo}.git`;
 
+/**
+ * Moves the finished scratch checkout `tmp` to `dir`. A complete checkout already at `dir` (another process published
+ * first) is never removed or replaced: it is used and `tmp` is discarded by the caller. Only an incomplete `dir` (no marker,
+ * wrong HEAD, dirty) is removed before the rename. If the rename loses a race, a complete winner is fine; otherwise retry once.
+ */
+async function publish(tmp, dir, sha) {
+  for (let attempt = 0; ; attempt++) {
+    if (await isComplete(dir, sha)) return;
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+    try {
+      renameSync(tmp, dir);
+      return;
+    } catch (error) {
+      if (await isComplete(dir, sha)) return;
+      if (attempt >= 1) throw error;
+    }
+  }
+}
+
 /** Fetches one commit into a private scratch directory next to `dir`, then renames it into place. */
-async function fetchInto(dir, pin, remoteUrl) {
+async function fetchInto(dir, pin, remoteUrl, beforePublish) {
   mkdirSync(dirname(dir), { recursive: true });
   // The scratch directory is private to this process, so concurrent runs (another globalSetup, a CI step) never share it.
   const tmp = `${dir}.tmp-${process.pid}-${randomBytes(4).toString('hex')}`;
@@ -59,41 +78,35 @@ async function fetchInto(dir, pin, remoteUrl) {
     writeFileSync(join(tmp, MARKER), `${pin.repo}@${pin.sha}\n`);
     // Keep the marker out of `git status` / `git ls-files --others` of the checkout.
     writeFileSync(join(tmp, '.git/info/exclude'), `${MARKER}\n`, { flag: 'a' });
-    // Publish atomically: a reader sees the whole checkout or none of it. A stale or half-written `dir` (no marker, or
-    // dirty) is removed first; if another process publishes between that removal and our rename, its checkout wins.
-    rmSync(dir, { recursive: true, force: true });
-    try {
-      renameSync(tmp, dir);
-    } catch (error) {
-      if (!(await isComplete(dir, pin.sha))) throw error;
-    }
+    await beforePublish?.(dir);
+    await publish(tmp, dir, pin.sha);
   } finally {
     rmSync(tmp, { recursive: true, force: true });
   }
 }
 
 /** Ensures one checkout (a distinct repo + SHA). Returns how it was obtained and how long it took. */
-async function ensure(pin, remoteUrl) {
+async function ensure(pin, remoteUrl, beforePublish) {
   const dir = checkoutDir(pin);
   const started = performance.now();
   if (await isComplete(dir, pin.sha)) return { dir, how: 'cached', ms: performance.now() - started };
-  await fetchInto(dir, pin, remoteUrl);
+  await fetchInto(dir, pin, remoteUrl, beforePublish);
   return { dir, how: 'fetched', ms: performance.now() - started };
 }
 
 /**
  * Ensures the checkout of every pin named by `ids` (all pins when omitted). Pins that point at the same repo and SHA share
  * ONE checkout, fetched once: the result has one entry per pin, sharing `dir`, `how` and `ms` with its siblings.
- * `options.pins` and `options.remoteUrl` exist for tests (a local repository instead of GitHub).
+ * `options.pins` and `options.remoteUrl` and `options.beforePublish` exist for tests (a local repository instead of GitHub; a hook just before publishing).
  */
 export async function fetchPins(ids, options = {}) {
-  const { pins: manifest = readPins(), remoteUrl = githubUrl } = options;
+  const { pins: manifest = readPins(), remoteUrl = githubUrl, beforePublish } = options;
   const pins = manifest.filter((pin) => !ids || ids.includes(pin.id));
   if (ids) for (const id of ids) if (!pins.some((pin) => pin.id === id)) throw new Error(`Unknown GitHub pin ${id}`);
   const started = performance.now();
   const byDir = new Map();
   for (const pin of pins) if (!byDir.has(checkoutDir(pin))) byDir.set(checkoutDir(pin), pin);
-  const outcomes = new Map(await Promise.all([...byDir].map(async ([dir, pin]) => [dir, await ensure(pin, remoteUrl)])));
+  const outcomes = new Map(await Promise.all([...byDir].map(async ([dir, pin]) => [dir, await ensure(pin, remoteUrl, beforePublish)])));
   const results = pins.map((pin) => ({ pin, ...outcomes.get(checkoutDir(pin)) }));
   return { results, checkouts: byDir.size, ms: performance.now() - started };
 }
