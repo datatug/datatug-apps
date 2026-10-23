@@ -13,7 +13,7 @@ import {
   QueriesService,
 } from '../queries.service';
 import { QueryType } from '../../models/definition/query-def';
-import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
+import { mockErrorLogger, provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
 describe('QueriesTabComponent', () => {
   let component: QueriesTabComponent;
@@ -386,5 +386,51 @@ describe('QueriesTabComponent — agent-backed "Personal" tab (S174)', () => {
     expect(getQueriesFolder).toHaveBeenCalledTimes(3);
     expect(fixture.componentInstance.personalQueriesNotice()).toBeUndefined();
     expect(fixture.componentInstance.allQueries).toEqual([]);
+  });
+});
+
+describe('QueriesTabComponent — a GitHub project list that cannot be read', () => {
+  it('shows the failure as the list state with Retry (no toast), and Retry reads again', async () => {
+    const limited = new Error('GitHub API rate limit reached for this browser');
+    let fail = true;
+    const getQueriesFolder = vi.fn(() =>
+      fail ? throwError(() => limited) : of({ id: '~', items: [] }),
+    );
+    const logger = mockErrorLogger();
+    await TestBed.configureTestingModule({
+      imports: [QueriesTabComponent],
+      providers: [
+        provideMockErrorLogger(logger),
+        { provide: ActivatedRoute, useValue: { queryParamMap: of({ get: () => null }), paramMap: of({ get: () => null }), snapshot: { paramMap: { get: () => null }, params: {} } } },
+        { provide: Router, useValue: { navigate: vi.fn(() => Promise.resolve(true)), events: of() } },
+        { provide: QueriesService, useValue: { getQueriesFolder } },
+        {
+          provide: DatatugNavContextService,
+          useValue: {
+            currentProject: of({ ref: { storeId: 'github.com', projectId: 'demo@datatug@demo-project-1' } } as IProjectContext),
+            currentEnv: of(undefined),
+          },
+        },
+        { provide: DatatugNavService, useValue: { goQuery: vi.fn() } },
+      ],
+    })
+      .overrideComponent(QueriesTabComponent, { add: { schemas: [CUSTOM_ELEMENTS_SCHEMA] } })
+      .compileComponents();
+    const fixture = TestBed.createComponent(QueriesTabComponent);
+    fixture.componentRef.setInput('rootFolder', 'shared');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.loadError()).toBe(limited);
+    expect(logger.logError).not.toHaveBeenCalled();
+    const el = fixture.nativeElement as HTMLElement;
+    expect(el.querySelector('[data-testid="queries-load-error"]')).not.toBeNull();
+    expect(el.innerHTML).toContain('GitHub is limiting anonymous requests');
+
+    fail = false;
+    fixture.componentInstance.retryLoad();
+    await fixture.whenStable();
+    expect(getQueriesFolder).toHaveBeenCalledTimes(2);
+    expect(fixture.componentInstance.loadError()).toBeUndefined();
+    expect(el.querySelector('[data-testid="queries-load-error"]')).toBeNull();
   });
 });

@@ -57,6 +57,15 @@
 </ion-header>
 
 <ion-content color="light">
+  @if (queryLoadError() !== undefined) {
+    <!-- The saved query could not be read: one designed state with Retry, no empty editor and no Run. -->
+    <sneat-datatug-error-state
+      data-testid="query-load-error"
+      what="this query"
+      [error]="queryLoadError()"
+      (retry)="retryQueryLoad()"
+    />
+  } @else {
   @if (isQueryReadOnly() && queryDef()) {
     <p class="query-read-only-note" data-testid="query-read-only-note" role="note">
       {{ queryReadOnlyReason() }}
@@ -2140,6 +2149,7 @@
   @if (!isTextQueryWorkspace()) {
     <ng-container *ngTemplateOutlet="queryEditor" />
     <ng-container *ngTemplateOutlet="queryResults" />
+  }
   }
 </ion-content>
 

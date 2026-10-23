@@ -35,7 +35,7 @@ import { IProjectRef } from '../core/project-context';
 import { IProjectContext } from '../nav/nav-models';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import { ProjectService } from '../services/project/project.service';
-import { QueriesService } from './queries.service';
+import { QueriesService, isGithubStoreId } from './queries.service';
 import { IParameterDef } from '../models/definition/parameter';
 import { filter } from 'rxjs/operators';
 import {
@@ -657,6 +657,14 @@ export class QueryEditorStateService {
         // journey J2/J3) — confirmed live: this exact 500 blocked every query
         // this demo project has.
         error: (error) => {
+          if (generation !== this.generation) return;
+          if (!isDevicePersonalQuery(id) && isGithubStoreId(currentProject.ref.storeId)) {
+            // A project read from GitHub has no agent to ask instead (`project_full` would only fail again, with a
+            // misleading "Can't reach" toast): the page shows what happened, with Retry.
+            const state = this.getQueryState(id);
+            if (state) this.updateQueryState({ ...state, isLoading: false, loadError: error });
+            return;
+          }
           if (isDevicePersonalQuery(id)) {
             const state = this.getQueryState(id);
             if (state) this.updateQueryState({ ...state, isLoading: false, saveError: error instanceof Error ? error.message : 'Personal query unavailable on this device.' });

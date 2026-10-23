@@ -1,4 +1,5 @@
 import { QueriesUiService } from '../queries-ui.service';
+import { ErrorStateComponent } from '../../components/error-state/error-state.component';
 import { TitleCasePipe } from '@angular/common';
 import {
   ChangeDetectorRef,
@@ -43,6 +44,7 @@ import {
   AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
   GITHUB_PERSONAL_QUERIES_MESSAGE,
   QueriesService,
+  isGithubStoreId,
 } from '../queries.service';
 
 interface FilteredItem {
@@ -61,6 +63,7 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   selector: 'sneat-datatug-queries-tab',
   templateUrl: 'queries-tab.component.html',
   imports: [
+    ErrorStateComponent,
     QueryListItemComponent,
     IonItem,
     IonLabel,
@@ -137,6 +140,11 @@ export class QueriesTabComponent {
   // fall back to (S163, founder-reported follow-up), and instead of an
   // `ErrorLogger.logError()` toast.
   public readonly personalQueriesNotice = signal<string | undefined>(undefined);
+  /**
+   * Why the list could not be read (GitHub limiting anonymous reads, an outage): shown as the list's one state with
+   * Retry, never an empty list under tag counts.
+   */
+  public readonly loadError = signal<unknown>(undefined);
 
   // Tracks which `rootFolder` value `currentFolder`/`allQueries` currently
   // reflect — see this class's own `effect()` (below, in the constructor)
@@ -463,6 +471,12 @@ export class QueriesTabComponent {
    * logError()` toast (the same `isGithubReadOnlyError`-style pattern
    * `dbserver-page.component.ts` already establishes for its own
    * `GITHUB_DBSERVER_DETAIL_MESSAGE`). */
+  /** Retry of a list that could not be read. */
+  public retryLoad(): void {
+    const project = this.project();
+    if (project) this.fetchFolder(project.ref, this.currentFolder.path, this.rootFolder());
+  }
+
   private fetchFolder(
     projRef: IProjectRef,
     path: string,
@@ -472,6 +486,7 @@ export class QueriesTabComponent {
       this.queriesSub.unsubscribe();
     }
     this.personalQueriesNotice.set(undefined);
+    this.loadError.set(undefined);
     this.queriesSub = this.queriesService
       .getQueriesFolder(projRef, path, rootFolder)
       .subscribe({
@@ -506,6 +521,11 @@ export class QueriesTabComponent {
             );
             // Zoneless (this class's own `changeDetectorRef` doc comment).
             this.changeDetectorRef.markForCheck();
+            return;
+          }
+          if (isGithubStoreId(projRef.storeId)) {
+            // Read from GitHub: what happened is the list's own state (with Retry), not a toast over an empty list.
+            this.loadError.set(err);
             return;
           }
           this.errorLogger.logError(err, 'Failed to load queries');
