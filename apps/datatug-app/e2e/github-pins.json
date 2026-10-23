@@ -11,32 +11,32 @@
     {
       "id": "demo-browser",
       "repo": "datatug/datatug-demo-project",
-      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
+      "sha": "9277f638803d6b1fcf4b1380bd5b727747605288",
       "refs": [
         "HEAD",
         "main"
       ],
-      "why": "The browser catalog revision the app admits: required creation dates on every query definition and the server-comparison query the showcase specs read (docs/testing-workflow.md). Bumped to the commit that renames the project title to \"DataTug Demo Project\" (datatug-demo-project#85); the three demo pins share that commit."
+      "why": "The browser catalog revision the app admits: required creation dates on every query definition and the server-comparison query the showcase specs read (docs/testing-workflow.md). Bumped to the commit that migrates the demo queries to the TugQL body files and type (datatug-demo-project#88); the three demo pins share that commit."
     },
     {
       "id": "demo-independent",
       "repo": "datatug/datatug-demo-project",
-      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
+      "sha": "9277f638803d6b1fcf4b1380bd5b727747605288",
       "refs": [
         "HEAD",
         "main"
       ],
-      "why": "Revision the independent chart sources spec (spec/features/independent-chart-sources/local-acceptance.md) runs against; same commit as the other demo pins since the project-title rename (datatug-demo-project#85)."
+      "why": "Revision the independent chart sources spec (spec/features/independent-chart-sources/local-acceptance.md) runs against; same commit as the other demo pins since the TugQL migration (datatug-demo-project#88)."
     },
     {
       "id": "demo-agent",
       "repo": "datatug/datatug-demo-project",
-      "sha": "8d2809f52afb49a2662c8261ca97e68882416201",
+      "sha": "9277f638803d6b1fcf4b1380bd5b727747605288",
       "refs": [
         "HEAD",
         "main"
       ],
-      "why": "The project the real datatug agent serves in the journey and card-link lanes (#515); same commit as the other demo pins since the project-title rename (datatug-demo-project#85)."
+      "why": "The project the real datatug agent serves in the journey and card-link lanes (#515); same commit as the other demo pins since the TugQL migration (datatug-demo-project#88)."
     },
     {
       "id": "meta-iso",

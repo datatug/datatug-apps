@@ -339,7 +339,7 @@ runs this suite in CI. It:
    primary checkout).
 2. Downloads the prebuilt `datatug` CLI binary from `datatug/datatug` at a
    **pinned release tag** (`env.DATATUG_CLI_REF` at the top of the job —
-   currently `v0.78.0`), verifies its SHA256 checksum against the published
+   currently `v0.108.0`), verifies its SHA256 checksum against the published
    checksums file, and sets `DATATUG_BIN` to that path.
 3. Fetches the Chinook SQLite fixture directly, keylessly, to
    `~/datatug/dbs/chinook-local.sqlite` — the exact path

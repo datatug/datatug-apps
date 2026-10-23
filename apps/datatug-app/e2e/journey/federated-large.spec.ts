@@ -129,9 +129,7 @@ test('pages a cross-database join on demand and stores the full result', async (
       JSON.stringify({
         id: queryId,
         title: 'Large invoices joined to countries',
-        // The journey's pinned agent (DATATUG_CLI_REF, ci.yml) predates the TugQL rename and reads only the legacy
-        // `DTQL` type and `<id>.query.dtql` body; the app reads both forms. Switch with the CLI pin bump.
-        type: 'DTQL',
+        type: 'TugQL',
         federation: {
           ovdbBaseUrl: `http://127.0.0.1:${ovdb.port}`,
           tables: [
@@ -160,7 +158,7 @@ test('pages a cross-database join on demand and stores the full result', async (
       }),
     );
     writeFileSync(
-      join(queryDir, `${queryId}.query.dtql`),
+      join(queryDir, `${queryId}.query.tugql.yaml`),
       `from:
   database: orders
   name: Invoice
