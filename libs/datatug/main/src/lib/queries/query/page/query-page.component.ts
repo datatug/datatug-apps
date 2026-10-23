@@ -2045,14 +2045,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const def = this.queryDef();
     if (!def) return '';
     const type = def.request.queryType;
-    const kind =
-      type === QueryType.SQL
-        ? 'SQL'
-        : type === QueryType.HTTP
-          ? 'HTTP'
-          : type === QueryType.TugQL
-            ? queryTypeDisplayName(type)
-            : String(type ?? '');
+    // One display map for the header chip and the queries list badge (a legacy `DTQL` reads TugQL in both).
+    const kind = queryTypeDisplayName(type);
     const source = def.connectionId;
     return source ? `${kind} · ${source}` : kind;
   });
@@ -7224,16 +7218,24 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               ? 'tugql-yaml'
               : 'tugql',
         );
-        // No dead end: a saved query with a required parameter opens on
-        // Parameters, where its value (pre-filled from a declared demo value
-        // when there is one) and any reason Run is off are visible.
+        // A saved query opens on its source. No dead end: one with a required
+        // parameter that has no declared default (Run is off until a value is
+        // typed) opens on Parameters instead, where that value is asked for and
+        // the reason Run is off is visible. A required parameter with a default
+        // is already supplied, so it does not hide the source (demo walk item 10).
         afterNextRender(
           () => {
             if (
               this.loadedTextRepresentation()?.scope !== representationScope ||
               this.isTugqlAuthorJourney() ||
               !!this.savedResultId() ||
-              !(this.queryDef()?.parameters ?? []).some((p) => p.isRequired)
+              !(this.queryDef()?.parameters ?? []).some(
+                (p) =>
+                  p.isRequired &&
+                  (p.defaultValue === undefined ||
+                    p.defaultValue === null ||
+                    p.defaultValue === ''),
+              )
             )
               return;
             const tab = this.workspaceTab();

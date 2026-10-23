@@ -6,6 +6,11 @@ const QUERY_TYPE_DISPLAY_NAMES: Readonly<Record<QueryType, string>> = {
   [QueryType.HTTP]: 'HTTP',
 };
 
+/** Older names of a type, still found in saved definitions, shown by their current name. */
+const LEGACY_QUERY_TYPE_NAMES: Readonly<Record<string, string>> = {
+  DTQL: 'TugQL',
+};
+
 /**
  * The person-facing name of a query type: the single source for every label,
  * badge and subtitle that shows it. An unrecognised or missing value falls
@@ -13,5 +18,9 @@ const QUERY_TYPE_DISPLAY_NAMES: Readonly<Record<QueryType, string>> = {
  */
 export function queryTypeDisplayName(type: QueryType | string | null | undefined): string {
   if (type === null || type === undefined) return '';
-  return (QUERY_TYPE_DISPLAY_NAMES as Readonly<Record<string, string>>)[type] ?? String(type);
+  return (
+    (QUERY_TYPE_DISPLAY_NAMES as Readonly<Record<string, string>>)[type] ??
+    LEGACY_QUERY_TYPE_NAMES[String(type).toUpperCase()] ??
+    String(type)
+  );
 }
