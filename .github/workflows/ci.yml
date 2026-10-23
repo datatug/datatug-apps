@@ -320,7 +320,7 @@ jobs:
       - name: DemoDB guard unit tests, mutation check and public OVDB proxy test
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: |
-          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./apps/datatug-app/e2e/helpers/ts-extensionless.mjs --test apps/datatug-app/e2e/helpers/demodb-guard-logic.unit.ts apps/datatug-app/e2e/helpers/demodb-guard-state.unit.ts apps/datatug-app/e2e/helpers/demodb-request-reporter.unit.ts apps/datatug-app/e2e/helpers/live-fetch-headers.unit.ts apps/datatug-app/e2e/helpers/fake-github.unit.ts apps/datatug-app/e2e/helpers/github-pins.unit.ts
+          node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./apps/datatug-app/e2e/helpers/ts-extensionless.mjs --test apps/datatug-app/e2e/helpers/demodb-guard-logic.unit.ts apps/datatug-app/e2e/helpers/demodb-guard-state.unit.ts apps/datatug-app/e2e/helpers/demodb-request-reporter.unit.ts apps/datatug-app/e2e/helpers/live-fetch-headers.unit.ts apps/datatug-app/e2e/helpers/fake-github.unit.ts apps/datatug-app/e2e/helpers/github-pins.unit.ts apps/datatug-app/e2e/helpers/fetch-github-pins.unit.ts
           node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/mutate-demodb-guard.mjs
           node --test tools/public-ovdb-proxy.unit.cjs
 
