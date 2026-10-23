@@ -22,6 +22,13 @@ permissions:
   actions: read
   contents: read
 
+# The datatug-cli release the real-agent lanes (`journey`, `agent-links`) download, checksum-verify and run. The one pin:
+# both jobs read it from here. It must be at least the first release with the `environment-state/1` contract
+# (FIRST_CONTRACT_VERSION in project-environment-state.service.ts, datatug-cli#472) and the TugQL wire contract
+# (v0.109.0+). Bump it with the app; see apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
+env:
+  DATATUG_CLI_REF: v0.113.0
+
 # A `labeled` event for any label other than run-e2e gets its own group, so it cannot cancel the real run.
 # Superseded PR runs are cancelled (a force-push or a new commit on the same pull request, a Renovate rebase), so they
 # stop spending runner time and network. Every other event gets a group of its own (the run id), so nothing else is
@@ -985,9 +992,8 @@ jobs:
     if: always() && github.event_name != 'workflow_dispatch' && needs.preflight.outputs.e2e != 'false'
     timeout-minutes: 30
     # `env` is not an available context for `jobs.<job_id>.name`, so the
-    # pinned tag can't be interpolated here — it's visible in the "Checkout
-    # datatug-cli" step name below instead. Keep this literal name and the
-    # env var below in sync when bumping DATATUG_CLI_REF.
+    # pinned tag can't be interpolated here — it's visible in the "Download
+    # and verify pinned datatug CLI" step name below instead.
     name: journey e2e (real datatug-cli agent)
     runs-on: ubuntu-latest
     permissions:
@@ -997,11 +1003,7 @@ jobs:
     needs: [preflight, build]
     env:
       GH_TOKEN: ${{ github.token }}
-      # Pinned datatug release tag (not `main`) so this job is
-      # reproducible. Bump by checking the newest `vX.Y.Z` tag:
-      #   gh release list --repo datatug/datatug
-      # See apps/datatug-app/e2e/README.md "Bumping the pinned CLI tag".
-      DATATUG_CLI_REF: v0.110.1
+      # DATATUG_CLI_REF (the pinned agent release) is set once, in the workflow-level `env:` at the top of this file.
       # Session continuity requires the authenticated local Session runtime.
       DATATUG_SESSION_CLI_REF: v0.93.0
     steps:
@@ -1048,9 +1050,13 @@ jobs:
       # The project the real agent serves: pin demo-agent, copied into the workspace because the agent may write to it
       # (the cached pin checkouts stay read-only). An unpinned `main` once let a demo fixture change (Customer became the
       # Northwind customer, 533aaab) break this required check on every open PR. Bump deliberately with the specs.
+      # The pin checkout is a detached HEAD; the agent's environment-state/1 read (v0.113.0+) needs a named branch and
+      # answers a detached one with 409 ENVIRONMENT_REVISION_CONFLICT, so the copy is put on a local branch.
       - name: Check out datatug-demo-project (pin demo-agent)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        run: cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+        run: |
+          cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+          git -C datatug-demo-project switch --quiet --create demo-agent
 
       - name: Authenticate private Core artifact verification
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
@@ -1174,10 +1180,9 @@ jobs:
     needs: [preflight, build]
     env:
       GH_TOKEN: ${{ github.token }}
-      # Pinned here, not by the repository variable: the app speaks datatug-cli's TugQL wire contract (stored result
-      # `query.tugql`, editor language `tugql`, Run again request `tugql`), which starts at v0.109.0; v0.102.1 and older
-      # answer `dtql`. Bump with the app. DATATUG_LINKS_CLI_REF only switches the job on.
-      DATATUG_CLI_REF: v0.110.1
+      # DATATUG_CLI_REF comes from the workflow-level `env:`, not the repository variable: the app speaks datatug-cli's
+      # TugQL wire contract (stored result `query.tugql`, editor language `tugql`, Run again request `tugql`), which
+      # starts at v0.109.0; v0.102.1 and older answer `dtql`. DATATUG_LINKS_CLI_REF only switches the job on.
     steps:
       - name: Require successful metadata preflight
         run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success
@@ -1221,9 +1226,13 @@ jobs:
       # The project the real agent serves: pin demo-agent, copied into the workspace because the agent may write to it
       # (the cached pin checkouts stay read-only). An unpinned `main` once let a demo fixture change (Customer became the
       # Northwind customer, 533aaab) break this required check on every open PR. Bump deliberately with the specs.
+      # The pin checkout is a detached HEAD; the agent's environment-state/1 read (v0.113.0+) needs a named branch and
+      # answers a detached one with 409 ENVIRONMENT_REVISION_CONFLICT, so the copy is put on a local branch.
       - name: Check out datatug-demo-project (pin demo-agent)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        run: cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+        run: |
+          cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+          git -C datatug-demo-project switch --quiet --create demo-agent
 
       - name: Authenticate private Core artifact verification
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}

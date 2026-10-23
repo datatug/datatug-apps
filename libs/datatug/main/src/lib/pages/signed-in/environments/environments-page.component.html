@@ -30,6 +30,11 @@
   @if (reason()) {
     <p class="page-note" role="status">{{ reason() }}</p>
   }
+  @if (managementNote(); as note) {
+    <p class="page-note" role="status" data-testid="environment-management-note">
+      {{ note }}
+    </p>
+  }
   @if (message()) {
     <p class="page-note" role="status">{{ message() }}</p>
   }

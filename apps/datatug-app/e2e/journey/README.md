@@ -69,7 +69,7 @@ tracked on Task 3 of the Phase 1 plan in datatug/datatug
 (`spec/plans/2026-09-09-phase-1-core-investigation-loop.md`); a re-run is not
 a fix.
 
-## Session token and page origin (datatug-cli v0.85.0+, journey CLI pinned at v0.110.1)
+## Session token and page origin (datatug-cli v0.85.0+, journey CLI pinned at v0.113.0)
 
 `datatug serve` answers no route, ping included, without a session token. `fixtures/agent-server.ts` reads the one-time
 `#code=` link the agent prints, exchanges it once (`POST /datatug/session/exchange`) and gives every browser context

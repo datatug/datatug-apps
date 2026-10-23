@@ -1022,7 +1022,7 @@ test.describe('J4 — restricted principal', () => {
  * agent that predates v0.24.0 (that fallback's own unit/component coverage
  * lives in libs/datatug/main — queries.service.spec.ts / queries-tab.
  * component.spec.ts; nothing here exercises an old agent, since
- * DATATUG_CLI_REF above is already pinned to v0.24.0+).
+ * DATATUG_CLI_REF, the workflow-level env of ci.yml, is already pinned to v0.24.0+).
  *
  * This is the one thing only a REAL agent can prove: that the actual
  * `datatug-cli` v0.24.0 binary reads `$DATATUG_PERSONAL_DIR`, resolves

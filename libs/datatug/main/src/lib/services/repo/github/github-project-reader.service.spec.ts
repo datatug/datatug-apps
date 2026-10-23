@@ -1,8 +1,6 @@
 import coreComparison from '../../../queries/testdata/core-v070-query-comparison.json';
 import { createSemanticModel } from '../../../queries/semantic-mapping';
 import { firstValueFrom } from 'rxjs';
-import { isTugqlYamlRequest } from '../../../queries/tugql-representation';
-import { QueryType, type ITextQueryRequest } from '../../../models/definition/query-def';
 import { TestBed } from '@angular/core/testing';
 
 import { GithubProjectIdError } from '../../../nav/github-project-address';
