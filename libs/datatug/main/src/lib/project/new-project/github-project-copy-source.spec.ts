@@ -1,17 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { resetGithubTokenRejection } from '../../services/repo/github/github-user-token';
 import { COPY_SOURCE_TTL_MS, readGithubProjectCopySource, resetDemoProjectCopySourceMemory, resolveDemoProjectCopySource } from './github-project-copy-source';
 const source = { kind: 'github-project', repositoryID: 42, owner: 'datatug', name: 'datatug-demo-project', folder: 'demo-project-1', branch: 'main', commit: 'a'.repeat(40), tree: 'b'.repeat(40) };
-const json = (body: unknown, status = 200) => ({ ok: status >= 200 && status < 300, status, json: async () => body }) as unknown as Response;
+const json = (body: unknown, status = 200) => new Response(JSON.stringify(body), { status });
 /** A GitHub that answers the three calls of a resolution, by path, for any number of resolutions. */
 function github() {
-  return vi.fn(async (url: string, _init?: RequestInit) => {
+  return vi.fn<(url: string, init?: RequestInit) => Promise<Response>>(async (url: string) => {
     if (url.endsWith('/datatug-demo-project')) return json({ id: 42, owner: { login: 'datatug' }, name: source.name, default_branch: 'main' });
     if (url.includes('/commits/')) return json({ sha: source.commit, commit: { tree: { sha: 'c'.repeat(40) } } });
     return json({ tree: [{ path: source.folder, type: 'tree', sha: source.tree }] });
   });
 }
-const auth = (call: unknown[]) => ((call[1] as RequestInit).headers as Record<string, string>)['Authorization'];
-beforeEach(() => resetDemoProjectCopySourceMemory());
+const auth = (call: unknown[]) => ((call[1] as RequestInit | undefined)?.headers as Record<string, string> | undefined)?.['Authorization'];
+beforeEach(() => { resetDemoProjectCopySourceMemory(); resetGithubTokenRejection(); });
 afterEach(() => vi.unstubAllGlobals());
 describe('GitHub project copy source', () => {
   it('validates immutable source and rejects traversal or missing revisions', () => {
@@ -64,11 +65,30 @@ describe('GitHub project copy source', () => {
     expect(fetchFn).toHaveBeenCalledTimes(5);
   });
   it('rejects a failed source lookup, keeps the copy rules, and asks again next time', async () => {
-    const fetchFn = vi.fn().mockResolvedValue({ ok: false, status: 500 });
+    const fetchFn = vi.fn(async () => new Response('', { status: 500 }));
     const failure = resolveDemoProjectCopySource({ fetchFn, token: () => undefined });
     await expect(failure).rejects.toThrow('The source project revision could not be verified. Please try again.');
     const retry = github();
     expect(await resolveDemoProjectCopySource({ fetchFn: retry, token: () => undefined })).toEqual(source);
     expect(retry).toHaveBeenCalledTimes(3);
+  });
+  it('never follows a redirect with the token', async () => {
+    const fetchFn = github();
+    await resolveDemoProjectCopySource({ fetchFn, token: () => 'gho_user' });
+    expect(fetchFn.mock.calls.every((call) => call[1]?.redirect === 'error')).toBe(true);
+  });
+  it('drops a refused token for the page: later calls are anonymous, made once', async () => {
+    const answers = github();
+    const fetchFn = vi.fn(async (url: string, init: RequestInit) => (auth([url, init]) ? json({}, 401) : answers(url, init)));
+    await resolveDemoProjectCopySource({ fetchFn, token: () => 'stale' });
+    // repository: 401 + anonymous; commit and listing: anonymous only
+    expect(fetchFn).toHaveBeenCalledTimes(4);
+  });
+  it('serves what one identity resolved to that identity only', async () => {
+    const fetchFn = github();
+    await resolveDemoProjectCopySource({ fetchFn, token: () => 'gho_user' });
+    await resolveDemoProjectCopySource({ fetchFn, token: () => undefined });
+    expect(fetchFn).toHaveBeenCalledTimes(6);
+    expect(fetchFn.mock.calls.slice(3).map(auth)).toEqual([undefined, undefined, undefined]);
   });
 });

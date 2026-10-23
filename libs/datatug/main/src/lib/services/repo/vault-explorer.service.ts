@@ -36,7 +36,11 @@ import type { IngitDbGithubClient } from '@ingitdb/client-github';
 import { GITHUB_API_HOST, githubGet } from './github/github-http';
 import { GITHUB_FETCH } from './github/github-project-reader.service';
 import { MAX_TREE_BYTES } from './github/github-read-limits';
-import { GITHUB_USER_TOKEN } from './github/github-user-token';
+import {
+  GITHUB_USER_TOKEN,
+  githubIdentity,
+  usableGithubToken,
+} from './github/github-user-token';
 
 // Re-exported under explorer-scoped names so the page component doesn't need
 // to know which of the two `@ingitdb/*` packages declares what.
@@ -102,6 +106,30 @@ function notFound(): Error {
   return Object.assign(new Error('Not Found'), { response: { status: 404 } });
 }
 
+/** `githubApi.getContents` of `@ingitdb/client-github`. */
+export type VaultGetContents = (
+  repo: string,
+  path: string,
+  ref?: string,
+) => Promise<unknown>;
+
+/**
+ * `getContents` answered from a recursive listing of the branch (`tree`, undefined when it could not be had in full):
+ * a directory's children, a 404 for a directory that is not there, and the Contents API call (`fallback`) for a file
+ * path or when there is no listing.
+ */
+export function treeBackedGetContents(
+  tree: (repo: string, ref?: string) => Promise<readonly IVaultTreeEntry[] | undefined>,
+  fallback: VaultGetContents,
+): VaultGetContents {
+  return async (repo, path, ref) => {
+    const listing = await tree(repo, ref);
+    const answer = listing ? contentsFromTree(listing, path) : 'unknown';
+    if (answer === 'absent') throw notFound();
+    return answer === 'unknown' ? fallback(repo, path, ref) : answer;
+  };
+}
+
 @Injectable()
 export class VaultExplorerService {
   private readonly fetchFn = inject(GITHUB_FETCH);
@@ -116,18 +144,18 @@ export class VaultExplorerService {
    * persisted (no localStorage/IndexedDB/cookies).
    */
   connect(token?: string): void {
-    const client = createIngitDbClient({ token: token || undefined });
+    // With a token the client keeps its answers in memory only: what a token read (perhaps a private repository) is
+    // never written to the browser's database.
+    const client = createIngitDbClient(
+      token ? { token, cache: false } : { token: undefined },
+    );
     const api = client.githubApi;
-    const contents = api.getContents.bind(api);
-    // The listing goes with the typed token, else the signed-in user's: it is the one API call of a visit.
-    const listingToken = token || this.userToken();
     this.trees = new Map();
-    api.getContents = async (repo: string, path: string, ref?: string) => {
-      const tree = await this.tree(repo, ref, listingToken);
-      const answer = tree ? contentsFromTree(tree, path) : 'unknown';
-      if (answer === 'absent') throw notFound();
-      return answer === 'unknown' ? contents(repo, path, ref) : answer;
-    };
+    api.getContents = treeBackedGetContents(
+      // The listing goes with the typed token, else the signed-in user's (read now: a sign-out applies at once).
+      (repo, ref) => this.tree(repo, ref, usableGithubToken(token || this.userToken())),
+      api.getContents.bind(api) as VaultGetContents,
+    ) as typeof api.getContents;
     this.client = client;
   }
 
@@ -136,7 +164,8 @@ export class VaultExplorerService {
     ref: string | undefined,
     token: string | undefined,
   ): Promise<IVaultTreeEntry[] | undefined> {
-    const key = `${repo}@${ref ?? ''}`;
+    // Kept for the identity that asked only (anonymous, or the token's fingerprint, never the token).
+    const key = `${githubIdentity(token)}|${repo}@${ref ?? ''}`;
     let listing = this.trees.get(key);
     if (!listing) {
       listing = this.askTree(repo, ref, token);

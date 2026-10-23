@@ -20,7 +20,10 @@ import { IonicRouteStrategy } from '@ionic/angular/common';
 import { provideIonicAngular } from '@ionic/angular/provide';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
 import { provideSneatAuthenticatedProviders } from '@sneat/app-auth';
-import { provideGithubRedirectCapture } from './github-redirect-capture';
+import {
+  provideGithubRedirectCapture,
+  provideGithubSignOutForget,
+} from './github-redirect-capture';
 import { TelegramAuthService } from '@sneat/auth-core';
 import {
   AUTH_PANEL_UI_CONFIG,
@@ -245,6 +248,8 @@ bootstrapApplication(DatatugAppComponent, {
     // GitHub token — see github-redirect-capture.ts.
     provideGithubRedirectCapture(),
     provideSneatAuthenticatedProviders(datatugAppEnvironmentConfig),
+    // Sign-out and account switch remove the GitHub token (github-redirect-capture.ts).
+    provideGithubSignOutForget(),
     // DataTug: the shared AnalyticsService sends nothing without the same consent, never identifies, and starts no
     // PostHog of its own (register-posthog.ts is the one init, with the app's scrubber).
     provideConsentGatedAnalytics(

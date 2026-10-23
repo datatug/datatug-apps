@@ -1,4 +1,8 @@
-import { GITHUB_TOKEN_STORAGE_KEY } from './github-user-token';
+import {
+  GITHUB_TOKEN_STORAGE_KEY,
+  forgetGithubUserToken,
+  readGithubUserToken,
+} from './github-user-token';
 import { Injectable, inject } from '@angular/core';
 import { SNEAT_FIREBASE_AUTH } from '@sneat/app-auth';
 import type { Auth } from 'firebase/auth';
@@ -62,17 +66,20 @@ const ALREADY_LINKED_CODES = [
  * Uses Firebase Auth's GitHub provider — the OAuth app is registered against
  * Firebase's auth handler, so Firebase runs the whole authorisation dance and
  * hands back the GitHub access token with the requested scope. The token is
- * kept in memory (and this tab's sessionStorage) and never sent to our servers.
+ * kept in this tab's sessionStorage only and never sent to our servers.
  */
 @Injectable({ providedIn: 'root' })
 export class GithubOAuthService {
   private readonly auth = inject<Auth>(SNEAT_FIREBASE_AUTH);
 
-  private token?: string;
   private redirectResultChecked = false;
 
-  constructor() {
-    this.token = sessionStorage.getItem(GITHUB_TOKEN_STORAGE_KEY) ?? undefined;
+  /**
+   * The token is read from the tab's storage each time, never kept in this service: removing it there (Sneat sign-out
+   * or account switch, `apps/datatug-app/src/github-redirect-capture.ts`; a token GitHub refused) signs it out here too.
+   */
+  private get token(): string | undefined {
+    return readGithubUserToken();
   }
 
   /** True when a GitHub token is available for API calls. */
@@ -130,8 +137,7 @@ export class GithubOAuthService {
 
   /** Forgets the GitHub token (does not sign the user out of Sneat). */
   public forget(): void {
-    sessionStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
-    this.token = undefined;
+    forgetGithubUserToken();
   }
 
   private createProvider(): GithubAuthProvider {
@@ -194,7 +200,6 @@ export class GithubOAuthService {
   }
 
   private setToken(token: string): void {
-    this.token = token;
     sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
   }
 }

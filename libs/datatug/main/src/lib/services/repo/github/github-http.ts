@@ -3,6 +3,7 @@
 // checked on the bytes received, a time limit. Pure: `fetch` and the timer are passed in.
 
 import { GITHUB_REQUEST_TIMEOUT_MS } from './github-read-limits';
+import { rejectGithubUserToken, usableGithubToken } from './github-user-token';
 
 export const GITHUB_API_HOST = 'api.github.com';
 export const GITHUB_RAW_HOST = 'raw.githubusercontent.com';
@@ -46,8 +47,8 @@ export interface IGithubGetOptions {
   /**
    * The signed-in user's GitHub token. Sent as `Authorization: Bearer` to `api.github.com` only (never to the file host
    * or the mirror), so the call counts against the user's 5,000 an hour instead of the anonymous 60 an hour of the
-   * address. A token GitHub refuses (`401`: expired or revoked) is dropped and the call is made again anonymously, once:
-   * a stale sign-in never stops a public read.
+   * address. A token GitHub refuses (`401`: expired or revoked) is dropped for the page and the call is made again
+   * anonymously, once: a stale sign-in never stops a public read, and is not paid for again.
    */
   readonly token?: string;
 }
@@ -127,14 +128,16 @@ export async function githubGet(
     return { kind: 'down' };
   }
   const token =
-    options.token && parsed.hostname === GITHUB_API_HOST
-      ? options.token
+    parsed.hostname === GITHUB_API_HOST
+      ? usableGithubToken(options.token)
       : undefined;
   if (token) {
     const authorised = await githubGetOnce(fetchFn, parsed, options, token);
     if (authorised !== 'unauthorised') {
       return authorised;
     }
+    // Refused once: never sent again in this page, so later calls do not pay for it twice.
+    rejectGithubUserToken(token);
   }
   const anonymous = await githubGetOnce(fetchFn, parsed, options);
   return anonymous === 'unauthorised' ? { kind: 'down', status: 401 } : anonymous;

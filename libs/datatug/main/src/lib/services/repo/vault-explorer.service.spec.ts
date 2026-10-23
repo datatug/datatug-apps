@@ -5,6 +5,7 @@ import { GITHUB_USER_TOKEN } from './github/github-user-token';
 import {
   VaultExplorerService,
   contentsFromTree,
+  treeBackedGetContents,
   subcollectionNamesFromContents,
   vaultErrorMessage,
 } from './vault-explorer.service';
@@ -124,5 +125,68 @@ describe('VaultExplorerService api.github.com budget', () => {
     await signedIn.service.listSubcollections('o/vault', 'spaces/family', 'main');
     const init = (signedIn.fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1];
     expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer gho_user');
+  });
+});
+
+describe('treeBackedGetContents fallback', () => {
+  it('asks the Contents API when there is no complete listing, or for a file path', async () => {
+    const fallback = vi.fn(async () => ['from the API']);
+    const none = treeBackedGetContents(async () => undefined, fallback);
+    expect(await none('o/r', 'spaces/family', 'main')).toEqual(['from the API']);
+    const listed = treeBackedGetContents(async () => VAULT_TREE.tree, fallback);
+    expect(await listed('o/r', 'spaces/$records/family.yaml', 'main')).toEqual(['from the API']);
+    expect(fallback).toHaveBeenCalledTimes(2);
+  });
+
+  it('answers a 404 for a directory the listing does not have, without the API', async () => {
+    const fallback = vi.fn();
+    const listed = treeBackedGetContents(async () => VAULT_TREE.tree, fallback);
+    await expect(listed('o/r', 'spaces/none', 'main')).rejects.toMatchObject({ response: { status: 404 } });
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the Contents API when the listing is truncated', async () => {
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify({ ...VAULT_TREE, truncated: true })));
+    TestBed.configureTestingModule({
+      providers: [
+        VaultExplorerService,
+        { provide: GITHUB_FETCH, useValue: fetchFn },
+        { provide: GITHUB_USER_TOKEN, useValue: () => undefined },
+      ],
+    });
+    const service = TestBed.inject(VaultExplorerService);
+    service.connect();
+    const client = (service as unknown as { client: { githubApi: { getContents: unknown } } }).client;
+    expect(typeof client.githubApi.getContents).toBe('function');
+    // The listing is not complete: the wrapped call goes to the Contents API (stubbed here) and asks no listing again.
+    const fallback = vi.fn(async () => [{ type: 'dir', name: 'contacts' }]);
+    const wrapped = treeBackedGetContents(
+      (repo, ref) => (service as unknown as { tree: (r: string, f?: string, t?: string) => Promise<unknown> }).tree(repo, ref, undefined) as never,
+      fallback,
+    );
+    expect(await wrapped('o/vault', 'spaces/family', 'main')).toEqual([{ type: 'dir', name: 'contacts' }]);
+    expect(await wrapped('o/vault', 'spaces/work', 'main')).toEqual([{ type: 'dir', name: 'contacts' }]);
+    expect(fetchFn).toHaveBeenCalledTimes(1);
+    expect(fallback).toHaveBeenCalledTimes(2);
+  });
+
+  it('keeps a listing for the identity that asked only', async () => {
+    let token: string | undefined = 'gho_user';
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify(VAULT_TREE)));
+    TestBed.configureTestingModule({
+      providers: [
+        VaultExplorerService,
+        { provide: GITHUB_FETCH, useValue: fetchFn },
+        { provide: GITHUB_USER_TOKEN, useValue: () => token },
+      ],
+    });
+    const service = TestBed.inject(VaultExplorerService);
+    service.connect();
+    await service.listSubcollections('o/vault', 'spaces/family', 'main');
+    token = undefined; // signed out
+    await service.listSubcollections('o/vault', 'spaces/family', 'main');
+    expect(fetchFn).toHaveBeenCalledTimes(2);
+    const second = (fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1];
+    expect((second.headers as Record<string, string> | undefined)?.['Authorization']).toBeUndefined();
   });
 });
