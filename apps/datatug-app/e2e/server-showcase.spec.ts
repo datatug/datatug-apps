@@ -1,5 +1,4 @@
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 // Explicit live acceptance: the project reader uses the paired committed demo
 // checkout, while OVDB and its pinned publisher rights remain real network reads.
@@ -9,10 +8,8 @@ test('server showcase and tutorial hold complete results without SQLite download
   if (!source) throw new Error('Set DATATUG_E2E_GITHUB_FAKE to the paired committed demo checkout.');
   test.setTimeout(180_000);
   page.setDefaultTimeout(15_000);
-  await installFakeGithub(context, [{ fullName: 'datatug/datatug-demo-project', dir: source }]);
-  // The fake project reader also owns raw.githubusercontent.com; let this
-  // different repository serve its real SHA-pinned rights publications.
-  await context.route('https://raw.githubusercontent.com/demo-db/northwind/**', route => route.continue());
+  // The demo project and the SHA-pinned demo-db/northwind rights publications come from the GitHub pins
+  // (e2e/github-pins.json), answered by the guard.
   const requests: string[] = [];
   context.on('request', request => {
     if (!request.url().endsWith('/dtql') || request.method() === 'POST') requests.push(request.url());
@@ -74,16 +71,10 @@ test('cross-database comparison runs one native server query and displays source
     process.env['DATATUG_E2E_SERVER_SHOWCASE'] !== '1',
     'explicit live server acceptance only',
   );
-  const source = process.env['DATATUG_E2E_GITHUB_FAKE'];
+  // GITHUB_E2E_MODE=live reads the real GitHub; otherwise the guard answers from the pinned checkouts.
+  const realGithub = process.env['GITHUB_E2E_MODE'] === 'live';
   const localProxy = process.env['DATATUG_E2E_PUBLIC_OVDB_PROXY'] === '1';
   test.setTimeout(120_000);
-  if (source) {
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: source },
-    ]);
-    await context.route('https://raw.githubusercontent.com/demo-db/northwind/**', route => route.continue());
-  }
-  // With no fixture path the public GitHub project reader is entirely real.
   const endpoint = localProxy
     ? '/__datatug_public_ovdb/cloud/v1/dtql'
     : 'https://cloud.openvaultdb.com/v1/dtql';
@@ -166,7 +157,7 @@ test('cross-database comparison runs one native server query and displays source
         observedAt: new Date().toISOString(),
         endpoint: 'https://cloud.openvaultdb.com/v1/dtql',
         transport: localProxy ? 'development-loopback-proxy' : 'direct',
-        projectReader: source ? 'committed-checkout fixture' : 'public GitHub',
+        projectReader: realGithub ? 'public GitHub' : 'pinned GitHub checkout (e2e/github-pins.json)',
         projectRevision: revision,
         browserEndpoint: answered.url(),
         status: answered.status(),

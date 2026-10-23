@@ -5,7 +5,8 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installFakeGithub } from './helpers/fake-github';
+import { GITHUB_HOST, installFakeGithub } from './helpers/fake-github';
+import { demoProjectPin } from './helpers/github-pins';
 import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
 /**
@@ -104,8 +105,9 @@ test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    // demodb.dev requests fall through to the guard in helpers/demodb-guard.ts (local fixtures by default).
-    if (DEMODB.test(url.hostname)) return route.fallback();
+    // demodb.dev and GitHub requests fall through to the guard in helpers/demodb-guard.ts (local fixtures and the
+    // pinned GitHub checkouts by default).
+    if (DEMODB.test(url.hostname) || GITHUB_HOST.test(url.hostname)) return route.fallback();
     if (url.origin === own || url.protocol === 'data:' || url.protocol === 'blob:') {
       return route.continue();
     }
@@ -187,15 +189,9 @@ test('demo project GitHub choice carries verified source into the existing setup
   test.skip(!source, 'requires the offline demo project checkout');
   if (!source) return;
   await installPinnedChinookSqlite(context, source);
-  const commit = 'a'.repeat(40);
-  const tree = 'b'.repeat(40);
-  await context.route('https://api.github.com/repos/datatug/datatug-demo-project**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = path.endsWith('/commits/main') ? { sha: commit, commit: { tree: { sha: 'c'.repeat(40) } } }
-      : path.includes('/git/trees/') ? { tree: [{ path: 'demo-project-1', type: 'tree', sha: tree }] }
-      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main' };
-    await route.fulfill({ json });
-  });
+  // The repository, its default branch's commit and its root tree come from the pinned checkout (the guard's GitHub fake,
+  // e2e/github-pins.json), in GitHub's response shapes: the summary names the pinned commit.
+  const commit = demoProjectPin().sha;
   await openDataset(page, 'chinook');
   await page.getByTestId('project-copy-github').click();
   await expect(page).toHaveURL(/\/new-project\?/);

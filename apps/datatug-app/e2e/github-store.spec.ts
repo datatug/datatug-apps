@@ -57,12 +57,7 @@ test.skip(
 );
 
 test.beforeEach(async ({ context }) => {
-  if (GITHUB_FAKE_DIR) {
-    await installPinnedChinookSqlite(context, GITHUB_FAKE_DIR);
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: GITHUB_FAKE_DIR },
-    ]);
-  }
+  if (GITHUB_FAKE_DIR) await installPinnedChinookSqlite(context, GITHUB_FAKE_DIR);
 });
 
 const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';

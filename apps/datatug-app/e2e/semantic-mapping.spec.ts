@@ -1,6 +1,5 @@
 import { readFile } from 'node:fs/promises';
 import { test, expect } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 import { loadPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 const queryURL =
@@ -28,12 +27,6 @@ test('column meaning saves a complete personal copy, stays visible and survives 
     }
     await route.continue();
   });
-  await installFakeGithub(context, [
-    {
-      fullName: 'datatug/datatug-demo-project',
-      dir: fakeRepo,
-    },
-  ]);
   await page.goto(queryURL);
   const author = activePage(page);
   await author.getByTestId('workspace-parameters-tab').click();

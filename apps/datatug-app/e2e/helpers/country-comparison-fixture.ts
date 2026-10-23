@@ -1,7 +1,6 @@
 import { expect, type BrowserContext } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { installFakeGithub } from './fake-github';
 export const countryFixture = (name: string) =>
   readFileSync(
     join(process.cwd(), 'apps/datatug-app/e2e/fixtures', name),
@@ -52,9 +51,6 @@ export async function installCountryComparisonFixture(
     independentSources?: boolean;
   } = {},
 ) {
-  await installFakeGithub(context, [
-    { fullName: 'datatug/datatug-demo-project', dir: source },
-  ]);
   // Follow the actual saved contract for all canonical callers, including older country/tutorial tests.
   // Structured declarations below are simulated; production publication remains a separate receipt.
   const rootDefinition = JSON.parse(readFileSync(join(source, 'demo-project-1/queries/demodb/customer-country-comparison-server.query.json'), 'utf8'));
@@ -75,19 +71,8 @@ export async function installCountryComparisonFixture(
     definition.federation.expectedServerIdentity ??= { baseUrl: definition.federation.ovdbBaseUrl, serverId: fixtureServerId };
     return route.fulfill({ json: definition, headers: { 'access-control-allow-origin': '*' } });
   });
-  await context.route(
-    'https://raw.githubusercontent.com/demo-db/northwind/**/source-rights.json',
-    (route) =>
-      route.fulfill({ contentType: 'application/json', body: publication }),
-  );
-  await context.route(
-    'https://raw.githubusercontent.com/demo-db/northwind/**/shipping-country-count-rights.json',
-    (route) =>
-      route.fulfill({
-        contentType: 'application/json',
-        body: countPublication,
-      }),
-  );
+  // The demo project and the demo-db/northwind rights publications (byte-identical to fixtures/northwind-*-rights.json)
+  // are answered by the guard from the GitHub pins (e2e/github-pins.json).
   const posts: string[] = [],
     downloads: string[] = [],
     mutations: string[] = [],
