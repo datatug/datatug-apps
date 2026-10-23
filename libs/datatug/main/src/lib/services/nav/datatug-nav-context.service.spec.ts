@@ -348,6 +348,39 @@ describe('DatatugNavContextService — environment persists across a reload with
     expect(envId).toBeUndefined();
   });
 
+  it('selects a default environment without remembering it for the tab (demo walk item 2)', () => {
+    window.history.replaceState(
+      {},
+      '',
+      `/store/${storeId}/project/${projectId}/query/albums_by_title?id=albums/albums_by_title`,
+    );
+    const service = configureAndCreate();
+    const key = `datatug:lastEnv:${storeId}:${projectId}`;
+    let envId: string | undefined;
+    service.currentEnv.subscribe((env) => (envId = env?.id));
+
+    // A query page's own default: selected for this page only.
+    service.setCurrentEnvironment('local', { persist: false });
+    expect(envId).toBe('local');
+    expect(sessionStorage.getItem(key)).toBeNull();
+
+    // The next query page opens with no environment, not the one the last page defaulted to.
+    TestBed.resetTestingModule();
+    window.history.replaceState(
+      {},
+      '',
+      `/store/${storeId}/project/${projectId}/query/orders-by-customer?id=northwind/orders-by-customer`,
+    );
+    const next = configureAndCreate();
+    let nextEnvId: string | undefined = 'local';
+    next.currentEnv.subscribe((env) => (nextEnvId = env?.id));
+    expect(nextEnvId).toBeUndefined();
+
+    // A visitor's own choice is still remembered.
+    next.setCurrentEnvironment('dev');
+    expect(sessionStorage.getItem(key)).toBe('dev');
+  });
+
   it('forgets the persisted environment when the user clears it', () => {
     window.history.replaceState(
       {},

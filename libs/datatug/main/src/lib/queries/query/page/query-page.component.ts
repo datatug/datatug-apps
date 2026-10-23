@@ -6538,7 +6538,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       // Before the rows: a change of environment clears a displayed result.
       this.resultEnvId = env && !envUnknown ? env : undefined;
       if (this.resultEnvId)
-        this.datatugNavContextService.setCurrentEnvironment(this.resultEnvId);
+        this.datatugNavContextService.setCurrentEnvironment(this.resultEnvId, {
+          persist: false,
+        });
       this.selectedSource.set(plan.ids?.source);
       // The database that ran the query is shown in the editor's Target field, as for any query with a chosen source.
       if (this.resultTargetAdded) {
@@ -7299,7 +7301,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
         this.envId = queryState?.activeEnv.id;
-        this.datatugNavContextService.setCurrentEnvironment(this.envId);
+        // The page's default environment selects, but is not remembered for the tab: a visitor who never chose
+        // one must not have every later query open in it.
+        this.datatugNavContextService.setCurrentEnvironment(this.envId, {
+          persist: false,
+        });
         this.scheduleEntryRuntimeLoad();
       }
       this.syncScopeAndBindings();
@@ -7453,7 +7459,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (!env || this.savedResultBanner()?.kind !== 'shown') return;
     queueMicrotask(() => {
       if (this.resultEnvId === env)
-        this.datatugNavContextService.setCurrentEnvironment(env);
+        this.datatugNavContextService.setCurrentEnvironment(env, {
+          persist: false,
+        });
     });
   }
 

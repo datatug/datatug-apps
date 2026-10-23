@@ -7107,7 +7107,8 @@ select (
         }),
       );
       expect(created.selectedSource()).toBe('chinook');
-      expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).toHaveBeenCalledWith('local');
+      // The result's environment is selected, never remembered for the tab: the visitor did not choose it.
+      expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).toHaveBeenCalledWith('local', { persist: false });
       // the saved rows are shown right away, as a snapshot, without a run
       expect(created.runResult()?.provenance).toMatchObject({ mode: 'snapshot', source: 'chinook' });
       expect(created.runResult()?.recordset.rows).toHaveLength(2);

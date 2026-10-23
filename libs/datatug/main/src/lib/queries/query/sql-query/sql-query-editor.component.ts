@@ -245,7 +245,9 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
       }
       if (queryState.activeEnv?.id && queryState.activeEnv.id !== this.envId) {
         this.envId = queryState?.activeEnv.id;
-        this.datatugNavContextService.setCurrentEnvironment(this.envId);
+        this.datatugNavContextService.setCurrentEnvironment(this.envId, {
+          persist: false,
+        });
       }
     } catch (e) {
       this.errorLogger.logError(
