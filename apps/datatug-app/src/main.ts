@@ -14,10 +14,14 @@ import {
   RedirectCommand,
   Router,
   RouteReuseStrategy,
+  UrlHandlingStrategy,
   UrlSerializer,
   withNavigationErrorHandler,
 } from '@angular/router';
-import { GithubRefUrlSerializer } from './app/github-ref-url-serializer';
+import {
+  GithubRefUrlHandlingStrategy,
+  GithubRefUrlSerializer,
+} from './app/github-ref-url-serializer';
 import { IonicRouteStrategy } from '@ionic/angular/common';
 import { provideIonicAngular } from '@ionic/angular/provide';
 import { DefaultSneatAppApiBaseUrl, SneatApiBaseUrl } from '@sneat/api';
@@ -287,6 +291,8 @@ bootstrapApplication(DatatugAppComponent, {
     // A GitHub project's `?ref=` travels inside the router as a matrix parameter of its repository segment, so that
     // the project route can read it (github-ref-url-serializer.ts).
     { provide: UrlSerializer, useClass: GithubRefUrlSerializer },
+    // …and a link that holds a project href as one string command has its `?ref=` lifted out of its last segment.
+    { provide: UrlHandlingStrategy, useClass: GithubRefUrlHandlingStrategy },
     // Literal SSO routes must precede DataTug's root/catch-all feature routes.
     provideRouter(
       [...ssoRoutes, ...routes, ...authRoutes, notFoundRoute],

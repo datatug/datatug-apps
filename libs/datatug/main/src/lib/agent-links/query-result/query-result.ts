@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../../nav/project-page-href';
 import type { RunQueryRequest, TypedValue } from '@sneat/datatug-semantic';
 import { projectPageCommands } from '../link-route';
 
@@ -463,8 +464,8 @@ export function resultDbIds(meta: ResultMeta): DbIds | undefined {
 
 /** A name in a list that opens the table metadata page (and its records page) of the agent's table routes. */
 export interface TableLink {
-  readonly commands: readonly string[];
-  readonly recordsCommands: readonly string[];
+  readonly commands: readonly ProjectRouterCommand[];
+  readonly recordsCommands: readonly ProjectRouterCommand[];
   readonly queryParams: { readonly schema: string };
 }
 

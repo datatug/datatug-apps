@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../../nav/project-page-href';
 import { HttpErrorResponse } from '@angular/common/http';
 import {
   ChangeDetectionStrategy,
@@ -207,7 +208,7 @@ export class QueryResultPageComponent {
   private projectSubscription?: Subscription;
   private rerunSubscription?: Subscription;
   /** The router commands of the query editor of the result's project, once the agent is known to have the project. */
-  private editorCommands?: string[];
+  private editorCommands?: ProjectRouterCommand[];
   /** The address asks for the Table view by name (`?view=table`), the card's "Open in DataTug" target. */
   private tableRequested = false;
   private holdTimer?: ReturnType<typeof setTimeout>;

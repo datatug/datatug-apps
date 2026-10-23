@@ -112,7 +112,9 @@ A project stored in a GitHub repository opens at (founder 2026-10-23; the gramma
   parameter `ref` of the repository segment (`apps/datatug-app/src/app/github-ref-url-serializer.ts` moves it there
   and back), because route matchers do not see the query; so every in-app link and relative navigation within the
   project keeps it. Link builders that add a query use `withQuery`, and router commands `projectRouterCommands`
-  (`libs/datatug/main/src/lib/nav/project-page-href.ts`).
+  (`libs/datatug/main/src/lib/nav/project-page-href.ts`). A project href handed to `[routerLink]` as one string
+  (which RouterLink would split into path segments, `?ref=` and all) has its query lifted back out by the same file's
+  `GithubRefUrlHandlingStrategy` and serializer, so such a link keeps the ref too.
 - `/-/` ends the folder when a page follows it. At the repository root it is left out when the page starts with a
   project page name (`chat`, `queries`, …, `GITHUB_PROJECT_PAGE_NAMES`), as root project pages always were. So a
   folder whose first segment is a page name is written with a closing `/-` (`/project/github.com/o/r/chat/-`):
