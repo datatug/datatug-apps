@@ -90,6 +90,15 @@ jobs:
             push) base="$(python3 .github/scripts/workflow-baseline.py ci)"; head="$GITHUB_SHA" ;;
             *) base=""; head="" ;;
           esac
+          # Vacuous-green guard: a pull request or merge group whose head equals its base has nothing to validate, so
+          # `nx affected` runs nothing and every check goes green (run 39890329376). Fail loudly, never pass empty.
+          # Not applied to push: the baseline there is the last verified run, and a re-run on the same commit is legitimate.
+          if [ "$EVENT_NAME" = pull_request ] || [ "$EVENT_NAME" = merge_group ]; then
+            if [ -z "$base" ] || [ -z "$head" ] || [ "$base" = "$head" ]; then
+              echo "::error::Refusing a vacuous green: $EVENT_NAME base ('$base') and head ('$head') are empty or identical, so no check would validate anything. Push a real change or close this pull request."
+              exit 1
+            fi
+          fi
           result="$(python3 .github/scripts/classify-metadata-change.py "$base" "$head")"
           if [ "$result" = metadata-only ]; then
             echo 'mode=metadata-only' >> "$GITHUB_OUTPUT"
@@ -143,6 +152,18 @@ jobs:
       - name: Derive appropriate SHAs for base and head for nx affected commands
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
+
+      # Same guard where `nx affected` actually reads NX_BASE: on a pull request or merge group, NX_BASE == NX_HEAD
+      # means an empty diff, `nx affected` runs nothing and the job would go green having validated nothing.
+      - name: Refuse a vacuous affected set (NX_BASE equals NX_HEAD)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        run: |
+          head_sha="$(git rev-parse "${NX_HEAD:-HEAD}")"
+          base_sha="$(git rev-parse "${NX_BASE:?nx-set-shas did not set NX_BASE}")"
+          if [ "$base_sha" = "$head_sha" ]; then
+            echo "::error::NX_BASE equals NX_HEAD ($head_sha): nx affected would run nothing and every check would pass vacuously."
+            exit 1
+          fi
 
       - name: nx lint affected
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
@@ -224,6 +245,18 @@ jobs:
       - name: Derive appropriate SHAs for base and head for nx affected commands
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         uses: nrwl/nx-set-shas@v5
+
+      # Same guard where `nx affected` actually reads NX_BASE: on a pull request or merge group, NX_BASE == NX_HEAD
+      # means an empty diff, `nx affected` runs nothing and the job would go green having validated nothing.
+      - name: Refuse a vacuous affected set (NX_BASE equals NX_HEAD)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' && (github.event_name == 'pull_request' || github.event_name == 'merge_group') }}
+        run: |
+          head_sha="$(git rev-parse "${NX_HEAD:-HEAD}")"
+          base_sha="$(git rev-parse "${NX_BASE:?nx-set-shas did not set NX_BASE}")"
+          if [ "$base_sha" = "$head_sha" ]; then
+            echo "::error::NX_BASE equals NX_HEAD ($head_sha): nx affected would run nothing and every check would pass vacuously."
+            exit 1
+          fi
 
       - name: nx typecheck-spec main
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}

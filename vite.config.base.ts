@@ -90,8 +90,12 @@ export function createBaseViteConfig(
       name,
       watch: false,
       globals: true,
-      // vmThreads gives every file a fresh VM context, so sharing modules needs forks.
-      pool: moduleSharing === 'shared' ? 'forks' : 'vmThreads',
+      // Every project runs in forks with a fresh module graph per spec file. Vitest 4 forces `isolate: false` for the
+      // vm pools (`vmThreads`, `vmForks`), and there a module one file loaded, with that file's `vi.mock` factories
+      // bound into it, is handed to the next file in the same worker: mocks leak and results depend on how files
+      // spread over workers. Only `moduleSharing: 'shared'` opts out, on purpose. libs/testing's
+      // vite-config-base.spec.ts and apps/datatug-app's test-isolation.spec.ts guard this.
+      pool: 'forks',
       isolate: moduleSharing !== 'shared',
       environment: 'happy-dom',
       include:
