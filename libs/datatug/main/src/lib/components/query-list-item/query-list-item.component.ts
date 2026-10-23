@@ -65,8 +65,8 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
  * Inputs: `queryTitle` (required), `type`, `createdAt`, `modifiedAt`, `href` + `queryParams` (navigation), `detail`
  * (chevron), `selected`, `titleTestId`, `itemTestId` (on the `ion-item`), `ariaLabel` (replaces the default
  * accessible name of the main link/button), `loadText`, `highlight` (search text marked in the title), `lines`,
- * and `optionId` + `optionActive` (combobox option mode, used by the Quick Search suggestions). Output: `opened`, emitted on activation when there is no
- * `href`.
+ * and `optionId` + `optionActive` (combobox option mode, used by the Quick Search suggestions). Outputs: `opened`,
+ * emitted on activation when there is no `href`; `activated`, emitted on every activation (e.g. to close a popup).
  */
 @Component({
   selector: 'sneat-datatug-query-list-item',
@@ -123,6 +123,8 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           [attr.tabindex]="optionId() ? -1 : null"
           [attr.aria-label]="accessibleName()"
           [attr.aria-describedby]="previewVisible() ? previewId : null"
+          (mousedown)="keepFieldFocus($event)"
+          (click)="activated.emit()"
           (focus)="focus(true)"
           (blur)="focus(false)"
           ><ng-container [ngTemplateOutlet]="main"
@@ -137,7 +139,8 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           [attr.tabindex]="optionId() ? -1 : null"
           [attr.aria-label]="accessibleName()"
           [attr.aria-describedby]="previewVisible() ? previewId : null"
-          (click)="opened.emit()"
+          (mousedown)="keepFieldFocus($event)"
+          (click)="opened.emit(); activated.emit()"
           (focus)="focus(true)"
           (blur)="focus(false)"
         >
@@ -286,6 +289,8 @@ export class QueryListItemComponent implements OnDestroy {
     (() => Observable<string | null | undefined>) | undefined
   >(undefined);
   readonly opened = output<void>();
+  /** Emitted on every activation of the main link/button (with or without `href`), e.g. to close a popup. */
+  readonly activated = output<void>();
 
   protected readonly chevronIcon = chevronForwardOutline;
   protected readonly previewId = `query-preview-${++nextPreviewId}`;
@@ -335,6 +340,11 @@ export class QueryListItemComponent implements OnDestroy {
       return;
     }
     if (canHover()) this.activate();
+  }
+
+  /** Option mode: a pointer press must not move focus out of the search field that owns the listbox. */
+  protected keepFieldFocus(event: Event): void {
+    if (this.optionId()) event.preventDefault();
   }
 
   /** Escape hides a visible preview until the row is left and entered again. */

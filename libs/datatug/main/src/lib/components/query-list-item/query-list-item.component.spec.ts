@@ -70,11 +70,13 @@ class HostComponent {
       highlight="cust"
       [detail]="false"
       [optionActive]="active()"
+      (activated)="activations.set(activations() + 1)"
     />
   `,
 })
 class OptionHostComponent {
   readonly active = signal(false);
+  readonly activations = signal(0);
 }
 
 describe('QueryListItemComponent', () => {
@@ -263,6 +265,15 @@ describe('QueryListItemComponent', () => {
     expect(el.querySelector('ion-item')?.classList).toContain(
       'query-list-item-active',
     );
+    // A press keeps focus in the search field; activation is reported so the popup can close.
+    const press = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    option.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(true);
+    option.click();
+    expect(fixture.componentInstance.activations()).toBe(1);
   });
 
   it('is a plain list row (no option role) without optionId', async () => {
@@ -271,5 +282,11 @@ describe('QueryListItemComponent', () => {
     expect(main.hasAttribute('role')).toBe(false);
     expect(main.hasAttribute('tabindex')).toBe(false);
     expect(main.hasAttribute('aria-selected')).toBe(false);
+    const press = new MouseEvent('mousedown', {
+      bubbles: true,
+      cancelable: true,
+    });
+    main.dispatchEvent(press);
+    expect(press.defaultPrevented).toBe(false);
   });
 });

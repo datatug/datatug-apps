@@ -172,26 +172,21 @@ let nextBoxId = 0;
                   @for (option of view.options; track option.id) {
                     @if (option.query; as query) {
                       <!-- The shared query row, as a combobox option: same icon, type badge and date as every query list. -->
-                      <div
-                        class="query-option"
-                        (mousedown)="$event.preventDefault()"
-                        (click)="close()"
+                      <sneat-datatug-query-list-item
+                        (activated)="close()"
+                        lines="none"
+                        [optionId]="option.id"
+                        [optionActive]="option.id === activeOptionId()"
+                        [queryTitle]="option.titleText"
+                        [type]="query.type"
+                        [createdAt]="query.createdAt"
+                        [href]="option.link"
+                        [detail]="false"
+                        [highlight]="term()"
+                        ><span queryRowSubtitle class="secondary">{{
+                          option.secondary
+                        }}</span></sneat-datatug-query-list-item
                       >
-                        <sneat-datatug-query-list-item
-                          lines="none"
-                          [optionId]="option.id"
-                          [optionActive]="option.id === activeOptionId()"
-                          [queryTitle]="option.titleText"
-                          [type]="query.type"
-                          [createdAt]="query.createdAt"
-                          [href]="option.link"
-                          [detail]="false"
-                          [highlight]="term()"
-                          ><span queryRowSubtitle class="secondary">{{
-                            option.secondary
-                          }}</span></sneat-datatug-query-list-item
-                        >
-                      </div>
                     } @else {
                       <a
                         class="option"
