@@ -616,7 +616,7 @@ describe('DataTug app routes', () => {
           );
           expect(result.component).toBe(HandoffStub);
           expect(result.url).toBe(
-            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+            '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
           );
           expect(
             (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
