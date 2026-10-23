@@ -492,7 +492,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     }
     .dt-rg-menu {
       background: var(--ion-item-background, #fff);
-      border: 1px solid var(--ion-color-step-250, #c8c8c8);
+      border: 1px solid var(--ion-background-color-step-250, #c8c8c8);
       border-radius: 0.5rem;
       box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
       display: flex;
@@ -517,7 +517,7 @@ const NO_ROWS = '<span class="ag-overlay-no-rows-center">No rows.</span>';
     }
     .dt-rg-menu-item:hover:not(:disabled),
     .dt-rg-menu-item:focus-visible {
-      background: var(--ion-color-step-100, rgba(0, 0, 0, 0.06));
+      background: var(--ion-background-color-step-100, rgba(0, 0, 0, 0.06));
     }
     .dt-rg-menu-item:disabled {
       cursor: default;

@@ -332,3 +332,13 @@ describe('datatugProjectRoutes: the project-wide 404 does not shadow nested page
     expect(redirect).toMatchObject({ pathMatch: 'full', redirectTo: 'environments' });
   });
 });
+
+describe('datatugProjectRoutes: redirects', () => {
+  it('match their exact address only, so the project-wide 404 cannot answer the redirected remainder', () => {
+    const redirects = datatugProjectRoutes.filter((route) => route.redirectTo !== undefined);
+    expect(redirects.map((route) => route.path)).toEqual(
+      expect.arrayContaining(['dbmodel', 'board', 'card', 'env', 'entity']),
+    );
+    for (const route of redirects) expect(route.pathMatch, String(route.path)).toBe('full');
+  });
+});

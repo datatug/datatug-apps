@@ -41,6 +41,7 @@ const emptyShellProjectRoutes: Routes = [
   },
   {
     path: 'dbmodel',
+    pathMatch: 'full',
     redirectTo: 'dbmodels',
   },
   {
@@ -223,6 +224,7 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'board',
+    pathMatch: 'full',
     redirectTo: 'boards',
   },
   {
@@ -245,6 +247,7 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'card',
+    pathMatch: 'full',
     redirectTo: 'cards',
   },
   {
@@ -297,6 +300,7 @@ export const datatugProjectRoutes: Routes = [
   },
   {
     path: 'entity',
+    pathMatch: 'full',
     redirectTo: 'entities',
   },
   {
