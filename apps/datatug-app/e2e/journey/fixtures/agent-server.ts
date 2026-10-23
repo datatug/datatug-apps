@@ -1,5 +1,5 @@
 import { test as base, expect } from '../../helpers/demodb-guard';
-import type { APIRequestContext, BrowserContext } from '@playwright/test';
+import type { APIRequestContext, Browser, BrowserContext } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as net from 'node:net';
@@ -819,5 +819,18 @@ export const test = base.extend<{}, JourneyWorkerFixtures>({
     { scope: 'worker' },
   ],
 });
+
+/**
+ * A separate browser session (`browser.newContext()`) that still holds the agents' session tokens. A raw
+ * `browser.newContext()` has no token and every agent route answers 401, so journeys that model "a colleague on a
+ * fresh browser" open theirs here.
+ */
+export async function newAgentContext(browser: Browser): Promise<BrowserContext> {
+  const context = await browser.newContext();
+  await installTokens(context, tokenSnapshot());
+  liveContexts.add(context);
+  context.once('close', () => liveContexts.delete(context));
+  return context;
+}
 
 export { expect };
