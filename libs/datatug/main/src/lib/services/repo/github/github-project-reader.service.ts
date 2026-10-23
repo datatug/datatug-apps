@@ -312,7 +312,12 @@ export const GITHUB_TIMER = new InjectionToken<GithubSetTimer>('GITHUB_TIMER', {
  * - `moved`: GitHub answered with a redirect (a renamed or moved repository). Refused.
  */
 export type GithubCommitState =
-  'given' | 'resolved' | 'remembered' | 'unresolved' | 'missing' | 'moved';
+  | 'given'
+  | 'resolved'
+  | 'remembered'
+  | 'unresolved'
+  | 'missing'
+  | 'moved';
 
 export interface IGithubCommitResolution {
   readonly state: GithubCommitState;
@@ -984,10 +989,7 @@ export class GithubProjectReaderService {
         return;
       }
       const pinnedUrls = [...this.treeCalls.keys()];
-      while (
-        this.treeCalls.size > MAX_PINNED_TREES_IN_MEMORY &&
-        pinnedUrls.length
-      ) {
+      while (this.treeCalls.size > MAX_PINNED_TREES_IN_MEMORY && pinnedUrls.length) {
         const oldest = pinnedUrls.shift() as string;
         if (oldest !== key) this.treeCalls.delete(oldest);
       }
@@ -1482,16 +1484,10 @@ export class GithubProjectReaderService {
     return this.getRawJson<IGithubBoardFile>(
       projectId,
       `boards/${boardId}/board.json`,
-    ).pipe(
-      map((file) => {
-        if (
-          options?.requireExisting &&
-          (!file || typeof file !== 'object' || Array.isArray(file))
-        )
-          throw new Error('Board metadata unavailable');
-        return { id: boardId, title: boardId, ...file };
-      }),
-    );
+    ).pipe(map((file) => {
+      if (options?.requireExisting && (!file || typeof file !== 'object' || Array.isArray(file))) throw new Error('Board metadata unavailable');
+      return { id: boardId, title: boardId, ...file };
+    }));
   }
 
   // ---------------------------------------------------------------------
@@ -1658,9 +1654,7 @@ export class GithubProjectReaderService {
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
                 : {}),
-              ...(def && Object.hasOwn(def, 'comparison')
-                ? { comparison: def.comparison }
-                : {}),
+              ...(def && Object.hasOwn(def, 'comparison') ? { comparison: def.comparison } : {}),
               targets: def?.targets,
               parameters: def?.parameters,
               relationshipBindings: def?.relationshipBindings,
@@ -1787,32 +1781,32 @@ export class GithubProjectReaderService {
                 ? [listed, ...candidates.filter((c) => c !== listed)]
                 : candidates,
             ).pipe(
-              map((body): IGithubWireQueryItem => ({
-                id: def?.id || bareId,
-                title: def?.title,
-                createdAt: def?.createdAt,
-                // The structured YAML form opens as the app's structured document, which the app still types
-                // `DTQL` (as `.query.dtql` did); the full TugQL rename is a separate change.
-                type: body.structured && type === 'TugQL' ? 'DTQL' : type,
-                text: body.text,
-                ...(def?.connectionId
-                  ? { connectionId: def.connectionId }
-                  : {}),
-                ...(def?.semanticModel
-                  ? { semanticModel: def.semanticModel }
-                  : {}),
-                ...(def && Object.hasOwn(def, 'comparison')
-                  ? { comparison: def.comparison }
-                  : {}),
-                targets: def?.targets,
-                parameters: def?.parameters,
-                relationshipBindings: def?.relationshipBindings,
-                recordsets: def?.recordsets,
-                federation: def?.federation,
-                publicData: def?.publicData,
-                dbModel: def?.dbModel,
-                draft: def?.draft,
-              })),
+              map(
+                (body): IGithubWireQueryItem => ({
+                  id: def?.id || bareId,
+                  title: def?.title,
+                  createdAt: def?.createdAt,
+                  // The structured YAML form opens as the app's structured document, which the app still types
+                  // `DTQL` (as `.query.dtql` did); the full TugQL rename is a separate change.
+                  type: body.structured && type === 'TugQL' ? 'DTQL' : type,
+                  text: body.text,
+                  ...(def?.connectionId
+                    ? { connectionId: def.connectionId }
+                    : {}),
+                  ...(def?.semanticModel
+                    ? { semanticModel: def.semanticModel }
+                    : {}),
+                  ...(def && Object.hasOwn(def, 'comparison') ? { comparison: def.comparison } : {}),
+                  targets: def?.targets,
+                  parameters: def?.parameters,
+                  relationshipBindings: def?.relationshipBindings,
+                  recordsets: def?.recordsets,
+                  federation: def?.federation,
+                  publicData: def?.publicData,
+                  dbModel: def?.dbModel,
+                  draft: def?.draft,
+                }),
+              ),
             );
           }),
         );
