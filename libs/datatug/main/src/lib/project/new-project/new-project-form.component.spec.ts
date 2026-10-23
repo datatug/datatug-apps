@@ -1705,13 +1705,14 @@ describe('New project through authenticated common API', () => {
     // The restoring page reads the pre-branch-identity draft; serve it from the read, not a second write to storage.
     const legacyDraft = JSON.stringify(saved);
     const readStorage = sessionStorage.getItem.bind(sessionStorage);
-    vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) =>
+    const legacyRead = vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) =>
       key === 'datatug:new-project:draft' ? legacyDraft : readStorage(key),
     );
 
     const restored = await harness(false, {}, true, true);
     restored.fixture.detectChanges();
     await restored.fixture.whenStable();
+    legacyRead.mockRestore();
     restored.component.create();
 
     expect(restored.create).toHaveBeenCalledTimes(1);
