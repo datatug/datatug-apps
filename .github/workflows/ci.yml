@@ -20,6 +20,7 @@ on:
 
 permissions:
   actions: read
+  contents: read
 
 # A `labeled` event for any label other than run-e2e gets its own group, so it cannot cancel the real run.
 # Superseded PR runs are cancelled (a force-push or a new commit on the same pull request, a Renovate rebase), so they
