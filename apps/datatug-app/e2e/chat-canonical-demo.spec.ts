@@ -18,7 +18,7 @@ test('the advertised GitHub Chinook demo seeds all tables, attaches context and 
   });
 
   await page.goto('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat');
-  await page.getByLabel('Ask about Chinook data').fill('Show the first three customers');
+  await page.getByLabel('Ask about project data').fill('Show the first three customers');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 45_000 });
   const counts = await page.evaluate(async () => {
     const database = await new Promise<IDBDatabase>((resolve, reject) => {

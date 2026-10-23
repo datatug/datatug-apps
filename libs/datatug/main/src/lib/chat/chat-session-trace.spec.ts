@@ -220,6 +220,26 @@ describe('the RecordSet source check', () => {
     return { session, recordSetId: done.recordSetId as string };
   }
 
+  it('bookmarks a generic project result and rejects a cross-project reference', async () => {
+    const store = chat();
+    const managedScope = JSON.stringify(['managed-project-ai/1', { storeId: 'local', projectId: 'equipment-project' }, 'prod', 'factory', '', 'actor']);
+    const session = await store.create(managedScope);
+    const pending = await store.appendQuestion(managedScope, session.id, 'Show equipment');
+    const completed = await store.completeQuery(managedScope, session.id, pending.id, result(`${managedScope}/project-query`));
+    const reference = { kind: 'recordset' as const, projectId: 'equipment-project', sourceId: 'factory', objectId: completed.recordSetId as string, title: 'Equipment' };
+    await store.workspaceAction(managedScope, session.id, { kind: 'bookmark', reference });
+    expect((await store.listBookmarks(managedScope))[0].projectId).toBe('equipment-project');
+    const selected = await store.workspaceAction(managedScope, session.id, { kind: 'select', recordSetId: completed.recordSetId as string, rows: [0], columns: ['country'] });
+    const selection = selected.selections[selected.currentSelectionId as string];
+    const docked = await store.workspaceAction(managedScope, session.id, { kind: 'dockCurrent' });
+    expect(docked.docks[0].reference.sourceId).toBe('factory');
+    await store.workspaceAction(managedScope, session.id, { kind: 'bookmark', reference: { kind: 'selection', projectId: 'equipment-project', sourceId: 'factory', objectId: selection.id, title: 'Selected equipment' } });
+    expect((await store.listBookmarks(managedScope)).some((bookmark) => bookmark.target === 'selection')).toBe(true);
+
+    await expect(store.workspaceAction(managedScope, session.id, { kind: 'bookmark', reference: { ...reference, projectId: 'shipping-project' } })).rejects.toThrow('from this project');
+    await expect(store.load(scope, session.id)).rejects.toThrow('unavailable in this project');
+  });
+
   it('an ordinary chat accepts only the Chinook source of its project, as it always did', async () => {
     const store = chat();
     const ok = await withResult(store, `${scope}/chinook`);

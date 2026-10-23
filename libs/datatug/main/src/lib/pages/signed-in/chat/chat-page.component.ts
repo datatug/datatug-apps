@@ -2,7 +2,7 @@ import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { ChangeDetectionStrategy, Component, DestroyRef, ElementRef, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, Router } from '@angular/router';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { firstValueFrom, Subject } from 'rxjs';
 import { AgGridReadyDirective } from '@datatug/ag-grid';
@@ -15,6 +15,9 @@ import {
 } from '@ionic/angular';
 import { addIcons } from 'ionicons';
 import { sendOutline } from 'ionicons/icons';
+import { ProjectAIService, type ProjectAIContext } from '../../../chat/project-ai.service';
+import { ManagedAIGatewayService } from '../../../chat/managed-ai-gateway.service';
+import { isChinookChatProject } from '../../../chat/chinook-chat-project';
 import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
@@ -29,7 +32,7 @@ import { chatErrorView, type ChatErrorView } from '../../../chat/chat-error-mess
 import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
-import { IProjectRef, equalProjectRef, isSharedProjectRef } from '../../../core/project-context';
+import { IProjectRef, equalProjectRef, isSharedProjectRef, isLocalProjectRef } from '../../../core/project-context';
 import { ProjectTracker } from '../../../services/nav/contexts/project.tracker';
 import { ProjectAIEligibilityService, type ProjectAIEligibility } from '../../../services/project/project-ai-eligibility.service';
 
@@ -64,6 +67,7 @@ export class ChatPageComponent {
     state: ReturnType<typeof emptyChatWorkspace>; turns: readonly ChatTurn[]; rows: Record<string, unknown>[];
   }>();
   private readonly route = inject(ActivatedRoute);
+  private readonly router = inject(Router, { optional: true });
   private readonly destroyRef = inject(DestroyRef);
   private readonly trackerDestroyed = new Subject<void>();
   private readonly projectTracker = new ProjectTracker(this.trackerDestroyed, this.route);
@@ -78,6 +82,20 @@ export class ChatPageComponent {
   private readonly data = inject(ChinookChatDataService);
   private readonly sessionStore = inject(ChatSessionService);
   readonly providers = inject(ChatProviderService);
+
+  private readonly projectAssistant = inject(ProjectAIService);
+  readonly managedGateway = inject(ManagedAIGatewayService);
+  readonly managed = signal(!this.providers.selectedId() || this.providers.selectedId() === '__managed__');
+  readonly projectContext = signal<ProjectAIContext | undefined>(undefined);
+  readonly environment = signal(this.route.snapshot.queryParamMap?.get('env') || '');
+  readonly connectionId = signal(this.route.snapshot.queryParamMap?.get('aiConnection') || '');
+  readonly runtimeId = signal(this.route.snapshot.queryParamMap?.get('aiRuntime') || '');
+  readonly pinnedBrowserAvailable = computed(() => !!this.projectContext()?.connections.find((item) => item.id === this.connectionId())?.browserFixture);
+  readonly serverProject = computed(() => !!this.projectRef() && (isLocalProjectRef(this.projectRef()) || isSharedProjectRef(this.projectRef() as IProjectRef)));
+  readonly workingCopies = computed(() => this.projectAssistant.workingCopies(this.projectContext(), this.connectionId()));
+  readonly demoProject = computed(() => isChinookChatProject(this.storeId(), this.projectId()));
+  private requestController?: AbortController;
+  private contextController?: AbortController;
 
   readonly storeId = signal(this.route.snapshot.paramMap.get('storeId') || this.route.parent?.snapshot.paramMap.get('storeId') || '');
   readonly projectId = signal(this.route.snapshot.paramMap.get('projectId') || this.route.parent?.snapshot.paramMap.get('projectId') || '');
@@ -124,7 +142,7 @@ export class ChatPageComponent {
   readonly submitting = signal(false);
   readonly workspaceActionBlocked = computed(() => this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready');
   readonly providerModalOpen = signal(false);
-  readonly providerChoice = signal(this.providers.selectedId() || '');
+  readonly providerChoice = signal(this.providers.selectedId() || '__managed__');
   readonly providerError = signal<string | undefined>(undefined);
   readonly editingId = signal<string | undefined>(undefined);
   readonly presetName = signal('DeepSeek');
@@ -133,7 +151,7 @@ export class ChatPageComponent {
   readonly focusedJoin = signal<{ turnId: string; candidateId: string } | undefined>(undefined);
   /** Plain-language text for a failed chat session or local data load; the raw message is kept as the technical detail. */
   readonly sessionErrorView = computed(() => this.failureOf(this.sessionError(), 'Something went wrong with this chat session.'));
-  readonly seedErrorView = computed(() => this.failureOf(this.seedError(), 'The local Chinook data could not be loaded.'));
+  readonly seedErrorView = computed(() => this.failureOf(this.seedError(), 'Project context could not be loaded.'));
   /** Plain-language text for a failed turn; the stored `turn.error` keeps the engine's own message. */
   readonly errorView = chatErrorView;
 
@@ -143,6 +161,7 @@ export class ChatPageComponent {
       const changed = this.authIdentity() !== identity;
       if (changed) this.authRevision.update((revision) => revision + 1);
       this.authIdentity.set(identity);
+      if (!this.authInitialized()) this.managedGateway.reset();
       if (this.authInitialized() && changed) this.resetCurrentSession(true);
       this.authInitialized.set(true);
     });
@@ -150,7 +169,16 @@ export class ChatPageComponent {
       next: (ref) => this.updateProjectRef(ref),
       error: () => this.invalidateProjectRef(),
     });
+    this.route.queryParamMap.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((params) => {
+      const environment = params.get('env') || '';
+      const connection = params.get('aiConnection') || '';
+      const runtime = params.get('aiRuntime') || '';
+      if (environment !== this.environment() || connection !== this.connectionId() || runtime !== this.runtimeId()) { this.environment.set(environment); this.connectionId.set(connection); this.runtimeId.set(runtime); this.resetCurrentSession(true); }
+    });
     this.destroyRef.onDestroy(() => {
+      this.requestController?.abort();
+      this.contextController?.abort();
+      this.managedGateway.reset();
       this.trackerDestroyed.next();
       this.trackerDestroyed.complete();
     });
@@ -308,13 +336,16 @@ export class ChatPageComponent {
       return;
     }
     const provider = this.providers.save(draft, this.editingId());
+    this.managed.set(false);
     this.providers.select(provider.id);
     this.providerChoice.set(provider.id);
+    this.resetCurrentSession(true);
     this.choosePreset('DeepSeek');
     this.providerModalOpen.set(false);
   }
 
   selectProvider(value: string): void {
+    if (value === '__managed__') { this.providers.select(value); this.managed.set(true); this.providerChoice.set(value); this.resetCurrentSession(true); return; }
     if (value === '__add_provider__') {
       this.choosePreset('DeepSeek');
       this.providerModalOpen.set(true);
@@ -322,24 +353,100 @@ export class ChatPageComponent {
       queueMicrotask(() => this.providerChoice.set(this.providers.selectedId() || ''));
       return;
     }
+    if (this.managed()) { this.managed.set(false); this.resetCurrentSession(true); }
     this.providers.select(value);
-    this.providerChoice.set(this.providers.selectedId() || '');
+    this.providerChoice.set(this.managed() ? '__managed__' : this.providers.selectedId() || '');
   }
 
   closeProviderModal(): void {
     this.providerModalOpen.set(false);
     this.providerError.set(undefined);
     this.choosePreset('DeepSeek');
-    this.providerChoice.set(this.providers.selectedId() || '');
+    this.providerChoice.set(this.managed() ? '__managed__' : this.providers.selectedId() || '');
   }
 
   removeProvider(provider: ChatProvider): void {
     this.providers.remove(provider.id);
-    this.providerChoice.set(this.providers.selectedId() || '');
+    this.providerChoice.set(this.managed() ? '__managed__' : this.providers.selectedId() || '');
     if (this.editingId() === provider.id) this.choosePreset('DeepSeek');
   }
 
+  connectionAvailable(id: string | undefined): boolean {
+    const connection = this.projectContext()?.connections.find((item) => item.id === id);
+    return !!connection && (connection.environment === undefined || connection.environment === this.environment()) &&
+      (connection.environments === undefined || connection.environments.includes(this.environment()));
+  }
+
+  changeAIContext(kind: 'environment' | 'connection' | 'runtime', value: string): void {
+    if (kind === 'environment') this.environment.set(value);
+    else if (kind === 'connection') { this.connectionId.set(value); this.runtimeId.set(''); }
+    else this.runtimeId.set(value);
+    this.resetCurrentSession(true);
+    void this.router?.navigate([], { relativeTo: this.route, queryParamsHandling: 'merge', queryParams: { env: this.environment() || null, aiConnection: this.connectionId() || null, aiRuntime: this.runtimeId() || null }, replaceUrl: true });
+  }
+
+  chooseAIMode(managed: boolean): void {
+    if (managed) { this.selectProvider('__managed__'); return; }
+    const provider = this.providers.providers().find((item) => item.id === this.providers.selectedId()) || this.providers.providers()[0];
+    this.managed.set(false);
+    this.providers.select(provider?.id || '__byok__');
+    this.providerChoice.set(provider?.id || '__byok__');
+    this.resetCurrentSession(true);
+  }
+
+  cancelRequest(): void { this.requestController?.abort(); }
+
+  async refreshAllowance(): Promise<void> {
+    try { await this.managedGateway.usage(); } catch { /* The gateway exposes the unavailable state inline. */ }
+  }
+
+  private async submitManaged(): Promise<void> {
+    const question = this.question().trim();
+    const projectRef = this.projectRef();
+    const context = this.projectContext();
+    const sessionId = this.activeSessionId();
+    if (!question || !projectRef || !context || !sessionId || this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready') return;
+    const scope = this.scope(), authRevision = this.authRevision(), authIdentity = this.authIdentity();
+    if (this.managed() && !authIdentity) { this.sessionError.set('Sign in to use Managed AI. No provider API key is needed.'); return; }
+    if (!this.managed() && !this.selectedProvider()) { this.sessionError.set('Choose your own provider or Managed AI.'); return; }
+    const provider = this.managed() ? undefined : this.selectedProvider();
+    const allowance = this.managedGateway.allowance();
+    if (!provider && allowance && allowance.used >= allowance.limit) { this.sessionError.set('Your Managed AI allowance is exhausted. Wait for the reset or explicitly choose your own provider.'); return; }
+    const controller = new AbortController();
+    this.requestController = controller;
+    this.submitting.set(true);
+    let id: string | undefined;
+    const current = () => this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity);
+    try {
+      const eligibility = await this.checkSponsorEligibility(scope, sessionId, projectRef, authRevision, authIdentity);
+      if (eligibility.kind !== 'allowed') { if (eligibility.kind === 'denied' && current()) this.sessionError.set(eligibility.message); return; }
+      controller.signal.throwIfAborted();
+      const pending = await this.sessionStore.appendQuestion(scope, sessionId, question);
+      id = pending.id;
+      if (!current()) { await this.cancelStaleQuestion(scope, sessionId, id); return; }
+      this.question.set('');
+      this.turns.update((turns) => [...turns, pending]);
+      const latestEligibility = await this.checkSponsorEligibility(scope, sessionId, projectRef, authRevision, authIdentity);
+      if (latestEligibility.kind !== 'allowed') throw new Error(latestEligibility.kind === 'denied' ? latestEligibility.message : 'The request context changed.');
+      if (!current()) { await this.cancelStaleQuestion(scope, sessionId, id); return; }
+      const result = await this.projectAssistant.answer(context, this.environment(), this.connectionId(), question, this.turns(), controller.signal, provider, this.runtimeId() || undefined);
+      if (!current()) { await this.cancelStaleQuestion(scope, sessionId, id); return; }
+      controller.signal.throwIfAborted();
+      const completed = await this.sessionStore.completeQuery(scope, sessionId, id, { ...result, source: `${scope}/project-query` });
+      if (current()) { this.replaceTurn(id, completed); await this.refreshSessions(); }
+    } catch (error) {
+      if (!current()) { if (id) await this.cancelStaleQuestion(scope, sessionId, id); return; }
+      const message = controller.signal.aborted ? 'This request was cancelled. Ask again when ready.' : error instanceof Error ? error.message : 'Managed AI could not answer this question.';
+      if (id) this.replaceTurn(id, await this.sessionStore.failQuestion(scope, sessionId, id, message));
+      else this.sessionError.set(message);
+    } finally {
+      if (current()) this.submitting.set(false);
+      if (this.requestController === controller) this.requestController = undefined;
+    }
+  }
+
   async submit(): Promise<void> {
+    if (this.managed() || !this.demoProject() || this.connectionId()) { await this.submitManaged(); return; }
     const question = this.question().trim();
     const provider = this.selectedProvider();
     if (!question || !provider || this.seedState() !== 'ready' || this.sessionState() !== 'ready' || !this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
@@ -498,6 +605,7 @@ export class ChatPageComponent {
   }
 
   candidatesFor(turn: ChatTurn): readonly ChatJoinCandidate[] {
+    if (this.managed() || !this.demoProject() || this.connectionId()) return [];
     if (!turn.dtql || !turn.recordSetId) return [];
     let candidates = this.candidateCache.get(turn);
     if (!candidates) {
@@ -667,7 +775,7 @@ export class ChatPageComponent {
   }
 
   bookmarkReference(bookmark: ChatBookmark): ChatContextReference {
-    return { kind: 'bookmark', projectId: this.projectId(), sourceId: 'chinook', objectId: bookmark.id, title: bookmark.title };
+    return { kind: 'bookmark', projectId: this.projectId(), sourceId: this.connectionId() || 'chinook', objectId: bookmark.id, title: bookmark.title };
   }
 
   async refreshBookmarks(): Promise<void> {
@@ -717,11 +825,11 @@ export class ChatPageComponent {
   }
 
   sourceReference(): ChatContextReference {
-    return { kind: 'source', projectId: this.projectId(), sourceId: 'chinook', objectId: 'chinook', title: 'Chinook' };
+    return { kind: 'source', projectId: this.projectId(), sourceId: this.connectionId() || 'chinook', objectId: 'chinook', title: 'Chinook' };
   }
 
   tableReference(schema: string, name: string): ChatContextReference {
-    return { kind: 'table', projectId: this.projectId(), sourceId: 'chinook', objectId: `${schema}.${name}`, title: name };
+    return { kind: 'table', projectId: this.projectId(), sourceId: this.connectionId() || 'chinook', objectId: `${schema}.${name}`, title: name };
   }
 
   attached(reference: ChatContextReference): boolean {
@@ -784,18 +892,18 @@ export class ChatPageComponent {
 
   selectionReference(): ChatContextReference | undefined {
     const selection = this.currentSelection();
-    return selection ? { kind: 'selection', projectId: this.projectId(), sourceId: 'chinook', objectId: selection.id, title: selection.title } : undefined;
+    return selection ? { kind: 'selection', projectId: this.projectId(), sourceId: this.connectionId() || 'chinook', objectId: selection.id, title: selection.title } : undefined;
   }
 
   viewReference(): ChatContextReference | undefined {
     const selection = this.currentSelection();
     const view = selection && this.workspace().views[selection.viewId];
-    return view ? { kind: 'view', projectId: this.projectId(), sourceId: 'chinook', objectId: view.id, title: view.title } : undefined;
+    return view ? { kind: 'view', projectId: this.projectId(), sourceId: this.connectionId() || 'chinook', objectId: view.id, title: view.title } : undefined;
   }
 
   resultReference(turn: ChatTurn): ChatContextReference | undefined {
     return turn.recordSetId ? {
-      kind: 'recordset', projectId: this.projectId(), sourceId: 'chinook', objectId: turn.recordSetId,
+      kind: 'recordset', projectId: this.projectId(), sourceId: this.connectionId() || 'chinook', objectId: turn.recordSetId,
       title: turn.question.slice(0, 60),
     } : undefined;
   }
@@ -851,12 +959,39 @@ export class ChatPageComponent {
     this.seedState.set('loading');
     this.seedError.set(undefined);
     try {
-      await this.data.ensureSeed(this.storeId(), this.projectId());
+      if (this.demoProject()) await this.data.ensureSeed(this.storeId(), this.projectId());
+      this.contextController?.abort();
+      const controller = new AbortController();
+      this.contextController = controller;
+      if (!this.demoProject() || this.managed() || this.connectionId()) {
+        try {
+          const context = await this.projectAssistant.context(ref, controller.signal);
+          if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
+          this.projectContext.set(context);
+          if (!this.connectionId() && !this.environment() && context.connections.length) {
+            const first = context.connections[0];
+            const environment = first.environment || first.environments?.[0] || context.environments[0]?.id || '';
+            if (first.id) {
+              this.environment.set(environment); this.connectionId.set(first.id);
+              this.resetCurrentSession(true);
+              void this.router?.navigate([], { relativeTo: this.route, queryParamsHandling: 'merge', queryParams: { env: environment || null, aiConnection: first.id }, replaceUrl: true });
+              return;
+            }
+          }
+
+
+        } catch (error) {
+          if (!this.demoProject()) throw error;
+          // BYOK's bundled demo remains available when its project metadata cannot be read.
+          this.seedError.set(error instanceof Error ? error.message : 'Project metadata could not be read.');
+        }
+      }
       if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
       this.seedState.set('ready');
+      if (this.managed() && this.authIdentity()) void this.refreshAllowance();
     } catch (error) {
       if (!this.isCurrentContext(scope, ref, authRevision, authIdentity)) return;
-      this.seedError.set(error instanceof Error ? error.message : 'The local Chinook database is unavailable.');
+      this.seedError.set(error instanceof Error ? error.message : 'Project context is unavailable.');
       this.seedState.set('error');
     }
   }
@@ -887,6 +1022,10 @@ export class ChatPageComponent {
   }
 
   private resetCurrentSession(reseed = false): void {
+    this.requestController?.abort();
+    this.contextController?.abort();
+    this.projectContext.set(undefined);
+    this.managedGateway.reset();
     this.turns.set([]);
     this.sessions.set([]);
     this.bookmarks.set([]);
@@ -905,7 +1044,7 @@ export class ChatPageComponent {
   }
 
   private scope(): string {
-    return JSON.stringify([this.storeId(), this.projectId()]);
+    return (this.managed() || !this.demoProject() || this.connectionId()) ? JSON.stringify(['managed-project-ai/1', this.projectRef(), this.environment(), this.connectionId(), this.runtimeId(), this.authIdentity()]) : JSON.stringify([this.storeId(), this.projectId()]);
   }
 
   private async cancelStaleQuestion(scope: string, sessionId: string, id: string): Promise<void> {

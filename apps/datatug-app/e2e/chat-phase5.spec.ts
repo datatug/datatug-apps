@@ -50,8 +50,8 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   });
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show five invoices');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
+  await page.getByLabel('Ask about project data').fill('Show five invoices');
   await page.getByRole('button', { name: 'Send' }).click();
   const first = page.locator('.turn').first();
   await expect(first.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
@@ -110,7 +110,7 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await expect(third.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
   await expect(third.locator('.join-candidates')).toContainText('Related tables');
   expect(providerCalls).toBe(1);
-  await page.getByLabel('Ask about Chinook data').fill('Join with stale FK metadata');
+  await page.getByLabel('Ask about project data').fill('Join with stale FK metadata');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last()).toContainText('foreign-key metadata is no longer available');
   await expect(third.getByRole('tab', { name: 'Rows 5' })).toBeVisible();
@@ -170,24 +170,24 @@ test('FK JOIN candidates execute against real Chinook, chain, persist, and accep
   await page.getByRole('button', { name: 'New', exact: true }).click();
   await workspace.locator('ion-segment-button[value="bookmarks"]').click();
   await joinedBookmark.getByRole('button', { name: 'Attach' }).click();
-  await page.getByLabel('Ask about Chinook data').fill('Invoices for joined bookmark customers');
+  await page.getByLabel('Ask about project data').fill('Invoices for joined bookmark customers');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows [1-9]/ })).toBeVisible();
 
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByLabel('Ask about Chinook data').fill('Show five invoices');
+  await page.getByLabel('Ask about project data').fill('Show five invoices');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').first().getByRole('tab', { name: 'Rows 5' })).toBeVisible();
-  await page.getByLabel('Ask about Chinook data').fill('Join Customer using CustomerId');
+  await page.getByLabel('Ask about project data').fill('Join Customer using CustomerId');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().locator('.join-candidates')).toContainText('Employee');
 
   await page.getByRole('button', { name: 'New', exact: true }).click();
-  await page.getByLabel('Ask about Chinook data').fill('Show five employees');
+  await page.getByLabel('Ask about project data').fill('Show five employees');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').first().getByRole('tab', { name: 'Rows 5' })).toBeVisible();
   const callsBeforeAmbiguity = providerCalls;
-  await page.getByLabel('Ask about Chinook data').fill('Join Employee');
+  await page.getByLabel('Ask about project data').fill('Join Employee');
   await page.getByRole('button', { name: 'Send' }).click();
   const choices = page.getByLabel('Choose a relationship');
   await expect(choices.getByRole('button')).toHaveCount(2);

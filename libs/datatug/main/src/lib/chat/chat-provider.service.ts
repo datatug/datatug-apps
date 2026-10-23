@@ -67,8 +67,8 @@ export class ChatProviderService {
 
   private initialSelectedId(): string | undefined {
     const selected = localStorage.getItem(selectedStorageKey) || undefined;
-    return this.providers().some((provider) => provider.id === selected)
+    return (selected === '__managed__' || selected === '__byok__') ? selected : this.providers().some((provider) => provider.id === selected)
       ? selected
-      : this.providers()[0]?.id;
+      : this.providers()[0]?.id || '__managed__';
   }
 }

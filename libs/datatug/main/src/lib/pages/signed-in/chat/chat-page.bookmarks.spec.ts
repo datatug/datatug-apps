@@ -1,3 +1,5 @@
+import { ProjectAIService } from '../../../chat/project-ai.service';
+import { ManagedAIGatewayService } from '../../../chat/managed-ai-gateway.service';
 import 'fake-indexeddb/auto';
 import { DecimalPipe, NgTemplateOutlet } from '@angular/common';
 import { CUSTOM_ELEMENTS_SCHEMA, provideZonelessChangeDetection, signal } from '@angular/core';
@@ -31,6 +33,8 @@ async function mount() {
     imports: [ChatPageComponent],
     providers: [
       provideZonelessChangeDetection(),
+      { provide: ProjectAIService, useValue: { workingCopies: () => [], context: vi.fn(async () => { throw new Error('No generic project context in legacy demo fixture'); }) } },
+      { provide: ManagedAIGatewayService, useValue: { allowance: signal(undefined), usageState: signal('unavailable'), usageError: signal(undefined), reset: vi.fn() } },
       { provide: CHAT_SESSION_DATABASE, useValue: database },
       { provide: ActivatedRoute, useValue: {
         snapshot: { paramMap: params, queryParamMap: convertToParamMap({}) },
@@ -42,7 +46,7 @@ async function mount() {
       { provide: ChatJoinService, useValue: { candidates: () => [] } },
       { provide: ProjectAIEligibilityService, useValue: { read: () => of({ aiAllowed: true }) } },
       { provide: ChatProviderService, useValue: {
-        providers: signal([]), selectedId: signal(''), preset: (name: string) => providerPresets[name],
+        providers: signal([]), selectedId: signal('legacy'), preset: (name: string) => providerPresets[name],
       } },
     ],
   }).overrideComponent(ChatPageComponent, {

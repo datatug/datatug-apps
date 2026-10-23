@@ -48,9 +48,9 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
 
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
   await expect(page.getByText('Restoring chat session…')).toBeHidden();
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
   const ask = async (question: string, rows: number) => {
-    await page.getByLabel('Ask about Chinook data').fill(question);
+    await page.getByLabel('Ask about project data').fill(question);
     await page.getByRole('button', { name: 'Send' }).click();
     await expect(page.getByRole('tab', { name: `Rows ${rows}` }).last()).toBeVisible();
   };
@@ -104,7 +104,7 @@ test('Chat restores isolated DALgo sessions and immutable result snapshots', asy
   await page.locator('.session-toolbar ion-select').click({ timeout: 5000 });
   await page.getByRole('radio', { name: 'Show last 20 invoices' }).click();
   await expect(page.locator('.question-bubble')).toHaveText('Show last 20 invoices');
-  await page.getByLabel('Ask about Chinook data').fill('Show the customers associated with those orders');
+  await page.getByLabel('Ask about project data').fill('Show the customers associated with those orders');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.locator('.turn').last().getByRole('tab', { name: /Rows \d+/ })).toBeVisible();
   await expect.poll(async () => (await databaseCounts())['ChatQueries']).toBe(3);
@@ -170,8 +170,8 @@ test('Chat reports a missing persisted RecordSet without rerunning its query', a
     }) } }] } });
   });
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
-  await expect(page.getByText('Loading local Chinook data…')).toBeHidden({ timeout: 45_000 });
-  await page.getByLabel('Ask about Chinook data').fill('Show one artist');
+  await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });
+  await page.getByLabel('Ask about project data').fill('Show one artist');
   await page.getByRole('button', { name: 'Send' }).click();
   await expect(page.getByRole('tab', { name: 'Rows 1' })).toBeVisible();
   await page.evaluate(async () => {
