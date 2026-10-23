@@ -75,6 +75,7 @@ import {
   matchesOverviewFilter,
 } from './project-tab-panel.component';
 import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
+import { ProjectQuickSearchBoxComponent } from '../../../quick-search/project-quick-search-box.component';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { GitHubReauthorizationBannerComponent } from '../../../project/new-project/github-reauthorization-banner.component';
 import { readGithubProjectId } from '@datatug/project-address';
@@ -115,6 +116,7 @@ function refusedReadHint(error: unknown, what: string): string | undefined {
     ProjectDatabaseServersPreviewComponent,
     ProjectOverviewCardComponent,
     ProjectTabPanelComponent,
+    ProjectQuickSearchBoxComponent,
     GitHubReauthorizationBannerComponent,
     IonHeader,
     IonToolbar,
@@ -195,24 +197,8 @@ export class ProjectPageComponent
       project.brief?.access ? `Access: ${project.brief.access}` : undefined,
     ].filter((value): value is string => !!value);
   });
+  /** The overview Quick Search text; cleared when the project changes. */
   readonly quickSearchQuery = signal('');
-  updateQuickSearch(event: Event): void {
-    if (event.target instanceof HTMLInputElement)
-      this.quickSearchQuery.set(event.target.value);
-  }
-  submitQuickSearch(event: Event): void {
-    event.preventDefault();
-    const ref = this.project()?.ref,
-      q = this.quickSearchQuery().trim();
-    if (!ref || !q) return;
-    const destination = this.router.parseUrl(
-      projectPageHref(ref, ['quick-search']),
-    );
-    destination.queryParams = { ...destination.queryParams, q };
-    void this.router
-      .navigateByUrl(destination)
-      .catch(() => this.errorLogger.logError('Could not open Quick Search'));
-  }
 
   protected readonly publicDataHref = computed(() => {
     const ref = this.project()?.ref;

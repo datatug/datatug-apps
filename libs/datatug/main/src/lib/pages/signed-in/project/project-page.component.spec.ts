@@ -167,36 +167,16 @@ describe('ProjectPage', () => {
   it('should create', () => {
     expect(component).toBeTruthy();
   });
-  it('submits the overview query to Quick Search while preserving project qualifiers', () => {
+  it('clears the overview Quick Search text when the project changes', () => {
     const page = component as unknown as {
-      setProjRef(ref: {
-        storeId: string;
-        projectId: string;
-        projectApi: 'cloud';
-        branch: string;
-      }): void;
+      setProjRef(ref: { storeId: string; projectId: string }): void;
     };
-    page.setProjRef({
-      storeId: 'github.com',
-      projectId: 'repo@owner@',
-      projectApi: 'cloud',
-      branch: 'main',
-    });
-    component.quickSearchQuery.set(' Customers ');
-    const event = new Event('submit', { cancelable: true });
-    component.submitQuickSearch(event);
-    expect(event.defaultPrevented).toBe(true);
-    const router = TestBed.inject(Router),
-      navigate = vi.mocked(router.navigateByUrl);
-    expect(navigate).toHaveBeenCalledOnce();
-    expect(router.serializeUrl(navigate.mock.calls[0][0] as never)).toBe(
-      '/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customers',
-    );
-  });
-  it('does not navigate with an empty overview query', () => {
-    component.quickSearchQuery.set('  ');
-    component.submitQuickSearch(new Event('submit'));
-    expect(TestBed.inject(Router).navigateByUrl).not.toHaveBeenCalled();
+    page.setProjRef({ storeId: 'github.com', projectId: 'repo@owner@' });
+    component.quickSearchQuery.set('Customers');
+    page.setProjRef({ storeId: 'github.com', projectId: 'repo@owner@' });
+    expect(component.quickSearchQuery()).toBe('Customers');
+    page.setProjRef({ storeId: 'github.com', projectId: 'other@owner@' });
+    expect(component.quickSearchQuery()).toBe('');
   });
 
   it('offers the private sandbox route only for the canonical DemoDB project', () => {
@@ -476,6 +456,19 @@ describe('ProjectPage rendering a local-agent store project', () => {
       expect(doubles.logError).not.toHaveBeenCalled();
     },
   );
+
+  it('puts the instant Quick Search box on the overview, bound to the project', async () => {
+    const fixture = await createPage('localhost:8989');
+    fixture.detectChanges();
+    const box = fixture.nativeElement.querySelector(
+      'sneat-datatug-project-quick-search-box.overview-quick-search',
+    );
+    expect(box).not.toBeNull();
+    // The old submit-only form is gone: suggestions come from the shared box.
+    expect(
+      fixture.nativeElement.querySelector('form.overview-quick-search'),
+    ).toBeNull();
+  });
 
   it('shows one set of four overview tabs and opens the selected content', async () => {
     const fixture = await createPage('localhost:8989');
@@ -1017,38 +1010,58 @@ describe('ProjectPage overview lists', () => {
 
   it.each([
     ['a 401', { status: 401 }, 'Sign in to see environments.', false],
-    ['a 403', { status: 403 }, 'Seeing environments needs access to this project in DataTug.', true],
+    [
+      'a 403',
+      { status: 403 },
+      'Seeing environments needs access to this project in DataTug.',
+      true,
+    ],
     ['an outage', { status: 503 }, undefined, true],
-  ])('words %s on the overview environments read before the shared mapping, and logs only real failures', async (_name, error, hint, logged) => {
-    const logError = vi.fn();
-    await TestBed.configureTestingModule({
-      imports: [ProjectPageComponent],
-      schemas: [CUSTOM_ELEMENTS_SCHEMA],
-      providers: [
-        ...baseProviders({ logError, watchProjectSummary: vi.fn(() => of()) }),
-        {
-          provide: ProjectAssetsReadService,
-          useValue: {
-            boards: vi.fn(() => of([])),
-            environments: vi.fn(() => throwError(() => error)),
-            entities: vi.fn(() => of([])),
+  ])(
+    'words %s on the overview environments read before the shared mapping, and logs only real failures',
+    async (_name, error, hint, logged) => {
+      const logError = vi.fn();
+      await TestBed.configureTestingModule({
+        imports: [ProjectPageComponent],
+        schemas: [CUSTOM_ELEMENTS_SCHEMA],
+        providers: [
+          ...baseProviders({
+            logError,
+            watchProjectSummary: vi.fn(() => of()),
+          }),
+          {
+            provide: ProjectAssetsReadService,
+            useValue: {
+              boards: vi.fn(() => of([])),
+              environments: vi.fn(() => throwError(() => error)),
+              entities: vi.fn(() => of([])),
+            },
           },
-        },
-      ],
-    })
-      .overrideComponent(ProjectPageComponent, {
-        set: { imports: [], template: '', schemas: [CUSTOM_ELEMENTS_SCHEMA], providers: [] },
+        ],
       })
-      .compileComponents();
-    const page = TestBed.createComponent(ProjectPageComponent)
-      .componentInstance as unknown as {
-      setProjRef(ref: { storeId: string; projectId: string }): void;
-      environmentErrorMessage: { (): string | undefined };
-    };
-    page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
-    expect(page.environmentErrorMessage()).toBe(hint);
-    expect(logError.mock.calls.some(([, what]) => what === 'Failed to load overview environments')).toBe(logged);
-  });
+        .overrideComponent(ProjectPageComponent, {
+          set: {
+            imports: [],
+            template: '',
+            schemas: [CUSTOM_ELEMENTS_SCHEMA],
+            providers: [],
+          },
+        })
+        .compileComponents();
+      const page = TestBed.createComponent(ProjectPageComponent)
+        .componentInstance as unknown as {
+        setProjRef(ref: { storeId: string; projectId: string }): void;
+        environmentErrorMessage: { (): string | undefined };
+      };
+      page.setProjRef({ storeId: 'github.com', projectId: 'empty' });
+      expect(page.environmentErrorMessage()).toBe(hint);
+      expect(
+        logError.mock.calls.some(
+          ([, what]) => what === 'Failed to load overview environments',
+        ),
+      ).toBe(logged);
+    },
+  );
 
   it('drops delayed data from the previous project and navigates using the current project', async () => {
     const oldEnvironments = new Subject<{ id: string; title: string }[]>();

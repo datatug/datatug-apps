@@ -47,6 +47,7 @@ import {
   isSignedInViewer,
   quickSearchErrorMessage,
 } from './project-metadata-search';
+import { QueryListItemComponent } from '../components/query-list-item/query-list-item.component';
 import {
   ProjectMetadataSearchService,
   ProjectMetadataState,
@@ -75,10 +76,14 @@ export function registerQuickSearchIcons(): void {
 
 interface OptionView {
   readonly id: string;
+  /** The plain title (query rows mark the search text themselves). */
+  readonly titleText: string;
   readonly title: readonly HighlightPart[];
   readonly secondary: string;
   readonly icon: string;
   readonly link?: UrlTree;
+  /** Set for saved queries: they render as the shared query row (type icon and badge, date). */
+  readonly query?: { readonly type?: string; readonly createdAt?: string };
 }
 interface GroupView {
   readonly group: MetadataGroup;
@@ -98,7 +103,7 @@ let nextBoxId = 0;
 @Component({
   selector: 'sneat-datatug-project-quick-search-box',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, IonIcon, IonSpinner],
+  imports: [RouterLink, IonIcon, IonSpinner, QueryListItemComponent],
   host: {
     class: 'ph-no-capture',
     '(focusout)': 'onFocusOut($event)',
@@ -165,31 +170,55 @@ let nextBoxId = 0;
                     <span class="count">{{ view.group.total }}</span>
                   </div>
                   @for (option of view.options; track option.id) {
-                    <a
-                      class="option"
-                      role="option"
-                      [id]="option.id"
-                      [class.active]="option.id === activeOptionId()"
-                      [attr.aria-selected]="option.id === activeOptionId()"
-                      [routerLink]="option.link"
-                      tabindex="-1"
-                      (mousedown)="$event.preventDefault()"
-                      (click)="close()"
-                    >
-                      <ion-icon [name]="option.icon" aria-hidden="true" />
-                      <span class="text">
-                        <span class="title">
-                          @for (part of option.title; track $index) {
-                            @if (part.hit) {
-                              <mark>{{ part.text }}</mark>
-                            } @else {
-                              <span>{{ part.text }}</span>
+                    @if (option.query; as query) {
+                      <!-- The shared query row, as a combobox option: same icon, type badge and date as every query list. -->
+                      <div
+                        class="query-option"
+                        (mousedown)="$event.preventDefault()"
+                        (click)="close()"
+                      >
+                        <sneat-datatug-query-list-item
+                          lines="none"
+                          [optionId]="option.id"
+                          [optionActive]="option.id === activeOptionId()"
+                          [queryTitle]="option.titleText"
+                          [type]="query.type"
+                          [createdAt]="query.createdAt"
+                          [href]="option.link"
+                          [detail]="false"
+                          [highlight]="term()"
+                          ><span queryRowSubtitle class="secondary">{{
+                            option.secondary
+                          }}</span></sneat-datatug-query-list-item
+                        >
+                      </div>
+                    } @else {
+                      <a
+                        class="option"
+                        role="option"
+                        [id]="option.id"
+                        [class.active]="option.id === activeOptionId()"
+                        [attr.aria-selected]="option.id === activeOptionId()"
+                        [routerLink]="option.link"
+                        tabindex="-1"
+                        (mousedown)="$event.preventDefault()"
+                        (click)="close()"
+                      >
+                        <ion-icon [name]="option.icon" aria-hidden="true" />
+                        <span class="text">
+                          <span class="title">
+                            @for (part of option.title; track $index) {
+                              @if (part.hit) {
+                                <mark>{{ part.text }}</mark>
+                              } @else {
+                                <span>{{ part.text }}</span>
+                              }
                             }
-                          }
+                          </span>
+                          <span class="secondary">{{ option.secondary }}</span>
                         </span>
-                        <span class="secondary">{{ option.secondary }}</span>
-                      </span>
-                    </a>
+                      </a>
+                    }
                   }
                 </div>
               }
@@ -483,6 +512,7 @@ export class ProjectQuickSearchBoxComponent {
         headingId: `${this.inputId}-g-${group.kind}`,
         options: group.matches.map((match, i) => ({
           id: `${this.inputId}-o-${index++}`,
+          titleText: match.item.title,
           title: highlightParts(match.item.title, term),
           secondary: lines[i],
           icon: match.item.icon || group.icon,
@@ -490,6 +520,14 @@ export class ProjectQuickSearchBoxComponent {
             ref && match.item.href
               ? this.router.parseUrl(match.item.href)
               : undefined,
+          ...(match.item.kind === 'query'
+            ? {
+                query: {
+                  type: match.item.queryType,
+                  createdAt: match.item.createdAt,
+                },
+              }
+            : {}),
         })),
       };
     });
@@ -637,11 +675,10 @@ export class ProjectQuickSearchBoxComponent {
   private resultsLink(q: string): UrlTree | undefined {
     const ref = this.projectRef();
     if (!ref || !q.trim()) return undefined;
-    return this.router.parseUrl(
-      projectPageHref(ref, ['quick-search']) +
-        '?' +
-        new URLSearchParams({ q: q.trim() }).toString(),
-    );
+    // The project address may already carry qualifiers (`?projectApi=cloud&branch=main`): merge, never append.
+    const link = this.router.parseUrl(projectPageHref(ref, ['quick-search']));
+    link.queryParams = { ...link.queryParams, q: q.trim() };
+    return link;
   }
 
   private scrollActiveIntoView(): void {

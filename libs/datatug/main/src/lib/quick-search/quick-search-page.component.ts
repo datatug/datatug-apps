@@ -68,6 +68,8 @@ import {
 } from '@angular/core/rxjs-interop';
 import { readGithubProjectId } from '@datatug/project-address';
 import { ErrorStateComponent } from '../components/error-state/error-state.component';
+import { QueryListItemComponent } from '../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../components/query-list-item/query-text-preview.service';
 import {
   ProjectQuickSearchBoxComponent,
   QUICK_SEARCH_DEBOUNCE_MS,
@@ -151,6 +153,7 @@ import {
     IonRouterLink,
     ErrorStateComponent,
     ProjectQuickSearchBoxComponent,
+    QueryListItemComponent,
   ],
   template: ` <ion-header
       ><ion-toolbar
@@ -465,26 +468,41 @@ import {
                       }}</ion-badge>
                     </ion-item-divider>
                     @for (row of group.rows; track row.key) {
-                      <ion-item [routerLink]="row.link" [detail]="!!row.link">
-                        <ion-icon
-                          slot="start"
-                          [name]="row.icon"
-                          color="primary"
-                          aria-hidden="true"
-                        />
-                        <ion-label class="ion-text-wrap">
-                          <h3>
-                            @for (part of row.title; track $index) {
-                              @if (part.hit) {
-                                <mark>{{ part.text }}</mark>
-                              } @else {
-                                <span>{{ part.text }}</span>
+                      @if (row.query; as query) {
+                        <sneat-datatug-query-list-item
+                          [queryTitle]="row.titleText"
+                          [type]="query.type"
+                          [createdAt]="query.createdAt"
+                          [href]="row.link"
+                          [detail]="!!row.link"
+                          [highlight]="highlightTerm()"
+                          [loadText]="query.loadText"
+                          ><span queryRowSubtitle>{{
+                            row.secondary
+                          }}</span></sneat-datatug-query-list-item
+                        >
+                      } @else {
+                        <ion-item [routerLink]="row.link" [detail]="!!row.link">
+                          <ion-icon
+                            slot="start"
+                            [name]="row.icon"
+                            color="primary"
+                            aria-hidden="true"
+                          />
+                          <ion-label class="ion-text-wrap">
+                            <h3>
+                              @for (part of row.title; track $index) {
+                                @if (part.hit) {
+                                  <mark>{{ part.text }}</mark>
+                                } @else {
+                                  <span>{{ part.text }}</span>
+                                }
                               }
-                            }
-                          </h3>
-                          <p>{{ row.secondary }}</p>
-                        </ion-label>
-                      </ion-item>
+                            </h3>
+                            <p>{{ row.secondary }}</p>
+                          </ion-label>
+                        </ion-item>
+                      }
                     }
                   </ion-item-group>
                 }
@@ -909,8 +927,11 @@ export class QuickSearchPageComponent {
     );
   });
   readonly resultCount = computed(() => this.resultMatches().length);
+  /** The text marked in result titles; tag discovery marks nothing (titles are not what matched). */
+  readonly highlightTerm = computed(() => (this.discovery ? '' : this.query()));
   readonly resultGroups = computed(() => {
-    const q = this.discovery ? '' : this.query();
+    const q = this.highlightTerm();
+    const ref = this.project();
     return groupMatches(this.resultMatches()).map((group) => {
       const lines = secondaryLines(group.matches);
       return {
@@ -920,12 +941,28 @@ export class QuickSearchPageComponent {
         total: group.total,
         rows: group.matches.map((match, i) => ({
           key: [match.item.kind, match.item.id, match.item.href].join('|'),
+          titleText: match.item.title,
           title: highlightParts(match.item.title, q),
           secondary: lines[i],
           icon: match.item.icon || group.icon,
           link: match.item.href
             ? this.router.parseUrl(match.item.href)
             : undefined,
+          // Saved queries render as the shared query row: type icon and badge, date, hover preview of the text.
+          query:
+            match.item.kind === 'query'
+              ? {
+                  type: match.item.queryType,
+                  createdAt: match.item.createdAt,
+                  // Resolved on first hover, so a results page that is never hovered reads no query text.
+                  loadText: ref
+                    ? () =>
+                        this.injector
+                          .get(QueryTextPreviewService)
+                          .loader(ref, match.item.id)()
+                    : undefined,
+                }
+              : undefined,
         })),
       };
     });

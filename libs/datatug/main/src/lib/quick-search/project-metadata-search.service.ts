@@ -127,6 +127,10 @@ export function queryItems(
           ? { description }
           : {}),
         tags: metadataTags(query),
+        ...(query.request?.queryType
+          ? { queryType: query.request.queryType }
+          : {}),
+        ...(query.createdAt ? { createdAt: query.createdAt } : {}),
         href: searchItemHref(ref, {
           kind: 'query',
           id,

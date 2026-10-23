@@ -10,6 +10,13 @@ import { friendlyError, isGithubRateLimit } from '@datatug/friendly-error';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
 import { SearchDocument, searchItemHref } from './quick-search-model';
+import { fold } from '../components/query-list-item/highlight-parts';
+
+export {
+  fold,
+  highlightParts,
+  type HighlightPart,
+} from '../components/query-list-item/highlight-parts';
 
 export const metadataKinds = [
   'query',
@@ -71,6 +78,10 @@ export interface MetadataItem {
   readonly icon?: string;
   /** Closed app route; never a provider-supplied URL. */
   readonly href?: string;
+  /** Queries only: the stored `request.queryType` (SQL, TugQL, HTTP…), shown as the query type badge. */
+  readonly queryType?: string;
+  /** Queries only: the store-assigned creation instant, shown like every other query row. */
+  readonly createdAt?: string;
 }
 
 export type MatchField = 'title' | 'id' | 'tag' | 'description';
@@ -81,9 +92,6 @@ export interface MetadataMatch {
   readonly matched: string;
   readonly rank: number;
 }
-
-export const fold = (text: string) =>
-  text.normalize('NFKC').toLocaleLowerCase('en-US');
 
 const fieldRank: Record<MatchField, number> = {
   title: 0,
@@ -152,28 +160,6 @@ export function groupMatches(
       };
     })
     .filter((group) => group.total > 0);
-}
-
-export interface HighlightPart {
-  readonly text: string;
-  readonly hit: boolean;
-}
-/** Splits `text` around every case-insensitive occurrence of `query`, for `<mark>` rendering. */
-export function highlightParts(text: string, query: string): HighlightPart[] {
-  const q = fold(query.trim());
-  if (!q || !text) return [{ text, hit: false }];
-  const folded = fold(text);
-  // NFKC folding can change lengths; highlight only when positions map one to one.
-  if (folded.length !== text.length) return [{ text, hit: false }];
-  const parts: HighlightPart[] = [];
-  let from = 0;
-  for (let at = folded.indexOf(q); at >= 0; at = folded.indexOf(q, from)) {
-    if (at > from) parts.push({ text: text.slice(from, at), hit: false });
-    parts.push({ text: text.slice(at, at + q.length), hit: true });
-    from = at + q.length;
-  }
-  if (from < text.length) parts.push({ text: text.slice(from), hit: false });
-  return parts;
 }
 
 /** The secondary line: where the item lives, plus why it matched when that was not its title. */

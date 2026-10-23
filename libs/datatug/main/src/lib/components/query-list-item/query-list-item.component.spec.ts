@@ -58,6 +58,25 @@ class HostComponent {
   >(undefined);
 }
 
+@Component({
+  imports: [QueryListItemComponent],
+  template: `
+    <sneat-datatug-query-list-item
+      queryTitle="Top customers"
+      type="TugQL"
+      href="/q/top"
+      lines="none"
+      optionId="box-o-0"
+      highlight="cust"
+      [detail]="false"
+      [optionActive]="active()"
+    />
+  `,
+})
+class OptionHostComponent {
+  readonly active = signal(false);
+}
+
 describe('QueryListItemComponent', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -214,5 +233,43 @@ describe('QueryListItemComponent', () => {
     main().dispatchEvent(new FocusEvent('focus'));
     expect(load).not.toHaveBeenCalled();
     expect(preview()).toBeNull();
+  });
+
+  it('acts as a combobox option that never takes focus, and marks search hits', async () => {
+    await TestBed.configureTestingModule({
+      imports: [OptionHostComponent],
+      providers: [
+        provideRouter([{ path: '**', component: RouteStubComponent }]),
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(OptionHostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const option = el.querySelector('a.query-row-main') as HTMLElement;
+    expect(option.id).toBe('box-o-0');
+    expect(option.getAttribute('role')).toBe('option');
+    expect(option.getAttribute('tabindex')).toBe('-1');
+    expect(option.getAttribute('aria-selected')).toBe('false');
+    expect(option.querySelector('mark')?.textContent).toBe('cust');
+    expect(el.querySelector('.query-type-badge')?.textContent?.trim()).toBe(
+      'TugQL',
+    );
+    expect(el.querySelector('.query-row-chevron')).toBeNull();
+    expect(el.querySelector('ion-item')?.getAttribute('lines')).toBe('none');
+    fixture.componentInstance.active.set(true);
+    await fixture.whenStable();
+    expect(option.getAttribute('aria-selected')).toBe('true');
+    expect(el.querySelector('ion-item')?.classList).toContain(
+      'query-list-item-active',
+    );
+  });
+
+  it('is a plain list row (no option role) without optionId', async () => {
+    const { el } = await create();
+    const main = el.querySelector('.query-row-main') as HTMLElement;
+    expect(main.hasAttribute('role')).toBe(false);
+    expect(main.hasAttribute('tabindex')).toBe(false);
+    expect(main.hasAttribute('aria-selected')).toBe(false);
   });
 });

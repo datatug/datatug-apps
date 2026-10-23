@@ -4,6 +4,7 @@ import {
   computed,
   input,
 } from '@angular/core';
+import { highlightParts } from './highlight-parts';
 
 export interface QueryTimestamp {
   /** The machine-readable instant, for `<time datetime>`. */
@@ -60,14 +61,27 @@ export function formatQueryTimestamp(
 /**
  * The first line of a query row: the title, then the timestamp as light text on the right of the same line. The
  * title wraps first; the timestamp never wraps under it. The full "Added …" text shows on hover and focus (`title`)
- * and is the timestamp's accessible text.
+ * and is the timestamp's accessible text. With `highlight`, every case-insensitive occurrence of it in the title is
+ * wrapped in `<mark>`.
  */
 @Component({
   selector: 'sneat-datatug-query-item-heading',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="query-item-heading">
-      <h3 [attr.data-testid]="testId()">{{ queryTitle() }}</h3>
+      @if (titleParts(); as parts) {
+        <h3 [attr.data-testid]="testId()">
+          @for (part of parts; track $index) {
+            @if (part.hit) {
+              <mark>{{ part.text }}</mark>
+            } @else {
+              <span>{{ part.text }}</span>
+            }
+          }
+        </h3>
+      } @else {
+        <h3 [attr.data-testid]="testId()">{{ queryTitle() }}</h3>
+      }
       @if (stamp(); as s) {
         <time [attr.datetime]="s.iso" [attr.title]="s.full"
           ><span aria-hidden="true">{{ s.short }}</span
@@ -95,6 +109,12 @@ export function formatQueryTimestamp(
       line-height: 1.35;
       overflow-wrap: anywhere;
     }
+    mark {
+      background: rgba(var(--ion-color-warning-rgb), 0.35);
+      color: inherit;
+      border-radius: 2px;
+      padding: 0 1px;
+    }
     time {
       flex: 0 0 auto;
       margin-left: auto;
@@ -117,6 +137,13 @@ export class QueryItemHeadingComponent {
   readonly createdAt = input<string | undefined>(undefined);
   readonly modifiedAt = input<string | undefined>(undefined);
   readonly testId = input<string | undefined>(undefined);
+  /** Search text to mark in the title (Quick Search); empty marks nothing. */
+  readonly highlight = input<string | undefined>(undefined);
+  /** The title split around search hits, or undefined when nothing is marked (the title renders as plain text). */
+  protected readonly titleParts = computed(() => {
+    const parts = highlightParts(this.queryTitle(), this.highlight() ?? '');
+    return parts.some((part) => part.hit) ? parts : undefined;
+  });
   protected readonly stamp = computed(() =>
     formatQueryTimestamp(this.createdAt(), this.modifiedAt()),
   );

@@ -47,7 +47,7 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
  *   [href]="link" [loadText]="loader" />`
  *
  * The ONE row for a saved query in any list (the project Queries tab, the Queries page folder and filter views, an
- * entity's related queries, the open-queries menu; Quick Search adopts it next). It renders an `ion-item` whose
+ * entity's related queries, the open-queries menu, the Quick Search suggestions and results). It renders an `ion-item` whose
  * main area is ONE light-DOM link (with `href`) or button (without, emitting `opened`) holding:
  * - the {@link QueryTypeIconComponent} (neutral icon, per-type badge), so the type shows once;
  * - the title and, on the right of the same line, the light locale date (time today) with the full "Added …" text
@@ -64,7 +64,8 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
  *
  * Inputs: `queryTitle` (required), `type`, `createdAt`, `modifiedAt`, `href` + `queryParams` (navigation), `detail`
  * (chevron), `selected`, `titleTestId`, `itemTestId` (on the `ion-item`), `ariaLabel` (replaces the default
- * accessible name of the main link/button), `loadText`. Output: `opened`, emitted on activation when there is no
+ * accessible name of the main link/button), `loadText`, `highlight` (search text marked in the title), `lines`,
+ * and `optionId` + `optionActive` (combobox option mode, used by the Quick Search suggestions). Output: `opened`, emitted on activation when there is no
  * `href`.
  */
 @Component({
@@ -90,6 +91,7 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           [createdAt]="createdAt()"
           [modifiedAt]="modifiedAt()"
           [testId]="titleTestId()"
+          [highlight]="highlight()"
         />
         <ng-content select="[queryRowSubtitle]" />
       </span>
@@ -103,7 +105,10 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
     </ng-template>
     <ion-item
       [attr.data-testid]="itemTestId()"
+      [attr.lines]="lines() ?? null"
       [class.query-list-item-selected]="selected()"
+      [class.query-list-item-option]="!!optionId()"
+      [class.query-list-item-active]="optionActive()"
       (mouseenter)="hover(true)"
       (mouseleave)="hover(false)"
     >
@@ -112,6 +117,10 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
           class="query-row-main"
           [routerLink]="link"
           [queryParams]="queryParams()"
+          [attr.id]="optionId() ?? null"
+          [attr.role]="optionId() ? 'option' : null"
+          [attr.aria-selected]="optionId() ? optionActive() : null"
+          [attr.tabindex]="optionId() ? -1 : null"
           [attr.aria-label]="accessibleName()"
           [attr.aria-describedby]="previewVisible() ? previewId : null"
           (focus)="focus(true)"
@@ -122,6 +131,10 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
         <button
           type="button"
           class="query-row-main"
+          [attr.id]="optionId() ?? null"
+          [attr.role]="optionId() ? 'option' : null"
+          [attr.aria-selected]="optionId() ? optionActive() : null"
+          [attr.tabindex]="optionId() ? -1 : null"
           [attr.aria-label]="accessibleName()"
           [attr.aria-describedby]="previewVisible() ? previewId : null"
           (click)="opened.emit()"
@@ -195,6 +208,25 @@ export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
     .query-list-item-selected .query-row-text {
       color: var(--ion-color-primary);
     }
+    /* Combobox option rows (Quick Search suggestions): compact, no row lines, the keyboard-highlighted row marked
+       like the other suggestions. */
+    .query-list-item-option {
+      --min-height: 0;
+      --background: transparent;
+      --inner-border-width: 0;
+      --border-width: 0;
+    }
+    .query-list-item-option .query-row-main {
+      min-height: 0;
+      padding: 8px 12px;
+    }
+    .query-list-item-option .query-row-main:hover,
+    .query-list-item-active .query-row-main {
+      background: rgba(var(--ion-color-primary-rgb), 0.1);
+    }
+    .query-list-item-active .query-row-main {
+      box-shadow: inset 3px 0 0 var(--ion-color-primary);
+    }
     .query-preview {
       position: absolute;
       z-index: 20;
@@ -237,6 +269,18 @@ export class QueryListItemComponent implements OnDestroy {
   readonly titleTestId = input<string | undefined>(undefined);
   readonly itemTestId = input<string | undefined>(undefined);
   readonly ariaLabel = input<string | undefined>(undefined);
+  /** Search text marked in the title (Quick Search). */
+  readonly highlight = input<string | undefined>(undefined);
+  /** `ion-item` lines; unset keeps the list's own setting. */
+  readonly lines = input<'full' | 'inset' | 'none' | undefined>(undefined);
+  /**
+   * Combobox option mode (Quick Search suggestions): the main link/button becomes `role="option"` with this id,
+   * never takes focus (`tabindex="-1"`; focus stays in the search field, which points at it with
+   * `aria-activedescendant`), and reports `optionActive` as `aria-selected`.
+   */
+  readonly optionId = input<string | undefined>(undefined);
+  /** The keyboard-highlighted option (option mode only). */
+  readonly optionActive = input(false);
   /** Loads the query's text for the hover preview (see `QueryTextPreviewService`). */
   readonly loadText = input<
     (() => Observable<string | null | undefined>) | undefined

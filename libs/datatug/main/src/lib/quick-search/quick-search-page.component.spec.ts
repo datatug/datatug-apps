@@ -24,6 +24,8 @@ const customerItems: MetadataItem[] = [
     title: 'Top customers',
     tags: ['Customers'],
     href: '/q/top',
+    queryType: 'SQL',
+    createdAt: '2026-01-05T10:00:00Z',
   },
   {
     kind: 'table',
@@ -242,6 +244,35 @@ describe('Quick Search consent and async state', () => {
     expect(page.resultMatches().map((m) => m.item.title)).toEqual([
       'Top customers',
     ]);
+  });
+  it('renders query results as the shared query row with the type badge, other kinds as plain items', async () => {
+    const fixture = TestBed.createComponent(QuickSearchPageComponent),
+      page = fixture.componentInstance;
+    page.onTerm('customer');
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const rows = el.querySelectorAll(
+      'ion-item-group sneat-datatug-query-list-item',
+    );
+    expect(rows).toHaveLength(1);
+    const row = rows[0] as HTMLElement;
+    expect(row.querySelector('.query-type-badge')?.textContent?.trim()).toBe(
+      'SQL',
+    );
+    expect(row.querySelector('a.query-row-main')?.getAttribute('href')).toBe(
+      '/q/top',
+    );
+    expect(row.querySelector('mark')?.textContent).toBe('customer');
+    expect(row.querySelector('time')?.getAttribute('datetime')).toBe(
+      '2026-01-05T10:00:00.000Z',
+    );
+    expect(row.querySelector('[queryRowSubtitle]')?.textContent).toContain(
+      'Query',
+    );
+    // The table keeps its own kind-icon row.
+    const plain = el.querySelectorAll('ion-item-group > ion-item');
+    expect(plain).toHaveLength(1);
+    expect(plain[0].textContent).toContain('Table · chinook · main');
   });
   it('shows loading, empty and honest error states', async () => {
     api.status.mockReturnValue(of({ ...ready, state: 'disabled' }));

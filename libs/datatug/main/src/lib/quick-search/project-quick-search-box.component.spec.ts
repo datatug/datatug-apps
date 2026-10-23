@@ -25,6 +25,7 @@ const items: MetadataItem[] = [
     title: `Customer query ${i}`,
     tags: [],
     href: `/project/q${i}`,
+    queryType: i % 2 ? 'SQL' : 'TugQL',
   })),
   {
     kind: 'table',
@@ -70,9 +71,9 @@ describe('ProjectQuickSearchBoxComponent', () => {
       .mockResolvedValue(true);
   });
 
-  async function render() {
+  async function render(projectRef: IProjectRef = ref) {
     const fixture = TestBed.createComponent(ProjectQuickSearchBoxComponent);
-    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('projectRef', projectRef);
     fixture.detectChanges();
     const el: HTMLElement = fixture.nativeElement;
     const input = el.querySelector('input') as HTMLInputElement;
@@ -222,6 +223,60 @@ describe('ProjectQuickSearchBoxComponent', () => {
     expect(String(navigate.mock.calls.at(-1)?.[0])).toBe(
       '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/quick-search?q=Customer',
     );
+  });
+
+  it('renders query suggestions as the shared query row: type badge, marked title, combobox option', async () => {
+    const { el, input, type, key } = await render();
+    metadata.next({ items, loading: false });
+    await type('Customer');
+    const rows = el.querySelectorAll(
+      '[role=group] sneat-datatug-query-list-item',
+    );
+    expect(rows).toHaveLength(5);
+    // The same icon and per-type badge as every other query list, never a primary-coloured kind icon.
+    expect(
+      [...el.querySelectorAll('.query-type-badge')].map((b) =>
+        b.textContent?.trim(),
+      ),
+    ).toEqual(['TugQL', 'SQL', 'TugQL', 'SQL', 'TugQL']);
+    const option = rows[0].querySelector('[role=option]') as HTMLElement;
+    expect(option.classList).toContain('query-row-main');
+    expect(option.getAttribute('tabindex')).toBe('-1');
+    expect(option.getAttribute('href')).toBe('/project/q0');
+    expect(option.querySelector('mark')?.textContent).toBe('Customer');
+    expect(
+      rows[0].querySelector('[queryRowSubtitle]')?.textContent?.trim(),
+    ).toBe('Query');
+    // Non-query kinds keep their own kind icon.
+    expect(el.querySelectorAll('a.option[role=option]')).toHaveLength(2); // table + "See all"
+    await key('ArrowDown');
+    expect(input.getAttribute('aria-activedescendant')).toBe(option.id);
+    expect(option.getAttribute('aria-selected')).toBe('true');
+  });
+
+  it('keeps the project qualifiers when it opens the full results page', async () => {
+    const { input, type, fixture, el } = await render({
+      storeId: 'github.com',
+      projectId: 'repo@owner@',
+      projectApi: 'cloud',
+      branch: 'main',
+    } as IProjectRef);
+    metadata.next({ items, loading: false });
+    await type('Customer');
+    const expected =
+      '/project/github.com/owner/repo/quick-search?projectApi=cloud&branch=main&q=Customer';
+    expect(el.querySelector('.see-all')?.getAttribute('href')).toBe(expected);
+    input.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Enter',
+        bubbles: true,
+        cancelable: true,
+      }),
+    );
+    await fixture.whenStable();
+    expect(
+      TestBed.inject(Router).serializeUrl(navigate.mock.calls.at(-1)?.[0]),
+    ).toBe(expected);
   });
 
   it('shows an honest note when a source failed', async () => {

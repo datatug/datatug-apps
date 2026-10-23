@@ -38,7 +38,7 @@ test('GitHub overview query survives navigation/reload and typed Checks open saf
     return route.fulfill({status:403,json:{error:'denied'},headers:cors});
   });
   await page.goto(base+'overview');
-  const input=page.getByRole('searchbox',{name:'Quick Search',exact:true});
+  const input=page.getByRole('combobox',{name:'Quick Search',exact:true});
   await expect(input).toBeVisible();await input.fill('customer');await input.press('Enter');
   await expect(page).toHaveURL(/\/quick-search\?q=customer$/);
   const active=page.locator('sneat-datatug-quick-search:not(.ion-page-hidden)');
@@ -61,7 +61,7 @@ test('GitHub overview query survives navigation/reload and typed Checks open saf
   await expect.poll(()=>page.evaluate(()=>document.getAnimations().filter(a=>a.playState==='running').length)).toBe(0);
   await page.screenshot({path:testInfo.outputPath('check-metadata-mobile.png'),fullPage:true});
   await page.goBack();await expect(checks).toHaveCount(1);
-  await page.goto(base+'overview');await input.fill('order');await page.getByRole('button',{name:'Search',exact:true}).click();
+  await page.goto(base+'overview');await input.fill('order');await input.press('Enter');
   await expect(page).toHaveURL(/\/quick-search\?q=order$/);await expect.poll(()=>queries.at(-1)).toBe('order');
   await active.locator('ion-card.results-card ion-item',{hasText:'Order freshness'}).click();
   await expect(detail.getByRole('heading',{name:'Order freshness',exact:true})).toBeVisible();

@@ -89,7 +89,20 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     )
       return route.fulfill({ json: [] });
     if (path.endsWith('/queries/all_queries'))
-      return route.fulfill({ json: { id: '~', folders: [], items: [] } });
+      return route.fulfill({
+        json: {
+          id: '~',
+          folders: [],
+          items: [
+            {
+              id: 'top-customers',
+              title: 'Top Customers',
+              type: 'SQL',
+              createdAt: '2026-01-05T10:00:00Z',
+            },
+          ],
+        },
+      });
     // A released agent that predates environment-state/1 answers its own agent-info (the app confirms an old agent
     // by its version, 0.107.0 or earlier, before it falls back to the read-only environment list).
     if (path.endsWith('/agent-info'))
@@ -143,7 +156,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     return route.fulfill({ status: 404 });
   });
   await page.goto(projectPath + '/overview');
-  const overviewSearch = page.getByRole('searchbox', {
+  const overviewSearch = page.getByRole('combobox', {
     name: 'Quick Search',
     exact: true,
   });
@@ -164,6 +177,23 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   expect(rowBorders[0]).toBeGreaterThan(0);
   expect(rowBorders[1]).toBe(0);
   await overviewSearch.fill('Customers');
+  // Instant suggestions under the field; a saved query is the shared query row with its type badge.
+  const suggestions = page.getByRole('listbox', {
+    name: 'Quick Search suggestions',
+  });
+  await expect(suggestions).toBeVisible();
+  await expect(overviewSearch).toHaveAttribute('aria-expanded', 'true');
+  const querySuggestion = suggestions.getByRole('option', {
+    name: /Top Customers, SQL query/,
+  });
+  await expect(querySuggestion).toBeVisible();
+  await expect(
+    suggestions.locator('sneat-datatug-query-list-item .query-type-badge'),
+  ).toHaveText('SQL');
+  await expect(querySuggestion.locator('mark')).toHaveText('Customers');
+  await expect(
+    suggestions.getByRole('option', { name: /See all \d+ results/ }),
+  ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath('quick-search-overview-input.png'),
     fullPage: true,
@@ -184,7 +214,11 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
   const results = main.locator('ion-card.results-card');
   await expect(
     results.locator('ion-item-group > ion-item-divider h3'),
-  ).toHaveText(['Boards', 'Tables', 'Tags']);
+  ).toHaveText(['Queries', 'Boards', 'Tables', 'Tags']);
+  // Results list the saved query with the same shared row and type badge as the suggestions.
+  await expect(
+    results.locator('sneat-datatug-query-list-item .query-type-badge'),
+  ).toHaveText('SQL');
   await expect(
     main.getByText('no search index yet', { exact: false }),
   ).toHaveCount(0);

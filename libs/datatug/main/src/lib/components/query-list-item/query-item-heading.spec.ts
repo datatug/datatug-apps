@@ -108,4 +108,25 @@ describe('QueryItemHeadingComponent', () => {
     fixture.detectChanges();
     expect(fixture.nativeElement.querySelector('time')).toBeNull();
   });
+
+  it('marks every case-insensitive search hit in the title, and only then', async () => {
+    await TestBed.configureTestingModule({
+      imports: [QueryItemHeadingComponent],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(QueryItemHeadingComponent);
+    fixture.componentRef.setInput('queryTitle', 'Customer orders by customer');
+    fixture.componentRef.setInput('highlight', 'CUSTOMER');
+    fixture.detectChanges();
+    const h3 = fixture.nativeElement.querySelector('h3') as HTMLElement;
+    expect([...h3.querySelectorAll('mark')].map((m) => m.textContent)).toEqual([
+      'Customer',
+      'customer',
+    ]);
+    expect(h3.textContent).toBe('Customer orders by customer');
+    fixture.componentRef.setInput('highlight', 'zzz');
+    fixture.detectChanges();
+    expect(fixture.nativeElement.querySelector('h3').innerHTML.trim()).toBe(
+      'Customer orders by customer',
+    );
+  });
 });

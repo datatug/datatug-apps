@@ -11,38 +11,20 @@
       />
     </ion-buttons>
     <ion-title
-      ><h1 class="project-title">{{ projectTitle() }}</h1><sneat-datatug-business-clock /></ion-title
-    >
+      ><h1 class="project-title">{{ projectTitle() }}</h1>
+      <sneat-datatug-business-clock
+    /></ion-title>
   </ion-toolbar>
 </ion-header>
 
 <ion-content color="light">
   <sneat-datatug-shared-evidence-link [projectRef]="project()?.ref" />
-  <form
-    class="overview-quick-search ph-no-capture"
-    role="search"
-    (submit)="submitQuickSearch($event)"
-  >
-    <label for="project-quick-search">Quick Search</label>
-    <div>
-      <input
-        id="project-quick-search"
-        class="ph-no-capture ph-mask sentry-mask"
-        data-sentry-mask
-        type="search"
-        name="q"
-        placeholder="Search tables, columns, queries, tags…"
-        [value]="quickSearchQuery()"
-        (input)="updateQuickSearch($event)"
-      />
-      <button
-        type="submit"
-        [disabled]="!quickSearchQuery().trim() || !project()?.ref"
-      >
-        Search
-      </button>
-    </div>
-  </form>
+  <!-- Instant suggestions as the person types; the query resets when the project changes (setProjRef). -->
+  <sneat-datatug-project-quick-search-box
+    class="overview-quick-search"
+    [projectRef]="project()?.ref"
+    [(query)]="quickSearchQuery"
+  />
   @if (projectMetadata().length) {
     <p class="project-context-meta" aria-label="Project connection details">
       @for (item of projectMetadata(); track item) {
