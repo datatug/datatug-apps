@@ -266,8 +266,30 @@ function typed(value: unknown): TypedValue {
   throw new Error('OVDB returned a value that cannot be shown in this result.');
 }
 
+const LOOPBACK_HOSTS = ['localhost', '127.0.0.1', '[::1]'];
+
+/** The most rows a native PostgreSQL OVDB mount returns for one whole (unpaged) read. */
+const NATIVE_POSTGRES_WHOLE_READ_ROWS = 1000;
+
+/** Shown when a hosted page runs a query whose OVDB server is on the visitor's own computer. */
+export const LOCAL_OVDB_FROM_HOSTED_PAGE =
+  'This query reads an OpenVaultDB server on your own computer, so it runs only in a DataTug app you run locally. The project README shows how to start both.';
+
+/** A page served from this computer may reach a loopback OVDB; a hosted page never tries (no local-network prompt, no request). */
+function pageMayReachLoopback(): boolean {
+  const location = (globalThis as { location?: { hostname?: string } }).location;
+  // No page at all (a non-browser runtime) has no local-network boundary to cross.
+  if (!location) return true;
+  // An opaque or blob origin has no hostname: it is not known to be local.
+  const host = location.hostname ?? '';
+  return LOOPBACK_HOSTS.includes(host) || host === '::1' || host.endsWith('.localhost');
+}
+
 function ovdbBaseUrl(raw: string): string {
   const url = new URL(raw);
+  if ((url.protocol === 'http:' || url.protocol === 'https:') &&
+    (LOOPBACK_HOSTS.includes(url.hostname) || url.hostname.endsWith('.localhost')) && !pageMayReachLoopback())
+    throw new Error(LOCAL_OVDB_FROM_HOSTED_PAGE);
   if (
     url.username ||
     url.password ||
@@ -276,7 +298,7 @@ function ovdbBaseUrl(raw: string): string {
     (url.protocol !== 'https:' &&
       !(
         url.protocol === 'http:' &&
-        ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname)
+        LOOPBACK_HOSTS.includes(url.hostname)
       ))
   ) {
     throw new Error(
@@ -300,7 +322,7 @@ function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: P
     if (parsed.source.kind !== 'collection') return undefined;
     const matches = config.tables.filter((table) => table.name === parsed.source.name && table.database);
     return matches.length === 1 && implicit && matches[0].database === implicit
-      ? { database: implicit, sources: [{ database: implicit, name: matches[0].name }] }
+      ? { database: implicit, sources: [{ database: implicit, name: matches[0].name, ...(matches[0].schema ? { schema: matches[0].schema } : {}) }] }
       : undefined;
   }
   const sources: PlannedNativeSource[] = [];
@@ -308,7 +330,7 @@ function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: P
   const visit = (relation: QueryRelation): void => {
     const database = relation.database ?? implicit;
     if (!database) fullyQualified = false;
-    else sources.push({ database, name: relation.name });
+    else sources.push({ database, name: relation.name, ...(relation.schema ? { schema: relation.schema } : {}) });
     relation.joins.forEach((join) => visit(join.from));
   };
   visit(parsed.from);
@@ -325,7 +347,32 @@ function nativeQueryPlan(definition: IQueryDef): { database?: string; sources: P
   };
 }
 
-interface PlannedNativeSource { readonly database: string; readonly name: string }
+interface PlannedNativeSource { readonly database: string; readonly name: string; readonly schema?: string }
+
+/**
+ * The collection ID a native PostgreSQL OVDB mount reports for a schema-qualified relation:
+ * `pg1_` + unpadded URL-safe base64 of (u32 BE schema length, schema, u32 BE name length, name).
+ * See openvaultdb-go docs/native-postgres-read.md ("Discovery and collection IDs").
+ */
+export function nativePostgresCollectionId(schema: string, name: string): string {
+  const encoder = new TextEncoder();
+  const schemaBytes = encoder.encode(schema);
+  const nameBytes = encoder.encode(name);
+  const tuple = new Uint8Array(8 + schemaBytes.length + nameBytes.length);
+  const view = new DataView(tuple.buffer);
+  view.setUint32(0, schemaBytes.length);
+  tuple.set(schemaBytes, 4);
+  view.setUint32(4 + schemaBytes.length, nameBytes.length);
+  tuple.set(nameBytes, 8 + schemaBytes.length);
+  let binary = '';
+  for (const byte of tuple) binary += String.fromCharCode(byte);
+  return 'pg1_' + btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+/** The collection a provider reports for one planned source in `execution.sources`. */
+function plannedProviderCollection(source: PlannedNativeSource): string {
+  return source.schema ? nativePostgresCollectionId(source.schema, source.name) : source.name;
+}
 interface NativeQueryCapability {
   readonly streaming: boolean;
   readonly ordinary: boolean;
@@ -506,7 +553,7 @@ async function runNativeStream(
     if (!Array.isArray(declaredSources) || declaredSources.some((source) => !source || typeof source !== 'object' || typeof source.database !== 'string' || typeof source.collection !== 'string'))
       throw new Error('The native query stream has invalid execution sources.');
     providerSources = declaredSources.map((source) => ({ database: source.database, collection: source.collection }));
-    const planned = sources.map((source) => `${source.database}/${source.name}`).sort();
+    const planned = sources.map((source) => `${source.database}/${plannedProviderCollection(source)}`).sort();
     const actual = providerSources.map((source) => `${source.database}/${source.collection}`).sort();
     if (JSON.stringify(planned) !== JSON.stringify(actual)) throw new Error('The native query stream execution sources differ from its plan.');
   }
@@ -1091,6 +1138,85 @@ async function runFederatedQueryInternal(
             }
           : {}),
       });
+      if (relation.schema) {
+        // A native PostgreSQL mount answers a schema-qualified read whole and refuses
+        // the snapshot paging headers (422 snapshot_unsupported), so ask once for the
+        // bounded result instead of opening a paged snapshot. The server returns at
+        // most NATIVE_POSTGRES_WHOLE_READ_ROWS rows; a read that could be cut there is
+        // refused rather than treated as the whole source.
+        const requested = Math.min(remaining ?? NATIVE_POSTGRES_WHOLE_READ_ROWS, NATIVE_POSTGRES_WHOLE_READ_ROWS);
+        const capped = remaining === undefined || remaining > NATIVE_POSTGRES_WHOLE_READ_ROWS;
+        stage = 'preparing';
+        report();
+        const response = await nativeQueryFetch(
+          httpFetch,
+          `${baseUrl}/v1/databases/${encodeURIComponent(relation.database || '')}/tugql`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/yaml',
+              Accept: 'application/json',
+              ...authHeaders,
+            },
+            body: JSON.stringify({
+              ...(JSON.parse(body) as Record<string, unknown>),
+              limit: requested,
+            }),
+            redirect: 'error',
+            signal,
+          },
+          'query_execution',
+          true,
+        );
+        if (response.status === 413)
+          throw new Error(
+            `OVDB ${relation.database} source exceeds the server limit.`,
+          );
+        if (!response.ok)
+          throw new Error(
+            `OVDB ${relation.database} query failed (${response.status}).`,
+          );
+        let whole: { readonly records?: unknown; readonly complete?: unknown };
+        try {
+          whole = strictJson(await response.text()) as typeof whole;
+        } catch {
+          throw new Error(`OVDB ${relation.database} returned an invalid result.`);
+        }
+        if (!whole || typeof whole !== 'object' || Array.isArray(whole))
+          throw new Error(`OVDB ${relation.database} returned an invalid result.`);
+        if (!rightsHandledByTransport) rights.accept({ database: relation.database as string, name: relation.name }, whole as unknown as Record<string, unknown>);
+        if (
+          !Array.isArray(whole.records) ||
+          whole.complete !== true ||
+          whole.records.length > requested
+        )
+          throw new Error(
+            `OVDB ${relation.database} returned an invalid result.`,
+          );
+        if (capped && whole.records.length === requested)
+          throw new Error(
+            `OVDB ${relation.database} ${relation.name} has more rows than one PostgreSQL read returns (${NATIVE_POSTGRES_WHOLE_READ_ROWS}). Add a scan limit to this source.`,
+          );
+        // Relational rows carry no OVDB record key; their position keys them within this read.
+        const records = (whole.records as readonly OvdbRecord[]).map(
+          (record, index): OvdbRecord => ({
+            ...record,
+            key: typeof record?.key === 'string' ? record.key : `#${index}`,
+          }),
+        );
+        rowsLoaded += records.length;
+        stage = 'loading';
+        report();
+        yield { records };
+        observer?.onSourceLoaded?.({
+          database: relation.database || '',
+          name: relation.name,
+          rows: records.length,
+          requests: 1,
+          elapsedMs: performance.now() - sourceStarted,
+        });
+        return;
+      }
       try {
         for (;;) {
           signal?.throwIfAborted();
