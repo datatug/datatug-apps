@@ -272,7 +272,12 @@
             />
           } @else if (boards(); as items) {
             @for (board of filteredBoards(); track board.id) {
-              <ion-item button detail (click)="goBoard(board)"
+              <!-- The list ends at the panel edge: no bottom rule under the last row. -->
+              <ion-item
+                button
+                detail
+                [lines]="$last ? 'none' : undefined"
+                (click)="goBoard(board)"
                 ><ion-icon
                   name="easel-outline"
                   slot="start"

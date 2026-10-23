@@ -198,6 +198,19 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     path: testInfo.outputPath('quick-search-overview-input.png'),
     fullPage: true,
   });
+  // At phone width the suggestions stay inside the page: no horizontal scroll.
+  const desktopViewport = page.viewportSize();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(querySuggestion).toBeVisible();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+  ).toBe(true);
+  await page.screenshot({
+    path: testInfo.outputPath('quick-search-overview-input-mobile.png'),
+  });
+  if (desktopViewport) await page.setViewportSize(desktopViewport);
   await overviewSearch.press('Enter');
   await expect(page).toHaveURL(/quick-search\?q=Customers$/);
   await page.locator('sneat-datatug-quick-search').waitFor();
