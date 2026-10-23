@@ -368,6 +368,20 @@ describe('adversarial input is handled in linear time', () => {
     },
   );
 
+  it.each([
+    ['a bearer token', 'Bearer ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCD', 'ghp_'],
+    ['a secret-named value', 'password=hunter2hunter2hunter2', 'hunter2'],
+    ['an api token', 'sk-abcdefghijklmnopqrstuvwxyz0123456789', 'sk-abcdef'],
+  ])('leaves no fragment of %s that straddles the 4096 limit', (_name, secret, fragment) => {
+    for (let cut = 1; cut < secret.length; cut++) {
+      const text = 'x '.repeat((4096 - cut) / 2 | 0) + ' '.repeat((4096 - cut) % 2) + secret + ' tail';
+      const placed = text.indexOf(secret);
+      const out = redactErrorText(text.slice(0, placed) + secret + ' tail');
+      expect(out, `cut ${cut}`).not.toContain(fragment);
+      expect(out, `cut ${cut}`).not.toMatch(/hunter2|ghp_|sk-abc/);
+    }
+  });
+
   it('still redacts an e-mail address and still words an invalid chart definition', () => {
     expect(redactErrorText('failed for ann.lee+x@example.co.uk now')).toBe(
       'failed for [email] now',

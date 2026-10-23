@@ -132,6 +132,20 @@ const SECRET_WORDS =
 const MAX_REDACTED_LENGTH = 4096;
 
 /**
+ * The first {@link MAX_REDACTED_LENGTH} characters of `text`, ending on a whitespace boundary. A token cut by the limit
+ * is dropped whole: a secret split at the boundary would otherwise survive as a fragment too short for its pattern
+ * (`ghp_` plus seven characters) to recognise.
+ */
+function boundedText(text: string): string {
+  if (text.length <= MAX_REDACTED_LENGTH) return text;
+  // The character after the cut is whitespace: the last token is complete and nothing is dropped from it.
+  if (/\s/.test(text.charAt(MAX_REDACTED_LENGTH))) return text.slice(0, MAX_REDACTED_LENGTH);
+  let end = MAX_REDACTED_LENGTH;
+  while (end > 0 && !/\s/.test(text.charAt(end - 1))) end--;
+  return text.slice(0, end);
+}
+
+/**
  * Removes what must not appear on a screen, in a toast or in a copied report: addresses (any URL with its query or
  * token, a host with a path, internal and loopback hosts, IP addresses), email addresses, file paths, bearer/API
  * tokens, secret-looking `name=value`/`"name": "value"` pairs and long secret-looking runs, stack-trace lines, and
@@ -146,8 +160,7 @@ export function redactErrorText(
   options: { readonly database?: boolean } = {},
 ): string {
   // A message longer than this is not a sentence to show; bounding it also bounds every pattern below.
-  let out = text
-    .slice(0, MAX_REDACTED_LENGTH)
+  let out = boundedText(text)
     .split('\n')
     .filter(
       (line) =>
