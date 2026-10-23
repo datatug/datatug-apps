@@ -79,6 +79,9 @@ test.describe('Epilogue A — close/reopen', () => {
     browser,
     request,
   }) => {
+    // Three pages and two contexts against the real agent: 28-29s on a 4-vCPU runner, over the 30s default on the
+    // private repository's 2-vCPU runner. Every wait inside keeps its own bound.
+    test.setTimeout(60_000);
     const agentOrigin = `http://${agentServer.host}:${agentServer.port}`;
     const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
     const customerTableUrl =
