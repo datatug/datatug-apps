@@ -1075,6 +1075,16 @@ ion-app.compact-header-mode:has(#{$page-owns-header}) {
   }
 }
 
+// Phones and tablets: iOS centres a toolbar title absolutely over the whole bar with only 90px of side padding,
+// so a long title ran under the end-slot ☰ menu and Sign in that page-toolbar-adoption.ts adds. In the compact
+// layout the title takes the space between the start and end buttons instead and ends in an ellipsis.
+ion-app.compact-header-mode ion-header ion-toolbar ion-title.title-default.ios {
+  position: static;
+  padding-inline: 4px;
+  text-align: start;
+  min-width: 0;
+}
+
 // Sign in is adopted at every width (the side panel's own "Please sign in" is not in the page header);
 // the adopted menu button only where the side panel is hidden.
 ion-app:not(.compact-header-mode) .shell-adopted-menu {
