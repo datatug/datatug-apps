@@ -1208,10 +1208,16 @@ describe('ServersPage numbers add up (S153 — GitHub-store demo project)', () =
   /** Strips Angular's `<!---->` structural-directive anchor comments so an
    * element's own text can be compared exactly (`rowLabelText()` below). */
   function stripComments(value: string): string {
-    return value
-      .replace(/<!--[\s\S]*?-->/g, '')
-      .replace(/<!--/g, '')
-      .trim();
+    const template = document.createElement('template');
+    template.innerHTML = value;
+    const walker = document.createTreeWalker(
+      template.content,
+      NodeFilter.SHOW_COMMENT,
+    );
+    const comments: Node[] = [];
+    while (walker.nextNode()) comments.push(walker.currentNode);
+    for (const comment of comments) comment.parentNode?.removeChild(comment);
+    return template.innerHTML.trim();
   }
 
   function dbTabBadgeText(): string | undefined {
