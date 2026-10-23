@@ -1,3 +1,4 @@
+import { capabilityListOffersTugql, tugqlEndpoint, tugqlQueryFormat, withTugqlCapabilities } from './legacy-dtql-ovdb-metadata';
 export type Row = Record<string, unknown>;
 export interface TableData {
   rows: Row[];
@@ -116,13 +117,13 @@ export async function loadConnection(connection: string, query: string, paramete
   if (!database?.apiUrl) throw new Error('OVDB discovery does not list this database connection URL.');
   const apiUrl = safeHttpUrl(database.apiUrl, discoveryUrl.href);
   const metadataResponse = await checked(await fetch(apiUrl, { signal, credentials: 'same-origin', headers: { Accept: 'application/json' } }), 'OVDB database metadata');
-  const metadata = await metadataResponse.json() as { capabilities?: unknown; endpoints?: { tugql?: string }; queryFormat?: string };
+  const metadata = await metadataResponse.json() as { capabilities?: unknown; endpoints?: { tugql?: string; dtql?: string }; queryFormat?: string };
   const capabilities = metadata.capabilities ?? database.capabilities;
-  const canQuery = Array.isArray(capabilities) ? capabilities.includes('tugql') : object(capabilities) && capabilities['tugql'] === true;
-  const advertised = metadata.endpoints?.tugql;
+  const canQuery = Array.isArray(capabilities) ? capabilityListOffersTugql(capabilities) : object(capabilities) && withTugqlCapabilities(capabilities)['tugql'] === true;
+  const advertised = tugqlEndpoint(metadata.endpoints);
   if (!canQuery || !advertised) throw new Error('This OVDB database does not advertise TugQL queries.');
   const endpoint = safeHttpUrl(advertised, apiUrl.href);
-  const queryFormat = metadata.queryFormat;
+  const queryFormat = tugqlQueryFormat(metadata.queryFormat);
   let body: string, contentType: string;
   if (queryFormat === 'tugql-yaml+json') {
     body = JSON.stringify({ query, parameters });

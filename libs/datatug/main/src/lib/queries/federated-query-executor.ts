@@ -1,3 +1,4 @@
+import { withTugqlCapabilities } from '../ovdb/legacy-dtql-ovdb-metadata';
 import { abortableWait } from '../ovdb/abortable-wait';
 import { isSelfRetryingFetch } from '../ovdb/ovdb-retrying-fetch';
 import { nativeHttpFailure, nativeQueryDiagnostic, nativeQueryFetch, withNativeQueryStage } from './native-query-failure';
@@ -375,7 +376,7 @@ async function streamCapability(base: string, database: string, fetcher: typeof 
     if (capabilities === undefined) return { streaming: false, ordinary: false, mappedErrors: false }; // Legacy route.
     if (!capabilities || typeof capabilities !== 'object' || Array.isArray(capabilities))
       throw new Error('OVDB returned invalid database capabilities.');
-    const flags = capabilities as Record<string, unknown>;
+    const flags = withTugqlCapabilities(capabilities as Record<string, unknown>);
     if (document['id'] !== database || (expectedServerId && document['serverId'] !== expectedServerId))
       throw new Error('OVDB query capability identity differs from the selected database.');
     if (flags['tugqlStreaming'] === true && flags['tugql'] !== true)

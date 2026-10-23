@@ -170,18 +170,21 @@ limit: 10`;
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it('does not negotiate streaming from old-only dtql capability metadata', async () => {
+  it.each([
+    ['old-only (removed in TugQL cutover step 9)', { dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true }],
+    ['both', { tugql: true, tugqlStreaming: true, tugqlStreamingErrors: true, dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true }],
+  ])('negotiates streaming and mapped errors from %s capability metadata', async (_name, capabilities) => {
     const calls: RequestInit[] = [];
     const fetcher = vi.fn<typeof fetch>(async (input, init) => {
       calls.push(init ?? {});
       return String(input).endsWith('/music')
-        ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true, dtqlStreamingErrors: true } })
+        ? json({ id: 'music', capabilities })
         : new Response('{"error":{"code":"unsupported","message":"The query cannot run."}}',
           { status: 422, headers: { 'Content-Type': 'application/json' } });
     });
-    await runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher }).catch(() => undefined);
-    expect(calls.map((call) => new Headers(call.headers).get('Accept'))).not.toContain(OVDB_ERROR_STREAM_MIME);
+    await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
+      { fetch: fetcher })).rejects.toMatchObject({ diagnostic: { code: 'unsupported' } });
+    expect(new Headers(calls[1].headers).get('Accept')).toBe(OVDB_ERROR_STREAM_MIME);
   });
 
   it('does not turn an unsupported native query into browser table scans', async () => {

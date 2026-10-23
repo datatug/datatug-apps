@@ -10,6 +10,7 @@
 //   - delete a record: `delete`;
 //   - Reset Database: `reset`.
 // Never the engine name.
+import { withTugqlCapabilities } from './legacy-dtql-ovdb-metadata';
 import { OpenVaultDbHttpError } from '@dalgo/ovdb/client';
 
 /** The `capabilities` map of `GET /v1/databases/{db}` (openvaultdb-go docs/api.md). */
@@ -169,7 +170,7 @@ export function parseOvdbDescriptor(raw: unknown): OvdbDescriptor {
   if (collections !== undefined && !(Array.isArray(collections) && collections.every((name) => typeof name === 'string'))) {
     throw new TypeError('invalid OpenVaultDB descriptor collections');
   }
-  return raw as unknown as OvdbDescriptor;
+  return { ...raw, capabilities: withTugqlCapabilities(raw['capabilities']) } as unknown as OvdbDescriptor;
 }
 
 export function ovdbDatabaseUrl(baseUrl: string, databaseId: string): string {

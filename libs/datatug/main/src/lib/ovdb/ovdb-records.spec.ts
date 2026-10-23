@@ -61,18 +61,15 @@ describe('local OVDB descriptor', () => {
     ]);
   });
 
-  it('reads new TugQL capabilities', () => {
-    const descriptor = parseOvdbDescriptor({ id: 'x', capabilities: { read: true, tugql: true, tugqlStreaming: true } });
-    expect(descriptor.capabilities).toMatchObject({ tugql: true, tugqlStreaming: true });
+  it.each([
+    ['old-only (removed in TugQL cutover step 9)', { dtql: true, dtqlStreaming: true }],
+    ['new-only', { tugql: true, tugqlStreaming: true }],
+    ['both', { tugql: true, tugqlStreaming: true, dtql: true, dtqlStreaming: true }],
+  ])('reads %s TugQL capabilities as tugql', (_name, capabilities) => {
+    const descriptor = parseOvdbDescriptor({ id: 'x', capabilities: { read: true, ...capabilities } });
+    expect(descriptor.capabilities).toMatchObject({ tugql: true, tugqlStreaming: true, read: true });
     expect(ovdbReadsWithTugql(descriptor)).toBe(true);
     expect(ovdbUiCapabilities(descriptor).browse).toBe(true);
-  });
-
-  it('no longer treats old-only dtql capabilities as TugQL-capable', () => {
-    const descriptor = parseOvdbDescriptor({ id: 'x', capabilities: { read: true, dtql: true, dtqlStreaming: true } });
-    expect(descriptor.capabilities).not.toHaveProperty('tugql');
-    expect(ovdbReadsWithTugql(descriptor)).toBe(false);
-    expect(ovdbUiCapabilities(descriptor).browse).toBe(false);
   });
 
   it('rejects malformed descriptors', () => {
