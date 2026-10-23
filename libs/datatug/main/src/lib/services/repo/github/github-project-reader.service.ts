@@ -1241,7 +1241,7 @@ export class GithubProjectReaderService {
     }
   }
 
-  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.tugql.yaml`/`.dtql`/`.http` sidecar). */
+  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.tugql.yaml`/`.http` sidecar). */
   public getRawText(
     projectId: string,
     relativePath: string,
@@ -1521,7 +1521,7 @@ export class GithubProjectReaderService {
 
   /** The sidecar BODY file for one definition file — `<id>.sql.json` ->
    * `<id>.sql` (the legacy convention spells the body's own extension into
-   * its "sql" segment); a TugQL (or legacy DTQL) `<id>.query.json` -> the one
+   * its "sql" segment); a TugQL `<id>.query.json` -> the one
    * body file {@link selectTugqlBodyFile} picks from the sibling file names;
    * otherwise `<id>.query.http` for HTTP and `<id>.query.sql` for the rest.
    */
