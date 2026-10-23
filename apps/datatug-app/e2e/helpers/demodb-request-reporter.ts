@@ -18,6 +18,7 @@ const isSelftest = (test: TestCase): boolean => /(^|[\\/])demodb-guard-selftest\
 export default class DemodbRequestReporter implements Reporter {
   private readonly hosts = new Map<string, Row>();
   private mode = process.env['DEMODB_E2E_MODE'] === 'live' ? 'live' : 'fixture';
+  private github = process.env['GITHUB_E2E_MODE'] === 'live' ? 'live' : 'checkout';
   private tests = 0;
   /** Negative-control tests (only the guard self-test may be one) whose requests are reported but not counted. */
   private readonly excluded = { tests: 0, total: 0, escaped: 0 };
@@ -26,7 +27,7 @@ export default class DemodbRequestReporter implements Reporter {
     const note = test.annotations.filter((annotation) => annotation.type === 'demodb-requests').at(-1);
     if (!note?.description) return;
     this.tests += 1;
-    const parsed = JSON.parse(note.description) as { mode: string; hosts: Record<string, Row> };
+    const parsed = JSON.parse(note.description) as { mode: string; github?: string; hosts: Record<string, Row> };
     // The guard self-test deliberately sends one request the guard must flag (a negative control, `test.fail()`): that is
     // not an escape of the lane. The annotation is honoured for that one file only; any other test that carries it is a
     // normal test, its escapes count and fail the lane.
@@ -39,6 +40,7 @@ export default class DemodbRequestReporter implements Reporter {
       return;
     }
     this.mode = parsed.mode;
+    if (parsed.github) this.github = parsed.github;
     for (const [host, counts] of Object.entries(parsed.hosts)) {
       const sum = this.hosts.get(host) ?? { total: 0, handled: 0, fixture: 0, memo: 0, live: 0, refused: 0, escaped: 0 };
       for (const key of Object.keys(sum) as (keyof Row)[]) sum[key] += counts[key] ?? 0;
@@ -47,29 +49,32 @@ export default class DemodbRequestReporter implements Reporter {
   }
 
   /** The totals the run is judged on. */
-  verdict(): { live: number; escaped: number; budget: number; failed: boolean } {
+  verdict(): { live: number; escaped: number; budget: number; githubLive: number; githubBudget: number; failed: boolean } {
     const live = [...this.hosts.entries()].filter(([host]) => /(^|\.)demodb\.dev$/.test(host)).reduce((sum, [, counts]) => sum + counts.live, 0);
     const escaped = [...this.hosts.values()].reduce((sum, counts) => sum + counts.escaped, 0);
     const budget = this.mode === 'live' ? Number(process.env['DEMODB_E2E_MAX_RUN_LIVE_REQUESTS'] || 120) : 0;
-    return { live, escaped, budget, failed: escaped > 0 || live > budget };
+    // GitHub: only the API has a quota; in checkout mode (every lane but the GitHub live smoke) nothing may go live.
+    const githubLive = this.hosts.get('api.github.com')?.live ?? 0;
+    const githubBudget = this.github === 'live' ? Number(process.env['GITHUB_E2E_MAX_RUN_LIVE_REQUESTS'] || 50) : 0;
+    return { live, escaped, budget, githubLive, githubBudget, failed: escaped > 0 || live > budget || githubLive > githubBudget };
   }
 
   async onEnd(): Promise<{ status: 'failed' } | undefined> {
     const rows = [...this.hosts.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const { live, escaped, budget, failed } = this.verdict();
+    const { live, escaped, budget, githubLive, githubBudget, failed } = this.verdict();
     const excludedNote = this.excluded.tests
       ? `${this.excluded.tests} negative-control test(s) not counted: ${this.excluded.total} request(s) asked, ${this.excluded.escaped} flagged as escaped`
       : '';
     const lane = process.env['GITHUB_JOB'] || process.env['DEMODB_REPORT_LANE'] || 'local';
 
     const lines = [
-      `DemoDB request report (lane ${lane}, mode ${this.mode}, ${this.tests} guarded test attempts; LIVE = sent to the real host)`,
+      `DemoDB / GitHub request report (lane ${lane}, DemoDB mode ${this.mode}, GitHub mode ${this.github}, ${this.tests} guarded test attempts; LIVE = sent to the real host, fixture = answered locally, for GitHub from the pinned checkouts)`,
       `  ${'host'.padEnd(36)} ${'asked'.padStart(6)} ${'fixture'.padStart(8)} ${'memory'.padStart(7)} ${'LIVE'.padStart(5)} ${'refused'.padStart(8)} ${'ESCAPED'.padStart(8)}`,
       ...rows.map(
         ([host, c]) =>
           `  ${host.padEnd(36)} ${String(c.total).padStart(6)} ${String(c.fixture).padStart(8)} ${String(c.memo).padStart(7)} ${String(c.live).padStart(5)} ${String(c.refused).padStart(8)} ${String(c.escaped).padStart(8)}`,
       ),
-      `  live requests to *.demodb.dev: ${live} (run budget ${budget}); requests that escaped the guard: ${escaped}`,
+      `  live requests to *.demodb.dev: ${live} (run budget ${budget}); live api.github.com requests: ${githubLive} (run budget ${githubBudget}); requests that escaped the guard: ${escaped}`,
       ...(excludedNote ? [`  ${excludedNote}`] : []),
     ];
     console.log(['', ...lines, ''].join('\n'));
@@ -77,7 +82,7 @@ export default class DemodbRequestReporter implements Reporter {
     const markdown = [
       `### DemoDB request report: ${lane}`,
       '',
-      `Mode \`${this.mode}\`, ${this.tests} guarded test attempts. **Live requests to \`*.demodb.dev\`: ${live}** (budget ${budget}). **Escaped the guard: ${escaped}.**${excludedNote ? ` (${excludedNote})` : ''}`,
+      `DemoDB mode \`${this.mode}\`, GitHub mode \`${this.github}\`, ${this.tests} guarded test attempts. **Live requests to \`*.demodb.dev\`: ${live}** (budget ${budget}). **Live \`api.github.com\` requests: ${githubLive}** (budget ${githubBudget}). **Escaped the guard: ${escaped}.**${excludedNote ? ` (${excludedNote})` : ''}`,
       '',
       '| host | asked | fixture | memory | LIVE | refused | escaped |',
       '| --- | ---: | ---: | ---: | ---: | ---: | ---: |',
@@ -101,7 +106,7 @@ export default class DemodbRequestReporter implements Reporter {
     }
 
     if (failed) {
-      console.error(`DemoDB request rules broken: ${escaped} escaped, ${live} live (budget ${budget})`);
+      console.error(`DemoDB / GitHub request rules broken: ${escaped} escaped, ${live} live DemoDB (budget ${budget}), ${githubLive} live GitHub API (budget ${githubBudget})`);
       return { status: 'failed' };
     }
     return undefined;

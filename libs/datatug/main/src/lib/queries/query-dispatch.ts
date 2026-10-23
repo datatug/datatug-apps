@@ -1,7 +1,7 @@
 import type { AppliedEvidenceRequest } from '../evidence/applied-evidence';
 import type { IQueryDef } from '../models/definition/query-def';
 import type { ExecutionBindingOrigin, TypedValue } from '@sneat/datatug-semantic';
-import type { IProjectRef } from '../core/project-context';
+import { isLocalProjectRef, type IProjectRef } from '../core/project-context';
 import type { OvdbConnection } from '../ovdb/ovdb-connection';
 import { QueryType } from '../models/definition/query-def';
 import type { FederatedQueryMode, FederatedQueryProgress, FederatedQueryResult } from './federated-query-executor';
@@ -47,6 +47,12 @@ export interface QueryDispatchRequest {
   };
   readonly parameters?: Readonly<Record<string, TypedValue>>;
   readonly bindingOrigins?: readonly ExecutionBindingOrigin[];
+  /**
+   * Browser SQLite only: a session that downloads each pinned fixture once and
+   * keeps one worker for several statements (for example one lookup dialog).
+   * Without it every statement fetches the fixture and starts its own worker.
+   */
+  readonly browserSqliteSession?: import('./browser-sqlite-query.service').BrowserSqliteSession;
   /** Called only once a browser worker has accepted the prepared request. */
   readonly onDispatched?: () => void;
   readonly signal?: AbortSignal;
@@ -95,7 +101,7 @@ export function captureQueryDispatchRequest(
 ): QueryDispatchRequest {
   if (!request.projectRef || !request.definition)
     throw new QueryDispatchError('A project reference and query definition are required to run this query.');
-  const { signal, runtimeBinding, federationRun, onDispatched, ...snapshot } = request;
+  const { signal, runtimeBinding, federationRun, onDispatched, browserSqliteSession, ...snapshot } = request;
   const captured = structuredClone({
     ...snapshot,
     projectRef: request.projectRef,
@@ -123,6 +129,8 @@ export function captureQueryDispatchRequest(
     ...(capturedBinding ? { runtimeBinding: capturedBinding } : {}),
     ...(capturedRun ? { federationRun: capturedRun } : {}),
     ...(onDispatched ? { onDispatched } : {}),
+    // A live session object (worker, cached bytes): passed by reference, never cloned.
+    ...(browserSqliteSession ? { browserSqliteSession } : {}),
     signal,
   });
 }
@@ -155,7 +163,7 @@ export function serverOwnsSourceAdmission(request: QueryDispatchRequest): boolea
   if (request.target) return request.target.kind === 'hosted-cloud' || request.target.kind === 'local-agent';
   if (request.runtimeBinding || request.runtimeSelectionId) return false;
   return request.projectRef.storeId === 'firestore' && !!request.projectRef.spaceID ||
-    request.projectRef.projectApi === 'local' && !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId);
+    isLocalProjectRef(request.projectRef);
 }
 
 function inferRuntimeTarget(
@@ -169,8 +177,7 @@ function inferRuntimeTarget(
   };
   if (request.projectRef.storeId === 'firestore' && request.projectRef.spaceID)
     return { kind: 'hosted-cloud' };
-  if (request.projectRef.projectApi === 'local' &&
-    !['github', 'github.com', 'firestore'].includes(request.projectRef.storeId))
+  if (isLocalProjectRef(request.projectRef))
     return { kind: 'local-agent', agentStoreId: request.projectRef.storeId };
   if (request.definition.federation) return { kind: 'ovdb-federation' };
   if (connection?.storage === 'sqlite' && connection.browserFixture)

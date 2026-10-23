@@ -9,12 +9,7 @@ import {
   signal,
 } from '@angular/core';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
-import {
-  ErrorLogger,
-  IErrorLogger,
-  STORE_ID_GITHUB_COM,
-  STORE_TYPE_GITHUB,
-} from '@sneat/core';
+import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   IonBadge,
   IonButton,
@@ -27,6 +22,7 @@ import {
 } from '@ionic/angular';
 import { RouterLink } from '@angular/router';
 import { projectPageHref } from '../nav/project-page-href';
+import { isSignedOut } from '../services/project/hosted-read-refused';
 import { IProjectContext } from '../nav/nav-models';
 import { IProjEnv } from '../models/definition/project';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
@@ -75,27 +71,23 @@ export class MenuEnvSelectorComponent implements OnChanges {
         switchMap((project) => {
           this.environments.set([]);
           if (!project?.ref.projectId) return of([] as IProjEnv[]);
-          const storeId = project.ref.storeId;
-          if (
-            storeId !== STORE_ID_GITHUB_COM &&
-            storeId !== STORE_TYPE_GITHUB
-          ) {
-            return of([...(project.summary?.environments ?? [])]);
-          }
-          return this.environmentService
-            .listEnvironments(project.ref.projectId)
-            .pipe(
-              map((environments) =>
-                environments.map(({ id, title }) => ({ id, title })),
-              ),
-              catchError((error: unknown) => {
+          return this.environmentService.listEnvironments(project.ref).pipe(
+            map((environments) =>
+              environments.map(({ id, title }) => ({ id, title })),
+            ),
+            catchError((error: unknown) => {
+              // A background sidebar read: the selector simply offers no environments, and the page in view shows its
+              // own designed error state, so this must not raise a second toast over it. Signed out, nothing to log.
+              if (!isSignedOut(error)) {
                 this.errorLogger.logError(
                   error,
                   'Failed to list project environments',
+                  { show: false },
                 );
-                return of([] as IProjEnv[]);
-              }),
-            );
+              }
+              return of([] as IProjEnv[]);
+            }),
+          );
         }),
         takeUntilDestroyed(this.destroyRef),
       )

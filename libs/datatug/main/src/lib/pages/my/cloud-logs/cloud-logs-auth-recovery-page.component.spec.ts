@@ -25,6 +25,7 @@ import {
   hostedCloudLogsAccessGuard,
 } from './hosted-cloud-logs-access.service';
 
+
 @Component({
   selector: 'sneat-datatug-cloud-logs-target-stub',
   template: '<p>Cloud Logs target</p>',

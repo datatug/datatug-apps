@@ -1,7 +1,10 @@
 import {
+  ApplicationRef,
   ChangeDetectionStrategy,
   Component,
   DestroyRef,
+  EnvironmentInjector,
+  afterNextRender,
   computed,
   inject,
   signal,
@@ -34,6 +37,7 @@ import { ErrorLogger } from '@sneat/core';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { ResizableMenuDirective } from '@sneat/ui';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
+import { PageToolbarAdoption } from './page-toolbar-adoption';
 
 @Component({
   selector: 'sneat-datatug-root',
@@ -166,7 +170,21 @@ export class DatatugAppComponent {
     inject(DestroyRef).onDestroy(() =>
       this.narrowQuery.removeEventListener('change', onChange),
     );
+    // A routed page with its own header is the page's single header on narrow layouts: the shell hides
+    // its compact bar (styles.scss) and the page's toolbar gets Sign in + menu instead.
+    const injector = inject(EnvironmentInjector);
+    const appRef = inject(ApplicationRef);
+    afterNextRender(() => {
+      const outlet = document.getElementById('main-content');
+      if (!outlet) return;
+      const adoption = new PageToolbarAdoption(outlet, injector, appRef);
+      adoption.start();
+      this.stopAdoption = () => adoption.stop();
+    });
+    inject(DestroyRef).onDestroy(() => this.stopAdoption());
   }
+
+  private stopAdoption: () => void = () => undefined;
 
   // The active product profile (hub `product-profiles` REQ:profile-table),
   // resolved once at bootstrap (config override -> hostname -> `datatug`

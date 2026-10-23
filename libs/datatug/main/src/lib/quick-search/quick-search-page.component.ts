@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import {
   ChangeDetectionStrategy,
   Component,
@@ -71,6 +72,7 @@ import {
   },
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BusinessClockChipComponent,
     FormsModule,
     RouterLink,
     IonHeader,
@@ -101,7 +103,7 @@ import {
               : schemaDetail
                 ? 'Schema metadata'
                 : 'Quick Search'
-        }}</ion-title
+        }}<sneat-datatug-business-clock /></ion-title
         ><ion-buttons slot="end">
           @if (!discovery && !schemaDetail && !checkDetail()) {
             <ion-button (click)="settings.set(!settings())"
@@ -330,14 +332,18 @@ import {
         }
         @if (!checkDetail() && !busy() && status()?.state === 'disabled') {
           <p role="status">
-            Quick Search is disabled. Open Index settings to preview metadata
-            and give indexing consent.
+            This project has no search index yet. Indexing reads names and
+            tags only, and starts once you consent in Index settings. Until
+            then, search from the project overview.
           </p>
           @if (!schemaDetail) {
             <ion-button (click)="settings.set(true)"
               >Open Index settings</ion-button
             >
           }
+          <ion-button fill="outline" [routerLink]="overviewHref()"
+            >Search from the overview</ion-button
+          >
         }
         @if (!checkDetail() && (status()?.state === 'ready' || schemaDetail)) {
           <p aria-live="polite">
@@ -410,7 +416,7 @@ import {
         padding: 20px;
       }
       .scope {
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
         overflow-wrap: anywhere;
       }
       .filters {

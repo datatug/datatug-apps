@@ -28,6 +28,7 @@ import {
 } from './business-github-continuation';
 import { provideMockErrorLogger } from '../../testing/error-logger.spec-helper';
 
+
 // The app registers its icon set in main.ts. Mirror the icons this real
 // template uses so happy-dom renders embedded SVGs instead of fetching them.
 addIcons({ closeOutline, saveOutline });
@@ -1701,11 +1702,17 @@ describe('New project through authenticated common API', () => {
     const legacyIntent = JSON.parse(saved.operationPayload);
     delete legacyIntent.selectedBranch;
     saved.operationPayload = JSON.stringify(legacyIntent);
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify(saved));
+    // The restoring page reads the pre-branch-identity draft; serve it from the read, not a second write to storage.
+    const legacyDraft = JSON.stringify(saved);
+    const readStorage = sessionStorage.getItem.bind(sessionStorage);
+    const legacyRead = vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) =>
+      key === 'datatug:new-project:draft' ? legacyDraft : readStorage(key),
+    );
 
     const restored = await harness(false, {}, true, true);
     restored.fixture.detectChanges();
     await restored.fixture.whenStable();
+    legacyRead.mockRestore();
     restored.component.create();
 
     expect(restored.create).toHaveBeenCalledTimes(1);

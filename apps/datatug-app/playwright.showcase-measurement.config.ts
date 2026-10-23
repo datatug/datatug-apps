@@ -1,4 +1,7 @@
 import { defineConfig, devices } from '@playwright/test';
+
+// A live read of the deployed product: GitHub is the real one, under the guard's live budget (e2e/helpers/demodb-guard.ts).
+process.env['GITHUB_E2E_MODE'] ??= 'live';
 import { resolve } from 'node:path';
 
 const outputDir = resolve(

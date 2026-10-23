@@ -1573,6 +1573,11 @@ test.describe('an address that the router reads another way than the inline scri
         .poll(() => hasMarker(page.url()), { timeout: 15_000 })
         .toBe(false);
       expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+      // The end state, whole address (#517): the canonical path, x=1 kept, no msg. Polled, never a fixed wait (#523).
+      await expect(page).toHaveURL(
+        /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
+        { timeout: 20_000 },
+      );
       const state = await page.evaluate(() => ({
         title: document.title,
         storage:
@@ -1675,6 +1680,11 @@ test.describe('an address that the router reads another way than the inline scri
       .poll(() => new URL(page.url()).searchParams.has('msg'), { timeout: 15_000 })
       .toBe(false);
     expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+    // The end state, whole address (#517): the canonical path, x=1 kept, no msg. Polled, never a fixed wait (#523).
+    await expect(page).toHaveURL(
+      /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
+      { timeout: 20_000 },
+    );
     const entries = await page.evaluate(() =>
       (
         window as unknown as { navigation: { entries: () => { url: string }[] } }
@@ -1744,7 +1754,7 @@ test.describe('the matrix-parameter address reaches no analytics either', () => 
   });
 });
 
-test.describe('every other route behaves as it does on main', () => {
+test.describe('an address no route answers shows a friendly 404', () => {
   for (const path of [
     '/no-such-route-xyz?q=1',
     // (`/project/github.com/datatug/chinook-demo` used to be here: since G-A1b it is the project, at its short address.)
@@ -1752,7 +1762,7 @@ test.describe('every other route behaves as it does on main', () => {
     '/demo/other?q=1',
     '/demo(menu:x)?q=1', // an outlet group: not a hand-off address, for the script and the router alike
   ]) {
-    test(`${path} still fails to match, asks for the crash-report dialog and rewrites the URL to /`, async ({
+    test(`${path} shows the not-found page, asks for no crash-report dialog and keeps no question in the address`, async ({
       page,
       context,
       baseURL,
@@ -1761,12 +1771,19 @@ test.describe('every other route behaves as it does on main', () => {
       const external = await stubExternal(context, (o) => o === origin);
       const errors = consoleErrors(page);
       await page.goto(path);
-      // This is main's behaviour, unchanged by G-0 (the global not-found handling is a separate task).
+      await expect(
+        page.getByRole('heading', { name: 'This page does not exist' }),
+      ).toBeVisible({ timeout: 20_000 });
+      // A routing miss is not a crash: no report dialog is requested and no NG04002 reaches the console as an error.
+      expect(dialogRequested(external)).toBe(false);
+      expect(errors.some((e) => e.includes('NG04002'))).toBe(false);
+      // The visitor's question (`?q=` / `?msg=`) is never left in the address bar of a page that does not answer it.
       await expect
-        .poll(() => dialogRequested(external), { timeout: 20_000 })
-        .toBe(true);
-      expect(errors.some((e) => e.includes('NG04002'))).toBe(true);
-      expect(new URL(page.url()).pathname).toBe('/');
+        .poll(() => {
+          const { searchParams } = new URL(page.url());
+          return ['q', 'msg'].filter((name) => searchParams.has(name));
+        })
+        .toEqual([]);
     });
   }
 });

@@ -9,18 +9,22 @@ process.env['DEMODB_RUN_ID'] ??= String(process.pid);
 export const DEMODB_LIVE_MODE = process.env['DEMODB_E2E_MODE'] === 'live';
 
 /**
- * Chromium launch args: in the default (fixture) mode every demodb.dev and openvaultdb.com name, whatever the sub-domain, resolves to nothing.
+ * Chromium launch args: in the default (fixture) mode every demodb.dev and openvaultdb.com name, whatever the sub-domain, resolves to nothing,
+ * and in GitHub checkout mode so do the three GitHub hosts.
  * Fixtures are answered by the guard's route before any name lookup, so this is a wildcard backstop for contexts and
  * requests the route cannot see. (The CI hosts block, .github/actions/block-demodb, does the same for Firefox, WebKit,
  * Node and the datatug CLI.) Never in live mode.
  */
-export const demodbChromiumLaunch = DEMODB_LIVE_MODE
-  ? {}
-  : {
-      args: [
-        '--host-resolver-rules=MAP demodb.dev ~NOTFOUND, MAP *.demodb.dev ~NOTFOUND, MAP openvaultdb.com ~NOTFOUND, MAP *.openvaultdb.com ~NOTFOUND',
-      ],
-    };
+export const GITHUB_LIVE_MODE = process.env['GITHUB_E2E_MODE'] === 'live';
+const blockedNames = [
+  ...(DEMODB_LIVE_MODE ? [] : ['demodb.dev', '*.demodb.dev', 'openvaultdb.com', '*.openvaultdb.com']),
+  // GitHub checkout mode (default): the guard answers the GitHub hosts from the pinned checkouts (fake-github.ts); a request
+  // its route cannot see fails to resolve here and counts as escaped.
+  ...(GITHUB_LIVE_MODE ? [] : ['api.github.com', 'raw.githubusercontent.com', 'cdn.jsdelivr.net']),
+];
+export const demodbChromiumLaunch = blockedNames.length
+  ? { args: [`--host-resolver-rules=${blockedNames.map((name) => `MAP ${name} ~NOTFOUND`).join(', ')}`] }
+  : {};
 
 /**
  * Environment for the dev server a lane starts (webServer.env). The dev server forwards the app's public OVDB calls

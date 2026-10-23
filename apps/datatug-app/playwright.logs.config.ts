@@ -24,6 +24,8 @@ const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
  * test-only; the documented demo origin remains port 4200.
  */
 export default defineConfig({
+  // Fresh guard state and the GitHub pins (e2e/github-pins.json) the guard serves.
+  globalSetup: './e2e/helpers/demodb-state-setup.ts',
   testDir: './e2e',
   testMatch: 'northwind-logs.spec.ts',
   outputDir: '../../coverage/apps/datatug-app-e2e/northwind-logs-results',

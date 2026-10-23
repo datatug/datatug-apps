@@ -224,7 +224,7 @@ columns:
     await page.locator('ion-select[label="Result mode"]').click();
     await page.getByRole('radio', { name: 'Full result' }).click();
     await page.getByRole('button', { name: 'OK' }).click();
-    await expect(page.getByTestId('query-save-state')).toHaveAttribute(
+    await expect(page.getByTestId('query-save-announcement')).toHaveAttribute(
       'role',
       'status',
     );

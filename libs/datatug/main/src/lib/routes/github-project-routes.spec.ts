@@ -192,6 +192,8 @@ describe('the routes as registered', () => {
       'meanings/field',
       '',
       'overview',
+      'environments',
+      'sources/:sourceId',
       'shipping',
       'boards/new',
       'board/:board',
@@ -209,12 +211,23 @@ describe('the routes as registered', () => {
       'query',
     ]);
     expect(
-      ['', 'overview', 'shipping'].every((path) =>
-        typeof shared?.children?.find((route) => route.path === path)?.loadComponent === 'function'),
+      ['', 'overview', 'sources/:sourceId'].every(
+        (path) =>
+          typeof shared?.children?.find((route) => route.path === path)
+            ?.loadComponent === 'function',
+      ),
     ).toBe(true);
-    expect(shared?.children?.find((route) => route.path === 'query')?.children?.map((r) => r.path)).toEqual([
-      ':queryId',
-    ]);
+    expect(
+      shared?.children?.find((route) => route.path === 'shipping'),
+    ).toMatchObject({
+      pathMatch: 'full',
+      redirectTo: 'sources/shipping-working-copy',
+    });
+    expect(
+      shared?.children
+        ?.find((route) => route.path === 'query')
+        ?.children?.map((r) => r.path),
+    ).toEqual([':queryId']);
     expect(shared?.loadChildren).toBeUndefined();
     expect(shared?.redirectTo).toBeUndefined();
   });
@@ -276,12 +289,13 @@ describe('navigating to a short address', () => {
       {
         ...githubProjectRoutes[1],
         loadChildren: () =>
-          options.children ?? [
+          options.children ??
+          ([
             { path: 'chat', component: PageStub },
             { path: 'queries', component: PageStub },
             { path: 'quick-search', component: PageStub },
             { path: '', component: PageStub },
-          ] as Routes,
+          ] as Routes),
       },
       { path: 'store/:storeId/project/:projectId/chat', component: LegacyStub },
       { path: 'store/:storeId/project/:projectId', component: LegacyStub },
@@ -323,23 +337,38 @@ describe('navigating to a short address', () => {
   beforeEach(() => TestBed.resetTestingModule());
 
   it.each([
-    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/card/customer', 'card/:cardId'],
-    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/cards/new', 'cards/new'],
-    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/cards', 'cards'],
-    ['/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/board/shipping', 'board/:board'],
+    [
+      '/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/card/customer',
+      'card/:cardId',
+    ],
+    [
+      '/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/cards/new',
+      'cards/new',
+    ],
+    [
+      '/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/cards',
+      'cards',
+    ],
+    [
+      '/project/github.com/datatug/datatug-demo-project/tree/project-cards/demo-project-1/-/board/shipping',
+      'board/:board',
+    ],
     ['/project/github.com/datatug/chinook-demo/card/customer', 'card/:cardId'],
-  ])('%s reaches the %s page of the real project routes', async (url, routePath) => {
-    const { datatugProjectRoutes } = await import('./datatug-routing-proj');
-    const stub = (routes: Routes): Routes =>
-      routes.map((r) =>
-        r.redirectTo !== undefined
-          ? r
-          : { path: r.path, data: r.data, component: PageStub },
-      );
-    const result = await visit(url, { children: stub(datatugProjectRoutes) });
-    expect(result.ok).toBe(true);
-    expect(result.routePath).toBe(routePath);
-  });
+  ])(
+    '%s reaches the %s page of the real project routes',
+    async (url, routePath) => {
+      const { datatugProjectRoutes } = await import('./datatug-routing-proj');
+      const stub = (routes: Routes): Routes =>
+        routes.map((r) =>
+          r.redirectTo !== undefined
+            ? r
+            : { path: r.path, data: r.data, component: PageStub },
+        );
+      const result = await visit(url, { children: stub(datatugProjectRoutes) });
+      expect(result.ok).toBe(true);
+      expect(result.routePath).toBe(routePath);
+    },
+  );
 
   it.each([
     ['/project/github.com/datatug/chinook-demo', 'chinook-demo@datatug@'],
@@ -367,20 +396,30 @@ describe('navigating to a short address', () => {
   );
 
   it('cold-opens a private Cloud address without anonymous manifest or branch reads', async () => {
-    const result = await visit('/project/github.com/o/r/tree/HEAD/folder/-/queries?projectApi=cloud&branch=work', {
-      summaryResult: () => throwError(() => new Error('private repository')),
-    });
+    const result = await visit(
+      '/project/github.com/o/r/tree/HEAD/folder/-/queries?projectApi=cloud&branch=work',
+      {
+        summaryResult: () => throwError(() => new Error('private repository')),
+      },
+    );
     expect(result.component).toBe(PageStub);
     expect(result.projectId).toBe('r@o@folder');
     expect(summary).not.toHaveBeenCalled();
     expect(branch).not.toHaveBeenCalled();
   });
-  it.each(['projectApi=other&branch=work', 'projectApi=cloud', 'projectApi=cloud&projectApi=local&branch=work'])('refuses malformed Cloud transport %s without anonymous fallback', async (query) => {
-    const result = await visit(`/project/github.com/o/r/queries?${query}`);
-    expect(result.component).toBe(ProblemStub);
-    expect(summary).not.toHaveBeenCalled();
-    expect(branch).not.toHaveBeenCalled();
-  });
+  it.each([
+    'projectApi=other&branch=work',
+    'projectApi=cloud',
+    'projectApi=cloud&projectApi=local&branch=work',
+  ])(
+    'refuses malformed Cloud transport %s without anonymous fallback',
+    async (query) => {
+      const result = await visit(`/project/github.com/o/r/queries?${query}`);
+      expect(result.component).toBe(ProblemStub);
+      expect(summary).not.toHaveBeenCalled();
+      expect(branch).not.toHaveBeenCalled();
+    },
+  );
 
   it('the old form opens as before, with no redirect and no question asked of GitHub', async () => {
     const result = await visit(
@@ -454,13 +493,16 @@ describe('navigating to a short address', () => {
         '/project/github.com/datatug/chinook-demo/Queries',
         '/project/github.com/datatug/chinook-demo/queries',
       ],
-    ])('%s -> %s, through one redirect, never to a route that matches nothing', async (typed, canonical) => {
-      const result = await visit(typed);
-      expect(result.ok).toBe(true);
-      expect(result.url).toBe(canonical);
-      expect(result.component).toBe(PageStub);
-      expect(result.projectId).toBe('chinook-demo@datatug@');
-    });
+    ])(
+      '%s -> %s, through one redirect, never to a route that matches nothing',
+      async (typed, canonical) => {
+        const result = await visit(typed);
+        expect(result.ok).toBe(true);
+        expect(result.url).toBe(canonical);
+        expect(result.component).toBe(PageStub);
+        expect(result.projectId).toBe('chinook-demo@datatug@');
+      },
+    );
   });
 
   describe('a folder with parentheses stays that folder through a redirect (review minor 3)', () => {
@@ -502,12 +544,15 @@ describe('navigating to a short address', () => {
   it.each([
     ['/project/github.com/o/r/', '/project/github.com/o/r'],
     ['/project/github.com/o/r/chat/', '/project/github.com/o/r/chat'],
-  ])('a trailing slash (%s) is dropped by the router: the canonical address %s opens, with no second navigation', async (typed, canonical) => {
-    const result = await visit(typed);
-    expect(result.url).toBe(canonical);
-    expect(result.component).toBe(PageStub);
-    expect(result.projectId).toBe('r@o@');
-  });
+  ])(
+    'a trailing slash (%s) is dropped by the router: the canonical address %s opens, with no second navigation',
+    async (typed, canonical) => {
+      const result = await visit(typed);
+      expect(result.url).toBe(canonical);
+      expect(result.component).toBe(PageStub);
+      expect(result.projectId).toBe('r@o@');
+    },
+  );
 
   describe('what is not supported shows a page that says so, at the address as typed', () => {
     it.each([
@@ -554,23 +599,53 @@ describe('navigating to a short address', () => {
     expect(notice).toHaveBeenCalledWith('o', 'r', 'main');
   });
 
-  describe('Quick Search owns q while chat questions remain private',()=>{
+  describe('Quick Search owns q while chat questions remain private', () => {
     it.each([
-      ['/project/github.com/acme/demo/quick-search?q=customer&msg=private','/project/github.com/acme/demo/quick-search?q=customer'],
-      ['/project/github.com/acme/demo/tree/main/dir/-/quick-search?q=customer','/project/github.com/acme/demo/tree/HEAD/dir/-/quick-search?q=customer'],
-      ['/PROJECT/GITHUB.COM/acme/demo/QUICK-SEARCH?q=customer','/project/github.com/acme/demo/quick-search?q=customer'],
-    ])('preserves actual query through the real guard: %s',async(from,to)=>{
-      const result=await visit(from);expect(result.url).toBe(to);expect(result.component).toBe(PageStub);
-      const router=TestBed.inject(Router);
-      await router.navigateByUrl('/project/github.com/acme/demo/quick-search?q=order');
-      expect(router.url).toBe('/project/github.com/acme/demo/quick-search?q=order');
+      [
+        '/project/github.com/acme/demo/quick-search?q=customer&msg=private',
+        '/project/github.com/acme/demo/quick-search?q=customer',
+      ],
+      [
+        '/project/github.com/acme/demo/tree/main/dir/-/quick-search?q=customer',
+        '/project/github.com/acme/demo/tree/HEAD/dir/-/quick-search?q=customer',
+      ],
+      [
+        '/PROJECT/GITHUB.COM/acme/demo/QUICK-SEARCH?q=customer',
+        '/project/github.com/acme/demo/quick-search?q=customer',
+      ],
+    ])(
+      'preserves actual query through the real guard: %s',
+      async (from, to) => {
+        const result = await visit(from);
+        expect(result.url).toBe(to);
+        expect(result.component).toBe(PageStub);
+        const router = TestBed.inject(Router);
+        await router.navigateByUrl(
+          '/project/github.com/acme/demo/quick-search?q=order',
+        );
+        expect(router.url).toBe(
+          '/project/github.com/acme/demo/quick-search?q=order',
+        );
+      },
+    );
+    it('preserves q on a registered cloud project without probing anonymous GitHub', async () => {
+      const url =
+        '/project/github.com/o/r/tree/HEAD/folder/-/quick-search?projectApi=cloud&branch=work&q=customer&msg=private';
+      const result = await visit(url);
+      expect(result.url).toBe(url.replace('&msg=private', ''));
+      expect(summary).not.toHaveBeenCalled();
+      expect(branch).not.toHaveBeenCalled();
     });
-    it('preserves q on a registered cloud project without probing anonymous GitHub',async()=>{
-      const url='/project/github.com/o/r/tree/HEAD/folder/-/quick-search?projectApi=cloud&branch=work&q=customer&msg=private';
-      const result=await visit(url);expect(result.url).toBe(url.replace('&msg=private',''));expect(summary).not.toHaveBeenCalled();expect(branch).not.toHaveBeenCalled();
-    });
-    it.each(['quick-searching','quick-search/extra','quick-seаrch','chat','queries'])('does not preserve q for lookalike or other page %s',async page=>{
-      const result=await visit('/project/github.com/acme/demo/'+page+'?q=private&msg=private');
+    it.each([
+      'quick-searching',
+      'quick-search/extra',
+      'quick-seаrch',
+      'chat',
+      'queries',
+    ])('does not preserve q for lookalike or other page %s', async (page) => {
+      const result = await visit(
+        '/project/github.com/acme/demo/' + page + '?q=private&msg=private',
+      );
       expect(result.url).not.toMatch(/[?&](q|msg)=/);
     });
   });
@@ -586,27 +661,72 @@ describe('navigating to a short address', () => {
         '/project/github.com/acme/demo/queries?msg=Q&' + FRAGMENT_AND_X,
         '/project/github.com/acme/demo/queries?x=1&y=2#frag',
       ],
-      ['/project/github.com/acme/demo/queries?q=Q', '/project/github.com/acme/demo/queries'],
-      ['/project/github.com/acme/demo/queries?msg=Q&q=R', '/project/github.com/acme/demo/queries'],
-      ['/project/github.com/acme/demo/queries?msg=', '/project/github.com/acme/demo/queries'],
-      ['/project/github.com/acme/demo/queries?msg=A&msg=B&x=1', '/project/github.com/acme/demo/queries?x=1'],
+      [
+        '/project/github.com/acme/demo/queries?q=Q',
+        '/project/github.com/acme/demo/queries',
+      ],
+      [
+        '/project/github.com/acme/demo/queries?msg=Q&q=R',
+        '/project/github.com/acme/demo/queries',
+      ],
+      [
+        '/project/github.com/acme/demo/queries?msg=',
+        '/project/github.com/acme/demo/queries',
+      ],
+      [
+        '/project/github.com/acme/demo/queries?msg=A&msg=B&x=1',
+        '/project/github.com/acme/demo/queries?x=1',
+      ],
       ['/project/github.com/acme/demo?msg=Q', '/project/github.com/acme/demo'],
-      ['/project/github.com/acme/demo/chat?msg=Q&lang=ru', '/project/github.com/acme/demo/chat?lang=ru'],
-      ['/project/github.com/acme/demo/tree/HEAD/dir/-/chat?msg=Q', '/project/github.com/acme/demo/tree/HEAD/dir/-/chat'],
+      [
+        '/project/github.com/acme/demo/chat?msg=Q&lang=ru',
+        '/project/github.com/acme/demo/chat?lang=ru',
+      ],
+      [
+        '/project/github.com/acme/demo/tree/HEAD/dir/-/chat?msg=Q',
+        '/project/github.com/acme/demo/tree/HEAD/dir/-/chat',
+      ],
       // other spellings of the same path, which the router's parser reads as the address
-      ['//project/github.com/acme/demo/queries?msg=Q', '/project/github.com/acme/demo/queries'],
-      ['///project/github.com/acme/demo/queries?msg=Q&x=1', '/project/github.com/acme/demo/queries?x=1'],
-      ['/(project/github.com/acme/demo/queries)?msg=Q', '/project/github.com/acme/demo/queries'],
-      ['//project/github.com/acme/demo/chat?msg=Q', '/project/github.com/acme/demo/chat'],
-      ['/(project/github.com/acme/demo/chat)?msg=Q', '/project/github.com/acme/demo/chat'],
+      [
+        '//project/github.com/acme/demo/queries?msg=Q',
+        '/project/github.com/acme/demo/queries',
+      ],
+      [
+        '///project/github.com/acme/demo/queries?msg=Q&x=1',
+        '/project/github.com/acme/demo/queries?x=1',
+      ],
+      [
+        '/(project/github.com/acme/demo/queries)?msg=Q',
+        '/project/github.com/acme/demo/queries',
+      ],
+      [
+        '//project/github.com/acme/demo/chat?msg=Q',
+        '/project/github.com/acme/demo/chat',
+      ],
+      [
+        '/(project/github.com/acme/demo/chat)?msg=Q',
+        '/project/github.com/acme/demo/chat',
+      ],
       // not the canonical spelling, a redirect of its own: the question goes in the first step
-      ['/Project/GitHub.com/Acme/Demo/Queries?msg=Q#f', '/project/github.com/acme/demo/queries#f'],
-      ['/project/github.com/acme/demo/tree/main/dir/-/queries?msg=Q', '/project/github.com/acme/demo/tree/HEAD/dir/-/queries'],
+      [
+        '/Project/GitHub.com/Acme/Demo/Queries?msg=Q#f',
+        '/project/github.com/acme/demo/queries#f',
+      ],
+      [
+        '/project/github.com/acme/demo/tree/main/dir/-/queries?msg=Q',
+        '/project/github.com/acme/demo/tree/HEAD/dir/-/queries',
+      ],
       // an address that says there is a problem
-      ['/project/github.com/acme/demo/blob/main/x.txt?msg=Q', '/project/github.com/acme/demo/blob/main/x.txt'],
+      [
+        '/project/github.com/acme/demo/blob/main/x.txt?msg=Q',
+        '/project/github.com/acme/demo/blob/main/x.txt',
+      ],
       ['/project/github.com/acme?msg=Q&x=1', '/project/github.com/acme?x=1'],
       // a name that only looks like the parameter is not it
-      ['/project/github.com/acme/demo/queries?MSG=Q&msgx=1&xq=2', '/project/github.com/acme/demo/queries?MSG=Q&msgx=1&xq=2'],
+      [
+        '/project/github.com/acme/demo/queries?MSG=Q&msgx=1&xq=2',
+        '/project/github.com/acme/demo/queries?MSG=Q&msgx=1&xq=2',
+      ],
     ])('%s -> %s', async (typed, becomes) => {
       const result = await visit(typed);
       expect(result.ok).toBe(true);
@@ -632,20 +752,28 @@ describe('navigating to a short address', () => {
       const router = TestBed.inject(Router);
       const urls: string[] = [];
       router.events.subscribe(() => urls.push(router.url));
-      await router.navigateByUrl('/project/github.com/acme/demo/queries?msg=Q#f');
+      await router.navigateByUrl(
+        '/project/github.com/acme/demo/queries?msg=Q#f',
+      );
       expect(router.url).toBe('/project/github.com/acme/demo/queries#f');
       // and nothing the router did in between had the question: the URL it had was always the one from before
       expect(urls.filter((u) => /msg|Q/.test(u))).toEqual([]);
-      await router.navigate(['/project', 'github.com', 'acme', 'demo', 'queries'], {
-        queryParams: { q: 'Q', x: '1' },
-      });
+      await router.navigate(
+        ['/project', 'github.com', 'acme', 'demo', 'queries'],
+        {
+          queryParams: { q: 'Q', x: '1' },
+        },
+      );
       expect(router.url).toBe('/project/github.com/acme/demo/queries?x=1');
     });
 
     it('the Incidentius profile, which has no short route, is as before: this route does not touch its query', async () => {
-      const result = await visit('/project/github.com/acme/demo/queries?msg=Q', {
-        profile: 'incidentius',
-      });
+      const result = await visit(
+        '/project/github.com/acme/demo/queries?msg=Q',
+        {
+          profile: 'incidentius',
+        },
+      );
       expect(result.component).toBe(OtherStub);
       expect(result.url).toBe('/project/github.com/acme/demo/queries?msg=Q');
     });
@@ -655,32 +783,52 @@ describe('navigating to a short address', () => {
   // address would open folder `a`, silently. It is not an address of a project; say so.
   describe('an address with an outlet group shows the unsupported-address page (review r2, minor 3)', () => {
     /** The page's first navigation, as the browser's address bar has it (the router reads it from Location). */
-    async function openAt(typed: string, profile: 'datatug' | 'incidentius' = 'datatug') {
+    async function openAt(
+      typed: string,
+      profile: 'datatug' | 'incidentius' = 'datatug',
+    ) {
       summary = vi.fn(() => of({ id: 'x' }));
       branch = vi.fn(async () => ({ kind: 'found', branch: 'main' }));
       TestBed.configureTestingModule({
         providers: [
           { provide: PRODUCT_PROFILE, useValue: PRODUCT_PROFILES[profile] },
           { provide: GithubDefaultBranchLookup, useValue: { lookup: branch } },
-          { provide: GithubAddressNotices, useValue: { defaultBranchUnknown: vi.fn() } },
-          { provide: DatatugStoreGithubService, useValue: { getProjectSummary: summary } },
+          {
+            provide: GithubAddressNotices,
+            useValue: { defaultBranchUnknown: vi.fn() },
+          },
+          {
+            provide: DatatugStoreGithubService,
+            useValue: { getProjectSummary: summary },
+          },
           provideLocationMocks(),
           provideRouter([
             ...githubProjectRoutes.map((r, i) =>
               i === 0
                 ? { ...r, loadComponent: () => ProblemStub }
-                : { ...r, loadChildren: () => [{ path: 'queries', component: PageStub }, { path: '', component: PageStub }] as Routes },
+                : {
+                    ...r,
+                    loadChildren: () =>
+                      [
+                        { path: 'queries', component: PageStub },
+                        { path: '', component: PageStub },
+                      ] as Routes,
+                  },
             ),
             { path: '**', component: OtherStub },
           ]),
         ],
       });
-      (TestBed.inject(Location) as unknown as SpyLocation).setInitialPath(typed);
+      (TestBed.inject(Location) as unknown as SpyLocation).setInitialPath(
+        typed,
+      );
       const router = TestBed.inject(Router);
       router.initialNavigation();
       await firstValueFrom(
         router.events.pipe(
-          filter((e) => e instanceof NavigationEnd || e instanceof NavigationError),
+          filter(
+            (e) => e instanceof NavigationEnd || e instanceof NavigationError,
+          ),
         ),
       );
       let leaf: ActivatedRouteSnapshot = router.routerState.snapshot.root;
@@ -722,10 +870,13 @@ describe('navigating to a short address', () => {
       '//project/github.com/acme/demo/queries',
       '/project/github.com/acme/demo/queries',
       '/project/github.com/acme/demo/tree/HEAD/a%28b%29/-/queries',
-    ])('%s has none: a path written as one group at the root is the path, and an encoded parenthesis is a character', async (typed) => {
-      const result = await openAt(typed);
-      expect(result.component).toBe(PageStub);
-    });
+    ])(
+      '%s has none: a path written as one group at the root is the path, and an encoded parenthesis is a character',
+      async (typed) => {
+        const result = await openAt(typed);
+        expect(result.component).toBe(PageStub);
+      },
+    );
 
     it('a folder with encoded parentheses is still that folder', async () => {
       const result = await visit(
@@ -749,10 +900,20 @@ describe('navigating to a short address', () => {
       beforeEach(() => TestBed.resetTestingModule());
 
       it('the browser shows a group the router dropped', () => {
-        expect(stand('/project/github.com/o/r/tree/HEAD/a(b)/-/queries', '/project/github.com/o/r/tree/HEAD/a(b)/-/queries')).toBe(true);
+        expect(
+          stand(
+            '/project/github.com/o/r/tree/HEAD/a(b)/-/queries',
+            '/project/github.com/o/r/tree/HEAD/a(b)/-/queries',
+          ),
+        ).toBe(true);
       });
       it('the browser shows another address (an in-app navigation is on its way): its URL has no group', () => {
-        expect(stand('/project/github.com/o/r/tree/HEAD/a(b)/-/queries', '/project/github.com/o/r/queries')).toBe(false);
+        expect(
+          stand(
+            '/project/github.com/o/r/tree/HEAD/a(b)/-/queries',
+            '/project/github.com/o/r/queries',
+          ),
+        ).toBe(false);
       });
       it('a named group is in the URL tree, whatever the browser shows (the router cannot match it, and fails, as before)', () => {
         for (const typed of [
@@ -763,11 +924,18 @@ describe('navigating to a short address', () => {
         }
       });
       it('the address in the browser has none', () => {
-        expect(stand('/project/github.com/o/r/queries', '/project/github.com/o/r/queries')).toBe(false);
+        expect(
+          stand(
+            '/project/github.com/o/r/queries',
+            '/project/github.com/o/r/queries',
+          ),
+        ).toBe(false);
       });
       it('a navigation that is not under way has none', () => {
         TestBed.configureTestingModule({ providers: [provideRouter([])] });
-        expect(urlHasOutletGroup(router(), { path: () => '/a(b)' })).toBe(false);
+        expect(urlHasOutletGroup(router(), { path: () => '/a(b)' })).toBe(
+          false,
+        );
       });
     });
 
@@ -808,7 +976,9 @@ describe('navigating to a short address', () => {
       const result = await visit(typed);
       expect(result.url).toBe(canonical);
       expect(result.component).toBe(PageStub);
-      expect(result.projectId).toBe('demo@acme@' + (typed.includes('/dir/') ? 'dir' : ''));
+      expect(result.projectId).toBe(
+        'demo@acme@' + (typed.includes('/dir/') ? 'dir' : ''),
+      );
     });
 
     it('an address that is not a project keeps showing why, matrix parameters or not', async () => {
@@ -851,7 +1021,11 @@ describe('navigating to a short address', () => {
         ],
       });
       const result = await TestBed.runInInjectionContext(() =>
-        githubAddressCanMatch({} as never, segments('/project/github.com/O/r'), {} as never),
+        githubAddressCanMatch(
+          {} as never,
+          segments('/project/github.com/O/r'),
+          {} as never,
+        ),
       );
       expect(TestBed.inject(Router).serializeUrl(result as never)).toBe(
         '/project/github.com/o/r',
@@ -865,7 +1039,11 @@ describe('navigating to a short address', () => {
         ],
       });
       const result = await TestBed.runInInjectionContext(() =>
-        githubAddressCanMatch({} as never, segments('/project/github.com/o/r'), {} as never),
+        githubAddressCanMatch(
+          {} as never,
+          segments('/project/github.com/o/r'),
+          {} as never,
+        ),
       );
       expect(result).toBe(false);
     });

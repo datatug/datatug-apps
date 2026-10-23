@@ -15,7 +15,8 @@ import { DatatugNavContextService } from '../services/nav/datatug-nav-context.se
 import { DatatugNavService } from '../services/nav/datatug-nav.service';
 import { DetectiveClientService } from '../detective/detective-client.service';
 import { ShippingApiService } from '../shipping/shipping-api.service';
-import { ShippingWorkspaceComponent } from '../shipping/shipping-workspace.component';
+import { SourceWorkspacePageComponent } from '../source-workspace/source-workspace-page.component';
+import { SOURCE_ADAPTER_PROVIDERS } from './source-adapter-providers';
 import { HostedBoardWorkspaceComponent } from '../board/ui/pages/board/hosted-board-workspace.component';
 import { BoardPageComponent } from '../board/ui/pages/board/board-page.component';
 import { BoardsPageComponent } from '../board/ui/pages/boards/boards-page.component';
@@ -65,6 +66,7 @@ describe('actual native Space router workspaces', () => {
     TestBed.configureTestingModule({
       imports: [ProjectMenuComponent],
       providers: [
+        ...SOURCE_ADAPTER_PROVIDERS,
         {
           provide: ShippingComponentApiService,
           useValue: {
@@ -148,10 +150,10 @@ describe('actual native Space router workspaces', () => {
     const h = await RouterTestingHarness.create();
     const destination = projectPageHref(ref, 'shipping');
     expect(destination).toBe(`${base}/shipping`);
-    await h.navigateByUrl(destination, ShippingWorkspaceComponent);
+    await h.navigateByUrl(destination, SourceWorkspacePageComponent);
     await vi.waitFor(() =>
       expect(h.routeNativeElement?.textContent).toContain(
-        'Routing configuration 17',
+        'Routing configuration',
       ),
     );
     expect(h.routeNativeElement?.querySelector('a')?.getAttribute('href')).toBe(
@@ -174,6 +176,7 @@ describe('actual native Space router workspaces', () => {
             exists: true,
             installation: {
               boardIds: ['shipping'],
+              queryIds: ['shipping/request-receipt'],
               checkIds: ['shipping-request-received'],
             },
           }),
@@ -195,19 +198,22 @@ describe('actual native Space router workspaces', () => {
       }),
     );
     const h = await RouterTestingHarness.create();
-    await h.navigateByUrl(`${base}/shipping`, ShippingWorkspaceComponent);
+    await h.navigateByUrl(`${base}/shipping`, SourceWorkspacePageComponent);
     await vi.waitFor(() =>
       expect(h.routeNativeElement?.textContent).toContain(
-        'Open shipping board',
+        'Open board · shipping',
       ),
     );
     expect(
       h.routeNativeElement?.querySelector(
         'sneat-datatug-shipping-query-access',
       ),
-    ).toBeTruthy();
+    ).toBeNull();
     expect(
       h.routeNativeElement?.querySelector('sneat-shipping-component-installer'),
+    ).toBeNull();
+    expect(
+      h.routeNativeElement?.querySelector('sneat-source-details'),
     ).toBeTruthy();
     const router = TestBed.inject(Router);
     const destination = h.routeDebugElement

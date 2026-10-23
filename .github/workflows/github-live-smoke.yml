@@ -1,0 +1,94 @@
+name: GitHub live smoke
+
+# The ONE e2e lane that talks to the real GitHub (api.github.com, raw.githubusercontent.com, cdn.jsdelivr.net). Every other
+# lane answers GitHub from shallow checkouts of the commits in apps/datatug-app/e2e/github-pins.json and fails a test whose
+# GitHub request reaches the network (apps/datatug-app/e2e/helpers/demodb-guard.ts, GITHUB_E2E_MODE=checkout).
+#
+# Runs after a push to main (what deploys), or by hand. Never on a pull request, never on a schedule. It proves two things:
+#   1. every pin still exists on GitHub and GitHub still answers it the way the fake does (commit, recursive tree, a raw
+#      file byte for byte); a pin that only lives in a pull request ref can disappear;
+#   2. the reader still works against the real hosts at the demo project's live `main`: the G-A2 request-budget walk of
+#      github-store.spec.ts (cold + warm visit, every side-menu page), with at most GITHUB_E2E_MAX_LIVE_REQUESTS (30) API
+#      calls per test and GITHUB_E2E_MAX_RUN_LIVE_REQUESTS (50) per run, under the anonymous 60 an hour; a 403 with
+#      x-ratelimit-remaining 0 stops the run. Chromium only, one worker, no retries.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: github-live-smoke
+  cancel-in-progress: false
+
+jobs:
+  live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      actions: read
+      contents: read
+      attestations: read
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Check every GitHub pin against the real GitHub
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          node scripts/fetch-github-pins.mjs
+          jq -r '.pins[] | "\(.repo) \(.sha)"' apps/datatug-app/e2e/github-pins.json | while read -r repo sha; do
+            dir="tmp/github-checkouts/$repo/$sha"
+            test "$(gh api "repos/$repo/commits/$sha" --jq .sha)" = "$sha"
+            test "$(gh api "repos/$repo/git/trees/$sha?recursive=1" --jq '.truncated')" = false
+            test "$(gh api "repos/$repo/git/trees/$sha?recursive=1" --jq '[.tree[] | select(.type == "blob")] | length')" = "$(git -C "$dir" ls-tree -r "$sha" | grep -c ' blob ')"
+            file="$(git -C "$dir" ls-tree -r --name-only "$sha" | grep -E '\.(json|md|ya?ml)$' | head -1)"
+            curl -fsSL "https://raw.githubusercontent.com/$repo/$sha/$file" | cmp - <(git -C "$dir" show "$sha:$file")
+            echo "pin ok: $repo@$sha ($file)"
+          done
+
+      - name: Authenticate private Core artifact verification
+        id: core-artifact-token
+        uses: ./.github/actions/private-core-artifact
+        with:
+          private-key: ${{ secrets.SNEAT_RELEASER_PRIVATE_KEY }}
+
+      - uses: ./.github/actions/pnpm
+
+      # DemoDB stays on its fixtures here (the DemoDB live smoke is demodb-live-smoke.yml).
+      - name: Restore DemoDB fixtures
+        uses: actions/cache/restore@v5
+        with:
+          path: tmp/demodb-fixtures
+          key: demodb-fixtures-v2-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs') }}
+
+      - name: Install Chromium
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Run the live GitHub walk (Chromium, one worker, no retries)
+        env:
+          GH_TOKEN: ${{ steps.core-artifact-token.outputs.token }}
+          GITHUB_E2E_MODE: live
+          GITHUB_E2E_MAX_LIVE_REQUESTS: '30'
+          GITHUB_E2E_MAX_RUN_LIVE_REQUESTS: '50'
+        run: >-
+          pnpm exec playwright test -c apps/datatug-app/playwright.config.ts --project=chromium --workers=1 --retries=0
+          --forbid-only --max-failures=1 github-store.spec.ts -g "request budget|every side-menu page loads"
+
+      - name: Print request report
+        if: always()
+        run: |
+          shopt -s nullglob
+          for report in "$GITHUB_WORKSPACE"/coverage/demodb-request-report-*.md; do cat "$report"; done
+
+      - name: Upload live smoke report
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: github-live-smoke-playwright-report
+          path: coverage/apps/datatug-app-e2e/report
+          if-no-files-found: ignore

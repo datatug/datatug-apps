@@ -57,12 +57,7 @@ test.skip(
 );
 
 test.beforeEach(async ({ context }) => {
-  if (GITHUB_FAKE_DIR) {
-    await installPinnedChinookSqlite(context, GITHUB_FAKE_DIR);
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: GITHUB_FAKE_DIR },
-    ]);
-  }
+  if (GITHUB_FAKE_DIR) await installPinnedChinookSqlite(context, GITHUB_FAKE_DIR);
 });
 
 const PROJECT_ID = 'datatug-demo-project@datatug@demo-project-1';
@@ -376,7 +371,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       });
     }
     await activePage(page).getByText('Album', { exact: true }).click();
-    await expect(activePage(page).getByText('Title')).toBeVisible({
+    await expect(activePage(page).getByText('Title', { exact: true })).toBeVisible({
       timeout: 15_000,
     });
     await expect(
@@ -652,17 +647,11 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .getByTitle('Edit')
       .click();
 
-    // The live header follows the selected query title while preserving the
-    // surrounding project context.
-    await expect
-      .poll(
-        () =>
-          activePage(page)
-            .locator('ion-input[placeholder="Title - is required"]')
-            .evaluate((el: unknown) => (el as { value?: string }).value),
-        { timeout: 20_000 },
-      )
-      .toBe('Customer invoices');
+    // The one page header (its h1) carries the selected query's title; the title input only appears for a new
+    // query (one header, #513).
+    await expect(
+      activePage(page).getByRole('heading', { level: 1 }),
+    ).toHaveText('Customer invoices', { timeout: 20_000 });
     // The query BODY (from the .query.dtql sidecar file) — proves get_query's
     // GitHub equivalent actually read the file content, not just the
     // definition JSON (which never carries `text` for the folder-list view).
@@ -701,17 +690,10 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .getByTitle('Edit')
       .click();
 
-    // See the previous test's own doc comment: the real title lives in an
-    // `ion-input [value]`, not the header's hardcoded `ion-title`.
-    await expect
-      .poll(
-        () =>
-          activePage(page)
-            .locator('ion-input[placeholder="Title - is required"]')
-            .evaluate((el: unknown) => (el as { value?: string }).value),
-        { timeout: 20_000 },
-      )
-      .toBe('Albums by title');
+    // See the previous test's own doc comment: the title is the page header's h1.
+    await expect(
+      activePage(page).getByRole('heading', { level: 1 }),
+    ).toHaveText('Albums by title', { timeout: 20_000 });
     // See `getQueryBodyText()`'s own doc comment: this query type has no
     // body editor UI at all currently, so read component state instead.
     await expect
@@ -771,7 +753,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     // The complex SQL has no authoritative source inventory. A display-text
     // FROM/JOIN scan must not be presented as catalog-confirmed source facts.
-    await page.getByTestId('workspace-sources-tab').click();
+    // A saved query shows Sources under More, until it is opened.
+    await page.getByTestId('workspace-more-tab').click();
+    await page.getByTestId('workspace-more-sources').click();
     await expect(page.getByTestId('workspace-sources-panel')).toContainText(
       'Authoritative source inventory is unavailable',
     );

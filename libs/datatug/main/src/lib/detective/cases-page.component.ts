@@ -1,3 +1,4 @@
+import { BusinessClockChipComponent } from '../source-workspace/business-clock-chip.component';
 import { SessionWorkspaceService } from '../session-context/session-workspace.service';
 import { CommonModule } from '@angular/common';
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
@@ -108,6 +109,7 @@ const NEW_CASE = (): DetectiveCase => ({
   styleUrl: './detective-pages.scss',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    BusinessClockChipComponent,
     CommonModule,
     FormsModule,
     RouterLink,

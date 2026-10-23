@@ -1,3 +1,4 @@
+import { ProjectEnvironmentStateService } from './project-environment-state.service';
 import { ProjectQueryApiService } from './project-query-api.service';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { of, switchMap, startWith } from 'rxjs';
@@ -45,6 +46,9 @@ import type { ProjectBillingIntent } from './project-query-api.service';
 @Injectable({ providedIn: 'root' })
 export class ProjectService {
   private readonly injector = inject(Injector);
+  private get environmentState(): ProjectEnvironmentStateService {
+    return this.injector.get(ProjectEnvironmentStateService);
+  }
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly http = inject(HttpClient);
   private readonly privateTokenStoreService = inject(PrivateTokenStoreService);
@@ -55,7 +59,8 @@ export class ProjectService {
   // store type the factory resolves is `firestore`, which is the same root
   // singleton this injection returns, so this is behaviour-preserving. Same
   // pattern as `EnvironmentService` / `SchemaService`.
-  private readonly sneatApiService: ISneatApiService = inject(DatatugApiService);
+  private readonly sneatApiService: ISneatApiService =
+    inject(DatatugApiService);
   private readonly datatugStoreServiceFactory = inject(
     DatatugStoreServiceFactory,
   );
@@ -77,6 +82,34 @@ export class ProjectService {
   }
 
   public watchProjectSummary(
+    projectRef: IProjectRef,
+  ): Observable<IProjectSummary | undefined> {
+    return this.rawProjectSummary(projectRef).pipe(
+      switchMap((summary) => {
+        if (!summary) return of(undefined);
+        // Metadata authority does not authorize an environment inventory.
+        const metadata = { ...summary, environments: undefined };
+        return this.environmentState
+          .watchResult(projectRef, () =>
+            of(
+              (summary.environments || []).map((environment) => ({
+                ...environment,
+                title: environment.title || environment.id,
+              })),
+            ),
+          )
+          .pipe(
+            map((result) =>
+              result.status === 'ready'
+                ? { ...metadata, environments: result.view.items }
+                : metadata,
+            ),
+          );
+      }),
+    );
+  }
+
+  private rawProjectSummary(
     projectRef: IProjectRef,
   ): Observable<IProjectSummary | undefined> {
     if (!isValidProjectRef(projectRef)) {
@@ -169,7 +202,24 @@ export class ProjectService {
           params: { id: projectRef.projectId },
         },
       )
-      .pipe(shareReplay(1));
+      .pipe(
+        switchMap((full) =>
+          this.environmentState
+            .watch(projectRef, () => of(full.environments || []))
+            .pipe(
+              map((view) => ({
+                ...full,
+                environments: view.items.map((environment) => ({
+                  ...full.environments?.find(
+                    (old) => old.id === environment.id,
+                  ),
+                  ...environment,
+                })),
+              })),
+            ),
+        ),
+        shareReplay({ bufferSize: 1, refCount: true }),
+      );
     this.projects[cacheKey] = $project;
     return $project;
   }

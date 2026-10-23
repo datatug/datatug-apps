@@ -756,7 +756,7 @@ describe('standard session editing actions', () => {
           sourceId: 'orders-second',
         },
       ]),
-    ).toThrow(/Invalid chart configuration/);
+    ).toThrow(/Keep at least one chart source/);
     expect(() =>
       replayBoardActions(editable, [
         ...reveal,
@@ -767,7 +767,7 @@ describe('standard session editing actions', () => {
           queryId: 'demodb/countries',
         },
       ]),
-    ).toThrow(/one source for a bar race/);
+    ).toThrow(/plain bar chart with a declared common unit/);
     expect(() =>
       replayBoardActions(editable, [
         ...reveal,

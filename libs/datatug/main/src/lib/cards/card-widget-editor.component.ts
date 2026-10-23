@@ -260,7 +260,7 @@ type Data = Record<string, any>; // eslint-disable-line @typescript-eslint/no-ex
       .hint {
         margin: 0;
         font-size: 0.85rem;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
       }
       .binding {
         display: flex;

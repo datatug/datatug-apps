@@ -6,7 +6,7 @@ When changing visible copy or selectors, search all browser and unit specs for t
 
 Run lint through the owning Nx project target, such as `pnpm nx lint datatug-main` for library UI and `pnpm nx lint datatug-app` for app/E2E code. A direct ESLint command from the workspace root does not load every project's Angular rules and cannot substitute for these checks. For a file-only command, explicitly select that project's ESLint configuration.
 
-For a group of related changes, keep them on one integration branch and PR. Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
+For a group of related changes, keep them on one integration branch; lane branches merge into it locally without PRs, and only the one integration-to-main PR runs full CI (`rule:integration-branch-default-flow` in `sneat-co/backstage`). Run the required build and test checks against the final combined head before landing. Run focused browser and CLI journeys for the behavior changed by that branch. If the head changes after that run, rerun the affected focused checks against the new head.
 
 There is no scheduled (nightly) CI run. Push, PR, and merge-group CI runs the offline browser and real-agent lanes and their deploy gate requires them together with build and unit tests; the one live-API test is `e2e-postgres-ovdb.yml` (below). Focused tests still run during development. Do not skip the required build, test, or coverage gates.
 
@@ -35,17 +35,20 @@ Pull requests, merge groups and pushes run the offline browser and real-agent la
 
 The AdventureWorks in-browser journey (download through the chunked gzip parts, verify, open, read, edit, reload, Reset) is its own workflow, `.github/workflows/demo-sqlite-adventureworks.yml`, in Chromium only, because the file is 126.8 MB unpacked and is downloaded twice. It runs on a pull request and on a push to `main` only when demo SQLite code, its catalog, the DemoDB guard or fixtures, the lane itself or the dependencies changed, and by hand; never on a schedule, and it is not part of `deploy-gate`. It sends no request to a DemoDB host: the gzip parts come from the `demo-db/adventureworks` GitHub repository (`apps/datatug-app/e2e/README.md`, "DemoDB fixtures"). When you change demo SQLite code, run `pnpm nx run datatug-app:e2e-demo-sqlite-adventureworks` locally.
 
-The Chromium app and Query mobile WebKit jobs use the validated demo catalog revision
-`7c67575a8313d67ecae364c1dd7164ee85c48ae0` (it carries required creation dates on all 59 query definitions and the server-comparison query the showcase specs read), and the demo
-SQLite job uses `7c67575a8313d67ecae364c1dd7164ee85c48ae0`, through the fake GitHub
-reader. The app job verifies GitHub's API, tree and raw source at its commit. The demo SQLite job includes the edited-copy Board to Query acceptance
-in its existing three-browser suite. The demo catalog admits the relative
-bundled Chinook asset and rights sidecar; the app serves those exact checked
-bytes and the real SQLite worker executes them. The standalone `/demo/sqlite`
-import and comparison baseline still use their declared public URLs, served
-from the same checked-in bundled bytes only in focused browser journeys.
-Other live dataset checks and demo checkouts remain independent of this
-browser catalog pin.
+Every GitHub repository the e2e suites read is pinned in ONE place, `apps/datatug-app/e2e/github-pins.json`
+(see `apps/datatug-app/e2e/README.md`, "GitHub checkouts"). The browser lanes (Chromium app, Query mobile WebKit,
+demo SQLite) read the demo project at pin `demo-browser` (the validated catalog revision: required creation dates on
+all 59 query definitions and the server-comparison query the showcase specs read); the independent chart sources
+journey (`showcase-independent-sources.spec.ts`), which needs per-database customer queries that pin predates, runs
+through `datatug-app:e2e-showcase-independent` at pin `demo-independent`; the real-agent journey and card-link jobs
+check out pin `demo-agent`. The guard answers `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net`
+from shallow checkouts of those commits and fails a test whose GitHub request reaches the network or names a commit
+or branch no pin answers. The one lane that reads the real GitHub, and checks every pin still exists there, is
+`.github/workflows/github-live-smoke.yml` (push to `main`, or by hand). The demo SQLite job includes the edited-copy
+Board to Query acceptance in its three-browser suite. The demo catalog admits the relative bundled Chinook asset and
+rights sidecar; the app serves those exact checked bytes and the real SQLite worker executes them. The standalone
+`/demo/sqlite` import and comparison baseline still use their declared public URLs, served from the same checked-in
+bundled bytes only in focused browser journeys. Bump a pin deliberately, together with the specs that read it.
 
 ## Project Meanings acceptance
 

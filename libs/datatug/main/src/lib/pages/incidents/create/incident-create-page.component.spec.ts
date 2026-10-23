@@ -1,10 +1,12 @@
 import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
+import { By } from '@angular/platform-browser';
 import {
   ActivatedRoute,
   convertToParamMap,
   provideRouter,
   Router,
+  RouterLink,
 } from '@angular/router';
 import {
   AgentContextService,
@@ -159,6 +161,78 @@ describe('IncidentCreatePageComponent', () => {
     await render();
   });
 
+  it('opens a clearly labelled editable test draft without creating anything', async () => {
+    TestBed.resetTestingModule();
+    await render({ draft: 'test' });
+    const page = peek(fixture.componentInstance);
+    expect(page.title).toBe('[Test] Investigate a delayed delivery');
+    expect(fixture.nativeElement.textContent).toContain('editable example');
+    expect(createSpy).not.toHaveBeenCalled();
+    page.title = '[Test] My edited report';
+    page.description = 'My own observation';
+    securityContextId.set('refreshed-context');
+    fixture.detectChanges();
+    expect(page.title).toBe('[Test] My edited report');
+    createSpy.mockReturnValue(of({ kind: 'ok', data: incident() }));
+    const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+    page.submit();
+    expect(createSpy).toHaveBeenCalledWith(
+      'localhost:8989',
+      expect.objectContaining({
+        title: '[Test] My edited report',
+        description: 'My own observation',
+      }),
+    );
+    expect(navigate).toHaveBeenCalledWith(
+      ['/incidents', 'ops', 'INC-1'],
+      expect.objectContaining({ replaceUrl: true }),
+    );
+  });
+
+  it('clears a canceled test draft and never overwrites unsaved text on a reused route', async () => {
+    TestBed.resetTestingModule();
+    await render({ draft: 'test' });
+    const page = peek(fixture.componentInstance);
+    (
+      fixture.componentInstance as unknown as { cancelDraft(): void }
+    ).cancelDraft();
+    page.ionViewDidEnter();
+    expect(page.title).toBe('[Test] Investigate a delayed delivery');
+    (
+      fixture.componentInstance as unknown as { cancelDraft(): void }
+    ).cancelDraft();
+    queryParamMap$.next(convertToParamMap({}));
+    fixture.detectChanges();
+    expect(page.title).toBe('');
+    expect(page.description).toBe('');
+    page.title = 'Unsaved real report';
+    queryParamMap$.next(convertToParamMap({ draft: 'test' }));
+    fixture.detectChanges();
+    expect(page.title).toBe('Unsaved real report');
+    expect(createSpy).not.toHaveBeenCalled();
+  });
+
+  it('starts a real report blank and keeps Cancel scoped without a test marker', () => {
+    const page = peek(fixture.componentInstance);
+    expect(page.title).toBe('');
+    expect(page.description).toBe('');
+    const cancel = Array.from(
+      fixture.nativeElement.querySelectorAll('ion-button'),
+    ).find(
+      (node) => (node as HTMLElement).textContent?.trim() === 'Cancel',
+    ) as HTMLElement;
+    expect(cancel).toBeTruthy();
+    expect(
+      fixture.debugElement
+        .queryAll(By.directive(RouterLink))
+        .find((element) => element.nativeElement === cancel)
+        ?.injector.get(RouterLink)
+        .urlTree?.toString(),
+    ).toBe(
+      '/incidents?agent=localhost:8989&storeId=billing&project=billing&environment=prod',
+    );
+    expect(createSpy).not.toHaveBeenCalled();
+  });
   it('does not submit an empty title', () => {
     peek(fixture.componentInstance).title = '   ';
     peek(fixture.componentInstance).submit();
@@ -622,6 +696,67 @@ describe('IncidentCreatePageComponent', () => {
       },
     );
   });
+
+  it.each(['test', ''])(
+    'keeps API branch and actual store scope on Cancel and real returned detail for draft %s',
+    async (draft) => {
+      TestBed.resetTestingModule();
+      const scope = {
+        agent: 'agent-b:8989',
+        storeId: 'team-incident-store',
+        project: 'fulfilment',
+        environment: 'staging',
+      };
+      const qualifiers = {
+        projectApi: 'local',
+        branch: 'feature/incident-scope',
+      };
+      const path = '/store/agent-b:8989/project/fulfilment/incidents';
+      await render(
+        { ...scope, ...qualifiers, ...(draft ? { draft } : {}) },
+        undefined,
+        path + '/new?' + new URLSearchParams(qualifiers),
+      );
+      const cancel = fixture.debugElement
+        .queryAll(By.directive(RouterLink))
+        .find(
+          (element) => element.nativeElement.textContent.trim() === 'Cancel',
+        );
+      if (!cancel) throw new Error('Cancel link is missing');
+      const cancelTree = cancel.injector.get(RouterLink).urlTree;
+      expect(cancelTree?.toString().split('?')[0]).toBe(path);
+      expect(cancelTree?.queryParams).toEqual({ ...qualifiers, ...scope });
+      expect(createSpy).not.toHaveBeenCalled();
+      const page = peek(fixture.componentInstance);
+      page.title = 'A real edited report';
+      page.description = 'An observed delay';
+      createSpy.mockReturnValue(
+        of({
+          kind: 'ok',
+          data: incident('returned-store', 'INC-native-result'),
+        }),
+      );
+      const navigate = vi.spyOn(router, 'navigate').mockResolvedValue(true);
+      page.submit();
+      expect(createSpy).toHaveBeenCalledWith(
+        scope.agent,
+        expect.objectContaining({
+          storeId: scope.storeId,
+          project: scope.project,
+          environment: scope.environment,
+          title: 'A real edited report',
+          description: 'An observed delay',
+        }),
+      );
+      expect(navigate).toHaveBeenCalledWith(
+        [path + '/returned-store/INC-native-result'],
+        {
+          queryParams: { ...qualifiers, ...scope, storeId: 'returned-store' },
+          replaceUrl: true,
+        },
+      );
+    },
+  );
 
   it('keeps the draft, restores controls, and reuses the mutation id on failure', () => {
     createSpy.mockReturnValue(

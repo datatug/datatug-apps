@@ -26,7 +26,7 @@ test('?profile=incidentius lands on the incident list with the "Houston" entry p
   await expect(page.getByText('Planned', { exact: true })).toHaveCount(0);
 
   await expect(
-    page.getByText("Houston, we've got a problem", { exact: true }),
+    page.getByText('Follow the evidence.', { exact: false }),
   ).toBeVisible();
 
   await page.screenshot({

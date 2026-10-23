@@ -15,6 +15,8 @@ import type {
 } from './row-evidence';
 
 export interface TimelineChartSpec {
+  readonly timeMode?: 'absolute' | 'elapsed';
+  readonly anchorColumn?: string;
   readonly laneColumn: string;
   readonly eventColumn: string;
   readonly sequenceColumn: string;
@@ -61,6 +63,10 @@ export type EvidenceChartSpec =
       readonly timing: TimingChartSpec;
     };
 export interface HeldEvidenceIdentity {
+  readonly comparison?: {
+    readonly members: readonly TypedValue[];
+    readonly projection: Readonly<Record<'memberColumn' | 'observationColumn' | 'laneColumn' | 'eventColumn' | 'sequenceColumn' | 'timeColumn' | 'clockDomainColumn' | 'precisionColumn' | 'statusColumn' | 'anchorColumn', string>>;
+  };
   /** Expected held context, never a grant of authorization. */
   readonly execution?: ExecutionRef;
   readonly scope: EvidenceScope;
@@ -78,6 +84,8 @@ export interface EvidenceChartRow {
   readonly group: string;
   readonly status: string;
   readonly time?: number;
+  readonly elapsedMs?: number;
+  readonly anchorIdentity?: string;
   readonly sequence?: number;
   readonly durationMs?: number;
   readonly start?: string;
@@ -89,6 +97,7 @@ export interface EvidenceChartRow {
 }
 export interface PreparedEvidenceChart {
   readonly kind: EvidenceChartSpec['type'];
+  readonly timeMode?: 'absolute' | 'elapsed';
   readonly selectionId: string;
   readonly columns: Result['recordset']['columns'];
   readonly rows: readonly EvidenceChartRow[];
@@ -158,9 +167,29 @@ export function decodeEvidenceChartSpec(value: unknown): EvidenceChartSpec {
       : type === 'heatmap'
         ? heatmapFields
         : timingFields;
-  const map = evidenceObject(o[arm], fields);
+  const map = evidenceObject(
+    o[arm],
+    type === 'timeline' ? [...fields, 'timeMode', 'anchorColumn'] : fields,
+  );
+  if (type === 'timeline') {
+    if (
+      'timeMode' in map &&
+      map['timeMode'] !== 'absolute' &&
+      map['timeMode'] !== 'elapsed'
+    )
+      throw new Error('Unsupported timeline timeMode');
+    if (map['timeMode'] === 'elapsed') {
+      evidenceText(map['anchorColumn']);
+    } else if ('anchorColumn' in map)
+      throw new Error('anchorColumn requires elapsed timeMode');
+  }
   const seen = new Set<string>();
-  for (const field of fields) {
+  for (const field of [
+    ...fields,
+    ...(type === 'timeline' && map['timeMode'] === 'elapsed'
+      ? ['anchorColumn']
+      : []),
+  ]) {
     const column = evidenceText(map[field]);
     if (
       (field === 'endClockDomainColumn' &&
@@ -202,6 +231,45 @@ function instant(v: TypedValue): number | undefined {
   return n;
 }
 
+/** Strict millisecond RFC3339 parsing for elapsed arithmetic, including explicit offsets. */
+function elapsedInstant(value: TypedValue): number | undefined {
+  if (value.type === 'null') return undefined;
+  if (value.type !== 'string' && value.type !== 'datetime') return undefined;
+  const match =
+    /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,3}))?(Z|[+-]\d{2}:\d{2})$/.exec(
+      value.value,
+    );
+  if (!match || match[8] === '-00:00') return undefined;
+  const [, year, month, day, hour, minute, second, fraction, zone] = match;
+  const parts = [year, month, day, hour, minute, second].map(Number);
+  const local = new Date(0);
+  local.setUTCFullYear(parts[0], parts[1] - 1, parts[2]);
+  local.setUTCHours(
+    parts[3],
+    parts[4],
+    parts[5],
+    Number((fraction ?? '').padEnd(3, '0')),
+  );
+  if (
+    [
+      local.getUTCFullYear(),
+      local.getUTCMonth() + 1,
+      local.getUTCDate(),
+      local.getUTCHours(),
+      local.getUTCMinutes(),
+      local.getUTCSeconds(),
+    ].some((part, index) => part !== parts[index])
+  )
+    return undefined;
+  const offsetHour = zone === 'Z' ? 0 : Number(zone.slice(1, 3)),
+    offsetMinute = zone === 'Z' ? 0 : Number(zone.slice(4));
+  if (offsetHour > 23 || offsetMinute > 59) return undefined;
+  const offset =
+    (offsetHour * 60 + offsetMinute) * (zone.startsWith('-') ? -1 : 1);
+  const point = local.getTime() - offset * 60_000;
+  return Number.isSafeInteger(point) ? point : undefined;
+}
+
 /** Await before publishing; consumers must fence scope/revocation changes across the await.
  * No execution, persistence or authority: prepare only the supplied exact held data. */
 export async function prepareEvidenceChart(
@@ -236,7 +304,9 @@ export async function prepareEvidenceChart(
       : spec.type === 'heatmap'
         ? spec.heatmap
         : spec.timing;
-  for (const name of Object.values(mapping))
+  for (const name of Object.entries(mapping)
+    .filter(([key]) => key !== 'timeMode')
+    .map(([, value]) => value))
     if (!names.includes(name))
       throw new Error(`Missing mapped chart column: ${name}`);
   const evidence = result.rowEvidence
@@ -260,6 +330,29 @@ export async function prepareEvidenceChart(
     evidence.rowKeyColumn !== spec.timing.rowKeyColumn
   )
     throw new Error('Timing row identity mismatch');
+  const comparison = expectedIdentity.comparison;
+  if (comparison) {
+    const p = comparison.projection;
+    if (!evidence || evidence.rowKeyColumn !== p.observationColumn || comparison.members.length !== 2 ||
+        evidenceKey(comparison.members[0]) === evidenceKey(comparison.members[1]))
+      throw new Error('Comparison observation identity is unavailable');
+    if (spec.type === 'timeline') {
+      for (const role of ['laneColumn', 'eventColumn', 'sequenceColumn', 'timeColumn', 'clockDomainColumn', 'precisionColumn', 'statusColumn', 'anchorColumn'] as const)
+        if (spec.timeline[role] !== p[role]) throw new Error('Timeline mappings differ from the retained comparison');
+      if (evidence.rows.length !== result.recordset.rows.length || evidence.rows.some(row => row.slots[spec.timeline.evidenceRefColumn]?.state !== 'available'))
+        throw new Error('Comparison row Inspect evidence is unavailable');
+    }
+    const seen = new Set<string>(), lanes = new Map<string, string>();
+    for (const row of result.recordset.rows) {
+      const member = row[names.indexOf(p.memberColumn)], lane = row[names.indexOf(p.laneColumn)];
+      if (!member || !lane || lane.type !== 'string') throw new Error('Comparison lane membership is unavailable');
+      const key = evidenceKey(member);
+      if (!comparison.members.some(m => evidenceKey(m) === key) || (lanes.has(lane.value) && lanes.get(lane.value) !== key))
+        throw new Error('Comparison lane belongs to a different member');
+      seen.add(key); lanes.set(lane.value, key);
+    }
+    if (comparison.members.some(m => !seen.has(evidenceKey(m)))) throw new Error('Comparison control or primary has no observed data');
+  }
   const requireTypes = (
     columns: readonly string[],
     types: readonly string[],
@@ -277,6 +370,11 @@ export async function prepareEvidenceChart(
     );
     requireTypes([m.sequenceColumn, m.precisionColumn], ['integer', 'number']);
     requireTypes([m.timeColumn], ['string', 'datetime']);
+    if (m.timeMode === 'elapsed')
+      requireTypes(
+        [m.anchorColumn as string, m.sequenceColumn, m.precisionColumn],
+        ['integer'],
+      );
   } else if (spec.type === 'heatmap') {
     requireTypes(
       [
@@ -351,6 +449,11 @@ export async function prepareEvidenceChart(
     const common = { index, values: structuredClone(values) };
     if (spec.type === 'timeline') {
       const m = spec.timeline;
+      if (
+        get(m.laneColumn).type !== 'string' ||
+        get(m.eventColumn).type !== 'string'
+      )
+        throw new Error('Timeline lane and event must be text');
       const group = evidenceText(scalar(get(m.laneColumn)));
       const label = evidenceText(scalar(get(m.eventColumn)));
       const sequence = integer(get(m.sequenceColumn));
@@ -360,12 +463,22 @@ export async function prepareEvidenceChart(
       if (sequences.has(key))
         throw new Error('Duplicate timeline lane sequence');
       sequences.add(key);
-      const point = instant(get(m.timeColumn));
+      const point =
+        m.timeMode === 'elapsed'
+          ? elapsedInstant(get(m.timeColumn))
+          : instant(get(m.timeColumn));
       const precision = integer(get(m.precisionColumn));
       const clock = scalar(get(m.clockDomainColumn));
       const selected = inspect(m.evidenceRefColumn);
+      const status = scalar(get(m.statusColumn));
+      if (
+        get(m.statusColumn).type !== 'string' ||
+        !['pass', 'fail', 'unknown'].includes(status)
+      )
+        throw new Error('Timeline status must be pass, fail or unknown');
       const observed =
         point !== undefined &&
+        get(m.clockDomainColumn).type === 'string' &&
         trimCoreSpace(clock) !== '' &&
         precision !== undefined &&
         precision > 0;
@@ -374,7 +487,7 @@ export async function prepareEvidenceChart(
         group,
         label,
         sequence,
-        status: scalar(get(m.statusColumn)),
+        status,
         ...(observed ? { time: point, precisionMs: precision } : {}),
         inspections: observed && selected ? [selected] : [],
         ...(!observed
@@ -456,6 +569,59 @@ export async function prepareEvidenceChart(
       inspections: measured ? [startInspection, endInspection] : [],
     };
   });
+  if (spec.type === 'timeline' && spec.timeline.timeMode === 'elapsed') {
+    const m = spec.timeline;
+    const cell = (row: EvidenceChartRow, column: string) =>
+      row.values[names.indexOf(column)];
+    const anchors = new Map<string, EvidenceChartRow>();
+    for (const row of rows) {
+      const marker = cell(row, m.anchorColumn as string);
+      if (marker.type !== 'integer' || !['0', '1'].includes(marker.value))
+        throw new Error('Elapsed anchor must be exactly integer 0 or 1');
+      if (marker.value === '1') {
+        if (anchors.has(row.group))
+          throw new Error('Duplicate observed start in timeline lane');
+        if (row.time === undefined || !row.inspections.length)
+          throw new Error(
+            'Observed start requires an admitted nonnull timestamp and row identity',
+          );
+        anchors.set(row.group, row);
+      }
+    }
+    for (const row of rows) {
+      const anchor = anchors.get(row.group);
+      if (!anchor) throw new Error('No observed start for timeline lane');
+      if (cell(row, m.timeColumn).type === 'null') continue;
+      const point = elapsedInstant(cell(row, m.timeColumn));
+      const clock = scalar(cell(row, m.clockDomainColumn));
+      const precision = integer(cell(row, m.precisionColumn));
+      if (
+        cell(row, m.sequenceColumn).type !== 'integer' ||
+        cell(row, m.precisionColumn).type !== 'integer' ||
+        point === undefined ||
+        row.time === undefined ||
+        clock !== scalar(cell(anchor, m.clockDomainColumn)) ||
+        !trimCoreSpace(clock) ||
+        precision !== anchor.precisionMs ||
+        !precision ||
+        precision < 1
+      )
+        throw new Error(
+          'Elapsed timeline requires compatible observed clocks, times and precision',
+        );
+      const elapsedMs = point - (anchor.time as number);
+      if (!Number.isSafeInteger(elapsedMs) || elapsedMs < 0)
+        throw new Error(
+          'Elapsed timeline has reversed or unsafe observed times',
+        );
+      Object.assign(row, {
+        elapsedMs,
+        start: scalar(cell(anchor, m.timeColumn)),
+        end: scalar(cell(row, m.timeColumn)),
+        anchorIdentity: evidenceKey(anchor.inspections[0].selector.rowKey),
+      });
+    }
+  }
   if (spec.type === 'timeline')
     rows.sort(
       (a, b) =>
@@ -463,6 +629,9 @@ export async function prepareEvidenceChart(
     );
   return {
     kind: spec.type,
+    ...(spec.type === 'timeline' && spec.timeline.timeMode
+      ? { timeMode: spec.timeline.timeMode }
+      : {}),
     selectionId: spec.selectionId,
     columns: structuredClone(result.recordset.columns),
     rows,
