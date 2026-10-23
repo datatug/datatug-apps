@@ -96,7 +96,7 @@ async function boundedResponseText(response: Response): Promise<string> {
     }
   } catch (error) {
     if (error instanceof Error && error.message === 'The AI provider response is too large.') throw error;
-    throw new Error('The AI provider response could not be read.');
+    throw new Error('The AI provider response could not be read.', { cause: error });
   } finally {
     reader.releaseLock();
   }

@@ -291,7 +291,7 @@ export class SessionWorkspaceShellComponent {
   tabKeydown(event: KeyboardEvent, id: string): void {
     const sessions = this.workspace.openSessions();
     const index = sessions.findIndex((session) => session.id === id);
-    let target = index;
+    let target: number;
     if (event.key === 'ArrowLeft') target = (index - 1 + sessions.length) % sessions.length;
     else if (event.key === 'ArrowRight') target = (index + 1) % sessions.length;
     else if (event.key === 'Home') target = 0;
