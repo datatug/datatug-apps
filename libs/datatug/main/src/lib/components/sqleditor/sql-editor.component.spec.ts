@@ -97,6 +97,16 @@ describe('SqlEditorComponent', () => {
     expect(view.state.facet(EditorState.readOnly)).toBe(true);
   });
 
+  it('names the editable text with its ariaLabel input (default "SQL query")', async () => {
+    let view = await mount('SELECT 1');
+    expect(view.contentDOM.getAttribute('aria-label')).toBe('SQL query');
+    expect(view.contentDOM.getAttribute('role')).toBe('textbox');
+    fixture.componentRef.setInput('ariaLabel', 'DTQL source');
+    fixture.detectChanges();
+    view = mountCurrentInstance('SELECT 1');
+    expect(view.contentDOM.getAttribute('aria-label')).toBe('DTQL source');
+  });
+
   it('honors the line-number input without replacing CodeMirror setup', async () => {
     const defaultGutterView = await mount('SELECT 1;');
     expect(

@@ -178,7 +178,12 @@ describe('session widget admission', () => {
     expect(original.history.actions).toHaveLength(2);
   });
 
-  it('does not admit forged chart source IDs or a second source through the single-source runtime', async () => {
+  it.each([
+    { unit: undefined, label: 'missing unit denies a source edit', supported: false },
+    { unit: '', label: 'empty unit denies a source edit', supported: false },
+    { unit: '  ', label: 'whitespace unit rejects canonical session open', supported: false },
+    { unit: 'orders', label: 'declared unit admits the authorized second source', supported: true },
+  ])('$label', async ({ unit, supported }) => {
     const chart: BoardWidget = {
       name: 'chart',
       data: {
@@ -187,6 +192,7 @@ describe('session widget admission', () => {
           type: 'bar',
           categoryColumn: 'country',
           valueColumn: 'orders',
+          unit,
         },
       },
     };
@@ -201,8 +207,15 @@ describe('session widget admission', () => {
         },
       ],
     };
+    // Whitespace-only units are rejected by canonical schema validation even before an edit.
+    if (unit && !unit.trim()) {
+      await expect(TutorialBoardSession.open(board, 'scope')).rejects.toThrow(
+        'Invalid chart configuration.',
+      );
+      return;
+    }
     const session = await TutorialBoardSession.open(board, 'scope');
-    session.dispatch({ type: 'add-card', cardId: 'chart' });
+    expect(session.dispatch({ type: 'add-card', cardId: 'chart' })).toBe(true);
     const runtime = new TutorialBoardRuntime();
     runtime.publish(ref, session, () => undefined);
     const forged: BoardWidget = {
@@ -213,6 +226,7 @@ describe('session widget admission', () => {
       },
     };
     expect(await runtime.admit(board, ref, 'chart', [], forged)).toBe(false);
+    const before = JSON.stringify(session.board);
     expect(
       session.dispatch({
         type: 'add-chart-source',
@@ -220,10 +234,16 @@ describe('session widget admission', () => {
         sourceId: 'second',
         queryId: 'demodb/orders',
       }),
-    ).toBe(true);
+    ).toBe(supported);
+    if (!supported) {
+      expect(JSON.stringify(session.board)).toBe(before);
+      expect(await runtime.admit(board, ref, 'chart', [], forged)).toBe(false);
+      return;
+    }
     runtime.publish(ref, session, () => undefined);
     const edited = session.board.rows?.[0].cards?.[0].widget;
     if (!edited) throw new Error('Missing edited chart');
-    expect(await runtime.admit(board, ref, 'chart', [], edited)).toBe(false);
+    expect(await runtime.admit(board, ref, 'chart', [], edited)).toBe(true);
+    expect(await runtime.admit(board, ref, 'chart', [], forged)).toBe(false);
   });
 });

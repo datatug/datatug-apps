@@ -1,17 +1,8 @@
 import { expect, test } from './helpers/demodb-guard';
-import { installFakeGithub } from './helpers/fake-github';
 
 const project =
   '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
 const sessionExample = 'customer-coverage-investigation';
-const fake = process.env['DATATUG_E2E_GITHUB_FAKE'];
-
-test.beforeEach(async ({ context }) => {
-  if (fake)
-    await installFakeGithub(context, [
-      { fullName: 'datatug/datatug-demo-project', dir: fake },
-    ]);
-});
 
 for (const width of [1440, 900, 390]) {
   test(`public sample investigations link to runnable data and survive cold links at ${width}px`, async ({
@@ -103,8 +94,16 @@ for (const width of [1440, 900, 390]) {
     ).toBeVisible();
 
     await page.getByRole('link', { name: 'Back to Sessions' }).click();
-    if (width < 992)
-      await page.locator('ion-menu-button.app-level-menu-button').click();
+    if (width < 992) {
+      // The Sessions page is entered with an animation; its menu button is the only one visible once it ends.
+      await expect(
+        page.getByRole('heading', { name: 'Sample Sessions' }),
+      ).toBeVisible();
+      await expect(
+        page.locator('ion-router-outlet > .ion-page:not(.ion-page-hidden)'),
+      ).toHaveCount(1);
+      await page.locator('ion-menu-button.app-level-menu-button:visible').click();
+    }
     await page.getByTestId('incidents-project-menu-item').click();
     await expect(page).toHaveURL(
       `${new URL(page.url()).origin}${project}/-/incidents`,

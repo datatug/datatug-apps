@@ -33,18 +33,19 @@ export class EnvSelectorComponent {
   public readonly currentEnvId = signal<string | undefined>(undefined);
 
   public readonly environments = signal<IProjEnv[] | undefined>(undefined);
+  private readonly requestedEnvId = signal<string | undefined>(undefined);
 
   constructor() {
     const dataTugNavContext = this.dataTugNavContext;
 
     dataTugNavContext.currentProject.subscribe((currentProject) => {
-      if (currentProject?.summary?.environments) {
-        this.environments.set(currentProject.summary.environments);
-      }
+      this.environments.set(currentProject?.summary?.environments);
+      this.refreshSelectedEnvironment();
     });
     dataTugNavContext.currentEnv.subscribe({
       next: (currentEnv) => {
-        this.currentEnvId.set(currentEnv?.id);
+        this.requestedEnvId.set(currentEnv?.id);
+        this.refreshSelectedEnvironment();
       },
       error: (err: unknown) =>
         this.errorLogger.logError(
@@ -52,6 +53,14 @@ export class EnvSelectorComponent {
           'Failed to get current environment by EnvSelectorComponent',
         ),
     });
+  }
+
+  private refreshSelectedEnvironment(): void {
+    this.currentEnvId.set(
+      this.environments()?.some((environment) => environment.id === this.requestedEnvId())
+        ? this.requestedEnvId()
+        : undefined,
+    );
   }
 
   public envChanged(): void {

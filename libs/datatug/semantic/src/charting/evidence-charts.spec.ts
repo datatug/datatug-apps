@@ -1172,3 +1172,206 @@ describe('actual published Core v0.63 Go1.27.2 wire parity oracle', () => {
     }
   });
 });
+
+const int = (value: number): TypedValue => ({
+  type: 'integer',
+  value: String(value),
+});
+const elapsedSpec = {
+  ...timeline,
+  timeline: {
+    ...timeline.timeline,
+    timeMode: 'elapsed' as const,
+    anchorColumn: 'anchor',
+  },
+};
+function elapsedFixture(
+  edits: readonly Partial<Record<string, TypedValue>>[],
+): Result {
+  const base = fixture();
+  const columns = [
+    ...base.recordset.columns.map((column) =>
+      ['seq', 'precision'].includes(column.name)
+        ? { ...column, type: 'integer' }
+        : column,
+    ),
+    { name: 'anchor', type: 'integer' },
+  ];
+  const rows = edits.map((edit, index) =>
+    columns.map(
+      (column, i) =>
+        edit[column.name] ??
+        (column.name === 'key'
+          ? text('elapsed-row-' + index)
+          : column.name === 'seq'
+            ? int(index + 1)
+            : column.name === 'precision'
+              ? int(1000)
+              : column.name === 'anchor'
+                ? int(index === 0 ? 1 : 0)
+                : base.recordset.rows[0][i]),
+    ),
+  );
+  const recordset = { columns, rows };
+  if (!base.rowEvidence) throw new Error('fixture');
+  return {
+    ...base,
+    recordset,
+    rowEvidence: {
+      ...base.rowEvidence,
+      recordsetFingerprint: createHash('sha256')
+        .update(canonicalRecordsetJSON(recordset))
+        .digest('hex'),
+      rows: rows.map((row) => ({
+        rowKey: row[0] as { type: 'string'; value: string },
+        slots: base.rowEvidence?.rows[0].slots ?? {},
+      })),
+    },
+  };
+}
+describe('observed-start elapsed timeline', () => {
+  it('preserves calendar facts, equal-time rows, exact selectors and an independent third lane', async () => {
+    const result = elapsedFixture([
+      {
+        lane: text('control'),
+        at: text('2018-04-30T10:00:00Z'),
+        anchor: int(1),
+      },
+      { lane: text('control'), at: text('2018-04-30T10:00:01Z') },
+      {
+        lane: text('affected'),
+        at: text('2018-05-20T10:05:00Z'),
+        anchor: int(1),
+      },
+      {
+        lane: text('affected'),
+        at: text('2018-05-20T10:05:03Z'),
+        status: text('fail'),
+      },
+      {
+        lane: text('affected'),
+        at: text('2018-05-20T10:05:03Z'),
+        status: text('unknown'),
+      },
+      {
+        lane: text('recovery'),
+        at: text('2018-05-20T10:10:00Z'),
+        anchor: int(1),
+      },
+      { lane: text('recovery'), at: text('2018-05-20T10:10:02Z') },
+    ]);
+    const before = structuredClone(result);
+    const data = await prepareEvidenceChart(elapsedSpec, result, identity);
+    expect(data.timeMode).toBe('elapsed');
+    expect(
+      data.rows
+        .map((row) => [row.index, row.elapsedMs])
+        .sort((a, b) => (a[0] ?? 0) - (b[0] ?? 0)),
+    ).toEqual([
+      [0, 0],
+      [1, 1000],
+      [2, 0],
+      [3, 3000],
+      [4, 3000],
+      [5, 0],
+      [6, 2000],
+    ]);
+    expect(
+      data.rows.find((r) => r.index === 3)?.inspections[0].selector.rowKey,
+    ).toEqual(text('elapsed-row-3'));
+    expect(data.rows.find((r) => r.index === 0)?.time).toBe(
+      Date.parse('2018-04-30T10:00:00Z'),
+    );
+    expect(result).toEqual(before);
+    expect(data.rows.find((r) => r.index === 4)?.status).toBe('unknown');
+  });
+  it('uses explicit RFC3339 offsets without rewriting calendar cells and refuses unknown offsets', async () => {
+    const result = elapsedFixture([
+      { at: text('2018-05-20T11:05:00+01:00') },
+      { at: text('2018-05-20T10:05:01Z') },
+    ]);
+    const data = await prepareEvidenceChart(elapsedSpec, result, identity);
+    expect(data.rows[1].elapsedMs).toBe(1000);
+    expect(data.rows[0].start).toBe('2018-05-20T11:05:00+01:00');
+    await expect(
+      prepareEvidenceChart(
+        elapsedSpec,
+        elapsedFixture([{ at: text('2018-05-20T10:05:00-00:00') }, {}]),
+        identity,
+      ),
+    ).rejects.toThrow();
+    const unavailable = elapsedFixture([{}, {}]);
+    if (!unavailable.rowEvidence) throw new Error('fixture');
+    const fenced: Result = {
+      ...unavailable,
+      rowEvidence: {
+        ...unavailable.rowEvidence,
+        rows: unavailable.rowEvidence.rows.map((row, index) =>
+          index
+            ? row
+            : {
+                ...row,
+                slots: { ...row.slots, evidence: { state: 'unavailable' } },
+              },
+        ),
+      },
+    };
+    await expect(
+      prepareEvidenceChart(elapsedSpec, fenced, identity),
+    ).rejects.toThrow(/observed start/i);
+  });
+  it.each([
+    { anchor: int(1) },
+    { anchor: nil },
+    { anchor: int(2) },
+    { anchor: text('0') },
+    { at: text('2018-05-20T10:04:59Z') },
+    { at: text('2018-02-30T10:05:01Z') },
+    { at: text('2018-05-20T10:05:01.0001Z') },
+    { clock: text('another-clock') },
+    { precision: num(1) },
+    { status: nil },
+    { status: text('healthy') },
+    { lane: num(1) },
+    { event: num(1) },
+  ])('refuses invalid observed elapsed proof %j', async (edit) => {
+    await expect(
+      prepareEvidenceChart(elapsedSpec, elapsedFixture([{}, edit]), identity),
+    ).rejects.toThrow();
+  });
+  it('refuses absent/NULL observed starts and preserves non-anchor NULL as a nonpoint', async () => {
+    for (const first of [{ anchor: int(0) }, { at: nil }])
+      await expect(
+        prepareEvidenceChart(
+          elapsedSpec,
+          elapsedFixture([first, {}]),
+          identity,
+        ),
+      ).rejects.toThrow(/observed start/i);
+    const data = await prepareEvidenceChart(
+      elapsedSpec,
+      elapsedFixture([{}, { at: nil }]),
+      identity,
+    );
+    expect(data.rows[1].elapsedMs).toBeUndefined();
+    expect(data.rows[1].time).toBeUndefined();
+    expect(
+      data.rows[1].values.find((_, i) => data.columns[i].name === 'at'),
+    ).toEqual(nil);
+  });
+  it.each([
+    { timeMode: null },
+    { timeMode: 'relative' },
+    { anchorColumn: 'anchor' },
+    { timeMode: 'absolute', anchorColumn: 'anchor' },
+    { timeMode: 'elapsed' },
+    { timeMode: 'elapsed', anchorColumn: 'lane' },
+  ])('keeps the Core70 timeline arm closed %j', (extra) => {
+    expect(() =>
+      decodeEvidenceChartSpec({
+        ...timeline,
+        timeline: { ...timeline.timeline, ...extra },
+      }),
+    ).toThrow();
+  });
+});

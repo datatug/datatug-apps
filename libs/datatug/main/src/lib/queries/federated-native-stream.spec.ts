@@ -198,13 +198,16 @@ limit: 10`;
       { fetch: fetcher })).rejects.toThrow(/preview limit/);
   });
 
+  // The deadline must leave a loaded CI worker time to reach both requests: with
+  // 50 ms it sometimes expired before the first fetch, so neither request ran.
+  const STALL_DEADLINE_MS = 1_000;
   it('ends a stalled streamed body at the caller deadline', async () => {
     const body = new ReadableStream<Uint8Array>();
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/music')
       ? json({ id: 'music', capabilities: { dtql: true, dtqlStreaming: true } })
       : new Response(body, { headers: { 'Content-Type': 'application/json' } }));
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher, deadline: Date.now() + 50, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort|deadline/i);
+      { fetch: fetcher, deadline: Date.now() + STALL_DEADLINE_MS, onNativeRecord: async () => undefined })).rejects.toThrow(/timed out|timeout|abort|deadline/i);
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
@@ -214,7 +217,7 @@ limit: 10`;
       : json({ records: [{ data: { ArtistId: '1' } }], columns: ['ArtistId'], execution: {}, complete: true }));
     let sinkSignal: AbortSignal | undefined;
     await expect(runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined,
-      { fetch: fetcher, deadline: Date.now() + 50,
+      { fetch: fetcher, deadline: Date.now() + STALL_DEADLINE_MS,
         onNativeRecord: async (_data, signal) => {
           sinkSignal = signal;
           await new Promise<void>((_resolve, reject) => {

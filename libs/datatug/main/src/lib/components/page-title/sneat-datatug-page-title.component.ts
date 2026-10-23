@@ -1,4 +1,11 @@
-import { ChangeDetectionStrategy, Component, computed, inject, input } from '@angular/core';
+import { BusinessClockChipComponent } from '../../source-workspace/business-clock-chip.component';
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  input,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { IonTitle } from '@ionic/angular';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
@@ -32,13 +39,30 @@ import { DatatugNavContextService } from '../../services/nav/datatug-nav-context
 @Component({
   selector: 'sneat-datatug-page-title',
   templateUrl: './sneat-datatug-page-title.component.html',
+  styles: [
+    `
+      .dt-page-subtitle {
+        display: block;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        font-size: 0.75rem;
+        font-weight: normal;
+        color: var(--ion-color-medium);
+      }
+    `,
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [IonTitle],
+  imports: [BusinessClockChipComponent, IonTitle],
 })
 export class SneatDatatugPageTitleComponent {
   private readonly navContext = inject(DatatugNavContextService);
 
   public readonly pageTitle = input.required<string>();
+  /** Optional second line, for example the source a query reads. */
+  public readonly subtitle = input<string>();
+  /** Marks the title as the page's level-1 heading, for a page that has no
+   * other title (the query page). */
+  public readonly heading = input(false);
 
   private readonly currentProject = toSignal(this.navContext.currentProject, {
     initialValue: undefined,

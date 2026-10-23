@@ -8,6 +8,7 @@ import {
   IVaultRecordRow,
   VaultExplorerService,
 } from '../../../services/repo/vault-explorer.service';
+import { renderedText } from '../../../testing/rendered-text.spec-helper';
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -58,8 +59,8 @@ async function setup() {
   await fixture.whenStable();
   const el = fixture.nativeElement as HTMLElement;
   const component = fixture.componentInstance as unknown as Record<'repoInput' | 'branchInput' | 'tokenInput', WritableSignal<string>>;
-  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so read the markup instead.
-  const text = () => el.innerHTML.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/&quot;/g, '"').replace(/\s+/g, ' ');
+  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so walk the text nodes instead.
+  const text = () => renderedText(el);
   // Let the component's `await` continuation run (it schedules change detection), then wait for that render.
   const stable = async () => {
     await new Promise((resolve) => setTimeout(resolve));

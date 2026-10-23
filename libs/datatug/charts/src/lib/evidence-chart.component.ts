@@ -43,19 +43,36 @@ echarts.use([
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <section role="region" [attr.aria-label]="title()">
-      <header>
-        <h3>{{ title() }}</h3>
-        <span>Held query result</span>
-      </header>
+      @if (showHeader()) {
+        <header>
+          <h3>{{ title() }}</h3>
+          <span>Held query result</span>
+        </header>
+      }
       @if (loading()) {
-        <p role="status">Preparing held evidence…</p>
+        <p role="status">
+          {{ embedded() ? 'Loading chart…' : 'Preparing held evidence…' }}
+        </p>
       } @else if (error()) {
         <p role="alert">{{ error() }}</p>
       } @else if (data(); as held) {
-        <p class="scope">
-          {{ held.source.id }} · generation {{ held.source.generation }} ·
-          {{ held.provenance.observedAt }}
-        </p>
+        @if (held.kind === 'timeline') {
+          <p class="timeline-legend" aria-label="Timeline status legend">
+            ● Pass · ◆ Fail · ○ Unknown
+          </p>
+          @if (held.timeMode === 'elapsed') {
+            <p>
+              Elapsed milliseconds from each lane’s observed start. Calendar
+              times remain in exact data.
+            </p>
+          }
+        }
+        @if (!embedded()) {
+          <p class="scope">
+            {{ held.source.id }} · generation {{ held.source.generation }} ·
+            {{ held.provenance.observedAt }}
+          </p>
+        }
         @if (held.limitations.length) {
           <p role="note">
             Source policy limitations apply. Inspect the source result for
@@ -73,10 +90,21 @@ echarts.use([
             "
           ></div>
           <p class="meaning">{{ meaning() }}</p>
-          <details open>
+          <details [open]="!embedded()">
             <summary>
-              Exact held rows and evidence ({{ held.rows.length }})
+              {{
+                embedded()
+                  ? 'Source and exact data'
+                  : 'Exact held rows and evidence'
+              }}
+              ({{ held.rows.length }})
             </summary>
+            @if (embedded()) {
+              <p class="scope">
+                {{ held.source.id }} · generation {{ held.source.generation }} ·
+                {{ held.provenance.observedAt }}
+              </p>
+            }
             <div
               class="table-scroll"
               tabindex="0"
@@ -139,10 +167,31 @@ echarts.use([
             </div>
           </details>
         } @else {
-          <p role="status">No rows in this held result.</p>
+          <p role="status">
+            {{
+              embedded()
+                ? 'The query returned no rows.'
+                : 'No rows in this held result.'
+            }}
+          </p>
+          @if (embedded()) {
+            <details>
+              <summary>Source details</summary>
+              <p class="scope">
+                {{ held.source.id }} · generation {{ held.source.generation }} ·
+                {{ held.provenance.observedAt }}
+              </p>
+            </details>
+          }
         }
       } @else {
-        <p role="status">A complete admitted held result is required.</p>
+        <p role="status">
+          {{
+            embedded()
+              ? 'Run this chart to load its data.'
+              : 'A complete admitted held result is required.'
+          }}
+        </p>
       }
     </section>
   `,
@@ -174,7 +223,7 @@ echarts.use([
     .scope,
     .meaning {
       font-size: 0.8rem;
-      color: var(--ion-color-medium-shade, #53657a);
+      color: var(--dt-text-muted, #53657a);
     }
     .scope {
       overflow-wrap: anywhere;
@@ -222,7 +271,7 @@ echarts.use([
     small {
       display: block;
       font-weight: 400;
-      color: var(--ion-color-medium-shade, #53657a);
+      color: var(--dt-text-muted, #53657a);
     }
     button {
       cursor: pointer;
@@ -255,6 +304,9 @@ echarts.use([
   `,
 })
 export class EvidenceChartComponent {
+  readonly embedded = input(false);
+  readonly showHeader = input(true);
+  readonly heading = input<string>();
   readonly data = input<PreparedEvidenceChart | null>(null);
   readonly loading = input(false);
   readonly error = input<string | null>(null);
@@ -299,6 +351,8 @@ export class EvidenceChartComponent {
     });
   }
   title(): string {
+    const heading = this.heading()?.trim();
+    if (heading) return heading;
     return this.data()?.kind === 'timeline'
       ? 'Observed milestones'
       : this.data()?.kind === 'heatmap'
@@ -309,7 +363,9 @@ export class EvidenceChartComponent {
   }
   meaning(): string {
     return this.data()?.kind === 'timeline'
-      ? 'Points show observed timestamps in declared lane sequence. No connecting span or duration is inferred.'
+      ? this.data()?.timeMode === 'elapsed'
+        ? 'Points show elapsed milliseconds from each lane’s declared observed start. Original calendar times and row evidence are retained.'
+        : 'Points show observed timestamps in declared lane sequence. No connecting span or duration is inferred.'
       : this.data()?.kind === 'heatmap'
         ? 'Pass, fail and unknown come from admitted evidence. Unavailable evidence remains unknown.'
         : 'Bars measure milliseconds between distinct admitted observations with compatible clocks and declared precision. Missing work is never zero.';
@@ -321,7 +377,9 @@ export class EvidenceChartComponent {
 function plottedRows(data: PreparedEvidenceChart) {
   return data.rows.filter((row) =>
     data.kind === 'timeline'
-      ? row.time !== undefined
+      ? data.timeMode === 'elapsed'
+        ? row.elapsedMs !== undefined
+        : row.time !== undefined
       : data.kind === 'timing-bars'
         ? row.durationMs !== undefined
         : true,
@@ -345,7 +403,10 @@ export function evidenceChartOption(
     return {
       ...base,
       xAxis: {
-        type: 'time',
+        type: data.timeMode === 'elapsed' ? 'value' : 'time',
+        ...(data.timeMode === 'elapsed'
+          ? { name: 'Elapsed (ms)', min: 0 }
+          : {}),
         splitLine: {
           show: true,
           lineStyle: { color: '#e6edf5', type: 'dashed' },
@@ -360,10 +421,30 @@ export function evidenceChartOption(
       series: [
         {
           type: 'scatter',
-          symbol: 'circle',
           symbolSize: 14,
-          itemStyle: { color: '#2563eb', borderColor: '#fff', borderWidth: 2 },
-          data: rows.map((r) => ({ value: [r.time, r.group], name: r.label })),
+          tooltip: { formatter: '{b}' },
+          data: rows.map((r) => ({
+            value: [
+              data.timeMode === 'elapsed' ? r.elapsedMs : r.time,
+              r.group,
+            ],
+            name: `${r.label} · ${r.status}\nObserved: ${r.end ?? new Date(r.time as number).toISOString()}${r.start ? `\nLane start: ${r.start}\nAnchor: ${r.anchorIdentity}\nElapsed: ${r.elapsedMs} ms · Precision: ${r.precisionMs} ms` : ''}`,
+            symbol:
+              r.status === 'pass'
+                ? 'circle'
+                : r.status === 'fail'
+                  ? 'diamond'
+                  : 'emptyCircle',
+            itemStyle: {
+              color:
+                r.status === 'pass'
+                  ? '#15803d'
+                  : r.status === 'fail'
+                    ? '#b91c1c'
+                    : '#64748b',
+              borderWidth: 2,
+            },
+          })),
           emphasis: { scale: 1.4 },
         },
       ],

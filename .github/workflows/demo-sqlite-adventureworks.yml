@@ -20,6 +20,8 @@ name: Demo SQLite AdventureWorks
 # run makes no download at all; a cold run makes 2 requests to raw.githubusercontent.com, never to DemoDB.
 on:
   pull_request:
+    # `labeled` lets an author add `run-e2e` to a lane PR (see the e2e policy in ci.yml).
+    types: [opened, synchronize, reopened, labeled]
     paths:
       - 'libs/datatug/main/src/lib/demo-sqlite/**'
       - 'libs/datatug/main/src/lib/ovdb/**'
@@ -59,13 +61,19 @@ on:
 
 permissions:
   actions: read
+  contents: read
 
 concurrency:
-  group: demo-sqlite-adventureworks-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
+  group: demo-sqlite-adventureworks-${{ github.event_name == 'pull_request' && (github.event.action == 'labeled' && github.event.label.name != 'run-e2e' && format('label-{0}', github.run_id) || format('pr-{0}', github.event.pull_request.number)) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   e2e-demo-sqlite-adventureworks:
+    # Same policy as ci.yml: a lane PR (base not main, head not public-demo-batch-*) skips this e2e unless labelled run-e2e.
+    if: >-
+      github.event_name != 'pull_request' || github.event.pull_request.base.ref == 'main'
+      || startsWith(github.event.pull_request.head.ref, 'public-demo-batch')
+      || contains(github.event.pull_request.labels.*.name, 'run-e2e')
     runs-on: ubuntu-latest
     timeout-minutes: 40
     permissions:
@@ -99,7 +107,9 @@ jobs:
           key: demodb-adventureworks-fixture-v1-${{ hashFiles('libs/datatug/main/src/lib/queries/demo-sqlite-catalog.ts', 'scripts/fetch-demodb-fixtures.mjs', 'apps/datatug-app/e2e/fixtures/demodb/corpus.json') }}
 
       - name: Install Chromium
-        run: pnpm exec playwright install --with-deps chromium
+        uses: ./.github/actions/playwright-install
+        with:
+          browsers: chromium
 
       - name: nx e2e-demo-sqlite-adventureworks
         env:

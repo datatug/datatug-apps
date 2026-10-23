@@ -1,0 +1,441 @@
+<section aria-label="Native physical tables">
+  <ion-toolbar class="tables-toolbar">
+    <strong slot="start">{{ model().labels.title }}</strong>
+    <ion-buttons slot="end"
+      ><ion-button
+        (click)="model().refresh()"
+        [disabled]="model().busy() || !model().selection()"
+        aria-label="Refresh physical schema and context"
+        ><ion-icon [icon]="model().refreshIcon" aria-hidden="true" /><span
+          class="refresh-label"
+          >Refresh</span
+        ></ion-button
+      ></ion-buttons
+    >
+  </ion-toolbar>
+  <p>
+    Choose an existing Incident and applied context, then select a table and
+    cell to inspect.
+  </p>
+  <ion-select
+    label="Logical environment"
+    [value]="model().environment()"
+    (ionChange)="model().changeEnvironment($event.detail.value)"
+    [disabled]="model().busy()"
+  >
+    <ion-select-option value="">Choose environment</ion-select-option>
+    @for (env of model().environments(); track env) {
+      <ion-select-option [value]="env">{{ env }}</ion-select-option>
+    }
+  </ion-select>
+  @if (model().environment()) {
+    <sneat-datatug-evidence-share-panel
+      mode="inspect"
+      [sourceId]="model().sourceId"
+      [environment]="model().environment()"
+      [caseId]="model().caseId()"
+      [disabled]="model().busy() || model().restoring()"
+      (selected)="model().chooseContext($event)"
+    />
+  }
+  @if (model().selection(); as context) {
+    <p>
+      Incident {{ context.choice.evidence.incidentRef }} ·
+      {{ context.choice.label }}
+    </p>
+  }
+  @if (model().restoring()) {
+    <p role="status">Checking stored mapping operation…</p>
+  } @else if (model().busy()) {
+    <p role="status">{{ model().workStatus() }}</p>
+  } @else if (model().error()) {
+    <p role="alert">{{ model().error() }}</p>
+  } @else if (model().notice()) {
+    <p role="status">{{ model().notice() }}</p>
+  }
+  @if (model().pending() || model().blocked()) {
+    <section aria-label="Mapping recovery">
+      <h3>Mapping awaiting review</h3>
+      <p>
+        The original may already have committed. Changing context does not
+        rebase this frozen request.
+      </p>
+      @if (model().pending(); as intent) {
+        <p>
+          {{ intent.entityId }}.{{ intent.fieldId }} ←
+          {{ intent.selection.collection }}.{{ intent.selection.column }}
+        </p>
+        <ion-button
+          (click)="model().retry()"
+          [disabled]="
+            model().busy() ||
+            !model().canWrite() ||
+            model().conflict() ||
+            model().restoring()
+          "
+          >Retry original mapping</ion-button
+        >
+      }
+      @if (model().conflict()) {
+        <p>
+          The server refused the original revision or operation. Inspect current
+          context and review before a separate new intent.
+        </p>
+      }
+      <ion-button
+        (click)="model().reviewPending()"
+        [disabled]="model().busy() || !model().selected()"
+        >Review current cell and entity</ion-button
+      >
+      @if (model().reviewed()) {
+        <p>
+          The current cell and entity were read. Abandonment retires only this
+          local retry; it never removes a saved mapping.
+        </p>
+        <ion-button
+          color="warning"
+          (click)="model().abandon()"
+          [disabled]="model().busy()"
+          >I reviewed the risk; abandon local retry</ion-button
+        >
+      }
+    </section>
+  }
+  @if (model().schema(); as observed) {
+    <p>
+      Source {{ observed.source.sourceId }} ·
+      {{ observed.source.environment }}
+    </p>
+    <ion-select
+      label="Physical table or view"
+      [value]="model().collection()"
+      (ionChange)="model().inspect($event.detail.value)"
+      [disabled]="model().busy()"
+    >
+      <ion-select-option value="">Choose table</ion-select-option>
+      @for (table of observed.collections; track table.name) {
+        <ion-select-option [value]="table.name"
+          >{{ table.name }} · {{ table.kind
+          }}{{
+            table.primaryKey ? '' : ' · no declared primary key'
+          }}</ion-select-option
+        >
+      }
+    </ion-select>
+    <details>
+      <summary>Source and schema observations</summary>
+      <p>
+        Generation {{ observed.source.generation }} · revision
+        {{ observed.source.revision }} · SHA-256
+        {{ observed.source.sha256 }}
+      </p>
+      <p>Schema token {{ observed.schemaToken }}</p>
+    </details>
+  }
+  <div class="content">
+    <div class="scroll">
+      @if (model().rows(); as data) {
+        <table>
+          <caption>
+            {{
+              data.collection
+            }}
+            ·
+            {{
+              model().labels.rowsDescription
+            }}
+          </caption>
+          <thead>
+            <tr>
+              @for (column of data.columns; track column.name) {
+                <th scope="col">{{ column.name }} · {{ column.type }}</th>
+              }
+            </tr>
+          </thead>
+          <tbody>
+            @for (row of data.rows; track $index; let ri = $index) {
+              <tr>
+                @for (cell of row.cells; track $index; let ci = $index) {
+                  <td>
+                    <button
+                      type="button"
+                      [disabled]="model().busy()"
+                      [attr.aria-label]="
+                        data.columns[ci].name + ': ' + model().cellText(ri, ci)
+                      "
+                      [attr.aria-pressed]="
+                        model().selected()?.rowToken === row.rowToken &&
+                        model().selected()?.column === data.columns[ci].name
+                      "
+                      (click)="model().selectCell(ri, ci, $event)"
+                    >
+                      {{ model().cellText(ri, ci) }}
+                    </button>
+                  </td>
+                }
+              </tr>
+            }
+          </tbody>
+        </table>
+        @if (!data.rows.length) {
+          <p>{{ model().labels.emptyRowsMessage }}</p>
+        }
+        @if (data.truncated) {
+          <p role="status">
+            Limited results. This view is not a complete table.
+          </p>
+        }
+      }
+    </div>
+    @if (model().selected(); as cell) {
+      <section aria-label="Selected physical cell">
+        <h3>{{ cell.collection }}.{{ cell.column }}</h3>
+        @if (model().selectedValue(); as value) {
+          <p>
+            {{ value.type }} ·
+            {{ value.type === 'null' ? 'NULL' : value.value }}
+          </p>
+        }
+        @if (model().resolution(); as resolved) {
+          @if (resolved.entity) {
+            <p role="status">
+              {{ resolved.provenance === 'declared' ? 'Declared' : 'Inferred' }}
+              {{ resolved.entity }}.{{ resolved.field }}
+            </p>
+          } @else {
+            <p role="status">Mapping missing</p>
+          }
+          @if (resolved.rule) {
+            <p>{{ resolved.rule }}</p>
+          }
+          @if (model().mappingChoiceAvailable()) {
+            <ion-button
+              (click)="model().openPicker()"
+              [disabled]="model().busy() || model().restoring()"
+              >{{
+                model().pending() || model().blocked()
+                  ? 'Choose entity for review'
+                  : 'Add existing meaning'
+              }}</ion-button
+            >
+          }
+          @if (!model().canWrite()) {
+            <p>
+              Read-only project. Mapping changes require current write
+              permission.
+            </p>
+          }
+        } @else if (model().selectedValue()?.type === 'null') {
+          <p>NULL cells cannot be mapped or used for Related.</p>
+        } @else {
+          <p>Meaning resolution is unavailable for this cell.</p>
+          <ion-button
+            (click)="model().retryResolution()"
+            [disabled]="model().busy() || model().restoring()"
+            >Retry meaning resolution</ion-button
+          >
+        }
+        @if (model().entity(); as target) {
+          <p>
+            Canonical entity {{ target.entity.id }} · observed revision
+            {{ target.revision || 'unavailable' }}
+          </p>
+          @if (target.revisionError) {
+            <p role="status">{{ target.revisionError }}</p>
+          }
+          <details>
+            <summary>Persisted physical mappings</summary>
+            @for (field of target.entity.fields; track field.id) {
+              @for (mapping of field.mappings; track $index) {
+                <p>
+                  {{ target.entity.id }}.{{ field.id }} ← {{ mapping.source }} /
+                  {{ mapping.collection }} / {{ mapping.column }}
+                </p>
+              }
+            }
+          </details>
+        }
+        @if (model().picker()) {
+          <h4>Choose existing canonical field</h4>
+          <ion-select
+            label="Canonical entity"
+            [value]="model().entity()?.entity?.id || ''"
+            (ionChange)="model().chooseEntity($event.detail.value)"
+            [disabled]="model().busy()"
+            ><ion-select-option value="">Choose entity</ion-select-option>
+            @for (item of model().entities(); track item.id) {
+              <ion-select-option [value]="item.id"
+                >{{ item.title || item.id }} · {{ item.id }}</ion-select-option
+              >
+            }
+          </ion-select>
+          @if (!model().entities().length && !model().busy()) {
+            <p>No existing canonical entities are available.</p>
+          }
+          <ion-select
+            label="Canonical field"
+            [value]="model().fieldId()"
+            (ionChange)="model().fieldId.set($event.detail.value)"
+            [disabled]="model().busy()"
+            ><ion-select-option value="">Choose field</ion-select-option>
+            @for (
+              field of model().entity()?.entity?.fields || [];
+              track field.id
+            ) {
+              <ion-select-option [value]="field.id"
+                >{{ field.id }} · {{ field.type }}</ion-select-option
+              >
+            }
+          </ion-select>
+          <p>
+            Review {{ cell.collection }}.{{ cell.column }} ({{
+              model().resolution()?.value?.type
+            }}) → {{ model().entity()?.entity?.id }}.{{ model().fieldId() }}.
+            Types must match.
+          </p>
+          <div class="actions">
+            <ion-button
+              (click)="model().save()"
+              [disabled]="!model().saveAllowed()"
+              >Save mapping</ion-button
+            ><ion-button
+              fill="clear"
+              (click)="model().cancel()"
+              [disabled]="model().busy()"
+              >Cancel</ion-button
+            >
+          </div>
+        }
+        @if (model().related(); as offers) {
+          <h4>Related</h4>
+          @for (lookup of offers.lookups; track $index) {
+            <ion-button
+              fill="outline"
+              (click)="model().openRelated(lookup)"
+              [disabled]="model().busy()"
+              >{{ lookup.collection }} · {{ lookup.kind }}</ion-button
+            >
+          }
+          @if (!offers.lookups.length) {
+            <p>No admitted Related records are offered.</p>
+          }
+          @for (reason of offers.unsupported; track $index) {
+            <p>{{ reason }}</p>
+          }
+        }
+        <ion-toolbar class="tables-toolbar checks-toolbar">
+          <h4 slot="start">Applicable Checks</h4>
+          <ion-buttons slot="end">
+            <ion-button
+              (click)="model().findChecks()"
+              [disabled]="model().busy() || model().restoring()"
+              aria-label="Find checks for selected cell"
+            >
+              <ion-icon
+                [icon]="model().findChecksIcon"
+                aria-hidden="true"
+              />Find checks
+            </ion-button>
+          </ion-buttons>
+        </ion-toolbar>
+        <p class="checks-intro">
+          Binding availability only. This does not predict a Check result or
+          grant permission to run.
+        </p>
+        @if (model().checksPending()) {
+          <p role="status">Finding checks for the current selection…</p>
+        } @else if (model().checksError()) {
+          <p role="alert">{{ model().checksError() }}</p>
+        } @else if (model().applicable(); as suggestions) {
+          <ul class="check-list" aria-label="Check suggestions">
+            @for (check of suggestions.checks; track check.id) {
+              <li>
+                <div class="check-heading">
+                  <strong class="check-title">{{ check.title }}</strong>
+                  <span class="check-state">{{
+                    model().checkLabels[check.preflight.state].label
+                  }}</span>
+                  <ion-buttons slot="end">
+                    <ion-button
+                      fill="clear"
+                      size="small"
+                      [routerLink]="model().checkHref(check.id)"
+                      [queryParams]="{ environment: model().environment() }"
+                      >Open Check</ion-button
+                    >
+                  </ion-buttons>
+                </div>
+                <p class="check-meta">
+                  {{ check.id }} · version {{ check.revision }}
+                </p>
+                <details class="check-details">
+                  <summary>Binding details</summary>
+                  @if (check.preflight.state !== 'input-bindable') {
+                    <p>
+                      {{ model().checkLabels[check.preflight.state].detail }}
+                    </p>
+                  }
+                  <p>Definition SHA-256 {{ check.definitionDigest }}</p>
+                  <p>
+                    Check {{ check.preflight.checkId }}
+                    @if (check.preflight.stepId) {
+                      · step {{ check.preflight.stepId }}
+                    }
+                  </p>
+                </details>
+              </li>
+            } @empty {
+              <li>
+                No applicable Checks were offered for the current selection.
+              </li>
+            }
+          </ul>
+        } @else {
+          <p>Find checks for this physical cell and applied context.</p>
+        }
+        <details>
+          <summary>Physical selection identity</summary>
+          <p>{{ cell.schemaToken }} · {{ cell.rowToken }}</p>
+        </details>
+      </section>
+    }
+  </div>
+  @if (model().relatedRows(); as data) {
+    <div class="scroll">
+      <table>
+        <caption>
+          Related
+          {{
+            data.collection
+          }}
+          ·
+          {{
+            model().labels.relatedDescription
+          }}
+        </caption>
+        <thead>
+          <tr>
+            @for (column of data.columns; track column.name) {
+              <th scope="col">{{ column.name }}</th>
+            }
+          </tr>
+        </thead>
+        <tbody>
+          @for (row of data.rows; track $index) {
+            <tr>
+              @for (cell of row.cells; track $index) {
+                <td>{{ cell.type === 'null' ? 'NULL' : cell.value }}</td>
+              }
+            </tr>
+          }
+        </tbody>
+      </table>
+      @if (!data.rows.length) {
+        <p>No matching Related rows.</p>
+      }
+      @if (data.truncated) {
+        <p>Limited Related results.</p>
+      }
+    </div>
+  }
+</section>

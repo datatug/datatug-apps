@@ -40,7 +40,9 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
     .filter({ visible: true })
     .first();
   await expect(grid.getByTestId('results-grid-count')).toContainText('17 rows');
+  await grid.getByTestId('results-grid-more').click();
   await expect(grid.getByTestId('results-grid-export-excel')).toBeVisible();
+  await page.keyboard.press('Escape');
   const rowPane = page
     .getByRole('button', { name: /Current row/ })
     .and(page.getByTestId('author-current-row-toggle'))
@@ -118,6 +120,7 @@ test('licensed Query Editor groups, aggregates and charts the selected held rang
     await page.mouse.up();
   }
   await expect(grid.getByTestId('results-grid-chart')).toBeEnabled();
+  await grid.getByTestId('results-grid-more').click();
   await grid.getByTestId('results-grid-chart').focus();
   await page.keyboard.press('Enter');
   const dialog = page.locator('.ag-chart').filter({ visible: true }).first();

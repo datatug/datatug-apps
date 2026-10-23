@@ -7,6 +7,7 @@ import { HostedBoardListComponent } from './hosted-board-list.component';
 import { HostedBoardScope } from '../../../core/hosted-board-scope';
 import { ProjectAssetsApiService } from '../../../../services/project/project-assets-api.service';
 import { IProjectRef } from '../../../../core/project-context';
+import { renderedText } from '../../../../testing/rendered-text.spec-helper';
 
 type Boards = { id: string; title?: string }[];
 const ref: IProjectRef = { storeId: 'firestore', spaceID: 'space', projectId: 'training' };
@@ -51,8 +52,8 @@ async function setup(scope = fakeScope()) {
     await fixture.whenStable();
   };
   await stable();
-  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so read the markup instead.
-  const text = () => el.innerHTML.replace(/<!--.*?-->/g, '').replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  // Ionic's scoped-slot patch hides light-DOM text from `textContent` in jsdom, so walk the text nodes instead.
+  const text = () => renderedText(el);
   const respond = async (boards: Boards, index = requests.length - 1) => {
     requests[index].next(boards);
     await stable();

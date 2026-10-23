@@ -31,6 +31,8 @@ Feature specifications for this project.
 | [Shipping working copy controls](shipping-working-copy-controls/README.md) | Draft | Expose the published Backend v0.42 working-copy lifecycle in the native hosted project web UI. This is one bounded part of the [shipping investigation story](https://github.com/datatug/backstage/tree/main/spec/features/unsigned-shipping-investigation), not recording-readiness proof. |
 | [HTTP Query Editor](http-query-editor/README.md) | Implementing | Postman-like create, edit, save and run of HTTP queries in the DataTug web app. |
 | [HTTP Query Parameters](http-query-parameters/README.md) | Draft | Declare parameters on a saved HTTP query, reference them as `{name}` placeholders in its URL, headers and body, bind their values from a selected result row, the session context bag or manual entry, and substitute them safely, with one placeholder contract shared with the DataTug CLI. |
+| [Shared project environment order](shared-project-environment-order/README.md) | Implementing | Persist and apply one project-owned environment order from least risky to most risky across every environment reader and selector. |
+| [Independent chart source composition](independent-chart-sources/README.md) | Implementing | Add a compatible independently executed saved query to a normal chart, with the same action in the guided session. |
 
 ## Open Questions
 
