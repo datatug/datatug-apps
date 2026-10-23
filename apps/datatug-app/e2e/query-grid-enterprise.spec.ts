@@ -19,7 +19,7 @@ async function stableCanvas(canvas: Locator): Promise<Buffer> {
 
 // Licensed, captured-read regression: real native grid/group/chart controls, no public provider requests.
 const queryURL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/demodb%2Fcustomer-country-comparison-server?id=demodb%2Fcustomer-country-comparison-server&env=dev&editor=text';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/demodb%2Fcustomer-country-comparison-server?id=demodb%2Fcustomer-country-comparison-server&env=dev&editor=text';
 
 test('licensed Query Editor groups, aggregates and charts the selected held range without executing another query', async ({
   page,

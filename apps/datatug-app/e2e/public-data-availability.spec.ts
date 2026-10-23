@@ -11,7 +11,7 @@ import { activePage } from './journey/helpers/active-page';
  */
 const revision = 'a'.repeat(40);
 const repository = 'fabric-fixture/public-data';
-const project = `/project/github.com/${repository}/tree/${revision}/sample/-`;
+const project = `/project/github.com/${repository}@${revision}/sample/-`;
 const fixtures = resolve(
   'libs/datatug/main/src/lib/queries/fixtures/public-data-fabric/representation',
 );

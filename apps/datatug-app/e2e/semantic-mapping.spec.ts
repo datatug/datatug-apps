@@ -3,7 +3,7 @@ import { test, expect } from './helpers/demodb-guard';
 import { loadPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 const queryURL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 test('column meaning saves a complete personal copy, stays visible and survives cold reload', async ({
   context,
   page,

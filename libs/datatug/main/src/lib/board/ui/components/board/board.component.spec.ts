@@ -74,7 +74,7 @@ describe('BoardComponent saved-query journey', () => {
       const urlTree = link.injector.get(RouterLink).urlTree;
       if (!urlTree) throw new Error('Expected a saved-query RouterLink URL');
       expect(TestBed.inject(Router).serializeUrl(urlTree)).toBe(
-        '/project/github.com/datatug-demo-project/chinook/tree/main/-/query/demodb%2Fchinook-top-customer-spend?id=demodb%2Fchinook-top-customer-spend&runtime=project',
+        '/project/github.com/datatug-demo-project/chinook/query/demodb%2Fchinook-top-customer-spend?ref=main&id=demodb%2Fchinook-top-customer-spend&runtime=project',
       );
       expect(getQuery).toHaveBeenCalledTimes(1);
       expect(getQuery).toHaveBeenCalledWith(

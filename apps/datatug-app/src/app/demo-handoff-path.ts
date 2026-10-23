@@ -26,7 +26,8 @@ import {
  * What a hand-off address points at. `owner`, `repo`, `ref` and `dir` are the decoded segments, in their original
  * case.
  * - `demo`: `/demo`, the address datatug.io's Ask button still links to.
- * - `start-chat`: the confirmation page, `…/start-chat` or `…/tree/<ref>[/<dir>…]/-/start-chat`. Its question
+ * - `start-chat`: the confirmation page, `…/<repo>/start-chat`, `…/<repo>/<dir>…/-/start-chat` (either with an optional
+ *   `?ref=<ref>`) or the legacy `…/tree/<ref>[/<dir>…]/-/start-chat`. Its question
  *   travels after `#` (founder ruling 2026-10-03; design demo-as-github-project.md, 3.1).
  * - `chat`: the OLD hand-off address `…/chat?msg=…`, which is an ordinary project page unless it arrived with a
  *   question, in which case it is moved to the `start-chat` page of the same project.
@@ -37,7 +38,7 @@ export type HandoffTarget =
       readonly kind: 'chat';
       readonly owner: string;
       readonly repo: string;
-      /** The `tree/<ref>` segment of `…/tree/<ref>/-/chat`; undefined for `…/chat`. */
+      /** The `?ref=` of the address, or the `tree/<ref>` segment of the legacy `…/tree/<ref>/-/chat`; undefined for the default branch. */
       readonly ref?: string;
       /** The folder segments of a nested project. */
       readonly dir: readonly string[];
@@ -46,9 +47,9 @@ export type HandoffTarget =
       readonly kind: 'start-chat';
       readonly owner: string;
       readonly repo: string;
-      /** The `tree/<ref>` segment; undefined for the short form. */
+      /** The `?ref=`, or the legacy `tree/<ref>` segment; undefined for the default branch. */
       readonly ref?: string;
-      /** The folder segments between the ref and `/-/`; empty for the repository root. */
+      /** The folder segments before `/-/`; empty for the repository root. */
       readonly dir: readonly string[];
     };
 
@@ -86,9 +87,9 @@ export function routeSegments(pathname: string): string[] {
 export function handoffTarget(
   segments: readonly string[],
 ): HandoffTarget | undefined {
-  // The site's short folder/start-chat link predates the canonical tree/HEAD
-  // spelling. Recognize only this first-party alias so its fragment is captured
-  // before analytics, then the route redirects to the explicit folder project.
+  // The site's folder/start-chat link (no `/-/`) predates the canonical
+  // `…/demo-project-1/-/start-chat`. Recognize only this first-party alias so its
+  // fragment is captured before analytics, then the route redirects to the canonical one.
   if (segments.length === 6 && segments.every((part) => /^[\x20-\x7e]+$/.test(part)) &&
       segments.map((part) => part.toLowerCase()).join('/') ===
         'project/github.com/datatug/datatug-demo-project/demo-project-1/start-chat') {
@@ -104,41 +105,37 @@ export function handoffTarget(
     return segments.length === 1 ? { kind: 'demo' } : undefined;
   if (first !== 'project' || host !== 'github.com' || !owner || !repo)
     return undefined;
-  const chat = (ref?: string, dir: string[] = []): HandoffTarget => ({
-    kind: 'chat',
-    owner: segments[2],
-    repo: segments[3],
-    ref,
-    dir,
-  });
-  if (rest.length === 1 && rest[0] === 'chat') return chat();
-  if (
-    rest.length >= 4 &&
-    rest[0] === 'tree' &&
-    rest[1] &&
-    rest[rest.length - 2] === '-' &&
-    rest[rest.length - 1] === 'chat' &&
-    !rest.slice(2, -2).includes('-')
-  )
-    return chat(segments[5], segments.slice(6, -2));
-  const startChat = (ref?: string, dir: string[] = []): HandoffTarget => ({
-    kind: 'start-chat',
-    owner: segments[2],
-    repo: segments[3],
-    ref,
-    dir,
-  });
-  if (rest.length === 1 && rest[0] === START_CHAT_PAGE) return startChat();
-  // `tree/<ref>[/<dir>…]/-/start-chat`: the first `-` ends the project locator, so no folder segment is one.
-  if (
-    rest.length >= 4 &&
-    rest[0] === 'tree' &&
-    rest[1] &&
-    rest[rest.length - 2] === '-' &&
-    rest[rest.length - 1] === START_CHAT_PAGE &&
-    !rest.slice(2, -2).includes('-')
-  )
-    return startChat(segments[5], segments.slice(6, -2));
+  // The ref of the project is the query's `ref` (founder 2026-10-23), read by `handoffTargetOfPath`; a path names a
+  // ref only in its legacy `tree/<ref>` shape.
+  const target = (
+    kind: 'chat' | 'start-chat',
+    ref?: string,
+    dir: string[] = [],
+  ): HandoffTarget => ({ kind, owner: segments[2], repo: segments[3], ref, dir });
+  for (const kind of ['chat', START_CHAT_PAGE] as const) {
+    // `…/<repo>/<page>`: the root project.
+    if (rest.length === 1 && rest[0] === kind) return target(kind);
+    // `…/<repo>/tree/<ref>[/<dir>…]/-/<page>` (legacy): the first `-` ends the project locator.
+    if (
+      rest.length >= 4 &&
+      rest[0] === 'tree' &&
+      rest[1] &&
+      rest[rest.length - 2] === '-' &&
+      rest[rest.length - 1] === kind &&
+      !rest.slice(2, -2).includes('-')
+    )
+      return target(kind, segments[5], segments.slice(6, -2));
+    // `…/<repo>[/<dir>…]/-/<page>`: `tree` and `blob` begin the legacy shapes.
+    if (
+      rest[0] !== 'tree' &&
+      rest[0] !== 'blob' &&
+      rest.length >= 2 &&
+      rest[rest.length - 2] === '-' &&
+      rest[rest.length - 1] === kind &&
+      !rest.slice(0, -2).includes('-')
+    )
+      return target(kind, undefined, segments.slice(4, -2));
+  }
   return undefined;
 }
 
@@ -151,12 +148,23 @@ export function startChatSegmentsOf(segments: readonly string[]): string[] {
   return [...segments.slice(0, -1), START_CHAT_PAGE];
 }
 
-/** What a URL path (`location.pathname`) points at, or undefined when it is not a hand-off address. */
+/**
+ * What a URL path (`location.pathname`) points at, or undefined when it is not a hand-off address. `search` is its
+ * query (`location.search`): a project's ref is its `ref` parameter (founder 2026-10-23), so a hand-off address with
+ * one is the hand-off of that version of the project. A legacy `tree/<ref>` and a `ref` together name no one ref:
+ * that address is no hand-off.
+ */
 export function handoffTargetOfPath(
   pathname: string,
+  search = '',
 ): HandoffTarget | undefined {
   if (pathHasOutletGroup(pathname)) return undefined;
-  return handoffTarget(routeSegments(pathname));
+  const target = handoffTarget(routeSegments(pathname));
+  if (!target || target.kind === 'demo') return target;
+  const refs = new URLSearchParams(search).getAll('ref');
+  if (refs.length === 0) return target;
+  if (refs.length > 1 || target.ref !== undefined) return undefined;
+  return { ...target, ref: refs[0] };
 }
 
 /** Whether this URL path is a hand-off address. */

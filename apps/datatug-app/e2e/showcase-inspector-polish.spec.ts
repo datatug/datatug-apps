@@ -36,7 +36,7 @@ for (const [name, viewport] of [['desktop', { width: 1440, height: 1000 }], ['mo
       // Unrelated auto charts may show their normal network error; this is a held-result layout check.
       await context.route('https://*.demodb.dev/**', route => route.abort());
       await context.route(url => url.origin === localOrigin && url.pathname.startsWith('/__datatug_public_ovdb/demodb/'), route => route.abort());
-      await page.goto('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase');
+      await page.goto('/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase');
       const inspector = page.locator('ion-card').filter({ hasText: 'Inspect saved query results' }).first();
       await expect(inspector).toBeVisible();
       await expect.poll(() => inspector.locator('xpath=../..').evaluate(el => el.clientWidth / (el.parentElement?.clientWidth ?? 1))).toBeGreaterThan(0.98);

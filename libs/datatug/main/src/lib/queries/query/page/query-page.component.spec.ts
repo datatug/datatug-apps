@@ -306,7 +306,7 @@ describe('SqlEditorPage', () => {
       'a GitHub project in a folder',
       { storeId: 'github.com', projectId: 'r@o@d' },
       'sales',
-      '/project/github.com/o/r/tree/HEAD/d/-/queries?folder=sales',
+      '/project/github.com/o/r/d/-/queries?folder=sales',
     ],
   ])(
     'the back button goes to the queries of %s',

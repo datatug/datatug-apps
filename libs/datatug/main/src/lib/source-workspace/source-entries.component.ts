@@ -10,7 +10,7 @@ import {
 import { RouterLink } from '@angular/router';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { useDetectivePageContext } from '../detective/detective-page-context';
-import { projectPageHref } from '../nav/project-page-href';
+import { projectPageHref, withQuery } from '../nav/project-page-href';
 import { NativeSourceInvalidationService } from '../evidence/native-source-invalidation';
 import { equalProjectRef } from '../core/project-context';
 import { SOURCE_ADAPTER_REGISTRATIONS } from './source-workspace-contract';
@@ -145,7 +145,7 @@ export class SourceEntriesComponent {
           if (!value) return undefined;
           let href = projectPageHref(ref, ['sources', registration.sourceId]);
           if (environment)
-            href += '?environment=' + encodeURIComponent(environment);
+            href = withQuery(href, 'environment=' + encodeURIComponent(environment));
           return { sourceId: registration.sourceId, ...value, href };
         }),
       ).then((results) => {

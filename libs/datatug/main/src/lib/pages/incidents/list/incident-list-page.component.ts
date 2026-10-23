@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../../../nav/project-page-href';
 import { Component, computed, effect, inject, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { toSignal } from '@angular/core/rxjs-interop';
@@ -143,7 +144,7 @@ export class IncidentListPageComponent {
     return context ? incidentContextQueryParams(context) : undefined;
   });
 
-  protected newIncidentLink(): readonly string[] {
+  protected newIncidentLink(): readonly ProjectRouterCommand[] {
     return incidentPageCommands(this.router.url, ['new']);
   }
 
@@ -270,7 +271,7 @@ export class IncidentListPageComponent {
     });
   });
 
-  protected incidentLink(incident: IncidentSummary): readonly string[] {
+  protected incidentLink(incident: IncidentSummary): readonly ProjectRouterCommand[] {
     return incidentPageCommands(this.router.url, [
       incident.ref.storeId,
       incident.ref.incidentId,

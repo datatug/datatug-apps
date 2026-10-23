@@ -16,7 +16,7 @@ import { join } from 'node:path';
  */
 const SENTRY_DIALOG = '.sentry-error-embed';
 const MARKER = 'ZEBRA-SECRET-QUESTION-7731';
-const CANONICAL_PROJECT = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+const CANONICAL_PROJECT = '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 const CANONICAL_CHAT = `${CANONICAL_PROJECT}/-/chat`;
 const CANONICAL_START_CHAT = `${CANONICAL_PROJECT}/-/start-chat`;
 
@@ -385,7 +385,7 @@ test.describe('the hand-off holding page', () => {
               name:
                 lang === 'en' ? 'Open the demo project' : 'Открыть демо-проект',
             }),
-          ).toHaveAttribute('href', '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1');
+          ).toHaveAttribute('href', '/project/github.com/datatug/datatug-demo-project/demo-project-1');
           await expect(
             page.getByRole('link', {
               name: lang === 'en' ? 'Back to the site' : 'Назад на сайт',
@@ -604,7 +604,7 @@ test.describe('the hand-off holding page', () => {
 
     await page.getByRole('link', { name: 'Открыть демо-проект' }).click();
     // The shared nested project, as the home page opens it.
-    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/datatug-demo-project\/tree\/HEAD\/demo-project-1$/);
+    await expect(page).toHaveURL(/\/project\/github\.com\/datatug\/datatug-demo-project\/demo-project-1$/);
     // The app's own defaults (index.html): the page kept in the Ionic stack must not leave its own behind.
     await expect(page).toHaveTitle('DataTug.app');
     await expect(page.locator('html')).toHaveAttribute('lang', 'en');
@@ -1036,6 +1036,38 @@ test.describe('the hand-off holding page', () => {
     );
   });
 
+  for (const [legacy, canonical] of [
+    [
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/queries?x=1',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/queries?x=1',
+    ],
+    [
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1?ref=HEAD&x=1',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1?x=1',
+    ],
+    [
+      '/project/github.com/acme/demo/tree/0123abcd4567ef89/dir/-/queries?x=1',
+      '/project/github.com/acme/demo/dir/-/queries?x=1&ref=0123abcd4567ef89',
+    ],
+  ]) {
+    test(`a legacy tree/<ref> or ?ref=HEAD address (${legacy}) is replaced by the short canonical one, page and query kept`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const origin = new URL(baseURL ?? '').origin;
+      await stubExternal(context, (o) => o === origin);
+      await page.goto('/demo');
+      await page.goto(legacy);
+      await expect
+        .poll(() => new URL(page.url()).pathname + new URL(page.url()).search, { timeout: 20_000 })
+        .toBe(canonical);
+      // Replaced, not pushed: Back leaves the project instead of returning to the legacy spelling.
+      await page.goBack();
+      await expect.poll(() => new URL(page.url()).pathname, { timeout: 20_000 }).toBe('/demo');
+    });
+  }
+
   test('the old form of a project address opens as before: no redirect', async ({
     page,
     context,
@@ -1147,6 +1179,31 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
     }
   }
 
+  // review of eb9f5b26, 1: `?ref=` names the project, so the old chat address keeps it on its way to start-chat;
+  // a ref other than the default branch is not the trusted demo, so the wording is neutral.
+  for (const [typed, landed] of [
+    [`${OTHER_ROOT}/dir/-/chat?ref=feature/x&msg=${enc}&lang=ru`, `${OTHER_ROOT}/dir/-/start-chat?ref=feature/x`],
+    [
+      `/project/github.com/datatug/datatug-demo-project/demo-project-1/-/chat?msg=${enc}&ref=0123abcd&lang=ru`,
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat?ref=0123abcd',
+    ],
+  ]) {
+    test(`the old chat address with a ref (${landed}) keeps the ref, and the question is not echoed`, async ({
+      page,
+      context,
+      baseURL,
+    }) => {
+      const watched = await openAndWatch(page, context, baseURL ?? '', typed, async () => {
+        await expect(page.locator('#demo-holding-message')).toBeVisible({ timeout: 20_000 });
+      });
+      const url = new URL(page.url());
+      expect(url.pathname + url.search + url.hash).toBe(landed);
+      await expect(page.locator('blockquote')).toHaveCount(0);
+      expect(await page.content()).not.toContain(MARKER);
+      await expectNoQuestion(page, watched, false);
+    });
+  }
+
   test('/demo?q=…&scenario=…&lang=…, the live Ask button of datatug.io, still shows the holding page and strips the question', async ({
     page,
     context,
@@ -1209,6 +1266,9 @@ test.describe('the start-chat confirmation page (founder ruling 2026-10-03)', ()
       [`${TRUSTED_ROOT}/tree/0123abcd4567ef89/-/start-chat`, false],
       [`${TRUSTED_ROOT}/tree/HEAD/some/dir/-/start-chat`, false],
       [`${OTHER_ROOT}/tree/HEAD/dir/-/start-chat`, false],
+      [`${TRUSTED_ROOT}/start-chat?ref=0123abcd4567ef89`, false],
+      [`${OTHER_ROOT}/dir/-/start-chat`, false],
+      ['/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat?ref=main', false],
       ['/project/github.com/datatug/chinook-demo-evil/start-chat', false],
     ] as const) {
       await page.goto(`${path}#msg=${enc}`);

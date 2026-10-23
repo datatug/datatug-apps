@@ -78,6 +78,11 @@ function isStoreResultPath(path: string): boolean {
   );
 }
 
+/** The query of a URL as typed, with its `?` (`/a/b?x#y` gives `?x`), or `''`. */
+function queryOf(url: string): string {
+  return /^[^?#]*(\?[^#]*)?/.exec(url)?.[1] ?? '';
+}
+
 /** The path of a URL as typed (`https://host/a/b?x#y` and `/a/b?x#y` both give `/a/b`). */
 function pathOf(url: string): string {
   return /^(?:[a-z][a-z0-9+.-]*:\/\/[^/?#]*)?([^?#]*)/i.exec(url)?.[1] ?? '';
@@ -370,7 +375,8 @@ export class DatatugNavContextService {
    */
   private locationOf(rawUrl: string): IAddressedLocation {
     const path = pathOf(rawUrl);
-    const parsed = parseProjectUrl(path);
+    // With its query: a GitHub project's `?ref=` is part of which project the address names.
+    const parsed = parseProjectUrl(path + queryOf(rawUrl));
     if (startsWithProjectSegment(rawUrl)) {
       if (parsed.ok) {
         let route: ActivatedRouteSnapshot | undefined =

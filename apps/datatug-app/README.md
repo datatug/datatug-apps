@@ -90,6 +90,46 @@ collapsed-by-default row, Sneat.Work copyright link, and the same
 (`apps/datatug-app/e2e/build-info.spec.ts`) asserts against, scoped under
 the `sneat-app-version` element.
 
+## GitHub project addresses
+
+A project stored in a GitHub repository opens at (founder 2026-10-23; the grammar lives in
+`libs/datatug/project-address/src/lib/project-url.ts`, `parseProjectUrl` and `projectUrl`):
+
+```
+/project/github.com/<owner>/<repo>[/<project-folder…>][/-/<page…>][?ref=<branch, tag or commit>][&<page parameters>]
+```
+
+| Address | Project |
+|---|---|
+| `/project/github.com/datatug/datatug-demo-project/demo-project-1` | folder `demo-project-1`, default branch |
+| `/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase?mode=tutorial` | the same project, page `board/showcase` |
+| `/project/github.com/o/r` and `/project/github.com/o/r/chat` | the project at the repository root, and its chat |
+| `/project/github.com/o/r/demo-project-1?ref=feature/x` | branch `feature/x` (`?ref=feature%2Fx` reads the same) |
+| `/project/github.com/o/r/demo-project-1?ref=8d2809f5` | a commit |
+
+- No `ref` is the default branch. `?ref=HEAD` is accepted and replaced (in the history) by the address without it.
+- `ref` sits beside the page's own query parameters (`q`, `id`, `env`, …). Inside the router it is the matrix
+  parameter `ref` of the repository segment (`apps/datatug-app/src/app/github-ref-url-serializer.ts` moves it there
+  and back), because route matchers do not see the query; so every in-app link and relative navigation within the
+  project keeps it. Link builders that add a query use `withQuery`, and router commands `projectRouterCommands`
+  (`libs/datatug/main/src/lib/nav/project-page-href.ts`). A project href handed to `[routerLink]` as one string
+  (which RouterLink would split into path segments, `?ref=` and all) has its query lifted back out by the same file's
+  `GithubRefUrlHandlingStrategy` and serializer, so such a link keeps the ref too.
+- `/-/` ends the folder when a page follows it. At the repository root it is left out when the page starts with a
+  project page name (`chat`, `queries`, …, `GITHUB_PROJECT_PAGE_NAMES`), as root project pages always were. So a
+  folder whose first segment is a page name is written with a closing `/-` (`/project/github.com/o/r/chat/-`):
+  without it, `…/r/chat` is the root project's chat.
+- The legacy `…/<repo>/tree/<ref>/<folder…>[/-/<page…>]` (and `…/blob/<ref>/…/datatug-project.json`) still opens and
+  is replaced in the history by the canonical address, inner page and other query parameters kept: `tree/HEAD` drops
+  the ref, `tree/<ref>` becomes `?ref=<ref>`. A `tree/<ref>` together with `?ref=` names no one ref and is refused.
+- `tree` and `blob` are reserved as the first segment after the repository. A root-level folder literally named
+  `tree` or `blob` keeps the long legacy form, which is then canonical: `/project/github.com/o/r/tree/HEAD/tree/…`.
+- `ref` and the project API's `branch` are not the same thing: `branch` belongs to `projectApi=cloud|local` (a project
+  read through the DataTug API), `ref` to the anonymous GitHub reader. An address with both `projectApi` and a ref is
+  refused.
+- The address never uses `@`; the internal project id (`<repo>@<owner>@<folder>@<ref>`) is written from the parsed
+  parts, never read from the address text.
+
 ## DataTug API failover
 
 `DatatugApiService` (`libs/datatug/main/src/lib/services/base/`) can send one DataTug API

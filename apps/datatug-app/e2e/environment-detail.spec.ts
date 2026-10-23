@@ -3,7 +3,7 @@ import { expect, test } from './helpers/demodb-guard';
 
 const demoDir = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const base =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-';
 test.skip(
   !demoDir,
   'Set DATATUG_E2E_GITHUB_FAKE to a checkout of the demo repository',

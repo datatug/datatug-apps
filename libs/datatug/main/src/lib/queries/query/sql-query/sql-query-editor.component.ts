@@ -56,7 +56,7 @@ import {
   IEnvContext,
   parseDatatugStoreRef,
 } from '../../../nav/nav-models';
-import { projectPageHref } from '../../../nav/project-page-href';
+import { projectPageHref, withQuery } from '../../../nav/project-page-href';
 import {
   IQueryEditorState,
   IQueryEnvState,
@@ -160,7 +160,7 @@ export class SqlQueryEditorComponent implements OnDestroy, ViewDidEnter {
 
   /** Where the back button goes with no history: the project's queries, in the folder of this query. */
   public get queriesBackHref(): string {
-    return `${projectPageHref(this.project?.ref, 'queries')}?folder=${this.queryFolderPath}`;
+    return withQuery(projectPageHref(this.project?.ref, 'queries'), `folder=${this.queryFolderPath}`);
   }
   public envId?: string;
   public envContext?: IEnvContext;

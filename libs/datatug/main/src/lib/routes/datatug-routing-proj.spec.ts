@@ -2,6 +2,7 @@ import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { provideRouter, type Route, type Routes } from '@angular/router';
 import { RouterTestingHarness } from '@angular/router/testing';
+import { GITHUB_PROJECT_PAGE_NAMES } from '@datatug/project-address';
 import { datatugProjectRoutes } from './datatug-routing-proj';
 
 describe('Detective Scenario routes', () => {
@@ -340,5 +341,21 @@ describe('datatugProjectRoutes: redirects', () => {
       expect.arrayContaining(['board', 'card', 'env', 'entity']),
     );
     for (const route of redirects) expect(route.pathMatch, String(route.path)).toBe('full');
+  });
+});
+
+describe('the project page names of the short GitHub address', () => {
+  // `…/<repo>/chat` is a page of the root project only because `chat` is in GITHUB_PROJECT_PAGE_NAMES; a page
+  // missing from the list would read as a folder there (founder 2026-10-23, short project URLs).
+  it('lists the first segment of every project route', () => {
+    const firstSegments = datatugProjectRoutes
+      .map((route) => route.path?.split('/')[0])
+      .filter((segment): segment is string => !!segment && segment !== '**');
+    expect(firstSegments.length).toBeGreaterThan(10);
+    expect(
+      firstSegments.filter((segment) => !GITHUB_PROJECT_PAGE_NAMES.has(segment)),
+    ).toEqual([]);
+    // The hand-off page, routed ahead of the project routes, is a page name too.
+    expect(GITHUB_PROJECT_PAGE_NAMES.has('start-chat')).toBe(true);
   });
 });

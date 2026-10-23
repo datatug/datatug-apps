@@ -102,6 +102,14 @@ const ADDRESSES = [
   '/(project/github.com/o/r/tree/HEAD/d/-/start-chat)',
   '/project/github.com/o/r/start-chat(menu:x)',
   '/project/github.com/o/r/tree/HEAD/a(b)/-/start-chat',
+  // founder 2026-10-23: the short folder form `…/<dir>…/-/<page>` (a ref is the query's, not the path's)
+  '/project/github.com/o/r/-/chat',
+  '/project/github.com/o/r/dir/-/chat',
+  '/project/github.com/o/r/dir/-/start-chat',
+  '/project/github.com/o/r/a/-/b/-/start-chat',
+  '/project/github.com/o/r/blob/x/-/start-chat',
+  '/project/github.com/o/r/dir/start-chat',
+  '/project/github.com/o/r/dir/-/start-chat/x',
 ];
 
 // A browser address reaches the router through Angular's Location, which drops one trailing slash before the
@@ -258,6 +266,27 @@ describe('demo-handoff-path', () => {
         ]),
       ).toEqual({ kind: 'start-chat', owner: 'o', repo: 'r', ref: 'HEAD', dir: ['a', 'B'] });
     });
+    it('reads the short folder form, and the ref from the query (founder 2026-10-23)', () => {
+      expect(
+        handoffTarget(['project', 'github.com', 'o', 'r', 'a', 'B', '-', 'start-chat']),
+      ).toEqual({ kind: 'start-chat', owner: 'o', repo: 'r', ref: undefined, dir: ['a', 'B'] });
+      expect(
+        handoffTarget(['project', 'github.com', 'o', 'r', '-', 'chat']),
+      ).toEqual({ kind: 'chat', owner: 'o', repo: 'r', ref: undefined, dir: [] });
+      expect(
+        handoffTargetOfPath('/project/github.com/o/r/d/-/chat', '?x=1&ref=feature/x'),
+      ).toEqual({ kind: 'chat', owner: 'o', repo: 'r', ref: 'feature/x', dir: ['d'] });
+      expect(
+        handoffTargetOfPath('/project/github.com/o/r/start-chat', '?ref=feature%2Fx'),
+      ).toEqual({ kind: 'start-chat', owner: 'o', repo: 'r', ref: 'feature/x', dir: [] });
+      // Two refs, or a ref beside a legacy `tree/<ref>`: no one version, no hand-off.
+      expect(handoffTargetOfPath('/project/github.com/o/r/start-chat', '?ref=a&ref=b')).toBeUndefined();
+      expect(
+        handoffTargetOfPath('/project/github.com/o/r/tree/v1/-/start-chat', '?ref=v2'),
+      ).toBeUndefined();
+      // The path alone still decides whether it is a hand-off address (what index.html strips).
+      expect(isHandoffPath('/project/github.com/o/r/tree/v1/-/start-chat')).toBe(true);
+    });
     it('a nested chat address retains its project folder', () => {
       expect(
         handoffTarget(['project', 'github.com', 'o', 'r', 'tree', 'x', 'd', '-', 'chat']),
@@ -282,6 +311,9 @@ describe('demo-handoff-path', () => {
       [['project', 'github.com', 'o', 'r', 'tree', '', '-', 'chat']],
       [['project', 'github.com', 'o', 'r', 'tree', 'x', 'y', 'chat']],
       [['project', 'gitlab.com', 'o', 'r', 'chat']],
+      [['project', 'github.com', 'o', 'r', 'blob', 'x', '-', 'chat']],
+      [['project', 'github.com', 'o', 'r', 'dir', 'chat']],
+      [['project', 'github.com', 'o', 'r', 'a', '-', 'b', '-', 'chat']],
     ])('%j is not a hand-off', (segments) => {
       expect(handoffTarget(segments)).toBeUndefined();
     });

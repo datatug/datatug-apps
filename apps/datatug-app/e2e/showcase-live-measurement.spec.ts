@@ -8,7 +8,7 @@ import {
 
 const origin = 'https://datatug.app';
 const boardURL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase';
 const expectedSubtree = 'b9743cc8f6306f8421abb0f98b188d10e0fb1b78';
 const allThree = { orders: 1, countries: 1, comparison: 1 };
 type Group = {

@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../nav/project-page-href';
 import { ChangeDetectionStrategy, Component, input } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { IonButton, IonIcon } from '@ionic/angular';
@@ -87,7 +88,7 @@ addIcons({ addOutline, flaskOutline });
   styleUrl: './incident-empty-state.component.scss',
 })
 export class IncidentEmptyStateComponent {
-  readonly createLink = input<string | readonly string[] | undefined>();
+  readonly createLink = input<string | readonly ProjectRouterCommand[] | undefined>();
   readonly queryParams = input<Record<string, unknown> | undefined>();
   readonly canCreate = input(true);
   protected testQueryParams(): Record<string, unknown> {

@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../nav/project-page-href';
 import { ActivatedRouteSnapshot } from '@angular/router';
 import {
   routingParamDbCatalogId,
@@ -85,11 +86,17 @@ export function linkBackHref(
 export function projectPageCommands(
   project: { readonly storeId: string; readonly projectId: string },
   page: readonly string[],
-): string[] | undefined {
-  const path = tryProjectUrl(project, [...page]);
-  if (typeof path !== 'string') return undefined;
+): ProjectRouterCommand[] | undefined {
+  const url = tryProjectUrl(project, [...page]);
+  if (typeof url !== 'string') return undefined;
+  // A GitHub project's `?ref=` is, inside the router, the matrix parameter of the repository segment.
+  const queryAt = url.indexOf('?');
+  const path = queryAt < 0 ? url : url.slice(0, queryAt);
+  const ref = queryAt < 0 ? null : new URLSearchParams(url.slice(queryAt + 1)).get('ref');
   const [first, ...rest] = path.slice(1).split('/').map(decodeURIComponent);
-  return [`/${first}`, ...rest];
+  const commands: ProjectRouterCommand[] = [`/${first}`, ...rest];
+  if (ref !== null && first === 'project' && rest.length >= 3) commands.splice(4, 0, { ref });
+  return commands;
 }
 
 /** Whether the store is a local agent (`http-127.0.0.1:<port>`, `localhost:<port>`, `[::1]`). */

@@ -42,8 +42,8 @@ const projectKey =
   process.env[BUSINESS_PREVIEW_PROJECT_ENV] || DEFAULT_BUSINESS_PREVIEW_PROJECT;
 const [repo = '', owner = '', folder = ''] = projectKey.split('@');
 // The canonical short address of a cloud (projectApi=cloud) GitHub project.
-// `tree/HEAD` is the default-branch spelling; the preview only serves `main`.
-const PROJECT_PATH = `/project/github.com/${owner.toLowerCase()}/${repo.toLowerCase()}/tree/HEAD/${folder}`;
+// The default branch has no ref in the address; the preview only serves `main`.
+const PROJECT_PATH = `/project/github.com/${owner.toLowerCase()}/${repo.toLowerCase()}/${folder}`;
 const PROJECT_QUERY = 'projectApi=cloud&branch=main';
 
 test.skip(!hasBusinessPreviewBuyer(), BUSINESS_PREVIEW_SKIP_MESSAGE);

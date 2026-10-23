@@ -20,9 +20,16 @@ import {
 
 const segs = (path: string): string[] =>
   path
+    .split('?')[0]
     .split('/')
     .filter((s) => s !== '')
     .map((s) => decodeURIComponent(s));
+
+/** The `ref` of an address's query, as the router hands it to the check (a matrix parameter of the repository). */
+const refOf = (path: string): string | undefined =>
+  path.includes('?')
+    ? (new URLSearchParams(path.split('?')[1]).get('ref') ?? undefined)
+    : undefined;
 
 describe('readShortGithubAddress: the table of design 3.3', () => {
   it.each([
@@ -66,10 +73,18 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
     ['/project/github.com/o/chat', 'chat@o@', 4],
     ['/project/github.com/o/tree', 'tree@o@', 4],
     ['/project/github.com/chat/chat/chat', 'chat@chat@', 4],
+    // founder 2026-10-23: the short folder form and `@<ref>`
+    ['/project/github.com/o/r/demo-project-1', 'r@o@demo-project-1', 5],
+    ['/project/github.com/o/r/demo-project-1/-/chat', 'r@o@demo-project-1', 6],
+    ['/project/github.com/o/r/a/b/-/queries/x/y', 'r@o@a/b', 7],
+    ['/project/github.com/o/r?ref=v1.0.0', 'r@o@@v1.0.0', 4],
+    ['/project/github.com/o/r/chat?ref=v1.0.0', 'r@o@@v1.0.0', 4],
+    ['/project/github.com/o/r/d/-/chat?ref=feature/x', 'r@o@d@feature/x', 6],
+    ['/project/github.com/o/r/tree/v1/Tree/x', 'r@o@Tree/x@v1', 8],
   ])(
     '%s is the project %s, with %i locator segments',
     (path, projectId, locatorLength) => {
-      const result = readShortGithubAddress(segs(path));
+      const result = readShortGithubAddress(segs(path), refOf(path));
       expect(result).toMatchObject({ kind: 'project', locatorLength });
       if (result.kind === 'project') {
         expect(result.parts.storeId).toBe('github.com');
@@ -87,7 +102,7 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
       '/project',
       '/Project',
     ]) {
-      expect(readShortGithubAddress(segs(path)), path).toEqual({
+      expect(readShortGithubAddress(segs(path), refOf(path)), path).toEqual({
         kind: 'not-short-github',
       });
     }
@@ -105,7 +120,9 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
       '/project/github.com/o/r/blob/main/a/-/datatug-project.json',
       'dash-directory-not-supported',
     ],
-    ['/project/github.com/o/r/-', 'invalid-path-segment'],
+    ['/project/github.com/o/r?ref=', 'missing-ref'],
+    ['/project/github.com/o/r?ref=v1@x', 'at-sign-not-supported'],
+    ['/project/github.com/o/r@v1', 'invalid-owner-or-repo'],
     ['/project/github.com/o/r/tree/HEAD/a/../b', 'invalid-path-segment'],
     ['/project/github.com/o/r/chat/..', 'invalid-path-segment'],
     ['/project/github.com', 'not-a-project-address'],
@@ -115,7 +132,7 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
     ['/project/github.com/o/chinoo\u212A-demo', 'invalid-owner-or-repo'],
     ['/project/github.com/o/chinoo%E2%84%AA-demo', 'invalid-owner-or-repo'],
   ])('%s is refused (%s)', (path, reason) => {
-    expect(readShortGithubAddress(segs(path))).toEqual({
+    expect(readShortGithubAddress(segs(path), refOf(path))).toEqual({
       kind: 'refused',
       reason,
     });
@@ -124,7 +141,7 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
   it('refuses a directory segment named "-": the first "-" ends the locator, so the rest reads as a page', () => {
     // `…/tree/HEAD/a/-/b` is the page `b` of the project in `a`; a folder named `-` cannot be written.
     expect(
-      readShortGithubAddress(segs('/project/github.com/o/r/tree/HEAD/a/-/b')),
+      readShortGithubAddress(segs('/project/github.com/o/r/tree/HEAD/a/-/b'), refOf('/project/github.com/o/r/tree/HEAD/a/-/b')),
     ).toMatchObject({
       kind: 'project',
       locatorLength: 8,
@@ -158,18 +175,18 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
       ],
       [
         '/project/github.com/o/r/TREE/v1.0.0/-/CHAT',
-        '/project/github.com/o/r/tree/v1.0.0/-/chat',
+        '/project/github.com/o/r/chat?ref=v1.0.0',
         7,
       ],
       [
         '/project/github.com/o/r/Tree/HEAD/Dir/-/Queries/Sub',
-        '/project/github.com/o/r/tree/HEAD/Dir/-/queries/Sub',
+        '/project/github.com/o/r/Dir/-/queries/Sub',
         8,
       ],
       ['/Project/github.com/o/r/Queries', '/project/github.com/o/r/queries', 4],
       ['/project/GitHub.com/o/r', '/project/github.com/o/r', 4],
     ])('%s -> %s', (typed, canonical, locatorLength) => {
-      const result = readShortGithubAddress(segs(typed));
+      const result = readShortGithubAddress(segs(typed), refOf(typed));
       expect(result).toMatchObject({ kind: 'project', locatorLength });
       if (result.kind === 'project') {
         expect(result.parts.isCanonical).toBe(false);
@@ -178,9 +195,7 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
     });
 
     it('only the first page segment is lower-cased: what follows it is left as typed', () => {
-      const result = readShortGithubAddress(
-        segs('/project/github.com/o/r/queries/ABC/Def'),
-      );
+      const result = readShortGithubAddress(segs('/project/github.com/o/r/queries/ABC/Def'), refOf('/project/github.com/o/r/queries/ABC/Def'));
       expect(result).toMatchObject({ kind: 'project' });
       if (result.kind === 'project') {
         expect(result.parts.isCanonical).toBe(true);
@@ -189,9 +204,7 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
     });
 
     it('a lower-case address is canonical, as before', () => {
-      const result = readShortGithubAddress(
-        segs('/project/github.com/datatug/chinook-demo/chat'),
-      );
+      const result = readShortGithubAddress(segs('/project/github.com/datatug/chinook-demo/chat'), refOf('/project/github.com/datatug/chinook-demo/chat'));
       expect(result).toMatchObject({
         kind: 'project',
         parts: { isCanonical: true },
@@ -199,9 +212,7 @@ describe('readShortGithubAddress: the table of design 3.3', () => {
     });
 
     it('a repository called like a fixed segment is still a repository: `Tree` and `Chat` in the repo place are names', () => {
-      const result = readShortGithubAddress(
-        segs('/project/github.com/o/Tree/Chat'),
-      );
+      const result = readShortGithubAddress(segs('/project/github.com/o/Tree/Chat'), refOf('/project/github.com/o/Tree/Chat'));
       expect(result).toMatchObject({ kind: 'project', locatorLength: 4 });
       if (result.kind === 'project') {
         expect(result.parts.projectId).toBe('tree@o@');
@@ -360,33 +371,33 @@ describe('GithubAddressCheck.decide', () => {
       ],
       ['/project/github.com/o/r.git', '/project/github.com/o/r'],
       ['/project/github.com/o/R.GIT/chat', '/project/github.com/o/r/chat'],
-      ['/project/github.com/o/r/tree/HEAD', '/project/github.com/o/r'],
+      ['/project/github.com/o/r', '/project/github.com/o/r'],
       [
-        '/project/github.com/o/r/tree/HEAD/-/chat',
+        '/project/github.com/o/r/chat',
         '/project/github.com/o/r/chat',
       ],
       [
-        '/project/github.com/o/r/tree/HEAD/-/queries/a',
+        '/project/github.com/o/r/queries/a',
         '/project/github.com/o/r/queries/a',
       ],
       [
         '/project/github.com/o/r/blob/v1/dir/datatug-project.json',
-        '/project/github.com/o/r/tree/v1/dir',
+        '/project/github.com/o/r/dir?ref=v1',
       ],
       [
         '/project/github.com/o/r/blob/HEAD/dir/datatug-project.json',
-        '/project/github.com/o/r/tree/HEAD/dir',
+        '/project/github.com/o/r/dir',
       ],
       [
         '/project/github.com/O/r/blob/HEAD/datatug-project.json',
         '/project/github.com/o/r',
       ],
       [
-        '/project/github.com/o/r/tree/HEAD/datatug/-/chat',
-        '/project/github.com/o/r/tree/HEAD/datatug/-/chat',
+        '/project/github.com/o/r/datatug/-/chat',
+        '/project/github.com/o/r/datatug/-/chat',
       ],
     ])('%s', async (typed, canonical) => {
-      const decision = await check().decide(segs(typed));
+      const decision = await check().decide(segs(typed), { ref: refOf(typed) });
       if (typed === canonical) {
         expect(decision).toEqual({ kind: 'open' });
       } else {
@@ -407,13 +418,13 @@ describe('GithubAddressCheck.decide', () => {
       ],
       ['/project/github.com/acme/demo', '/project/github.com/acme/demo'],
       [
-        '/project/github.com/acme/demo/tree/v1/dir/-/queries',
-        '/project/github.com/acme/demo/tree/v1/dir/-/queries',
+        '/project/github.com/acme/demo/dir/-/queries?ref=v1',
+        '/project/github.com/acme/demo/dir/-/queries?ref=v1',
       ],
     ])(
       'matrix parameters on %s are dropped by a redirect to the canonical address, before GitHub is asked anything',
       async (typed, canonical) => {
-        const decision = await check().decide(segs(typed), {
+        const decision = await check().decide(segs(typed), { ref: refOf(typed),
           matrixParameters: true,
         });
         expect(decision).toEqual({ kind: 'redirect', path: canonical });
@@ -423,7 +434,7 @@ describe('GithubAddressCheck.decide', () => {
     );
 
     it("matrix parameters on an address that is no project are not the redirect's business: the problem page says so", async () => {
-      const decision = await check().decide(segs('/project/github.com/o'), {
+      const decision = await check().decide(segs('/project/github.com/o'), { ref: refOf('/project/github.com/o'),
         matrixParameters: true,
       });
       expect(decision.kind).toBe('problem');
@@ -434,15 +445,18 @@ describe('GithubAddressCheck.decide', () => {
         '/project/github.com/Datatug/Chinook-Demo/chat',
         '/project/github.com/o/r.git',
         '/project/github.com/o/r/tree/HEAD/-/chat',
+        '/project/github.com/o/r/tree/HEAD/demo-project-1/-/board/showcase',
+        '/project/github.com/o/r/tree/v1/dir',
+        '/project/github.com/o/r/dir?ref=HEAD',
         '/project/github.com/o/r/blob/v1/dir/datatug-project.json',
       ]) {
         TestBed.resetTestingModule();
-        const first = await check().decide(segs(typed));
+        const first = await check().decide(segs(typed), { ref: refOf(typed) });
         expect(first.kind).toBe('redirect');
         if (first.kind === 'redirect') {
           TestBed.resetTestingModule();
           expect(
-            (await check().decide(segs(first.path))).kind,
+            (await check().decide(segs(first.path), { ref: refOf(first.path) })).kind,
             first.path,
           ).toBe('open');
         }
@@ -452,44 +466,42 @@ describe('GithubAddressCheck.decide', () => {
 
   describe('a branch, tag or commit: the default branch is always spelled HEAD', () => {
     it.each([
-      ['main', '/project/github.com/o/r/tree/main', '/project/github.com/o/r'],
+      ['main', '/project/github.com/o/r?ref=main', '/project/github.com/o/r'],
       [
         'main',
-        '/project/github.com/o/r/tree/main/-/chat',
+        '/project/github.com/o/r/chat?ref=main',
         '/project/github.com/o/r/chat',
       ],
       [
         'main',
-        '/project/github.com/o/r/tree/main/demo-project-1',
-        '/project/github.com/o/r/tree/HEAD/demo-project-1',
+        '/project/github.com/o/r/demo-project-1?ref=main',
+        '/project/github.com/o/r/demo-project-1',
       ],
       [
         'main',
-        '/project/github.com/o/r/tree/main/a/b/-/queries/x',
-        '/project/github.com/o/r/tree/HEAD/a/b/-/queries/x',
+        '/project/github.com/o/r/a/b/-/queries/x?ref=main',
+        '/project/github.com/o/r/a/b/-/queries/x',
       ],
       [
         'trunk',
-        '/project/github.com/o/r/tree/trunk/datatug',
-        '/project/github.com/o/r/tree/HEAD/datatug',
+        '/project/github.com/o/r/datatug?ref=trunk',
+        '/project/github.com/o/r/datatug',
       ],
       // The page and the folder keep their percent-encoding (G-A1c: the address is written by `projectUrl`).
       [
         'main',
-        '/project/github.com/o/r/tree/main/-/queries/a%2Fb',
+        '/project/github.com/o/r/queries/a%2Fb?ref=main',
         '/project/github.com/o/r/queries/a%2Fb',
       ],
       [
         'main',
-        '/project/github.com/o/r/tree/main/Dir%20x/-/queries/a%20b%3Fc',
-        '/project/github.com/o/r/tree/HEAD/Dir%20x/-/queries/a%20b%3Fc',
+        '/project/github.com/o/r/Dir%20x/-/queries/a%20b%3Fc?ref=main',
+        '/project/github.com/o/r/Dir%20x/-/queries/a%20b%3Fc',
       ],
     ])(
       '%s is the default branch: %s redirects to %s',
       async (name, typed, canonical) => {
-        const decision = await check({ kind: 'found', branch: name }).decide(
-          segs(typed),
-        );
+        const decision = await check({ kind: 'found', branch: name }).decide(segs(typed), { ref: refOf(typed) });
         expect(decision).toEqual({ kind: 'redirect', path: canonical });
         expect(branch).toHaveBeenCalledWith('o', 'r');
         expect(notice).not.toHaveBeenCalled();
@@ -497,15 +509,15 @@ describe('GithubAddressCheck.decide', () => {
     );
 
     it.each([
-      '/project/github.com/o/r/tree/v1.0.0',
-      '/project/github.com/o/r/tree/v1.0.0/-/chat',
-      '/project/github.com/o/r/tree/develop/dir',
-      '/project/github.com/o/r/tree/0123456789abcdef0123456789abcdef01234567',
+      '/project/github.com/o/r?ref=v1.0.0',
+      '/project/github.com/o/r/chat?ref=v1.0.0',
+      '/project/github.com/o/r/dir?ref=develop',
+      '/project/github.com/o/r?ref=0123456789abcdef0123456789abcdef01234567',
     ])(
       '%s is another version of the project: its own id, nothing to replace',
       async (typed) => {
         expect(
-          await check({ kind: 'found', branch: 'main' }).decide(segs(typed)),
+          await check({ kind: 'found', branch: 'main' }).decide(segs(typed), { ref: refOf(typed) }),
         ).toEqual({ kind: 'open' });
         expect(summary).toHaveBeenCalledTimes(1);
         expect(notice).not.toHaveBeenCalled();
@@ -514,9 +526,7 @@ describe('GithubAddressCheck.decide', () => {
 
     it('a ref is compared with the name as GitHub spells it, letter case included', async () => {
       expect(
-        await check({ kind: 'found', branch: 'Main' }).decide(
-          segs('/project/github.com/o/r/tree/main'),
-        ),
+        await check({ kind: 'found', branch: 'Main' }).decide(segs('/project/github.com/o/r?ref=main'), { ref: refOf('/project/github.com/o/r?ref=main') }),
       ).toEqual({ kind: 'open' });
     });
 
@@ -525,18 +535,16 @@ describe('GithubAddressCheck.decide', () => {
       for (const typed of [
         '/project/github.com/o/r',
         '/project/github.com/o/r/chat',
-        '/project/github.com/o/r/tree/HEAD/dir',
-        '/project/github.com/o/r/tree/HEAD/dir/-/chat',
+        '/project/github.com/o/r/dir',
+        '/project/github.com/o/r/dir/-/chat',
       ]) {
-        await c.decide(segs(typed));
+        await c.decide(segs(typed), { ref: refOf(typed) });
       }
       expect(branch).not.toHaveBeenCalled();
     });
 
     it('when the lookup is refused, the address is left as typed, the visit is told, and the project still opens', async () => {
-      const decision = await check({ kind: 'refused' }).decide(
-        segs('/project/github.com/o/r/tree/main/dir'),
-      );
+      const decision = await check({ kind: 'refused' }).decide(segs('/project/github.com/o/r/dir?ref=main'), { ref: refOf('/project/github.com/o/r/dir?ref=main') });
       expect(decision).toEqual({ kind: 'open' });
       expect(notice).toHaveBeenCalledTimes(1);
       expect(notice).toHaveBeenCalledWith('o', 'r', 'main');
@@ -546,16 +554,16 @@ describe('GithubAddressCheck.decide', () => {
     it('the toast of a refused lookup is shown once per repository and ref for the life of the page, not on every navigation (review minor 1)', async () => {
       const c = check({ kind: 'refused' });
       for (const typed of [
-        '/project/github.com/o/r/tree/main/dir/-/chat',
-        '/project/github.com/o/r/tree/main/dir/-/queries',
-        '/project/github.com/o/r/tree/main/other',
+        '/project/github.com/o/r/dir/-/chat?ref=main',
+        '/project/github.com/o/r/dir/-/queries?ref=main',
+        '/project/github.com/o/r/other?ref=main',
       ]) {
-        expect(await c.decide(segs(typed))).toEqual({ kind: 'open' });
+        expect(await c.decide(segs(typed), { ref: refOf(typed) })).toEqual({ kind: 'open' });
       }
       expect(notice).toHaveBeenCalledTimes(1);
       expect(notice).toHaveBeenCalledWith('o', 'r', 'main');
-      await c.decide(segs('/project/github.com/o/r/tree/develop'));
-      await c.decide(segs('/project/github.com/o/other/tree/main'));
+      await c.decide(segs('/project/github.com/o/r?ref=develop'), { ref: refOf('/project/github.com/o/r?ref=develop') });
+      await c.decide(segs('/project/github.com/o/other?ref=main'), { ref: refOf('/project/github.com/o/other?ref=main') });
       expect(notice.mock.calls).toEqual([
         ['o', 'r', 'main'],
         ['o', 'r', 'develop'],
@@ -568,7 +576,7 @@ describe('GithubAddressCheck.decide', () => {
         throwError(
           () => new GithubProjectNotFoundError('r@o@@main', 'missing'),
         ),
-      ).decide(segs('/project/github.com/o/r/tree/main'));
+      ).decide(segs('/project/github.com/o/r?ref=main'), { ref: refOf('/project/github.com/o/r?ref=main') });
       expect(decision.kind).toBe('problem');
       expect(notice).not.toHaveBeenCalled();
     });
@@ -611,7 +619,7 @@ describe('GithubAddressCheck.decide', () => {
     ])(
       '%s: the page says so, and nothing is asked of GitHub',
       async (_name, typed, reason) => {
-        const decision = await check().decide(segs(typed));
+        const decision = await check().decide(segs(typed), { ref: refOf(typed) });
         expect(decision).toEqual({
           kind: 'problem',
           problem: { kind: 'unsupported', reason },
@@ -631,23 +639,23 @@ describe('GithubAddressCheck.decide', () => {
       ],
       [
         'a folder',
-        '/project/github.com/o/r/tree/HEAD/dir/sub',
+        '/project/github.com/o/r/dir/sub',
         { owner: 'o', repo: 'r', folder: 'dir/sub' },
       ],
       [
         'a tag',
-        '/project/github.com/o/r/tree/v1',
+        '/project/github.com/o/r?ref=v1',
         { owner: 'o', repo: 'r', folder: '', ref: 'v1' },
       ],
       [
         'a first part that is a branch of the name feature/x: read as the ref `feature` and the folder `x`',
-        '/project/github.com/o/r/tree/feature/x',
+        '/project/github.com/o/r/x?ref=feature',
         { owner: 'o', repo: 'r', folder: 'x', ref: 'feature' },
       ],
     ])('%s: "No DataTug project here"', async (_name, typed, where) => {
       const decision = await check({ kind: 'found', branch: 'main' }, () =>
         throwError(() => new GithubProjectNotFoundError('x', 'missing')),
-      ).decide(segs(typed));
+      ).decide(segs(typed), { ref: refOf(typed) });
       expect(decision).toEqual({
         kind: 'problem',
         problem: { kind: 'not-found', moved: false, ...where },
@@ -657,7 +665,7 @@ describe('GithubAddressCheck.decide', () => {
     it('a renamed or moved repository (GitHub answers with a redirect) is said to have moved', async () => {
       const decision = await check(undefined, () =>
         throwError(() => new GithubProjectNotFoundError('x', 'moved')),
-      ).decide(segs('/project/github.com/o/r'));
+      ).decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') });
       expect(decision).toMatchObject({
         kind: 'problem',
         problem: { kind: 'not-found', moved: true },
@@ -671,11 +679,11 @@ describe('GithubAddressCheck.decide', () => {
           ? of({ id: 'x' })
           : throwError(() => new GithubProjectNotFoundError('x', 'missing')),
       );
-      expect((await c.decide(segs('/project/github.com/o/r'))).kind).toBe(
+      expect((await c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') })).kind).toBe(
         'problem',
       );
       exists = true;
-      expect((await c.decide(segs('/project/github.com/o/r'))).kind).toBe(
+      expect((await c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') })).kind).toBe(
         'open',
       );
     });
@@ -689,7 +697,7 @@ describe('GithubAddressCheck.decide', () => {
         '/project/github.com/o/r/chat',
         '/project/github.com/o/r/queries',
       ]) {
-        expect(await c.decide(segs(typed))).toEqual({ kind: 'open' });
+        expect(await c.decide(segs(typed), { ref: refOf(typed) })).toEqual({ kind: 'open' });
       }
       expect(summary).toHaveBeenCalledTimes(1);
       expect(summary).toHaveBeenCalledWith('r@o@');
@@ -697,9 +705,9 @@ describe('GithubAddressCheck.decide', () => {
 
     it('is asked about once per project id', async () => {
       const c = check();
-      await c.decide(segs('/project/github.com/o/r'));
-      await c.decide(segs('/project/github.com/o/r/tree/HEAD/dir'));
-      await c.decide(segs('/project/github.com/o/r/tree/v1'));
+      await c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') });
+      await c.decide(segs('/project/github.com/o/r/dir'), { ref: refOf('/project/github.com/o/r/dir') });
+      await c.decide(segs('/project/github.com/o/r?ref=v1'), { ref: refOf('/project/github.com/o/r?ref=v1') });
       expect(summary.mock.calls.map((call) => call[0])).toEqual([
         'r@o@',
         'r@o@dir',
@@ -714,11 +722,11 @@ describe('GithubAddressCheck.decide', () => {
       'opens when the read fails for another reason than "not found" (%s): the pages show their own error',
       async (_name, err) => {
         const c = check(undefined, () => throwError(() => err));
-        expect(await c.decide(segs('/project/github.com/o/r'))).toEqual({
+        expect(await c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') })).toEqual({
           kind: 'open',
         });
         // an inconclusive read is not repeated on every navigation either
-        await c.decide(segs('/project/github.com/o/r/chat'));
+        await c.decide(segs('/project/github.com/o/r/chat'), { ref: refOf('/project/github.com/o/r/chat') });
         expect(summary).toHaveBeenCalledTimes(1);
       },
     );
@@ -732,11 +740,11 @@ describe('GithubAddressCheck.decide', () => {
 
     it('a probe that is still waiting when the time is up lets the project open, and is not repeated on the next navigation', async () => {
       const c = check(undefined, () => NEVER);
-      const deciding = c.decide(segs('/project/github.com/o/r'));
+      const deciding = c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') });
       fireTimeout();
       expect(await deciding).toEqual({ kind: 'open' });
       expect(timerCalls).toEqual([GITHUB_PROBE_TIMEOUT_MS]);
-      expect(await c.decide(segs('/project/github.com/o/r/chat'))).toEqual({
+      expect(await c.decide(segs('/project/github.com/o/r/chat'), { ref: refOf('/project/github.com/o/r/chat') })).toEqual({
         kind: 'open',
       });
       expect(summary).toHaveBeenCalledTimes(1);
@@ -746,7 +754,7 @@ describe('GithubAddressCheck.decide', () => {
       const c = check(undefined, () =>
         throwError(() => new GithubProjectNotFoundError('x', 'missing')),
       );
-      expect((await c.decide(segs('/project/github.com/o/r'))).kind).toBe(
+      expect((await c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') })).kind).toBe(
         'problem',
       );
     });
@@ -755,13 +763,13 @@ describe('GithubAddressCheck.decide', () => {
       let answer: (value: unknown) => void = () => undefined;
       const late = new Promise((resolve) => (answer = resolve));
       const c = check(undefined, () => from(late));
-      const deciding = c.decide(segs('/project/github.com/o/r'));
+      const deciding = c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') });
       fireTimeout();
       expect((await deciding).kind).toBe('open');
       answer({ id: 'x' });
       await late;
       await new Promise((resolve) => setTimeout(resolve));
-      expect(await c.decide(segs('/project/github.com/o/r/chat'))).toEqual({
+      expect(await c.decide(segs('/project/github.com/o/r/chat'), { ref: refOf('/project/github.com/o/r/chat') })).toEqual({
         kind: 'open',
       });
       expect(summary).toHaveBeenCalledTimes(1);
@@ -777,13 +785,13 @@ describe('GithubAddressCheck.decide', () => {
         let fail: (error: unknown) => void = () => undefined;
         const late = new Promise((_resolve, reject) => (fail = reject));
         const c = check(undefined, () => from(late));
-        const deciding = c.decide(segs('/project/github.com/o/r'));
+        const deciding = c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') });
         fireTimeout();
         expect((await deciding).kind).toBe('open');
         fail(new GithubProjectNotFoundError('x', reason));
         await late.catch(() => undefined);
         await new Promise((resolve) => setTimeout(resolve));
-        const next = await c.decide(segs('/project/github.com/o/r/chat'));
+        const next = await c.decide(segs('/project/github.com/o/r/chat'), { ref: refOf('/project/github.com/o/r/chat') });
         expect(next).toEqual({
           kind: 'problem',
           problem: {
@@ -796,7 +804,7 @@ describe('GithubAddressCheck.decide', () => {
         });
         // that was said once; GitHub is asked again for the navigation after it (the repository may exist by then)
         summary.mockImplementation(() => of({ id: 'x' }));
-        expect(await c.decide(segs('/project/github.com/o/r/chat'))).toEqual({
+        expect(await c.decide(segs('/project/github.com/o/r/chat'), { ref: refOf('/project/github.com/o/r/chat') })).toEqual({
           kind: 'open',
         });
         expect(summary).toHaveBeenCalledTimes(2);
@@ -805,14 +813,14 @@ describe('GithubAddressCheck.decide', () => {
 
     it('while the first answer is still to come, navigations inside the project do not wait for it again', async () => {
       const c = check(undefined, () => NEVER);
-      const first = c.decide(segs('/project/github.com/o/r'));
+      const first = c.decide(segs('/project/github.com/o/r'), { ref: refOf('/project/github.com/o/r') });
       fireTimeout();
       await first;
       for (const typed of [
         '/project/github.com/o/r/chat',
         '/project/github.com/o/r/queries',
       ]) {
-        expect(await c.decide(segs(typed))).toEqual({ kind: 'open' });
+        expect(await c.decide(segs(typed), { ref: refOf(typed) })).toEqual({ kind: 'open' });
       }
       expect(summary).toHaveBeenCalledTimes(1);
       expect(timerCalls).toHaveLength(1);
@@ -821,8 +829,43 @@ describe('GithubAddressCheck.decide', () => {
 
   it('is not about an address outside /project/github.com', async () => {
     expect(
-      await check().decide(segs('/store/github.com/project/r@o@')),
+      await check().decide(segs('/store/github.com/project/r@o@'), { ref: refOf('/store/github.com/project/r@o@') }),
     ).toEqual({ kind: 'open' });
     expect(summary).not.toHaveBeenCalled();
+  });
+});
+
+describe('readShortGithubAddress: the canonical ?ref= and short folder forms are canonical (founder 2026-10-23)', () => {
+  it.each([
+    '/project/github.com/o/r/demo-project-1',
+    '/project/github.com/o/r/demo-project-1/-/board/showcase',
+    '/project/github.com/o/r?ref=v1',
+    '/project/github.com/o/r/d/-/queries?ref=v1',
+    '/project/github.com/o/r/d?ref=feature/x',
+    '/project/github.com/o/r/tree/HEAD/tree/x',
+    '/project/github.com/o/r/chat/-',
+  ])('%s, as the router hands it over (decoded), reads as its own canonical address: no redirect loop', (path) => {
+    const result = readShortGithubAddress(segs(path), refOf(path));
+    expect(result).toMatchObject({ kind: 'project' });
+    if (result.kind === 'project') {
+      expect(result.parts.canonicalPath).toBe(path);
+      expect(result.parts.isCanonical).toBe(true);
+    }
+  });
+
+  it.each([
+    [
+      '/project/github.com/o/r/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/o/r/demo-project-1/-/chat',
+    ],
+    ['/project/github.com/o/r/Tree/v1/d', '/project/github.com/o/r/d?ref=v1'],
+    ['/project/github.com/o/r/d?ref=HEAD', '/project/github.com/o/r/d'],
+  ])('%s is another spelling of %s', (typed, canonical) => {
+    const result = readShortGithubAddress(segs(typed), refOf(typed));
+    expect(result).toMatchObject({ kind: 'project' });
+    if (result.kind === 'project') {
+      expect(result.parts.isCanonical).toBe(false);
+      expect(result.parts.canonicalPath).toBe(canonical);
+    }
   });
 });

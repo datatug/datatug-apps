@@ -16,7 +16,7 @@ test('server showcase and tutorial hold complete results without SQLite download
   });
   const queries = () => requests.filter(url => url.includes('ovdb.demodb.dev/v1/databases/') && url.endsWith('/tugql'));
   const downloads = () => requests.filter(url => /\.(?:sqlite|wasm)(?:$|\?)/.test(url));
-  const url = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
+  const url = '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase';
   await page.goto(url);
   const race = page.locator('ion-card').filter({ hasText: 'Where Northwind orders shipped' }).first();
   await expect(race).toContainText('830 source orders', { timeout: 60_000 });
@@ -97,7 +97,7 @@ test('cross-database comparison runs one native server query and displays source
   });
   const revision = process.env['DATATUG_E2E_SERVER_SHOWCASE_REF'] || 'HEAD';
   await page.goto(
-    `/project/github.com/datatug/datatug-demo-project/tree/${revision}/demo-project-1/-/board/showcase`,
+    `/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase?ref=${revision}`,
   );
   if (localProxy) {
     const race = page.locator('ion-card').filter({ hasText: 'Where Northwind orders shipped' }).first();

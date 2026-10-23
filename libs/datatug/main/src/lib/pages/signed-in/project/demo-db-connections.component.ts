@@ -4,7 +4,7 @@ import { RouterLink } from '@angular/router';
 import { IonIcon, IonItem, IonLabel, IonList } from '@ionic/angular';
 import { firstValueFrom } from 'rxjs';
 import type { IProjectRef } from '../../../core/project-context';
-import { projectPageHref } from '../../../nav/project-page-href';
+import { projectPageHref, withQuery } from '../../../nav/project-page-href';
 import { GithubProjectReaderService } from '../../../services/repo/github/github-project-reader.service';
 import { ProjectTabPanelComponent, matchesOverviewFilter } from './project-tab-panel.component';
 
@@ -209,7 +209,7 @@ export class DemoDbConnectionsComponent {
     this.serversHref.set(ref ? projectPageHref(ref, 'servers') : undefined);
     if (ref?.storeId === 'github.com' && ref.projectId === projectId) {
       const page = projectPageHref(ref, ['query', chinookPostgresqlQueryId]);
-      if (page !== '/') this.chinookQueryHref.set(`${page}?id=${encodeURIComponent(chinookPostgresqlQueryId)}`);
+      if (page !== '/') this.chinookQueryHref.set(withQuery(page, `id=${encodeURIComponent(chinookPostgresqlQueryId)}`));
       void this.load(epoch);
     }
   }

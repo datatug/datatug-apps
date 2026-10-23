@@ -22,7 +22,7 @@ import { activePage } from './journey/helpers/active-page';
  */
 
 const QUERY_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/northwind%2Fcustomer-by-id?id=northwind%2Fcustomer-by-id&env=dev';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/northwind%2Fcustomer-by-id?id=northwind%2Fcustomer-by-id&env=dev';
 
 // Verbatim copies of datatug/datatug-demo-project at f81ca04 (after #83), the commit that added these files.
 const FIXTURES = join(__dirname, 'fixtures', 'parameter-lookup');

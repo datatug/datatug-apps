@@ -232,10 +232,10 @@ export function tryProjectUrl(ref: IProjectRef, page?: ApiProjectPage) {
   const result = baseTryProjectUrl(ref, page);
   if (typeof result !== 'string') return result;
   const query = projectApiQuery(ref);
-  return query ? `${result}?${query}` : result;
+  return query ? `${result}${result.includes('?') ? '&' : '?'}${query}` : result;
 }
 export function projectUrl(ref: IProjectRef, page?: ApiProjectPage): string {
   const path = baseProjectUrl(ref, page);
   const query = projectApiQuery(ref);
-  return query ? `${path}?${query}` : path;
+  return query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
 }
