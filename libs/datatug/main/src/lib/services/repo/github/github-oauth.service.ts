@@ -202,11 +202,17 @@ export class GithubOAuthService {
 
   /** Keeps the token with the Sneat user it was obtained for (see `GITHUB_TOKEN_OWNER_STORAGE_KEY`). */
   private setToken(token: string, owner: string | undefined): void {
-    sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
-    if (owner) {
-      sessionStorage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
-    } else {
-      sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+    // Storage blocked by the browser (reading `sessionStorage` itself throws): the token is not kept, which reads as
+    // "not signed in to GitHub", never as a failure.
+    try {
+      globalThis.sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
+      if (owner) {
+        globalThis.sessionStorage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
+      } else {
+        globalThis.sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+      }
+    } catch {
+      // Nothing kept.
     }
   }
 }
