@@ -44,6 +44,8 @@ jobs:
           # No pipe into a reader that can stop early (grep -q/-m, head, cmp): under pipefail the writer's SIGPIPE fails
           # the step. Every output is captured in full first, then inspected.
           pins="$(jq -r '.pins[] | "\(.repo) \(.sha)"' apps/datatug-app/e2e/github-pins.json)"
+          # An empty pin list would run the loop zero times and pass without checking anything.
+          test -n "$pins" || { echo '::error::No pins read from apps/datatug-app/e2e/github-pins.json; refusing to pass without checking any.'; exit 1; }
           while read -r repo sha; do
             dir="tmp/github-checkouts/$repo/$sha"
             test "$(gh api "repos/$repo/commits/$sha" --jq .sha)" = "$sha"
