@@ -341,9 +341,9 @@ test.describe('the hand-off holding page', () => {
       .toBe(`${CANONICAL_PROJECT}?utm_source=landing&utm_medium=cta&lang=en`);
     await expect(page.locator('#demo-holding-message')).toHaveCount(0);
     const entries = await page.evaluate(() =>
-      (window as unknown as { navigation: { entries: () => { url: string }[] } }).navigation
+      (window as unknown as { navigation: { entries: () => { url: string | null }[] } }).navigation
         .entries()
-        .map((entry) => new URL(entry.url).pathname),
+        .flatMap((entry) => (entry.url ? [new URL(entry.url, location.href).pathname] : [])),
     );
     expect(entries).not.toContain('/demo');
     await page.goBack();
