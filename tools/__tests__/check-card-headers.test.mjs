@@ -60,16 +60,30 @@ test('divider that is not the first child is flagged', () => {
   );
 });
 
-test('danger exception only applies to a danger card', () => {
+test('divider colour: light, warning, danger pass; others and bound fail', () => {
+  for (const c of ['light', 'warning', 'danger'])
+    assert.equal(
+      n(
+        `<ion-card><ion-item-divider color="${c}"></ion-item-divider></ion-card>`,
+      ),
+      0,
+      c,
+    );
+  for (const c of ['primary', 'medium', 'success'])
+    assert.equal(
+      n(
+        `<ion-card><ion-item-divider color="${c}"></ion-item-divider></ion-card>`,
+      ),
+      1,
+      c,
+    );
   assert.equal(
-    n(
-      `<ion-card color="danger"><ion-item-divider color="danger"></ion-item-divider></ion-card>`,
-    ),
-    0,
+    n(`<ion-card><ion-item-divider [color]="c"></ion-item-divider></ion-card>`),
+    1,
   );
   assert.equal(
     n(
-      `<ion-card><ion-item-divider color="danger"></ion-item-divider></ion-card>`,
+      `<ion-card color="danger"><ion-card-header></ion-card-header></ion-card>`,
     ),
     1,
   );

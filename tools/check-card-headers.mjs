@@ -5,8 +5,9 @@
  * Rule (AGENTS.md, "Card headers"): every `<ion-card>` starts with exactly one
  * header row, `<ion-item-divider color="light">` (title in `ion-label`,
  * actions in `slot="end"`). Never a bare `ion-card-header`, never a
- * header-less card. The only exception: an error card, `<ion-card
- * color="danger">`, whose divider is `color="danger"`.
+ * header-less card. The divider colour is `light` (the default), or `warning`
+ * / `danger` for status, warning and error cards. Any other colour, or a bound
+ * `[color]`, fails.
  *
  * The check parses every `*.html` under libs/ and apps/, plus the inline
  * `template:` literals of non-spec `*.ts` files (allowlisted under the `.ts`
@@ -42,6 +43,9 @@ const repoRoot = join(__dirname, '..');
 const allowlistPath = join(__dirname, 'card-header-allowlist.txt');
 const SCAN_ROOTS = ['libs', 'apps'];
 const SKIP_DIRS = new Set(['node_modules', 'dist', '.angular', '.nx', '.git']);
+
+// light is the default; warning and danger mark status, warning and error cards.
+const HEADER_COLORS = new Set(['light', 'warning', 'danger']);
 
 const nodeType = (n) => n?.constructor?.name;
 
@@ -99,7 +103,7 @@ function headerBranches(node) {
 }
 
 /** Is the first meaningful node of `children` a valid header (or blocks of them)? */
-function startsWithHeader(children, isDangerCard) {
+function startsWithHeader(children) {
   const first = children.find((n) => {
     const t = nodeType(n);
     if (t === 'Text') return n.value.trim() !== '';
@@ -110,14 +114,14 @@ function startsWithHeader(children, isDangerCard) {
   if (t === 'Template' || t === 'DeferredBlock') return false;
   const branches = headerBranches(first);
   if (branches) {
-    return branches.every((b) => startsWithHeader(b, isDangerCard));
+    return branches.every((b) => startsWithHeader(b));
   }
   if (t === 'Element' && first.name === 'ng-container') {
-    return startsWithHeader(first.children, isDangerCard);
+    return startsWithHeader(first.children);
   }
   if (t !== 'Element' || first.name !== 'ion-item-divider') return false;
   const color = staticAttr(first, 'color');
-  return color === 'light' || (isDangerCard && color === 'danger');
+  return HEADER_COLORS.has(color);
 }
 
 function collectCards(nodes, out) {
@@ -152,8 +156,7 @@ export function findViolations(
   collectCards(nodes, cards);
   const violations = [];
   for (const card of cards) {
-    const isDangerCard = staticAttr(card, 'color') === 'danger';
-    if (startsWithHeader(card.children, isDangerCard)) continue;
+    if (startsWithHeader(card.children)) continue;
     const first = card.children.find((n) => nodeType(n) === 'Element');
     const reason =
       first?.name === 'ion-card-header'
