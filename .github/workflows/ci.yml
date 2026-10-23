@@ -1050,9 +1050,13 @@ jobs:
       # The project the real agent serves: pin demo-agent, copied into the workspace because the agent may write to it
       # (the cached pin checkouts stay read-only). An unpinned `main` once let a demo fixture change (Customer became the
       # Northwind customer, 533aaab) break this required check on every open PR. Bump deliberately with the specs.
+      # The pin checkout is a detached HEAD; the agent's environment-state/1 read (v0.113.0+) needs a named branch and
+      # answers a detached one with 409 ENVIRONMENT_REVISION_CONFLICT, so the copy is put on a local branch.
       - name: Check out datatug-demo-project (pin demo-agent)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        run: cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+        run: |
+          cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+          git -C datatug-demo-project switch --quiet --create demo-agent
 
       - name: Authenticate private Core artifact verification
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
@@ -1222,9 +1226,13 @@ jobs:
       # The project the real agent serves: pin demo-agent, copied into the workspace because the agent may write to it
       # (the cached pin checkouts stay read-only). An unpinned `main` once let a demo fixture change (Customer became the
       # Northwind customer, 533aaab) break this required check on every open PR. Bump deliberately with the specs.
+      # The pin checkout is a detached HEAD; the agent's environment-state/1 read (v0.113.0+) needs a named branch and
+      # answers a detached one with 409 ENVIRONMENT_REVISION_CONFLICT, so the copy is put on a local branch.
       - name: Check out datatug-demo-project (pin demo-agent)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
-        run: cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+        run: |
+          cp -R "$(node scripts/fetch-github-pins.mjs --print demo-agent)" datatug-demo-project
+          git -C datatug-demo-project switch --quiet --create demo-agent
 
       - name: Authenticate private Core artifact verification
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
