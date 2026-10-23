@@ -5,7 +5,8 @@ description: >-
   With both caches warm, apt installs from local archives and makes no package download from the Ubuntu mirror, whose
   throughput on hosted runners sometimes drops to ~40 KB/s (2026-10-23, merge-group run 39956333256: the 119 MB of
   chromium+firefox+webkit libraries that normally arrive in 10 s did not finish in 3 x 6 minutes). Each attempt is
-  time-boxed; a retry drops the Azure mirror from the apt mirror list, so it does not repeat the same slow path.
+  time-boxed; after attempt 1 fails, ubuntu-mirror.py moves apt from the Azure mirror to archive.ubuntu.com, so the
+  retry does not repeat the same slow path.
 inputs:
   browsers:
     description: Space-separated Playwright browsers, for example "chromium" or "chromium webkit".
@@ -19,6 +20,12 @@ inputs:
 runs:
   using: composite
   steps:
+    - name: Verify Ubuntu mirror fallback fixtures
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+      run: python3 -B "$ACTION_PATH/ubuntu-mirror-test.py"
+
     - name: Resolve Playwright version
       id: version
       shell: bash
@@ -77,7 +84,7 @@ runs:
 
     # Browser cache hit: browsers are on disk, so only the system libraries are installed (install-deps, no browser
     # download); archive cache hit: those libraries come from the seeded .debs, not the mirror. A hung attempt is killed
-    # and the retry runs without the Azure mirror.
+    # and the retry runs on Ubuntu's main mirror (ubuntu-mirror.py); seeded and partially downloaded .debs stay put.
     - name: Install Playwright browsers and system dependencies
       shell: bash
       env:
@@ -86,6 +93,7 @@ runs:
         DEBS_HIT: ${{ steps.debs.outputs.cache-hit }}
         ATTEMPTS: ${{ inputs.attempts }}
         LIMIT_MIN: ${{ inputs.attempt-timeout-minutes }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         if [ "$CACHE_HIT" = "true" ]; then cmd=(install-deps); else cmd=(install --with-deps); fi
         read -ra browser_list <<< "$BROWSERS"
@@ -115,15 +123,10 @@ runs:
           done
           sudo pkill -KILL -x apt-get || true
           sudo dpkg --configure -a || true
-          # Repeating the same mirror repeats the same slow download. Hosted runners resolve Ubuntu packages through
-          # mirror+file:/etc/apt/apt-mirrors.txt (Azure first, archive.ubuntu.com next); drop the Azure entries so
-          # the next attempt fetches from the next mirror. Partial downloads already in /var/cache/apt/archives stay.
-          mirrors=/etc/apt/apt-mirrors.txt
-          if [ -f "$mirrors" ] && grep -q 'azure\.archive\.ubuntu\.com' "$mirrors" \
-            && grep -v 'azure\.archive\.ubuntu\.com' "$mirrors" | grep -q '^[[:space:]]*http'; then
-            sudo sed -i '/azure\.archive\.ubuntu\.com/d' "$mirrors"
-            echo "Retrying without the Azure Ubuntu mirror; mirror list now:"
-            cat "$mirrors"
+          if [ "$i" -eq 1 ] && [ "$i" -lt "$ATTEMPTS" ]; then
+            # Hosted Ubuntu's Azure mirror can stall while the browser cache is healthy.
+            # Preserve the first attempt and dependency/browser matrix; retry on Ubuntu's main mirror.
+            sudo python3 "$ACTION_PATH/ubuntu-mirror.py"
           fi
         done
         echo "::error::Playwright install failed after $ATTEMPTS attempts ($(( $(date +%s) - start ))s)"

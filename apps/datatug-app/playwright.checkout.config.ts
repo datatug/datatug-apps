@@ -1,9 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 import { demodbChromiumLaunch, demodbReporter } from './e2e/helpers/demodb-config';
 const port = process.env.DATATUG_E2E_PORT || '18786';
+// Local-only: externally owned emulators are never stopped or reconfigured by this run.
+const reuseExternalEmulators = process.env.DATATUG_E2E_REUSE_EMULATORS === '1';
+if (reuseExternalEmulators && process.env.CI) throw new Error('CI must start its isolated checkout emulators.');
 export default defineConfig({
   testDir: './e2e',
-  testMatch: ['checkout-journey.spec.ts', 'hosted-incidents.spec.ts'],
+  testMatch: ['checkout-journey.spec.ts', 'hosted-incidents.spec.ts', 'project-ai.spec.ts'],
   // Each test signs up its own random emulator user and fakes payment per page, so tests run in parallel.
   fullyParallel: true,
   outputDir: '../../coverage/apps/datatug-checkout/results',
@@ -11,14 +14,14 @@ export default defineConfig({
   reporter: [['list'], demodbReporter],
   use: { baseURL: `http://127.0.0.1:${port}`, trace: 'retain-on-failure' },
   webServer: [
-    {
+    ...(reuseExternalEmulators ? [] : [{
       command:
         'pnpm exec firebase emulators:start --only auth,firestore --project demo-local-sneat-app',
       url: 'http://127.0.0.1:8180',
       reuseExistingServer: false,
       timeout: 120_000,
-      gracefulShutdown: { signal: 'SIGTERM', timeout: 10_000 },
-    },
+      gracefulShutdown: { signal: 'SIGTERM' as const, timeout: 10_000 },
+    }]),
     {
       command: `pnpm nx run datatug-app:serve:sso-e2e --host 127.0.0.1 --port ${port}`,
       url: `http://127.0.0.1:${port}`,

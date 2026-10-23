@@ -216,7 +216,7 @@ test.beforeAll(async () => {
   test.setTimeout(MOUNTS_DEADLINE + 60_000);
   const wanted = demoPostgresqlDatasetIds.map((id) => demoPostgresqlCatalog[id].databaseId as string);
   const deadline = Date.now() + MOUNTS_DEADLINE;
-  let last = 'no answer yet';
+  let last: string;
   for (;;) {
     const tripped = readBreaker();
     if (tripped) throw new Error(tripped);

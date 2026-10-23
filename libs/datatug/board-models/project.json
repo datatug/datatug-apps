@@ -9,6 +9,7 @@
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
       "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "defaultConfiguration": "production",
       "options": {
         "project": "libs/datatug/board-models/ng-package.json",
         "tsConfig": "libs/datatug/board-models/tsconfig.lib.json"
@@ -18,18 +19,13 @@
           "tsConfig": "libs/datatug/board-models/tsconfig.lib.prod.json"
         },
         "development": {}
-      },
-      "defaultConfiguration": "production"
-    },
-    "test": {
-      "executor": "@nx/vitest:test",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
-      "options": {
-        "tsConfig": "libs/datatug/board-models/tsconfig.spec.json"
       }
     },
-    "lint": {
-      "executor": "@nx/eslint:lint"
+    "test": {
+      "options": {
+        "cwd": ".",
+        "config": "libs/datatug/board-models/vite.config.mts"
+      }
     }
   }
 }

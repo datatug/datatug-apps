@@ -6029,7 +6029,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       routeSuperseded: false,
     };
     this.pendingAuthorLookupNavigation = pendingNavigation;
-    let navigated = false;
+    let navigated: boolean;
     try {
       navigated = await this.router.navigate([], {
         relativeTo: this.route,

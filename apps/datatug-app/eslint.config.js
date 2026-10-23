@@ -7,8 +7,9 @@ module.exports = [
   ...sneatLibConfig(__dirname),
   // Populated from the lock-verified Core release by the app's build target.
   // These third-party generated sources are validated by the artifact consumer, not authored here.
+  // Relative to this file: Nx 24 runs `eslint .` from the project directory.
   {
-    ignores: ['apps/datatug-app/src/assets/recordsetcompare/**'],
+    ignores: ['src/assets/recordsetcompare/**'],
   },
   {
     files: ['**/*.ts'],

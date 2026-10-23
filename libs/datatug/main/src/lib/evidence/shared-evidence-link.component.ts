@@ -11,6 +11,7 @@ import {
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute, Router } from '@angular/router';
 import { IonButton } from '@ionic/angular';
+import { tabStorage } from '@datatug/product-profiles';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { UsageAnalyticsService } from '../analytics/usage-analytics';
 import type { IProjectRef } from '../core/project-context';
@@ -38,14 +39,6 @@ type LinkState =
   | { readonly kind: 'sign-in'; readonly fragment: string }
   | { readonly kind: 'open'; readonly link: EvidenceLink };
 
-function storage(): Storage | undefined {
-  try {
-    return globalThis.sessionStorage;
-  } catch {
-    return undefined;
-  }
-}
-
 /**
  * Signing out, on any page, forgets the evidence link an anonymous visitor asked to open (REQ:shareable-evidence-links:
  * "cleared on sign-out"). Run once per app from the DataTug routes' environment injector, which outlives every page.
@@ -60,7 +53,7 @@ export function clearPendingEvidenceLinkOnSignOut(): void {
       !!state.user?.uid &&
       state.user.isAnonymous !== true;
     if (signedIn && !now && state?.status !== 'authenticating')
-      storage()?.removeItem(PENDING_EVIDENCE_LINK_KEY);
+      tabStorage()?.removeItem(PENDING_EVIDENCE_LINK_KEY);
     if (state?.status !== 'authenticating') signedIn = now;
   });
   inject(DestroyRef).onDestroy(() => subscription.unsubscribe());
@@ -232,7 +225,7 @@ export class SharedEvidenceLinkComponent {
 
   /** After sign-in returns here, put the kept link back into this address once. */
   private restorePending() {
-    const store = storage();
+    const store = tabStorage();
     let pending: PendingLink | undefined;
     try {
       pending = JSON.parse(store?.getItem(PENDING_EVIDENCE_LINK_KEY) || 'null');
@@ -261,7 +254,7 @@ export class SharedEvidenceLinkComponent {
     if (state.kind !== 'sign-in') return;
     const path = this.currentPath();
     try {
-      storage()?.setItem(
+      tabStorage()?.setItem(
         PENDING_EVIDENCE_LINK_KEY,
         JSON.stringify({
           path,

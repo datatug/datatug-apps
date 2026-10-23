@@ -9,7 +9,7 @@ import {
   UrlSegmentGroup,
   UrlTree,
 } from '@angular/router';
-import { PRODUCT_PROFILE } from '@datatug/product-profiles';
+import { PRODUCT_PROFILE, tabStorage } from '@datatug/product-profiles';
 import { hasOutletGroup } from '@datatug/project-address';
 import { cliChatCapability } from './cli-chat-capability';
 import {
@@ -151,7 +151,7 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
         ] !== 'string'
       ) {
         try {
-          const saved = sessionStorage.getItem(DEMO_HANDOFF_KEY) ?? '';
+          const saved = tabStorage()?.getItem(DEMO_HANDOFF_KEY) ?? '';
           const split = saved.indexOf('?');
           if (
             split >= 0 &&
@@ -197,7 +197,7 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
     ];
     if (typeof search !== 'string' || !searchAsksQuestion(search)) {
       try {
-        const saved = sessionStorage.getItem(DEMO_HANDOFF_KEY) ?? '';
+        const saved = tabStorage()?.getItem(DEMO_HANDOFF_KEY) ?? '';
         const split = saved.indexOf('?');
         const stored = split < 0 ? [] : routeSegments(saved.slice(0, split));
         if (
@@ -217,7 +217,7 @@ export const redirectLegacyChinookDemo: CanMatchFn = (_route, segments) => {
       (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH] =
         search;
       try {
-        sessionStorage.setItem(DEMO_HANDOFF_KEY, canonicalPath + search);
+        tabStorage()?.setItem(DEMO_HANDOFF_KEY, canonicalPath + search);
       } catch {
         /* A blocked store still permits this page-load hand-off. */
       }

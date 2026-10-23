@@ -6,7 +6,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { AuthPanelComponent } from '@sneat/auth-ui';
 import {
   IonAlert, IonButton, IonButtons, IonCheckbox, IonContent, IonFooter, IonHeader,
-  IonInput, IonItem, IonLabel, IonModal, IonNote, IonSelect, IonSelectOption,
+  IonPopover, IonInput, IonItem, IonLabel, IonModal, IonNote, IonSelect, IonSelectOption,
   IonSpinner, IonTabBar, IonTabButton, IonTabs, IonTextarea, IonTitle, IonToolbar,
 } from '@ionic/angular';
 import { filter, firstValueFrom } from 'rxjs';
@@ -28,7 +28,7 @@ import { isCanonicalPublicDemo } from '../detective/public-scenario-catalog';
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [FormsModule, AuthPanelComponent, IonTabs, IonTabBar, IonTabButton, IonItem, IonLabel,
     IonButton, IonButtons, IonSpinner, IonModal, IonHeader, IonToolbar, IonTitle,
-    IonContent, IonFooter, IonInput, IonSelect, IonSelectOption, IonCheckbox,
+    IonContent, IonFooter, IonPopover, IonInput, IonSelect, IonSelectOption, IonCheckbox,
     IonTextarea, IonNote, IonAlert, PublicDemoInvestigationPreviewComponent],
 })
 export class SessionWorkspaceShellComponent {
@@ -291,7 +291,7 @@ export class SessionWorkspaceShellComponent {
   tabKeydown(event: KeyboardEvent, id: string): void {
     const sessions = this.workspace.openSessions();
     const index = sessions.findIndex((session) => session.id === id);
-    let target = index;
+    let target: number;
     if (event.key === 'ArrowLeft') target = (index - 1 + sessions.length) % sessions.length;
     else if (event.key === 'ArrowRight') target = (index + 1) % sessions.length;
     else if (event.key === 'Home') target = 0;

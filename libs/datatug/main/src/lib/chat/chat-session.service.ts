@@ -4,7 +4,7 @@ import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { ChatJoinChoice, ChatJoinLineage, ChatMetrics, ChatTurn } from './chat.types';
 import type { TraceStep } from './chat-trace.types';
 import {
-  applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
+  chatProjectIdFromScope, chatSourceAccepted, applyChatWorkspaceAction, chatBookmarkRows, ChatBookmark, ChatRecordSetData, ChatWorkspaceAction, ChatWorkspaceState,
   emptyChatWorkspace,
 } from './chat-workspace';
 
@@ -27,7 +27,7 @@ export const CHAT_SESSION_DATABASE = new InjectionToken<Database>('Chat session 
 export type ChatRecordSetSourceCheck = (scope: string, source: string) => boolean;
 export const CHAT_RECORD_SET_SOURCE_CHECK = new InjectionToken<ChatRecordSetSourceCheck>('Chat RecordSet source check', {
   providedIn: 'root',
-  factory: () => (scope, source) => source === `${scope}/chinook`,
+  factory: () => chatSourceAccepted,
 });
 
 export interface ChatSession {
@@ -107,11 +107,6 @@ const bookmarkKey = (id: string) => key('ChatBookmarks', id);
 const traceKey = (id: string) => key('ChatTraceSteps', id);
 const now = () => new Date().toISOString();
 
-function projectIdFromScope(scope: string): string {
-  const parsed = JSON.parse(scope) as unknown;
-  if (!Array.isArray(parsed) || typeof parsed[1] !== 'string') throw new Error('The chat project identity is invalid.');
-  return parsed[1];
-}
 function validTitle(value: string): string {
   const title = value.trim().slice(0, 100);
   if (!title) throw new Error('Enter a bookmark name up to 100 characters.');
@@ -349,7 +344,7 @@ export class ChatSessionService {
   private async createBookmark(tx: ReadwriteTransaction, scope: string, session: ChatSession,
     action: Extract<ChatWorkspaceAction, { kind: 'bookmark' }>): Promise<ChatWorkspaceState> {
     const ref = action.reference;
-    const projectId = projectIdFromScope(scope);
+    const projectId = chatProjectIdFromScope(scope);
     if (!['recordset', 'view', 'selection'].includes(ref.kind) || ref.projectId !== projectId) throw new Error('Choose a result, View, or Selection from this project to bookmark.');
     const state = session.workspace || emptyChatWorkspace();
     let recordSetId = ref.objectId;
