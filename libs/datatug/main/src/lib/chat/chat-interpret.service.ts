@@ -2,15 +2,15 @@ import { Injectable } from '@angular/core';
 import { ChatMetrics, ChatProvider, CHINOOK_SCHEMA_PROMPT } from './chat.types';
 import { ChatWorkspaceAction } from './chat-workspace';
 
-const instructions = `You translate one question about Chinook into one DTQL, workspace action, or FK JOIN candidate action.
-Return only a JSON object with a single dtql, workspaceAction, or joinCandidate property. No prose or Markdown.
+const instructions = `You translate one question about Chinook into one TugQL, workspace action, or FK JOIN candidate action.
+Return only a JSON object with a single tugql, workspaceAction, or joinCandidate property. No prose or Markdown.
 Use from, where, orderBy and limit as needed. Always include a limit from 1 to 1000.
-For example: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"==","left":{"field":"City"},"right":{"value":"Prague"}},"limit":50}}
-For descending order: {"dtql":{"from":{"schema":"main","name":"Invoice"},"orderBy":[{"field":"InvoiceId","desc":true}],"limit":100}}
+For example: {"tugql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"==","left":{"field":"City"},"right":{"value":"Prague"}},"limit":50}}
+For descending order: {"tugql":{"from":{"schema":"main","name":"Invoice"},"orderBy":[{"field":"InvoiceId","desc":true}],"limit":100}}
 Each orderBy item uses field and optional desc boolean. Never use direction, column, sort, or order keys.
 Do not generate SQL, JOIN clauses, ON predicates, aggregation, or unsupported fields. The browser validates the action before running it.
 For a JOIN request with one exact edge, choose its candidate ID from the supplied relationship metadata and return {"joinCandidate":{"recordSetId":"exact RecordSet ID","candidateId":"exact candidate ID"}}. Use the latest successful RecordSet unless the user names a different exact ID. The browser handles ambiguous targets locally and resolves relationships from its foreign-key manifest. Never invent an ID or predicate.
-For a follow-up that needs identifiers from a previous RecordSet, use where op "In" with right.recordSet {"id":"the RecordSet ID from context","field":"the source column"}. The left field is the target table's matching identifier. For example, to find customers from saved invoices: {"dtql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"In","left":{"field":"CustomerId"},"right":{"recordSet":{"id":"saved RecordSet ID","field":"CustomerId"}}},"limit":100}}. The browser substitutes saved values locally. Never invent or include result values in the action.
+For a follow-up that needs identifiers from a previous RecordSet, use where op "In" with right.recordSet {"id":"the RecordSet ID from context","field":"the source column"}. The left field is the target table's matching identifier. For example, to find customers from saved invoices: {"tugql":{"from":{"schema":"main","name":"Customer"},"where":{"op":"In","left":{"field":"CustomerId"},"right":{"recordSet":{"id":"saved RecordSet ID","field":"CustomerId"}}},"limit":100}}. The browser substitutes saved values locally. Never invent or include result values in the action.
 For a related query over an attached or docked Selection, use right.selection with its ID and source column in the same In predicate. For an attached or docked Bookmark use right.bookmark with its ID and source column. DataTug resolves the selected values locally; never include result values.
 For a local selection request, return {"workspaceAction":{"kind":"select","recordSetId":"the saved RecordSet ID","column":"City","equals":"Prague","limit":5}}. For "dock them", return {"workspaceAction":{"kind":"dockCurrent"}}. The browser applies these actions to saved results without another database query.
 Other workspace actions: {"kind":"clearSelection"}, {"kind":"sortView","viewId":"existing View ID","column":"Total","descending":true}, {"kind":"undock","dockId":"existing dock ID"}, {"kind":"bookmark","reference":...}, and {"kind":"attach"} or {"kind":"detach"} with reference {"kind":"table|source|project|recordset|view|selection|bookmark","projectId":"current project","sourceId":"chinook when applicable","objectId":"exact object ID","title":"short label"}. To dock a known result/View/Selection/Bookmark, use {"kind":"dock","reference":...}. Use exact IDs from context, never invent IDs. Browsing or focusing an item does not attach it.
@@ -44,28 +44,28 @@ function providerUrl(provider: ChatProvider): URL {
 }
 
 export type ChatInterpretation =
-  | { readonly dtql: string; readonly workspaceAction?: never; readonly joinCandidate?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
-  | { readonly dtql?: never; readonly workspaceAction: ChatWorkspaceAction; readonly joinCandidate?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
-  | { readonly dtql?: never; readonly workspaceAction?: never; readonly joinCandidate: { readonly recordSetId: string; readonly candidateId: string }; readonly metrics: Omit<ChatMetrics, 'queryMs'> };
+  | { readonly tugql: string; readonly workspaceAction?: never; readonly joinCandidate?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
+  | { readonly tugql?: never; readonly workspaceAction: ChatWorkspaceAction; readonly joinCandidate?: never; readonly metrics: Omit<ChatMetrics, 'queryMs'> }
+  | { readonly tugql?: never; readonly workspaceAction?: never; readonly joinCandidate: { readonly recordSetId: string; readonly candidateId: string }; readonly metrics: Omit<ChatMetrics, 'queryMs'> };
 
 function actionFromContent(content: unknown):
-  | { dtql: string; workspaceAction?: never; joinCandidate?: never }
-  | { dtql?: never; workspaceAction: ChatWorkspaceAction; joinCandidate?: never }
-  | { dtql?: never; workspaceAction?: never; joinCandidate: { recordSetId: string; candidateId: string } } {
+  | { tugql: string; workspaceAction?: never; joinCandidate?: never }
+  | { tugql?: never; workspaceAction: ChatWorkspaceAction; joinCandidate?: never }
+  | { tugql?: never; workspaceAction?: never; joinCandidate: { recordSetId: string; candidateId: string } } {
   if (typeof content !== 'string' || content.length > 12000) {
-    throw new Error('The AI provider did not return one DTQL action.');
+    throw new Error('The AI provider did not return one TugQL action.');
   }
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error('The AI provider returned invalid DTQL JSON.');
+    throw new Error('The AI provider returned invalid TugQL JSON.');
   }
   const root = object(parsed);
-  const dtql = object(root?.['dtql']);
+  const tugql = object(root?.['tugql']);
   const workspaceAction = object(root?.['workspaceAction']);
   const joinCandidate = object(root?.['joinCandidate']);
-  if (dtql && Object.keys(root || {}).length === 1) return { dtql: JSON.stringify(dtql) };
+  if (tugql && Object.keys(root || {}).length === 1) return { tugql: JSON.stringify(tugql) };
   if (workspaceAction && Object.keys(root || {}).length === 1 && typeof workspaceAction['kind'] === 'string') {
     return { workspaceAction: workspaceAction as unknown as ChatWorkspaceAction };
   }
@@ -75,7 +75,7 @@ function actionFromContent(content: unknown):
       joinCandidate['recordSetId'].length <= 100 && joinCandidate['candidateId'].length <= 1000) {
     return { joinCandidate: { recordSetId: joinCandidate['recordSetId'], candidateId: joinCandidate['candidateId'] } };
   }
-  throw new Error('The AI provider did not return one valid DTQL, workspace, or JOIN action.');
+  throw new Error('The AI provider did not return one valid TugQL, workspace, or JOIN action.');
 }
 
 async function boundedResponseText(response: Response): Promise<string> {

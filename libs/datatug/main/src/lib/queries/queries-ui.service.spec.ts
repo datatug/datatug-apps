@@ -54,7 +54,7 @@ describe('QueriesUiService', () => {
     expect(TestBed.inject(QueriesUiService)).toBeTruthy();
   });
 
-  it('offers a one-table hosted DemoDB query with a persisted DTQL source definition', async () => {
+  it('offers a one-table hosted DemoDB query with a persisted TugQL source definition', async () => {
     const projectRef = { storeId: 'github.com', projectId: 'owner/repo' };
     await TestBed.inject(QueriesUiService).openNewQuery(projectRef);
 
@@ -72,8 +72,8 @@ describe('QueriesUiService', () => {
     };
     expect(state).toMatchObject({
       isNew: true,
-      queryType: 'DTQL',
-      request: { queryType: 'DTQL' },
+      queryType: 'TugQL',
+      request: { queryType: 'TugQL' },
       federation: {
         ovdbBaseUrl: 'https://ovdb.demodb.dev',
         tables: [{ database: 'chinook', name: 'Customer' }],

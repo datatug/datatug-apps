@@ -23,12 +23,12 @@ import { ChatInterpretService } from '../../../chat/chat-interpret.service';
 import { ChinookChatDataService } from '../../../chat/chinook-chat-data.service';
 import { ChatProviderService, providerPresets } from '../../../chat/chat-provider.service';
 import { ChatJoinChoice, ChatProvider, ChatTurn, CHINOOK_SCHEMA } from '../../../chat/chat.types';
-import { isJoinedDTQLQuery } from '@dalgo/core';
+import { isJoinedTugQLQuery } from '@dalgo/core';
 import { ChatSession, ChatSessionService } from '../../../chat/chat-session.service';
 import {
   chatBookmarkRows, ChatBookmark, ChatContextReference, ChatDock, ChatWorkspaceAction, emptyChatWorkspace,
 } from '../../../chat/chat-workspace';
-import { chatDtqlYaml, chatSQLite } from '../../../chat/chat-query-format';
+import { chatTugqlYaml, chatSQLite } from '../../../chat/chat-query-format';
 import { chatErrorView, type ChatErrorView } from '../../../chat/chat-error-message';
 import { ChatJoinService } from '../../../chat/chat-join.service';
 import { ChatJoinAmbiguityError, ChatJoinCandidate, ambiguousChatJoinRequest, chatJoinCandidateLabel, validateChatJoinChoice } from '../../../chat/chat-joins';
@@ -137,7 +137,7 @@ export class ChatPageComponent {
     { text: 'Cancel', role: 'cancel' },
     { text: 'Confirm', role: 'confirm', handler: () => { void this.confirmSessionAction(); } },
   ];
-  readonly turnTabs = signal<Readonly<Record<string, 'rows' | 'dtql' | 'sql' | 'metrics'>>>({});
+  readonly turnTabs = signal<Readonly<Record<string, 'rows' | 'tugql' | 'sql' | 'metrics'>>>({});
   readonly question = signal('');
   readonly submitting = signal(false);
   readonly workspaceActionBlocked = computed(() => this.submitting() || this.sessionBusy() || this.sessionState() !== 'ready');
@@ -483,7 +483,7 @@ export class ChatPageComponent {
         return;
       }
       const latest = this.turns()
-        .filter((turn) => turn.dtql && turn.recordSetId)
+        .filter((turn) => turn.tugql && turn.recordSetId)
         .at(-1);
       if (latest?.recordSetId) {
         const ambiguity = ambiguousChatJoinRequest(question, latest.recordSetId, this.candidatesFor(latest));
@@ -526,22 +526,22 @@ export class ChatPageComponent {
         }
         return;
       }
-      if (!interpretation.dtql) throw new Error('The AI provider did not return a query or workspace action.');
-      const bound = await this.sessionStore.bindRecordSet(scope, sessionId, interpretation.dtql);
+      if (!interpretation.tugql) throw new Error('The AI provider did not return a query or workspace action.');
+      const bound = await this.sessionStore.bindRecordSet(scope, sessionId, interpretation.tugql);
       if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this result could be queried.');
       const queryStarted = performance.now();
-      const { rows, query } = await this.data.query(dataScope, bound.dtql);
+      const { rows, query } = await this.data.query(dataScope, bound.tugql);
       if (!this.isCurrentRequest(scope, sessionId, projectRef, authRevision, authIdentity)) throw new Error('The project or sign-in changed before this result could be saved.');
       const result = await this.sessionStore.completeQuery(scope, sessionId, id, {
-        dtql: bound.dtql,
-        generatedDtql: interpretation.dtql,
+        tugql: bound.tugql,
+        generatedTugql: interpretation.tugql,
         parentRecordSetId: bound.parentRecordSetId,
-        dtqlYaml: chatDtqlYaml(query),
+        tugqlYaml: chatTugqlYaml(query),
         sql: chatSQLite(query),
         rows,
         columns: rows.length
           ? Object.keys(rows[0])
-          : isJoinedDTQLQuery(query)
+          : isJoinedTugQLQuery(query)
             ? query.columns?.map((column) => column.as || (column.expression?.kind === 'field' ? column.expression.field.field : '')).filter(Boolean) || []
             : [...(CHINOOK_SCHEMA.tables.find((table) => `${table.schema}.${table.name}` === query.source.name)?.fields || [])],
         metrics: {
@@ -583,7 +583,7 @@ export class ChatPageComponent {
   }
 
   private joinContext(): string {
-    const recent = this.turns().filter((turn) => turn.recordSetId && turn.dtql).slice(-3);
+    const recent = this.turns().filter((turn) => turn.recordSetId && turn.tugql).slice(-3);
     if (!recent.length) return '';
     const lines = recent.map((turn, index) => {
       const candidates = this.candidatesFor(turn);
@@ -597,7 +597,7 @@ export class ChatPageComponent {
   }
 
   private assertJoinChoice(question: string, recordSetId: string, candidateId: string): void {
-    const successful = this.turns().filter((turn) => turn.recordSetId && turn.dtql);
+    const successful = this.turns().filter((turn) => turn.recordSetId && turn.tugql);
     const latest = successful[successful.length - 1];
     const parent = successful.find((turn) => turn.recordSetId === recordSetId);
     if (!parent || !latest?.recordSetId) throw new Error('The selected result is unavailable in this chat session.');
@@ -606,10 +606,10 @@ export class ChatPageComponent {
 
   candidatesFor(turn: ChatTurn): readonly ChatJoinCandidate[] {
     if (this.managed() || !this.demoProject() || this.connectionId()) return [];
-    if (!turn.dtql || !turn.recordSetId) return [];
+    if (!turn.tugql || !turn.recordSetId) return [];
     let candidates = this.candidateCache.get(turn);
     if (!candidates) {
-      try { candidates = this.joiner.candidates(turn.dtql); }
+      try { candidates = this.joiner.candidates(turn.tugql); }
       catch (error) {
         candidates = [];
         this.candidateErrors.set(turn, chatErrorView(error instanceof Error ? error.message : 'The saved query cannot be read with the current schema.'));
@@ -941,12 +941,12 @@ export class ChatPageComponent {
     return selection?.columns || view?.columns;
   }
 
-  turnTab(turn: ChatTurn): 'rows' | 'dtql' | 'sql' | 'metrics' {
+  turnTab(turn: ChatTurn): 'rows' | 'tugql' | 'sql' | 'metrics' {
     return this.turnTabs()[turn.id] || 'rows';
   }
 
   selectTurnTab(turnId: string, tab: string | number | undefined): void {
-    if (tab !== 'rows' && tab !== 'dtql' && tab !== 'sql' && tab !== 'metrics') return;
+    if (tab !== 'rows' && tab !== 'tugql' && tab !== 'sql' && tab !== 'metrics') return;
     this.turnTabs.update((tabs) => ({ ...tabs, [turnId]: tab }));
   }
 

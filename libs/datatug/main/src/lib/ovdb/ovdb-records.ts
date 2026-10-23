@@ -23,27 +23,27 @@ export function ovdbDatabase(connection: OvdbConnection): OpenVaultDbDatabase {
 }
 
 /**
- * Whether rows are read with `POST /dtql` instead of `POST /query`: a native PostgreSQL mount (the hosted DemoDB
- * editions on cloud.openvaultdb.com) reports `query: false` yet answers DTQL reads.
+ * Whether rows are read with `POST /tugql` instead of `POST /query`: a native PostgreSQL mount (the hosted DemoDB
+ * editions on cloud.openvaultdb.com) reports `query: false` yet answers TugQL reads.
  */
-export function ovdbReadsWithDtql(descriptor: OvdbDescriptor | undefined): boolean {
+export function ovdbReadsWithTugql(descriptor: OvdbDescriptor | undefined): boolean {
   const capabilities = descriptor?.capabilities;
-  return capabilities?.query !== true && capabilities?.dtql === true;
+  return capabilities?.query !== true && capabilities?.tugql === true;
 }
 
-/** A DTQL-YAML document reading one table. JSON strings are valid YAML scalars, so no name can alter the document. */
-export function ovdbDtqlDocument(target: { readonly id: string; readonly source?: { readonly schema?: string; readonly name: string } }, limit: number): string {
+/** A TugQL-YAML document reading one table. JSON strings are valid YAML scalars, so no name can alter the document. */
+export function ovdbTugqlDocument(target: { readonly id: string; readonly source?: { readonly schema?: string; readonly name: string } }, limit: number): string {
   const from = target.source
     ? [...(target.source.schema ? [`  schema: ${JSON.stringify(target.source.schema)}`] : []), `  name: ${JSON.stringify(target.source.name)}`]
     : [`  name: ${JSON.stringify(target.id)}`];
   return ['from:', ...from, `limit: ${limit}`, ''].join('\n');
 }
 
-async function listOvdbRowsWithDtql(connection: OvdbConnection, collection: string, limit: number): Promise<readonly OvdbRow[]> {
-  const response = await connection.fetch(`${ovdbDatabaseUrl(connection.baseUrl, connection.databaseId)}/dtql`, {
+async function listOvdbRowsWithTugql(connection: OvdbConnection, collection: string, limit: number): Promise<readonly OvdbRow[]> {
+  const response = await connection.fetch(`${ovdbDatabaseUrl(connection.baseUrl, connection.databaseId)}/tugql`, {
     method: 'POST',
     headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify({ query: ovdbDtqlDocument(ovdbCollectionTarget(connection.descriptor, collection), limit) }),
+    body: JSON.stringify({ query: ovdbTugqlDocument(ovdbCollectionTarget(connection.descriptor, collection), limit) }),
     cache: 'no-store',
     credentials: 'omit',
   });
@@ -51,7 +51,7 @@ async function listOvdbRowsWithDtql(connection: OvdbConnection, collection: stri
   const body = (await response.json()) as { records?: unknown };
   if (!Array.isArray(body.records)) throw new TypeError('The server answered without records.');
   return body.records.map((record: { key?: unknown; data?: unknown }, index) => ({
-    // A DTQL record of a native mount carries no key; the position keeps rows apart.
+    // A TugQL record of a native mount carries no key; the position keeps rows apart.
     key: typeof record.key === 'string' ? record.key : `#${index}`,
     data: (record.data ?? {}) as Record<string, unknown>,
   }));
@@ -62,7 +62,7 @@ export async function listOvdbRows(
   collection: string,
   limit = OVDB_PAGE_SIZE,
 ): Promise<readonly OvdbRow[]> {
-  if (ovdbReadsWithDtql(connection.descriptor)) return listOvdbRowsWithDtql(connection, collection, limit);
+  if (ovdbReadsWithTugql(connection.descriptor)) return listOvdbRowsWithTugql(connection, collection, limit);
   const page = await ovdbDatabase(connection).query<Record<string, unknown>>({
     source: { kind: 'collection', name: collection },
     filters: [],

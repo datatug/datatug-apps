@@ -1,6 +1,6 @@
 import type {
-  RecursiveDTQLExpression,
-  RecursiveDTQLQuery,
+  RecursiveTugQLExpression,
+  RecursiveTugQLQuery,
   TugQLResolved,
   TugQLDocument,
   TugQLTree,
@@ -21,7 +21,7 @@ export interface PublicSqlitePreparedPlan {
 
 export interface PublicSqliteAuthorProof {
   readonly profile: 'invoice-query' | 'customer-count-cte' | 'bounded-cte-query';
-  readonly resolvedQuery: RecursiveDTQLQuery;
+  readonly resolvedQuery: RecursiveTugQLQuery;
   readonly authoredSource?: string;
   readonly relationship?: PublicSqliteRelationshipReceipt;
   /** Versioned joined-profile rule: preserve SQLite DATETIME storage as raw text. */
@@ -371,7 +371,7 @@ export function preparePublicSqliteCteStructuralDocument(document: TugQLDocument
   return { sourceMetadata: document.sourceMetadata, tree: structuralTree };
 }
 
-function countSql(expression: RecursiveDTQLExpression, alias: string): string {
+function countSql(expression: RecursiveTugQLExpression, alias: string): string {
   if (Object.keys(expression).some((key) => !['kind', 'function', 'distinct', 'args'].includes(key)))
     throw new Error('The COUNT proof contains an unsupported expression property.');
   if (
@@ -566,7 +566,7 @@ export function compilePublicSqliteTugQL(
   const limit = query.limit;
   const isJoined = query.from.joins.length > 0;
   if (
-    query.kind !== 'recursive-dtql' ||
+    query.kind !== 'recursive-tugql' ||
     query.from.kind !== 'table' ||
     query.from.name !== 'Invoice' ||
     (query.from.schema !== undefined && query.from.schema !== 'main') ||
@@ -857,7 +857,7 @@ function compileCustomerCountCte(
   const innerLimit = cte?.limit;
   const outerLimit = query.limit;
   if (
-    query.kind !== 'recursive-dtql' ||
+    query.kind !== 'recursive-tugql' ||
     relation.kind !== 'query' ||
     !cte ||
     relation.name !== undefined ||
@@ -1059,7 +1059,7 @@ function compileBoundedCteGraph(
     Email: 'string',
   };
   const resolveField = (
-    expression: RecursiveDTQLExpression,
+    expression: RecursiveTugQLExpression,
     sources: ReadonlyMap<string, CompiledGraphQuery>,
   ): GraphOutput => {
     ownKeys(expression, ['kind', 'field'], 'field expression');
@@ -1075,10 +1075,10 @@ function compileBoundedCteGraph(
     return output;
   };
 
-  const compileQuery = (query: RecursiveDTQLQuery, depth: number): CompiledGraphQuery => {
+  const compileQuery = (query: RecursiveTugQLQuery, depth: number): CompiledGraphQuery => {
     ownKeys(query, ['kind', 'as', 'from', 'where', 'orderBy', 'limit', 'offset', 'columns', 'groupBy', 'having'], 'query');
     if (
-      depth > 3 || query.kind !== 'recursive-dtql' || query.offset !== undefined ||
+      depth > 3 || query.kind !== 'recursive-tugql' || query.offset !== undefined ||
       !Number.isSafeInteger(query.limit) || (query.limit as number) < 1 || (query.limit as number) > 100 ||
       !query.columns?.length || query.columns.length > 40
     ) throw new Error('Every bounded CTE query requires LIMIT 1..100 and 1..40 explicit columns.');
@@ -1102,7 +1102,7 @@ function compileBoundedCteGraph(
       if (item.kind === 'query') {
         if (!item.query || item.name !== undefined || item.schema !== undefined || !(item.alias ?? item.query.as))
           throw new Error('Every joined derived CTE reference must be unqualified and explicitly aliased.');
-        const child = compileQuery(item.query as RecursiveDTQLQuery, depth + 1);
+        const child = compileQuery(item.query as RecursiveTugQLQuery, depth + 1);
         const alias = item.alias ?? item.query?.as;
         if (!alias) throw new Error('Every derived CTE reference must be explicitly aliased.');
         return { ...child, sql: `(${child.sql}) AS ${quoteIdentifier(alias)}`, alias };

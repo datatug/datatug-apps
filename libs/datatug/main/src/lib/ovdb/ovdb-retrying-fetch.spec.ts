@@ -8,23 +8,23 @@ import {
 const ok = () => new Response('{}', { status: 200 });
 const unavailable = () =>
   new Response('{"error":{"code":"database_unavailable"}}', { status: 503 });
-const DTQL =
-  'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql/dtql';
+const TugQL =
+  'https://cloud.openvaultdb.com/v1/databases/chinook-postgresql/tugql';
 
 describe('isRetryableOvdbRequest', () => {
-  it('retries reads only: GET, HEAD and the read-only POST …/dtql', () => {
+  it('retries reads only: GET, HEAD and the read-only POST …/tugql', () => {
     expect(isRetryableOvdbRequest('https://x.test/v1/databases/a')).toBe(true);
     expect(
       isRetryableOvdbRequest('https://x.test/v1/databases/a', {
         method: 'head',
       }),
     ).toBe(true);
-    expect(isRetryableOvdbRequest(DTQL, { method: 'POST' })).toBe(true);
-    expect(isRetryableOvdbRequest(new URL(DTQL), { method: 'POST' })).toBe(
+    expect(isRetryableOvdbRequest(TugQL, { method: 'POST' })).toBe(true);
+    expect(isRetryableOvdbRequest(new URL(TugQL), { method: 'POST' })).toBe(
       true,
     );
     expect(
-      isRetryableOvdbRequest(new Request(DTQL, { method: 'POST', body: '{}' })),
+      isRetryableOvdbRequest(new Request(TugQL, { method: 'POST', body: '{}' })),
     ).toBe(true);
     expect(
       isRetryableOvdbRequest('https://x.test/v1/databases/a/batch', {
@@ -72,7 +72,7 @@ describe('retryingOvdbFetch', () => {
     const response = await retryingOvdbFetch(base, {
       delaysMs: [1, 1, 1],
       sleep: async () => undefined,
-    })(DTQL, { method: 'POST' });
+    })(TugQL, { method: 'POST' });
     expect(response.status).toBe(200);
     expect(base).toHaveBeenCalledTimes(4);
   });

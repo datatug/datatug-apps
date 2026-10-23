@@ -11,7 +11,7 @@ vi.mock('@dalgo/indexeddb', () => ({
 
 const query: IQueryDef = {
   id: 'detail', title: 'Invoice detail',
-  request: { queryType: QueryType.DTQL, text: JSON.stringify({ from: { database: 'sales', name: 'Invoice' } }) },
+  request: { queryType: QueryType.TugQL, text: JSON.stringify({ from: { database: 'sales', name: 'Invoice' } }) },
   federation: {
     ovdbBaseUrl: 'https://ovdb.example.test',
     tables: [{ database: 'sales', name: 'Invoice', fields: ['id', 'country_id'] }],
@@ -35,7 +35,7 @@ describe('visible browser query execution', () => {
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       if (/\/v1\/databases\/[^/]+$/.test(url)) return response({});
       expect(url).not.toContain('secret');
-      if (url.endsWith('/dtql')) {
+      if (url.endsWith('/tugql')) {
         sourceRequests.push(new Headers(init.headers));
         const token = new Headers(init.headers).get('OVDB-Page-Token');
         if (new Headers(init.headers).get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
@@ -87,7 +87,7 @@ describe('visible browser query execution', () => {
     const requests: Headers[] = [];
     vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
       if (/\/v1\/databases\/[^/]+$/.test(url)) return response({});
-      if (!url.endsWith('/dtql')) return response({ data: { name: 'Alpha' } });
+      if (!url.endsWith('/tugql')) return response({ data: { name: 'Alpha' } });
       const headers = new Headers(init.headers);
       requests.push(headers);
       if (headers.get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
@@ -110,14 +110,14 @@ describe('visible browser query execution', () => {
   });
   it('carries actual raw point/page evidence through the installed lookup engine and blocks missing expected discovery before rows', async () => {
     vi.stubGlobal('indexedDB', { deleteDatabase: () => { const request: { onsuccess?: () => void } = {}; queueMicrotask(() => request.onsuccess?.()); return request; } });
-    const definition = { ...query, request: { queryType: QueryType.DTQL, text: JSON.stringify({ from: { database: 'fx', name: 'Rates' } }) }, federation: { ...query.federation, expectedServerIdentity: { baseUrl: 'https://ovdb.example.test', serverId: 'fixture-server' }, expectedSourceRights: rightsWire.structured.sourceRights, tables: [{ database: 'fx', name: 'Rates', fields: ['id', 'country_id'] }], lookups: [{ database: 'music', collection: 'Album', fromColumn: 'country_id', fields: [{ source: 'name', target: 'country' }] }] } } as unknown as IQueryDef;
+    const definition = { ...query, request: { queryType: QueryType.TugQL, text: JSON.stringify({ from: { database: 'fx', name: 'Rates' } }) }, federation: { ...query.federation, expectedServerIdentity: { baseUrl: 'https://ovdb.example.test', serverId: 'fixture-server' }, expectedSourceRights: rightsWire.structured.sourceRights, tables: [{ database: 'fx', name: 'Rates', fields: ['id', 'country_id'] }], lookups: [{ database: 'music', collection: 'Album', fromColumn: 'country_id', fields: [{ source: 'name', target: 'country' }] }] } } as unknown as IQueryDef;
     const calls: string[] = [];
     const http = vi.fn<typeof fetch>(async (url, init) => {
       calls.push(String(url));
       if (String(url).endsWith('/v1/databases/fx')) return response({ sourceRights: rightsWire.structured.sourceRights });
       if (String(url).endsWith('/v1/databases/music')) return response({ sourceRights: rightsWire.legacy.sourceRights });
       if (new Headers(init?.headers).get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
-      if (String(url).endsWith('/dtql')) return response({ ...rightsWire.structured, records: [{ key: '1', data: { id: 1, country_id: 3 } }], snapshotToken: 'fixture-snapshot' });
+      if (String(url).endsWith('/tugql')) return response({ ...rightsWire.structured, records: [{ key: '1', data: { id: 1, country_id: 3 } }], snapshotToken: 'fixture-snapshot' });
       return response({ ...rightsWire.legacy, key: '3', data: { name: 'Fixture album' } });
     });
     const rows = vi.fn();
@@ -172,7 +172,7 @@ describe('visible browser query execution', () => {
       vi.useFakeTimers();
       try {
         const http = vi.fn(async (url: RequestInfo | URL) => {
-          if (String(url).endsWith('/dtql')) return response({ records: [{ key: '1', data: { id: 1, country_id: 3 } }] });
+          if (String(url).endsWith('/tugql')) return response({ records: [{ key: '1', data: { id: 1, country_id: 3 } }] });
           throw new TypeError('Failed to fetch');
         }) as unknown as typeof fetch;
         const pending = message(runFederatedQuery(query, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: http }));
@@ -192,20 +192,20 @@ describe('visible browser query execution', () => {
 
 
     describe('detail lookup attempts', () => {
-      const dtqlThenLookup = (lookupFetch: () => Promise<Response>): typeof fetch =>
+      const tugqlThenLookup = (lookupFetch: () => Promise<Response>): typeof fetch =>
         vi.fn(async (url: RequestInfo | URL) => {
-          if (String(url).endsWith('/dtql')) return response({ records: [{ key: '1', data: { id: 1, country_id: 3 } }] });
+          if (String(url).endsWith('/tugql')) return response({ records: [{ key: '1', data: { id: 1, country_id: 3 } }] });
           return lookupFetch();
         }) as unknown as typeof fetch;
       const lookupCalls = (http: typeof fetch) =>
-        (http as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => !String(url).endsWith('/dtql')).length;
+        (http as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(([url]) => !String(url).endsWith('/tugql')).length;
       const timeoutDelays = (spy: { mock: { calls: unknown[][] } }) =>
         spy.mock.calls.map((call) => call[1]).filter((delay) => delay === 15000 || delay === 120000);
 
       it('gives a self-retrying fetch one attempt with a 120 s timeout', async () => {
         noIndexedDb();
         const http = Object.assign(
-          dtqlThenLookup(async () => { throw new TypeError('Failed to fetch'); }),
+          tugqlThenLookup(async () => { throw new TypeError('Failed to fetch'); }),
           { [SELF_RETRYING_FETCH]: true as const },
         );
         const timers = vi.spyOn(globalThis, 'setTimeout');
@@ -220,7 +220,7 @@ describe('visible browser query execution', () => {
 
       it('keeps three attempts with a 15 s timeout for an unmarked fetch', async () => {
         noIndexedDb();
-        const http = dtqlThenLookup(async () => { throw new TypeError('Failed to fetch'); });
+        const http = tugqlThenLookup(async () => { throw new TypeError('Failed to fetch'); });
         const timers = vi.spyOn(globalThis, 'setTimeout');
         try {
           expect(await message(runFederatedQuery(query, undefined, '', async () => undefined, undefined, 'visible', undefined, undefined, { fetch: http }))).toBe(reached);

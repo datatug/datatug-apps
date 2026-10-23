@@ -12,7 +12,7 @@ import {
   type OvdbConnection,
   type OvdbDescriptor,
 } from './ovdb-connection';
-import { getOvdbRecord, createOvdbRecord, ovdbCreateKeyField, deleteOvdbRecord, describeOvdbError, listOvdbRows, resetOvdbDatabase, updateOvdbRecord } from './ovdb-records';
+import { ovdbReadsWithTugql, getOvdbRecord, createOvdbRecord, ovdbCreateKeyField, deleteOvdbRecord, describeOvdbError, listOvdbRows, resetOvdbDatabase, updateOvdbRecord } from './ovdb-records';
 
 const entry = demoSqliteCatalog.chinook;
 
@@ -20,7 +20,7 @@ const entry = demoSqliteCatalog.chinook;
 export const neonLikeDescriptor: OvdbDescriptor = {
   id: 'chinook-postgresql',
   engine: 'postgres',
-  capabilities: { read: false, query: true, dtql: true, write: false, delete: false, reset: false, persistent: true, joins: true },
+  capabilities: { read: false, query: true, tugql: true, write: false, delete: false, reset: false, persistent: true, joins: true },
   collections: ['album', 'artist'],
   schemas: { collections: { artist: { fields: { artist_id: { type: 'integer' }, name: { type: 'string' } } } } },
 };
@@ -46,7 +46,7 @@ describe('local OVDB descriptor', () => {
       id: 'chinook',
       engine: 'sqlite',
       collections: ['Album', 'Artist', 'PlaylistTrack', 'Track'],
-      capabilities: { read: true, query: true, dtql: true, write: true, delete: true, reset: true, persistent: true },
+      capabilities: { read: true, query: true, tugql: true, write: true, delete: true, reset: true, persistent: true },
       canonical: { url: entry.url, sha256: entry.sha256, bytes: entry.bytes },
       localState: { modified: false },
     });
@@ -59,6 +59,17 @@ describe('local OVDB descriptor', () => {
     expect(descriptor.schemas?.collections?.['Album']?.foreignKeys).toEqual([
       { columns: ['ArtistId'], referencedTable: 'Artist', referencedColumns: ['ArtistId'] },
     ]);
+  });
+
+  it.each([
+    ['old-only (removed in TugQL cutover step 9)', { dtql: true, dtqlStreaming: true }],
+    ['new-only', { tugql: true, tugqlStreaming: true }],
+    ['both', { tugql: true, tugqlStreaming: true, dtql: true, dtqlStreaming: true }],
+  ])('reads %s TugQL capabilities as tugql', (_name, capabilities) => {
+    const descriptor = parseOvdbDescriptor({ id: 'x', capabilities: { read: true, ...capabilities } });
+    expect(descriptor.capabilities).toMatchObject({ tugql: true, tugqlStreaming: true, read: true });
+    expect(ovdbReadsWithTugql(descriptor)).toBe(true);
+    expect(ovdbUiCapabilities(descriptor).browse).toBe(true);
   });
 
   it('rejects malformed descriptors', () => {
@@ -81,7 +92,7 @@ describe('capability gating', () => {
   });
 
   it('never gates browsing on read, and never on the engine name', () => {
-    const queryOnly: OvdbDescriptor = { id: 'x', engine: 'sqlite', capabilities: { read: false, dtql: true } };
+    const queryOnly: OvdbDescriptor = { id: 'x', engine: 'sqlite', capabilities: { read: false, tugql: true } };
     expect(ovdbUiCapabilities(queryOnly).browse).toBe(true);
     expect(ovdbUiCapabilities({ id: 'x', engine: 'sqlite', capabilities: { read: true } }).browse).toBe(false);
     expect(ovdbUiCapabilities({ id: 'x', engine: 'sqlite', capabilities: { query: true } }).edit).toBe(false);

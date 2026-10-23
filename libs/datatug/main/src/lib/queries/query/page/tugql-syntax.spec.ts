@@ -119,6 +119,42 @@ describe('tokenizeTugql', () => {
   });
 });
 
+describe('TugQL // end-of-line comments', () => {
+  const commentTexts = (source: string) =>
+    tokenizeTugql(source)
+      .filter((token) => token.kind === 'comment')
+      .map((token) => token.text);
+
+  it('greys a // comment to the end of the line, like --', () => {
+    expect(commentTexts('select 1 // note\nfrom Invoice -- other')).toEqual([
+      '// note',
+      '-- other',
+    ]);
+  });
+
+  it('greys a whole-line // comment and leaves the next line as code', () => {
+    const tokens = tokenizeTugql('// all invoices\nselect 1');
+    expect(tokens[0]).toEqual({ text: '// all invoices', kind: 'comment' });
+    expect(tokens.at(-1)?.kind).not.toBe('comment');
+  });
+
+  it('does not treat // inside a string as a comment', () => {
+    const source = "select 'https://example.com/x' as url";
+    expect(commentTexts(source)).toEqual([]);
+    expect(
+      tokenizeTugql(source).find((token) => token.kind === 'string')?.text,
+    ).toBe("'https://example.com/x'");
+  });
+
+  it('does not treat // inside a quoted identifier as a comment', () => {
+    expect(commentTexts('select "a//b" from Invoice')).toEqual([]);
+  });
+
+  it('keeps a single / as the division operator', () => {
+    expect(commentTexts('select Total / 2 from Invoice')).toEqual([]);
+  });
+});
+
 describe('TugQL comment highlighting in the editor', () => {
   const render = (source: string): EditorView => {
     const support = TUGQL_LANGUAGE_DESCRIPTIONS[0].support as LanguageSupport;

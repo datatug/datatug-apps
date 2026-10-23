@@ -15,7 +15,7 @@ import { By, Title } from '@angular/platform-browser';
 import { ActivatedRoute, Router, convertToParamMap } from '@angular/router';
 import { IonSelect, IonSelectOption, NavController } from '@ionic/angular';
 import { Firestore } from 'firebase/firestore';
-import { parseDTQL, parseTugQL, resolveTugQL } from '@dalgo/core';
+import { parseTugQL, parseTugQLYaml, resolveTugQL } from '@dalgo/core';
 import { ErrorLogger } from '@sneat/core';
 import { RANDOM_ID_OPTIONS, RandomIdService } from '@sneat/random';
 import { AgentContextService, InvestigationContextService, SemanticApiService, type RunQueryResponse } from '@sneat/datatug-semantic';
@@ -36,7 +36,7 @@ import { PUBLIC_CHINOOK_CUSTOMER_FK } from '../../public-sqlite-tugql';
 import { QueryEditorStateService } from '../../query-editor-state-service';
 import { AgentLinkApiService, LinkProblemError } from '../../../agent-links/agent-link-api.service';
 import { decodeStoredResult } from '../../../agent-links/query-result/query-result';
-import { DTQL_TEXT, PROMPT_TEXT, editorReadyResult, invoiceCustomerResult } from '../../../agent-links/query-result/query-result.spec-helper';
+import { TUGQL_TEXT, PROMPT_TEXT, editorReadyResult, invoiceCustomerResult } from '../../../agent-links/query-result/query-result.spec-helper';
 import { QueryWorkspaceLayoutComponent } from './query-workspace-layout.component';
 import { SessionWorkspaceService } from '../../../session-context/session-workspace.service';
 import { SneatDatatugPageTitleComponent } from '../../../components/page-title/sneat-datatug-page-title.component';
@@ -165,10 +165,10 @@ describe('SqlEditorPage', () => {
     const params = convertToParamMap({ demoDraft: 'token', runtime: 'runtime-live', env: 'dev' });
     Object.defineProperty(TestBed.inject(ActivatedRoute), 'snapshot', { configurable: true, value: { queryParamMap: params, paramMap: convertToParamMap({}) } });
     Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
-    const definition = { id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } } as IQueryDef;
+    const definition = { id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.TugQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } } as IQueryDef;
     vi.mocked(TestBed.inject(DemoTableDraftService).read).mockResolvedValue(definition);
     const editor = TestBed.inject(QueryEditorStateService);
-    vi.mocked(editor.getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.DTQL, request: { queryType: QueryType.DTQL, text: existing ? 'my existing draft' : '' } as ITextQueryRequest });
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.TugQL, request: { queryType: QueryType.TugQL, text: existing ? 'my existing draft' : '' } as ITextQueryRequest });
     await component['restoreDemoTableDraft']();
     if (existing) {
       expect(editor.updateQueryState).not.toHaveBeenCalled();
@@ -191,11 +191,11 @@ describe('SqlEditorPage', () => {
     if (stage === 'auth after') auth.mockReturnValueOnce(authenticated).mockReturnValueOnce(throwError(() => new Error('temporary auth failure')));
     Object.assign(TestBed.inject(QueriesService), { authentication: auth });
     const drafts = TestBed.inject(DemoTableDraftService);
-    const definition = { id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.DTQL, text: 'from: Artist\nlimit: 100' } } as IQueryDef;
+    const definition = { id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.TugQL, text: 'from: Artist\nlimit: 100' } } as IQueryDef;
     vi.mocked(drafts.read).mockResolvedValue(definition);
     if (stage === 'catalog') vi.mocked(drafts.read).mockRejectedValueOnce(new Error('temporary catalog failure'));
     const editor = TestBed.inject(QueryEditorStateService);
-    vi.mocked(editor.getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.DTQL });
+    vi.mocked(editor.getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.TugQL });
     await component['restoreDemoTableDraft']();
     expect(component.runError()).toContain('temporary');
     expect(drafts.consume).not.toHaveBeenCalled();
@@ -219,8 +219,8 @@ describe('SqlEditorPage', () => {
     Object.assign(TestBed.inject(QueriesService), { authentication: () => of({ status: 'authenticated', user: { uid: 'actor' } }) });
     const drafts = TestBed.inject(DemoTableDraftService);
     let reject: ((error: Error) => void) | undefined;
-    vi.mocked(drafts.read).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; })).mockResolvedValueOnce({ id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.DTQL, text: 'from: Artist' } } as IQueryDef);
-    vi.mocked(TestBed.inject(QueryEditorStateService).getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.DTQL });
+    vi.mocked(drafts.read).mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; })).mockResolvedValueOnce({ id: '', connectionId: 'chinook-sqlite', request: { queryType: QueryType.TugQL, text: 'from: Artist' } } as IQueryDef);
+    vi.mocked(TestBed.inject(QueryEditorStateService).getQueryState).mockReturnValue({ id: 'demo-query', isNew: true, queryType: QueryType.TugQL });
     const old = component['restoreDemoTableDraft']();
     await Promise.resolve();
     snapshot.queryParamMap = convertToParamMap({ demoDraft: 'new-token' });
@@ -648,7 +648,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: source } as ITextQueryRequest,
     };
     const created = await createComponent(
       {},
@@ -660,7 +660,7 @@ describe('QueryPageComponent — semantic parameter binding and run', () => {
       ...created.queryState,
       id: definition.id,
       connectionId: definition.connectionId,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: definition.request,
     };
     created.project = {
@@ -3389,14 +3389,14 @@ select (
   it('correlates hosted Validator status only to the exact retained query execution', async () => {
     const savedDefinition: IQueryDef = {
       ...queryDef,
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: Invoice\n' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from:\n  name: Invoice\n' } as ITextQueryRequest,
       parameters: [],
     };
     component = await createComponent({}, savedDefinition, '<p></p>', {project:of({ref:{storeId:'firestore',spaceID:'space_1',projectId:'project_1'}}),queries:{capabilities:vi.fn(()=>of({querySave:true}))}});
     component.project = {
       ref: { storeId: 'firestore', spaceID: 'space_1', projectId: 'project_1' },
     };
-    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlYamlWorkspace()).toBe(true);
     component.queryDef.set(savedDefinition);
     component.queryState = {
       ...component.queryState,
@@ -3929,7 +3929,7 @@ select (
   it('selects a registered working copy for an ordinary structured query and clears its result when switched', async () => {
     const definition: IQueryDef = {
       ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
     component.project = { ref: { storeId: 'github.com', projectId: 'r@o@@main' } };
@@ -3988,7 +3988,7 @@ select (
   it('applies a Board runtime hint after live options load and keeps an unavailable hint fenced', async () => {
     const definition: IQueryDef = {
       ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
     };
     const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
     component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
@@ -4023,7 +4023,7 @@ select (
   it('does not apply a late Board runtime lookup after the route explicitly chooses project runtime', async () => {
     const definition: IQueryDef = {
       ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from:\n  name: "customers"\nlimit: 10\n' } as ITextQueryRequest,
     };
     const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
     component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
@@ -4076,7 +4076,7 @@ select (
   it('keeps a manual runtime and unsaved draft through normalized URL, environment and branch params', async () => {
     const definition: IQueryDef = {
       ...queryDef, id: 'folder/current-customers', connectionId: 'logical-ledger-v7', parameters: [],
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "customers"\n' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'from:\n  name: "customers"\n' } as ITextQueryRequest,
     };
     const params = new BehaviorSubject(convertToParamMap({ id: definition.id, env: 'production', runtime: 'runtime-17' }));
     component = await createComponent({}, definition, undefined, { project: of(project), queryParams: params });
@@ -4089,7 +4089,7 @@ select (
     runFixture.detectChanges();
     await runFixture.whenStable();
     component.selectWorkingCopy('runtime-18');
-    const draft = { ...component.queryState, request: { queryType: QueryType.DTQL, text: 'edited draft' } as ITextQueryRequest };
+    const draft = { ...component.queryState, request: { queryType: QueryType.TugQL, text: 'edited draft' } as ITextQueryRequest };
     component.queryState = draft;
     const editor = TestBed.inject(QueryEditorStateService);
     vi.mocked(editor.getQueryState).mockReturnValue({ id: definition.id, def: definition } as IQueryState);
@@ -4204,7 +4204,7 @@ select (
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice\nlimit 10\nselect InvoiceId',
       } as ITextQueryRequest,
     };
@@ -4221,7 +4221,7 @@ select (
       ...component.queryState,
       id: authorDefinition.id,
       connectionId: authorDefinition.connectionId,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: authorDefinition.request,
     };
     component.queryDef.set(authorDefinition);
@@ -4296,7 +4296,7 @@ select (
       ...queryDef,
       id: 'chinook-customer-invoice-join',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
 
@@ -4322,7 +4322,7 @@ select (
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
 
@@ -5126,7 +5126,7 @@ select (
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: source } as ITextQueryRequest,
     };
     const editor = new Subject<IQueryEditorState>();
     component = await createComponent({}, queryDef, '<p></p>', {
@@ -5135,7 +5135,7 @@ select (
     });
     const loadingState: IQueryState = {
       id: definition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: definition.request,
     };
     editor.next({
@@ -5169,7 +5169,7 @@ select (
       ...queryDef,
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: source } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: source } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
     component.setAuthorMode('compose');
@@ -5212,7 +5212,7 @@ select (
       id: 'chinook-customer-invoice-join',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
       } as unknown as ITextQueryRequest,
     };
@@ -5223,7 +5223,7 @@ select (
     component.queryState = {
       ...component.queryState,
       id: definition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: definition.request,
       authorBindings: { CustomerId: '1' },
       authorBindingProvenance: {
@@ -5274,7 +5274,7 @@ select (
       ...definition,
       id: 'chinook-invoice-author',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i',
       } as ITextQueryRequest,
     };
@@ -5283,7 +5283,7 @@ select (
     const editor = TestBed.inject(QueryEditorStateService);
     vi.spyOn(editor, 'openAuthorizedQuery').mockReturnValue({
       id: lookupDefinition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: lookupDefinition.request,
       def: lookupDefinition,
     });
@@ -5372,7 +5372,7 @@ select (
     expect(resultsScroll).toHaveBeenCalledOnce();
     const targetState: IQueryState = {
       id: scenario.lookupDefinition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: scenario.lookupDefinition.request,
       def: scenario.lookupDefinition,
     };
@@ -5447,7 +5447,7 @@ select (
     component.queryState = {
       ...component.queryState,
       id: scenario.lookupDefinition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: scenario.lookupDefinition.request,
     };
     component.queryDef.set(scenario.lookupDefinition);
@@ -5475,7 +5475,7 @@ select (
     component.queryState = {
       ...component.queryState,
       id: scenario.lookupDefinition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: scenario.lookupDefinition.request,
     };
     component.queryDef.set(scenario.lookupDefinition);
@@ -5507,7 +5507,7 @@ select (
     );
     const targetState: IQueryState = {
       id: scenario.lookupDefinition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: scenario.lookupDefinition.request,
       def: scenario.lookupDefinition,
     };
@@ -5865,7 +5865,7 @@ select (
       id: 'author-edit-test',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i',
       } as unknown as ITextQueryRequest,
     };
@@ -5873,7 +5873,7 @@ select (
     component.queryState = {
       ...component.queryState,
       id: definition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: definition.request,
     };
     component.queryDef.set(definition);
@@ -5902,7 +5902,7 @@ select (
       id: 'q',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
       } as unknown as ITextQueryRequest,
     };
@@ -5910,7 +5910,7 @@ select (
       id: 'chinook-invoice-author',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i',
       } as ITextQueryRequest,
     };
@@ -6084,7 +6084,7 @@ select (
       id: 'chinook-customer-invoice-join',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
       } as unknown as ITextQueryRequest,
     };
@@ -6100,7 +6100,7 @@ select (
     component.queryState = {
       ...component.queryState,
       id: definition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: definition.request,
       authorBindings: { CustomerId: '1' },
       authorBindingProvenance: {
@@ -6208,7 +6208,7 @@ select (
         id: 'demodb/chinook-customer-invoice-join',
         connectionId: 'chinook-sqlite',
         request: {
-          queryType: QueryType.DTQL,
+          queryType: QueryType.TugQL,
           text: authorSource,
         } as ITextQueryRequest,
       };
@@ -6246,7 +6246,7 @@ select (
         activeQueries: [
           {
             id: definition.id,
-            queryType: QueryType.DTQL,
+            queryType: QueryType.TugQL,
             request: definition.request,
             def: definition,
           },
@@ -6366,7 +6366,7 @@ select (
       id: 'demodb/chinook-customer-invoice-join',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: authorSource,
       } as ITextQueryRequest,
     };
@@ -6698,7 +6698,7 @@ select (
       id: 'chinook-customer-invoice-join',
       connectionId: 'chinook-sqlite',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i join Customer as c on i.CustomerId = c.CustomerId',
       } as unknown as ITextQueryRequest,
     };
@@ -6709,7 +6709,7 @@ select (
     component.queryState = {
       ...component.queryState,
       id: definition.id,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: definition.request,
       authorBindings: { CustomerId: '1' },
       authorBindingProvenance: {
@@ -6760,7 +6760,7 @@ select (
       ...definition,
       id: 'chinook-invoice-author',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from Invoice as i',
       } as ITextQueryRequest,
     };
@@ -7103,7 +7103,7 @@ select (
         expect.objectContaining({
           id: 'test-id',
           isNew: true,
-          request: { queryType: QueryType.DTQL, text: DTQL_TEXT },
+          request: { queryType: QueryType.TugQL, text: TUGQL_TEXT },
         }),
       );
       expect(created.selectedSource()).toBe('chinook');
@@ -7167,11 +7167,11 @@ select (
         params.next(convertToParamMap({ result: 'rid-runtime', env: 'local', runtime: 'runtime-17' }));
         const definition: IQueryDef = {
           ...queryDef, id: 'folder/q1', connectionId: 'logical-ledger-v7', parameters: [],
-          request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 10\n' } as ITextQueryRequest,
+          request: { queryType: QueryType.TugQL, text: 'from:\n  name: "Artist"\nlimit: 10\n' } as ITextQueryRequest,
         };
         opener.onQueryEditorStateChanged({
           currentQueryId: definition.id,
-          activeQueries: [{ id: definition.id, queryType: QueryType.DTQL,
+          activeQueries: [{ id: definition.id, queryType: QueryType.TugQL,
             request: definition.request, def: definition, isLoading: false }],
         });
         runFixture.detectChanges();
@@ -7215,7 +7215,7 @@ select (
       const editor = TestBed.inject(QueryEditorStateService);
       expect(editor.newQuery).toHaveBeenCalledOnce();
       const draft = { ...created.queryState, id: 'test-id', isNew: true,
-        request: { queryType: QueryType.DTQL, text: 'unsaved edit' } as ITextQueryRequest };
+        request: { queryType: QueryType.TugQL, text: 'unsaved edit' } as ITextQueryRequest };
       created.queryState = draft;
       created.selectWorkingCopy('project');
       params.next(convertToParamMap({ result: 'rid-draft', runtime: 'runtime-17', env: 'local', editor: 'text' }));
@@ -7498,11 +7498,11 @@ select (
       navigate.mockClear();
       (created as unknown as { authorViewActive: boolean }).authorViewActive = true;
       vi.spyOn(created as unknown as { isCurrentRoute(): boolean }, 'isCurrentRoute').mockReturnValue(true);
-      created.queryState = { id: 'test-id', isNew: true, queryType: QueryType.DTQL };
+      created.queryState = { id: 'test-id', isNew: true, queryType: QueryType.TugQL };
       created.updateUrl();
       expect(navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined } });
       expect(navigate.mock.calls.at(-1)?.[1]?.queryParams).not.toHaveProperty('result');
-      created.queryState = { id: 'test-id', isNew: false, queryType: QueryType.DTQL };
+      created.queryState = { id: 'test-id', isNew: false, queryType: QueryType.TugQL };
       created.updateUrl();
       expect(navigate.mock.calls.at(-1)?.[1]?.queryParams).toMatchObject({ id: 'test-id', result: undefined });
       expect(navigate.mock.calls.at(-1)?.[1]?.queryParams).toHaveProperty('result');
@@ -7610,7 +7610,7 @@ select (
     const definition: IQueryDef = {
       ...historyDefinition(),
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from:\n  name: Person\n  alias: p\n',
       } as unknown as ITextQueryRequest,
     };
@@ -7642,7 +7642,7 @@ select (
         {
           ...edited,
           request: {
-            queryType: QueryType.DTQL,
+            queryType: QueryType.TugQL,
             text: 'from:\n  name: Person\n  alias: p\nlimit: 5\n',
           } as unknown as ITextQueryRequest,
         },
@@ -7844,7 +7844,7 @@ select (
         {
           id: definition.id,
           title: definition.title,
-          queryType: QueryType.DTQL,
+          queryType: QueryType.TugQL,
           request: definition.request,
           def: definition,
         },
@@ -8178,7 +8178,7 @@ select (
     const definition: IQueryDef = {
       ...historyDefinition(),
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from:\n  name: Person\n  alias: p\nlimit: 5',
       } as unknown as ITextQueryRequest,
     };
@@ -9326,7 +9326,7 @@ select (
       ...queryDef,
       id: 'sales',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from: Invoice',
       } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
@@ -9381,7 +9381,7 @@ select (
       ...queryDef,
       id: 'detail-join',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: JSON.stringify({
           from: {
             database: 'sales',
@@ -9442,7 +9442,7 @@ select (
       ...queryDef,
       id: 'many-sales',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from: Invoice',
       } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
@@ -9486,7 +9486,7 @@ select (
       ...queryDef,
       id: 'paged-sales',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from: Invoice',
       } as ITextQueryRequest,
       federation: { ovdbBaseUrl: 'http://127.0.0.1:50501', tables: [] },
@@ -10066,17 +10066,17 @@ select (
     expect(component.runError()).toBeUndefined();
   });
 
-  it('keeps a loaded legacy YAML DTQL source on the admitted agent execution path', async () => {
+  it('keeps a loaded TugQL YAML source on the admitted agent execution path', async () => {
     const yaml = 'from:\n  name: Invoice\n  alias: i\nwhere:\n  op: ==\n  left:\n    field: CustomerId\n  right:\n    param: CustomerId\n';
     const definition: IQueryDef = {
       ...queryDef,
-      request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: yaml } as ITextQueryRequest,
     };
     component = await createComponent({}, definition);
     component.project = project;
-    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlYamlWorkspace()).toBe(true);
     expect(component.isTugqlAuthorJourney()).toBe(false);
-    expect(component.workspaceTab()).toBe('dtql');
+    expect(component.workspaceTab()).toBe('tugql-yaml');
     investigationContext.addValue({
       entityField: { entity: 'Customer', field: 'ID' },
       value: 7,
@@ -10364,7 +10364,7 @@ select (
           },
           details: {
             authorization: {
-              apiVersion: 'dtql.org/authorization/v1',
+              apiVersion: 'tugql.org/authorization/v1',
               requestId: 'r1',
               mode: 'execution',
               scope: 'request',
@@ -10998,7 +10998,7 @@ describe('QueryPageComponent dependency injection', () => {
  * the data was ALREADY correct — `queryState.request.text`/`.def` load fine
  * (see `github-project-reader.service.spec.ts`'s own `getQuery` coverage,
  * unchanged by this task) — the query page template itself just never
- * rendered any of it: no body editor at all for SQL/DTQL (the old
+ * rendered any of it: no body editor at all for SQL/TugQL (the old
  * `sneat-datatug-sql-query` binding, `query-page.component.html`, was
  * commented out and never replaced — confirmed by the pre-existing S136
  * comment on `apps/datatug-app/e2e/github-store.spec.ts`'s own
@@ -11040,14 +11040,14 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     } as ISqlQueryRequest,
   };
 
-  // The real `customers/customer-invoices.query.json`/`.query.dtql` shape —
-  // a DTQL query whose parameters/recordsets already carry `meta.entity`
+  // The real `customers/customer-invoices.query.json`/`.query.tugql.yaml` shape —
+  // a TugQL query whose parameters/recordsets already carry `meta.entity`
   // (confirmed live against the real repo), the metadata path.
-  const dtqlDef: IQueryDef = {
+  const tugqlDef: IQueryDef = {
     id: 'customers/customer-invoices',
     title: 'Customer invoices',
     request: {
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       text: 'from:\n  name: Invoice\n',
     } as unknown as ITextQueryRequest,
     parameters: [
@@ -11210,7 +11210,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     );
     const card = template.indexOf('data-testid="unified-text-workspace"');
     const start = template.indexOf('@if (isNativeSqlWorkspace()) {', card);
-    const end = template.indexOf('@if (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) {', start);
+    const end = template.indexOf('@if (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace()) {', start);
     if (card < 0 || start < 0 || end < 0) {
       throw new Error(
         'Could not locate the maintained query text editor fragment.',
@@ -11224,7 +11224,7 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     fx.dispatchBrowserResponse.mockReset();
   });
 
-  it('uses the shared CodeMirror editor for both native SQL and saved DTQL sources', () => {
+  it('uses the shared CodeMirror editor for both native SQL and saved TugQL sources', () => {
     const template = readFileSync(
       resolve(
         'libs/datatug/main/src/lib/queries/query/page/query-page.component.html',
@@ -11234,20 +11234,20 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     const workspace = template.indexOf('data-testid="unified-text-workspace"');
     const sqlBranch = template.indexOf('@if (isNativeSqlWorkspace()) {', workspace);
     const sqlEditor = template.indexOf('<sneat-datatug-sql', sqlBranch);
-    const dtqlBranch = template.indexOf('@if (isNativeDtqlWorkspace()) {', sqlEditor);
-    const dtqlEditor = template.indexOf('<sneat-datatug-sql', dtqlBranch);
+    const tugqlBranch = template.indexOf('@if (isTugqlYamlWorkspace()) {', sqlEditor);
+    const tugqlEditor = template.indexOf('<sneat-datatug-sql', tugqlBranch);
 
     expect(sqlBranch).toBeGreaterThanOrEqual(0);
     expect(sqlEditor).toBeGreaterThan(sqlBranch);
     expect(
       template.indexOf('(sqlChanged)="sqlTextChanged($event)"', sqlEditor),
     ).toBeGreaterThan(sqlEditor);
-    expect(dtqlBranch).toBeGreaterThan(sqlEditor);
-    expect(dtqlEditor).toBeGreaterThan(dtqlBranch);
+    expect(tugqlBranch).toBeGreaterThan(sqlEditor);
+    expect(tugqlEditor).toBeGreaterThan(tugqlBranch);
     expect(
-      template.indexOf('(sqlChanged)="sqlTextChanged($event)"', dtqlEditor),
-    ).toBeGreaterThan(dtqlEditor);
-    expect(template.slice(workspace, dtqlEditor + 600)).not.toContain(
+      template.indexOf('(sqlChanged)="sqlTextChanged($event)"', tugqlEditor),
+    ).toBeGreaterThan(tugqlEditor);
+    expect(template.slice(workspace, tugqlEditor + 600)).not.toContain(
       '<ion-textarea data-testid="query-body-text"',
     );
   });
@@ -11272,47 +11272,47 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     expect(component.queryBodyText()).toBe('SELECT 2;');
   });
 
-  it('shows a saved DTQL source in the shared code editor, connected to the draft', async () => {
-    component = await createComponent(dtqlDef, queryTextEditorTemplate(), [
+  it('shows a saved TugQL source in the shared code editor, connected to the draft', async () => {
+    component = await createComponent(tugqlDef, queryTextEditorTemplate(), [
       SqlEditorHostStub,
     ]);
     fixture.detectChanges();
     const editors = fixture.debugElement.queryAll(
       By.directive(SqlEditorHostStub),
     );
-    const dtqlEditor = editors.find(
-      (e) => e.componentInstance.ariaLabel() === 'DTQL source',
+    const tugqlEditor = editors.find(
+      (e) => e.componentInstance.ariaLabel() === 'TugQL YAML source',
     );
-    expect(dtqlEditor).toBeDefined();
-    dtqlEditor?.componentInstance.sqlChanged.emit('from:\n  name: Artist\n');
+    expect(tugqlEditor).toBeDefined();
+    tugqlEditor?.componentInstance.sqlChanged.emit('from:\n  name: Artist\n');
     fixture.detectChanges();
     expect(component.queryBodyText()).toBe('from:\n  name: Artist\n');
   });
 
-  it('keeps a loaded legacy DTQL query in its native source pane even while the draft changes', async () => {
-    component = await createComponent(dtqlDef);
+  it('keeps a loaded legacy TugQL query in its native source pane even while the draft changes', async () => {
+    component = await createComponent(tugqlDef);
     expect(component.isTextQueryWorkspace()).toBe(true);
-    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlYamlWorkspace()).toBe(true);
     expect(component.isTugqlAuthorJourney()).toBe(false);
-    expect(component.workspaceTab()).toBe('dtql');
+    expect(component.workspaceTab()).toBe('tugql-yaml');
     component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'FROM Invoice\nSELECT (InvoiceId)' } }));
-    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlYamlWorkspace()).toBe(true);
     expect(component.isTugqlAuthorJourney()).toBe(false);
-    expect(component.workspaceTab()).toBe('dtql');
+    expect(component.workspaceTab()).toBe('tugql-yaml');
   });
 
   it('keeps malformed saved TugQL in CodeMirror and its bounded execution guard', async () => {
     const malformed: IQueryDef = {
-      ...dtqlDef,
+      ...tugqlDef,
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
     };
     component = await createComponent(malformed);
-    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlYamlWorkspace()).toBe(false);
     expect(component.isTugqlAuthorJourney()).toBe(true);
     expect(component.workspaceTab()).toBe('tugql');
     component.queryTextChanged(new CustomEvent('ionInput', { detail: { value: 'from:\n  name: Invoice\n' } }));
-    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlYamlWorkspace()).toBe(false);
     expect(component.isTugqlAuthorJourney()).toBe(true);
   });
 
@@ -11320,36 +11320,36 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     ['document marker', '---\nfrom:\n  name: Invoice\nlimit: 1\n'],
     ['leading offset', 'offset: 0\nfrom:\n  name: Invoice\nlimit: 1\n'],
     ['flow mapping', '{from: {name: Invoice}, limit: 1}'],
-  ])('keeps valid %s YAML DTQL in its native source pane', async (_shape, yaml) => {
-    expect(() => parseDTQL(yaml, { tables: [{ name: 'Invoice', fields: ['InvoiceId'] }] })).not.toThrow();
+  ])('keeps valid %s YAML TugQL in its native source pane', async (_shape, yaml) => {
+    expect(() => parseTugQLYaml(yaml, { tables: [{ name: 'Invoice', fields: ['InvoiceId'] }] })).not.toThrow();
     const definition: IQueryDef = {
-      ...dtqlDef,
+      ...tugqlDef,
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: yaml } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: yaml } as ITextQueryRequest,
     };
     component = await createComponent(definition);
-    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    expect(component.isTugqlYamlWorkspace()).toBe(true);
     expect(component.isTugqlAuthorJourney()).toBe(false);
-    expect(component.workspaceTab()).toBe('dtql');
+    expect(component.workspaceTab()).toBe('tugql-yaml');
     expect(component.queryBodyText()).toBe(yaml);
   });
 
   it('reclassifies the same query ID only after a saved loading placeholder and new definition', async () => {
     const state = new BehaviorSubject({
-      currentQueryId: dtqlDef.id,
-      activeQueries: [{ id: dtqlDef.id, queryType: QueryType.DTQL, request: dtqlDef.request, def: dtqlDef }],
+      currentQueryId: tugqlDef.id,
+      activeQueries: [{ id: tugqlDef.id, queryType: QueryType.TugQL, request: tugqlDef.request, def: tugqlDef }],
     } as IQueryEditorState);
-    component = await createComponent(dtqlDef, '', [], state);
-    expect(component.isNativeDtqlWorkspace()).toBe(true);
+    component = await createComponent(tugqlDef, '', [], state);
+    expect(component.isTugqlYamlWorkspace()).toBe(true);
     const reloaded: IQueryDef = {
-      ...dtqlDef,
+      ...tugqlDef,
       connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
+      request: { queryType: QueryType.TugQL, text: 'FROM Invoice\nSELECT ()' } as ITextQueryRequest,
     };
-    state.next({ currentQueryId: dtqlDef.id, activeQueries: [{ id: dtqlDef.id, queryType: QueryType.SQL, request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest, isLoading: true }] } as IQueryEditorState);
-    state.next({ currentQueryId: dtqlDef.id, activeQueries: [{ id: dtqlDef.id, queryType: QueryType.DTQL, request: reloaded.request, def: reloaded }] } as IQueryEditorState);
+    state.next({ currentQueryId: tugqlDef.id, activeQueries: [{ id: tugqlDef.id, queryType: QueryType.SQL, request: { queryType: QueryType.SQL, text: '' } as ISqlQueryRequest, isLoading: true }] } as IQueryEditorState);
+    state.next({ currentQueryId: tugqlDef.id, activeQueries: [{ id: tugqlDef.id, queryType: QueryType.TugQL, request: reloaded.request, def: reloaded }] } as IQueryEditorState);
     await fixture.whenStable();
-    expect(component.isNativeDtqlWorkspace()).toBe(false);
+    expect(component.isTugqlYamlWorkspace()).toBe(false);
     expect(component.isTugqlAuthorJourney()).toBe(true);
     expect(component.workspaceTab()).toBe('tugql');
   });
@@ -11582,8 +11582,8 @@ describe('QueryPageComponent — query text and linked entities display (S155)',
     expect(component.linkedEntities()).toEqual(['Album', 'Artist']);
   });
 
-  it('a DTQL query with parameter/recordset meta.entity exposes those entities, not a text-parsed guess', async () => {
-    component = await createComponent(dtqlDef);
+  it('a TugQL query with parameter/recordset meta.entity exposes those entities, not a text-parsed guess', async () => {
+    component = await createComponent(tugqlDef);
 
     expect(component.queryBodyText()).toBe('from:\n  name: Invoice\n');
     expect(component.linkedEntities()).toEqual(['Customer', 'Invoice']);
@@ -11943,12 +11943,12 @@ describe('extractLinkedEntityNames', () => {
     expect(extractLinkedEntityNames(def)).toEqual(['Artist']);
   });
 
-  it('never SQL-parses a DTQL body (its text is YAML, not SQL) — no metadata means no entities', () => {
+  it('never SQL-parses a TugQL body (its text is YAML, not SQL) — no metadata means no entities', () => {
     const def: IQueryDef = {
       id: 'q',
       title: 'q',
       request: {
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         text: 'from:\n  name: Invoice\n',
       } as unknown as ITextQueryRequest,
     };

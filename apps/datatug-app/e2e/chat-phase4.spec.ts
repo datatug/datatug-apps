@@ -31,24 +31,24 @@ test('Bookmarks migrate, preserve scoped snapshots, and support cross-session fo
   await page.route('https://api.deepseek.com/chat/completions', async (route) => {
     const request = route.request().postDataJSON() as { messages: { content: string }[] };
     const question = request.messages.at(-1)?.content;
-    let dtql: Record<string, unknown>;
+    let tugql: Record<string, unknown>;
     if (question === 'Show 10 customers') {
-      dtql = { from: { schema: 'main', name: 'Customer' }, orderBy: [{ field: 'CustomerId' }], limit: 10 };
+      tugql = { from: { schema: 'main', name: 'Customer' }, orderBy: [{ field: 'CustomerId' }], limit: 10 };
     } else if (question === 'Invoices for selected bookmark cells') {
       followupContext = request.messages[0].content;
       expect(followupContext).toContain(selectionBookmarkId);
-      dtql = { from: { schema: 'main', name: 'Invoice' }, where: {
+      tugql = { from: { schema: 'main', name: 'Invoice' }, where: {
         op: 'In', left: { field: 'CustomerId' }, right: { bookmark: { id: selectionBookmarkId, field: 'CustomerId' } },
       }, limit: 100 };
     } else if (question === 'Invoices for bookmarked customers') {
       followupContext = request.messages[0].content;
       const id = followupContext.match(/Attached Bookmark: Show 10 customers; id: ([0-9a-f-]{36})/)?.[1];
       expect(id).toBeTruthy();
-      dtql = { from: { schema: 'main', name: 'Invoice' }, where: {
+      tugql = { from: { schema: 'main', name: 'Invoice' }, where: {
         op: 'In', left: { field: 'CustomerId' }, right: { bookmark: { id, field: 'CustomerId' } },
       }, limit: 100 };
     } else throw new Error(`Unexpected question: ${question}`);
-    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql }) } }] } });
+    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ tugql }) } }] } });
   });
   await page.goto('/store/localhost:8989/project/datatug-demo-project/chat');
   await expect(page.getByText('Loading project context…')).toBeHidden({ timeout: 45_000 });

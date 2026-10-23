@@ -182,7 +182,7 @@ test.describe('query result link', () => {
       parameters: {},
       bindingOrigins: [],
     });
-    expect(typeof body['dtql']).toBe('string');
+    expect(typeof body['tugql']).toBe('string');
     expect(typeof body['securityContextId']).toBe('string');
     expect(body).not.toHaveProperty('queryId');
     await expect(page.getByTestId('result-fresh')).toContainText('3 rows');
@@ -241,7 +241,7 @@ test.describe('query result link', () => {
       mode: 'live',
       limit: 500,
     });
-    expect(body).not.toHaveProperty('dtql');
+    expect(body).not.toHaveProperty('tugql');
     // The daemon accepts the request: an answer with rows, not a refusal of its shape.
     await expect(page.getByTestId('result-fresh')).toBeVisible();
   });

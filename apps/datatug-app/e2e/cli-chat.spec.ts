@@ -32,7 +32,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   await page.route('http://127.0.0.1:3284/v1/chat/**', async (route) => {
     expect(route.request().headers()['x-datatug-chat-capability']).toBe(token);
     if (route.request().url().endsWith('/catalog')) {
-      await route.fulfill({ json: { ID: 'demo-project-1', Title: 'Demo project 1', Objects: [{ Reference: { kind: 'source', objectId: 'chinook', title: 'Chinook', projectId: 'demo-project-1' }, Columns: [], ColumnTypes: {} }, { Reference: { kind: 'table', sourceId: 'chinook', objectId: 'main.Customers', title: 'Customers', projectId: 'demo-project-1' }, Columns: ['CustomerId', 'Name'], ColumnTypes: { CustomerId: 'integer', Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'project_view', sourceId: 'chinook', objectId: 'main.CustomerView', title: 'Customer view', projectId: 'demo-project-1' }, Columns: ['Name'], ColumnTypes: { Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'query', objectId: 'top-customers', title: 'Top customers', projectId: 'demo-project-1' }, Columns: null, ColumnTypes: null, QueryType: 'dtql', QueryText: 'from: customers', Issue: '' }] } });
+      await route.fulfill({ json: { ID: 'demo-project-1', Title: 'Demo project 1', Objects: [{ Reference: { kind: 'source', objectId: 'chinook', title: 'Chinook', projectId: 'demo-project-1' }, Columns: [], ColumnTypes: {} }, { Reference: { kind: 'table', sourceId: 'chinook', objectId: 'main.Customers', title: 'Customers', projectId: 'demo-project-1' }, Columns: ['CustomerId', 'Name'], ColumnTypes: { CustomerId: 'integer', Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'project_view', sourceId: 'chinook', objectId: 'main.CustomerView', title: 'Customer view', projectId: 'demo-project-1' }, Columns: ['Name'], ColumnTypes: { Name: 'text' }, QueryType: '', QueryText: '', Issue: '' }, { Reference: { kind: 'query', objectId: 'top-customers', title: 'Top customers', projectId: 'demo-project-1' }, Columns: null, ColumnTypes: null, QueryType: 'tugql', QueryText: 'from: customers', Issue: '' }] } });
       return;
     }
     if (route.request().url().endsWith('/sessions')) {
@@ -55,10 +55,10 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
       if (route.request().method() === 'POST') {
         const body = route.request().postDataJSON();
         if (body.action === 'save') savedQueryTitle = body.save.Title;
-        if (body.action === 'run_dtql' || body.action === 'run_http') ranQueryId = `${body.action}:${body.queryId}`;
+        if (body.action === 'run_tugql' || body.action === 'run_http') ranQueryId = `${body.action}:${body.queryId}`;
         await route.fulfill({ status: 204 });
       }
-      else await route.fulfill({ json: [{ ID: 'customers-query', Title: 'Customers query', Type: 'DTQL', Tags: [], Parameters: [] }, { ID: 'api-query', Title: 'API query', Type: 'HTTP', Tags: [], Parameters: [] }] });
+      else await route.fulfill({ json: [{ ID: 'customers-query', Title: 'Customers query', Type: 'TugQL', Tags: [], Parameters: [] }, { ID: 'api-query', Title: 'API query', Type: 'HTTP', Tags: [], Parameters: [] }] });
       return;
     }
     if (route.request().url().endsWith('/http')) {
@@ -159,7 +159,7 @@ test('CLI chat deep link restores, sends, and follows terminal updates', async (
   const apiQueryRun = tools.locator('.saved-query').filter({ hasText: 'API query' }).getByRole('button', { name: 'Run' });
   const firstQueryRefresh = page.waitForResponse((response) => response.url().endsWith('/v1/chat/session') && response.request().method() === 'GET');
   await tools.locator('.saved-query').filter({ hasText: 'Customers query' }).getByRole('button', { name: 'Run' }).click();
-  await expect.poll(() => ranQueryId).toBe('run_dtql:customers-query');
+  await expect.poll(() => ranQueryId).toBe('run_tugql:customers-query');
   await firstQueryRefresh;
   await expect(apiQueryRun).toBeEnabled();
   await apiQueryRun.click();

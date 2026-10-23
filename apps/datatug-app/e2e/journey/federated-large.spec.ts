@@ -47,7 +47,7 @@ function startOvdb(): Promise<{
       response.end();
       return;
     }
-    if (request.url === '/v1/databases/countries/dtql') {
+    if (request.url === '/v1/databases/countries/tugql') {
       counts.countries++;
       response.writeHead(200, headers);
       response.end(
@@ -61,7 +61,7 @@ function startOvdb(): Promise<{
       );
       return;
     }
-    if (request.url === '/v1/databases/orders/dtql') {
+    if (request.url === '/v1/databases/orders/tugql') {
       const token = request.headers['ovdb-page-token'];
       const offset = token ? Number(String(token).slice(2)) : 0;
       const pageSize = Number(request.headers['ovdb-page-size'] ?? 500);
@@ -129,7 +129,7 @@ test('pages a cross-database join on demand and stores the full result', async (
       JSON.stringify({
         id: queryId,
         title: 'Large invoices joined to countries',
-        type: 'DTQL',
+        type: 'TugQL',
         federation: {
           ovdbBaseUrl: `http://127.0.0.1:${ovdb.port}`,
           tables: [
@@ -158,7 +158,7 @@ test('pages a cross-database join on demand and stores the full result', async (
       }),
     );
     writeFileSync(
-      join(queryDir, `${queryId}.query.dtql`),
+      join(queryDir, `${queryId}.query.tugql.yaml`),
       `from:
   database: orders
   name: Invoice

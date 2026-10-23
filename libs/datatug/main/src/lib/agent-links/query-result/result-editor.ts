@@ -163,7 +163,7 @@ function summaryOf(result: StoredResult, ids: DbIds | undefined): string[] {
 }
 
 /**
- * What the editor is filled with for a result. A saved query opens by its id; an ad-hoc DTQL or SQL query fills a
+ * What the editor is filled with for a result. A saved query opens by its id; an ad-hoc TugQL or SQL query fills a
  * new draft with `draftId`; anything else (an older result, a saved HTTP query, text dropped for size) leaves the
  * editor empty with a named notice. The rows are shown in every case.
  */
@@ -190,8 +190,8 @@ export function resultEditorPlan(
     return { ...common, mode: 'saved', savedQueryId: meta.query.savedQueryId };
   }
   const queryType =
-    editor.language === 'dtql'
-      ? QueryType.DTQL
+    editor.language === 'tugql'
+      ? QueryType.TugQL
       : editor.language === 'sql'
         ? QueryType.SQL
         : undefined;

@@ -76,7 +76,7 @@ if (process.argv.includes('--online')) {
       const names = Object.values(descriptor.schemas.collections).map((c) => c.source.name);
       assert.ok(names.includes(entry.sampleTable), `sample table ${entry.sampleTable}`);
       for (const capability of ['write', 'delete', 'reset']) assert.equal(descriptor.capabilities[capability], false, capability);
-      assert.equal(descriptor.capabilities.dtql, true, 'dtql');
+      assert.equal(descriptor.capabilities.tugql, true, 'tugql');
     });
   }
 }

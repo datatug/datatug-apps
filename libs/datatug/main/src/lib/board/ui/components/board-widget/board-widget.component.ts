@@ -905,7 +905,6 @@ export class BoardWidgetComponent {
           if (!reason) {
             this.definition.set(definition);
             if (
-              definition.request.queryType === QueryType.DTQL ||
               definition.request.queryType === QueryType.TugQL
             ) {
               const controller = new AbortController();
@@ -1004,7 +1003,7 @@ export class BoardWidgetComponent {
     if (definition.id !== id && !id.endsWith('/' + definition.id))
       return 'The saved query identity changed. Open it to inspect the source.';
     if (
-      ![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(
+      ![QueryType.SQL, QueryType.TugQL].includes(
         definition.request.queryType,
       )
     )

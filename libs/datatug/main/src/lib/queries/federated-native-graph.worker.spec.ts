@@ -76,7 +76,7 @@ async function workerFixture() {
   const http = vi.fn(); vi.stubGlobal('fetch', http);
   return { service: new FederatedQueryService(), http, posted };
 }
-const transactionDefinition = (): IQueryDef => ({ id: 'native-graph-history-transaction-fixture', request: { queryType: 'DTQL' }, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } }) as unknown as IQueryDef;
+const transactionDefinition = (): IQueryDef => ({ id: 'native-graph-history-transaction-fixture', request: { queryType: 'TugQL' }, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } }) as unknown as IQueryDef;
 describe('native graph Worker/service/storage fixture integration, no publication claim', () => {
   it.each(['1', '9007199254740991', '1e0', '-0', '1.0', '1e3', '1.0000000000000001', '9007199254740990.5', '9007199254740993', '1e400', '-1e400', '0e400', '{"nested":[-0,1e3,9007199254740993]}', '[]', 'true', '"1"', 'null', undefined])('retains exact P1 wire evidence %s through actual Worker/IDB pages and reopen while a valid sibling continues', async (token) => {
     const { service, http } = await workerFixture(); control.wireToken = token;
@@ -190,7 +190,7 @@ describe('native graph Worker/service/storage fixture integration, no publicatio
   });
   it('stores separate grains and reopens all historical pages after close without provider access', async () => {
     const { service, http, posted } = await workerFixture();
-    const result = await service.run({ id: 'native-graph-storage-fixture', request: { queryType: 'DTQL' }, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } } as unknown as IQueryDef);
+    const result = await service.run({ id: 'native-graph-storage-fixture', request: { queryType: 'TugQL' }, federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: graphFixturePlan() } } as unknown as IQueryDef);
     expect(result.recordset.rows).toHaveLength(2); expect(result.relatedRecordsets?.find((s) => s.id === 'locations')?.totalRows).toBe(4);
     expect(result.relatedRecordsets?.find((s) => s.id === 'aliases')?.totalRows).toBe(136);
     expect(result.relatedRecordsets?.find((s) => s.id === 'aliases')?.recordset.rows).toHaveLength(100);

@@ -83,7 +83,7 @@ describe('TugQL explicit completion', () => {
       parameters: 'parameters (\n  @Code integer required\n)\nfrom Invoice',
       required: 'parameters (\n  @Code integer required\n)\nfrom Invoice',
       default: "parameters (\n  @Code integer default 1\n)\nfrom Invoice",
-      using: 'with Sample from "query.dtql"\n  using (\n    @Code = 1\n  )\nfrom Sample',
+      using: 'with Sample from "query.tugql"\n  using (\n    @Code = 1\n  )\nfrom Sample',
       integer: 'parameters (\n  @Code integer required\n)\nfrom Invoice',
       decimal: 'parameters (\n  @Code decimal default 1.2\n)\nfrom Invoice',
       string: "parameters (\n  @Code string default 'x'\n)\nfrom Invoice",

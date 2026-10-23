@@ -673,7 +673,7 @@ export class PublicSqliteQueryService {
     comparisonPair = false,
   ): Promise<PublicSqliteQueryPreview> {
     if (
-      definition.request.queryType !== QueryType.DTQL ||
+      definition.request.queryType !== QueryType.TugQL ||
       definition.connectionId !== CONNECTION_ID ||
       definition.federation
     ) {

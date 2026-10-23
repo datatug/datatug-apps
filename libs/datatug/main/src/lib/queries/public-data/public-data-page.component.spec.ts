@@ -92,7 +92,7 @@ describe('Public data route fixture UI journey (no deployed runtime claims)', ()
     };
     const definition = {
       id: 'fixture-saved-query',
-      request: { queryType: QueryType.DTQL, text: '{}' },
+      request: { queryType: QueryType.TugQL, text: '{}' },
       federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [] },
       publicData: scenario(eligible),
     } as IQueryDef;

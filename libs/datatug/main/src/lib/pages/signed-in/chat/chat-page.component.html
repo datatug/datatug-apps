@@ -30,7 +30,7 @@
       @if (failure.detail) {
         <details class="error-detail">
           <summary>Technical details</summary>
-          <pre class="dtql">{{ failure.detail }}</pre>
+          <pre class="tugql">{{ failure.detail }}</pre>
         </details>
       }
     </div>
@@ -58,19 +58,19 @@
           </div>
         }
         @if (turn.actionSummary) { <p class="workspace-action-summary">{{ turn.actionSummary }}</p> }
-        @if (turn.dtql) {
+        @if (turn.tugql) {
           <ion-card class="result-card">
             <ion-card-content>
               <ion-segment [value]="turnTab(turn)" (ionChange)="selectTurnTab(turn.id, $event.detail.value)">
                 <ion-segment-button value="rows">Rows {{ turn.rows?.length || 0 }}</ion-segment-button>
-                @if (turn.dtqlYaml) { <ion-segment-button value="dtql">TugQL</ion-segment-button> }
+                @if (turn.tugqlYaml) { <ion-segment-button value="tugql">TugQL</ion-segment-button> }
                 @if (turn.sql) { <ion-segment-button value="sql">SQL</ion-segment-button> }
                 <ion-segment-button value="metrics">Metrics</ion-segment-button>
               </ion-segment>
-              @if (turnTab(turn) === 'dtql') { <pre class="dtql">{{ turn.dtqlYaml }}</pre> }
+              @if (turnTab(turn) === 'tugql') { <pre class="tugql">{{ turn.tugqlYaml }}</pre> }
               @if (turnTab(turn) === 'sql') {
                 <ion-item><ion-label>SQL syntax</ion-label><ion-select aria-label="SQL syntax" interface="popover" value="sqlite"><ion-select-option value="sqlite">SQLite</ion-select-option></ion-select></ion-item>
-                <ion-textarea class="dtql" aria-label="Generated SQL" [readonly]="true" [autoGrow]="true" [value]="turn.sql" />
+                <ion-textarea class="tugql" aria-label="Generated SQL" [readonly]="true" [autoGrow]="true" [value]="turn.sql" />
               }
               @if (turnTab(turn) === 'metrics' && turn.metrics; as metrics) {
                 <div class="metrics-grid">

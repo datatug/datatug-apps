@@ -8,7 +8,7 @@ against the full result of the Go CLI.
 
 | File | Source | Changes |
 | --- | --- | --- |
-| `chinook-sales-per-capita.query.dtql`, `.query.json` | `datatug/datatug-demo-projects`, `demo-project-1/queries/sales/`, `origin/main` at `0e5b98f86f37f00a3c3be5bbbb515d15620c63c6` (CC0 1.0) | none |
+| `chinook-sales-per-capita.query.tugql.yaml`, `.query.json` | `datatug/datatug-demo-projects`, `demo-project-1/queries/sales/`, `origin/main` at `0e5b98f86f37f00a3c3be5bbbb515d15620c63c6` (CC0 1.0) | none |
 | `country_aliases.json` | `demo-project-1/data/geo/country_aliases/$records/*.json`, same commit (hand-checked mapping data, CC0 1.0) | one file per record merged into `{key, data}` entries; `data` is verbatim |
 | `population_wb.json` | `demo-project-1/data/geo/population_wb/$records/*.json`, same commit | the 24 records the aliases point at, merged as above; `data` is verbatim |
 | `invoice.json` | Chinook SQLite, `datatug/chinook-database` revision `6334395117e2478a2712e083be614721341c26c9`, table `Invoice` | only the columns the query declares (`InvoiceId`, `BillingCountry`, `Total`); `key` is `InvoiceId` as text, as OVDB serves it |

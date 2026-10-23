@@ -3,7 +3,7 @@ import { QueryType } from '../../models/definition/query-def';
 import { decodeStoredResult } from './query-result';
 import { resultEditorPlan } from './result-editor';
 import {
-  DTQL_TEXT,
+  TUGQL_TEXT,
   PROMPT_TEXT,
   ROW_MARKER,
   editorReadyResult,
@@ -18,8 +18,8 @@ describe('decodeStoredResult: the editor-ready members', () => {
     const r = decodeStoredResult(
       editorReadyResult({ prompt: { text: PROMPT_TEXT, truncated: true } }),
     );
-    expect(r.editor.text).toBe(DTQL_TEXT);
-    expect(r.editor.language).toBe('dtql');
+    expect(r.editor.text).toBe(TUGQL_TEXT);
+    expect(r.editor.language).toBe('tugql');
     expect(r.editor.dbRef).toBe('datatug://demo/chinook?env=local');
     expect(r.editor.params.map((p) => p.name)).toEqual([
       'CustomerId',
@@ -31,7 +31,7 @@ describe('decodeStoredResult: the editor-ready members', () => {
     const full = editorReadyResult();
     const answer = { meta: full['meta'], recordset: full['recordset'] };
     const r = decodeStoredResult(answer);
-    expect(r.editor.text).toBe(DTQL_TEXT);
+    expect(r.editor.text).toBe(TUGQL_TEXT);
     expect(r.prompt?.text).toBe(PROMPT_TEXT);
   });
   it('takes an older result as having none of them', () => {
@@ -57,12 +57,12 @@ describe('decodeStoredResult: the editor-ready members', () => {
 });
 
 describe('resultEditorPlan', () => {
-  it('fills a new draft from an ad-hoc DTQL result, with its database, environment and parameters', () => {
+  it('fills a new draft from an ad-hoc TugQL result, with its database, environment and parameters', () => {
     const p = plan(editorReadyResult());
     expect(p.mode).toBe('draft');
     expect(p.definition).toMatchObject({
       id: 'draft-1',
-      request: { queryType: QueryType.DTQL, text: DTQL_TEXT },
+      request: { queryType: QueryType.TugQL, text: TUGQL_TEXT },
     });
     expect(p.ids).toEqual({ project: 'demo', env: 'local', source: 'chinook' });
     expect(p.definition?.parameters).toEqual([

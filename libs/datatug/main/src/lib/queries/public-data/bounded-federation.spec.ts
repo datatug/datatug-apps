@@ -1,6 +1,6 @@
 import 'fake-indexeddb/auto';
 import { describe, expect, it, vi } from 'vitest';
-import { parseDTQL } from '@dalgo/core';
+import { parseTugQLYaml } from '@dalgo/core';
 import { QueryType, type IQueryDef } from '../../models/definition/query-def';
 import { runFederatedQuery } from '../federated-query-executor';
 import {
@@ -116,7 +116,7 @@ function definition(bounds = fixtureBounds()): IQueryDef {
   return {
     id: 'bounded',
     request: {
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       text: JSON.stringify({
         from: {
           database: 'user',
@@ -151,7 +151,7 @@ function definition(bounds = fixtureBounds()): IQueryDef {
 
 describe('bounded public-data federation preparation (fixture requests, not deployed acceptance)', () => {
   it('uses the installed DALgo In dialect and retains byte-exact literals', () => {
-    const query = parseDTQL(
+    const query = parseTugQLYaml(
       {
         from: { name: 'Countries' },
         where: {
@@ -166,7 +166,7 @@ describe('bounded public-data federation preparation (fixture requests, not depl
     );
     expect(query.filters).toHaveLength(1);
     expect(() =>
-      parseDTQL(
+      parseTugQLYaml(
         {
           from: { name: 'Countries' },
           where: {
@@ -199,7 +199,7 @@ describe('bounded public-data federation preparation (fixture requests, not depl
       new AbortController().signal,
     );
     expect(runtime.calls).toEqual([]);
-    const page = await transport.fetch(`${base}/v1/databases/geo/dtql`, {
+    const page = await transport.fetch(`${base}/v1/databases/geo/tugql`, {
       method: 'POST',
       body: JSON.stringify({ from: { name: 'Countries' } }),
       headers: { 'OVDB-Page-Size': '100' },

@@ -15,7 +15,7 @@ import {
   executePublishedCountryCounts,
   NORTHWIND_COUNTRY_COUNT_PIN,
 } from './public-country-count-admission';
-import { executePublicDtql } from './public-dtql-transport';
+import { executePublicTugql } from './public-tugql-transport';
 import {
   fetchOrdersRightsPublication,
   NORTHWIND_ORDERS_PIN,
@@ -63,7 +63,7 @@ const cancelled = (signal?: AbortSignal): void => {
   if (signal?.aborted) reject('The saved public chart query was cancelled.');
 };
 
-/** The caller loads the exact saved query through QueriesService, including its DTQL sidecar. */
+/** The caller loads the exact saved query through QueriesService, including its TugQL sidecar. */
 async function savedText(
   queryId: string,
   definition: IQueryDef,
@@ -77,7 +77,7 @@ async function savedText(
     !definition ||
     (definition.id !== queryId && definition.id !== leafId) ||
     definition.connectionId !== 'northwind-sqlite' ||
-    definition.request?.queryType !== QueryType.DTQL ||
+    definition.request?.queryType !== QueryType.TugQL ||
     definition.draft ||
     definition.parameters?.length ||
     definition.targets?.length ||
@@ -236,7 +236,7 @@ export async function executeSavedPublicChartQuery(
   cancelled(options.signal);
   // The request goes to the current OVDB host; the receipt keeps the pinned (published)
   // endpoint, which must stay under the publication's serverId.
-  const execution = await executePublicDtql(
+  const execution = await executePublicTugql(
     text,
     {
       endpoint: currentDemoDbOvdbUrl(pin.endpoint),
@@ -295,7 +295,7 @@ export const PUBLIC_POSTGRESQL_COUNTRY_COUNTS_QUERY_ID =
   'demodb/northwind-shipping-country-count-postgresql';
 const postgresql = Object.freeze({
   endpoint:
-    'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/dtql',
+    'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/tugql',
   serverId: 'https://cloud.openvaultdb.com',
   databaseId: 'northwind-postgresql',
   collectionId: 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM',
@@ -344,7 +344,7 @@ export async function executeSavedPublicInspectQuery(
     (definition.id !== queryId &&
       definition.id !== 'northwind-shipping-country-count-postgresql') ||
     definition.connectionId !== 'northwind-postgresql' ||
-    definition.request?.queryType !== QueryType.DTQL ||
+    definition.request?.queryType !== QueryType.TugQL ||
     definition.draft ||
     definition.parameters?.length ||
     definition.targets?.length ||
@@ -376,7 +376,7 @@ export async function executeSavedPublicInspectQuery(
       'The saved public inspector query declares a different result projection.',
     );
   cancelled(options.signal);
-  const executed = await executePublicDtql(
+  const executed = await executePublicTugql(
     text,
     {
       ...postgresql,

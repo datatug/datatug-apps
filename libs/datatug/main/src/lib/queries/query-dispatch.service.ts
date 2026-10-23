@@ -6,7 +6,7 @@ import { executeSavedPublicChartQuery, isSavedPublicChartQueryId } from './publi
 import { HttpClient } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { type RunQueryRequest, type RunQueryResponse, decodeSourceRightsEvidence } from '@sneat/datatug-semantic';
-import { isJoinedDTQLQuery, parseDTQL, type DTQLSchema, type StructuredQuery } from '@dalgo/core';
+import { isJoinedTugQLQuery, parseTugQLYaml, type TugQLSchema, type StructuredQuery } from '@dalgo/core';
 import { OpenVaultDbDatabase } from '@dalgo/ovdb/client';
 import { firstValueFrom, fromEvent, takeUntil, throwIfEmpty, timeout } from 'rxjs';
 import type { FederatedQueryResult } from './federated-query-executor';
@@ -384,23 +384,23 @@ export class QueryDispatchService {
       throw new QueryDispatchError('The selected OVDB runtime does not match the query connection in this project.');
     if (request.runtimeSelectionId && this.queryRuntimes.resolve(request.runtimeSelectionId, plan.connection) !== connection)
       throw new QueryDispatchError('The selected working copy was closed or changed. Choose a current runtime.');
-    if (request.definition.request.queryType !== QueryType.TugQL && request.definition.request.queryType !== QueryType.DTQL)
-      throw new QueryDispatchError('This OVDB runtime supports DTQL; raw SQL is unavailable.');
+    if (request.definition.request.queryType !== QueryType.TugQL)
+      throw new QueryDispatchError('This OVDB runtime supports TugQL; raw SQL is unavailable.');
     if (Object.keys(request.parameters ?? {}).length || (request.definition.parameters?.length ?? 0) > 0)
       throw new QueryDispatchError('This OVDB query requires parameter binding support that is not available in this runtime.');
-    const nativeDtql = connection.descriptor.capabilities.query !== true && connection.descriptor.capabilities.dtql === true;
-    if (connection.descriptor.capabilities.query !== true && !nativeDtql)
+    const nativeTugql = connection.descriptor.capabilities.query !== true && connection.descriptor.capabilities.tugql === true;
+    if (connection.descriptor.capabilities.query !== true && !nativeTugql)
       throw new QueryDispatchError('The selected OVDB runtime cannot execute this query.');
     const schemas = connection.descriptor.schemas?.collections ?? {};
-    const schema: DTQLSchema = {
+    const schema: TugQLSchema = {
       tables: Object.entries(schemas).map(([id, value]) => ({
         name: value.source?.name ?? id,
         ...(value.source?.schema ? { schema: value.source.schema } : {}),
         fields: Object.keys(value.fields ?? {}),
       })),
     };
-    const parsed = parseDTQL((request.definition.request as ITextQueryRequest).text, schema, { maxLimit: 1000 });
-    if (isJoinedDTQLQuery(parsed))
+    const parsed = parseTugQLYaml((request.definition.request as ITextQueryRequest).text, schema, { maxLimit: 1000 });
+    if (isJoinedTugQLQuery(parsed))
       throw new QueryDispatchError('This OVDB runtime adapter accepts one source table per query. Use the admitted federated runtime for joins.');
     const query = parsed as StructuredQuery<Record<string, unknown>>;
     const deadline = AbortSignal.timeout(30_000);
@@ -418,14 +418,14 @@ export class QueryDispatchService {
     };
     let records: readonly { readonly data: Record<string, unknown> }[];
     let hasContinuation: boolean;
-    if (nativeDtql) {
-      const response = await connectionFetch(`${ovdbDatabaseUrl(connection.baseUrl, connection.databaseId)}/dtql`, {
+    if (nativeTugql) {
+      const response = await connectionFetch(`${ovdbDatabaseUrl(connection.baseUrl, connection.databaseId)}/tugql`, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({ query: (request.definition.request as ITextQueryRequest).text }),
         cache: 'no-store', credentials: 'omit',
       });
-      if (!response.ok) throw new QueryDispatchError('The selected OVDB runtime refused this DTQL query.');
+      if (!response.ok) throw new QueryDispatchError('The selected OVDB runtime refused this TugQL query.');
       const body = await response.json() as { records?: unknown; nextCursor?: unknown };
       if (!Array.isArray(body.records) || !body.records.every((record) =>
         record && typeof record === 'object' && !Array.isArray(record) &&

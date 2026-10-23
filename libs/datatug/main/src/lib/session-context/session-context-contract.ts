@@ -90,7 +90,7 @@ export interface ContextLegacyImport {
 }
 export interface ContextDefinitionDocument {
   readonly schemaVersion: 1; readonly kind: 'query' | 'dashboard' | 'chat';
-  readonly queries: readonly { readonly id: string; readonly queryType: 'SQL' | 'DTQL' | 'TugQL'; readonly text: string; readonly connectionId?: string; readonly parameters: readonly { readonly id: string; readonly type: string; readonly isRequired?: boolean }[] }[];
+  readonly queries: readonly { readonly id: string; readonly queryType: 'SQL' | 'TugQL'; readonly text: string; readonly connectionId?: string; readonly parameters: readonly { readonly id: string; readonly type: string; readonly isRequired?: boolean }[] }[];
   readonly widgets?: readonly { readonly id: string; readonly queryId: string }[];
 }
 export interface ContextInputSnapshot { readonly id: string; readonly sessionId: string; readonly contextSetId: string; readonly scope: SessionScope; readonly entries: readonly ContextEntryRef[]; readonly createdAt: string; readonly resolvedParameters?: Readonly<Record<string, TypedValue>>; readonly parametersOrigin?: string; readonly definitionDocument?: ContextDefinitionDocument; readonly definitionDigest?: string; }

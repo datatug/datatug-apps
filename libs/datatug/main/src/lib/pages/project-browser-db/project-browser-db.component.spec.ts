@@ -26,7 +26,7 @@ async function setup(options: { missing?: boolean; sha?: string; actor?: string 
   const continuations = new DemoProjectContinuationService();
   const token = continuations.create({ dataset: 'chinook', canonicalSha256: sha, table: 'Artist', source });
   continuations.bind(token, 'actor', source, 'operation', ref);
-  const connection = { id: 'live', title: 'Edited Chinook', databaseId: 'chinook', baseUrl: 'https://browser.local/v1', fetch: vi.fn(), descriptor: { id: 'chinook', canonical: { sha256: sha, bytes: 10, url: 'https://demo/file' }, capabilities: { dtql: true }, collections: ['Artist'] } };
+  const connection = { id: 'live', title: 'Edited Chinook', databaseId: 'chinook', baseUrl: 'https://browser.local/v1', fetch: vi.fn(), descriptor: { id: 'chinook', canonical: { sha256: sha, bytes: 10, url: 'https://demo/file' }, capabilities: { tugql: true }, collections: ['Artist'] } };
   const state = signal({ kind: 'ready' });
   const peek = vi.fn(() => options.missing ? undefined : { entry: demoSqliteCatalog.chinook, state, connection: signal(connection) });
   const declaration = { id: 'chinook-sqlite', dataset: 'chinook', fixtureSha256: options.sha ?? sha, storage: 'sqlite', environments: ['dev'] };
@@ -49,7 +49,7 @@ async function setup(options: { missing?: boolean; sha?: string; actor?: string 
   return { fixture, component: fixture.componentInstance, peek, state, catalog, navigate, router, registration, declaration };
 }
 describe('copied project browser database', () => {
-  it('uses the active edited session and sends a bounded DTQL draft to existing Query in the declared environment', async () => {
+  it('uses the active edited session and sends a bounded TugQL draft to existing Query in the declared environment', async () => {
     const h = await setup();
     expect(h.fixture.nativeElement.textContent).toContain('Project files in GitHub; database and edits in this browser');
     expect(h.component.connection()?.title).toBe('Edited Chinook');
@@ -60,7 +60,7 @@ describe('copied project browser database', () => {
     expect(tree.queryParams['env']).toBe('dev');
     expect(tree.queryParams['runtime']).toBe(h.registration.selectionId);
     const draft = await TestBed.inject(DemoTableDraftService).read(tree.queryParams['demoDraft'], ref, h.registration.selectionId, 'dev', 'actor');
-    expect(draft).toMatchObject({ connectionId: 'chinook-sqlite', request: { queryType: 'DTQL', text: 'from:\n  name: "Artist"\nlimit: 100\n' } });
+    expect(draft).toMatchObject({ connectionId: 'chinook-sqlite', request: { queryType: 'TugQL', text: 'from:\n  name: "Artist"\nlimit: 100\n' } });
     expect(JSON.stringify(draft)).not.toContain('runtime-');
     const drafts = TestBed.inject(DemoTableDraftService);
     await expect(drafts.read(tree.queryParams['demoDraft'], ref, h.registration.selectionId, 'dev', 'actor')).resolves.toEqual(draft);

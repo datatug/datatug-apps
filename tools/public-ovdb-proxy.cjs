@@ -39,7 +39,7 @@ function admitted(req, route) {
   if (
     req.method !== 'POST' ||
     origin === undefined ||
-    !/^\/v1\/(?:dtql|databases\/[A-Za-z0-9_-]+\/dtql)$/.test(relative)
+    !/^\/v1\/(?:tugql|databases\/[A-Za-z0-9_-]+\/tugql)$/.test(relative)
   )
     return false;
   return /^(?:application\/(?:json|yaml)|text\/yaml)(?:\s*;.*)?$/i.test(

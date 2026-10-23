@@ -68,7 +68,7 @@ describe('ProjectAIService real generic project query execution', () => {
     const own = mode === 'managed' ? undefined : mode === 'anthropic' ? { ...provider, protocol: 'anthropic-messages' as const } : provider;
     const result = await service.answer(context, 'prod', 'factory', 'Which equipment is overdue?', [], new AbortController().signal, own);
     expect(result.rows).toEqual([{ assetTag: 'pump-1' }]);
-    const followup = await service.answer(context, 'prod', 'factory', 'Show those again', [{ id: 'turn', question: 'Which equipment is overdue?', state: 'result', generatedDtql: result.generatedDtql, rows: result.rows }], new AbortController().signal, own);
+    const followup = await service.answer(context, 'prod', 'factory', 'Show those again', [{ id: 'turn', question: 'Which equipment is overdue?', state: 'result', generatedTugql: result.generatedTugql, rows: result.rows }], new AbortController().signal, own);
     expect(followup.rows).toEqual(result.rows);
     expect(captured.join(' ')).toContain('Equipment');
     expect(captured.join(' ')).toContain('assetTag');

@@ -116,16 +116,16 @@
       "origin": "chinookdb.com /data/json/chinook.Invoice.json (datatug/chinookdb public/data/json/chinook.Invoice.json at 0b6bb6ba22f680c9fb2fea9ec8107a8638dd8dc4)"
     },
     {
-      "path": "queries/sales/chinook-sales-per-capita.query.dtql",
-      "bytes": 1878,
-      "sha256": "0075fff4bf6dbfa70a97abc6b0f39c5728058ce7254b59a43ed3b363e2f2d2de",
-      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.dtql"
+      "path": "queries/sales/chinook-sales-per-capita.query.json",
+      "bytes": 923,
+      "sha256": "6fc067b9b3d5cf940c8c51610e674908f74a765e2c7a87821e14ad64ce046abb",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.json, with type DTQL changed to TugQL (TugQL cutover)"
     },
     {
-      "path": "queries/sales/chinook-sales-per-capita.query.json",
-      "bytes": 922,
-      "sha256": "c6a49c33cdc9b610c5b2deb9b6c3ece55be76d758f08cb63ae6b593290942534",
-      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.json"
+      "path": "queries/sales/chinook-sales-per-capita.query.tugql.yaml",
+      "bytes": 1878,
+      "sha256": "0075fff4bf6dbfa70a97abc6b0f39c5728058ce7254b59a43ed3b363e2f2d2de",
+      "origin": "datatug-demo-projects@0e5b98f demo-project-1/queries/sales/chinook-sales-per-capita.query.dtql, renamed to .query.tugql.yaml (TugQL cutover)"
     },
     {
       "path": "web/catalogs/chinook/chinook.db.json",

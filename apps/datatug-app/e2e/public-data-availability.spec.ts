@@ -59,7 +59,7 @@ const immutable = (name: keyof typeof pins) => ({
 const saved = {
   id: 'pending',
   title: 'Synthetic pending lookup',
-  type: 'DTQL',
+  type: 'TugQL',
   federation: { ovdbBaseUrl: 'https://cloud.openvaultdb.com', tables: [] },
   publicData: {
     source: contract.source,
@@ -127,7 +127,7 @@ async function installMetadata(
     ),
     'sample/dbmodels/test/main/tables/Customer/table.json': '{}',
     'sample/queries/pending.query.json': JSON.stringify(saved),
-    'sample/queries/pending.query.dtql': '{}',
+    'sample/queries/pending.query.tugql.yaml': '{}',
   };
   const tree = new Map<string, string>();
   for (const path of Object.keys(files)) {
@@ -144,7 +144,7 @@ async function installMetadata(
     if (
       url.hostname === 'cloud.openvaultdb.com' ||
       url.hostname === 'demodb.dev' ||
-      /\/dtql(?:\?|$)|\/data\//.test(url.pathname)
+      /\/tugql(?:\?|$)|\/data\//.test(url.pathname)
     )
       data.push(`${request.method()} ${request.url()}`);
   });

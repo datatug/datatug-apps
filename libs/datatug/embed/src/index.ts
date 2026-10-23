@@ -30,10 +30,10 @@ function typedValue(raw: string, type: string | null): unknown {
     return raw === 'true';
   }
   if (type === 'null') return null;
-  throw new Error(`Unsupported DTQL parameter type: ${type}.`);
+  throw new Error(`Unsupported TugQL parameter type: ${type}.`);
 }
 
-export class DtqlQuery extends HTMLElement {
+export class TugqlQuery extends HTMLElement {
   private observer?: MutationObserver;
   connectedCallback(): void {
     this.style.display = 'none';
@@ -41,16 +41,16 @@ export class DtqlQuery extends HTMLElement {
     this.observer.observe(this, { childList: true, characterData: true, subtree: true });
   }
   disconnectedCallback(): void { this.observer?.disconnect(); }
-  private notify(): void { this.dispatchEvent(new Event('dtql-change', { bubbles: true })); }
+  private notify(): void { this.dispatchEvent(new Event('tugql-change', { bubbles: true })); }
 }
 
-export class DtqlParam extends HTMLElement {
+export class TugqlParam extends HTMLElement {
   static get observedAttributes(): string[] { return ['name', 'value', 'type']; }
   private propertyValue: unknown;
   private propertySet = false;
   get value(): unknown { return this.propertySet ? this.propertyValue : typedValue(this.getAttribute('value') ?? '', this.getAttribute('type')); }
   set value(value: unknown) {
-    if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) throw new TypeError('DTQL parameter value must be a JSON scalar.');
+    if (value !== null && !['string', 'number', 'boolean'].includes(typeof value)) throw new TypeError('TugQL parameter value must be a JSON scalar.');
     this.propertySet = true;
     this.propertyValue = value;
     this.notify();
@@ -60,7 +60,7 @@ export class DtqlParam extends HTMLElement {
     this.notify();
   }
   connectedCallback(): void { this.style.display = 'none'; this.notify(); }
-  private notify(): void { this.dispatchEvent(new Event('dtql-change', { bubbles: true })); }
+  private notify(): void { this.dispatchEvent(new Event('tugql-change', { bubbles: true })); }
 }
 
 abstract class DataTugView extends HTMLElement {
@@ -76,13 +76,13 @@ abstract class DataTugView extends HTMLElement {
 
   constructor() { super(); this.root.append(element('style', styles)); }
   connectedCallback(): void {
-    this.addEventListener('dtql-change', this.onChildChange);
+    this.addEventListener('tugql-change', this.onChildChange);
     this.observer = new MutationObserver(() => this.schedule());
     this.observer.observe(this, { childList: true, subtree: false });
     this.schedule();
   }
   disconnectedCallback(): void {
-    this.removeEventListener('dtql-change', this.onChildChange);
+    this.removeEventListener('tugql-change', this.onChildChange);
     this.observer?.disconnect();
     this.controller?.abort();
     this.revision++;
@@ -103,19 +103,19 @@ abstract class DataTugView extends HTMLElement {
     try {
       const connection = this.getAttribute('connection');
       const dataUrl = this.getAttribute('data-url');
-      const queries = [...this.children].filter((child) => child.localName === 'dtql-query');
+      const queries = [...this.children].filter((child) => child.localName === 'tugql-query');
       const queryNode = queries[0];
-      const params = [...this.children].filter((child) => child.localName === 'dtql-param') as DtqlParam[];
+      const params = [...this.children].filter((child) => child.localName === 'tugql-param') as TugqlParam[];
       if (Boolean(connection) === Boolean(dataUrl)) throw new Error('Set exactly one of connection or data-url.');
-      if (dataUrl && (queries.length || params.length)) throw new Error('data-url cannot be combined with DTQL query or parameters.');
-      if (connection && (queries.length !== 1 || !queryNode?.textContent?.trim())) throw new Error('A connection requires one nonempty <dtql-query>.');
+      if (dataUrl && (queries.length || params.length)) throw new Error('data-url cannot be combined with TugQL query or parameters.');
+      if (connection && (queries.length !== 1 || !queryNode?.textContent?.trim())) throw new Error('A connection requires one nonempty <tugql-query>.');
       const parameters: Row = Object.create(null) as Row;
       for (const param of params) {
         const name = param.getAttribute('name');
-        if (!name || Object.hasOwn(parameters, name)) throw new Error('Every <dtql-param> needs a unique nonempty name.');
+        if (!name || Object.hasOwn(parameters, name)) throw new Error('Every <tugql-param> needs a unique nonempty name.');
         parameters[name] = param.value;
       }
-      if (!dataUrl && (!connection || !queryNode?.textContent)) throw new Error('A connection requires one nonempty <dtql-query>.');
+      if (!dataUrl && (!connection || !queryNode?.textContent)) throw new Error('A connection requires one nonempty <tugql-query>.');
       const data = dataUrl
         ? await loadDirect(dataUrl, this.getAttribute('format'), controller.signal)
         : await loadConnection(connection as string, queryNode?.textContent?.trim() ?? '', parameters, controller.signal);
@@ -263,7 +263,7 @@ export class DataTugChart extends DataTugView {
   }
 }
 
-if (!customElements.get('dtql-query')) customElements.define('dtql-query', DtqlQuery);
-if (!customElements.get('dtql-param')) customElements.define('dtql-param', DtqlParam);
+if (!customElements.get('tugql-query')) customElements.define('tugql-query', TugqlQuery);
+if (!customElements.get('tugql-param')) customElements.define('tugql-param', TugqlParam);
 if (!customElements.get('datatug-grid')) customElements.define('datatug-grid', DataTugGrid);
 if (!customElements.get('datatug-chart')) customElements.define('datatug-chart', DataTugChart);

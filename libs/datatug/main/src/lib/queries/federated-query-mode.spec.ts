@@ -10,7 +10,7 @@ const tables = [
 function definition(query: object, lookups?: NonNullable<IQueryDef['federation']>['lookups']): IQueryDef {
   return {
     id: 'sales', name: 'Sales',
-    request: { queryType: QueryType.DTQL, text: JSON.stringify(query) },
+    request: { queryType: QueryType.TugQL, text: JSON.stringify(query) },
     federation: { ovdbBaseUrl: 'https://ovdb.example.test', tables, ...(lookups ? { lookups } : {}) },
   } as IQueryDef;
 }

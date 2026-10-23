@@ -13,7 +13,7 @@ import {
   installShowcaseMeasurementLedger,
 } from '../../e2e/helpers/showcase-measurement-ledger';
 
-const url = 'https://ovdb.demodb.dev/v1/databases/northwind/dtql';
+const url = 'https://ovdb.demodb.dev/v1/databases/northwind/tugql';
 const diagnosticGlobal = globalThis as typeof globalThis & {
   __datatugQueryDiagnostics?: { dispose(): FetchDiagnostic[] };
 };
@@ -140,7 +140,7 @@ describe('passive bounded query CDP metadata without network', () => {
       },
     });
     expect(diagnostics.rows[0]).toMatchObject({
-      endpoint: 'northwind-dtql',
+      endpoint: 'northwind-tugql',
       status: 200,
       protocol: 'h2',
       dataEvents: 2,
@@ -257,7 +257,7 @@ describe('bounded fetch signal observer without body or network access', () => {
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({
       status: 200,
-      endpoint: 'northwind-dtql',
+      endpoint: 'northwind-tugql',
       signalReason: 'AbortError',
     });
     expect(rows[0].signalAbortedAtMs).toBeGreaterThanOrEqual(

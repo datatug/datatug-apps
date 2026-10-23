@@ -1,4 +1,4 @@
-import { isJoinedDTQLQuery, parseDTQL, type DTQLSchema } from '@dalgo/core';
+import { isJoinedTugQLQuery, parseTugQLYaml, type TugQLSchema } from '@dalgo/core';
 import { CHINOOK_SCHEMA } from '../chat/chat.types';
 import { chatSQLite, chatTugqlYaml } from '../chat/chat-query-format';
 import { IQueryDef, ITextQueryRequest, QueryType } from '../models/definition/query-def';
@@ -6,9 +6,9 @@ import { ContextEntryRevision, ContextSubject } from './session-context-contract
 import { invoiceInput, invoiceWidgetQuery } from './invoice-dashboard';
 
 /** Validate the existing interpreter action and bind an explicit pinned invoice through its declared key/FK. */
-export function sessionChatQuery(dtql: string, revisions: readonly ContextEntryRevision[], admittedSubjects: readonly ContextSubject[]): { definition: IQueryDef; yaml: string; invoiceId: string } {
-  const query = parseDTQL(dtql, CHINOOK_SCHEMA as unknown as DTQLSchema, { maxLimit: 1000 });
-  if (isJoinedDTQLQuery(query)) throw new Error('Choose Invoice or InvoiceLine for this first session chat adapter. JOIN proposals need a reviewed relationship choice.');
+export function sessionChatQuery(tugql: string, revisions: readonly ContextEntryRevision[], admittedSubjects: readonly ContextSubject[]): { definition: IQueryDef; yaml: string; invoiceId: string } {
+  const query = parseTugQLYaml(tugql, CHINOOK_SCHEMA as unknown as TugQLSchema, { maxLimit: 1000 });
+  if (isJoinedTugQLQuery(query)) throw new Error('Choose Invoice or InvoiceLine for this first session chat adapter. JOIN proposals need a reviewed relationship choice.');
   if (!['main.Invoice', 'main.InvoiceLine'].includes(query.source.name)) throw new Error('This session chat adapter supports the declared Invoice → InvoiceLine relationship. Choose that source; unrelated tables are not read automatically.');
   const value = invoiceInput(revisions, admittedSubjects);
   if (value.type !== 'integer' || !Number.isSafeInteger(Number(value.value))) throw new Error('This source cannot represent the pinned InvoiceId losslessly.');

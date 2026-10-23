@@ -43,7 +43,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     vi.stubGlobal('fetch', vi.fn(async () => new Response('<svg xmlns="http://www.w3.org/2000/svg"/>', { headers: { 'Content-Type': 'image/svg+xml' } })));
   });
 
-  async function setup(savedId?: string, queryType = QueryType.DTQL, options: {
+  async function setup(savedId?: string, queryType = QueryType.TugQL, options: {
     projectEnvironments?: boolean; environment?: string; contextEnvironment?: string;
   } = {}) {
     Object.defineProperty(window, 'history', { value: { ...window.history, state: {} }, configurable: true, writable: true });
@@ -92,7 +92,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     const editor = TestBed.inject(QueryEditorStateService);
     const drafts = TestBed.inject(DemoTableDraftService);
     const registry = TestBed.inject(QueryRuntimeRegistry);
-    const runtime = registry.register({ id: 'edited', title: 'Edited Chinook', databaseId: 'chinook', baseUrl: 'https://browser.local/v1', fetch: vi.fn(), descriptor: { id: 'chinook', canonical: { sha256: sha, bytes: 10, url: 'https://demo/file' }, capabilities: { dtql: true }, collections: ['Artist'] } } as never);
+    const runtime = registry.register({ id: 'edited', title: 'Edited Chinook', databaseId: 'chinook', baseUrl: 'https://browser.local/v1', fetch: vi.fn(), descriptor: { id: 'chinook', canonical: { sha256: sha, bytes: 10, url: 'https://demo/file' }, capabilities: { tugql: true }, collections: ['Artist'] } } as never);
     const token = drafts.create({ actorID: 'actor', projectRef: ref, connection: declaration, table: 'Artist', runtimeSelectionId: runtime.selectionId, environment: 'dev' });
     const definition: IQueryDef | undefined = savedId ? { id: savedId.split('/').at(-1) ?? savedId, title: 'Saved public query', connectionId: 'northwind-sqlite', request: { queryType, text: 'changed text' } as ITextQueryRequest } : undefined;
     if (definition && savedId) editor.newQuery({ id: savedId, isNew: false, def: definition, request: definition.request, queryType });
@@ -118,7 +118,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     if (!id) throw new Error('Expected restored query identity');
     const old = h.editor.getQueryState(id);
     if (!old) throw new Error('Expected restored editor');
-    h.editor.updateQueryState({ ...old, request: { queryType: QueryType.DTQL, text: 'from: Artist\nlimit: 25' } as ITextQueryRequest });
+    h.editor.updateQueryState({ ...old, request: { queryType: QueryType.TugQL, text: 'from: Artist\nlimit: 25' } as ITextQueryRequest });
     const edited = h.editor.getQueryState(id);
     h.fixture.destroy();
     const recreated = await h.create();
@@ -185,7 +185,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     expect(h.browser).not.toHaveBeenCalled();
   });
 
-  it.each([QueryType.DTQL, QueryType.SQL])('retains real publisher admission for edited %s text/type without loading SQLite', async (type) => {
+  it.each([QueryType.TugQL, QueryType.SQL])('retains real publisher admission for edited %s text/type without loading SQLite', async (type) => {
     const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, type);
     h.fixture.componentInstance.runQuery();
     await vi.waitFor(() => expect(h.fixture.nativeElement.textContent).toMatch(/differs from the admitted definition|changed identity or execution scope/));
@@ -195,7 +195,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
   it.each([publicChartQueries.PUBLIC_ORDERS_QUERY_ID, publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID])('keeps omitted project environment out of fixed public query %s through Run and URL normalization', async (id) => {
     const result = { recordset: { columns: [], rows: [] }, limitations: [], bindingsApplied: [], truncated: false, hasMore: false, provenance: { source: 'northwind', mode: 'live' } };
     const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery').mockResolvedValue(result as never);
-    const h = await setup(id, QueryType.DTQL, { projectEnvironments: true });
+    const h = await setup(id, QueryType.TugQL, { projectEnvironments: true });
     const page = h.fixture.componentInstance;
     expect(page.activeEnv).toBeUndefined();
     expect(TestBed.inject(DatatugNavContextService).setCurrentEnvironment).not.toHaveBeenCalledWith('local');
@@ -215,7 +215,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
 
   it('retains working-copy admission and source copy when leaving the fixed public runtime', async () => {
     const admission = vi.spyOn(publicChartQueries, 'executeSavedPublicChartQuery');
-    const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, QueryType.DTQL, { projectEnvironments: true });
+    const h = await setup(publicChartQueries.PUBLIC_ORDERS_QUERY_ID, QueryType.TugQL, { projectEnvironments: true });
     h.fixture.componentInstance.selectWorkingCopy(h.runtime.selectionId);
     await h.fixture.whenStable();
     expect(h.fixture.nativeElement.textContent).toContain('before Run.');
@@ -227,8 +227,8 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     expect(h.browser).not.toHaveBeenCalled();
   });
 
-  it('retains first-environment defaults and ordinary source copy for other saved DTQL', async () => {
-    const h = await setup('other/dtql', QueryType.DTQL, { projectEnvironments: true });
+  it('retains first-environment defaults and ordinary source copy for other saved TugQL', async () => {
+    const h = await setup('other/tugql', QueryType.TugQL, { projectEnvironments: true });
     expect(h.fixture.componentInstance.activeEnv?.id).toBe('local');
     h.fixture.componentInstance.updateUrl();
     expect(TestBed.inject(Router).navigate).toHaveBeenCalledWith([], expect.objectContaining({ queryParams: expect.objectContaining({ env: 'local' }) }));
@@ -237,7 +237,7 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
   });
 
   it.each(['url', 'context'] as const)('preserves explicit %s environment for a fixed public query', async (entry) => {
-    const h = await setup(publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID, QueryType.DTQL, {
+    const h = await setup(publicChartQueries.PUBLIC_COUNTRY_COUNTS_QUERY_ID, QueryType.TugQL, {
       projectEnvironments: true,
       ...(entry === 'url' ? { environment: 'prod', contextEnvironment: 'dev' } : { contextEnvironment: 'dev' }),
     });
@@ -248,8 +248,8 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     expect(h.fixture.nativeElement.textContent).toContain('the project environment is not used');
   });
 
-  it('retains the agent notice for arbitrary GitHub DTQL', async () => {
-    const h = await setup('other/dtql');
+  it('retains the agent notice for arbitrary GitHub TugQL', async () => {
+    const h = await setup('other/tugql');
     h.fixture.componentInstance.runQuery();
     await h.fixture.whenStable();
     expect(h.fixture.nativeElement.textContent).toContain('running a query needs a DataTug agent');

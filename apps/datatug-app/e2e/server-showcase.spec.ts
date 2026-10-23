@@ -12,9 +12,9 @@ test('server showcase and tutorial hold complete results without SQLite download
   // (e2e/github-pins.json), answered by the guard.
   const requests: string[] = [];
   context.on('request', request => {
-    if (!request.url().endsWith('/dtql') || request.method() === 'POST') requests.push(request.url());
+    if (!request.url().endsWith('/tugql') || request.method() === 'POST') requests.push(request.url());
   });
-  const queries = () => requests.filter(url => url.includes('ovdb.demodb.dev/v1/databases/') && url.endsWith('/dtql'));
+  const queries = () => requests.filter(url => url.includes('ovdb.demodb.dev/v1/databases/') && url.endsWith('/tugql'));
   const downloads = () => requests.filter(url => /\.(?:sqlite|wasm)(?:$|\?)/.test(url));
   const url = '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
   await page.goto(url);
@@ -34,14 +34,14 @@ test('server showcase and tutorial hold complete results without SQLite download
     const before = queries().length;
     await Promise.all([
       page.waitForResponse(response => response.request().method() === 'POST' &&
-        response.url() === `https://ovdb.demodb.dev/v1/databases/${database}/dtql`, { timeout: 30_000 }),
+        response.url() === `https://ovdb.demodb.dev/v1/databases/${database}/tugql`, { timeout: 30_000 }),
       inspector.getByRole('button', { name: /^Refresh on board · / }).click(),
     ]);
     await expect(inspector.getByRole('button', { name: /^Refresh on board · / })).toBeEnabled();
     await expect(inspector).toContainText(summary, { timeout: 30_000 });
     await expect(inspector.locator('table tbody tr')).toHaveCount(rowCount);
     expect(queries().length).toBeGreaterThan(before);
-    expect(queries().at(-1)).toContain(`/databases/${database}/dtql`);
+    expect(queries().at(-1)).toContain(`/databases/${database}/tugql`);
   }
   const count = queries().length;
   await race.getByRole('button', { name: 'Source rows', exact: true }).click();
@@ -76,8 +76,8 @@ test('cross-database comparison runs one native server query and displays source
   const localProxy = process.env['DATATUG_E2E_PUBLIC_OVDB_PROXY'] === '1';
   test.setTimeout(120_000);
   const endpoint = localProxy
-    ? '/__datatug_public_ovdb/cloud/v1/dtql'
-    : 'https://cloud.openvaultdb.com/v1/dtql';
+    ? '/__datatug_public_ovdb/cloud/v1/tugql'
+    : 'https://cloud.openvaultdb.com/v1/tugql';
   const posts: string[] = [];
   const preflights: string[] = [];
   const downloads: string[] = [];
@@ -149,13 +149,13 @@ test('cross-database comparison runs one native server query and displays source
   expect(downloads).toEqual([]);
   const sourceDetails = inspector.locator('details.source-details');
   await sourceDetails.locator('summary').click();
-  await expect(sourceDetails).toContainText('https://cloud.openvaultdb.com/v1/dtql (direct OVDB)');
+  await expect(sourceDetails).toContainText('https://cloud.openvaultdb.com/v1/tugql (direct OVDB)');
   await page.screenshot({ path: testInfo.outputPath('local-federation.png'), fullPage: true });
   await testInfo.attach('native-federation-public-receipt', {
     body: JSON.stringify(
       {
         observedAt: new Date().toISOString(),
-        endpoint: 'https://cloud.openvaultdb.com/v1/dtql',
+        endpoint: 'https://cloud.openvaultdb.com/v1/tugql',
         transport: localProxy ? 'development-loopback-proxy' : 'direct',
         projectReader: realGithub ? 'public GitHub' : 'pinned GitHub checkout (e2e/github-pins.json)',
         projectRevision: revision,

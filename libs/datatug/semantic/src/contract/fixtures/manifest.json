@@ -1,5 +1,5 @@
 {
-  "tag": "v0.26.0",
+  "tag": "v0.75.1",
   "source": "github.com/datatug/datatug-core pkg/apicontract/fixtures",
   "entries": [
     {
@@ -68,7 +68,7 @@
     },
     {
       "name": "execution_request_adhoc.json",
-      "sha256": "5d5e009a6e81949843221ca213fb5b76b0e2575f3af559010c6e211676f59414"
+      "sha256": "41a2a0b105d7b96ddf5a73706ce4909567f7ca51411b9edd723de15c627c1bc9"
     },
     {
       "name": "execution_request_saved.json",

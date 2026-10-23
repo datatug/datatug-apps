@@ -15,7 +15,7 @@ const definition = {
   id: 'q',
   title: 'q',
   request: {
-    queryType: QueryType.DTQL,
+    queryType: QueryType.TugQL,
     text: 'from: {database: db, name: items, alias: i}\ncolumns: [{field: name, source: i}]\n',
   },
   federation: {
@@ -73,7 +73,7 @@ describe('finite native query failure', () => {
   it('retains capability parse and contract causes within the executor', async () => {
     for (const body of [
       '{bad',
-      JSON.stringify({ id: 'wrong', capabilities: { dtql: true } }),
+      JSON.stringify({ id: 'wrong', capabilities: { tugql: true } }),
     ]) {
       const error = await execute(
         vi.fn<typeof fetch>(async () => new Response(body)),

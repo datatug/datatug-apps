@@ -144,7 +144,7 @@ describe('OvdbRecordEditorComponent', () => {
     const neon: OvdbDescriptor = {
       id: 'chinook-postgresql',
       engine: 'postgres',
-      capabilities: { read: false, query: true, dtql: true, write: false, delete: false, reset: false, persistent: true },
+      capabilities: { read: false, query: true, tugql: true, write: false, delete: false, reset: false, persistent: true },
       collections: ['artist'],
       schemas: { collections: { artist: { fields: { artist_id: { type: 'integer' }, name: { type: 'string' } }, primaryKey: ['artist_id'] } } },
     };

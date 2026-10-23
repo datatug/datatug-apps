@@ -12,7 +12,7 @@ const spec: OrdersMonthlyCountryCountSpec = {
   countryColumn: 'ShipCountry',
 };
 const serverId = 'https://demodb.dev/ovdb';
-const endpoint = `${serverId}/v1/databases/northwind/dtql`;
+const endpoint = `${serverId}/v1/databases/northwind/tugql`;
 const databaseId = 'northwind';
 const collectionId = 'Orders';
 const sourceId = `ovdb:${encodeURIComponent(serverId)}/${databaseId}/${collectionId}`;

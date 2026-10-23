@@ -21,7 +21,7 @@ export interface CountryCountPin {
 export const NORTHWIND_COUNTRY_COUNT_PIN: CountryCountPin = Object.freeze({
   publicationUrl: 'https://raw.githubusercontent.com/demo-db/northwind/76fe0a1ccc82b6c0c5a035d76c9df7522713d618/artifacts/hosting-imports/shipping-country-count-rights.json',
   publicationSha256: 'fd88fdf5a029e94ee2566cb9196cec09fa3b7dbe0cd074fbc1f1baadb878f823',
-  endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql',
+  endpoint: 'https://demodb.dev/ovdb/v1/databases/northwind/dtql', // as the pinned publication names it; requested as /tugql (currentDemoDbOvdbUrl)
   querySha256: '2e320d487d7bbe7dbfc53abc55c08d12eb80a2e79b34cfe15a2148fa362acc9a',
   rows: 21,
   totalOrders: 830,

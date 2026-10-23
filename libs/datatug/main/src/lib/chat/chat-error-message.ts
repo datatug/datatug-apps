@@ -5,7 +5,7 @@ export interface ChatErrorView {
   readonly detail?: string;
 }
 
-/** The DTQL engine reports `<code> at <path>: <reason>`, for example `join_aggregate at orderBy[0]: ...`. */
+/** The TugQL engine reports `<code> at <path>: <reason>`, for example `join_aggregate at orderBy[0]: ...`. */
 const engineError = /^([a-z]+(?:_[a-z]+)+) at \S+: /;
 const longMessage = 240;
 

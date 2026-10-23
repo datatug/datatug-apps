@@ -36,7 +36,7 @@ const READ_ONLY_LABEL = 'Hosted PostgreSQL (read-only via OpenVaultDB)';
 const LIVE = 90_000;
 
 /**
- * Request budget: the most requests ONE test may send to cloud.openvaultdb.com (descriptor GET, dtql POSTs and CORS
+ * Request budget: the most requests ONE test may send to cloud.openvaultdb.com (descriptor GET, tugql POSTs and CORS
  * preflights, including the app's own 503 back-off retries). A page that loops fails the test instead of hammering the
  * server. Override with DEMODB_E2E_MAX_OVDB_REQUESTS.
  */
@@ -140,7 +140,7 @@ function expectOnlyReads(seen: readonly Seen[]): void {
       (method === 'GET' &&
         /^\/v1\/databases\/[a-z]+-postgresql$/.test(pathname)) ||
       (method === 'POST' &&
-        /^\/v1\/databases\/[a-z]+-postgresql\/dtql$/.test(pathname)) ||
+        /^\/v1\/databases\/[a-z]+-postgresql\/tugql$/.test(pathname)) ||
       method === 'OPTIONS';
     expect(read, `${method} ${pathname} is not a read`).toBe(true);
   }
@@ -334,7 +334,7 @@ test.describe('Chinook (PostgreSQL) in DataTug through OpenVaultDB', () => {
         .filter(
           ({ url }) =>
             new URL(url).hostname === OVDB_HOST &&
-            !/\/dtql$|\/v1\/databases\/chinook-postgresql$/.test(
+            !/\/tugql$|\/v1\/databases\/chinook-postgresql$/.test(
               new URL(url).pathname,
             ),
         ),
@@ -348,7 +348,7 @@ test.describe('Chinook (PostgreSQL) in DataTug through OpenVaultDB', () => {
       seen.some(
         ({ method, url }) =>
           method === 'POST' &&
-          url === `${OVDB}/v1/databases/chinook-postgresql/dtql`,
+          url === `${OVDB}/v1/databases/chinook-postgresql/tugql`,
       ),
     ).toBe(true);
     expect(
@@ -513,7 +513,7 @@ for (const id of demoPostgresqlDatasetIds) {
     expectOnlyReads(seen);
     expect(
       seen.some(
-        ({ url }) => url === `${OVDB}/v1/databases/${edition.databaseId}/dtql`,
+        ({ url }) => url === `${OVDB}/v1/databases/${edition.databaseId}/tugql`,
       ),
     ).toBe(true);
   });

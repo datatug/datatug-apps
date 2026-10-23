@@ -1,11 +1,11 @@
 import {
-  isJoinedDTQLQuery, stringifyJoinedDTQL,
-  type DTQLCondition, type DTQLExpression, type DTQLQueryFilter, type DTQLQueryOrder, type JoinedDTQLQuery,
-  type ParsedDTQLQuery, type QueryRelation,
+  isJoinedTugQLQuery, stringifyJoinedTugQL,
+  type TugQLCondition, type TugQLExpression, type TugQLQueryFilter, type TugQLQueryOrder, type JoinedTugQLQuery,
+  type ParsedTugQLQuery, type QueryRelation,
 } from '@dalgo/core';
 import { CHINOOK_SCHEMA } from './chat.types';
 
-type ParsedChinookQuery = ParsedDTQLQuery<Record<string, unknown>>;
+type ParsedChinookQuery = ParsedTugQLQuery<Record<string, unknown>>;
 
 function yamlScalar(value: unknown): string {
   return typeof value === 'string' ? JSON.stringify(value) : String(value);
@@ -13,7 +13,7 @@ function yamlScalar(value: unknown): string {
 
 /** Display the validated query as a canonical, editable TugQL YAML action. */
 export function chatTugqlYaml(query: ParsedChinookQuery): string {
-  if (isJoinedDTQLQuery(query)) return stringifyJoinedDTQL(query);
+  if (isJoinedTugQLQuery(query)) return stringifyJoinedTugQL(query);
   const [schema, name] = query.source.name.split('.');
   const lines = ['from:', `  schema: ${yamlScalar(schema)}`, `  name: ${yamlScalar(name)}`];
   const filter = query.filters[0];
@@ -38,9 +38,6 @@ export function chatTugqlYaml(query: ParsedChinookQuery): string {
   lines.push(`limit: ${query.limit}`);
   return lines.join('\n');
 }
-
-/** Deprecated compatibility alias for chatTugqlYaml. */
-export const chatDtqlYaml = chatTugqlYaml;
 
 function identifier(value: string): string {
   return `"${value.replaceAll('"', '""')}"`;
@@ -80,9 +77,9 @@ function adapterFilterSql(field: string, operator: string, value: unknown): stri
   return value !== null && (operator === '!=' || operator === '<' || operator === '<=') ? `(${comparison} OR ${isNull})` : comparison;
 }
 
-/** SQL for the local Chinook SQLite target, derived from the validated DTQL. */
+/** SQL for the local Chinook SQLite target, derived from the validated TugQL. */
 export function chatSQLite(query: ParsedChinookQuery, parameterFields: readonly string[] = []): string {
-  if (isJoinedDTQLQuery(query)) {
+  if (isJoinedTugQLQuery(query)) {
     if (parameterFields.length) throw new Error('This query does not support scalar session bindings across a JOIN.');
     return joinedSQLite(query);
   }
@@ -117,7 +114,7 @@ function qualified(source: string, field: string): string {
   return `${identifier(source)}.${identifier(field)}`;
 }
 
-function expressionSql(expression: DTQLExpression, fieldSql: (source: string, field: string) => string = qualified): string {
+function expressionSql(expression: TugQLExpression, fieldSql: (source: string, field: string) => string = qualified): string {
   switch (expression.kind) {
     case 'field': return fieldSql(expression.field.source, expression.field.field);
     case 'literal': return sqliteValue(expression.value);
@@ -136,7 +133,7 @@ type FieldSql = (source: string, field: string) => string;
 
 const sqlOperators: Readonly<Record<string, string>> = { '==': '=', in: 'IN', 'not-in': 'NOT IN' };
 
-const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
+const isNullLiteral = (expression: TugQLExpression): boolean => expression.kind === 'literal' && expression.value === null;
 
 /**
  * A WHERE or HAVING condition as the join-aware engine runs it, which is SQL's three-valued logic with two
@@ -146,7 +143,7 @@ const isNullLiteral = (expression: DTQLExpression): boolean => expression.kind =
  * `== null` matches the null group. An explicit null test is the way to select or exclude nulls; it is
  * previewed as `IS NULL` / `IS NOT NULL`.
  */
-function conditionSql(condition: DTQLCondition, fieldSql: FieldSql, having = false): string {
+function conditionSql(condition: TugQLCondition, fieldSql: FieldSql, having = false): string {
   if ('conditions' in condition) {
     return `(${condition.conditions.map((child) => conditionSql(child, fieldSql, having)).join(condition.kind === 'and' ? ' AND ' : ' OR ')})`;
   }
@@ -169,7 +166,7 @@ function conditionSql(condition: DTQLCondition, fieldSql: FieldSql, having = fal
 }
 
 /** The parser keeps `field <op> literal` as a compact filter; everything else is already a condition. */
-function filterSql(filter: DTQLQueryFilter | DTQLCondition, fieldSql: FieldSql): string {
+function filterSql(filter: TugQLQueryFilter | TugQLCondition, fieldSql: FieldSql): string {
   if (!('field' in filter)) return conditionSql(filter, fieldSql);
   const membership = (filter.operator === 'in' || filter.operator === 'not-in') && Array.isArray(filter.value);
   return conditionSql({
@@ -182,7 +179,7 @@ function filterSql(filter: DTQLQueryFilter | DTQLCondition, fieldSql: FieldSql):
 }
 
 /** An order key is either a plain field or, as in Go, any expression (an aggregate, arithmetic, a select alias). */
-function orderSql(order: DTQLQueryOrder, fieldSql: FieldSql): string {
+function orderSql(order: TugQLQueryOrder, fieldSql: FieldSql): string {
   const key = order.expression === undefined ? fieldSql(order.field.source, order.field.field) : expressionSql(order.expression, fieldSql);
   return `${key} ${order.direction.toUpperCase()}`;
 }
@@ -201,7 +198,7 @@ function relationSql(relation: QueryRelation): string {
   return sql;
 }
 
-function joinedSQLite(query: JoinedDTQLQuery): string {
+function joinedSQLite(query: JoinedTugQLQuery): string {
   const relations = new Map<string, QueryRelation>();
   const collect = (relation: QueryRelation): void => {
     relations.set(relation.alias || relation.name, relation);

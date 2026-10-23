@@ -11,7 +11,7 @@ status: Draft
 
 ## Summary
 
-Browser Chat translates questions to validated DTQL and queries a versioned local 11-table Chinook IndexedDB dataset through DALgo, rendering structured rows in AG Grid.
+Browser Chat translates questions to validated TugQL and queries a versioned local 11-table Chinook IndexedDB dataset through DALgo, rendering structured rows in AG Grid.
 
 ## Problem
 
@@ -23,7 +23,7 @@ The project menu opens `/store/:storeId/project/:projectId/chat`. A cold link re
 
 The user can add, edit, select and remove AI endpoints from Chat. The form offers DeepSeek, OpenAI and Anthropic presets, a protocol choice (OpenAI-compatible Chat Completions or Anthropic Messages), editable base URL and model, and a masked API key. DeepSeek defaults to `deepseek-flash` at `https://api.deepseek.com`. Endpoint entries, including keys, are stored in this browser origin's `localStorage` at the user's explicit request; the UI states that this storage is readable by scripts on that origin and offers deletion. Keys are never placed in URLs, build configuration, IndexedDB, analytics or logs.
 
-For a turn, the browser sends the question and compact schema description directly to the selected AI provider using its chosen protocol. The key goes in the provider's authentication header. This local trial does not require the DataTug CLI, its agent server, or Google ADK. The provider returns one structured DTQL action; the browser validates it against an allowlisted schema and row cap, compiles it through `@dalgo/core`, executes it via `@dalgo/indexeddb` against seeded Chinook data, then passes structured records to AG Grid. No model-produced SQL, HTML, table markup or rows are trusted.
+For a turn, the browser sends the question and compact schema description directly to the selected AI provider using its chosen protocol. The key goes in the provider's authentication header. This local trial does not require the DataTug CLI, its agent server, or Google ADK. The provider returns one structured TugQL action; the browser validates it against an allowlisted schema and row cap, compiles it through `@dalgo/core`, executes it via `@dalgo/indexeddb` against seeded Chinook data, then passes structured records to AG Grid. No model-produced SQL, HTML, table markup or rows are trusted.
 
 The browser seed is generated reproducibly from the pinned MIT-licensed Chinook SQLite revision and SHA-256 recorded in `datatug-demo-projects/demo-project-1/fixtures/chinook/phase1-acceptance.json`. The fixture contains all 11 source tables and their fields. IndexedDB has one physical object store per table plus `_meta`; seed metadata records the fixture version. A complete seed is idempotent, an absent seed is a loading/unavailable state, and a successful zero-row query is distinct. Track includes an `ArtistName` field derived from Chinook's Track → Album → Artist relation so the Phase 1 single-source DALgo query can answer artist-name prompts without a browser join engine.
 
@@ -43,9 +43,9 @@ Adding DeepSeek prefills its OpenAI-compatible protocol, `https://api.deepseek.c
 
 The pinned fixture generates versioned Chinook Artist, Album, Track, Genre, MediaType, Playlist, PlaylistTrack, Customer, Employee, Invoice and InvoiceLine records in IndexedDB using DALgo writes. Reopening is idempotent, and an existing three-table `chinook` database upgrades in place. Missing seed and zero matches display different states.
 
-### AC: bounded-dtql
+### AC: bounded-tugql
 
-Malformed, unknown-source/field, unsupported, or unbounded DTQL is rejected before DALgo execution. A valid single-source comparison, ordering and limit preserves schema-qualified identity and returns structured rows. Joins and aggregation are not available in this slice, even though the full data model supports future examples.
+Malformed, unknown-source/field, unsupported, or unbounded TugQL is rejected before DALgo execution. A valid single-source comparison, ordering and limit preserves schema-qualified identity and returns structured rows. Joins and aggregation are not available in this slice, even though the full data model supports future examples.
 
 ### AC: chinook-prompts
 

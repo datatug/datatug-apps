@@ -786,7 +786,7 @@ export class HostedBoardWorkspaceComponent {
           throw new Error('Query catalog exceeds editor limits.');
         for (const item of value.items ?? []) {
           if (
-            ![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(
+            ![QueryType.SQL, QueryType.TugQL].includes(
               item.type as QueryType,
             )
           )
