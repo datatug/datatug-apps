@@ -1702,7 +1702,12 @@ describe('New project through authenticated common API', () => {
     const legacyIntent = JSON.parse(saved.operationPayload);
     delete legacyIntent.selectedBranch;
     saved.operationPayload = JSON.stringify(legacyIntent);
-    sessionStorage.setItem('datatug:new-project:draft', JSON.stringify(saved));
+    // The restoring page reads the pre-branch-identity draft; serve it from the read, not a second write to storage.
+    const legacyDraft = JSON.stringify(saved);
+    const readStorage = sessionStorage.getItem.bind(sessionStorage);
+    vi.spyOn(sessionStorage, 'getItem').mockImplementation((key: string) =>
+      key === 'datatug:new-project:draft' ? legacyDraft : readStorage(key),
+    );
 
     const restored = await harness(false, {}, true, true);
     restored.fixture.detectChanges();

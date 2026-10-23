@@ -347,3 +347,32 @@ describe('friendlyError', () => {
     expect(errorReport(shown)).toContain(`Reference: ${first.reference}`);
   });
 });
+
+describe('adversarial input is handled in linear time', () => {
+  const adversarial = [
+    '@'.repeat(60_000),
+    'a'.repeat(60_000) + '@',
+    ('a@'.repeat(30_000)),
+    'invalid '.repeat(60_000),
+    ('x@' + ':'.repeat(40_000) + '\n').repeat(3),
+    '\n'.repeat(60_000) + '@'.repeat(5_000),
+  ];
+
+  it.each(adversarial.map((text, i) => [i, text] as const))(
+    'redactErrorText and friendlyError finish quickly on adversarial input %i',
+    (_i, text) => {
+      const started = performance.now();
+      redactErrorText(text);
+      friendlyError(new Error(text), 'this page');
+      expect(performance.now() - started).toBeLessThan(1000);
+    },
+  );
+
+  it('still redacts an e-mail address and still words an invalid chart definition', () => {
+    expect(redactErrorText('failed for ann.lee+x@example.co.uk now')).toBe(
+      'failed for [email] now',
+    );
+    expect(friendlyError(new Error('Invalid chart setting'), 'this page').kind).toBe('invalid');
+    expect(friendlyError(new Error('invalid input'), 'this page').kind).not.toBe('invalid');
+  });
+});

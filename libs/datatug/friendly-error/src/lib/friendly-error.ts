@@ -129,6 +129,8 @@ const JAVASCRIPT_SLIP =
 const SECRET_WORDS =
   'token|key|secret|password|passwd|pwd|authorization|signature|credential|session';
 
+const MAX_REDACTED_LENGTH = 4096;
+
 /**
  * Removes what must not appear on a screen, in a toast or in a copied report: addresses (any URL with its query or
  * token, a host with a path, internal and loopback hosts, IP addresses), email addresses, file paths, bearer/API
@@ -143,17 +145,20 @@ export function redactErrorText(
   text: string,
   options: { readonly database?: boolean } = {},
 ): string {
+  // A message longer than this is not a sentence to show; bounding it also bounds every pattern below.
   let out = text
+    .slice(0, MAX_REDACTED_LENGTH)
     .split('\n')
     .filter(
       (line) =>
-        !/^\s*at\s+\S+/.test(line) && !/^\s*[^\s]*@\S+:\d+:\d+\s*$/.test(line),
+        !/^\s*at\s+\S+/.test(line.slice(0, 1000)) &&
+        !/^\s*[^\s@]*@\S+:\d+:\d+\s*$/.test(line.slice(0, 1000)),
     )
     .join(' ');
   out = out
     // Any URL, including a protocol-relative one such as `//github.com:undefined/…`, with its path and query.
     .replace(/(?:[a-z][a-z0-9+.-]*:)?\/\/[^\s'"<>)]+/gi, '[address]')
-    .replace(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '[email]')
+    .replace(/(?<![\w.+-])[\w.+-]+@[\w-]+(?:\.[\w-]+)+/g, '[email]')
     // A Windows path, then a Unix/home path of two or more segments.
     .replace(/\b[a-z]:\\[^\s'"<>]+/gi, '[path]')
     .replace(
@@ -430,7 +435,7 @@ function classify(error: unknown, what: string): Parts {
       code: `HTTP-${status}`,
     };
   }
-  if (/invalid .*(configuration|presentation|chart|board)/i.test(text)) {
+  if (isInvalidDefinitionText(text)) {
     return {
       kind: 'invalid',
       title: `${capitalize(what)} has a setting DataTug cannot display`,
@@ -499,4 +504,13 @@ export function errorReport(error: FriendlyError): string {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/** `invalid …` followed somewhere later by a definition keyword, without a backtracking `.*` on library text. */
+function isInvalidDefinitionText(text: string): boolean {
+  const lower = text.slice(0, 4096).toLowerCase();
+  const at = lower.indexOf('invalid ');
+  return (
+    at >= 0 && /configuration|presentation|chart|board/.test(lower.slice(at + 8))
+  );
 }
