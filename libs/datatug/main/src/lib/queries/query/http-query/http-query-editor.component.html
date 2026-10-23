@@ -6,6 +6,7 @@
       aria-label="HTTP method"
       interface="popover"
       [value]="method()"
+      [disabled]="readonly()"
       (ionChange)="onMethod($event)"
     >
       @for (m of methods; track m) {
@@ -17,6 +18,7 @@
       aria-label="URL"
       placeholder="https://api.example.com/path"
       [value]="url()"
+      [readonly]="readonly()"
       (ionInput)="onUrl($event)"
       (keyup.enter)="showRun() && run()"
     />
@@ -67,7 +69,7 @@
       >
     </ion-item>
   }
-  @if (legacyPlaceholders().length) {
+  @if (legacyPlaceholders().length && !readonly()) {
     <ion-item lines="none" class="http-legacy-note">
       <ion-icon slot="start" name="information-circle-outline" color="medium" />
       <ion-note class="ion-text-wrap http-note-text"
@@ -110,6 +112,7 @@
               aria-label="Type of {{ p.id }}"
               interface="popover"
               [value]="p.type"
+              [disabled]="readonly()"
               (ionChange)="setParameterType(p.id, $event)"
             >
               @for (t of parameterTypes; track t) {
@@ -120,20 +123,22 @@
               class="http-param-required"
               labelPlacement="end"
               [checked]="!!p.isRequired"
-              [disabled]="!!p.isCredential"
+              [disabled]="!!p.isCredential || readonly()"
               (ionChange)="setRequired(p.id, $event)"
               >Required</ion-toggle
             >
-            <ion-button
-              class="http-param-remove"
-              fill="clear"
-              color="medium"
-              size="small"
-              aria-label="Remove parameter {{ p.id }}"
-              (click)="removeParameter(p.id)"
-            >
-              <ion-icon slot="icon-only" name="close-outline" />
-            </ion-button>
+            @if (!readonly()) {
+              <ion-button
+                class="http-param-remove"
+                fill="clear"
+                color="medium"
+                size="small"
+                aria-label="Remove parameter {{ p.id }}"
+                (click)="removeParameter(p.id)"
+              >
+                <ion-icon slot="icon-only" name="close-outline" />
+              </ion-button>
+            }
           </div>
           <div class="http-param-fields">
             <ion-input
@@ -144,7 +149,7 @@
               [type]="p.isCredential ? 'password' : 'text'"
               [attr.autocomplete]="p.isCredential ? 'new-password' : null"
               [attr.spellcheck]="p.isCredential ? 'false' : null"
-              [placeholder]="resolvedById().get(p.id)?.rendered ?? ''"
+              [placeholder]="resolvedById().get(p.id)?.rendered ?? (p.isRequired ? 'Enter a value to run' : '')"
               [value]="typedValues()[p.id] ?? ''"
               (ionInput)="setTypedValue(p.id, $event)"
             />
@@ -155,6 +160,7 @@
                 labelPlacement="stacked"
                 label="Default"
                 [value]="defaultText(p)"
+                [readonly]="readonly()"
                 (ionInput)="setDefault(p.id, $event)"
               />
               <ion-input
@@ -162,8 +168,9 @@
                 fill="outline"
                 labelPlacement="stacked"
                 label="Meaning (Entity.field)"
-                placeholder="Order.id"
+                [placeholder]="readonly() ? '' : 'Optional'"
                 [value]="metaText(p)"
+                [readonly]="readonly()"
                 (ionInput)="setMeta(p.id, $event)"
               />
             }
@@ -212,9 +219,11 @@
           <div class="http-param-line">
             <code class="http-param-id">{{ braced(id) }}</code>
             <span class="http-param-error">used but not declared</span>
-            <ion-button size="small" fill="outline" (click)="declare(id)"
-              >Declare</ion-button
-            >
+            @if (!readonly()) {
+              <ion-button size="small" fill="outline" (click)="declare(id)"
+                >Declare</ion-button
+              >
+            }
           </div>
         </div>
       }
@@ -293,6 +302,7 @@
             aria-label="Parameter name"
             placeholder="Name"
             [value]="row.name"
+            [readonly]="readonly()"
             (ionInput)="
               setParam($index, { name: $any($event).detail.value ?? '' })
             "
@@ -301,28 +311,33 @@
             aria-label="Parameter value"
             placeholder="Value"
             [value]="row.value"
+            [readonly]="readonly()"
             (ionInput)="
               setParam($index, { value: $any($event).detail.value ?? '' })
             "
           />
-          <ion-buttons slot="end">
-            <ion-button
-              color="medium"
-              aria-label="Remove parameter"
-              (click)="removeParam($index)"
-            >
-              <ion-icon slot="icon-only" name="close-outline" />
-            </ion-button>
-          </ion-buttons>
+          @if (!readonly()) {
+            <ion-buttons slot="end">
+              <ion-button
+                color="medium"
+                aria-label="Remove parameter"
+                (click)="removeParam($index)"
+              >
+                <ion-icon slot="icon-only" name="close-outline" />
+              </ion-button>
+            </ion-buttons>
+          }
         </ion-item>
       }
-      <ion-item lines="none">
-        <ion-button fill="clear" size="small" (click)="addParam()">
-          <ion-icon slot="start" name="add-outline" />
-          Add parameter
-        </ion-button>
-        <ion-note slot="end">Synced with the URL</ion-note>
-      </ion-item>
+      @if (!readonly()) {
+        <ion-item lines="none">
+          <ion-button fill="clear" size="small" (click)="addParam()">
+            <ion-icon slot="start" name="add-outline" />
+            Add parameter
+          </ion-button>
+          <ion-note slot="end">Synced with the URL</ion-note>
+        </ion-item>
+      }
     }
     @case ('headers') {
       @for (header of headers(); track $index) {
@@ -332,6 +347,7 @@
             aria-label="Header name"
             placeholder="Name"
             [value]="header.name"
+            [readonly]="readonly()"
             (ionInput)="
               setHeader($index, { name: $any($event).detail.value ?? '' })
             "
@@ -340,6 +356,7 @@
             aria-label="Header value"
             placeholder="Value"
             [value]="header.value"
+            [readonly]="readonly()"
             (ionInput)="
               setHeader($index, { value: $any($event).detail.value ?? '' })
             "
@@ -358,17 +375,24 @@
               <ion-icon name="lock-closed-outline" /> not saved
             </ion-note>
           }
-          <ion-buttons slot="end">
-            <ion-button
-              color="medium"
-              aria-label="Remove header"
-              (click)="removeHeader($index)"
-            >
-              <ion-icon slot="icon-only" name="close-outline" />
-            </ion-button>
-          </ion-buttons>
+          @if (!readonly()) {
+            <ion-buttons slot="end">
+              <ion-button
+                color="medium"
+                aria-label="Remove header"
+                (click)="removeHeader($index)"
+              >
+                <ion-icon slot="icon-only" name="close-outline" />
+              </ion-button>
+            </ion-buttons>
+          }
         </ion-item>
+      } @empty {
+        @if (readonly()) {
+          <ion-item lines="none"><ion-note>No headers.</ion-note></ion-item>
+        }
       }
+      @if (!readonly()) {
       <ion-item lines="none">
         <ion-button
           fill="clear"
@@ -384,7 +408,8 @@
           headers are never saved.</ion-note
         >
       </ion-item>
-      @if (!canAddHeader()) {
+      }
+      @if (!canAddHeader() && !readonly()) {
         <ion-item lines="none">
           <ion-note class="http-header-limit"
             >A query can have at most {{ maxHeaders }} headers.</ion-note
@@ -400,6 +425,7 @@
           rows="8"
           placeholder="Request body"
           [value]="body()"
+          [readonly]="readonly()"
           [disabled]="!takesBody()"
           (ionInput)="onBody($event)"
         />

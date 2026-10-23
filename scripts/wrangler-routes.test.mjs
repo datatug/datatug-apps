@@ -57,6 +57,22 @@ test('the app worker preserves DataTug and serves the Incidentius app hostname',
   ]);
 });
 
+// JSONC as wrangler reads it here: whole-line comments and trailing commas.
+const parseJsonc = (source) => JSON.parse(source.replace(/^\s*\/\/.*$/gm, '').replace(/,(\s*[}\]])/g, '$1'));
+
+test('demo.datatug.app is its own redirect Worker, never a route of the app Worker', async () => {
+  const config = parseJsonc(
+    await readFile(new URL('../workers/demo-redirect/wrangler.jsonc', import.meta.url), 'utf8'),
+  );
+  assert.equal(config.name, 'datatug-demo-redirect');
+  assert.equal(config.main, 'index.mjs');
+  assert.equal(config.workers_dev, false);
+  assert.equal(config.assets, undefined);
+  assert.deepEqual(config.routes, [{ pattern: 'demo.datatug.app', custom_domain: true }]);
+  const deploy = await readFile(new URL('../.github/workflows/deploy-demo-redirect.yml', import.meta.url), 'utf8');
+  assert.match(deploy, /wrangler-config: workers\/demo-redirect\/wrangler\.jsonc/);
+});
+
 test('the app serves no cross-origin isolation headers (opfs-sahpool needs neither COOP nor COEP)', async () => {
   const wrangler = await readFile(new URL('../wrangler.jsonc', import.meta.url), 'utf8');
   assert.doesNotMatch(wrangler, CROSS_ORIGIN_ISOLATION);

@@ -220,7 +220,7 @@ describe('QueryDispatchService transport boundary', () => {
     expect(browser).not.toHaveBeenCalled();
   });
 
-  it('infers the sole declared browser fixture environment when omitted and rejects an explicit mismatch', async () => {
+  it('infers the sole declared browser fixture environment when omitted and runs a mismatched one in the fixture environment', async () => {
     const definition: IQueryDef = {
       ...sqlDefinition(),
       connectionId: 'northwind-sqlite',
@@ -249,7 +249,24 @@ describe('QueryDispatchService transport boundary', () => {
       expect.objectContaining({ environment: 'dev' }),
     );
 
+    // Demo walk item 2: an environment another query left selected (an agent query's `local`) must not break a
+    // pinned browser fixture. The fixture is the query's own runnable target, so it runs there.
     browser.mockClear();
+    await expect(service.execute({
+      projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
+      definition,
+      queryId: definition.id,
+      environment: 'local',
+      target: { kind: 'browser-sqlite' },
+    })).resolves.toEqual(result);
+    expect(browser).toHaveBeenCalledWith(
+      expect.objectContaining({ environment: 'dev', target: { kind: 'browser-sqlite' } }),
+      expect.objectContaining({ environment: 'dev' }),
+    );
+
+    // Without a browser fixture the requested environment is never replaced.
+    browser.mockClear();
+    github.mockReturnValue(of({ connections: [{ ...connection, browserFixture: undefined }] }));
     await expect(service.execute({
       projectRef: { storeId: 'github.com', projectId: 'repo@owner' },
       definition,

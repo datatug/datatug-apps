@@ -70,7 +70,10 @@ import { IQueryDef } from '../../../../models/definition/query-def';
 import { firstValueFrom, fromEvent, takeUntil, timeout } from 'rxjs';
 import { QueriesService } from '../../../../queries/queries.service';
 import { QueryDispatchService } from '../../../../queries/query-dispatch.service';
-import { QueryDispatchError } from '../../../../queries/query-dispatch';
+import {
+  QueryDispatchError,
+  hasRuntimeTargetWithoutConnection,
+} from '../../../../queries/query-dispatch';
 import type { QueryRuntimeOption } from '../../../../queries/query-runtime-registry.service';
 import {
   chartEvidenceError,
@@ -900,7 +903,9 @@ export class BoardWidgetComponent {
         next: (definition) => {
           if (this.generation !== generation) return;
           this.definitionLoading.set(false);
-          const reason = this.ineligibleReason(definition, id);
+          const reason =
+            this.ineligibleReason(definition, id) ??
+            this.browseOnlyReason(ref, definition, id);
           this.unsupportedReason.set(reason);
           if (!reason) {
             this.definition.set(definition);
@@ -1009,6 +1014,35 @@ export class BoardWidgetComponent {
     )
       return 'This widget uses a query language this board cannot run.';
     return undefined;
+  }
+
+  /**
+   * A raw SQL query that names no connection has nowhere to run in a public project without an agent (demo walk
+   * item 5: the Northwind board offered Run and then failed with "Choose a supported execution target"). Such a card
+   * says it is browse-only up front and offers only "Open saved query".
+   */
+  private browseOnlyReason(
+    ref: IProjectRef,
+    definition: IQueryDef,
+    id: string,
+  ): string | undefined {
+    const context = this.boardContext();
+    if (
+      definition.request.queryType !== QueryType.SQL ||
+      definition.connectionId ||
+      definition.federation ||
+      isSavedPublicChartQueryId(id) ||
+      context?.runtimeBinding ||
+      hasRuntimeTargetWithoutConnection({
+        projectRef: ref,
+        definition,
+        queryId: id,
+        ...(context?.environment ? { environment: context.environment } : {}),
+        ...(context?.executionTarget ? { target: context.executionTarget } : {}),
+      })
+    )
+      return undefined;
+    return 'Browse only: this saved query has no database it can run on here. Open the saved query to read it; running it needs a DataTug agent connected to its database.';
   }
 
   projectRuntimeLabel(): string {

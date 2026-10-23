@@ -81,6 +81,42 @@ describe('project query overview', () => {
     ).toHaveLength(2);
   });
 
+  it('starts each sort field in its natural direction: names A→Z, dates newest first', async () => {
+    const fixture = await create(
+      vi.fn(() =>
+        of({
+          id: '~',
+          items: [
+            query('Alpha', '2026-01-01T00:00:00Z'),
+            query('Zulu', '2026-03-01T00:00:00Z'),
+            query('Bravo', '2026-02-01T00:00:00Z'),
+          ],
+        }),
+      ),
+    );
+    // Default: Newest first. Switching to names must not carry the descending direction over (Z→A).
+    await sort(fixture, 'alphabetical');
+    expect(titles(fixture.nativeElement)).toEqual(['Alpha', 'Bravo', 'Zulu']);
+    await reverse(fixture);
+    expect(titles(fixture.nativeElement)).toEqual(['Zulu', 'Bravo', 'Alpha']);
+    // Back to dates: newest first again, not oldest.
+    await sort(fixture, 'newest');
+    expect(titles(fixture.nativeElement)).toEqual(['Zulu', 'Bravo', 'Alpha']);
+    const direction = fixture.nativeElement.querySelector(
+      'ion-button.query-sort-direction',
+    ) as HTMLElement;
+    expect(direction.getAttribute('aria-label')).toBe(
+      'Newest first. Reverse sort order',
+    );
+    expect(
+      direction.querySelector('.query-sort-direction-short-label')?.textContent?.trim(),
+    ).toBe('Newest');
+    const short = [
+      ...fixture.nativeElement.querySelectorAll('.query-sort-short-label'),
+    ].map((label: Element) => label.textContent?.trim());
+    expect(short).toEqual(['Name', 'Date']);
+  });
+
   it('sorts all recursive queries before taking the first 100 and retains exact paths', async () => {
     const items = Array.from({ length: 105 }, (_, i) =>
       query(

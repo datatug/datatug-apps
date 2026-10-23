@@ -61,9 +61,9 @@ describe('saved query result chart admission', () => {
 
   it('refuses missing and descriptive-only rights without hiding the rows', () => {
     const missing = heldResult({ usedSourceIds: undefined });
-    expect(queryResultChartOptions(missing, missing.recordset, missing.totalRows).reason).toContain('rights');
+    expect(queryResultChartOptions(missing, missing.recordset, missing.totalRows).reason).toBe('DataTug can’t confirm that the data’s source allows charting it. The rows are still in the grid.');
     const legacy = heldResult({ sourceRights: heldResult().sourceRights?.map((right) => ({ ...right, evidenceOrigin: 'legacy-metadata' as const })) });
-    expect(queryResultChartOptions(legacy, legacy.recordset, legacy.totalRows).reason).toContain('rights');
+    expect(queryResultChartOptions(legacy, legacy.recordset, legacy.totalRows).reason).toBe('DataTug can’t confirm that the data’s source allows charting it. The rows are still in the grid.');
   });
 
   it('refuses incompatible columns and unsafe counts', () => {

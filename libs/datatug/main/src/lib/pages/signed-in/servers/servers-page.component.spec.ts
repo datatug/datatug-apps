@@ -231,6 +231,7 @@ describe('ServersPage signed-out public GitHub declarations', () => {
       },
     });
     expect(view.row('chinook')).toContain('Registered catalog');
+    expect(view.row('chinook')).toContain('chinook (dev)');
     expect(view.row('chinook')).toContain('sqlite3');
     expect(view.html).not.toContain('private');
     expect(view.html).not.toContain('Environments could not be loaded');

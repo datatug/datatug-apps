@@ -507,6 +507,22 @@ sneat-datatug-chat-page {
     gap: 0.5rem;
   }
 
+  // One block inside the footer toolbar: iOS lays a toolbar's children out in a row, which squeezed the
+  // status text, the composer and the status bar into three narrow columns on phones.
+  .composer-body {
+    min-width: 0;
+    width: 100%;
+  }
+
+  // Four workspace tabs share the panel's 280-360px width; keep each label whole instead of clipping it.
+  .workspace-tabs ion-segment-button {
+    --padding-start: 4px;
+    --padding-end: 4px;
+    font-size: 0.75rem;
+    letter-spacing: 0;
+    min-width: 0;
+  }
+
   .composer-question {
     flex: 1 1 0;
     min-width: 0;
@@ -561,8 +577,18 @@ sneat-datatug-chat-page {
       resize: none;
     }
 
+    .composer-grid ion-row {
+      flex-wrap: wrap;
+    }
+
+    // The question takes the whole first line; provider and Send share the next one.
+    .composer-question {
+      flex: 1 1 100%;
+      max-width: 100%;
+    }
+
     .composer-provider {
-      flex-basis: 96px;
+      flex: 1 1 0;
     }
 
     .composer-send ion-button {
@@ -1047,6 +1073,16 @@ ion-app.compact-header-mode:has(#{$page-owns-header}) {
   ion-toolbar:has(ion-back-button, .page-back-link) ion-menu-button:not(.app-level-menu-button) {
     display: none;
   }
+}
+
+// Phones and tablets: iOS centres a toolbar title absolutely over the whole bar with only 90px of side padding,
+// so a long title ran under the end-slot ☰ menu and Sign in that page-toolbar-adoption.ts adds. In the compact
+// layout the title takes the space between the start and end buttons instead and ends in an ellipsis.
+ion-app.compact-header-mode ion-header ion-toolbar ion-title.title-default.ios {
+  position: static;
+  padding-inline: 4px;
+  text-align: start;
+  min-width: 0;
 }
 
 // Sign in is adopted at every width (the side panel's own "Please sign in" is not in the page header);

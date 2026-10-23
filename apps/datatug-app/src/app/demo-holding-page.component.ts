@@ -38,8 +38,8 @@ interface HoldingView {
 /**
  * Takes the hand-off of the current address (index.html's first script has already taken the question out of the
  * address bar and stashed it; otherwise the live address is read and cleaned) and works out what to show.
- * `/demo` and the demo project's own start-chat address say that the live demo opens here soon and show the
- * question back. Any other repository's address (see isTrustedHandoff) gets neutral wording: it must not claim to
+ * `/demo` with a question (without one it opens the demo project: datatug-app-routes.ts) and the demo project's own
+ * start-chat address say that the live demo opens here soon and show the question back. Any other repository's address (see isTrustedHandoff) gets neutral wording: it must not claim to
  * be a demo, and it carries no question (the capture dropped it).
  */
 function readView(): HoldingView {

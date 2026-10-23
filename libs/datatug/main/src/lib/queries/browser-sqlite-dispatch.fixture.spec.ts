@@ -174,9 +174,10 @@ describe('generic saved SQL dispatcher with pinned browser fixtures', () => {
     expect(reads).toEqual(['/assets/showcase/chinook.sqlite']);
   });
 
-  it('rejects changed publication bytes and explicit incompatible environments', async () => {
+  it('rejects changed publication bytes, also when an environment the fixture does not serve was requested', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response(new Uint8Array(1348))));
     await expect(execute(dispatcher, definition('chinook-billing-browser-sqlite'))).rejects.toThrow(/hash differs/);
-    await expect(dispatcher.execute({ projectRef: ref, definition: definition('chinook-billing-browser-sqlite'), environment: 'QA' })).rejects.toThrow(/unavailable in this environment/);
+    // Demo walk item 2: an incompatible environment falls back to the fixture's own one; the pin is still verified.
+    await expect(dispatcher.execute({ projectRef: ref, definition: definition('chinook-billing-browser-sqlite'), environment: 'QA' })).rejects.toThrow(/hash differs/);
   });
 });

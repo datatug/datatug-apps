@@ -33,6 +33,7 @@ import {
   githubIdentity,
   usableGithubToken,
 } from './github-user-token';
+import { GITHUB_API_MEMORY } from './github-api-memory';
 import {
   GITHUB_RESOLVE_TTL_MS,
   GithubSetTimer,
@@ -502,6 +503,8 @@ export class GithubProjectReaderService {
   private readonly now = inject(GITHUB_CLOCK);
   /** The signed-in user's GitHub token, when there is one: sent with the two `api.github.com` calls of a read. */
   private readonly userToken = inject(GITHUB_USER_TOKEN);
+  /** The anonymous limit and the conditional answers, remembered across page loads (see `github-api-memory.ts`). */
+  private readonly apiMemory = inject(GITHUB_API_MEMORY);
   /**
    * Listing calls by address: one call however many ask at once, and an answer at a commit (immutable) kept for the
    * page, bounded by {@link MAX_PINNED_TREES_IN_MEMORY}. Anything else is dropped once answered.
@@ -512,7 +515,10 @@ export class GithubProjectReaderService {
 
   constructor() {
     // Sign-out or another account: what the old token read goes now, not at the next read.
-    const signedOut = () => void this.auth();
+    const signedOut = () => {
+      this.apiMemory.dropConditional();
+      void this.auth();
+    };
     globalThis.addEventListener?.(GITHUB_SIGNED_OUT_EVENT, signedOut);
     inject(DestroyRef).onDestroy(() =>
       globalThis.removeEventListener?.(GITHUB_SIGNED_OUT_EVENT, signedOut),
@@ -584,6 +590,7 @@ export class GithubProjectReaderService {
   /** Drops what was read as `identity` (never the anonymous reads, which anyone may be served). */
   public dropIdentity(identity: string): void {
     if (identity === ANONYMOUS_GITHUB_IDENTITY) return;
+    this.apiMemory.dropConditional(identity);
     for (const key of [...this.sessions.keys()]) {
       if (key.startsWith(`${identity}|`)) this.sessions.delete(key);
     }
@@ -666,6 +673,8 @@ export class GithubProjectReaderService {
         detectMoved: true,
         timeoutMs: GITHUB_RESOLVE_TIMEOUT_MS,
         token: auth.token,
+        memory: this.apiMemory,
+        now: this.now,
       },
     );
     if (out.kind === 'ok') {
@@ -985,6 +994,8 @@ export class GithubProjectReaderService {
       maxBytes: MAX_TREE_BYTES,
       detectMoved: true,
       token: auth.token,
+      memory: this.apiMemory,
+      now: this.now,
     });
     this.treeCalls.set(key, call);
     void call.then((out) => {

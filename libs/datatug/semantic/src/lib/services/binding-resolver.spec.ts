@@ -169,6 +169,25 @@ describe('resolveBindings — precedence (AC:bound-from-selection, AC:context-ca
     expect(binding.value).toBeUndefined();
     expect(binding.blocked).toBeUndefined();
   });
+
+  it('a required non-semantic parameter with a declared default is supplied by it (demo walk item 4)', () => {
+    const date: TypedValue = { type: 'date', value: '2018-04-23' };
+    const params: BindingParameterRef[] = [
+      { id: 'date', required: true, defaultValue: date },
+      { id: 'amount', required: true },
+    ];
+    const [withDefault, withoutDefault] = resolveBindings({
+      parameters: params,
+      selectionFacts: [],
+      contextFacts: [],
+    });
+    expect(withDefault).toMatchObject({ value: date, origin: 'default' });
+    expect(withDefault.blocked).toBeUndefined();
+    expect(isBindingRunnable(withDefault)).toBe(true);
+    // Without a default a required value is still asked for.
+    expect(withoutDefault.blocked).toBe('missing-required');
+    expect(hasBlockingBindings([withDefault, withoutDefault])).toBe(true);
+  });
 });
 
 describe('resolveBindings — typed distinctness (AC:typed-context-isolation)', () => {

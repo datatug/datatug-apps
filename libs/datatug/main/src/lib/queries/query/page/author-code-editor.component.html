@@ -40,10 +40,10 @@
   }
 </ion-item>
 }
-@if (visible() && language() === 'TugQL') {
+@if (visible() && language() === 'TugQL' && toolsMenu()) {
   <ion-popover
     data-testid="author-code-tools-popover"
-    [trigger]="toolsTriggerId"
+    [trigger]="toolsTrigger()"
     [dismissOnSelect]="true"
     aria-label="Editor actions"
     (didDismiss)="menuDidDismiss()"

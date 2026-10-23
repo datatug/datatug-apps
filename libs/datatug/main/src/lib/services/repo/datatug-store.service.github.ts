@@ -92,17 +92,10 @@ export class DatatugStoreGithubService implements IDatatugStoreService {
                   ),
                 ),
         ),
-        map((p) => {
-          if (p.id === projectId) {
-            return p;
-          }
-          if (p.id) {
-            console.warn(
-              `Request project info with projectId=${projectId} but response JSON have id=${p.id}`,
-            );
-          }
-          return { ...p, id: projectId };
-        }),
+        // The route id of a GitHub project is its location ("<repo>@<owner>@<folder>"), while the file's own `id`
+        // names the project inside the repository (e.g. "datatug-demo-project"). They differ by design, so the
+        // location id simply wins; there is nothing to warn about.
+        map((p) => (p.id === projectId ? p : { ...p, id: projectId })),
         shareReplay(1),
       );
     this.summaryCache.set(projectId, { epoch, summary });

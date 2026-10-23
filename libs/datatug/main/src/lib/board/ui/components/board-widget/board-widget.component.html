@@ -393,6 +393,12 @@
                 : 'open working copy'
             }}.
           </p>
+          @if (!result() && !running() && !runError() && !(showcase() && readBoardForRun())) {
+            <!-- Boards other than the showcase do not run cards by themselves: say how to see the rows. -->
+            <p role="status" class="board-run-prompt">
+              Not run yet. Press ▶ Run on board to see its rows here.
+            </p>
+          }
           @if (workingCopies().length) {
             <label
               >Execution runtime

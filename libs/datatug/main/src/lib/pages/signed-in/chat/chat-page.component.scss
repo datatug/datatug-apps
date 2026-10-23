@@ -107,3 +107,10 @@
 .chat-header-title ion-select { min-width: 0; flex: 1 1 auto; max-width: 360px; overflow: hidden; }
 .session-action-menu { display: flex; flex-direction: column; padding: .5rem; }
 .session-action-menu ion-button { min-height: 44px; }
+.managed-signed-out ion-button { margin: 0 0 .5rem; }
+/* Phones: the title keeps room to read "Chat @ Project…"; the session picker shrinks first. */
+@media (max-width: 540px) {
+  .chat-header-title { padding-inline: .25rem; gap: .25rem; }
+  .chat-header-title > sneat-datatug-page-title { flex: 1 1 auto; min-width: 6.5rem; }
+  .chat-header-title ion-select { flex: 0 1 auto; max-width: 42%; }
+}

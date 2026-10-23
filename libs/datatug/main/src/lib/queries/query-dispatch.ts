@@ -166,6 +166,21 @@ export function serverOwnsSourceAdmission(request: QueryDispatchRequest): boolea
     isLocalProjectRef(request.projectRef);
 }
 
+/**
+ * `true` when a saved query that names no connection can still be sent somewhere: a runtime binding, a hosted or
+ * local-agent project, or a federation plan. A board shows the query as browse-only instead of offering a Run that can
+ * only fail with "Choose a supported execution target".
+ */
+export function hasRuntimeTargetWithoutConnection(request: QueryDispatchRequest): boolean {
+  if (request.target || request.runtimeSelectionId) return true;
+  try {
+    inferRuntimeTarget(undefined, request);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function inferRuntimeTarget(
   connection: QueryConnectionDescriptor | undefined,
   request: QueryDispatchRequest,

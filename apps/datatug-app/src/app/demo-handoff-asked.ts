@@ -10,7 +10,10 @@ import {
 // storage writes, no reporting): demo-handoff-capture.ts, which is a lazy chunk, holds the rest.
 //
 // What each hand-off address gets (datatug-app-routes.ts), see handoffDecision():
-//   - `/demo` (and `/Demo`, …): the holding page, always. There is nothing else at that address.
+//   - `/demo` (and `/Demo`, …): the demo project (founder 2026-10-23: "make datatug.app/demo open the demo project"),
+//     a replacing redirect that keeps the rest of the query (`?utm_…`). Only a `/demo` that arrived with a question
+//     (`q`, or `msg`; datatug.io's Ask button) still gets the holding page, which shows the question back and links
+//     to the demo project: the project page cannot take a question, and dropping it would lose what the visitor typed.
 //   - `…/start-chat`, `…/<repo>/<dir>…/-/start-chat[?ref=<ref>]`, legacy `…/tree/<ref>[/<dir>…]/-/start-chat` (founder ruling 2026-10-03): the confirmation page,
 //     always. It is a page of its own: with a question (kept from the fragment `#msg=…`) or without.
 //   - the OLD hand-off address, the project chat (`…/chat`, `…/<dir>…/-/chat`, legacy `…/tree/<ref>/-/chat`): only when it arrived with a
@@ -168,6 +171,8 @@ export type HandoffDecision =
   | { readonly kind: 'none' }
   /** The confirmation / holding page is the page of this very address. */
   | { readonly kind: 'page' }
+  /** `/demo` with no question: go (replacing it) to the demo project, with this query (`''` or `?a=1&…`). */
+  | { readonly kind: 'open-demo-project'; readonly search: string }
   /** The old chat address arrived with a question: go (replacing it) to start-chat of the same project. */
   | {
       readonly kind: 'move-to-start-chat';
@@ -189,14 +194,30 @@ export function handoffDecision(
   if (!target) return { kind: 'none' };
   if (target.kind === 'start-chat') return { kind: 'page' };
   if (target.kind === 'demo') {
-    if (routerSearch && typeof env.stash[DEMO_HANDOFF_STASH] !== 'string') {
-      env.stash[DEMO_HANDOFF_STASH] = routerSearch;
-    }
-    return { kind: 'page' };
+    // Read before handoffAsked, which forgets the stash of an address that asked nothing.
+    const stashed = env.stash[DEMO_HANDOFF_STASH];
+    const search = typeof stashed === 'string' ? stashed : routerSearch;
+    return handoffAsked(segments, env, routerSearch)
+      ? { kind: 'page' }
+      : { kind: 'open-demo-project', search: demoProjectSearch(search) };
   }
   return handoffAsked(segments, env, routerSearch)
     ? { kind: 'move-to-start-chat', segments: startChatSegmentsOf(segments) }
     : { kind: 'none' };
+}
+
+/**
+ * Keys of a `/demo` query that never go on to the demo project: the question (`msg`, `q`), the kept-question mark,
+ * and `ref`, so that `/demo` always opens the demo project on its default branch, never a version a link chose.
+ */
+const NOT_FOR_THE_PROJECT = ['msg', 'q', DEMO_HANDOFF_ASKED_PARAM, 'ref'];
+
+/** The query `/demo` passes on to the demo project (`?utm_source=x&…`, '' when nothing is left). */
+export function demoProjectSearch(search: string): string {
+  const params = new URLSearchParams(search);
+  for (const key of NOT_FOR_THE_PROJECT) params.delete(key);
+  const text = params.toString();
+  return text === '' ? '' : `?${text}`;
 }
 
 /** The query of a navigation as a query string (`?a=1&b=2`; '' when it has none), as the capture parses it. */
