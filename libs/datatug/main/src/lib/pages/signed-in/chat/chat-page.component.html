@@ -14,11 +14,11 @@
         <ion-button aria-label="New chat" title="New chat" (click)="newSession()" [disabled]="sessionState() === 'loading' || submitting() || sessionBusy()"><ion-icon slot="icon-only" name="add-outline" /></ion-button>
         <ion-button id="chat-session-actions" aria-label="Chat session actions" title="Chat session actions"><ion-icon slot="icon-only" name="ellipsis-vertical-outline" /></ion-button>
       </ion-buttons>
-      <ion-popover trigger="chat-session-actions" [dismissOnSelect]="true">
+      <ion-popover #sessionActions trigger="chat-session-actions">
         <ng-template><div class="session-action-menu">
-        <ion-button (click)="openRename()" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Rename</ion-button>
-        <ion-button (click)="askSessionAction('clear')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Clear</ion-button>
-        <ion-button color="danger" (click)="askSessionAction('delete')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Delete</ion-button>
+        <ion-button (click)="selectSessionAction(sessionActions, 'rename')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Rename</ion-button>
+        <ion-button (click)="selectSessionAction(sessionActions, 'clear')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Clear</ion-button>
+        <ion-button color="danger" (click)="selectSessionAction(sessionActions, 'delete')" [disabled]="!activeSessionId() || submitting() || sessionBusy()">Delete</ion-button>
         </div></ng-template>
       </ion-popover>
     </ion-toolbar>

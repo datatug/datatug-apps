@@ -257,6 +257,20 @@ export class ChatPageComponent {
     }
   }
 
+  async selectSessionAction(popover: Pick<IonPopover, 'dismiss'>, kind: 'rename' | 'clear' | 'delete'): Promise<void> {
+    const id = this.activeSessionId();
+    if (!id || this.submitting() || this.sessionBusy()) return;
+    const scope = this.scope();
+    const ref = this.projectRef();
+    const authRevision = this.authRevision();
+    const authIdentity = this.authIdentity();
+    // Finish the menu's overlay lifecycle before presenting another overlay.
+    if (!await popover.dismiss()) return;
+    if (this.destroyRef.destroyed || !this.isCurrentContext(scope, ref, authRevision, authIdentity) || id !== this.activeSessionId() || this.submitting() || this.sessionBusy()) return;
+    if (kind === 'rename') this.openRename();
+    else this.askSessionAction(kind);
+  }
+
   openRename(): void {
     const session = this.sessions().find((item) => item.id === this.activeSessionId());
     if (!session) return;
