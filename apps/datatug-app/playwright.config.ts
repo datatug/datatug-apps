@@ -134,7 +134,8 @@ export default defineConfig({
       use: {
         ...devices['Desktop Chrome'],
         launchOptions: demodbChromiumLaunch,
-        // datatug-cli v0.110.0 answers only pages whose Origin is https://datatug.app or the host
+        // The journey agent is the release pinned by DATATUG_CLI_REF in ci.yml (v0.113.0). datatug-cli (v0.110.0
+        // and later) answers only pages whose Origin is https://datatug.app or the host
         // `datatug.localhost` (any port): `localhost` is refused with 403, and no flag adds an origin
         // (pkg/server/endpoints/validators.go IsSupportedOrigin). Chromium resolves `*.localhost` to the
         // loopback, and the dev server allows this host (`allowedHosts` in project.json).

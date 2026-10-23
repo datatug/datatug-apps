@@ -275,8 +275,8 @@ DATATUG_DEMO_DIR=~/projects/datatug/datatug-demo-project/demo-project-1 \
 ```
 
 Without `DATATUG_BIN` or `DATATUG_CLI_DIR` every test is skipped. CI runs it in the `agent-links` job when the
-repository variable `DATATUG_LINKS_CLI_REF` is set, against the release pinned in that job (`DATATUG_CLI_REF`,
-v0.110.1 (TugQL wire contract since v0.109.0) the app speaks; an older binary answers `dtql` and the result editor
+repository variable `DATATUG_LINKS_CLI_REF` is set, against the release pinned by `DATATUG_CLI_REF` (the workflow-level `env:` of `ci.yml`,
+v0.113.0; the app speaks the TugQL wire contract since v0.109.0 and `environment-state/1` since v0.113.0); an older binary answers `dtql` and the result editor
 and Run again tests fail). It refuses to run when
 another DataTug API already listens on port 8989 (the daemon would adopt it). The https-to-loopback path of the
 hosted UI is not exercised here; that is the reach script of the plan.
@@ -293,7 +293,7 @@ editor: the column chooser (hide, order, pin, show all, reset), the layout and d
 keyboard and a 360 px wide screen. Its first test (the grid's columns in the table's order, with no `$key`) needs
 **datatug 0.102.1 or later** (datatug-cli #435) and is skipped against an older binary (the fixture reads `datatug
 version`). The numeric right-alignment test needs the column type metadata and is likewise skipped
-below **0.102.1** (`COLUMN_TYPES_CLI`). CI's pinned v0.110.1 runs them.
+below **0.102.1** (`COLUMN_TYPES_CLI`). CI's pinned v0.113.0 runs them.
 
 Running the suite on a computer that already has a real daemon on port 8989: the fixture's daemon would adopt it
 (see above). Run the binary through a wrapper that may not connect to that port, so the throwaway daemon picks
@@ -338,8 +338,8 @@ runs this suite in CI. It:
    nested under the workspace (`actions/checkout`'s `path:` cannot escape the
    primary checkout).
 2. Downloads the prebuilt `datatug` CLI binary from `datatug/datatug` at a
-   **pinned release tag** (`env.DATATUG_CLI_REF` at the top of the job —
-   currently `v0.110.1`), verifies its SHA256 checksum against the published
+   **pinned release tag** (`DATATUG_CLI_REF` in the workflow-level `env:` at the
+   top of `ci.yml` — currently `v0.113.0`), verifies its SHA256 checksum against the published
    checksums file, and sets `DATATUG_BIN` to that path.
 3. Fetches the Chinook SQLite fixture directly, keylessly, to
    `~/datatug/dbs/chinook-local.sqlite` — the exact path
@@ -372,16 +372,19 @@ suite.
 
 #### Bumping the pinned CLI tag
 
-`DATATUG_CLI_REF` in the `journey` job is the only place the tag is pinned.
-To bump it:
+`DATATUG_CLI_REF` in the workflow-level `env:` of `.github/workflows/ci.yml` is the only
+place the tag is pinned; the `journey` and `agent-links` jobs both read it. It must be at least
+`FIRST_CONTRACT_VERSION` in `libs/datatug/main/src/lib/services/project/project-environment-state.service.ts`
+(the first release with the `environment-state/1` contract, v0.113.0): an older agent shows local project
+environments read-only. To bump it:
 
 ```sh
 git ls-remote --tags https://github.com/datatug/datatug-cli.git \
   | sed 's#.*refs/tags/##' | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -1
 ```
 
-Update `DATATUG_CLI_REF` to that tag and re-run the `journey` job. There is
-no other DataTug-CLI-version reference to keep in sync in this repo.
+Update `DATATUG_CLI_REF` to that tag and re-run the `journey` job. The tag
+named in these READMEs and in the `playwright.config.ts` note is documentation only.
 
 ## Known gap this harness works around (not this stream's to fix)
 

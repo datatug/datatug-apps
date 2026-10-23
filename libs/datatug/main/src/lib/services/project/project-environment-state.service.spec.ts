@@ -3,6 +3,7 @@ import { SneatAuthStateService } from '@sneat/auth-core';
 import { TestBed } from '@angular/core/testing';
 import { firstValueFrom, of, throwError } from 'rxjs';
 import {
+  FIRST_CONTRACT_VERSION,
   isPreContractVersion,
   ProjectEnvironmentStateService,
 } from './project-environment-state.service';
@@ -45,6 +46,8 @@ describe('ProjectEnvironmentStateService scope', () => {
   };
   beforeEach(() => {
     vi.clearAllMocks();
+    // A test that pins another agent version must not leak it into the next one.
+    api.agentInfo.mockReturnValue(of({ version: '0.78.0' }));
     TestBed.configureTestingModule({
       providers: [
         { provide: ProjectQueryApiService, useValue: api },
@@ -136,9 +139,9 @@ describe('ProjectEnvironmentStateService scope', () => {
   it.each([
     ['status 0', { status: 0, message: 'Unknown Error' }],
     ['a plain-text 404', { status: 404, error: '404 page not found\n' }],
-  ])('surfaces %s from a current agent (newer than 0.110.1) instead of calling it old', async (_name, failure) => {
+  ])('surfaces %s from a contract agent (0.113.0) instead of calling it old', async (_name, failure) => {
     api.environmentState.mockReturnValue(throwError(() => failure));
-    api.agentInfo.mockReturnValue(of({ version: '0.111.0' }));
+    api.agentInfo.mockReturnValue(of({ version: '0.113.0' }));
     const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
     await expect(
       firstValueFrom(
@@ -147,22 +150,64 @@ describe('ProjectEnvironmentStateService scope', () => {
     ).rejects.toBe(failure);
     expect(legacy).not.toHaveBeenCalled();
   });
-  it('treats a plain-text 404 as pre-contract only up to 0.110.1', async () => {
-    api.environmentState.mockReturnValue(
-      throwError(() => ({ status: 404, error: '404 page not found\n' })),
-    );
-    api.agentInfo.mockReturnValue(of({ version: '0.110.1' }));
-    const result = await firstValueFrom(
-      TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
-        of([{ id: 'local', title: 'local' }]),
-      ),
-    );
-    expect(result.reason).toContain('Update');
+  it.each(['0.110.1', 'v0.111.0', '0.112.0'])(
+    'reads a plain-text 404 from released agent %s (no environment-state route) as the legacy list',
+    async (version) => {
+      api.environmentState.mockReturnValue(
+        throwError(() => ({ status: 404, error: '404 page not found\n' })),
+      );
+      api.agentInfo.mockReturnValue(of({ version }));
+      const result = await firstValueFrom(
+        TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
+          of([{ id: 'local', title: 'local' }]),
+        ),
+      );
+      expect(result.state).toBeUndefined();
+      expect(result.items).toEqual([{ id: 'local', title: 'local' }]);
+      expect(result.reason).toContain('Update');
+    },
+  );
+  it.each(['0.113.0', 'v0.113.1'])(
+    'surfaces a plain-text 404 from contract agent %s instead of a legacy read',
+    async (version) => {
+      const failure = { status: 404, error: '404 page not found\n' };
+      api.environmentState.mockReturnValue(throwError(() => failure));
+      api.agentInfo.mockReturnValue(of({ version }));
+      const legacy = vi.fn(() => of([{ id: 'local', title: 'local' }]));
+      await expect(
+        firstValueFrom(
+          TestBed.inject(ProjectEnvironmentStateService).view(ref, legacy),
+        ),
+      ).rejects.toBe(failure);
+      expect(legacy).not.toHaveBeenCalled();
+    },
+  );
+  it('gates on the first contract release, v0.113.0', () => {
+    expect(FIRST_CONTRACT_VERSION).toEqual([0, 113, 0]);
   });
-  it.each([['0.78.0', true], ['0.110.0', true], ['v0.110.1', true], ['0.110.2', false], ['0.111.0', false], ['1.0.0', false], [undefined, false], ['dev', false]])(
-    'isPreContractVersion(%s) is %s',
-    (version, expected) => {
-      expect(isPreContractVersion({ version })).toBe(expected);
+  it.each([
+    ['0.78.0', true],
+    ['0.110.0', true],
+    ['v0.110.1', true],
+    ['0.110.2', true],
+    ['v0.111.0', true],
+    ['0.112.0', true],
+    ['0.112.9', true],
+    ['0.113.0', false],
+    ['v0.113.0', false],
+    ['0.113.1', false],
+    ['0.114.0', false],
+    ['1.0.0', false],
+    [undefined, false],
+    ['', false],
+    ['dev', false],
+  ])('isPreContractVersion(%s) is %s', (version, expected) => {
+    expect(isPreContractVersion({ version })).toBe(expected);
+  });
+  it.each([null, {}, { version: 113 }])(
+    'treats agent-info %j without a readable version as current',
+    (info) => {
+      expect(isPreContractVersion(info)).toBe(false);
     },
   );
   it('surfaces a failed legacy read of a reachable agent', async () => {

@@ -225,8 +225,12 @@ const isPublicGithubRead = (ref: IProjectRef, error: unknown): boolean =>
   ref.spaceID === undefined &&
   isHostedReadRefused(error);
 
-/** The last agent release that predates the `environment-state/1` contract. */
-const LAST_PRE_CONTRACT_VERSION = [0, 110, 1] as const;
+/**
+ * The first datatug-cli release that serves the `environment-state/1` contract (datatug/datatug-cli#472). Releases
+ * between v0.110.1 and this one (v0.111.0, v0.112.0) shipped without the route, so the gate is "below the first
+ * contract release", not "at or below the last known pre-contract release".
+ */
+export const FIRST_CONTRACT_VERSION = [0, 113, 0] as const;
 
 /**
  * The signals of a local agent that may predate the contract: its router answers the unmounted route with Go's plain
@@ -241,7 +245,10 @@ const isPreContractSignal = (error: unknown): boolean => {
   );
 };
 
-/** True when `/agent-info` reports a version of 0.110.1 or earlier; false for a newer or an unreadable version. */
+/**
+ * True when `/agent-info` reports a version below {@link FIRST_CONTRACT_VERSION}; false for that release or newer,
+ * and for an absent or unreadable version (its real error surfaces instead of a silent legacy read).
+ */
 export const isPreContractVersion = (info: unknown): boolean => {
   const version = (info as { version?: unknown } | null)?.version;
   const match =
@@ -251,8 +258,8 @@ export const isPreContractVersion = (info: unknown): boolean => {
   if (!match) return false;
   const parts = [Number(match[1]), Number(match[2]), Number(match[3])];
   for (let i = 0; i < 3; i++) {
-    if (parts[i] !== LAST_PRE_CONTRACT_VERSION[i])
-      return parts[i] < LAST_PRE_CONTRACT_VERSION[i];
+    if (parts[i] !== FIRST_CONTRACT_VERSION[i])
+      return parts[i] < FIRST_CONTRACT_VERSION[i];
   }
-  return true;
+  return false;
 };

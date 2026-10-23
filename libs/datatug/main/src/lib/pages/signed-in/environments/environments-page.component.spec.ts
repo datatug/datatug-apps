@@ -13,7 +13,10 @@ import { TestBed } from '@angular/core/testing';
 import { ErrorLogger } from '@sneat/core';
 import { SneatAuthStateService } from '@sneat/auth-core';
 import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
-import { EnvironmentsPageComponent } from './environments-page.component';
+import {
+  EnvironmentsPageComponent,
+  environmentManagementNote,
+} from './environments-page.component';
 import { DatatugNavContextService } from '../../../services/nav/datatug-nav-context.service';
 import { provideMockErrorLogger } from '../../../testing/error-logger.spec-helper';
 import { DatatugNavService } from '../../../services/nav/datatug-nav.service';
@@ -313,5 +316,85 @@ describe('Environments management', () => {
     page.submit('order');
     expect(api.create).not.toHaveBeenCalled();
     expect(api.save).not.toHaveBeenCalled();
+  });
+  it('explains denied management with the agent reasons instead of offering controls', async () => {
+    await TestBed.overrideComponent(EnvironmentsPageComponent, {
+      set: {
+        template: `@if (managementNote(); as note) { <p data-testid="environment-management-note">{{ note }}</p> }
+          @if (recoveryReady() && state()?.capabilities?.canWriteOrder) { <button>Manage order</button> }
+          @if (recoveryReady() && state()?.capabilities?.canCreateEnvironment) { <button>Add environment</button> }`,
+      },
+    }).compileComponents();
+    const fixture = TestBed.createComponent(EnvironmentsPageComponent);
+    const page =
+      fixture.componentInstance as unknown as EnvironmentPageTestPort;
+    fixture.detectChanges();
+    expect(
+      fixture.nativeElement.querySelector(
+        '[data-testid="environment-management-note"]',
+      ),
+    ).toBeNull();
+    response.next({
+      state: {
+        ...state,
+        capabilities: {
+          canReadOrder: true,
+          canWriteOrder: false,
+          canCreateEnvironment: false,
+          reasons: {
+            canWriteOrder: 'The project folder is read-only.',
+            canCreateEnvironment: 'The project folder is read-only.',
+          },
+        },
+      },
+      items: state.environments,
+    });
+    await vi.waitFor(() => expect(page.recoveryReady()).toBe(true));
+    await fixture.whenStable();
+    expect(
+      fixture.nativeElement
+        .querySelector('[data-testid="environment-management-note"]')
+        ?.textContent.trim(),
+    ).toBe('The project folder is read-only.');
+    expect(fixture.nativeElement.querySelectorAll('button')).toHaveLength(0);
+  });
+  it.each([
+    [undefined, ''],
+    [state, ''],
+    [
+      {
+        ...state,
+        capabilities: {
+          ...state.capabilities,
+          canWriteOrder: false,
+          reasons: { canWriteOrder: ' Order is locked. ' },
+        },
+      },
+      'Order is locked.',
+    ],
+    [
+      {
+        ...state,
+        capabilities: {
+          canReadOrder: true,
+          canWriteOrder: false,
+          canCreateEnvironment: false,
+          reasons: {
+            canCreateEnvironment: 'Folder is read-only.',
+            canWriteOrder: 'Order is locked.',
+          },
+        },
+      },
+      'Folder is read-only. Order is locked.',
+    ],
+    [
+      {
+        ...state,
+        capabilities: { ...state.capabilities, canCreateEnvironment: false },
+      },
+      'Adding environments is unavailable for this project.',
+    ],
+  ])('environmentManagementNote(%#) is %j', (input, expected) => {
+    expect(environmentManagementNote(input)).toBe(expected);
   });
 });
