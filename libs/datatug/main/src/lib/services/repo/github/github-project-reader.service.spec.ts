@@ -659,7 +659,7 @@ describe('GithubProjectReaderService', () => {
       expect(result.id).toBe('customer-invoices');
     });
 
-    describe('TugQL body forms (datatug-core queryBodyCandidates: the file name decides)', () => {
+    describe('TugQL body forms (selectTugqlBodyFile: the file name decides)', () => {
       const DEF =
         'demo-project-1/queries/customers/customer-invoices.query.json';
       const BODY = 'demo-project-1/queries/customers/customer-invoices.query';
@@ -678,6 +678,7 @@ describe('GithubProjectReaderService', () => {
           type: 'TugQL',
           text: 'from Invoice as i\n',
         });
+        expect(result.savedQueryType).toBeUndefined();
         expect(
           gh
             .urls()
@@ -698,6 +699,7 @@ describe('GithubProjectReaderService', () => {
         );
         expect(result).toMatchObject({
           type: 'DTQL',
+          savedQueryType: 'TugQL',
           text: 'from:\n  name: Invoice\n',
         });
         expect(
@@ -758,6 +760,28 @@ describe('GithubProjectReaderService', () => {
           /customer-invoices\.query\.tugql\.yaml$/u,
         );
         expect(bodyUrls.some((u) => u.endsWith('.dtql'))).toBe(false);
+      });
+
+      it('refuses a TugQL query with both a text and a YAML body file, reading neither', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql`]: 'from Invoice as i\n',
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        await expect(
+          first(service.getQuery(PROJECT_ID, 'customers/customer-invoices')),
+        ).rejects.toThrow(/more than one body file/u);
+        expect(gh.urls().some((u) => /\.query\.tugql(\.yaml)?$/u.test(u))).toBe(false);
+      });
+
+      it('still reads a legacy DTQL definition from "<id>.query.dtql"', async () => {
+        const { service } = setup({
+          [DEF]: '{"id":"customer-invoices","type":"DTQL"}',
+          [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
+        });
+        const result = await first(service.getQuery(PROJECT_ID, 'customers/customer-invoices'));
+        expect(result).toMatchObject({ type: 'DTQL', text: 'from:\n  name: Invoice\n' });
+        expect(result.savedQueryType).toBeUndefined();
       });
 
       it('does not fall back past a failure that is not a 404', async () => {
