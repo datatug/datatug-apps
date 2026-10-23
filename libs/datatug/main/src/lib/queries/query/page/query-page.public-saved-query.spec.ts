@@ -60,7 +60,11 @@ describe('QueryPage terminal handoff and public saved query integration', () => 
     const browser = vi.fn();
     const catalog = vi.fn(() => of({ connections: [declaration] }));
     let ids = 0;
-    await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
+    // Never `imports: [QueryPageComponent]`: TestBed would then walk the ORIGINAL standalone component's dependency
+    // graph and JIT-compile its 2,000-line template and every child component (editors, grid, charts) that the
+    // override below discards. That once-per-worker compile is what pushed this file past the 5s test timeout
+    // under a loaded machine. createComponent() compiles only the overridden definition.
+    await TestBed.configureTestingModule({ providers: [
         { provide: ProjectMeaningsService, useValue: {} },
       provideMockErrorLogger(),
       { provide: RandomIdService, useValue: { newRandomId: () => `handoff-${++ids}` } },
