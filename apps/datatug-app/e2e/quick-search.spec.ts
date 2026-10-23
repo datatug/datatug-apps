@@ -213,6 +213,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     suggestions.locator('sneat-datatug-query-list-item .query-type-badge'),
   ).toHaveText('SQL');
   await expect(querySuggestion.locator('mark')).toHaveText('Customers');
+  await expect(querySuggestion).toHaveAccessibleDescription('Query');
   await expect(
     suggestions.getByRole('option', { name: /See all \d+ results/ }),
   ).toBeVisible();
