@@ -22,10 +22,11 @@ import {
   IonLabel,
   IonText,
 } from '@ionic/angular';
-import { Observable, Subscription, map, of } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { QueryListItemComponent } from '../../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../../components/query-list-item/query-text-preview.service';
 import { IProjectRef } from '../../core/project-context';
 import { IProjItemBrief } from '../../models/definition/project';
 import {
@@ -320,38 +321,27 @@ export class QueriesTabComponent {
     return !!this.filter && this.type !== '*';
   }
 
-  // One loader per folder-qualified id, so a row's `loadText` input keeps its identity across renders.
-  private readonly textLoaders = new Map<
-    string,
-    () => Observable<string | undefined>
-  >();
+  private readonly textPreviews = inject(QueryTextPreviewService);
 
   /**
    * The hover preview's text loader for a row. The folder listing deliberately leaves every query's `text` unset
    * (one read per definition file, none per body), so the text comes from the single-query read, which also reads
-   * the body sidecar (`<id>.query.sql`/`.tugql`/`.http`). Called lazily, on the row's first hover or focus.
+   * the body sidecar (`<id>.query.sql`/`.tugql`/`.http`), cached per project by `QueryTextPreviewService`.
    */
   textLoader(
     query: IQueryDef,
     folders?: string[],
-  ): () => Observable<string | undefined> {
+  ): (() => Observable<string | undefined>) | undefined {
+    const project = this.project();
+    if (!project) return undefined;
     const segments = folders ?? this.currentFolder?.path.split('/') ?? [];
     const folderId = segments.filter((s) => s && s !== '~').join('/');
     const id = folderId ? `${folderId}/${query.id}` : query.id;
-    let loader = this.textLoaders.get(id);
-    if (!loader) {
-      loader = () => {
-        const listed = (query.request as ISqlQueryRequest | undefined)?.text;
-        if (listed) return of(listed);
-        const project = this.project();
-        if (!project) return of(undefined);
-        return this.queriesService
-          .getQuery(project.ref, id)
-          .pipe(map((def) => (def?.request as ISqlQueryRequest)?.text));
-      };
-      this.textLoaders.set(id, loader);
-    }
-    return loader;
+    return this.textPreviews.loader(
+      project.ref,
+      id,
+      (query.request as ISqlQueryRequest | undefined)?.text,
+    );
   }
 
   public readonly trackById = (_: number, v: IProjItemBrief) => v.id;

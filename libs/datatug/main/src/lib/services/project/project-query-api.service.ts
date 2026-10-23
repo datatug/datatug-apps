@@ -176,13 +176,32 @@ export interface GithubProjectCreateStatusRequest {
 
 /**
  * Why GitHub access is needed: `expired` (API code `reauthorization_required`: a stored grant stopped working),
- * `not_connected` (API code `github_not_connected`: no grant was ever stored), or `access_denied` (a bare 401/403
- * with no code: access was refused, with no evidence about why, so nothing claims it expired).
+ * `not_connected` (API code `github_not_connected`: no grant was ever stored), `scope_required` (codes
+ * `scope_required`/`workflow_scope_required`: the grant lacks a permission), or `access_denied` (`authorization_required`,
+ * or a bare 401/403 with no code: access was refused with no evidence about why). Only `expired` claims expiry.
  */
 export type GithubReauthorizationReason =
   | 'expired'
   | 'not_connected'
+  | 'scope_required'
   | 'access_denied';
+
+/** The honest reason for a GitHub API error code; anything without evidence of expiry is never `expired`. */
+export function githubReauthorizationReason(
+  code: string | undefined,
+): GithubReauthorizationReason {
+  switch (code) {
+    case 'reauthorization_required':
+      return 'expired';
+    case 'github_not_connected':
+      return 'not_connected';
+    case 'scope_required':
+    case 'workflow_scope_required':
+      return 'scope_required';
+    default:
+      return 'access_denied';
+  }
+}
 
 export interface GithubReauthorizationRequest {
   readonly ref: IProjectRef;
@@ -560,8 +579,8 @@ export class ProjectQueryApiService {
 
   reportGithubReauthorizationRequired(
     ref: IProjectRef,
-    requiredScopes: readonly ('repo' | 'workflow')[] = ['repo'],
-    reason: GithubReauthorizationReason = 'expired',
+    requiredScopes: readonly ('repo' | 'workflow')[],
+    reason: GithubReauthorizationReason,
   ): void {
     this.deniedReads.next(ref);
     this.githubReauthorization.next({ ref, requiredScopes, reason });

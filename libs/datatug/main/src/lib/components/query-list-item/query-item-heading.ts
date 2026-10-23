@@ -85,10 +85,14 @@ export function formatQueryTimestamp(
       align-items: baseline;
       gap: 12px;
     }
+    /* Same type scale as an ion-label h3, wherever the heading sits. */
     h3 {
       flex: 1 1 auto;
       min-width: 0;
       margin: 0;
+      font-size: 1rem;
+      font-weight: 400;
+      line-height: 1.35;
       overflow-wrap: anywhere;
     }
     time {

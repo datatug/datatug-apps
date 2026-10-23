@@ -1,17 +1,17 @@
 import {
   ChangeDetectionStrategy,
   Component,
-  DestroyRef,
+  OnDestroy,
   computed,
-  inject,
   input,
   output,
   signal,
 } from '@angular/core';
-import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+import { NgTemplateOutlet } from '@angular/common';
 import { Params, RouterLink, UrlTree } from '@angular/router';
-import { IonItem, IonLabel } from '@ionic/angular';
-import { Observable, catchError, of, take } from 'rxjs';
+import { IonIcon, IonItem } from '@ionic/angular';
+import { chevronForwardOutline } from 'ionicons/icons';
+import { Observable, Subscription, catchError, of, take } from 'rxjs';
 import { tokenizeTugql } from '../../queries/query/page/tugql-syntax';
 import {
   QueryTypeIconComponent,
@@ -39,53 +39,52 @@ export function queryPreviewText(
 
 let nextPreviewId = 0;
 
+/** How long the pointer must rest on a row before its preview loads and shows. */
+export const QUERY_PREVIEW_HOVER_DELAY_MS = 180;
+
 /**
  * `<sneat-datatug-query-list-item [queryTitle]="q.title" [type]="q.request.queryType" [createdAt]="q.createdAt"
  *   [href]="link" [loadText]="loader" />`
  *
  * The ONE row for a saved query in any list (the project Queries tab, the Queries page folder and filter views, an
- * entity's related queries, the open-queries menu; Quick Search adopts it next). It renders an `ion-item` with:
- * - the {@link QueryTypeIconComponent} (neutral icon, per-type badge) in the start slot, so the type shows once;
+ * entity's related queries, the open-queries menu; Quick Search adopts it next). It renders an `ion-item` whose
+ * main area is ONE light-DOM link (with `href`) or button (without, emitting `opened`) holding:
+ * - the {@link QueryTypeIconComponent} (neutral icon, per-type badge), so the type shows once;
  * - the title and, on the right of the same line, the light locale date (time today) with the full "Added …" text
  *   as tooltip and accessible text;
- * - optional projected content: `[queryRowSubtitle]` (a line under the title, e.g. the folder) and
- *   `[queryRowActions]` (put an `<ion-buttons slot="end" queryRowActions>` with edit/run/close buttons);
- * - an optional read-only preview of the query text (first 8 lines, highlighted like the query editor) shown on
- *   hover and keyboard focus on devices that hover. `loadText` is called once, on the first hover/focus; an empty
- *   text or a failed load shows nothing.
+ * - optional projected `[queryRowSubtitle]` content (a line under the title, e.g. the folder).
+ * Row actions are projected as `[queryRowActions]` (an `<ion-buttons slot="end" queryRowActions>`); they are
+ * siblings of the main link/button, never nested inside it.
  *
- * Inputs: `queryTitle` (required), `type`, `createdAt`, `modifiedAt`, `href` + `queryParams` (navigation), `detail`,
- * `selected`, `titleTestId`, `itemTestId`, `ariaLabel` (replaces the default accessible name), `loadText`.
- * Output: `opened`, emitted on click when there is no `href`.
+ * Optional read-only preview of the query text (first 8 lines, highlighted like the query editor): after the
+ * pointer rests on the row for {@link QUERY_PREVIEW_HOVER_DELAY_MS}, or when the main link/button takes keyboard
+ * focus, on devices that hover. It is described by the focused element (`aria-describedby`), and Escape dismisses
+ * it. Leaving or blurring cancels a pending or in-flight load. Pass a loader from `QueryTextPreviewService`, which
+ * caches texts per project; an empty text or a failed load shows nothing.
+ *
+ * Inputs: `queryTitle` (required), `type`, `createdAt`, `modifiedAt`, `href` + `queryParams` (navigation), `detail`
+ * (chevron), `selected`, `titleTestId`, `itemTestId` (on the `ion-item`), `ariaLabel` (replaces the default
+ * accessible name of the main link/button), `loadText`. Output: `opened`, emitted on activation when there is no
+ * `href`.
  */
 @Component({
   selector: 'sneat-datatug-query-list-item',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
+    NgTemplateOutlet,
     RouterLink,
+    IonIcon,
     IonItem,
-    IonLabel,
     QueryTypeIconComponent,
     QueryItemHeadingComponent,
   ],
+  host: {
+    '(document:keydown.escape)': 'dismiss()',
+  },
   template: `
-    <ion-item
-      button
-      [detail]="detail()"
-      [routerLink]="href() ?? null"
-      [queryParams]="queryParams()"
-      [attr.aria-label]="accessibleName()"
-      [attr.aria-describedby]="previewVisible() ? previewId : null"
-      [attr.data-testid]="itemTestId()"
-      [class.query-list-item-selected]="selected()"
-      (click)="onClick()"
-      (mouseenter)="hover(true)"
-      (mouseleave)="hover(false)"
-      (focusin)="focus(true)"
-      (focusout)="focus(false)"
-    >
-      <sneat-datatug-query-type-icon slot="start" [type]="type()" />
-      <ion-label>
+    <ng-template #main>
+      <sneat-datatug-query-type-icon [type]="type()" />
+      <span class="query-row-text">
         <sneat-datatug-query-item-heading
           [queryTitle]="queryTitle()"
           [createdAt]="createdAt()"
@@ -93,7 +92,45 @@ let nextPreviewId = 0;
           [testId]="titleTestId()"
         />
         <ng-content select="[queryRowSubtitle]" />
-      </ion-label>
+      </span>
+      @if (detail()) {
+        <ion-icon
+          class="query-row-chevron"
+          [icon]="chevronIcon"
+          aria-hidden="true"
+        />
+      }
+    </ng-template>
+    <ion-item
+      [attr.data-testid]="itemTestId()"
+      [class.query-list-item-selected]="selected()"
+      (mouseenter)="hover(true)"
+      (mouseleave)="hover(false)"
+    >
+      @if (href(); as link) {
+        <a
+          class="query-row-main"
+          [routerLink]="link"
+          [queryParams]="queryParams()"
+          [attr.aria-label]="accessibleName()"
+          [attr.aria-describedby]="previewVisible() ? previewId : null"
+          (focus)="focus(true)"
+          (blur)="focus(false)"
+          ><ng-container [ngTemplateOutlet]="main"
+        /></a>
+      } @else {
+        <button
+          type="button"
+          class="query-row-main"
+          [attr.aria-label]="accessibleName()"
+          [attr.aria-describedby]="previewVisible() ? previewId : null"
+          (click)="opened.emit()"
+          (focus)="focus(true)"
+          (blur)="focus(false)"
+        >
+          <ng-container [ngTemplateOutlet]="main" />
+        </button>
+      }
       <ng-content select="[queryRowActions]" />
     </ion-item>
     @if (previewVisible()) {
@@ -112,7 +149,50 @@ let nextPreviewId = 0;
       display: block;
       position: relative;
     }
-    .query-list-item-selected ion-label {
+    ion-item {
+      --padding-start: 0;
+      --inner-padding-end: 8px;
+    }
+    .query-row-main {
+      display: flex;
+      flex: 1 1 auto;
+      align-items: center;
+      min-width: 0;
+      min-height: 48px;
+      padding: 8px 0 8px 16px;
+      border: 0;
+      background: none;
+      color: inherit;
+      font: inherit;
+      text-align: start;
+      text-decoration: none;
+      cursor: pointer;
+    }
+    .query-row-main:hover {
+      background: var(--ion-color-light);
+    }
+    .query-row-main:focus-visible {
+      outline: 2px solid var(--ion-color-primary);
+      outline-offset: -2px;
+    }
+    .query-row-text {
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+    /* Projected subtitles read like an ion-label paragraph. */
+    :host ::ng-deep .query-row-text > [queryrowsubtitle] {
+      display: block;
+      margin: 2px 0 0;
+      color: var(--dt-text-muted);
+      font-size: 0.875rem;
+    }
+    .query-row-chevron {
+      flex: 0 0 auto;
+      margin-inline: 8px 4px;
+      color: var(--ion-color-medium);
+      font-size: 18px;
+    }
+    .query-list-item-selected .query-row-text {
       color: var(--ion-color-primary);
     }
     .query-preview {
@@ -145,7 +225,7 @@ let nextPreviewId = 0;
     }
   `,
 })
-export class QueryListItemComponent {
+export class QueryListItemComponent implements OnDestroy {
   readonly queryTitle = input.required<string>();
   readonly type = input<string | undefined>(undefined);
   readonly createdAt = input<string | undefined>(undefined);
@@ -157,20 +237,19 @@ export class QueryListItemComponent {
   readonly titleTestId = input<string | undefined>(undefined);
   readonly itemTestId = input<string | undefined>(undefined);
   readonly ariaLabel = input<string | undefined>(undefined);
-  /** Loads the query's text for the hover preview; called at most once per row. */
+  /** Loads the query's text for the hover preview (see `QueryTextPreviewService`). */
   readonly loadText = input<
     (() => Observable<string | null | undefined>) | undefined
   >(undefined);
   readonly opened = output<void>();
 
-  private readonly destroyRef = inject(DestroyRef);
+  protected readonly chevronIcon = chevronForwardOutline;
   protected readonly previewId = `query-preview-${++nextPreviewId}`;
-  private readonly hovered = signal(false);
-  private readonly focused = signal(false);
-  private readonly loadState = signal<'idle' | 'loading' | 'done'>('idle');
+  private readonly active = signal(false);
+  private readonly dismissed = signal(false);
   protected readonly previewText = signal<string | undefined>(undefined);
   protected readonly previewVisible = computed(
-    () => (this.hovered() || this.focused()) && !!this.previewText(),
+    () => this.active() && !this.dismissed() && !!this.previewText(),
   );
   protected readonly previewTokens = computed(() =>
     tokenizeTugql(this.previewText() ?? ''),
@@ -187,37 +266,66 @@ export class QueryListItemComponent {
       .join('. ');
   });
 
-  protected onClick(): void {
-    if (!this.href()) this.opened.emit();
-  }
+  private hoverTimer?: ReturnType<typeof setTimeout>;
+  private load?: Subscription;
+  private focused = false;
 
   protected hover(on: boolean): void {
+    this.cancelHoverIntent();
+    if (!on) {
+      if (!this.focused) this.deactivate();
+      return;
+    }
     // Touch devices do not hover: tapping opens the query, with no preview.
-    if (on && !canHover()) return;
-    this.hovered.set(on);
-    if (on) this.ensureText();
+    if (!canHover()) return;
+    this.hoverTimer = setTimeout(
+      () => this.activate(),
+      QUERY_PREVIEW_HOVER_DELAY_MS,
+    );
   }
 
   protected focus(on: boolean): void {
-    if (on && !canHover()) return;
-    this.focused.set(on);
-    if (on) this.ensureText();
+    this.focused = on;
+    if (!on) {
+      this.deactivate();
+      return;
+    }
+    if (canHover()) this.activate();
   }
 
-  private ensureText(): void {
+  /** Escape hides a visible preview until the row is left and entered again. */
+  protected dismiss(): void {
+    if (this.active()) this.dismissed.set(true);
+  }
+
+  ngOnDestroy(): void {
+    this.cancelHoverIntent();
+    this.load?.unsubscribe();
+  }
+
+  private activate(): void {
+    this.active.set(true);
     const load = this.loadText();
-    if (!load || this.loadState() !== 'idle') return;
-    this.loadState.set('loading');
-    load()
+    if (!load || this.previewText() !== undefined || this.load) return;
+    this.load = load()
       .pipe(
         take(1),
         catchError(() => of(undefined)),
-        takeUntilDestroyed(this.destroyRef),
       )
-      .subscribe({
-        next: (text) => this.previewText.set(queryPreviewText(text)),
-        complete: () => this.loadState.set('done'),
-      });
+      .subscribe((text) => this.previewText.set(queryPreviewText(text)));
+  }
+
+  private deactivate(): void {
+    this.active.set(false);
+    this.dismissed.set(false);
+    // Cancel an in-flight load (the shared cache cancels the request when no row still waits for it).
+    this.load?.unsubscribe();
+    this.load = undefined;
+  }
+
+  private cancelHoverIntent(): void {
+    if (this.hoverTimer !== undefined) clearTimeout(this.hoverTimer);
+    this.hoverTimer = undefined;
   }
 }
 

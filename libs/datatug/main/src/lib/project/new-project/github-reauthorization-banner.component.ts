@@ -94,7 +94,7 @@ export const GITHUB_RECONNECT_SESSION_KEY = 'datatug:github:reconnect';
             <ion-icon slot="start" [icon]="githubIcon" aria-hidden="true" />
             <ion-label
               ><h2 class="reauthorization-title">
-                {{ reason() === 'access_denied' ? 'GitHub access needed' : 'Connect GitHub' }}
+                {{ connectTitle() }}
               </h2></ion-label
             >
             @if (softHint()) {
@@ -132,13 +132,30 @@ export class GitHubReauthorizationBannerComponent {
   readonly softHint = computed(
     () => this.reason() === 'not_connected' && this.publicRepository(),
   );
-  protected readonly connectMessage = computed(() =>
-    this.reason() === 'access_denied'
-      ? 'GitHub did not allow DataTug to read this repository with your current access. Connect GitHub to grant access.'
-      : this.publicRepository()
-        ? 'Connect GitHub to edit this project or open private repositories.'
-        : 'This repository needs GitHub access. Connect GitHub to open it in DataTug.',
-  );
+  protected readonly connectTitle = computed(() => {
+    switch (this.reason()) {
+      case 'access_denied':
+        return 'GitHub access needed';
+      case 'scope_required':
+        return 'GitHub permission needed';
+      default:
+        return 'Connect GitHub';
+    }
+  });
+  protected readonly connectMessage = computed(() => {
+    switch (this.reason()) {
+      case 'access_denied':
+        return 'GitHub did not allow DataTug to use this repository with your current access. Connect GitHub to grant access.';
+      case 'scope_required':
+        return this.requiredScopes().includes('workflow')
+          ? "This also needs GitHub's workflow permission. Connect GitHub again to grant it."
+          : 'DataTug needs more GitHub permissions for this repository. Connect GitHub again to grant them.';
+      default:
+        return this.publicRepository()
+          ? 'Connect GitHub to edit this project or open private repositories.'
+          : 'This repository needs GitHub access. Connect GitHub to open it in DataTug.';
+    }
+  });
   private readonly dismissals = signal<readonly string[]>([]);
   /** A dismissed public-repository hint stays hidden for this project for the rest of the browser session. */
   readonly hintDismissed = computed(() => {
@@ -181,7 +198,8 @@ export class GitHubReauthorizationBannerComponent {
         if (equalProjectRef(request.ref, this.projectRef())) {
           this.requiredRef.set(request.ref);
           this.requiredScopes.set(request.requiredScopes);
-          this.reason.set(request.reason ?? 'expired');
+          // Without a typed reason there is no evidence of expiry.
+          this.reason.set(request.reason ?? 'access_denied');
         }
       });
     this.auth.authState

@@ -64,6 +64,7 @@ import {
 } from '../../../cards/related-links';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { QueryListItemComponent } from '../../../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../../../components/query-list-item/query-text-preview.service';
 
 @Component({
   selector: 'sneat-datatug-entity',
@@ -215,33 +216,14 @@ export class EntityPageComponent implements OnDestroy {
     return this.projectLink(['query', ...queryId.split('/')]);
   }
 
-  // One loader per query id, so a row's `loadText` input keeps its identity across renders.
-  private readonly queryTextLoaders = new Map<
-    string,
-    () => Observable<string | undefined>
-  >();
+  private readonly textPreviews = inject(QueryTextPreviewService);
 
   /** Reads a related query's text for its row's hover preview (the folder listing carries no text). */
-  queryTextLoader(queryId: string): () => Observable<string | undefined> {
-    let loader = this.queryTextLoaders.get(queryId);
-    if (!loader) {
-      loader = () => {
-        const ref = this.projectRef();
-        return ref
-          ? this.queriesService
-              .getQuery(ref, queryId)
-              .pipe(
-                map(
-                  (def) =>
-                    (def?.request as { readonly text?: string } | undefined)
-                      ?.text,
-                ),
-              )
-          : of(undefined);
-      };
-      this.queryTextLoaders.set(queryId, loader);
-    }
-    return loader;
+  queryTextLoader(
+    queryId: string,
+  ): (() => Observable<string | undefined>) | undefined {
+    const ref = this.projectRef();
+    return ref ? this.textPreviews.loader(ref, queryId) : undefined;
   }
 
   /** Cards that show this entity and saved queries whose parameters mean it. */

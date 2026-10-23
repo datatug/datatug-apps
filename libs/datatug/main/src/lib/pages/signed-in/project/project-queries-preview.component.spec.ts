@@ -99,7 +99,7 @@ describe('project query overview', () => {
     );
     expect(
       fixture.nativeElement
-        .querySelector('ion-item[button]')
+        .querySelector('a.query-row-main')
         .getAttribute('href'),
     ).toContain('nested%2FQuery%20104');
     await reverse(fixture);

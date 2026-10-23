@@ -3,8 +3,7 @@
 # This list may only SHRINK: convert the card's header to
 # <ion-item-divider color="light"> and lower or delete the entry. The check
 # fails on a new violation and on a stale entry. Never add a new file or raise
-# a count. project-page.component.html is being converted by another lane and
-# is removed when that lane merges.
+# a count.
 apps/datatug-app/src/app/checkout/checkout-page.component.html: 3
 apps/datatug-app/src/app/checkout/checkout-price-summary.component.ts: 1
 libs/datatug/main/src/lib/agent-links/link-problem/link-problem.component.ts: 1
@@ -51,14 +50,9 @@ libs/datatug/main/src/lib/pages/signed-in/env-db-table/ovdb-record-editor/ovdb-r
 libs/datatug/main/src/lib/pages/signed-in/env-db/env-db-page.component.html: 2
 libs/datatug/main/src/lib/pages/signed-in/environment/environment-page.component.html: 1
 libs/datatug/main/src/lib/pages/signed-in/environments/environments-page.component.html: 1
-libs/datatug/main/src/lib/pages/signed-in/project/demo-db-connections.component.ts: 3
-libs/datatug/main/src/lib/pages/signed-in/project/project-database-servers-preview.component.ts: 1
-libs/datatug/main/src/lib/pages/signed-in/project/project-page.component.html: 7
-libs/datatug/main/src/lib/pages/signed-in/project/project-queries-preview.component.ts: 1
 libs/datatug/main/src/lib/pages/signed-in/servers/servers-page.component.html: 2
 libs/datatug/main/src/lib/pages/signed-in/store/datatug-store-page.component.html: 3
 libs/datatug/main/src/lib/pages/signed-out/datatug-signed-out-page.component.html: 1
-libs/datatug/main/src/lib/project/new-project/github-reauthorization-banner.component.ts: 1
 libs/datatug/main/src/lib/project/new-project/project-copy-offer.component.ts: 1
 libs/datatug/main/src/lib/queries/public-data/public-data-page.component.html: 7
 libs/datatug/main/src/lib/queries/queries/queries-page.component.html: 2

@@ -18,7 +18,7 @@ import {
   IonSegment,
   IonSegmentButton,
 } from '@ionic/angular';
-import { Observable, Subscription, map, of } from 'rxjs';
+import { Observable, Subscription } from 'rxjs';
 import {
   textOutline,
   calendarOutline,
@@ -30,6 +30,7 @@ import type { IQueryFolder } from '../../../models/definition/query-def';
 import { projectPageHref } from '../../../nav/project-page-href';
 import { QueriesService } from '../../../queries/queries.service';
 import { QueryListItemComponent } from '../../../components/query-list-item/query-list-item.component';
+import { QueryTextPreviewService } from '../../../components/query-list-item/query-text-preview.service';
 import { queryTypeLabel } from '../../../components/query-type-icon/query-type-icon.component';
 import {
   ProjectTabPanelComponent,
@@ -168,7 +169,9 @@ function previewQueries(
               "
               aria-hidden="true"
             />
-            {{ directionLabel() }}
+            <span class="query-sort-direction-label">{{
+              directionLabel()
+            }}</span>
           </ion-button>
         }
       </ng-container>
@@ -256,6 +259,13 @@ function previewQueries(
         .query-sort-segment ion-segment-button ion-icon {
           margin: 0;
         }
+        /* The direction toggle keeps its accessible name (aria-label) and title. */
+        .query-sort-direction-label {
+          display: none;
+        }
+        .query-sort-direction ion-icon {
+          margin: 0;
+        }
       }
       .query-limit {
         margin: 0 16px 12px;
@@ -268,6 +278,7 @@ function previewQueries(
 export class ProjectQueriesPreviewComponent implements OnDestroy {
   private readonly queriesService = inject(QueriesService);
   private readonly router = inject(Router);
+  private readonly textPreviews = inject(QueryTextPreviewService);
   private load?: Subscription;
   protected readonly state = signal<'loading' | 'ready' | 'empty' | 'error'>(
     'loading',
@@ -358,27 +369,9 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       next: (folder) => {
         try {
           const all = folder
-            ? previewQueries(
-                this.router,
-                ref,
-                folder,
-                (id, listed) =>
-                  // The folder listing leaves `text` unset (the body is a sidecar file); read the one query on demand.
-                  () =>
-                    listed
-                      ? of(listed)
-                      : this.queriesService
-                          .getQuery(ref, id)
-                          .pipe(
-                            map(
-                              (def) =>
-                                (
-                                  def?.request as
-                                    | { readonly text?: string }
-                                    | undefined
-                                )?.text,
-                            ),
-                          ),
+            ? previewQueries(this.router, ref, folder, (id, listed) =>
+                // The folder listing leaves `text` unset (the body is a sidecar file); read one query on demand.
+                this.textPreviews.loader(ref, id, listed),
               )
             : [];
           this.total.set(all.length);

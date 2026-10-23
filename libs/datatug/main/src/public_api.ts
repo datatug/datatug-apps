@@ -78,10 +78,12 @@ export {
   queryTypeLabel,
 } from './lib/components/query-type-icon/query-type-icon.component';
 export {
+  QUERY_PREVIEW_HOVER_DELAY_MS,
   QUERY_PREVIEW_LINES,
   QueryListItemComponent,
   queryPreviewText,
 } from './lib/components/query-list-item/query-list-item.component';
+export { QueryTextPreviewService } from './lib/components/query-list-item/query-text-preview.service';
 export {
   QueryItemHeadingComponent,
   formatQueryTimestamp,

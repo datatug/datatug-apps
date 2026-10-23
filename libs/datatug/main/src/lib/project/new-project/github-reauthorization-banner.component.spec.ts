@@ -68,7 +68,11 @@ describe('GitHub reauthorization handoff', () => {
       branch: 'work',
     };
     const authorizationURL = 'https://github.com/login/oauth/authorize?client_id=client&state=expected-state';
-    const reauthorizationRequired = new Subject<{ ref: IProjectRef; requiredScopes: readonly ('repo' | 'workflow')[] }>();
+    const reauthorizationRequired = new Subject<{
+      ref: IProjectRef;
+      requiredScopes: readonly ('repo' | 'workflow')[];
+      reason: 'expired' | 'not_connected' | 'scope_required' | 'access_denied';
+    }>();
     const authState = new BehaviorSubject({
       status: 'authenticated',
       user: { uid: 'firebase-actor' },
@@ -88,7 +92,7 @@ describe('GitHub reauthorization handoff', () => {
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('returnUrl', '/new-project?store=github');
     fixture.detectChanges();
-    reauthorizationRequired.next({ ref, requiredScopes: ['repo', 'workflow'] });
+    reauthorizationRequired.next({ ref, requiredScopes: ['repo', 'workflow'], reason: 'expired' });
     fixture.detectChanges();
     expect(fixture.nativeElement.textContent).toContain('Reconnect GitHub');
 
@@ -126,7 +130,7 @@ describe('GitHub access banner states', () => {
     const required = new Subject<{
       ref: IProjectRef;
       requiredScopes: readonly ('repo' | 'workflow')[];
-      reason: 'expired' | 'not_connected' | 'access_denied';
+      reason: 'expired' | 'not_connected' | 'scope_required' | 'access_denied';
     }>();
     TestBed.configureTestingModule({
       imports: [GitHubReauthorizationBannerComponent],
@@ -141,7 +145,7 @@ describe('GitHub access banner states', () => {
     fixture.componentRef.setInput('projectRef', ref);
     fixture.componentRef.setInput('publicRepository', publicRepository);
     fixture.detectChanges();
-    const raise = (reason: 'expired' | 'not_connected' | 'access_denied') => {
+    const raise = (reason: 'expired' | 'not_connected' | 'scope_required' | 'access_denied') => {
       required.next({ ref, requiredScopes: ['repo'], reason });
       fixture.detectChanges();
     };
@@ -197,6 +201,22 @@ describe('GitHub access banner states', () => {
     } finally {
       setItem.mockRestore();
     }
+  });
+
+  it('asks for the missing permission, not a reconnect for expiry, when a scope is required', () => {
+    const { el, raise } = create(true);
+    raise('scope_required');
+    const card = el.querySelector('[data-testid="github-connect"]');
+    expect(card?.innerHTML).toContain('GitHub permission needed');
+    expect(card?.innerHTML).not.toContain('expired');
+    expect(card?.querySelector('[aria-label="Dismiss"]')).toBeNull();
+  });
+
+  it('treats a request without a reason as access needed, never as expired', () => {
+    const { el, raise } = create(false);
+    raise(undefined as never);
+    expect(el.querySelector('[data-testid="github-reauthorization"]')).toBeNull();
+    expect(el.querySelector('[data-testid="github-connect"]')?.innerHTML).toContain('GitHub access needed');
   });
 
   it('words a bare refusal as access needed, not expired', () => {

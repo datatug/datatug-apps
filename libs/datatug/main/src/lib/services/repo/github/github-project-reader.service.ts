@@ -1540,8 +1540,9 @@ export class GithubProjectReaderService {
    * matching datatug-cli's own `all_queries` (queries.service.ts's own doc
    * comment: "text is absent from all_queries' own response") — so this one
    * call stays cheap (one raw fetch per DEFINITION file only, no body
-   * fetches) and the query PAGE ({@link getQuery}) remains the only place a
-   * body is ever read. */
+   * fetches). A body is read only through {@link getQuery}: by the query page,
+   * and on demand by a query row's hover preview (one query at a time, after a
+   * hover-intent delay, cached per project by `QueryTextPreviewService`). */
   public getQueriesFolder(
     projectId: string,
   ): Observable<IGithubWireQueryFolder> {
