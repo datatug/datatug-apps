@@ -126,6 +126,19 @@ describe('ProjectContextMenuComponent', () => {
         ?.title,
     ).toBe('Meanings');
   });
+  it('has a distinct logical Data models menu item while keeping physical DB models on their existing path', () => {
+    expect(
+      component.projTopLevelPages.find((page) => page.path === 'data-models')
+        ?.title,
+    ).toBe('Data models');
+    const physicalModels = component.projTopLevelPages.find(
+      (page) => page.path === 'dbmodels',
+    );
+    if (physicalModels) expect(physicalModels.title).toBe('DB models');
+    expect(datatugProjectRoutes.map((route) => route.path)).toEqual(
+      expect.arrayContaining(['data-models', 'data-models/:modelId/versions/:commit']),
+    );
+  });
   it('places Cards alphabetically between Boards and Chat, with routes for the list, new card and a card', () => {
     const titles = component.projTopLevelPages.map((page) => page.title);
     const cards = titles.indexOf('Cards');

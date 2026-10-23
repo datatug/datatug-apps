@@ -37,6 +37,7 @@ export type ProjectTopLevelPage =
   | 'boards'
   | 'cards'
   | 'dbmodels'
+  | 'data-models'
   | 'entities'
   | 'incidents'
   | 'meanings'
