@@ -1560,6 +1560,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public toggleCurrentRowPane(): void {
     this.currentRowPaneChoice.set(!this.currentRowPaneOpen());
   }
+  /** True for TugQL (and its DTQL form) queries; SQL and HTTP queries never get the TugQL link. */
+  public readonly isTugqlQuery = computed(() => {
+    const type = this.queryDef()?.request.queryType;
+    return type === QueryType.DTQL || type === QueryType.TugQL;
+  });
   public readonly isNativeSqlWorkspace = computed(
     () => this.queryDef()?.request.queryType === QueryType.SQL,
   );

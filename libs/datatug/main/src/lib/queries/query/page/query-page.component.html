@@ -58,7 +58,19 @@
 
 <ion-content color="light">
   @if (isQueryReadOnly() && queryDef()) {
-    <p class="query-read-only-note" data-testid="query-read-only-note" role="note">{{ queryReadOnlyReason() }}</p>
+    <p class="query-read-only-note" data-testid="query-read-only-note" role="note">
+      {{ queryReadOnlyReason() }}
+      @if (isTugqlQuery()) {
+        <a
+          class="query-read-only-note-link"
+          data-testid="query-read-only-tugql-link"
+          href="https://tugql.org/"
+          target="_blank"
+          rel="noopener"
+          >Learn about TugQL</a
+        >
+      }
+    </p>
   }
   @if (demoDraftRecovery(); as message) {
     <ion-card data-testid="browser-query-recovery" color="warning">

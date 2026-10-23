@@ -621,7 +621,10 @@ describe('ProjectPage rendering a local-agent store project', () => {
     // read the rendered markup instead.
     const rows = () =>
       [...card().querySelectorAll('ion-list ion-label')].map((label) =>
-        label.innerHTML.replace(/<[^>]*>/g, '').trim(),
+        (
+          new DOMParser().parseFromString(label.innerHTML, 'text/html').body
+            .textContent ?? ''
+        ).trim(),
       );
     expect(card().getAttribute('panelTitle')).toBe('Boards');
     expect(card().titleHref).toBe(`${base}/boards`);
