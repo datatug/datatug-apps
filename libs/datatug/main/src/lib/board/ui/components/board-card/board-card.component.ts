@@ -10,12 +10,15 @@ import {
   viewChild,
 } from '@angular/core';
 import { NgTemplateOutlet } from '@angular/common';
+import { ChartViewTabsComponent } from '../board-widget/chart-view-tabs.component';
 import {
   IonButton,
   IonButtons,
   IonCard,
   IonCardHeader,
   IonCardTitle,
+  IonItem,
+  IonLabel,
   IonSkeletonText,
   IonToolbar,
 } from '@ionic/angular';
@@ -23,6 +26,7 @@ import { Subject } from 'rxjs';
 import {
   BoardCard,
   BoardWidgetName,
+  ChartWidgetDef,
   ProjectCard,
 } from '@datatug/board-models';
 import {
@@ -63,14 +67,17 @@ export class BoardCardTabService {
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [BoardCardTabService],
   imports: [
+    NgTemplateOutlet,
+    ChartViewTabsComponent,
     IonButton,
     IonButtons,
     IonCard,
     IonCardHeader,
     IonCardTitle,
+    IonItem,
+    IonLabel,
     IonSkeletonText,
     IonToolbar,
-    NgTemplateOutlet,
     BoardWidgetComponent,
   ],
   host: {
@@ -142,6 +149,17 @@ export class BoardCardTabService {
   ],
 })
 export class BoardCardComponent {
+  readonly raceWidget = computed(() => {
+    const widget = this.boarCardDef()?.widget;
+    const chart =
+      widget?.name === 'chart'
+        ? (widget.data as ChartWidgetDef | undefined)
+        : undefined;
+    return chart?.chart?.type === 'bar-race' ? chart : undefined;
+  });
+  readonly hasSwitchingTabs = computed(
+    () => !!this.raceWidget() || this.boarCardDef()?.widget?.name === 'tabs',
+  );
   readonly tutorialRuntime = inject(TutorialBoardRuntime, { optional: true });
   readonly tutorialNotice = computed(() => {
     if (!this.tutorialRuntime?.activeFor(this.projectRef(), this.boardId()))
@@ -177,7 +195,8 @@ export class BoardCardComponent {
       this.boarCardDef()?.title ||
       this.refReady()?.title ||
       this.widget()?.displayTitle() ||
-      '',
+      this.raceWidget()?.title ||
+      'Board card',
   );
 
   private readonly cards = inject(ProjectCardsService);

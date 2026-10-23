@@ -266,8 +266,8 @@ test('guided trend, source and race views replay one held result with reduced mo
   expect(ledger.posts).toEqual(baseline);
   await changeStep(tutorial, 'Previous');
   await expect(
-    race.getByRole('button', { name: 'Chart', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+    race.getByRole('tab', { name: 'Chart', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(race.getByRole('slider', { name: 'Choose month' })).toHaveValue(
     '3',
   );
@@ -275,8 +275,8 @@ test('guided trend, source and race views replay one held result with reduced mo
   await expect(monthly).toBeVisible();
   await changeStep(tutorial, 'Next Step');
   await expect(
-    race.getByRole('button', { name: 'Source rows', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+    race.getByRole('tab', { name: 'Source rows', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   await expect(
     race.locator('sneat-datatug-held-result-presentation'),
   ).toContainText('830 rows');
@@ -295,8 +295,8 @@ test('guided trend, source and race views replay one held result with reduced mo
   await expect(tutorial).toBeVisible();
   await expect(race).toContainText('830 source orders');
   await expect(
-    race.getByRole('button', { name: 'Chart', exact: true }),
-  ).toHaveAttribute('aria-pressed', 'true');
+    race.getByRole('tab', { name: 'Chart', exact: true }),
+  ).toHaveAttribute('aria-selected', 'true');
   expect(ledger.posts.filter((query) => query === 'orders')).toHaveLength(2);
   expect(ledger.downloads).toEqual([]);
   expect(ledger.mutations).toEqual([]);

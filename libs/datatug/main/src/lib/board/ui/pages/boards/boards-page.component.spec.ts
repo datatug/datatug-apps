@@ -175,18 +175,9 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     fixture = TestBed.createComponent(BoardsPageComponent);
   });
 
-  function boardsCard(): HTMLElement & {
-    isLoading?: boolean;
-    items?: unknown[];
-  } {
-    return fixture.nativeElement.querySelector(
-      'sneat-card-list',
-    ) as HTMLElement & { isLoading?: boolean; items?: unknown[] };
-  }
-
   it('flips the card list out of its loading state once the project/folder arrive, with no explicit detectChanges()', async () => {
     fixture.detectChanges(); // initial render — nothing has arrived yet
-    expect(boardsCard().isLoading).toBe(true);
+    expect(!!fixture.nativeElement.querySelector('[role="status"]')).toBe(true);
 
     const project: IProjectContext = {
       ref: { projectId: 'p1', storeId: 'firestore' },
@@ -198,12 +189,15 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     watchFolder$.next({ id: '~', boards: { b1: { name: 'Board One' } } });
     await fixture.whenStable();
 
-    expect(boardsCard().isLoading).toBe(false);
+    expect(!!fixture.nativeElement.querySelector('[role="status"]')).toBe(false,
+    );
     // `{id, title}`, not `{id, name}`: `onFolderReceived()` remaps
     // `folderItemsAsList()`'s own `{id, name}` shape to `{id, title}`
     // because `sneat-card-list` reads `.title`, not `.name` — see that
     // method's own doc comment (S136) for the display bug this fixes.
-    expect(boardsCard().items).toEqual([{ id: 'b1', title: 'Board One' }]);
+    expect(fixture.componentInstance.boards()).toEqual([{ id: 'b1', title: 'Board One' },
+    ]);
+    expect(fixture.nativeElement.textContent).toContain('Board One');
     // A store may accept create_board yet has no board reader. Do not offer
     // a creation action that strands the user on the next step.
     expect(fixture.nativeElement.textContent).not.toContain('New board');
@@ -216,7 +210,8 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
     });
     watchFolder$.next({ id: '~', boards: { b1: { name: 'Demo board' } } });
     await fixture.whenStable();
-    expect(boardsCard().items).toEqual([{ id: 'b1', title: 'Demo board' }]);
+    expect(fixture.componentInstance.boards()).toEqual([{ id: 'b1', title: 'Demo board' },
+    ]);
 
     currentProject$.next({
       ref: {
@@ -227,7 +222,7 @@ describe('BoardsPage renders boards once the project/folder arrive asynchronousl
       },
     });
     await fixture.whenStable();
-    expect(boardsCard().isLoading).toBe(true);
+    expect(!!fixture.nativeElement.querySelector('[role="status"]')).toBe(true);
     expect(fixture.nativeElement.textContent).not.toContain(
       'Boards are unavailable',
     );
@@ -378,16 +373,13 @@ describe('BoardsPage read errors', () => {
     (fixture.nativeElement.querySelector('ion-button') as HTMLElement).click();
     await fixture.whenStable();
     expect(watchFolder).toHaveBeenCalledTimes(2);
-    const list = fixture.nativeElement.querySelector('sneat-card-list') as
-      | (HTMLElement & { isLoading: boolean; items: unknown[] })
-      | null;
-    expect(list?.isLoading).toBe(true);
+    expect(fixture.nativeElement.textContent).toContain('Loading boards');
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
 
     retryFolder.next({ id: '~', boards: {} });
     await fixture.whenStable();
-    expect(list?.isLoading).toBe(false);
-    expect(list?.items).toEqual([]);
+    expect(fixture.nativeElement.textContent).toContain('No boards yet');
+    expect(fixture.componentInstance.boards()).toEqual([]);
     expect(fixture.nativeElement.querySelector('[role="alert"]')).toBeNull();
   });
 

@@ -170,7 +170,11 @@ export class ProjectService {
     return subj.asObservable();
   }
 
-  public getFull(projectRef: IProjectRef): Observable<IProjectFull> {
+  /** Explicit catalog reloads must observe metadata saved since the cached full read. */
+  public getFull(
+    projectRef: IProjectRef,
+    refresh = false,
+  ): Observable<IProjectFull> {
     if (!projectRef) {
       throw new Error('target is a required parameter for getFull()');
     }
@@ -192,7 +196,7 @@ export class ProjectService {
       projectRef.projectApi,
     ]);
     let $project = this.projects[cacheKey];
-    if ($project) {
+    if ($project && !refresh) {
       return $project;
     }
     $project = this.http

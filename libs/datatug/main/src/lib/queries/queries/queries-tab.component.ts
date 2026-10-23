@@ -1,3 +1,8 @@
+import { projectTagLink } from '../../tags/tag-navigation';
+import { RouterLink } from '@angular/router';
+import { TagFilterComponent } from '../../tags/tag-filter.component';
+import { TagFilterState } from '../../tags/tag-filter-state';
+import { matchesTags } from '../../tags/tags';
 import { QueriesUiService } from '../queries-ui.service';
 import { TitleCasePipe } from '@angular/common';
 import {
@@ -59,8 +64,11 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
 @Component({
   selector: 'sneat-datatug-queries-tab',
   templateUrl: 'queries-tab.component.html',
+  providers: [TagFilterState],
   imports: [
+    RouterLink,
     SqlEditorComponent,
+    TagFilterComponent,
     IonItem,
     IonLabel,
     IonInput,
@@ -75,6 +83,11 @@ type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
   ],
 })
 export class QueriesTabComponent {
+  readonly tagLink = projectTagLink;
+  readonly tagFilter = inject(TagFilterState);
+  readonly catalogItems = signal<IQueryDef[]>([]);
+  readonly loading = signal(false);
+  readonly loadError = signal('');
   private readonly injector = inject(Injector);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
   private readonly route = inject(ActivatedRoute);
@@ -179,76 +192,27 @@ export class QueriesTabComponent {
     this.route.queryParamMap.subscribe({
       next: (queryParams) => {
         const id = queryParams.get('folder') || '';
-        // `cd()` below already computes the FULL `currentFolder` (real
-        // `folders`/`items`, walked out of the already-fetched tree) before
-        // pushing that same `id` into the URL via `updateUrlWithCurrentFolder()`
-        // — a query-param-only `router.navigate()`, which re-emits THIS SAME
-        // `queryParamMap` subscription with the identical `id`. Rebuilding
-        // `currentFolder` as a bare `{path, id}` stub on that echo wiped out
-        // the folders/items `cd()` had just resolved, and nothing re-fetches
-        // them (loadQueries() below runs exactly once, on construction) —
-        // confirmed live (S121, Task 17): clicking into "customers" left the
-        // subfolder view showing only its `..` row forever, though
-        // `ng.getComponent(...).parentFolders` proved the real
-        // customer-invoices/customer-purchases-by-genre items were sitting in
-        // memory the whole time, just no longer referenced by `currentFolder`.
-        // Skipping the reset when `id` hasn't actually changed treats the
-        // echo as the no-op it is; a genuinely new `id` (a direct deep link,
-        // or browser back/forward — neither of which routes through `cd()`)
-        // still updates normally below, unchanged from before this fix.
-        //
-        // S154: this component is never routed on its own — it's a plain
-        // child embedded in QueriesPageComponent's template
-        // (queries-page.component.html), so `inject(ActivatedRoute)` above
-        // resolves to that SAME page's ActivatedRoute. Any query-param-only
-        // navigation on THAT route — not just this component's own
-        // `updateUrlWithCurrentFolder()` above, but also the PAGE's own
-        // `updateUrlWithCurrentTab()`/`updateUrlWithOrderTagsBy()` (the
-        // "Personal"/"Shared" segment and the "Order by" select, both
-        // `router.navigate([], {queryParamsHandling: 'merge'})`) — re-emits
-        // `queryParamMap` to THIS subscription too, with `folder` unchanged.
-        // The no-op guard above compares the URL's `id` sentinel for "no
-        // folder" (`''`, `queryParams.get('folder') || ''`) against
-        // `currentFolder.id` — but once a folder has actually loaded,
-        // `currentFolder.id` is the SERVER's own id for that folder, and for
-        // the root folder that id is the literal string `'~'`
-        // (GithubProjectReaderService.getQueriesFolder()'s `{id: '~', ...}`,
-        // same for the CLI-agent path — see onFolderRetrieved() below), not
-        // `''`. `'' !== '~'` defeats the guard, and the handler wipes the
-        // just-loaded root folder back to the empty `{path: '~', id: ''}`
-        // stub — confirmed live (S154, build a7eaf10): switching the Queries
-        // page from "Personal" to "Shared" and back left BOTH tabs showing
-        // zero items, although the folder tree had loaded correctly moments
-        // before and no new fetch ever ran (this component is never
-        // destroyed by that tab switch either — `queries-page.component.html`
-        // renders one `sneat-datatug-queries-tab` for both tabs, so this is
-        // the SAME instance, same in-memory `allQueries`/`currentFolder`,
-        // the whole time). `'~'` is this app's own reserved root-path
-        // marker everywhere else (getFolderAndUpdateParents() below already
-        // filters it out of `path.split('/')` as "not a real segment"), so
-        // normalizing it to the URL's own `''` root sentinel before
-        // comparing treats both spellings of "no folder" as the same value
-        // — fixing this bug, and, as a side effect, the equivalent stale
-        // `?folder=~` URL `updateUrlWithCurrentFolder()` can itself produce
-        // for `cd('~')` (path `'~'`, `.replace('~/', '')` leaves the leading
-        // `~` untouched).
-        const normalizedId = id === '~' ? '' : id;
-        const normalizedCurrentId =
-          this.currentFolder.id === '~' ? '' : this.currentFolder.id;
-        if (normalizedId === normalizedCurrentId) {
-          return;
-        }
-        this.currentFolder = {
-          path: (normalizedId && `~/${normalizedId}`) || '~',
-          id: normalizedId,
-        };
+        // Folder URLs contain the full path, while each loaded folder's id
+        // is only its leaf. Ignore our own navigation echo without discarding
+        // the loaded items, and fetch real URL changes such as browser Back.
+        const segments = id.split('/').filter((segment) => segment && segment !== '~');
+        const path = segments.length ? `~/${segments.join('/')}` : '~';
+        if (path === this.currentFolder.path) return;
+        this.currentFolder = { path, id: segments.at(-1) ?? '~' };
+        this.parentFolders = [];
         this.displayCurrentFolder();
+        const project = this.project();
+        if (project) this.fetchFolder(project.ref, path, this.rootFolder());
       },
       error: this.errorLogger.logErrorHandler(
         'Failed to get query params map from activate route',
       ),
     });
     this.trackCurrentProject();
+    effect(() => {
+      this.tagFilter.selected();
+      this.applyFilter();
+    });
 
     // `rootFolder` is a signal `input()` — unlike an `@Input()`-decorated
     // property, its value is not readable in the constructor (Angular only
@@ -317,7 +281,9 @@ export class QueriesTabComponent {
   }
 
   public isFiltering(): boolean {
-    return !!this.filter && this.type !== '*';
+    return (
+      !!this.filter || this.type !== '*' || this.tagFilter.selected().length > 0
+    );
   }
 
   getText(query: IQueryDef): string {
@@ -329,6 +295,8 @@ export class QueriesTabComponent {
   public clearFilter(): void {
     this.filter = '';
     this.type = '*';
+    this.tagFilter.set([]);
+    this.applyFilter();
   }
 
   public get isRoot(): boolean {
@@ -377,7 +345,11 @@ export class QueriesTabComponent {
   private populateFilteredItems(path: string[], folder: IQueryFolder): void {
     const f = this.filter.toLowerCase();
     folder?.items?.forEach((item) => {
-      if ((item.title || item.id).toLowerCase().includes(f)) {
+      if (
+        (item.title || item.id).toLowerCase().includes(f) &&
+        (this.type === '*' || item.request.queryType === this.type) &&
+        matchesTags(item, this.tagFilter.selected())
+      ) {
         this.filteredItems?.push({ query: item, folders: path });
       }
     });
@@ -423,6 +395,7 @@ export class QueriesTabComponent {
     this.router
       .navigate([], {
         queryParams: { [name]: value },
+        queryParamsHandling: 'merge',
         replaceUrl: true,
       })
       .catch(
@@ -452,13 +425,18 @@ export class QueriesTabComponent {
       this.queriesSub.unsubscribe();
     }
     this.personalQueriesNotice.set(undefined);
+    this.loading.set(true);
+    this.loadError.set('');
     this.queriesSub = this.queriesService
       .getQueriesFolder(projRef, path, rootFolder)
       .subscribe({
         next: (folder: IQueryFolder | null | undefined) => {
+          this.loading.set(false);
           this.onFolderRetrieved(path, folder);
         },
         error: (err: unknown) => {
+          this.loading.set(false);
+          this.catalogItems.set([]);
           if (isGithubPersonalQueriesError(err)) {
             this.allQueries = [];
             this.currentFolder = { path: '~', id: '~', folders: [], items: [] };
@@ -488,9 +466,16 @@ export class QueriesTabComponent {
             this.changeDetectorRef.markForCheck();
             return;
           }
+          this.loadError.set('Queries could not be loaded. Please try again.');
           this.errorLogger.logError(err, 'Failed to load queries');
         },
       });
+  }
+
+  reload(): void {
+    const project = this.project();
+    if (project)
+      this.fetchFolder(project.ref, this.currentFolder.path, this.rootFolder());
   }
 
   private onFolderRetrieved(path: string, folder?: IQueryFolder | null): void {
@@ -506,8 +491,14 @@ export class QueriesTabComponent {
     if (!folder && path === '~') {
       folder = { id: '~', folders: [], items: [] };
     }
+    const collect = (value: IQueryFolder): IQueryDef[] => [
+      ...(value.items ?? []),
+      ...(value.folders ?? []).flatMap(collect),
+    ];
+    this.catalogItems.set(collect(folder));
     this.allQueries = folder?.items || [];
     if (folder) {
+      this.parentFolders = [];
       this.currentFolder = {
         ...this.getFolderAndUpdateParents(path, folder),
         path,
@@ -593,10 +584,9 @@ export class QueriesTabComponent {
   public supportsFolderMutations(): boolean {
     const ref = this.project()?.ref;
     return !(
-      (ref?.spaceID !== undefined) ||
+      ref?.spaceID !== undefined ||
       (ref?.projectApi === 'cloud' &&
-      (ref.storeId === 'github.com' || ref.storeId === 'github')
-      )
+        (ref.storeId === 'github.com' || ref.storeId === 'github'))
     );
   }
 

@@ -1,3 +1,5 @@
+import { By } from '@angular/platform-browser';
+import { IonButton } from '@ionic/angular';
 import { DetectiveClientService } from '../../../../detective/detective-client.service';
 import { DatatugNavContextService } from '../../../../services/nav/datatug-nav-context.service';
 import { AgentContextService } from '@sneat/datatug-semantic';
@@ -291,9 +293,13 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     f: ComponentFixture<HostedBoardWorkspaceComponent>,
     text: string,
   ): HTMLElement {
-    const found = Array.from(
-      f.nativeElement.querySelectorAll('ion-button'),
-    ).find((node) => (node as HTMLElement).textContent?.trim() === text);
+    const found = f.debugElement.queryAll(By.directive(IonButton))
+      .map((element) => element.nativeElement as HTMLElement)
+      .find((node) => {
+        const accessibleLabel = node.getAttribute('aria-label') ??
+          node.shadowRoot?.querySelector('[aria-label]')?.getAttribute('aria-label');
+        return accessibleLabel === text || node.textContent?.trim() === text;
+      });
     expect(found).toBeTruthy();
     return found as HTMLElement;
   }
@@ -579,7 +585,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     dispatch.mockRejectedValue(new Error('Current source unavailable.'));
     const f = await mount(true);
     await vi.waitFor(() =>
-      expect(f.nativeElement.textContent).toContain('Run on board'),
+      expect(button(f, 'Run on board')).toBeTruthy(),
     );
     const input = f.nativeElement.querySelector(
       'section[aria-label="Board runtime parameters"] ion-input',
@@ -712,7 +718,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     first.destroy();
     TestBed.resetTestingModule();
     const f = await mount();
-    expect(f.nativeElement.querySelector('ion-input').value).toBe(
+    expect(f.nativeElement.querySelector('.board-editor ion-input').value).toBe(
       'Original intent',
     );
     if (!original) throw new Error('Expected original save intent.');

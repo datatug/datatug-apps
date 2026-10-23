@@ -22,15 +22,18 @@ const RESULT_EDITOR_ROUTE = /^\/store\/[^/]+\/project\/[^/]+\/query\/?$/;
 /** Only real project search/discovery routes carry this privacy boundary. */
 function quickSearchPage(
   pathname: string,
-): 'quick-search' | 'tags' | 'search-schema' | undefined {
+): 'quick-search' | 'tags' | 'tag' | 'tag-discovery' | 'search-schema' | 'boards' | 'queries' | 'servers' | undefined {
   const project = parseProjectUrl(pathname.split(/[?#]/)[0]);
   if (!project.ok) return undefined;
   const rest = project.rest.replace(/^\/sessions\/[A-Za-z0-9_-]{1,128}/, '');
-  const match = /^\/(quick-search|tags|search-schema\/[^/]+)\/?$/.exec(rest);
+  if (/^\/tag(?:\/[^/]+)?$/.test(rest)) return 'tag';
+  const list = /^\/(boards|queries|servers)$/.exec(rest);
+  if (list && new URLSearchParams(pathname.split('?')[1]?.split('#')[0] || '').has('tag')) return list[1] as 'boards' | 'queries' | 'servers';
+  const match = /^\/(quick-search|tags|tag-discovery|search-schema\/[^/]+)\/?$/.exec(rest);
   return match
     ? match[1].startsWith('search-schema/')
       ? 'search-schema'
-      : (match[1] as 'quick-search' | 'tags')
+      : (match[1] as 'quick-search' | 'tags' | 'tag-discovery')
     : undefined;
 }
 
@@ -46,9 +49,8 @@ export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
   if (typeof value === 'string')
     return (value.match(SEARCH_ORIGIN_URLS) || []).some((address) => {
       const path = address
-        .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '')
-        .split(/[?#]/)[0];
-      return !!quickSearchPage(path) || QUICK_SEARCH_API_ROUTE.test(path);
+        .replace(/^[a-z][a-z0-9+.-]*:\/\/[^/?]*/i, '');
+      return !!quickSearchPage(path) || QUICK_SEARCH_API_ROUTE.test(path.split(/[?#]/)[0]);
     });
   if (!value || typeof value !== 'object') return false;
   return Object.values(value).some((item) =>
@@ -60,7 +62,7 @@ export function hasQuickSearchOrigin(value: unknown, depth = 0): boolean {
 export function isLinkRoute(pathname: string): boolean {
   const path = pathname.split(/[?#]/)[0];
   return (
-    !!quickSearchPage(path) ||
+    !!quickSearchPage(pathname) ||
     LINK_ROUTE.test(path) ||
     RESULT_ROUTE.test(path) ||
     RESULT_EDITOR_ROUTE.test(path)
@@ -105,7 +107,7 @@ export function redactResultIds(text: string): string {
 
 /** Whether the current page is a table, view, records or record page. */
 export function onLinkRoute(): boolean {
-  return typeof location !== 'undefined' && isLinkRoute(location.pathname);
+  return typeof location !== 'undefined' && isLinkRoute(location.pathname + location.search);
 }
 
 /**
@@ -122,7 +124,7 @@ export function scrubUrl(url: string, dropQuery: boolean): string {
       origin +
       '/project/:projectId/' +
       searchPage +
-      (searchPage === 'search-schema' ? '/:dbModelId' : '')
+      (searchPage === 'search-schema' ? '/:dbModelId' : searchPage === 'tag' ? '/:tag' : '')
     );
   }
   if (

@@ -28,7 +28,11 @@ describe('DbServerService', () => {
         { provide: ProjectService, useValue: { getFull } },
         {
           provide: GithubProjectReaderService,
-          useValue: { listEnvironmentIds, getEnvironmentSummary },
+          useValue: {
+            listEnvironmentIds,
+            getEnvironmentSummary,
+            getDbServerDefinitions: () => of([]),
+          },
         },
       ],
     });
@@ -71,6 +75,7 @@ describe('DbServerService', () => {
               {
                 server: { driver: 'postgres', host: 'db.example', port: 5432 },
                 catalogs: [{ id: 'orders' }, { id: 'billing' }],
+                tags: ['Ops'],
               },
               {
                 server: { driver: 'postgres', host: 'db.example', port: 5433 },
@@ -98,6 +103,7 @@ describe('DbServerService', () => {
     ).resolves.toEqual([
       {
         dbServer: { driver: 'postgres', host: 'db.example', port: 5432 },
+        tags: ['Ops'],
         databasesCount: 2,
         environments: [{ envId: 'dev', databasesCount: 2 }],
       },
@@ -246,7 +252,19 @@ describe('DbServerService', () => {
     ]);
   });
 
-  it.each([{ dbDrivers: [] }, { dbServers: [] }, {}, { dbDrivers: null }])(
+  it.each([{}, { dbDrivers: null }])(
+    'reports an unavailable catalog for an invalid project response %o',
+    async (response) => {
+      getFull.mockReturnValue(of(response));
+      await expect(
+        firstValueFrom(
+          service.getDbServers({ storeId: 'http://agent', projectId: 'demo' }),
+        ),
+      ).rejects.toThrow('catalog is unavailable');
+    },
+  );
+
+  it.each([{ dbDrivers: [] }, { dbServers: [] }, { id: 'empty-project' }])(
     'returns an empty list for an empty or omitted server declaration: %o',
     async (response) => {
       getFull.mockReturnValue(of(response));

@@ -33,6 +33,8 @@ class WidgetStub {
   readonly readBoardForRun = input<unknown>();
   readonly cardMode = input(false);
   readonly resultCache = input<unknown>();
+  readonly headerInCard = input(false);
+  readonly actionsInCardHeader = input(false);
   readonly headerActions = viewChild<TemplateRef<unknown>>('actions');
   displayTitle() {
     return this.cardTitle() || 'Actual query';

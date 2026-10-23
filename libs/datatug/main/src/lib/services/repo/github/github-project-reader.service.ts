@@ -200,6 +200,7 @@ export interface IGithubEnvDbServer {
   host: string;
   port?: number;
   path?: string;
+
   catalogs?: string[];
 }
 
@@ -1168,6 +1169,7 @@ export class GithubProjectReaderService {
             host: s.host || '',
             port: s.port,
             path: s.path,
+
             catalogs: s.catalogs,
           })),
         };
@@ -1420,6 +1422,72 @@ export class GithubProjectReaderService {
    * call stays cheap (one raw fetch per DEFINITION file only, no body
    * fetches) and the query PAGE ({@link getQuery}) remains the only place a
    * body is ever read. */
+  public getDbServerDefinitions(
+    projectId: string,
+  ): Observable<
+    {
+      id: string;
+      tags?: string[];
+      server: { driver: string; host: string; port?: number };
+      databases?: unknown[];
+    }[]
+  > {
+    return this.listDirectory(projectId, 'dbs').pipe(
+      switchMap((drivers) =>
+        drivers.length
+          ? forkJoin(
+              drivers
+                .filter((item) => item.type === 'dir')
+                .map((driver) =>
+                  this.listDirectory(projectId, `dbs/${driver.name}`).pipe(
+                    switchMap((files) => {
+                      const definitions = files.filter(
+                        (file) =>
+                          (file.type === 'file' &&
+                            file.name.endsWith('.dbserver.json')) ||
+                          file.type === 'dir',
+                      );
+                      if (definitions.length > 100)
+                        return throwError(
+                          () =>
+                            new Error(
+                              'Server catalog exceeds 100 definitions.',
+                            ),
+                        );
+                      return definitions.length
+                        ? forkJoin(
+                            definitions.map((file) =>
+                              this.getRawJson<{
+                                id: string;
+                                tags?: string[];
+                                server: {
+                                  driver: string;
+                                  host: string;
+                                  port?: number;
+                                };
+                                databases?: unknown[];
+                              }>(
+                                projectId,
+                                `dbs/${driver.name}/${file.name}${file.type === 'dir' ? '/.datatug-dbserver.json' : ''}`,
+                              ),
+                            ),
+                          )
+                        : of([]);
+                    }),
+                  ),
+                ),
+            )
+          : of([]),
+      ),
+      map((groups) =>
+        groups.flat().map((item) => {
+          if (!item) throw new Error('Database server definition unavailable.');
+          return item;
+        }),
+      ),
+    );
+  }
+
   public getQueriesFolder(
     projectId: string,
   ): Observable<IGithubWireQueryFolder> {
@@ -1484,6 +1552,7 @@ export class GithubProjectReaderService {
       };
       return readFolder('', 0);
     });
+
   }
 
   private loadQueryItems(
@@ -1627,6 +1696,7 @@ export class GithubProjectReaderService {
                 (text): IGithubWireQueryItem => ({
                   id: def?.id || bareId,
                   title: def?.title,
+                  tags: def?.tags,
                   createdAt: def?.createdAt,
                   type,
                   text,

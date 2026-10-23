@@ -1,3 +1,4 @@
+import { legacyTagDiscovery } from '../tags/legacy-tag-discovery';
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { RouterModule, Routes } from '@angular/router';
 import { savedQueryIsMissing } from './project-query-exists.guard';
@@ -77,7 +78,7 @@ export const datatugProjectRoutes: Routes = [
       ),
   },
   {
-    path: 'tags',
+    path: 'tag-discovery',
     data: { discovery: true },
     loadComponent: () =>
       import('../quick-search/quick-search-page.component').then(
@@ -414,6 +415,29 @@ export const datatugProjectRoutes: Routes = [
         (m) => m.InvestigationContextPageComponent,
       ),
   },
+  {
+    path: 'tag',
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
+  },
+  {
+    path: 'tag/:tag',
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
+  },
+  {
+    path: 'tags',
+    canActivate: [legacyTagDiscovery],
+    loadComponent: () =>
+      import('../pages/signed-in/tags/tags-page.component').then(
+        (m) => m.TagsPageComponent,
+      ),
+  },
+
   ...(ENABLE_EMPTY_SHELL_PAGES ? emptyShellProjectRoutes : []),
   {
     // Any other address inside a project: a friendly 404 with a way back to its Boards and Queries, instead of
@@ -434,6 +458,7 @@ export const sessionWorkspacePages: Routes = datatugProjectRoutes.filter(
       'chat',
       'overview',
       'quick-search',
+      'tag-discovery',
       'tags',
       'search-schema/:dbModelId',
       'board/:board',

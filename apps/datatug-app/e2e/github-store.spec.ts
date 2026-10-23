@@ -69,21 +69,41 @@ const PROJECT_URL =
 const PAGES_URL = `${PROJECT_URL}/-`;
 const OLD_PROJECT_URL = `/store/github.com/project/${PROJECT_ID}`;
 
-test('a Board card runs an arbitrary pinned SQLite edition with its own schema', async ({ page, context }) => {
-  test.skip(!GITHUB_FAKE_DIR, 'requires the offline GitHub checkout to create a distinct edition');
+test('a Board card runs an arbitrary pinned SQLite edition with its own schema', async ({
+  page,
+  context,
+}) => {
+  test.skip(
+    !GITHUB_FAKE_DIR,
+    'requires the offline GitHub checkout to create a distinct edition',
+  );
   if (!GITHUB_FAKE_DIR) return;
   const scratch = mkdtempSync(join(tmpdir(), 'datatug-board-edition-'));
   try {
     const checkout = join(scratch, 'project');
-    execFileSync('git', ['clone', '--local', '--quiet', GITHUB_FAKE_DIR, checkout]);
+    execFileSync('git', [
+      'clone',
+      '--local',
+      '--quiet',
+      GITHUB_FAKE_DIR,
+      checkout,
+    ]);
     const project = join(checkout, 'demo-project-1');
-    const fixture = readFileSync(join(project, 'fixtures/federated/countries.sqlite'));
+    const fixture = readFileSync(
+      join(project, 'fixtures/federated/countries.sqlite'),
+    );
     const catalogPath = join(project, 'connections/demo-db.json');
     const catalog = JSON.parse(readFileSync(catalogPath, 'utf8'));
     catalog.connections.push({
-      id: 'edition-v42', title: 'Country ledger', storage: 'sqlite', environments: ['dev'],
+      id: 'edition-v42',
+      title: 'Country ledger',
+      storage: 'sqlite',
+      environments: ['dev'],
       fixtureSha256: createHash('sha256').update(fixture).digest('hex'),
-      browserFixture: { url: 'https://fixture.example/country-ledger.sqlite', bytes: fixture.byteLength },
+      browserFixture: {
+        url: 'https://fixture.example/country-ledger.sqlite',
+        bytes: fixture.byteLength,
+      },
     });
     writeFileSync(catalogPath, JSON.stringify(catalog));
     const boardPath = join(project, 'boards/board1/board.json');
@@ -91,21 +111,52 @@ test('a Board card runs an arbitrary pinned SQLite edition with its own schema',
     board.rows[0].cards[0].title = 'Country ledger';
     board.rows[0].cards[0].widget.data.sql.queryId = 'demodb/country-ledger';
     writeFileSync(boardPath, JSON.stringify(board));
-    writeFileSync(join(project, 'queries/demodb/country-ledger.query.json'), JSON.stringify({
-      id: 'country-ledger', title: 'Country ledger', type: 'SQL', connectionId: 'edition-v42',
-      recordsets: [{ columns: [{ name: 'name', type: 'string' }, { name: 'population', type: 'integer' }] }],
-    }));
-    writeFileSync(join(project, 'queries/demodb/country-ledger.query.sql'),
-      'SELECT name, population FROM Country ORDER BY id LIMIT 3\n');
+    writeFileSync(
+      join(project, 'queries/demodb/country-ledger.query.json'),
+      JSON.stringify({
+        id: 'country-ledger',
+        title: 'Country ledger',
+        type: 'SQL',
+        connectionId: 'edition-v42',
+        recordsets: [
+          {
+            columns: [
+              { name: 'name', type: 'string' },
+              { name: 'population', type: 'integer' },
+            ],
+          },
+        ],
+      }),
+    );
+    writeFileSync(
+      join(project, 'queries/demodb/country-ledger.query.sql'),
+      'SELECT name, population FROM Country ORDER BY id LIMIT 3\n',
+    );
     execFileSync('git', ['-C', checkout, 'add', '-A']);
-    execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',
-      'commit', '--quiet', '-m', 'Create arbitrary browser query fixture']);
-    await installFakeGithub(page, [{ fullName: 'datatug/datatug-demo-project', dir: checkout }]);
-    await context.route('https://fixture.example/country-ledger.sqlite', (route) => route.fulfill({
-      body: fixture,
-      contentType: 'application/octet-stream',
-      headers: { 'access-control-allow-origin': '*' },
-    }));
+    execFileSync('git', [
+      '-C',
+      checkout,
+      '-c',
+      'user.name=E2E',
+      '-c',
+      'user.email=e2e@example.test',
+      'commit',
+      '--quiet',
+      '-m',
+      'Create arbitrary browser query fixture',
+    ]);
+    await installFakeGithub(page, [
+      { fullName: 'datatug/datatug-demo-project', dir: checkout },
+    ]);
+    await context.route(
+      'https://fixture.example/country-ledger.sqlite',
+      (route) =>
+        route.fulfill({
+          body: fixture,
+          contentType: 'application/octet-stream',
+          headers: { 'access-control-allow-origin': '*' },
+        }),
+    );
     await page.goto(PROJECT_URL);
     await page
       .locator('sneat-datatug-menu-env-selector')
@@ -114,11 +165,14 @@ test('a Board card runs an arbitrary pinned SQLite edition with its own schema',
     await page.locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' }).click();
     await page.getByRole('link', { name: 'Chinook customer insights' }).last().click();
     const card = page.locator('sneat-datatug-board-page ion-card', { hasText: 'Country ledger' });
+
     await expect(card).toBeVisible();
     await card.getByRole('button', { name: 'Run on board' }).click();
     // #358 renders every browser-SQLite result in the shared result explorer, whose header reads "N rows · M columns"
     // (the board card's own "N rows returned." status is for runtimes that do not hold a browser snapshot).
-    await expect(card.getByText('3 rows · 2 columns')).toBeVisible({ timeout: 25_000 });
+    await expect(card.getByText('3 rows · 2 columns')).toBeVisible({
+      timeout: 25_000,
+    });
     await expect(card.locator('table tbody')).toContainText('Alpha');
     await expect(card.locator('table tbody')).toContainText('Gamma');
     // The held result's own receipt names the edition (source = its connection id) and the exact fixture it ran on; the
@@ -484,6 +538,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       .locator('sneat-datatug-menu-env-selector')
       .getByRole('button', { name: 'dev', exact: true })
       .click();
+
     await page
       .locator('sneat-datatug-project-menu-top ion-item', { hasText: 'Boards' })
       .click();
@@ -509,9 +564,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(
       board.getByText('Playlist composition', { exact: true }),
     ).toBeVisible();
-    await expect(
-      board.getByRole('link', { name: 'Open saved query' }),
-    ).toHaveCount(2);
+    await expect(board.getByRole('link', { name: 'Edit query' })).toHaveCount(
+      2,
+    );
 
     const topSpendCard = board.locator('ion-card', {
       hasText: 'Top customer spend',
@@ -547,7 +602,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
 
     await board
       .locator('ion-card', { hasText: 'Top customer spend' })
-      .getByRole('link', { name: 'Open saved query' })
+      .getByRole('link', { name: 'Edit query' })
       .click();
     await expect
       .poll(() => new URL(page.url()).pathname)

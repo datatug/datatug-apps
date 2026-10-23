@@ -186,11 +186,9 @@ async function goToCatalogTables(
 ): Promise<void> {
   // The project overview lists each environment as a shortcut in its
   // "Project environments" strip (no Environments tab to open first).
-  const environment = activePage(page)
-    .getByRole('region', { name: 'Project environments' })
-    .getByRole('button', {
-      name: new RegExp(`^Open ${envId} environment$`, 'i'),
-    });
+  const environment = activePage(page).locator(
+    `[data-testid="overview-environment-item"][data-environment-id="${envId}"]`,
+  );
   await expect(environment).toBeVisible({ timeout: 15_000 });
   await environment.click();
 

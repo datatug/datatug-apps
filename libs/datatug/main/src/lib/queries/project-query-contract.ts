@@ -19,6 +19,7 @@ export interface ProjectQueryWire extends ProjectQueryMetadataWire {
   readonly folderPath: string;
   readonly id: string;
   readonly title?: string;
+  readonly tags?: string[];
   readonly purpose?: string;
   readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL | QueryType.HTTP;
   /** The query text; for an HTTP query, its URL. */
@@ -53,6 +54,8 @@ export interface ProjectQueryRevision {
 }
 
 export interface ProjectQueryCapabilities {
+  readonly boardTags?: boolean;
+  readonly dbServerTags?: boolean;
   readonly queryRead: boolean;
   readonly semanticModel?: boolean;
   readonly querySave: boolean;
@@ -102,6 +105,7 @@ export function toProjectQueryWire(
   assertFields(query, [
     'id',
     'title',
+    'tags',
     'purpose',
     // Server-managed metadata may round-trip through the editor but is never sent on save.
     'createdAt',
@@ -115,6 +119,7 @@ export function toProjectQueryWire(
     'recordsets',
   ]);
   // Core owns credential screening and the bounded whole-query save admission.
+  // Tags stay on the wire; HTTP queries keep their request shape instead of the text-only check.
   if (query.purpose !== undefined && typeof query.purpose !== 'string')
     throw new UnsupportedQueryContractError();
   const isHttp = query['request'].queryType === QueryType.HTTP;
@@ -168,6 +173,7 @@ export function toProjectQueryWire(
     ...metadata,
     ...(query.comparison ? { comparison: query.comparison } : {}),
     ...(query.semanticModel ? { semanticModel: query.semanticModel } : {}),
+    ...(query.tags !== undefined ? { tags: query.tags } : {}),
     folderPath,
     id,
     ...(query.title !== undefined ? { title: query.title } : {}),

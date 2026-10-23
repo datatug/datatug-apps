@@ -211,6 +211,15 @@ h1[data-board-page-heading]:focus-visible,
   }
 }
 
+.board-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.board-title-row h1 {
+  flex: 0 1 auto;
+  min-width: 0;
+}
 .board-parameters {
   margin: 0.75rem 1rem;
   display: flex;

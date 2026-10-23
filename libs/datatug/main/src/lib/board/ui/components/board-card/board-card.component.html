@@ -36,15 +36,26 @@
   <ng-container [ngTemplateOutlet]="content" />
 } @else {
   <ion-card>
-    <ion-card-header>
+    <ion-card-header class="board-card-header">
       <ion-toolbar color="light">
-        <ion-card-title>{{ headerTitle() }}</ion-card-title>
-        @if (widget()?.hasHeaderActions()) {
-          <ion-buttons slot="end"
-            ><ng-container
-              [ngTemplateOutlet]="widget()?.headerActions() || null"
-          /></ion-buttons>
-        }
+        <ion-item color="light" lines="none">
+          <ion-label class="ion-text-wrap">
+            <ion-card-title>{{ headerTitle() }}</ion-card-title>
+          </ion-label>
+          @if (raceWidget(); as race) {
+            <sneat-datatug-chart-view-tabs
+              slot="end"
+              [view]="widget()?.chartView() ?? 'chart'"
+              [hasTrend]="race.sources.length > 0 && !!race.sources[0].transform"
+              (viewChange)="widget()?.setChartView($event)"
+            />
+          } @else if (!hasSwitchingTabs() && widget()?.hasHeaderActions()) {
+            <ion-buttons slot="end"
+              ><ng-container
+                [ngTemplateOutlet]="widget()?.headerActions() || null"
+            /></ion-buttons>
+          }
+        </ion-item>
       </ion-toolbar>
     </ion-card-header>
     <ng-container [ngTemplateOutlet]="content" />
@@ -89,6 +100,8 @@
     <sneat-datatug-board-widget
       #widget
       [embedded]="true"
+      [headerInCard]="!bare()"
+      [actionsInCardHeader]="!hasSwitchingTabs()"
       [cardTitle]="boarCardDef()?.title"
       [level]="0"
       [cardTab]="boardCardTab.currentTab"

@@ -1,7 +1,14 @@
 import { SharedEvidenceLinkComponent } from '../../../evidence/shared-evidence-link.component';
 import { BusinessClockChipComponent } from '../../../source-workspace/business-clock-chip.component';
 import { SourceEntriesComponent } from '../../../source-workspace/source-entries.component';
-import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
+import {
+  Component,
+  OnDestroy,
+  computed,
+  inject,
+  signal,
+  viewChild,
+} from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { race, Subject, of, Observable } from 'rxjs';
 import { catchError, shareReplay, takeUntil } from 'rxjs/operators';
@@ -69,6 +76,7 @@ import {
   ProjectQueriesPreviewComponent,
   countProjectQueries,
 } from './project-queries-preview.component';
+import { ProjectTagsCloudComponent } from '../../../tags/project-tags-cloud.component';
 import { ProjectDatabaseServersPreviewComponent } from './project-database-servers-preview.component';
 import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { projectPageHref } from '../../../nav/project-page-href';
@@ -96,6 +104,7 @@ function refusedReadHint(error: unknown, what: string): string | undefined {
   templateUrl: './project-page.component.html',
   styleUrls: ['./project-page.component.scss'],
   imports: [
+    ProjectTagsCloudComponent,
     SharedEvidenceLinkComponent,
     BusinessClockChipComponent,
     RouterLink,
@@ -242,14 +251,16 @@ export class ProjectPageComponent
   protected readonly metadataFailure = signal<unknown>(undefined);
   protected readonly metadataGuidance = signal<string | undefined>(undefined);
   protected readonly activeTab = signal<
-    'boards' | 'queries' | 'entities' | 'databases'
+    'boards' | 'queries' | 'tags' | 'entities' | 'databases'
   >('boards');
   protected readonly overviewTabs = [
     { id: 'boards', label: 'Boards' },
     { id: 'queries', label: 'Queries' },
+    { id: 'tags', label: 'Tags' },
     { id: 'entities', label: 'Entities' },
     { id: 'databases', label: 'Databases' },
   ] as const;
+  protected readonly sharedOverviewTabs = [{ id: 'boards', label: 'Project' }, { id: 'tags', label: 'Tags' }] as const;
   protected readonly environments = signal<IEnvironmentFull[] | undefined>(
     undefined,
   );
@@ -461,7 +472,9 @@ export class ProjectPageComponent
     }
   };
 
+  private readonly tagsCloud = viewChild(ProjectTagsCloudComponent);
   ionViewWillEnter(): void {
+    this.tagsCloud()?.reload();
     this.isActiveView = true;
   }
 
@@ -491,7 +504,7 @@ export class ProjectPageComponent
   }
 
   protected selectTab(
-    tab: 'boards' | 'queries' | 'entities' | 'databases',
+    tab: 'boards' | 'queries' | 'tags' | 'entities' | 'databases',
   ): void {
     this.activeTab.set(tab);
   }

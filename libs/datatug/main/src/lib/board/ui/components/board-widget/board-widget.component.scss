@@ -81,6 +81,11 @@ th {
   outline-offset: 2px;
 }
 
+.board-card-footer {
+  border-top: 1px solid var(--ion-color-light-shade);
+  --min-height: 44px;
+}
+
 .card-chart-actions {
   display: flex;
   flex-wrap: wrap;

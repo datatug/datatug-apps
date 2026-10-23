@@ -1,6 +1,10 @@
+import { RouterLink } from '@angular/router';
+import { IProjectRef } from '../../../core/project-context';
+import { projectTagLink } from '../../../tags/tag-navigation';
 import { Component, input, output } from '@angular/core';
 import {
   IonBadge,
+  IonChip,
   IonButton,
   IonButtons,
   IonIcon,
@@ -13,6 +17,7 @@ import { IDbServer } from '../../../models/definition/apis/database';
 
 export interface ProjectDatabaseTarget {
   readonly kind: 'catalog' | 'server';
+  readonly definitionId?: string;
   readonly environment?: string;
   readonly catalog?: string;
   readonly server?: IDbServer;
@@ -28,6 +33,7 @@ export interface ProjectDatabaseInstance {
   readonly source?: string;
   readonly target?: ProjectDatabaseTarget;
   readonly deleting?: boolean;
+  readonly tags?: readonly string[];
 }
 
 export interface ProjectDatabaseGroup {
@@ -42,6 +48,8 @@ export interface ProjectDatabaseGroup {
   templateUrl: './project-database-sources.component.html',
   styleUrls: ['./project-database-sources.component.scss'],
   imports: [
+    RouterLink,
+    IonChip,
     IonBadge,
     IonButton,
     IonButtons,
@@ -53,6 +61,8 @@ export interface ProjectDatabaseGroup {
   ],
 })
 export class ProjectDatabaseSourcesComponent {
+  readonly projectRef = input<IProjectRef>();
+  readonly tagLink = projectTagLink;
   readonly groups = input.required<readonly ProjectDatabaseGroup[]>();
   readonly loading = input(false);
   readonly emptyMessage = input('No databases are configured in this project.');

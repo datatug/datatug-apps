@@ -77,6 +77,8 @@ export interface BarRaceInspectRequest {
 export class BarRaceChartComponent
   implements AfterViewInit, OnChanges, OnDestroy
 {
+  @Input() embedded = false;
+  @Input() emptyMessage = 'No chart data is available.';
   @Input() views: BarRaceChartViews | null = null;
   @Input() initialMode: 'period' | 'cumulative' = 'period';
   @Input() initialTopN = 10;

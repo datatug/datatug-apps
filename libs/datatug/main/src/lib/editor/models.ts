@@ -48,6 +48,8 @@ export interface IQueryState extends IQueryStateDto {
   readonly id?: string;
   readonly isNew?: boolean;
   readonly title?: string;
+  /** Draft project tags, including an explicit empty array to remove all tags. */
+  readonly tags?: string[];
   readonly request?: IQueryRequest;
   /** Draft source configuration; kept separate from `def` until saved. */
   readonly federation?: IQueryDef['federation'];

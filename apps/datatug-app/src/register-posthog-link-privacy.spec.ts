@@ -117,6 +117,14 @@ describe('PostHog on the pages a card link opens', () => {
 const SEARCH_PRIVACY_PAGES = [
   '/store/private-agent/project/private-project/quick-search',
   '/space/private-space/store/firestore/project/private-project/tags',
+  '/space/private-space/store/firestore/project/private-project/tag-discovery',
+  '/space/private-space/store/firestore/project/private-project/tag/private-tag',
+  '/space/private-space/store/firestore/project/private-project/tag',
+  '/space/private-space/store/firestore/project/private-project/tag?tag=private-tag',
+  '/space/private-space/store/firestore/project/private-project/boards?tag=private-tag',
+  '/store/private-agent/project/private-project/queries?tag=private-tag',
+  '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/servers?tag=private-tag',
+
   '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model',
 ];
 describe('Quick Search project metadata privacy', () => {
@@ -124,7 +132,7 @@ describe('Quick Search project metadata privacy', () => {
     '%s suppresses capture/replay and removes URLs and result DOM',
     (path) => {
       const query =
-        '?q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
+        (path.includes('?') ? '&' : '?') + 'q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
       const config = start(path + query);
       expect(config.autocapture).toBe(false);
       expect(config.disable_session_recording).toBe(true);
@@ -184,9 +192,9 @@ describe('Quick Search project metadata privacy', () => {
 
 describe('queued Quick Search PostHog events after leaving the page',()=>{
   it.each(SEARCH_PRIVACY_PAGES)('retains origin privacy for %s on Home',path=>{
-    const config=start(path+'?q=private-query');
+    const config=start(path+(path.includes('?')?'&':'?')+'q=private-query');
     history.replaceState(null,'','/home');applyPosthogRoutePrivacy('/home');
-    const properties={$current_url:'https://datatug.app'+path+'?q=private-query&name=private-tag',$el_text:'private-result',$elements:[{text:'private-result'}],$elements_chain:'private-result'};
+    const properties={$current_url:'https://datatug.app'+path+(path.includes('?')?'&':'?')+'q=private-query&name=private-tag',$el_text:'private-result',$elements:[{text:'private-result'}],$elements_chain:'private-result'};
     const result=config.before_send({event:'manual_event',properties});
     for(const secret of ['private-query','private-tag','private-project','private-owner','private-result'])expect(JSON.stringify(result)).not.toContain(secret);
     expect(config.before_send({event:'$autocapture',properties})).toBeNull();

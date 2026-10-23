@@ -1,3 +1,4 @@
+import { IProjBoard } from '../../models/definition/project';
 import {
   EntitySnapshot,
   decodeEntity,
@@ -132,10 +133,9 @@ export class ProjectAssetsApiService {
 
   boards(
     ref: IProjectRef,
-    environment: string,
-  ): Observable<{ id: string; title?: string }[]> {
+    environment: string): Observable<IProjBoard[]> {
     return defer(() =>
-      this.api.get<{ id: string; title?: string }[]>(
+      this.api.get<IProjBoard[]>(
         'datatug/boards/all_boards',
         new HttpParams({ fromObject: hostedAssetScope(ref, environment) }),
       ),

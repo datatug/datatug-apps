@@ -1,3 +1,6 @@
+import { TagFilterComponent } from '../../../tags/tag-filter.component';
+import { TagFilterState } from '../../../tags/tag-filter-state';
+import { matchesTags } from '../../../tags/tags';
 import { Component, OnDestroy, computed, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import {
@@ -85,6 +88,7 @@ interface ProjectConnectionCatalog {
   templateUrl: './servers-page.component.html',
   styleUrls: ['./servers-page.component.scss'],
   imports: [
+    TagFilterComponent,
     // `ProjectContextService` (injected below) and `DbServerService`
     // (injected below, itself needing `ProjectContextService`/
     // `ProjectService`) were plain `@Injectable()`s provided by
@@ -140,6 +144,7 @@ interface ProjectConnectionCatalog {
   ],
 })
 export class ServersPageComponent implements OnDestroy {
+  readonly tagFilter = inject(TagFilterState);
   protected readonly getDbServerId = getDbServerId;
   private readonly projectContextService = inject(ProjectContextService);
   private readonly errorLogger = inject<IErrorLogger>(ErrorLogger);
@@ -189,7 +194,9 @@ export class ServersPageComponent implements OnDestroy {
         instances: [...(existing?.instances ?? []), instance],
       });
     };
-    for (const environment of this.environments() ?? []) {
+    for (const environment of this.tagFilter.selected().length
+      ? []
+      : (this.environments() ?? [])) {
       if (!selected.has(environment.id)) continue;
       for (const server of environment.dbServers ??
         environment.dbServer ??
@@ -216,7 +223,9 @@ export class ServersPageComponent implements OnDestroy {
         }
       }
     }
-    for (const source of this.catalogSources() ?? []) {
+    for (const source of this.tagFilter.selected().length
+      ? []
+      : (this.catalogSources() ?? [])) {
       const dataset = source.dataset;
       if (!dataset) continue;
       if (
@@ -246,12 +255,20 @@ export class ServersPageComponent implements OnDestroy {
       });
     }
     for (const summary of this.filteredDbServers() ?? []) {
-      if (!summary.dbServer.host?.trim() && !summary.dbServer.path?.trim())
+      if (
+        !summary.dbServer.host?.trim() &&
+        !summary.dbServer.path?.trim() &&
+        !summary.id
+      )
         continue;
-      const location = serverLocation(summary.dbServer);
+      const location =
+        summary.dbServer.host?.trim() || summary.dbServer.path?.trim()
+          ? serverLocation(summary.dbServer)
+          : this.serverLabel(summary.dbServer);
       add(`server:${serverKey(summary.dbServer)}`, location, 'server', {
         key: `server:${serverKey(summary.dbServer)}`,
         title: 'Configured server',
+        tags: summary.tags,
         driver: summary.dbServer.driver,
         detail: location,
         environments: summary.environments?.map((item) => item.envId) ?? [],
@@ -260,7 +277,13 @@ export class ServersPageComponent implements OnDestroy {
           : 'Server inventory',
         deleting: this.isDeleting(summary.dbServer),
         ...(this.canOpenDbServer(summary.dbServer)
-          ? { target: { kind: 'server' as const, server: summary.dbServer } }
+          ? {
+              target: {
+                kind: 'server' as const,
+                server: summary.dbServer,
+                definitionId: summary.id,
+              },
+            }
           : {}),
       });
     }
@@ -310,7 +333,8 @@ export class ServersPageComponent implements OnDestroy {
         ),
       ) ??
         false);
-    return this.filterText().trim() ||
+    return this.tagFilter.selected().length ||
+      this.filterText().trim() ||
       (!!this.environments()?.length &&
         this.selectedEnvironmentIds().size === 0) ||
       hasDefinitions
@@ -354,6 +378,7 @@ export class ServersPageComponent implements OnDestroy {
       const environmentFilterAvailable = this.environments() !== undefined;
       const query = this.filterText().trim().toLocaleLowerCase();
       return servers
+        .filter((server) => matchesTags(server, this.tagFilter.selected()))
         .map((server) => {
           if (!server.environments || !environmentFilterAvailable) {
             return server;
@@ -397,7 +422,7 @@ export class ServersPageComponent implements OnDestroy {
   // Written from the same `.subscribe()` callback as `dbServers` above.
   // Never read by the template, but kept as a signal too for consistency
   // and so tools/check-zoneless-fields.mjs doesn't need a carve-out for it.
-  private readonly target = signal<IProjectRef | undefined>(undefined);
+  readonly target = signal<IProjectRef | undefined>(undefined);
   // A signal, not a plain field mutated in place: `this.isDeletingServer[id]
   // = ...` / `delete this.isDeletingServer[id]` from deleteDbServer()'s
   // `.subscribe()` callback below used to mutate a plain `Record` — a
@@ -425,6 +450,11 @@ export class ServersPageComponent implements OnDestroy {
         }
         this.target.set(target);
       });
+  }
+
+  ionViewWillEnter(): void {
+    const target = this.target();
+    if (target) this.loadDbServers(target, this.loadEpoch);
   }
 
   ngOnDestroy() {
@@ -472,7 +502,13 @@ export class ServersPageComponent implements OnDestroy {
   }
 
   protected canOpenDbServer(dbServer: IDbServer): boolean {
-    return !!dbServer.host?.trim() && !dbServer.path?.trim();
+    return (
+      !dbServer.path?.trim() &&
+      (!!dbServer.host?.trim() ||
+        !!this.dbServers()?.find(
+          (item) => serverKey(item.dbServer) === serverKey(dbServer),
+        )?.id)
+    );
   }
 
   protected sourceFormat(source: ProjectConnectionSource): string {
@@ -517,7 +553,11 @@ export class ServersPageComponent implements OnDestroy {
 
   protected openDatabaseTarget(target: ProjectDatabaseTarget): void {
     if (target.kind === 'server' && target.server) {
-      this.goDbServer({ dbServer: target.server, databasesCount: 0 });
+      this.goDbServer({
+        dbServer: target.server,
+        id: target.definitionId,
+        databasesCount: 0,
+      });
       return;
     }
     const project = this.target();
@@ -593,11 +633,17 @@ export class ServersPageComponent implements OnDestroy {
       );
       return;
     }
-    this.navCtrl
-      .navigateForward(url)
-      .catch((err) =>
-        this.errorLogger.logError(err, 'Failed to navigate to DB server page'),
-      );
+    const queryParams = {
+      ...(target.projectApi ? { projectApi: target.projectApi } : {}),
+      ...(target.branch ? { branch: target.branch } : {}),
+      ...(dbServer.id ? { definitionId: dbServer.id } : {}),
+    };
+    const navigation = Object.keys(queryParams).length
+      ? this.navCtrl.navigateForward(url, { queryParams })
+      : this.navCtrl.navigateForward(url);
+    navigation.catch((err) =>
+      this.errorLogger.logError(err, 'Failed to navigate to DB server page'),
+    );
   }
 
   deleteDbServer(event: Event, dbServer: IProjDbServerSummary): void {

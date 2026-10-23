@@ -27,7 +27,9 @@
   }
   @if (loading() && groups().length) {
     <ion-item>
-      <ion-label color="medium">Loading remaining database sources...</ion-label>
+      <ion-label color="medium"
+        >Loading remaining database sources...</ion-label
+      >
     </ion-item>
   }
   @for (group of groups(); track group.key) {
@@ -72,6 +74,11 @@
                 rel="noopener noreferrer"
                 (click)="$event.stopPropagation()"
                 >Source</a
+              >
+            }
+            @for (tag of instance.tags || []; track tag) {
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(projectRef(), tag)"
+                ><ion-chip [outline]="true">{{ tag }}</ion-chip></a
               >
             }
             @if (instance.target?.kind === 'server') {

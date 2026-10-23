@@ -89,7 +89,13 @@
       </ion-segment>
     </ion-card-header>
     @if (tab === 'db') {
+      <sneat-datatug-tag-filter
+        [items]="dbServers() || []"
+        [selected]="tagFilter.selected()"
+        (selectedChange)="tagFilter.set($event)"
+      />
       <sneat-datatug-project-database-sources
+        [projectRef]="target()"
         [groups]="databaseGroups()"
         [loading]="databaseSourcesLoading()"
         [emptyMessage]="databaseSourcesEmptyMessage()"

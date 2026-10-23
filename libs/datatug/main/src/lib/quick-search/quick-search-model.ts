@@ -1,3 +1,7 @@
+import {
+  projectTagDiscoveryHref,
+  projectTagHref,
+} from '../tags/tag-navigation';
 import { isPublicChecksProject } from '../detective/public-checks-project';
 import { IProjectRef } from '../core/project-context';
 import { projectPageHref } from '../nav/project-page-href';
@@ -162,9 +166,7 @@ export function searchItemHref(
   let page: string[];
   switch (item.kind) {
     case 'tag':
-      return withParameters(projectPageHref(ref, ['tags']), {
-        name: item.name,
-      });
+      return projectTagHref(ref, item.name);
     case 'query':
       return withParameters(projectPageHref(ref, ['query', item.id]), {
         id: item.id,
@@ -205,6 +207,11 @@ export function searchItemHref(
       return undefined;
   }
   return projectPageHref(ref, page);
+}
+
+/** Name groups retain cross-kind discovery separately from actual tag detail. */
+export function searchNameHref(ref: IProjectRef, name: string): string {
+  return projectTagDiscoveryHref(ref, name);
 }
 
 export type CheckMetadataTarget =

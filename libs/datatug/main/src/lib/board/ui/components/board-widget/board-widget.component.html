@@ -40,12 +40,12 @@
         size="small"
         fill="clear"
         [routerLink]="tree"
-        [attr.aria-label]="'Open saved query · ' + displayTitle()"
-        title="Open saved query"
+        aria-label="Edit query"
+        title="Edit query"
         (click)="widgetDef()?.name === 'SQL' && rememberChoice()"
       >
         <ion-icon [icon]="openIcon" aria-hidden="true" />
-        <span class="header-action-text">Open saved query</span>
+        <span class="header-action-text">Edit query</span>
       </ion-button>
     }
   }
@@ -165,36 +165,12 @@
             <p>{{ title }}</p>
           }
         }
-        @if (chartWidgetDef()?.chart?.type === 'bar-race') {
-          <div
-            class="chart-view-switch"
-            role="group"
-            aria-label="Chart result view"
-          >
-            <button
-              type="button"
-              (click)="setChartView('chart')"
-              [attr.aria-pressed]="chartView() === 'chart'"
-            >
-              Chart
-            </button>
-            @if (chartWidgetDef()?.sources?.[0]?.transform) {
-              <button
-                type="button"
-                (click)="setChartView('trend')"
-                [attr.aria-pressed]="chartView() === 'trend'"
-              >
-                Monthly trend
-              </button>
-            }
-            <button
-              type="button"
-              (click)="setChartView('grid')"
-              [attr.aria-pressed]="chartView() === 'grid'"
-            >
-              Source rows
-            </button>
-          </div>
+        @if (chartWidgetDef()?.chart?.type === 'bar-race' && !headerInCard()) {
+          <sneat-datatug-chart-view-tabs
+            [view]="chartView()"
+            [hasTrend]="!!chartWidgetDef()?.sources?.[0]?.transform"
+            (viewChange)="setChartView($event)"
+          />
         }
       </div>
       @if (!evidenceKind()) {
@@ -314,6 +290,13 @@
         />
       }
     </div>
+    @if (embedded() && !actionsInCardHeader() && hasHeaderActions()) {
+      <ion-item lines="none" class="board-card-footer">
+        <ion-buttons
+          ><ng-container [ngTemplateOutlet]="widgetHeaderActions"
+        /></ion-buttons>
+      </ion-item>
+    }
   }
   @case ('SQL-parameter') {
     <div class="ion-padding card-widget" data-widget="SQL-parameter">
@@ -503,6 +486,13 @@
         }
       }
     </div>
+    @if (embedded() && !actionsInCardHeader() && hasHeaderActions()) {
+      <ion-item lines="none" class="board-card-footer">
+        <ion-buttons
+          ><ng-container [ngTemplateOutlet]="widgetHeaderActions"
+        /></ion-buttons>
+      </ion-item>
+    }
   }
   @default {
     <div class="ion-margin-top">

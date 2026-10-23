@@ -51,7 +51,7 @@ describe('datatugRoutes', () => {
     );
     expect(route?.children?.map((child) => child.path)).toEqual([
       'quick-search',
-      'tags',
+      'tag-discovery',
       'search-schema/:dbModelId',
       'meanings',
       'meanings/new-entity',
@@ -60,6 +60,9 @@ describe('datatugRoutes', () => {
       'meanings/field',
       '',
       'overview',
+      'tags',
+      'tag',
+      'tag/:tag',
       'environments',
       'sources/:sourceId',
       'shipping',

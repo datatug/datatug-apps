@@ -15,6 +15,39 @@
 </ion-header>
 
 <ion-content>
+  @if (dbServer(); as server) {
+    @if (serverTags(); as tags) {
+      <sneat-datatug-project-item-tags
+        [projectRef]="projectRef()"
+        kind="dbserver"
+        [initialTags]="tags"
+        [driver]="server.driver"
+        [itemId]="serverDefinitionId() || ''"
+      />
+    } @else {
+      <ion-card>
+        <ion-item-divider color="light">
+          <ion-label><strong>Tags</strong></ion-label>
+          <ion-buttons slot="end">
+            <ion-button
+              fill="clear"
+              [disabled]="serverTagsLoading()"
+              (click)="loadServerTags()"
+              >Reload tags</ion-button
+            >
+          </ion-buttons>
+        </ion-item-divider>
+        @if (serverTagsLoading()) {
+          <p class="ion-padding-horizontal" role="status">
+            Loading server tags…
+          </p>
+        }
+        @if (serverTagsError(); as error) {
+          <p class="ion-padding-horizontal" role="alert">{{ error }}</p>
+        }
+      </ion-card>
+    }
+  }
   <ion-card>
     <ion-item-divider>
       @switch (dbServer()?.driver) {

@@ -1,6 +1,7 @@
 import type { ChartSourceEdit } from '@datatug/board-models';
 import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
 import { EvidenceSharePanelComponent, EvidenceShareSelection } from '../../../../evidence/evidence-share-panel.component';
+import { TagsEditorComponent } from '../../../../tags/tags-editor.component';
 import { BoardChartEditorComponent } from './board-chart-editor.component';
 import { parseBoardParameterValue } from '../../../core/board-parameter-value';
 import {
@@ -78,7 +79,9 @@ interface QueryFolder {
   selector: 'sneat-datatug-hosted-board-workspace',
   changeDetection: ChangeDetectionStrategy.OnPush,
   providers: [HostedBoardScope],
-  imports: [ChartSourceEditorComponent,
+  imports: [
+    TagsEditorComponent,
+    ChartSourceEditorComponent,
     EvidenceSharePanelComponent,
     BoardChartEditorComponent,
     RouterLink,
@@ -140,7 +143,11 @@ interface QueryFolder {
       <p role="status">{{ notice() }}</p>
     }
     @if (scope.admitted()) {
-      <sneat-datatug-evidence-share-panel [environment]="scope.environment()" [disabled]="saving()" (selected)="evidenceSelection.set($event)" />
+      <sneat-datatug-evidence-share-panel
+        [environment]="scope.environment()"
+        [disabled]="saving()"
+        (selected)="evidenceSelection.set($event)"
+      />
     }
     @if (scope.admitted() && parameters().length) {
       <section class="runtime-parameters" aria-label="Board runtime parameters">
@@ -183,6 +190,13 @@ interface QueryFolder {
       @if (!scope.canWrite()) {
         <p role="status">You can view this board, but cannot save changes.</p>
       }
+      <sneat-datatug-tags-editor
+        [tags]="board.tags || []"
+        [projectRef]="scope.page.ref()"
+        [readonly]="!scope.canWrite() || !editing()"
+        [disabled]="saving() || !!pending()"
+        (tagsChange)="updateTags($event)"
+      />
       @if (scope.canWrite() && editing()) {
         <section class="board-editor" aria-label="Edit board definition">
           <ion-item
@@ -639,7 +653,8 @@ export class HostedBoardWorkspaceComponent {
       this.draft()?.parameters,
     ]),
   );
-  readonly evidenceSelection = signal<EvidenceShareSelection | undefined>(undefined);
+  readonly evidenceSelection = signal<EvidenceShareSelection | undefined>(undefined,
+  );
   readonly boardContext = computed<IBoardContext>(() => ({
     mode: 'view',
     parameters: this.scope.admitted() ? this.parameterValues() : {},
@@ -883,6 +898,16 @@ export class HostedBoardWorkspaceComponent {
         error instanceof Error ? error.message : 'Board edit is unavailable.',
       );
     }
+  }
+  updateTags(tags: string[]): void {
+    if (
+      !this.editing() ||
+      this.pending() ||
+      this.saving() ||
+      !this.scope.canWrite()
+    )
+      return;
+    this.draft.update((board) => (board ? { ...board, tags } : board));
   }
   cardParameters(card: BoardCard): QueryParameter[] {
     return (

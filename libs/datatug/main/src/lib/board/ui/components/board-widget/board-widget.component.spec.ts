@@ -45,7 +45,8 @@ describe('BoardWidgetComponent', () => {
     async () => [] as { selectionId: string; title: string }[],
   );
   let runtimeRevision = signal(0);
-  let nativeProject: BehaviorSubject<{ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>;
+  let nativeProject: BehaviorSubject<
+    | {ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>;
   let authState: BehaviorSubject<{
     status: 'notAuthenticated' | 'authenticated';
     user?: { uid: string };
@@ -56,7 +57,8 @@ describe('BoardWidgetComponent', () => {
     run.mockReset();
     availableWorkingCopies.mockReset().mockResolvedValue([]);
     runtimeRevision = signal(0);
-    nativeProject = new BehaviorSubject<{ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>(undefined);
+    nativeProject = new BehaviorSubject<
+      | {ref:{storeId:string;projectId:string;spaceID?:string}} | undefined>(undefined);
     authState = new BehaviorSubject<{
       status: 'notAuthenticated' | 'authenticated';
       user?: { uid: string };
@@ -68,7 +70,9 @@ describe('BoardWidgetComponent', () => {
         BoardPresentationSelection,
         { provide: PLATFORM_ID, useValue: 'server' },
         provideRouter([]),
-        {provide:DatatugNavContextService,useValue:{currentProject:nativeProject,currentEnv:of(undefined)}},
+        {provide:DatatugNavContextService,useValue:{currentProject:nativeProject,currentEnv:of(undefined),
+          },
+        },
         {
           provide: SneatAuthStateService,
           useValue: { authState: authState.asObservable() },
@@ -78,7 +82,8 @@ describe('BoardWidgetComponent', () => {
           provide: QueryDispatchService,
           useValue: {
             execute: run,
-            executeHeld: async (...args: Parameters<typeof run>) => ({ result: await run(...args) }),
+            executeHeld: async (...args: Parameters<typeof run>) => ({ result: await run(...args),
+            }),
             runtimeRevision: runtimeRevision.asReadonly(),
             availableWorkingCopies,
           },
@@ -112,7 +117,7 @@ describe('BoardWidgetComponent', () => {
     fixture.detectChanges();
     const button = fixture.debugElement.query(By.directive(RouterLink));
     expect(button).not.toBeNull();
-    expect(button.nativeElement.textContent).toContain('Open saved query');
+    expect(button.nativeElement.textContent).toContain('Edit query');
     const urlTree = button.injector.get(RouterLink).urlTree;
     if (!urlTree) throw new Error('Expected a saved-query RouterLink URL');
     return router.serializeUrl(urlTree);
@@ -205,6 +210,7 @@ describe('BoardWidgetComponent', () => {
       data: { sql: { queryId } },
     });
     fixture.detectChanges();
+    await fixture.whenStable();
     expect(renderedHeaderActions()).toContain('Run on board');
     expect(fixture.nativeElement.querySelector('ion-toolbar ion-buttons[slot="end"] ion-button')?.getAttribute('aria-label')).toContain('Run on board');
     await fixture.componentInstance.run();
@@ -513,7 +519,7 @@ describe('BoardWidgetComponent', () => {
     );
   });
 
-  it('renders one selected nested tab using stable IDs even when titles match', () => {
+  it('renders one selected nested tab using stable IDs even when titles match', async () => {
     fixture.componentRef.setInput('projectRef', {
       storeId: 'github.com',
       projectId: 'r@o@@v1.0.0',
@@ -545,9 +551,11 @@ describe('BoardWidgetComponent', () => {
       .componentInstance as TabsWidgetComponent;
     tabs.select('id:grid');
     fixture.detectChanges();
+    await fixture.whenStable();
     expect(fixture.nativeElement.textContent).not.toContain(
       'Unsupported widget: HTTP',
     );
+    await fixture.whenStable();
     expect(renderedHeaderActions()).toContain('Run on board');
     expect(tabs.activePath()).toEqual(['id:grid']);
   });
@@ -590,6 +598,46 @@ describe('BoardWidgetComponent', () => {
     expect(fixture.nativeElement.textContent).toContain(
       'Choices stay in this tutorial session.',
     );
+  });
+
+  it('auto-runs a pinned published showcase once while keeping tutorial edits unadmitted', async () => {
+    const ref = {
+      storeId: 'github.com',
+      projectId:
+        'datatug-demo-project@datatug@demo-project-1@a6a360eceb23fa1f4a0cd9f3833c0a61cb75e7b5',
+    };
+    const widget: BoardWidget = {
+      name: 'SQL',
+      data: { sql: { queryId: 'chinook-top-customer-spend' } },
+    };
+    const canonical: Board = {
+      id: 'showcase',
+      title: 'Board',
+      rows: [{ cards: [{ id: 'top', title: 'Top', widget }] }],
+    };
+    run.mockResolvedValue({
+      recordset: { columns: [], rows: [] },
+      truncated: false,
+      provenance: { source: 'test' },
+    });
+    fixture.componentRef.setInput('projectRef', ref);
+    fixture.componentRef.setInput('boardId', 'showcase');
+    fixture.componentRef.setInput('cardId', 'top');
+    fixture.componentRef.setInput('widgetDef', widget);
+    fixture.componentRef.setInput('readBoardForRun', () => of(canonical));
+    fixture.detectChanges();
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(1));
+    await router.navigateByUrl('/?mode=tutorial');
+    fixture.detectChanges();
+    await fixture.whenStable();
+    expect(fixture.componentInstance.sessionOnly()).toBe(false);
+    expect(fixture.componentInstance.showcase()).toBe(false);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(
+      getQuery.mock.calls.every(
+        ([readRef]) => readRef.projectId === ref.projectId,
+      ),
+    ).toBe(true);
   });
 
   it.each(['tutorial', 'tutoril'])(
@@ -678,6 +726,7 @@ describe('BoardWidgetComponent', () => {
       .componentInstance as TabsWidgetComponent;
     tabs.select('id:grid');
     fixture.detectChanges();
+    await fixture.whenStable();
     expect(fixture.componentInstance.snapshotStore()()).toBe(firstSnapshot);
     expect(child().result()).toBe(firstSnapshot?.result);
   });
@@ -718,20 +767,29 @@ describe('BoardWidgetComponent', () => {
 
   it('uses the existing alert for finite diagnostics and retains the original failure only locally', async () => {
     const cause = new Error('https://secret.test/token SQL auth body');
-    const failure = new NativeQueryFailure({ stage: 'capability_discovery', reason: 'http_status', status: 403 }, { cause });
-    getQuery.mockReturnValue(of({ id: 'demo/query', title: 'Demo query', request: { queryType: QueryType.SQL, text: 'select 1' }, connectionId: 'chinook-sqlite' }));
-    fixture.componentRef.setInput('projectRef', { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local', branch: 'feature/demo' });
+    const failure = new NativeQueryFailure({ stage: 'capability_discovery', reason: 'http_status', status: 403 }, { cause },
+    );
+    getQuery.mockReturnValue(of({ id: 'demo/query', title: 'Demo query', request: { queryType: QueryType.SQL, text: 'select 1' }, connectionId: 'chinook-sqlite',
+      }),
+    );
+    fixture.componentRef.setInput('projectRef', { storeId: 'localhost:8989', projectId: 'demo', projectApi: 'local', branch: 'feature/demo',
+    });
     fixture.componentRef.setInput('boardId', 'board1');
     fixture.componentRef.setInput('cardId', 'top');
-    fixture.componentRef.setInput('readBoardForRun', () => throwError(() => failure));
-    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId: 'demo/query' } } });
+    fixture.componentRef.setInput('readBoardForRun', () => throwError(() => failure),
+    );
+    fixture.componentRef.setInput('widgetDef', { name: 'SQL', data: { sql: { queryId: 'demo/query' } },
+    });
     fixture.detectChanges();
     await fixture.componentInstance.run();
     fixture.detectChanges();
     expect(fixture.componentInstance.runFailure()).toBe(failure);
-    expect(fixture.componentInstance.runFailure()).toHaveProperty('cause', cause);
-    expect(fixture.nativeElement.textContent).toContain('OVDB metadata request failed (HTTP 403)');
-    expect(fixture.nativeElement.textContent).not.toMatch(/secret|SQL auth body/);
+    expect(fixture.componentInstance.runFailure()).toHaveProperty('cause', cause,
+    );
+    expect(fixture.nativeElement.textContent).toContain('OVDB metadata request failed (HTTP 403)',
+    );
+    expect(fixture.nativeElement.textContent).not.toMatch(/secret|SQL auth body/,
+    );
     expect(fixture.componentInstance.runError()).toContain('Retry');
   });
 
@@ -881,7 +939,7 @@ describe('BoardWidgetComponent', () => {
     );
   });
 
-  it('keeps the saved-query action for a qualified ref when its query is not admitted', () => {
+  it('keeps the saved-query action for a qualified ref when its query is not admitted', async () => {
     fixture.componentRef.setInput('projectRef', {
       storeId: 'github.com',
       projectId: 'r@o@@feature',
@@ -893,7 +951,9 @@ describe('BoardWidgetComponent', () => {
       data: { sql: { queryId: 'demodb/q' } },
     });
     fixture.detectChanges();
-    expect(renderedHeaderActions()).toContain('Open saved query');
+    await fixture.whenStable();
+    expect(fixture.debugElement.query(By.directive(RouterLink))).not.toBeNull();
+    expect(renderedHeaderActions()).toContain('Edit query');
     expect(renderedHeaderActions()).not.toContain('Run on board');
     expect(getQuery).toHaveBeenCalledTimes(1);
   });
@@ -1057,7 +1117,8 @@ describe('BoardWidgetComponent', () => {
       id: publicQueryId,
       title: 'Countries',
       connectionId: 'northwind-sqlite',
-      request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry' },
+      request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry',
+      },
     };
     getQuery.mockReturnValue(of(definition));
     const board = {
@@ -1077,7 +1138,10 @@ describe('BoardWidgetComponent', () => {
     return { board, readBoard, definition };
   }
   function countryResult() {
-    const rights = JSON.parse(readFileSync(resolve(process.cwd(), 'libs/datatug/main/src/lib/queries/test-fixtures/browser-sqlite/northwind-source-rights.json'), 'utf8'));
+    const rights = JSON.parse(readFileSync(resolve(process.cwd(), 'libs/datatug/main/src/lib/queries/test-fixtures/browser-sqlite/northwind-source-rights.json',
+        ), 'utf8',
+      ),
+    );
     return {
       runtime: 'browser-sqlite' as const,
       complete: true,
@@ -1118,7 +1182,8 @@ describe('BoardWidgetComponent', () => {
 
   it('clears a chart producer without interpreting chart data as a SQL definition', () => {
     const data = countryWidget.data as ChartWidgetDef;
-    configureShowcase({ ...countryWidget, data: { ...data, chart: { ...data.chart, selectionId: 'country' } } });
+    configureShowcase({ ...countryWidget, data: { ...data, chart: { ...data.chart, selectionId: 'country' } },
+    });
     const component = fixture.componentInstance;
     expect(component.sqlWidgetDef()).toBeUndefined();
     component.selectCountry('Canada');
@@ -1192,18 +1257,27 @@ describe('BoardWidgetComponent', () => {
   });
 
   it('pairs authenticated provider identity with the complete held Result, never trusts a sidecar alone, and clears both on native actor change', async () => {
-    const queryId='shipping/receipt',ref={storeId:'firestore',spaceID:'fixture-space',projectId:'fixture-project'};
+    const queryId='shipping/receipt',ref={storeId:'firestore',spaceID:'fixture-space',projectId:'fixture-project',
+      };
     configureShowcase({name:'SQL',data:{sql:{queryId}}});
-    getQuery.mockReturnValue(of({id:'receipt',title:'Request received',request:{queryType:QueryType.SQL,text:'SELECT request_id FROM shipping_requests'}}));
+    getQuery.mockReturnValue(of({id:'receipt',title:'Request received',request:{queryType:QueryType.SQL,text:'SELECT request_id FROM shipping_requests',
+        },
+      }),
+    );
     authState.next({status:'authenticated',user:{uid:'sarah'}});nativeProject.next({ref});
-    fixture.componentRef.setInput('projectRef',ref);fixture.componentRef.setInput('boardContext',{environment:'demo',executionTarget:{kind:'hosted-cloud'}});
-    const response=await readRetainedQueryResponse(retainedFixture.query,{projectRef:ref,environment:'demo',actor:'sarah'},queryId);
+    fixture.componentRef.setInput('projectRef',ref);fixture.componentRef.setInput('boardContext',{environment:'demo',executionTarget:{kind:'hosted-cloud'},
+    });
+    const response=await readRetainedQueryResponse(retainedFixture.query,{projectRef:ref,environment:'demo',actor:'sarah'},queryId,
+    );
     const execute=vi.spyOn(TestBed.inject(QueryDispatchService),'executeHeld').mockResolvedValue({result:response.result,hostedResponse:response});
     fixture.detectChanges();await fixture.whenStable();await fixture.componentInstance.run();
-    expect(fixture.componentInstance.result()).toMatchObject({rowEvidence:response.result.rowEvidence});
-    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity?.source.generation).toBe(response.sourcePin?.revision.generation);
+    expect(fixture.componentInstance.result()).toMatchObject({rowEvidence:response.result.rowEvidence,
+    });
+    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity?.source.generation,
+    ).toBe(response.sourcePin?.revision.generation);
     execute.mockResolvedValue({result:response.result});await fixture.componentInstance.run();
-    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity).toBeUndefined();
+    expect(fixture.componentInstance.heldSnapshot()?.evidenceIdentity,
+    ).toBeUndefined();
     authState.next({status:'authenticated',user:{uid:'maya'}});
     expect(fixture.componentInstance.result()).toBeUndefined();expect(fixture.componentInstance.heldSnapshot()).toBeUndefined();
   });
@@ -1211,8 +1285,13 @@ describe('BoardWidgetComponent', () => {
   it('runs a saved server DTQL definition by default without choosing a working copy', async () => {
     configureShowcase();
     getQuery.mockReturnValue(of({ id: publicQueryId, title: 'Server countries',
-      request: { queryType: QueryType.DTQL, text: 'from: {database: northwind, name: Orders, alias: orders}' },
-      federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [{ database: 'northwind', name: 'Orders', fields: ['ShipCountry'] }] } }));
+      request: { queryType: QueryType.DTQL, text: 'from: {database: northwind, name: Orders, alias: orders}',
+        },
+      federation: { ovdbBaseUrl: 'https://ovdb.demodb.dev', tables: [{ database: 'northwind', name: 'Orders', fields: ['ShipCountry'] },
+          ],
+        },
+      }),
+    );
     run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() => expect(run).toHaveBeenCalledOnce());
@@ -1231,8 +1310,7 @@ describe('BoardWidgetComponent', () => {
       expect(fixture.componentInstance.running()).toBe(false),
     );
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(1),
-    );
+      expect(run).toHaveBeenCalledTimes(1));
     await fixture.whenStable();
     expect(readBoard).toHaveBeenCalledTimes(1);
     expect(run).toHaveBeenCalledTimes(1);
@@ -1280,8 +1358,7 @@ describe('BoardWidgetComponent', () => {
     );
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(1),
-    );
+      expect(run).toHaveBeenCalledTimes(1));
     const signal = run.mock.calls[0][0]?.signal;
     fixture.componentRef.setInput('boardContext', { environment: 'different' });
     fixture.detectChanges();
@@ -1307,8 +1384,7 @@ describe('BoardWidgetComponent', () => {
     run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(1),
-    );
+      expect(run).toHaveBeenCalledTimes(1));
     await fixture.whenStable();
     const tabs = fixture.debugElement.query(By.directive(TabsWidgetComponent))
       .componentInstance as TabsWidgetComponent;
@@ -1344,17 +1420,22 @@ describe('BoardWidgetComponent', () => {
     run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(1),
-    );
+      expect(run).toHaveBeenCalledTimes(1));
   });
 
   it('dispatches an explicit target and displays its runtime validation failure', async () => {
     configureShowcase();
-    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'hosted-cloud' } });
-    run.mockRejectedValue(new QueryDispatchError('Hosted execution requires a shared cloud project.'));
+    fixture.componentRef.setInput('boardContext', { environment: 'dev', executionTarget: { kind: 'hosted-cloud' },
+    });
+    run.mockRejectedValue(new QueryDispatchError('Hosted execution requires a shared cloud project.',
+      ),
+    );
     fixture.detectChanges();
-    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('Hosted execution requires'));
-    expect(run).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'hosted-cloud' } }), { maxRows: 1000 });
+    await vi.waitFor(() => expect(fixture.componentInstance.runError()).toContain('Hosted execution requires',
+      ),
+    );
+    expect(run).toHaveBeenCalledWith(expect.objectContaining({ target: { kind: 'hosted-cloud' } }), { maxRows: 1000 },
+    );
   });
 
   it('runs a separate saved inspector query through the dispatcher with no bar controls', async () => {
@@ -1365,14 +1446,14 @@ describe('BoardWidgetComponent', () => {
         id: queryId,
         title: 'Country inspector',
         connectionId: 'northwind-sqlite',
-        request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry' },
+        request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry',
+        },
       }),
     );
     run.mockResolvedValue(countryResult());
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(1),
-    );
+      expect(run).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
       expect(fixture.componentInstance.running()).toBe(false),
     );
@@ -1443,13 +1524,21 @@ describe('BoardWidgetComponent', () => {
       switchGroup.compareDocumentPosition(chartElement) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    (switchGroup.querySelectorAll('button')[1] as HTMLButtonElement).click();
+    switchGroup.dispatchEvent(
+      new CustomEvent('ionChange', {
+        detail: { value: 'grid' },
+        bubbles: true,
+      }),
+    );
     fixture.detectChanges();
     expect(chart.active).toBe(false);
-    expect(
-      switchGroup.querySelectorAll('button')[1].getAttribute('aria-pressed'),
-    ).toBe('true');
-    (switchGroup.querySelectorAll('button')[0] as HTMLButtonElement).click();
+    expect(fixture.componentInstance.chartView()).toBe('grid');
+    switchGroup.dispatchEvent(
+      new CustomEvent('ionChange', {
+        detail: { value: 'chart' },
+        bubbles: true,
+      }),
+    );
     fixture.detectChanges();
     expect(
       fixture.debugElement.query(By.directive(BarRaceChartComponent))
@@ -1459,20 +1548,22 @@ describe('BoardWidgetComponent', () => {
     expect(chart.mode()).toBe('cumulative');
     expect(chart.topN()).toBe(7);
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(1),
-    );
+      expect(run).toHaveBeenCalledTimes(1));
     await vi.waitFor(() =>
       expect(fixture.componentInstance.result()).toBeDefined(),
     );
     fixture.detectChanges();
-    const terms = fixture.nativeElement.querySelector('details.chart-source-terms') as HTMLDetailsElement;
-    expect(chartElement.compareDocumentPosition(terms) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const terms = fixture.nativeElement.querySelector('details.chart-source-terms',
+    ) as HTMLDetailsElement;
+    expect(chartElement.compareDocumentPosition(terms) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
     expect(terms.open).toBe(false);
     const summary = terms.querySelector('summary') as HTMLElement;
     expect(summary.textContent?.trim()).toBe('Source data terms');
     summary.click();
     expect(terms.open).toBe(true);
-    expect(terms.querySelector('[aria-label="Source data terms"]')?.textContent).toContain('MIT');
+    expect(terms.querySelector('[aria-label="Source data terms"]')?.textContent,
+    ).toContain('MIT');
   });
 
   function configureBoundChart(bindings: unknown, countryType = 'string') {
@@ -1585,7 +1676,8 @@ describe('BoardWidgetComponent', () => {
         id: publicQueryId,
         title: 'Bound public query',
         connectionId: 'northwind-sqlite',
-        request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry' },
+        request: { queryType: QueryType.SQL, text: 'SELECT ShipCountry, COUNT(*) AS orders FROM Orders GROUP BY ShipCountry',
+        },
         parameters: [{ id: 'limit', type: 'integer' }],
       }),
     );
@@ -1593,7 +1685,9 @@ describe('BoardWidgetComponent', () => {
     fixture.detectChanges();
     await vi.waitFor(() => expect(run).toHaveBeenCalledWith(expect.objectContaining({
       parameters: { limit: { type: 'integer', value: '5' } },
-    }), { maxRows: 1000 }));
+    }), { maxRows: 1000 },
+      ),
+    );
   });
   it('rejects unsupported chart parameter types rather than relabeling them as strings', async () => {
     configureBoundChart(
@@ -1741,8 +1835,7 @@ describe('BoardWidgetComponent', () => {
     await router.navigateByUrl('/');
     fixture.detectChanges();
     await vi.waitFor(() =>
-      expect(run).toHaveBeenCalledTimes(2),
-    );
+      expect(run).toHaveBeenCalledTimes(2));
     expect(fixture.componentInstance.sessionOnly()).toBe(false);
     expect(fixture.componentInstance.result()).toBeUndefined();
     resolveNormal?.(countryResult());

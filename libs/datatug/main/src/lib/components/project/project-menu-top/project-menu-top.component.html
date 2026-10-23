@@ -27,6 +27,7 @@
         'sessions',
         'boards',
         'cards',
+        'tags',
       ].includes(page.path))
   ) {
     <ion-menu-toggle autoHide="false">
@@ -56,7 +57,7 @@
         } @else {
           <ion-icon slot="start" [name]="page.icon" />
         }
-        <ion-label [class.current]="(currentFolder | async) === page.path">{{
+        <ion-label [class.current]="(currentFolder | async) === page.path || (page.path === 'tags' && (currentFolder | async) === 'tag')">{{
           page.path === 'variables' && inSessionWorkspace()
             ? 'Context Bag'
             : page.title

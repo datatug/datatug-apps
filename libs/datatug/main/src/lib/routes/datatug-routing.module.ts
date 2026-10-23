@@ -1,3 +1,4 @@
+import { legacyTagDiscovery } from '../tags/legacy-tag-discovery';
 import { SOURCE_ADAPTER_PROVIDERS } from './source-adapter-providers';
 import { projectMeaningsRoutes } from '../meanings/meanings-routes';
 import { NgModule } from '@angular/core';
@@ -186,7 +187,9 @@ export const datatugRoutes: Routes = [
               'overview',
               'environments',
               'quick-search',
+              'tag-discovery',
               'tags',
+              'tag',
               'queries',
               'checks',
               'detective',
@@ -198,6 +201,10 @@ export const datatugRoutes: Routes = [
               'card',
               'meanings',
             ].includes(segments[6].path)) ||
+          (segments.length === 8 &&
+            segments[6].path === 'tag' &&
+            segments[7].path.length > 0 &&
+            new TextEncoder().encode(segments[7].path).length <= 50) ||
           (segments.length === 8 &&
             segments[6].path === 'cards' &&
             segments[7].path === 'new') ||
@@ -265,7 +272,7 @@ export const datatugRoutes: Routes = [
           ),
       },
       {
-        path: 'tags',
+        path: 'tag-discovery',
         data: { discovery: true },
         loadComponent: () =>
           import('../quick-search/quick-search-page.component').then(
@@ -288,6 +295,7 @@ export const datatugRoutes: Routes = [
             (m) => m.ProjectPageComponent,
           ),
       })),
+      ...['tags', 'tag', 'tag/:tag'].map((path) => ({ path, ...(path === 'tags' ? {canActivate:[legacyTagDiscovery]} : {}), loadComponent: () => import('../pages/signed-in/tags/tags-page.component').then(m => m.TagsPageComponent) })),
       {
         path: 'environments',
         loadComponent: () =>

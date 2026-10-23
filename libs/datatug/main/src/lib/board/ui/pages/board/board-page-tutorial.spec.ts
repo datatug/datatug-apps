@@ -19,12 +19,13 @@ import { BoardCardComponent } from '../../components/board-card/board-card.compo
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { IProjectRef } from '../../../../core/project-context';
 
-
 // This fixture exercises tutorial layout/focus, while the real BoardCard still
 // consumes the widget's public title and projected-header contract.
 @Component({ selector: 'sneat-datatug-board-widget', template: '' })
 class TutorialWidgetDom {
   readonly embedded = input(false);
+  readonly headerInCard = input(false);
+  readonly actionsInCardHeader = input(false);
   readonly cardTitle = input<string>();
   readonly level = input<number>();
   readonly cardTab = input<unknown>();
@@ -34,9 +35,13 @@ class TutorialWidgetDom {
   readonly boardId = input<string>();
   readonly cardId = input<string>();
   readonly readBoardForRun = input<unknown>();
+  readonly cardMode = input(false);
+  readonly resultCache = input<unknown>();
   readonly displayTitle = () => this.cardTitle() || '';
   readonly hasHeaderActions = () => false;
   readonly headerActions = () => null;
+  readonly chartView = () => 'chart' as const;
+  setChartView(): void { /* Playback is covered by board-widget specs. */ }
 }
 
 @Component({

@@ -1,11 +1,17 @@
 import { EvidenceCopyLinkComponent } from '../../../evidence/evidence-copy-link.component';
 import { friendlyError, redactErrorText } from '@datatug/friendly-error';
 import {
+  keepVisibleOnWidthReflow,
+  type WidthReflowAnchor,
+} from './width-reflow-anchor';
+import { TagsEditorComponent } from '../../../tags/tags-editor.component';
+import {
   prepareLocalMeaningSave,
   type LocalMeaningSaveSnapshot,
 } from '../../semantic-project-reference';
 import { localOvdbRequirement } from '../../local-ovdb-requirement';
 import { ProjectMeaningsService } from '../../../meanings/project-meanings.service';
+
 import { HeldRowEvidenceComponent } from '../../../evidence/held-row-evidence.component';
 import { heldEvidenceIdentity } from '../../../evidence/retained-evidence-contract';
 import type { HeldEvidenceIdentity } from '@sneat/datatug-semantic';
@@ -897,6 +903,7 @@ function declaredParameterDefault(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    TagsEditorComponent,
     EvidenceCopyLinkComponent,
     ResultCellCardsComponent,
     SemanticMappingDialogComponent,
@@ -1491,6 +1498,25 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
 
   @ViewChild(AuthorCodeEditorComponent)
   private authorCodeEditor?: AuthorCodeEditorComponent;
+
+  private receiptReflowAnchor?: WidthReflowAnchor;
+
+  @ViewChild('executionReceipt', { read: ElementRef })
+  private set executionReceiptRef(ref: ElementRef<HTMLElement> | undefined) {
+    this.receiptReflowAnchor?.destroy();
+    this.receiptReflowAnchor = undefined;
+    const element = ref?.nativeElement;
+    const root = element
+      ?.closest('ion-content')
+      ?.shadowRoot?.querySelector<HTMLElement>('.inner-scroll');
+    if (!element || !root) return;
+    this.receiptReflowAnchor = keepVisibleOnWidthReflow(
+      element,
+      root,
+      () => [this.currentQueryIdentity(), this.historyScope(), this.runResult()],
+      () => this.authorViewActive && this.isCurrentRoute(),
+    );
+  }
 
   private workspaceTabBar?: ElementRef<HTMLElement>;
   private workspaceTabResizeObserver?: ResizeObserver;
@@ -3902,6 +3928,16 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     );
   }
 
+  public updateTags(tags: string[]): void {
+    if (
+      this.queryState.isSaving ||
+      this.queryState.saveSupported === false ||
+      !this.canSaveQuery()
+    )
+      return;
+    this.queryEditorStateService.updateQueryState({ ...this.queryState, tags });
+  }
+
   public querySaveState(): string {
     if (this.demoDraftRecovery()) return 'Unavailable';
     if (this.demoDraftLoading()) return 'Loading';
@@ -3972,6 +4008,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   }
 
   public ionViewWillLeave(): void {
+    this.receiptReflowAnchor?.clear();
     this.invalidateSemanticMapping();
     this.authorViewActive = false;
     // Ionic retains this component after navigation. The dispatcher session owns
@@ -7198,6 +7235,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               ? { title: queryState.title }
               : {}),
             ...(queryState.request ? { request: queryState.request } : {}),
+            tags: queryState.tags ?? queryState.def.tags,
             federation: queryState.federation ?? queryState.def.federation,
             connectionId:
               queryState.connectionId !== undefined
@@ -7399,6 +7437,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   };
 
   ngOnDestroy(): void {
+    this.receiptReflowAnchor?.destroy();
     ++this.demoDraftGeneration;
     this.demoDraftCancelled.next();
     this.demoDraftCancelled.complete();

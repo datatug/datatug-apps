@@ -1,10 +1,14 @@
+import { ProjectItemTagsComponent } from '../../../tags/project-item-tags.component';
+import { IProjectRef } from '../../../core/project-context';
+import { getDbServerId } from '../../../models/definition/apis/database';
 import { Component, OnDestroy, inject, signal } from '@angular/core';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import {
   IonBackButton,
   IonBadge,
   IonButtons,
+  IonButton,
   IonCard,
   IonContent,
   IonHeader,
@@ -21,7 +25,7 @@ import {
   IonToolbar,
 } from '@ionic/angular';
 import { map, takeUntil } from 'rxjs/operators';
-import { combineLatest, Subject } from 'rxjs';
+import { combineLatest, of, Subject, Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import {
   DbServerService,
@@ -41,6 +45,7 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
   selector: 'sneat-datatug-dbserver',
   templateUrl: './dbserver-page.component.html',
   imports: [
+    ProjectItemTagsComponent,
     // `DbServerService` (injected below) is a plain `@Injectable()`,
     // provided by `DatatugServicesUnsortedModule` — its own dependencies
     // (`HttpClient`, `ProjectContextService`, `ProjectService`,
@@ -56,6 +61,7 @@ import { SneatDatatugPageTitleComponent } from '../../../components/page-title/s
     IonHeader,
     IonToolbar,
     IonButtons,
+    IonButton,
     IonBackButton,
     IonMenuButton,
     IonContent,
@@ -78,6 +84,18 @@ export class DbserverPageComponent implements OnDestroy {
   private readonly route = inject(ActivatedRoute);
   private readonly dbServerService = inject(DbServerService);
   private readonly projectContextService = inject(ProjectContextService);
+
+  private readonly requestedDefinitionId = signal<string | undefined>(
+    undefined,
+  );
+  readonly serverDefinitionId = signal<string | undefined>(undefined);
+  readonly serverTags = signal<string[] | undefined>(undefined);
+  readonly serverTagsLoading = signal(false);
+  readonly serverTagsError = signal('');
+  private metadataSubscription?: Subscription;
+  private metadataReadGeneration = 0;
+  readonly projectRef = signal<IProjectRef | undefined>(undefined);
+  readonly getDbServerId = getDbServerId;
 
   tab: 'known' | 'unknown' = 'known';
   // Signals, not plain fields: this app is zoneless
@@ -129,10 +147,17 @@ export class DbserverPageComponent implements OnDestroy {
     // `combineLatest` removes the ordering dependency entirely: `loadData()`
     // now runs only once BOTH values are known, and reruns whenever either
     // changes afterwards.
-    combineLatest([dbServer$, this.projectContextService.current$])
+    combineLatest([
+      dbServer$,
+      this.route.queryParamMap ?? of(convertToParamMap({})),
+      this.projectContextService.current$,
+    ])
       .pipe(takeUntil(this.destroyed))
-      .subscribe(([dbServer, target]) => {
+      .subscribe(([dbServer, params, target]) => {
+        this.requestedDefinitionId.set(params.get('definitionId') ?? undefined);
         this.dbServer.set(dbServer);
+        this.projectRef.set(target);
+        this.loadServerTags();
         if (dbServer && target) {
           this.loadData();
         }
@@ -142,6 +167,62 @@ export class DbserverPageComponent implements OnDestroy {
   ngOnDestroy() {
     // console.log('DbserverPage.ngOnDestroy()');
     this.destroyed.next();
+  }
+
+  loadServerTags(): void {
+    const target = this.projectRef(),
+      server = this.dbServer();
+    const generation = ++this.metadataReadGeneration;
+    this.metadataSubscription?.unsubscribe();
+    this.serverDefinitionId.set(undefined);
+    this.serverTags.set(undefined);
+    this.serverTagsError.set('');
+    this.serverTagsLoading.set(!!target && !!server);
+    if (!target || !server) return;
+    const fail = () => {
+      if (generation !== this.metadataReadGeneration) return;
+      this.serverTagsLoading.set(false);
+      this.serverTagsError.set(
+        'Server tags could not be loaded. Check project access and retry.',
+      );
+    };
+    this.metadataSubscription = this.dbServerService
+      .getDbServers(target)
+      .pipe(takeUntil(this.destroyed))
+      .subscribe({
+        next: (items) => {
+          if (generation !== this.metadataReadGeneration) return;
+          if (!Array.isArray(items)) {
+            fail();
+            return;
+          }
+          const selectedId = this.requestedDefinitionId();
+          const matches = items.filter(
+            (item) =>
+              item.dbServer.driver === server.driver &&
+              (item.dbServer.host ?? '') === (server.host ?? '') &&
+              (item.dbServer.port ?? 0) === (server.port ?? 0) &&
+              (!selectedId || item.id === selectedId),
+          );
+          if (matches.length > 1 || (selectedId && !matches.length)) {
+            fail();
+            return;
+          }
+          this.serverDefinitionId.set(
+            matches[0]?.id ??
+              server.driver +
+                ':' +
+                (server.host || '') +
+                (server.port ? ':' + server.port : ''),
+          );
+          this.serverTags.set(matches[0]?.tags ?? []);
+          this.serverTagsLoading.set(false);
+        },
+        error: fail,
+        complete: () => {
+          if (this.serverTagsLoading()) fail();
+        },
+      });
   }
 
   private loadData(): void {

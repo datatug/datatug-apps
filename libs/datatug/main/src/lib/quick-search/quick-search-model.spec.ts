@@ -5,6 +5,7 @@ import {
   SearchDocument,
   searchChipLabel,
   searchItemHref,
+  searchNameHref,
 } from './quick-search-model';
 import { schemaDocuments } from './quick-search-snapshot.service';
 
@@ -87,6 +88,15 @@ describe('Quick Search grouped typed results', () => {
   });
 });
 
+it.each(['Customers','..','team/'])('keeps actual tag %s separate from cross-kind name discovery in shared scope', name => {
+  const ref={storeId:'firestore',spaceID:'S',projectId:'P'};
+  const tag=searchItemHref(ref,{kind:'tag',id:name,name,tags:[],reference:{objectId:name}});
+  const url=new URL(tag || '/', 'https://example.test');
+  expect(url.pathname).not.toBe('/');
+  expect(url.searchParams.get('tag') ?? decodeURIComponent(url.pathname.split('/').at(-1) || '')).toBe(name);
+  expect(searchNameHref(ref,name)).toBe('/space/S/store/firestore/project/P/tag-discovery?name='+encodeURIComponent(name));
+});
+
 describe('typed Check metadata destinations',()=>{
   const item:SearchDocument={kind:'check',id:'check-a',name:'Check A',tags:[],reference:{objectId:'check-a'}};
   it('keeps Firestore and the exact default demo on their existing Check page',()=>{
@@ -104,4 +114,24 @@ describe('typed Check metadata destinations',()=>{
   it.each(['?detailKind=table&objectId=a','?detailKind=check','?objectId=a','?detailKind=check&objectId=../a','?detailKind=check&detailKind=check&objectId=a'])('rejects malformed metadata selector %s',query=>{
     const params=new URLSearchParams(query);expect(checkMetadataTarget(params)).toEqual({kind:'invalid'});
   });
+});
+
+
+describe('assigned tag navigation byte boundaries', () => {
+  const ref = {storeId: 'firestore', spaceID: 'S', projectId: 'P'};
+  it.each(['A'.repeat(51), 'é'.repeat(25) + 'a', '😀'.repeat(13), ' ' + 'A'.repeat(49) + ' '])(
+    'uses closed exact-tag discovery when a legacy name exceeds the detail byte contract', name => {
+      expect(searchItemHref(ref, {kind: 'tag', id: name, name, tags: [], reference: {objectId: name}}))
+        .toBe(searchNameHref(ref, name));
+    },
+  );
+  it.each(['A'.repeat(50), 'é'.repeat(25), '😀'.repeat(12) + '//'])(
+    'retains exact detail navigation for valid 50-byte names, including opaque text', name => {
+      const href = searchItemHref(ref, {kind: 'tag', id: name, name, tags: [], reference: {objectId: name}});
+      const url = new URL(href || '/', 'https://example.test');
+      expect(url.pathname).not.toContain('/tag-discovery');
+      expect(url.pathname).not.toBe('/');
+      expect(url.searchParams.get('tag') ?? decodeURIComponent(url.pathname.split('/').at(-1) || '')).toBe(name);
+    },
+  );
 });

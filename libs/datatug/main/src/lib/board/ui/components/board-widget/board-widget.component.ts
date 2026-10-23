@@ -40,13 +40,15 @@ import {
 import { Router, RouterLink, UrlTree } from '@angular/router';
 import { ActivatedRoute } from '@angular/router';
 import { takeUntilDestroyed, toSignal } from '@angular/core/rxjs-interop';
+import { ChartViewTabsComponent } from './chart-view-tabs.component';
 import {
   IonButton,
   IonButtons,
-  IonToolbar,
-  IonTitle,
   IonIcon,
+  IonItem,
   IonSkeletonText,
+  IonTitle,
+  IonToolbar,
 } from '@ionic/angular';
 import { playOutline, openOutline } from 'ionicons/icons';
 import {
@@ -98,7 +100,10 @@ import {
   HeldResultPresentationComponent,
   type CategoryBarFields,
 } from '../held-result-presentation/held-result-presentation.component';
-import { isShowcaseTutorialBoard } from '../../pages/board/showcase-tutorial-eligibility';
+import {
+  isPublishedShowcaseBoard,
+  isShowcaseTutorialBoard,
+} from '../../pages/board/showcase-tutorial-eligibility';
 import { FederatedQueryResult } from '../../../../queries/federated-query-executor';
 import { isSavedPublicChartQueryId } from '../../../../queries/public-data/public-chart-query';
 import {
@@ -143,6 +148,8 @@ export interface BoardResultSnapshot {
   imports: [
     NgComponentOutlet,
     NgTemplateOutlet,
+    ChartViewTabsComponent,
+    IonItem,
     IonButtons,
     IonToolbar,
     IonTitle,
@@ -165,6 +172,8 @@ export interface BoardResultSnapshot {
   ],
 })
 export class BoardWidgetComponent {
+  readonly headerInCard = input(false);
+  readonly actionsInCardHeader = input(false);
   readonly embedded = input(false);
   readonly cardTitle = input<string>();
   readonly headerActions = viewChild<TemplateRef<unknown>>(
@@ -542,6 +551,18 @@ export class BoardWidgetComponent {
       return false;
     try {
       return isShowcaseTutorialBoard(ref, {
+        id: this.boardId() ?? '',
+        title: '',
+      });
+    } catch {
+      return false;
+    }
+  });
+  readonly publishedShowcase = computed(() => {
+    const ref = this.projectRef();
+    if (!ref) return false;
+    try {
+      return isPublishedShowcaseBoard(this.queryReadRef(ref), {
         id: this.boardId() ?? '',
         title: '',
       });
@@ -956,7 +977,8 @@ export class BoardWidgetComponent {
       const eligible =
         definition &&
         !this.unsupportedReason() &&
-        ((this.showcase() && this.readBoardForRun()) || this.cardMode());
+        ((this.publishedShowcase() && this.readBoardForRun()) ||
+          this.cardMode());
       if (!eligible) return;
       untracked(() => {
         if (this.result() || this.attemptsStore()().has(identity)) return;

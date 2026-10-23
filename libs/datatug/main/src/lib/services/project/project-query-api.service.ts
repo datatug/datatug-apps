@@ -371,6 +371,14 @@ export class ProjectQueryApiService {
     );
   }
 
+  dbServers<T>(ref: IProjectRef): Observable<T> {
+    return this.qualifiedRead(
+      ref,
+      'dbservers/all_dbservers',
+      ref.branch ? { branch: ref.branch } : undefined,
+    );
+  }
+
   board<T>(ref: IProjectRef, id: string): Observable<T> {
     return this.qualifiedRead(ref, 'boards/board', {
       id,

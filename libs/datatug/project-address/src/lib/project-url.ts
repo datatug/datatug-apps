@@ -57,14 +57,29 @@ export const DEMO_PROJECT_REF: IProjectRef = {
 
 const PROJECT_FILE_NAME = 'datatug-project.json';
 
+/** Tags are metadata, admitted only on this narrow shared page family. */
+function sharedTagDetail(rest: string): boolean {
+  const match = /^\/tag\/([^/]+)$/.exec(rest);
+  if (!match) return false;
+  const tag = decodeSegment(match[1]);
+  return (
+    tag !== undefined &&
+    tag.length > 0 &&
+    new TextEncoder().encode(tag).length <= 50
+  );
+}
+
 function sharedQueryPage(rest: string): boolean {
   return (
     rest === '' ||
     rest === '/overview' ||
     rest === '/quick-search' ||
-    rest === '/tags' ||
+    rest === '/tag-discovery' ||
     /^\/search-schema\/[A-Za-z0-9_-]+$/.test(rest) ||
     rest === '/queries' ||
+    rest === '/tags' ||
+    rest === '/tag' ||
+    sharedTagDetail(rest) ||
     rest === '/shipping' ||
     /^\/sources\/[A-Za-z0-9_-]{1,128}$/.test(rest) ||
     /^\/meanings(?:\/(?:new-entity|entity|new-field|field))?$/.test(rest) ||

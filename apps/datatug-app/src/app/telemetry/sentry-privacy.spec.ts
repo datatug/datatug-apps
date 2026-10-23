@@ -363,11 +363,19 @@ describe('Quick Search Sentry project metadata privacy', () => {
   it.each([
     '/store/private-agent/project/private-project/quick-search',
     '/space/private-space/store/firestore/project/private-project/tags',
+  '/space/private-space/store/firestore/project/private-project/tag-discovery',
+  '/space/private-space/store/firestore/project/private-project/tag/private-tag',
+  '/space/private-space/store/firestore/project/private-project/tag',
+  '/space/private-space/store/firestore/project/private-project/tag?tag=private-tag',
+  '/space/private-space/store/firestore/project/private-project/boards?tag=private-tag',
+  '/store/private-agent/project/private-project/queries?tag=private-tag',
+  '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/servers?tag=private-tag',
+
     '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model',
   ])('scrubs %s URLs, identifiers and DOM breadcrumbs', (path) => {
     const address =
       path +
-      '?q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
+      (path.includes('?') ? '&' : '?') + 'q=private-query&name=private-tag&schema=private-schema&table=private-table&column=private-column';
     history.replaceState(null, '', address);
     expect(isLinkRoute(path)).toBe(true);
     const event = {
@@ -417,6 +425,12 @@ describe('queued Quick Search Sentry payloads after leaving the page', () => {
   it.each([
     '/space/private-space/store/firestore/project/private-project/quick-search?q=private-query',
     '/space/private-space/store/firestore/project/private-project/tags?name=private-tag',
+    '/space/private-space/store/firestore/project/private-project/tag/private-tag',
+    '/space/private-space/store/firestore/project/private-project/tag?tag=private-tag',
+    '/space/private-space/store/firestore/project/private-project/tag-discovery?name=private-tag',
+    '/space/private-space/store/firestore/project/private-project/boards?tag=private-tag',
+    '/store/private-agent/project/private-project/queries?tag=private-tag',
+    '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/servers?tag=private-tag',
     '/project/github.com/private-owner/private-repo/tree/private-ref/private-folder/-/search-schema/private-model?table=private-table&column=private-column',
     api,
   ])('fences the origin %s while Home is current', (origin) => {

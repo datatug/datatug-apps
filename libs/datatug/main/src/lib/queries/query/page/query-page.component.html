@@ -1668,6 +1668,7 @@
     @if (result.publicSqliteReceipt; as receipt) {
       <section
         class="author-receipt"
+        #executionReceipt
         data-testid="author-execution-receipt"
         aria-label="SQLite execution receipt"
       >
@@ -2128,6 +2129,15 @@
   @if (!isTextQueryWorkspace()) {
     <ng-container *ngTemplateOutlet="queryEditor" />
     <ng-container *ngTemplateOutlet="queryResults" />
+  }
+  @if (queryDef(); as definition) {
+    <sneat-datatug-tags-editor
+      [tags]="definition.tags || []"
+      [projectRef]="project?.ref"
+      [disabled]="!!queryState.isSaving"
+      [readonly]="queryState.saveSupported === false || !canSaveQuery()"
+      (tagsChange)="updateTags($event)"
+    />
   }
 </ion-content>
 

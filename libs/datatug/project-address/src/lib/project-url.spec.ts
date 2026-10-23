@@ -1313,3 +1313,26 @@ describe('parseProjectUrl: the review cases (page validation, store, .git.git)',
     ).toBe(true);
   });
 });
+
+describe('shared project tag address family', () => {
+  const ref = { storeId: 'firestore', spaceID: 'S', projectId: 'P' };
+  it.each([{ page: 'tags' }, { page: 'tag-discovery' }, { page: 'tag' }, { page: ['tag', 'Ops / É?#'] }] as const)(
+    'builds and parses narrow tag page $page',
+    ({ page }) => {
+      const path = projectUrl(ref, page);
+      expect(path).toMatch(/^\/space\/S\/store\/firestore\/project\/P\/tag/);
+      expect(parsed(path)).toMatchObject({
+        storeId: ref.storeId,
+        spaceID: ref.spaceID,
+        projectId: ref.projectId,
+        canonicalPath: path,
+      });
+    },
+  );
+  it('keeps unrelated shared pages and oversized detail segments outside the address contract', () => {
+    expect(tryProjectUrl(ref, ['tag', 'é'.repeat(26)])).toMatchObject({
+      ok: false,
+    });
+    expect(tryProjectUrl(ref, 'unrelated')).toMatchObject({ ok: false });
+  });
+});

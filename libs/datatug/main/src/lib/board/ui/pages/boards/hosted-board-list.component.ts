@@ -1,13 +1,21 @@
+import { projectTagLink } from '../../../../tags/tag-navigation';
 import {
   ChangeDetectionStrategy,
   Component,
+  computed,
   effect,
   inject,
   signal,
   untracked,
 } from '@angular/core';
+import { TagFilterComponent } from '../../../../tags/tag-filter.component';
+import { TagFilterState } from '../../../../tags/tag-filter-state';
+import { matchesTags } from '../../../../tags/tags';
+import { IProjBoard } from '../../../../models/definition/project';
 import { RouterLink } from '@angular/router';
 import {
+  IonInput,
+  IonBadge,
   IonButton,
   IonItem,
   IonLabel,
@@ -22,9 +30,12 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
 @Component({
   selector: 'sneat-datatug-hosted-board-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  providers: [HostedBoardScope],
+  providers: [HostedBoardScope, TagFilterState],
   imports: [
     RouterLink,
+    TagFilterComponent,
+    IonInput,
+    IonBadge,
     IonButton,
     IonItem,
     IonLabel,
@@ -69,14 +80,34 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
       @if (!loading() && !error() && !boards().length) {
         <p>No boards yet.</p>
       }
+      <ion-item
+        ><ion-input
+          aria-label="Filter boards"
+          placeholder="Filter boards"
+          [value]="filter()"
+          (ionInput)="filter.set($event.detail.value || '')"
+      /></ion-item>
+      <sneat-datatug-tag-filter
+        [items]="boards()"
+        [selected]="tagFilter.selected()"
+        (selectedChange)="tagFilter.set($event)"
+      />
+      @if (
+        !loading() && !error() && boards().length && !filteredBoards().length
+      ) {
+        <p>No boards match the selected filters.</p>
+      }
       <ul aria-label="Project boards">
-        @for (board of boards(); track board.id) {
+        @for (board of filteredBoards(); track board.id) {
           <li>
             <a
               [routerLink]="href(board.id)"
               [queryParams]="{ environment: scope.environment() }"
               >{{ board.title || board.id }}</a
             >
+            @for (tag of board.tags || []; track tag) {
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(scope.page.ref(), tag)"><ion-badge color="light">{{ tag }}</ion-badge></a>
+            }
           </li>
         }
       </ul>
@@ -84,9 +115,21 @@ import { detectiveErrorMessage } from '../../../../detective/detective-client.se
   </section>`,
 })
 export class HostedBoardListComponent {
+  readonly tagLink = projectTagLink;
   readonly scope = inject(HostedBoardScope);
   private readonly api = inject(ProjectAssetsApiService);
-  readonly boards = signal<{ id: string; title?: string }[]>([]);
+  readonly tagFilter = inject(TagFilterState);
+  readonly filter = signal('');
+  readonly boards = signal<IProjBoard[]>([]);
+  readonly filteredBoards = computed(() =>
+    this.boards().filter(
+      (board) =>
+        matchesTags(board, this.tagFilter.selected()) &&
+        (board.title || board.id)
+          .toLocaleLowerCase()
+          .includes(this.filter().trim().toLocaleLowerCase()),
+    ),
+  );
   readonly error = signal('');
   readonly loading = signal(false);
   private generation = 0;

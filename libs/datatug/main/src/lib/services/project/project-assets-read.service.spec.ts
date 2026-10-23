@@ -70,6 +70,7 @@ describe('ProjectAssetsReadService', () => {
     expect(await firstValueFrom(service.environments(ref))).toEqual([
       { id: 'local', title: 'Local' },
     ]);
+    expect(full.getFull).toHaveBeenCalledWith(ref, true);
     expect(full.getFull).toHaveBeenCalledWith(ref);
     expect(api.boards).not.toHaveBeenCalled();
     expect(api.environments).not.toHaveBeenCalled();

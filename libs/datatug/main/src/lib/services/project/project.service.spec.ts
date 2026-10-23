@@ -473,3 +473,61 @@ describe('ProjectService DataTug API base URL', () => {
     expectDatatugApiRequest('POST', 'datatug/projects/create_project');
   });
 });
+
+describe('ProjectService explicit full refresh', () => {
+  it('refetches persisted metadata without leaking a same-ID sibling store or serving stale tags', async () => {
+    TestBed.configureTestingModule({
+      providers: [
+        ProjectService,
+        {
+          provide: ProjectEnvironmentStateService,
+          useValue: {
+            watch: (
+              _ref: unknown,
+              legacy: () => Observable<IEnvironmentFull[]>,
+            ) => legacy().pipe(environmentMap((items) => ({ items }))),
+          },
+        },
+        provideHttpClient(),
+        provideHttpClientTesting(),
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+        { provide: PrivateTokenStoreService, useValue: {} },
+        { provide: DatatugApiService, useValue: {} },
+        { provide: DatatugStoreServiceFactory, useValue: {} },
+      ],
+    });
+    const service = TestBed.inject(ProjectService),
+      http = TestBed.inject(HttpTestingController);
+    const first = { storeId: 'localhost:8989', projectId: 'P' },
+      other = { storeId: 'localhost:8990', projectId: 'P' };
+    const initial = firstValueFrom(service.getFull(first));
+    http
+      .expectOne((r) => r.url.includes('8989'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: ['old'] }] });
+    expect((await initial).boards?.[0].tags).toEqual(['old']);
+    const sibling = firstValueFrom(service.getFull(other));
+    http
+      .expectOne((r) => r.url.includes('8990'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: ['sibling'] }] });
+    await sibling;
+    const refreshed = firstValueFrom(service.getFull(first, true));
+    http
+      .expectOne((r) => r.url.includes('8989'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: [] }] });
+    expect((await refreshed).boards?.[0].tags).toEqual([]);
+    // Environment watches use refCount, so a later read reconnects instead of
+    // replaying the previous subscriber's value. The reconnect must observe the
+    // refreshed catalog, not the stale tags, and must not reuse the sibling store.
+    const cachedFirst = firstValueFrom(service.getFull(first));
+    http
+      .expectOne((r) => r.url.includes('8989'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: [] }] });
+    expect((await cachedFirst).boards?.[0].tags).toEqual([]);
+    const cachedOther = firstValueFrom(service.getFull(other));
+    http
+      .expectOne((r) => r.url.includes('8990'))
+      .flush({ id: 'P', boards: [{ id: 'b', tags: ['sibling'] }] });
+    expect((await cachedOther).boards?.[0].tags).toEqual(['sibling']);
+    http.verify();
+  });
+});

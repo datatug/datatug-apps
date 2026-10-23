@@ -4250,8 +4250,10 @@ test('query workspace clarity preserves active context, inspected row and explic
   await tabs.locator('ion-segment-button[value="related"]').click();
   await expect(author.getByTestId('author-related-empty')).toContainText('Customer is already included');
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-expanded/);
   await expect(author.getByTestId('author-related-metadata-details')).toContainText(/Cross-source cost\s*unknown/u);
   await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-collapsed/);
   await expect(author.getByTestId('author-run-readiness')).toContainText('Preview the current draft');
   await author.getByTestId('author-run-recovery').click();
   await expectIonicButtonDisabled(author.getByTestId('author-run'), false);
@@ -4275,10 +4277,23 @@ test('query workspace clarity preserves active context, inspected row and explic
   const retainedSource = await copyEditorSource(page, author.locator('.cm-content'));
   const retainedReceipt = await receipt.locator('.author-receipt-summary').innerText();
   await tabs.locator('ion-segment-button[value="related"]').click();
+  await expect(tabs.locator('ion-segment-button[value="related"]')).toHaveClass(/segment-button-checked/);
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-collapsed/);
+  // Expanded real metadata makes the phone editor taller before it becomes a desktop sidebar.
+  // Keep the result the reader scrolled to visible even when trailing metadata permits a deeper scroll.
+  await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-expanded/);
   await receipt.scrollIntoViewIfNeeded();
   await expect(receipt).toBeInViewport();
+  await receipt.evaluate(element => element.scrollIntoView({block: 'start', behavior: 'instant'}));
+  await expect(receipt).toBeInViewport();
+  const focusBeforeReflow = await page.evaluateHandle(() => document.activeElement);
   await page.setViewportSize({ width: 1100, height: 720 });
   await expect(receipt).toBeInViewport();
+  expect(await page.evaluate(previous => document.activeElement === previous, focusBeforeReflow)).toBe(true);
+  await focusBeforeReflow.dispose();
+  await author.getByTestId('author-related-metadata-details').getByText('Metadata coverage and cost').click();
+  await expect(author.getByTestId('author-related-metadata-details').locator('ion-accordion[value="coverage"]')).toHaveClass(/accordion-collapsed/);
   const widths = [320, 1100, 1280, 390, 1440, 1024];
   for (const width of widths) {
     await page.setViewportSize({ width, height: width === 1024 ? 560 : 720 });

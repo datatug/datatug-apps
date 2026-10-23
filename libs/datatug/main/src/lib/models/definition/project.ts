@@ -36,7 +36,9 @@ export interface IProjectFull extends IProjectBase {
   dbDrivers?: readonly {
     readonly id: string;
     readonly servers?: readonly {
+      readonly id?: string;
       readonly server: import('./apis/database').IDbServer;
+      readonly tags?: string[];
       readonly catalogs?: readonly unknown[];
     }[];
   }[];
@@ -55,6 +57,7 @@ export interface IProjectSummary extends IProjectBase {
 }
 
 export interface IProjItemBrief {
+  tags?: string[];
   id: string;
   title?: string;
 }

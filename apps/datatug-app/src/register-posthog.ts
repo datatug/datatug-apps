@@ -44,7 +44,7 @@ export function registerPosthog(settings: IPosthogSettings): void {
     return;
   const beforeSend = settings.config?.before_send;
   initialAutocapture = settings.config?.autocapture ?? true;
-  const coldLinkRoute = isLinkRoute(location.pathname);
+  const coldLinkRoute = isLinkRoute(location.pathname + location.search);
   linkPrivacyActive = coldLinkRoute;
   posthog.init(settings.token, {
     ...settings.config,

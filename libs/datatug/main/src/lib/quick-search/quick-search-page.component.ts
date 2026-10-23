@@ -61,6 +61,7 @@ import {
   kindNames,
   searchChipLabel,
   searchItemHref,
+  searchNameHref,
   searchKinds,
 } from './quick-search-model';
 
@@ -679,13 +680,8 @@ export class QuickSearchPageComponent {
     this.consent.set(false);
   }
   groupHref(name: string) {
-    return this.itemHref({
-      kind: 'tag',
-      id: name,
-      name,
-      tags: [],
-      reference: { objectId: name },
-    });
+    const ref=this.project();
+    return ref ? this.router.parseUrl(searchNameHref(ref,name)) : undefined;
   }
   itemHref(item: SearchDocument) {
     const ref = this.project();

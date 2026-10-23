@@ -1,4 +1,6 @@
-import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
+import { provideRouter } from '@angular/router';
+import { TagFilterState } from '../../../tags/tag-filter-state';
+import { CUSTOM_ELEMENTS_SCHEMA, signal } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
 import { ModalController, NavController } from '@ionic/angular';
 import { SneatApiNotAuthenticatedError } from '@sneat/api';
@@ -306,8 +308,10 @@ describe('ServersPage source discovery lifecycle', () => {
   let connectionCatalog: ReturnType<typeof vi.fn>;
   let logError: ReturnType<typeof vi.fn>;
   let navigateForward: ReturnType<typeof vi.fn>;
+  const selectedTags = signal<string[]>([]);
 
   beforeEach(async () => {
+    selectedTags.set([]);
     current$ = new Subject<IProjectRef | undefined>();
     serversByRequest = [];
     environmentsByRequest = [];
@@ -324,6 +328,11 @@ describe('ServersPage source discovery lifecycle', () => {
       imports: [ServersPageComponent],
       schemas: [CUSTOM_ELEMENTS_SCHEMA],
       providers: [
+        provideRouter([]),
+        {
+          provide: TagFilterState,
+          useValue: { selected: selectedTags, set: vi.fn() },
+        },
         {
           provide: ProjectContextService,
           useValue: { current$: current$, current: undefined },
@@ -372,6 +381,53 @@ describe('ServersPage source discovery lifecycle', () => {
       .compileComponents();
     fixture = TestBed.createComponent(ServersPageComponent);
     fixture.detectChanges();
+  });
+
+  it('filters configured servers by exact tags while preserving unfiltered source discovery', async () => {
+    current$.next({ storeId: 'http://agent', projectId: 'demo' });
+    environmentsByRequest[0].next([]);
+    catalogsByRequest[0].next({
+      connections: [{ id: 'declared', dataset: 'chinook' }],
+    });
+    serversByRequest[0].next([
+      {
+        dbServer: { driver: 'postgres', host: 'db.example' },
+        tags: ['Ops', 'Prod'],
+        databasesCount: 0,
+      },
+      {
+        dbServer: { driver: 'postgres', host: 'other.example' },
+        tags: ['ops'],
+        databasesCount: 0,
+      },
+      {
+        id: 'sqlite3:',
+        dbServer: { driver: 'sqlite3', host: '' },
+        tags: [],
+        databasesCount: 0,
+      },
+    ]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('chinook');
+    expect(fixture.nativeElement.textContent).toContain(
+      'Local SQLite databases',
+    );
+    selectedTags.set(['Ops', 'Prod']);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('db.example');
+    expect(fixture.nativeElement.textContent).not.toContain('other.example');
+    expect(fixture.nativeElement.textContent).not.toContain('chinook');
+    const link = fixture.nativeElement.querySelector('a[href$="/tag/Ops"]');
+    expect(link).toBeTruthy();
+    expect(link.closest('ion-item').hasAttribute('href')).toBe(false);
+    selectedTags.set(['Missing']);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain(
+      'No database sources match the current filters.',
+    );
+    selectedTags.set([]);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.textContent).toContain('chinook');
   });
 
   it('shows six datasets while keeping their 18 declared formats and access requirements distinct', async () => {

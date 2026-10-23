@@ -1,8 +1,8 @@
 import { CUSTOM_ELEMENTS_SCHEMA } from '@angular/core';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { ActivatedRoute } from '@angular/router';
+import { ActivatedRoute, convertToParamMap } from '@angular/router';
 import { ErrorLogger } from '@sneat/core';
-import { of, Subject, throwError } from 'rxjs';
+import { BehaviorSubject, of, Subject, throwError } from 'rxjs';
 
 import { DbserverPageComponent } from './dbserver-page.component';
 import {
@@ -37,6 +37,7 @@ describe('DbserverPage', () => {
         {
           provide: DbServerService,
           useValue: {
+            getDbServers: vi.fn(() => of([])),
             getDbServerSummary: vi.fn(),
             getServerDatabases: vi.fn(),
           },
@@ -124,6 +125,7 @@ describe('DbserverPage replaces "Loading..." once the summary arrives (zoneless)
         {
           provide: DbServerService,
           useValue: {
+            getDbServers: vi.fn(() => of([])),
             getDbServerSummary: vi.fn(() => getDbServerSummary$.asObservable()),
             getServerDatabases: vi.fn(() => getServerDatabases$.asObservable()),
           },
@@ -317,6 +319,7 @@ describe('DbserverPage on a GitHub-store project (S161)', () => {
         {
           provide: DbServerService,
           useValue: {
+            getDbServers: vi.fn(() => of([])),
             getDbServerSummary: vi.fn(() =>
               throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
             ),
@@ -400,4 +403,139 @@ describe('DbserverPage on a GitHub-store project (S161)', () => {
     ) as { pageTitle?: string };
     expect(titleEl.pageTitle).toBe('DB server: (no host)');
   });
+});
+
+describe('DbserverPage tag metadata availability', () => {
+  it('keeps failed read-only tags unknown, retries, and distinguishes known empty tags', async () => {
+    const reads = [new Subject<never[]>(), new Subject<never[]>()];
+    const getDbServers = vi
+      .fn()
+      .mockReturnValueOnce(reads[0])
+      .mockReturnValueOnce(reads[1]);
+    TestBed.configureTestingModule({
+      imports: [DbserverPageComponent],
+      providers: [
+        {
+          provide: ActivatedRoute,
+          useValue: {
+            paramMap: of({
+              get: (key: string) => (key === 'dbDriver' ? 'sqlite3' : 'host'),
+            }),
+          },
+        },
+        {
+          provide: ProjectContextService,
+          useValue: {
+            current$: of({
+              storeId: 'github.com',
+              projectId: 'repo@owner@folder',
+            }),
+          },
+        },
+        {
+          provide: DbServerService,
+          useValue: {
+            getDbServers,
+            getDbServerSummary: () =>
+              throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
+            getServerDatabases: () =>
+              throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
+          },
+        },
+        { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+      ],
+    });
+    TestBed.overrideComponent(DbserverPageComponent, {
+      set: {
+        imports: [],
+        template:
+          '@if (serverTagsLoading()) { <p>Loading server tags</p> } @if (serverTagsError()) { <p role="alert">{{ serverTagsError() }}</p> } @if (serverTags()) { <p>Known tags</p> }',
+      },
+    });
+    const fixture = TestBed.createComponent(DbserverPageComponent);
+    fixture.detectChanges();
+    expect(fixture.nativeElement.textContent).toContain('Loading server tags');
+    reads[0].error(new Error('403'));
+    await fixture.whenStable();
+    expect(fixture.componentInstance.serverTags()).toBeUndefined();
+    expect(fixture.nativeElement.textContent).toContain('could not be loaded');
+    expect(fixture.nativeElement.textContent).not.toContain('Known tags');
+    fixture.componentInstance.loadServerTags();
+    reads[1].next([]);
+    await fixture.whenStable();
+    expect(fixture.componentInstance.serverTags()).toEqual([]);
+    expect(fixture.componentInstance.serverTagsError()).toBe('');
+    expect(fixture.nativeElement.textContent).toContain('Known tags');
+  });
+});
+
+it('passes selected persisted hostless definition identity to the tag editor and rejects ambiguous or missing identities', async () => {
+  const query = new BehaviorSubject(
+    convertToParamMap({ definitionId: 'saved-hostless' }),
+  );
+  TestBed.configureTestingModule({
+    imports: [DbserverPageComponent],
+    providers: [
+      {
+        provide: ActivatedRoute,
+        useValue: {
+          paramMap: of(
+            convertToParamMap({ dbDriver: 'sqlite3', dbServerId: '-' }),
+          ),
+          queryParamMap: query,
+        },
+      },
+      {
+        provide: ProjectContextService,
+        useValue: {
+          current$: of({ storeId: 'http-localhost:8989', projectId: 'P' }),
+        },
+      },
+      {
+        provide: DbServerService,
+        useValue: {
+          getDbServers: () =>
+            of([
+              {
+                id: 'other-hostless',
+                dbServer: { driver: 'sqlite3', host: '' },
+                tags: ['Wrong'],
+                databasesCount: 0,
+              },
+              {
+                id: 'saved-hostless',
+                dbServer: { driver: 'sqlite3', host: '' },
+                tags: ['Right'],
+                databasesCount: 0,
+              },
+            ]),
+          getDbServerSummary: () =>
+            throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
+          getServerDatabases: () =>
+            throwError(() => new Error(GITHUB_DBSERVER_DETAIL_MESSAGE)),
+        },
+      },
+      { provide: ErrorLogger, useValue: { logError: vi.fn() } },
+    ],
+  });
+  TestBed.overrideComponent(DbserverPageComponent, {
+    set: { imports: [], schemas: [CUSTOM_ELEMENTS_SCHEMA] },
+  });
+  const fixture = TestBed.createComponent(DbserverPageComponent);
+  await fixture.whenStable();
+  const editor = fixture.nativeElement.querySelector(
+    'sneat-datatug-project-item-tags',
+  );
+  expect(editor.itemId).toBe('saved-hostless');
+  expect(editor.initialTags).toEqual(['Right']);
+  query.next(convertToParamMap({ definitionId: 'missing' }));
+  await fixture.whenStable();
+  expect(fixture.componentInstance.serverTagsError()).toBeTruthy();
+  expect(
+    fixture.nativeElement.querySelector('sneat-datatug-project-item-tags'),
+  ).toBeNull();
+  query.next(convertToParamMap({}));
+  await fixture.whenStable();
+  expect(fixture.componentInstance.serverTagsError()).toBeTruthy();
+  expect(fixture.componentInstance.serverDefinitionId()).toBeUndefined();
 });

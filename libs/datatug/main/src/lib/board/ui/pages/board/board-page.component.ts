@@ -1,3 +1,4 @@
+import { heart, heartOutline } from 'ionicons/icons';
 import { ChartSourceEditorComponent } from '../../components/chart-source-editor/chart-source-editor.component';
 import type { ChartSourceEdit } from '@datatug/board-models';
 import { widgetAtTabPath } from '../../components/board-widget/nested-tab-path';
@@ -89,6 +90,7 @@ import { BoardReadForRun } from '../../../core/board-read-for-run';
 import { isShowcaseTutorialBoard } from './showcase-tutorial-eligibility';
 import { TutorialBoardRuntime } from '../../../core/tutorial-board-runtime';
 import { tabKey } from '../../components/board-widget/nested-tab-path';
+import { ProjectItemTagsComponent } from '../../../../tags/project-item-tags.component';
 import { HostedBoardWorkspaceComponent } from './hosted-board-workspace.component';
 import { isSharedProjectRef } from '../../../../core/project-context';
 import { isProjectItemNotFound } from '../../../../core/project-item-not-found.error';
@@ -121,7 +123,9 @@ interface TutorialStatus {
   selector: 'sneat-datatug-board-page',
   templateUrl: './board-page.component.html',
   styleUrl: './board-page.component.scss',
-  imports: [ChartSourceEditorComponent,
+  imports: [
+    ProjectItemTagsComponent,
+    ChartSourceEditorComponent,
     ErrorStateComponent,
     // `DatatugNavContextService` (injected below) needs `AppContextService`
     // (`DatatugCoreModule`), `EnvironmentService`
@@ -162,6 +166,7 @@ interface TutorialStatus {
   providers: [QueryParamsService, TutorialBoardRuntime],
 })
 export class BoardPageComponent implements OnInit, OnDestroy {
+  readonly favoriteIcons = { heart, heartOutline };
   private readonly element = inject<ElementRef<HTMLElement>>(ElementRef);
   private readonly injector = inject(Injector);
   private focusGeneration = 0;

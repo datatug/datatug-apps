@@ -1,7 +1,12 @@
-@if (!currentFolder) {
+@if (loading()) {
   <ion-item>
     <ion-label>Loading queries...</ion-label>
   </ion-item>
+} @else if (loadError()) {
+  <ion-item
+    ><ion-label role="alert">{{ loadError() }}</ion-label
+    ><ion-button (click)="reload()">Retry</ion-button></ion-item
+  >
 } @else if (personalQueriesNotice(); as notice) {
   <ion-item>
     <ion-label color="medium">{{ notice }}</ion-label>
@@ -12,14 +17,15 @@
       [disabled]="!currentFolder"
       placeholder="Filter"
       [(ngModel)]="filter"
-      (ionChange)="applyFilter()"
+      aria-label="Filter queries"
+      (ionInput)="applyFilter()"
     />
     <ion-buttons slot="end">
       <!--					<ion-segment>-->
       <!--						<ion-segment-button>SQL</ion-segment-button>-->
       <!--						<ion-segment-button>HTTP</ion-segment-button>-->
       <!--					</ion-segment>-->
-      @if (filter || type !== '*') {
+      @if (isFiltering()) {
         <ion-button (click)="clearFilter()" color="medium" title="Clear filter">
           <ion-icon name="close-outline" />
         </ion-button>
@@ -46,6 +52,11 @@
       </ion-button>
     </ion-buttons>
   </ion-item>
+  <sneat-datatug-tag-filter
+    [items]="catalogItems()"
+    [selected]="tagFilter.selected()"
+    (selectedChange)="tagFilter.set($event)"
+  />
   @if (!isFiltering() && currentFolder.folders) {
     <ion-item-divider>
       @if (!parentFolders.length) {
@@ -105,12 +116,25 @@
       <ion-label>..</ion-label>
     </ion-item>
   }
-  @if (filter) {
-    @for (item of filteredItems || []; track item.query.id) {
+  @if (isFiltering()) {
+    @if (!filteredItems?.length) {
+      <ion-item
+        ><ion-label>No queries match the selected filters.</ion-label></ion-item
+      >
+    }
+    @for (
+      item of filteredItems || [];
+      track item.folders.join('/') + '/' + item.query.id
+    ) {
       <ion-item tappable (click)="goQuery(item.query, 'edit', item.folders)">
         <ion-icon name="document-text-outline" slot="start" />
         <ion-label>
           {{ item.query.title || item.query.id }}
+          <p>
+            @for (tag of item.query.tags || []; track tag) {
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(project()?.ref, tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
+            }
+          </p>
           @if (item.folders.length) {
             <p>
               <ion-text color="medium">Folder:&nbsp;</ion-text>
@@ -125,7 +149,7 @@
       </ion-item>
     }
   }
-  @if (!filter && currentFolder) {
+  @if (!isFiltering() && currentFolder) {
     @for (folder of currentFolder.folders; track folder.id) {
       <ion-item tappable (click)="cd(folder.id)">
         <ion-icon name="folder-outline" slot="start" color="primary" />
@@ -140,6 +164,11 @@
           <h3 style="display: inline; font-size: large">
             {{ query.title || query.id }}
           </h3>
+          <p>
+            @for (tag of query.tags || []; track tag) {
+              <a class="ph-no-capture ph-mask sentry-mask" data-sentry-mask [routerLink]="tagLink(project()?.ref, tag)" (click)="$event.stopPropagation()"><ion-badge color="light">{{ tag }}</ion-badge></a>
+            }
+          </p>
           @if (query.targets; as targets) {
             @if (targets.length) {
               <span class="ion-margin-start">
