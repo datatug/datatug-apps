@@ -53,6 +53,7 @@ runs:
         CACHE_HIT: ${{ steps.cache.outputs.cache-hit }}
         ATTEMPTS: ${{ inputs.attempts }}
         LIMIT_MIN: ${{ inputs.attempt-timeout-minutes }}
+        ACTION_PATH: ${{ github.action_path }}
       run: |
         if [ "$CACHE_HIT" = "true" ]; then cmd=(install-deps); else cmd=(install --with-deps); fi
         read -ra browser_list <<< "$BROWSERS"
@@ -75,6 +76,11 @@ runs:
           done
           sudo pkill -KILL -x apt-get || true
           sudo dpkg --configure -a || true
+          if [ "$i" -eq 1 ] && [ "$i" -lt "$ATTEMPTS" ]; then
+            # Hosted Ubuntu's Azure mirror can stall while the browser cache is healthy.
+            # Preserve the first attempt and dependency/browser matrix; retry on Ubuntu's main mirror.
+            sudo python3 "$ACTION_PATH/ubuntu-mirror.py"
+          fi
         done
         echo "::error::Playwright install failed after $ATTEMPTS attempts ($(( $(date +%s) - start ))s)"
         exit 1
