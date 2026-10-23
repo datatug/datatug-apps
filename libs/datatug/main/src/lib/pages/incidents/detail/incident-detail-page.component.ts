@@ -36,6 +36,7 @@ import {
   IncidentRequestContext,
 } from '../../../incidents/models';
 import { IncidentReadPanelsComponent } from './incident-read-panels.component';
+import { IncidentComparePanelComponent } from './incident-compare-panel.component';
 import { agentBaseUrl } from '../../../services/repo/agent-url';
 import { projectPageHref } from '../../../nav/project-page-href';
 
@@ -70,6 +71,7 @@ import { projectPageHref } from '../../../nav/project-page-href';
     IonItem,
     IonLabel,
     IonNote,
+    IncidentComparePanelComponent,
     IncidentReadPanelsComponent,
   ],
 })

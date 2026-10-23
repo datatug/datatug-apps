@@ -316,6 +316,37 @@ test.describe('Incidentius Task 3 — real persisted Houston journey', () => {
     ).toBeVisible();
     await expect(activePage(page).getByText('incident.created')).toBeVisible();
 
+    await activePage(page)
+      .getByTestId('incident-compare-query')
+      .locator('input')
+      .fill('customer-invoices');
+    const compareResponsePromise = page.waitForResponse(
+      (response) =>
+        response.request().method() === 'POST' &&
+        response.url() === `${agentOrigin}/datatug/compare`,
+    );
+    await activePage(page).getByTestId('incident-compare-run').click();
+    const compareResponse = await compareResponsePromise;
+    const compareRequest = compareResponse.request().postDataJSON() as {
+      queryId?: unknown;
+      mutationId?: unknown;
+      left?: { kind?: unknown; cohortRole?: unknown; storeId?: unknown };
+      right?: { kind?: unknown; cohortRole?: unknown };
+      incident?: { incidentId?: unknown };
+    };
+    expect(compareRequest).toMatchObject({
+      queryId: 'customer-invoices',
+      mutationId: expect.any(String),
+      left: { kind: 'facts', storeId: 'local', cohortRole: 'affected' },
+      right: { kind: 'facts', cohortRole: 'control' },
+      incident: { incidentId: 'INC-1' },
+    });
+    await expect(
+      activePage(page).getByTestId('incident-compare-panel'),
+    ).toContainText(
+      /Matching|no current-policy-visible facts|native field IN|SOURCE_UNAVAILABLE|the incident has no|saved query/i,
+    );
+
     const persistedListResponse = page.waitForResponse(
       (response) =>
         response.request().method() === 'GET' &&
