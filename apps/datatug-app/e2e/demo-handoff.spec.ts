@@ -1564,17 +1564,19 @@ test.describe('an address that the router reads another way than the inline scri
       await expect(page.locator('ion-header').first()).toBeVisible({
         timeout: 20_000,
       });
-      // Wait for the redirect's end state, not a fixed time: the canonical path, keeping x=1.
+      await expect
+        .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
+        .toBe('/project/github.com/acme/demo/queries');
+      // The router rewrites the address once its navigation ends, which a loaded CI runner can delay: wait for the
+      // end state instead of a fixed time.
+      await expect
+        .poll(() => hasMarker(page.url()), { timeout: 15_000 })
+        .toBe(false);
+      expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+      // The end state, whole address (#517): the canonical path, x=1 kept, no msg. Polled, never a fixed wait (#523).
       await expect(page).toHaveURL(
         /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
         { timeout: 20_000 },
-      );
-      // …and stays there: a stability window after the end state, so a slow
-      // rewrite can no longer fail it, but a later one still would.
-      await page.waitForTimeout(1500);
-      await expect(page).toHaveURL(
-        /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1(?:$|[&#])/,
-        { timeout: 1 },
       );
       const state = await page.evaluate(() => ({
         title: document.title,
@@ -1669,18 +1671,19 @@ test.describe('an address that the router reads another way than the inline scri
       },
       MARKER,
     );
-    // The router rewrites the address after the navigation: wait for its end state
-    // (no msg, x=1 kept), not a fixed time.
+    await expect
+      .poll(() => new URL(page.url()).pathname, { timeout: 20_000 })
+      .toBe('/project/github.com/acme/demo/queries');
+    // The router replaces the address once its redirected navigation ends (its lazy chunks loaded), which a loaded
+    // CI runner can delay well past a fixed wait: poll for the end state.
+    await expect
+      .poll(() => new URL(page.url()).searchParams.has('msg'), { timeout: 15_000 })
+      .toBe(false);
+    expect(new URL(page.url()).searchParams.get('x')).toBe('1');
+    // The end state, whole address (#517): the canonical path, x=1 kept, no msg. Polled, never a fixed wait (#523).
     await expect(page).toHaveURL(
       /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
       { timeout: 20_000 },
-    );
-    // …and stays there: a stability window after the end state, so a slow
-    // rewrite can no longer fail it, but a later one still would.
-    await page.waitForTimeout(1500);
-    await expect(page).toHaveURL(
-      /^[^?#]*\/project\/github\.com\/acme\/demo\/queries\?x=1$/,
-      { timeout: 1 },
     );
     const entries = await page.evaluate(() =>
       (
