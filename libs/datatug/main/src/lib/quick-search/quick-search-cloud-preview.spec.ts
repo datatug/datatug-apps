@@ -144,7 +144,9 @@ describe('pending authenticated cloud preview fences', () => {
       pending.next({ documents: [], sourceCoverage: [] });
       pending.complete();
       await preview;
-      expect(page.snapshot()).toBeUndefined();
+      // A query change never discards a preview: it does not depend on the query.
+      if (change === 'query') expect(page.snapshot()).toBeDefined();
+      else expect(page.snapshot()).toBeUndefined();
       if (change !== 'query') expect(page.consent()).toBe(false);
     },
   );

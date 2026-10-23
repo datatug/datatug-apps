@@ -39,7 +39,7 @@ export interface SearchDocument {
 export interface SourceCoverage {
   kind: SearchKind;
   status: 'complete' | 'unavailable';
-  count: number;
+  count?: number;
   error?: string;
 }
 export interface SearchSnapshot {
@@ -55,10 +55,70 @@ export interface SearchStatus {
   provider: string;
   consentVersion?: string;
   lastIndexedAt?: string;
-  documentCount: number;
+  documentCount?: number;
   revision?: number;
   error?: string;
   sourceCoverage?: SourceCoverage[];
+  /** Index schema version; absent for indexes written before versioning. */
+  schemaVersion?: number;
+  /** Why counts cannot be shown (e.g. `not_eligible`); counts are then unavailable, never 0. */
+  countsUnavailable?: string;
+}
+/** A typed Quick Search failure the page renders as an explicit state. */
+export type SearchProblem =
+  | 'consent'
+  | 'reindex'
+  | 'unsupported'
+  | 'premium'
+  | 'denied'
+  | 'conflict'
+  | 'rateLimited'
+  | 'capacity'
+  | 'invalid'
+  | 'unavailable'
+  | 'failed';
+/**
+ * Classifies a failed Quick Search call by the API's JSON error code
+ * (`{error:{code}}` or the legacy `{error:'code'}`), falling back to the HTTP status.
+ */
+export function classifySearchError(error: unknown): SearchProblem {
+  const failure = error as
+    | { status?: number; error?: { error?: unknown; code?: unknown } }
+    | undefined;
+  const inner = failure?.error?.error ?? failure?.error?.code;
+  const code =
+    typeof inner === 'string'
+      ? inner
+      : (inner as { code?: unknown } | undefined)?.code;
+  switch (code) {
+    case 'consent_required':
+      return 'consent';
+    case 'quick_search_reindex_required':
+      return 'reindex';
+    case 'quick_search_unsupported_storage':
+      return 'unsupported';
+    case 'quick_search_premium_required':
+      return 'premium';
+    case 'project_denied':
+      return 'denied';
+    case 'index_capacity_reached':
+      return 'capacity';
+    case 'invalid_request':
+      return 'invalid';
+    case 'provider_completion_unknown':
+      return 'unavailable';
+    case 'operation_in_progress':
+      return 'conflict';
+    case 'quick_search_rate_limited':
+      return 'rateLimited';
+    case 'search_unavailable':
+    case 'provider_unavailable':
+      return 'unavailable';
+  }
+  if (failure?.status === 403) return 'denied';
+  if (failure?.status === 429) return 'rateLimited';
+  if (failure?.status === 503) return 'unavailable';
+  return 'failed';
 }
 export interface SearchResponse {
   items: SearchDocument[];
@@ -226,4 +286,35 @@ export function checkMetadataTarget(params: {
     /^[A-Za-z0-9_-]{1,128}$/.test(ids[0])
     ? { kind: 'check', objectId: ids[0] }
     : { kind: 'invalid' };
+}
+
+/** Message for a failed enable/refresh/disable; every one keeps the operation retryable. */
+export function mutationMessage(problem: SearchProblem): string {
+  switch (problem) {
+    case 'consent':
+      return 'Indexing consent is required. Retry after giving consent in Index settings.';
+    case 'conflict':
+      return 'Another index operation is in progress. Retry in a moment.';
+    case 'capacity':
+      return 'The selected metadata exceeds the index limit. Reduce the source metadata, then retry.';
+    case 'denied':
+      return 'You do not have permission to change this index. Check your project access and retry.';
+    case 'rateLimited':
+      return 'Too many requests. Retry in a moment.';
+    case 'premium':
+      return 'Quick Search requires a Pro or Business plan.';
+    case 'unsupported':
+      return "Quick Search isn't available yet for projects stored in DataTug cloud.";
+    default:
+      return 'Index operation failed. Retry the operation; deletion remains available.';
+  }
+}
+
+/** True when the provider could not confirm whether an operation completed. */
+export function isCompletionUnknown(error: unknown): boolean {
+  const failure = error as { error?: { error?: unknown } } | undefined;
+  const inner = failure?.error?.error;
+  const code =
+    typeof inner === 'string' ? inner : (inner as { code?: unknown })?.code;
+  return code === 'provider_completion_unknown';
 }

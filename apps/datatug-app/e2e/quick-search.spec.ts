@@ -1,3 +1,4 @@
+import type { Route } from '@playwright/test';
 import { expect, test } from './helpers/demodb-guard';
 
 const projectPath = '/store/http-localhost:19881/project/search-demo';
@@ -37,6 +38,59 @@ const documents = [
     reference: { objectId: 'customers-board' },
   },
 ];
+async function fulfillProjectApi(route: Route) {
+  const path = new URL(route.request().url()).pathname;
+  if (path.endsWith('/projects/projects_summary'))
+    return route.fulfill({ json: [metadata] });
+  if (path.endsWith('/projects/project_summary'))
+    return route.fulfill({ json: metadata });
+  if (path.endsWith('/projects/project_full'))
+    return route.fulfill({
+      json: {
+        ...metadata,
+        dbModels: [
+          {
+            id: 'Chinook',
+            schemas: [
+              {
+                id: 'dbo',
+                tables: [
+                  {
+                    name: 'Customers',
+                    Columns: [{ name: 'ID', dbType: 'int' }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    });
+  if (
+    [
+      '/boards/all_boards',
+      '/entities/all_entities',
+      '/environments/all_environments',
+    ].some((endpoint) => path.endsWith(endpoint))
+  )
+    return route.fulfill({ json: [] });
+  if (path.endsWith('/queries/all_queries'))
+    return route.fulfill({ json: { id: '~', folders: [], items: [] } });
+  // A released agent that predates environment-state/1 answers its own agent-info (the app confirms an old agent
+  // by its version, 0.107.0 or earlier, before it falls back to the read-only environment list).
+  if (path.endsWith('/agent-info'))
+    return route.fulfill({ json: { version: '0.100.0' } });
+  // Like every released `datatug serve`, this agent has no
+  // environment-state/1 route: Go's router answers it with a plain-text 404.
+  if (path.endsWith('/environments/state'))
+    return route.fulfill({
+      status: 404,
+      contentType: 'text/plain; charset=utf-8',
+      body: '404 page not found\n',
+    });
+  return route.fulfill({ json: {} });
+}
+
 test('Quick Search consent, grouped kind navigation, tags and deletion retry', async ({
   page,
 }, testInfo) => {
@@ -52,58 +106,7 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
     documentCount: enabled ? documents.length : 0,
     consentVersion: enabled ? 'project-quick-search/1' : undefined,
   });
-  await page.route('http://localhost:19881/**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    if (path.endsWith('/projects/projects_summary'))
-      return route.fulfill({ json: [metadata] });
-    if (path.endsWith('/projects/project_summary'))
-      return route.fulfill({ json: metadata });
-    if (path.endsWith('/projects/project_full'))
-      return route.fulfill({
-        json: {
-          ...metadata,
-          dbModels: [
-            {
-              id: 'Chinook',
-              schemas: [
-                {
-                  id: 'dbo',
-                  tables: [
-                    {
-                      name: 'Customers',
-                      Columns: [{ name: 'ID', dbType: 'int' }],
-                    },
-                  ],
-                },
-              ],
-            },
-          ],
-        },
-      });
-    if (
-      [
-        '/boards/all_boards',
-        '/entities/all_entities',
-        '/environments/all_environments',
-      ].some((endpoint) => path.endsWith(endpoint))
-    )
-      return route.fulfill({ json: [] });
-    if (path.endsWith('/queries/all_queries'))
-      return route.fulfill({ json: { id: '~', folders: [], items: [] } });
-    // A released agent that predates environment-state/1 answers its own agent-info (the app confirms an old agent
-    // by its version, 0.107.0 or earlier, before it falls back to the read-only environment list).
-    if (path.endsWith('/agent-info'))
-      return route.fulfill({ json: { version: '0.100.0' } });
-    // Like every released `datatug serve`, this agent has no
-    // environment-state/1 route: Go's router answers it with a plain-text 404.
-    if (path.endsWith('/environments/state'))
-      return route.fulfill({
-        status: 404,
-        contentType: 'text/plain; charset=utf-8',
-        body: '404 page not found\n',
-      });
-    return route.fulfill({ json: {} });
-  });
+  await page.route('http://localhost:19881/**', fulfillProjectApi);
   await page.route('**/v0/datatug/project/quick-search/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
     if (path.endsWith('/status')) return route.fulfill({ json: status() });
@@ -117,6 +120,11 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       return route.fulfill({ json: status() });
     }
     if (path.endsWith('/search')) {
+      if (!enabled)
+        return route.fulfill({
+          status: 409,
+          json: { error: { code: 'consent_required' } },
+        });
       const body = route.request().postDataJSON();
       if (typeof body.q !== 'string' || !body.q.trim() || body.q.length > 256)
         return route.fulfill({
@@ -338,4 +346,80 @@ test('Quick Search consent, grouped kind navigation, tags and deletion retry', a
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
   ).toBe(true);
+});
+
+test('Quick Search shows results while index status is still loading', async ({
+  page,
+}) => {
+  let statusRequests = 0;
+  const searchOrder: string[] = [];
+  await page.route('http://localhost:19881/**', fulfillProjectApi);
+  await page.route('**/v0/datatug/project/quick-search/**', async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    if (path.endsWith('/status')) {
+      statusRequests++;
+      searchOrder.push('status');
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+      return route.fulfill({
+        json: {
+          state: 'ready',
+          canManage: true,
+          eligible: true,
+          audience: 'public',
+          provider: 'Typesense',
+          documentCount: documents.length,
+          consentVersion: 'project-quick-search/1',
+        },
+      });
+    }
+    if (path.endsWith('/search')) {
+      searchOrder.push('search');
+      return route.fulfill({
+        json: {
+          items: documents,
+          itemCount: documents.length,
+          tags: ['Customers'],
+        },
+      });
+    }
+    return route.fulfill({ status: 404 });
+  });
+  await page.goto(projectPath + '/overview');
+  await page
+    .getByRole('searchbox', { name: 'Quick Search', exact: true })
+    .fill('Customers');
+  await page
+    .getByRole('searchbox', { name: 'Quick Search', exact: true })
+    .press('Enter');
+  await page.locator('sneat-datatug-quick-search').waitFor();
+  await page.evaluate(() => {
+    const debug = window as unknown as {
+      ng: {
+        getComponent(element: Element): {
+          api: { api: { setApiAuthToken(token: string): void } };
+        };
+      };
+    };
+    debug.ng
+      .getComponent(
+        document.querySelector('sneat-datatug-quick-search') as Element,
+      )
+      .api.api.setApiAuthToken('quick-search-http-fixture');
+  });
+  const main = page.locator(
+    'sneat-datatug-quick-search[data-search-view=search]:not(.ion-page-hidden)',
+  );
+  await main.getByRole('button', { name: 'Retry status' }).click();
+  // The status response is held for 3 s; results must not wait for it.
+  await expect(main.locator('.results > li')).toHaveCount(1, {
+    timeout: 2500,
+  });
+  expect(searchOrder.indexOf('search')).toBeGreaterThanOrEqual(0);
+  await expect(
+    main.getByRole('link', { name: 'Table@Chinook', exact: true }),
+  ).toBeVisible();
+  // Late status arrival leaves the results in place.
+  await expect.poll(() => statusRequests).toBeGreaterThan(0);
+  await page.waitForTimeout(3500);
+  await expect(main.locator('.results > li')).toHaveCount(1);
 });

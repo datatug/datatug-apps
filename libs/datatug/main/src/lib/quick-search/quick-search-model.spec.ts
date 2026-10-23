@@ -1,5 +1,5 @@
 import { DEMO_PROJECT_REF } from '@datatug/project-address';
-import { checkMetadataTarget } from './quick-search-model';
+import { checkMetadataTarget, classifySearchError } from './quick-search-model';
 import {
   groupSearchItems,
   SearchDocument,
@@ -87,21 +87,80 @@ describe('Quick Search grouped typed results', () => {
   });
 });
 
-describe('typed Check metadata destinations',()=>{
-  const item:SearchDocument={kind:'check',id:'check-a',name:'Check A',tags:[],reference:{objectId:'check-a'}};
-  it('keeps Firestore and the exact default demo on their existing Check page',()=>{
-    expect(searchItemHref({storeId:'firestore',spaceID:'s',projectId:'p'},item)).toContain('/checks/check-a');
-    expect(searchItemHref(DEMO_PROJECT_REF,item)).toContain('/checks/check-a');
+describe('typed Check metadata destinations', () => {
+  const item: SearchDocument = {
+    kind: 'check',
+    id: 'check-a',
+    name: 'Check A',
+    tags: [],
+    reference: { objectId: 'check-a' },
+  };
+  it('keeps Firestore and the exact default demo on their existing Check page', () => {
+    expect(
+      searchItemHref(
+        { storeId: 'firestore', spaceID: 's', projectId: 'p' },
+        item,
+      ),
+    ).toContain('/checks/check-a');
+    expect(searchItemHref(DEMO_PROJECT_REF, item)).toContain('/checks/check-a');
   });
-  it('routes other GitHub checks to a closed metadata query and preserves qualifiers',()=>{
-    const href=searchItemHref({storeId:'github.com',projectId:'repo@owner@folder',projectApi:'cloud',branch:'feature'},item) as string;
+  it('routes other GitHub checks to a closed metadata query and preserves qualifiers', () => {
+    const href = searchItemHref(
+      {
+        storeId: 'github.com',
+        projectId: 'repo@owner@folder',
+        projectApi: 'cloud',
+        branch: 'feature',
+      },
+      item,
+    ) as string;
     expect(href).toContain('/quick-search?');
-    const url=new URL(href,'https://datatug.app');
-    expect(url.searchParams.get('detailKind')).toBe('check');expect(url.searchParams.get('objectId')).toBe('check-a');
-    expect(url.searchParams.get('projectApi')).toBe('cloud');expect(url.searchParams.get('branch')).toBe('feature');
-    expect(searchItemHref({...DEMO_PROJECT_REF,branch:'feature'},item)).toContain('detailKind=check');
+    const url = new URL(href, 'https://datatug.app');
+    expect(url.searchParams.get('detailKind')).toBe('check');
+    expect(url.searchParams.get('objectId')).toBe('check-a');
+    expect(url.searchParams.get('projectApi')).toBe('cloud');
+    expect(url.searchParams.get('branch')).toBe('feature');
+    expect(
+      searchItemHref({ ...DEMO_PROJECT_REF, branch: 'feature' }, item),
+    ).toContain('detailKind=check');
   });
-  it.each(['?detailKind=table&objectId=a','?detailKind=check','?objectId=a','?detailKind=check&objectId=../a','?detailKind=check&detailKind=check&objectId=a'])('rejects malformed metadata selector %s',query=>{
-    const params=new URLSearchParams(query);expect(checkMetadataTarget(params)).toEqual({kind:'invalid'});
+  it.each([
+    '?detailKind=table&objectId=a',
+    '?detailKind=check',
+    '?objectId=a',
+    '?detailKind=check&objectId=../a',
+    '?detailKind=check&detailKind=check&objectId=a',
+  ])('rejects malformed metadata selector %s', (query) => {
+    const params = new URLSearchParams(query);
+    expect(checkMetadataTarget(params)).toEqual({ kind: 'invalid' });
+  });
+});
+
+describe('classifySearchError', () => {
+  const body = (status: number, code: unknown) => ({
+    status,
+    error: { error: code },
+  });
+  it.each([
+    [body(409, { code: 'consent_required' }), 'consent'],
+    [body(409, { code: 'quick_search_reindex_required' }), 'reindex'],
+    [body(409, { code: 'quick_search_unsupported_storage' }), 'unsupported'],
+    [body(409, { code: 'quick_search_premium_required' }), 'premium'],
+    [body(403, { code: 'project_denied' }), 'denied'],
+    [body(409, { code: 'operation_in_progress' }), 'conflict'],
+    [body(503, { code: 'provider_unavailable' }), 'unavailable'],
+    [body(503, 'search_unavailable'), 'unavailable'],
+    [body(403, undefined), 'denied'],
+    [body(503, undefined), 'unavailable'],
+    [body(429, { code: 'quick_search_rate_limited' }), 'rateLimited'],
+    [body(429, undefined), 'rateLimited'],
+    [body(400, 'invalid_request'), 'invalid'],
+    [body(409, 'index_capacity_reached'), 'capacity'],
+    [body(503, 'provider_completion_unknown'), 'unavailable'],
+    [body(400, 'something_else'), 'failed'],
+    [new Error('boom'), 'failed'],
+    [undefined, 'failed'],
+  ])('maps %j to %s', (error, expected) => {
+    expect(classifySearchError(error)).toBe(expected);
   });
 });
