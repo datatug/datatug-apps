@@ -100,9 +100,10 @@ const DEMO_TREE = {
   ],
 };
 
-
 /** The files of `DEMO_TREE`, each with `{}` unless a test gives it a body. */
-function demoFiles(bodies: Record<string, string> = {}): Record<string, string> {
+function demoFiles(
+  bodies: Record<string, string> = {},
+): Record<string, string> {
   const files: Record<string, string> = {};
   for (const entry of DEMO_TREE.tree) {
     if (entry.type === 'blob') {
@@ -125,22 +126,30 @@ function setup(bodies: Record<string, string> = {}) {
   return { gh, service: TestBed.inject(GithubProjectReaderService) };
 }
 
-const first = <T>(o: Parameters<typeof firstValueFrom<T>>[0]) => firstValueFrom(o);
+const first = <T>(o: Parameters<typeof firstValueFrom<T>>[0]) =>
+  firstValueFrom(o);
 
 describe('GithubProjectReaderService', () => {
-  it.each(['missing', 'null'])('uses a neutral fallback for an existing environment folder with %s metadata', async (mode) => {
-    const { service, gh } = setup();
-    const files = demoFiles();
-    const path = 'demo-project-1/environments/local/local.env.json';
-    if (mode === 'missing') delete files[path];
-    else files[path] = 'null';
-    gh.addRepo(REPO, SHA, files);
-    expect(await first(service.getEnvironmentSummary(PROJECT_ID, 'local'))).toMatchObject({ id: 'local', title: 'local' });
-  });
+  it.each(['missing', 'null'])(
+    'uses a neutral fallback for an existing environment folder with %s metadata',
+    async (mode) => {
+      const { service, gh } = setup();
+      const files = demoFiles();
+      const path = 'demo-project-1/environments/local/local.env.json';
+      if (mode === 'missing') delete files[path];
+      else files[path] = 'null';
+      gh.addRepo(REPO, SHA, files);
+      expect(
+        await first(service.getEnvironmentSummary(PROJECT_ID, 'local')),
+      ).toMatchObject({ id: 'local', title: 'local' });
+    },
+  );
 
   it('rejects an unknown environment instead of inventing an empty one', async () => {
     const { service } = setup();
-    await expect(first(service.getEnvironmentSummary(PROJECT_ID, 'typo'))).rejects.toThrow('was not found');
+    await expect(
+      first(service.getEnvironmentSummary(PROJECT_ID, 'typo')),
+    ).rejects.toThrow('was not found');
   });
 
   it('preserves presentation and edition references without inventing catalog servers', async () => {
@@ -171,7 +180,6 @@ describe('GithubProjectReaderService', () => {
     });
   });
 
-
   describe('parseGithubProjectId / buildGithubRawUrl', () => {
     it('splits repo@org@folder and defaults folder to "datatug"', () => {
       expect(parseGithubProjectId('my-repo@my-org')).toEqual({
@@ -187,32 +195,86 @@ describe('GithubProjectReaderService', () => {
     });
 
     it('builds a project-folder-relative raw URL (HEAD: the default branch, whatever it is called)', () => {
-      expect(buildGithubRawUrl(PROJECT_ID, 'entities/Album/Album.entity.json')).toBe(
+      expect(
+        buildGithubRawUrl(PROJECT_ID, 'entities/Album/Album.entity.json'),
+      ).toBe(
         'https://raw.githubusercontent.com/datatug/datatug-demo-projects/HEAD/demo-project-1/entities/Album/Album.entity.json',
       );
     });
 
     it.each([
       // [project id, relative path, raw URL]
-      ['r@o', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/datatug/datatug-project.json'],
-      ['r@o@d', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/datatug-project.json'],
-      ['r@o@a/b', 'x/y.json', 'https://raw.githubusercontent.com/o/r/HEAD/a/b/x/y.json'],
+      [
+        'r@o',
+        'datatug-project.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/datatug/datatug-project.json',
+      ],
+      [
+        'r@o@d',
+        'datatug-project.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/d/datatug-project.json',
+      ],
+      [
+        'r@o@a/b',
+        'x/y.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/a/b/x/y.json',
+      ],
       // An empty folder is the repo root: no doubled slash.
-      ['r@o@', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/HEAD/datatug-project.json'],
-      ['chinook-demo@datatug@', 'queries/q.json', 'https://raw.githubusercontent.com/datatug/chinook-demo/HEAD/queries/q.json'],
+      [
+        'r@o@',
+        'datatug-project.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/datatug-project.json',
+      ],
+      [
+        'chinook-demo@datatug@',
+        'queries/q.json',
+        'https://raw.githubusercontent.com/datatug/chinook-demo/HEAD/queries/q.json',
+      ],
       // The explicit ref of a four-part id: a tag or a commit SHA.
-      ['r@o@@v1.0.0', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/v1.0.0/datatug-project.json'],
-      ['r@o@d@v1.0.0', 'datatug-project.json', 'https://raw.githubusercontent.com/o/r/v1.0.0/d/datatug-project.json'],
-      ['r@o@d@0123456789abcdef0123456789abcdef01234567', 'p.json', 'https://raw.githubusercontent.com/o/r/0123456789abcdef0123456789abcdef01234567/d/p.json'],
+      [
+        'r@o@@v1.0.0',
+        'datatug-project.json',
+        'https://raw.githubusercontent.com/o/r/v1.0.0/datatug-project.json',
+      ],
+      [
+        'r@o@d@v1.0.0',
+        'datatug-project.json',
+        'https://raw.githubusercontent.com/o/r/v1.0.0/d/datatug-project.json',
+      ],
+      [
+        'r@o@d@0123456789abcdef0123456789abcdef01234567',
+        'p.json',
+        'https://raw.githubusercontent.com/o/r/0123456789abcdef0123456789abcdef01234567/d/p.json',
+      ],
       // HEAD is the default branch: no ref.
-      ['r@o@d@HEAD', 'p.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/p.json'],
-      ['r@o@d@', 'p.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/p.json'],
+      [
+        'r@o@d@HEAD',
+        'p.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/d/p.json',
+      ],
+      [
+        'r@o@d@',
+        'p.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/d/p.json',
+      ],
       // Lower-cased owner and repo; folder and ref keep their case.
-      ['Repo@Org@Dir@Feature', 'p.json', 'https://raw.githubusercontent.com/org/repo/Feature/Dir/p.json'],
+      [
+        'Repo@Org@Dir@Feature',
+        'p.json',
+        'https://raw.githubusercontent.com/org/repo/Feature/Dir/p.json',
+      ],
       // Every folder and file segment is encoded (the same bytes on the wire for a space or a non-ASCII letter).
-      ['r@o@my dir', 'a b/é.json', 'https://raw.githubusercontent.com/o/r/HEAD/my%20dir/a%20b/%C3%A9.json'],
+      [
+        'r@o@my dir',
+        'a b/é.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/my%20dir/a%20b/%C3%A9.json',
+      ],
       // Empty file segments are dropped, never a doubled slash.
-      ['r@o@d', '/x//y.json', 'https://raw.githubusercontent.com/o/r/HEAD/d/x/y.json'],
+      [
+        'r@o@d',
+        '/x//y.json',
+        'https://raw.githubusercontent.com/o/r/HEAD/d/x/y.json',
+      ],
       ['r@o@', '', 'https://raw.githubusercontent.com/o/r/HEAD/'],
     ])('builds the raw URL of %s / %s', (projectId, relativePath, expected) => {
       expect(buildGithubRawUrl(projectId, relativePath)).toBe(expected);
@@ -220,8 +282,14 @@ describe('GithubProjectReaderService', () => {
 
     it.each([
       // A folder can never reach another repo or another part of the URL.
-      ['chinook-demo@datatug@../../../datatug/datatug-demo-projects/main/demo-project-1', 'folder'],
-      ['chinook-demo@datatug@..\\..\\..\\datatug\\datatug-demo-projects\\main\\demo-project-1', 'folder'],
+      [
+        'chinook-demo@datatug@../../../datatug/datatug-demo-projects/main/demo-project-1',
+        'folder',
+      ],
+      [
+        'chinook-demo@datatug@..\\..\\..\\datatug\\datatug-demo-projects\\main\\demo-project-1',
+        'folder',
+      ],
       ['chinook-demo@datatug@\t../../../evil/repo/main', 'folder'],
       ['chinook-demo@datatug@..', 'folder'],
       ['chinook-demo@datatug@.', 'folder'],
@@ -249,7 +317,9 @@ describe('GithubProjectReaderService', () => {
       ['../x@datatug@', 'owner-or-repo'],
       ['chinook-demo@@', 'owner-or-repo'],
     ])('refuses to build a URL for the id %j (%s)', (projectId, reason) => {
-      expect(() => buildGithubRawUrl(projectId, 'datatug-project.json')).toThrow(GithubProjectIdError);
+      expect(() =>
+        buildGithubRawUrl(projectId, 'datatug-project.json'),
+      ).toThrow(GithubProjectIdError);
       try {
         buildGithubRawUrl(projectId, 'datatug-project.json');
       } catch (e) {
@@ -257,12 +327,19 @@ describe('GithubProjectReaderService', () => {
       }
     });
 
-    it.each(['..', '../x', 'a/../b', 'a/..', './x', 'a/./b', '../../../evil/repo/main/x'])(
-      'refuses the file path %j',
-      (path) => {
-        expect(() => buildGithubRawUrl('r@o@d', path)).toThrow(GithubProjectIdError);
-      },
-    );
+    it.each([
+      '..',
+      '../x',
+      'a/../b',
+      'a/..',
+      './x',
+      'a/./b',
+      '../../../evil/repo/main/x',
+    ])('refuses the file path %j', (path) => {
+      expect(() => buildGithubRawUrl('r@o@d', path)).toThrow(
+        GithubProjectIdError,
+      );
+    });
 
     it('reads the given revision instead of HEAD or the ref', () => {
       const sha = '0123456789abcdef0123456789abcdef01234567';
@@ -275,15 +352,28 @@ describe('GithubProjectReaderService', () => {
     });
 
     it('splits the optional fourth part and lower-cases owner and repo', () => {
-      expect(parseGithubProjectId('r@o@')).toStrictEqual({ repo: 'r', org: 'o', folder: '' });
-      expect(parseGithubProjectId('r@o@@v1')).toStrictEqual({ repo: 'r', org: 'o', folder: '', ref: 'v1' });
+      expect(parseGithubProjectId('r@o@')).toStrictEqual({
+        repo: 'r',
+        org: 'o',
+        folder: '',
+      });
+      expect(parseGithubProjectId('r@o@@v1')).toStrictEqual({
+        repo: 'r',
+        org: 'o',
+        folder: '',
+        ref: 'v1',
+      });
       expect(parseGithubProjectId('Repo@Org@Dir@v1')).toStrictEqual({
         repo: 'repo',
         org: 'org',
         folder: 'Dir',
         ref: 'v1',
       });
-      expect(parseGithubProjectId('r@o@d@HEAD')).toStrictEqual({ repo: 'r', org: 'o', folder: 'd' });
+      expect(parseGithubProjectId('r@o@d@HEAD')).toStrictEqual({
+        repo: 'r',
+        org: 'o',
+        folder: 'd',
+      });
     });
   });
 
@@ -321,10 +411,14 @@ describe('GithubProjectReaderService', () => {
       const { gh, service } = setup();
       for (const id of ['abc', 'r@o@..', 'r@o@a/../b']) {
         let error: unknown;
-        service.getRawJson(id, 'x.json').subscribe({ error: (e: unknown) => (error = e) });
+        service
+          .getRawJson(id, 'x.json')
+          .subscribe({ error: (e: unknown) => (error = e) });
         expect(error).toBeInstanceOf(GithubProjectIdError);
         let listed: unknown;
-        service.listDirectory(id, 'x').subscribe({ error: (e: unknown) => (listed = e) });
+        service
+          .listDirectory(id, 'x')
+          .subscribe({ error: (e: unknown) => (listed = e) });
         expect(listed).toBeInstanceOf(GithubProjectIdError);
       }
       expect(gh.count()).toBe(0);
@@ -340,12 +434,18 @@ describe('GithubProjectReaderService', () => {
   describe('listDirectory', () => {
     it('lists immediate children of a folder, files and dirs, from ONE tree fetch', async () => {
       const { gh, service } = setup();
-      const result = await first(service.listDirectory(PROJECT_ID, 'environments'));
+      const result = await first(
+        service.listDirectory(PROJECT_ID, 'environments'),
+      );
 
       // Sorted with `localeCompare` (case-insensitive, alphabetical) — 'local'
       // sorts before 'QA' there, unlike a naive ASCII/uppercase-first sort.
       expect(result).toEqual([
-        { name: 'local', path: 'demo-project-1/environments/local', type: 'dir' },
+        {
+          name: 'local',
+          path: 'demo-project-1/environments/local',
+          type: 'dir',
+        },
         { name: 'QA', path: 'demo-project-1/environments/QA', type: 'dir' },
       ]);
       // The commit, then the listing at that commit.
@@ -360,9 +460,15 @@ describe('GithubProjectReaderService', () => {
       await first(service.listDirectory(PROJECT_ID, 'environments'));
       gh.reset();
 
-      const entities = await first(service.listDirectory(PROJECT_ID, 'entities'));
+      const entities = await first(
+        service.listDirectory(PROJECT_ID, 'entities'),
+      );
       expect(gh.count()).toBe(0);
-      expect(entities.map((e) => e.name)).toEqual(['Album', 'entities-summary.json', 'Track']);
+      expect(entities.map((e) => e.name)).toEqual([
+        'Album',
+        'entities-summary.json',
+        'Track',
+      ]);
     });
 
     it('lists a project at the repo root (an empty folder): the prefix is not "/"', async () => {
@@ -383,7 +489,11 @@ describe('GithubProjectReaderService', () => {
       const id = 'chinook-demo@datatug@';
 
       expect(await first(service.listDirectory(id, ''))).toEqual([
-        { name: 'datatug-project.json', path: 'datatug-project.json', type: 'file' },
+        {
+          name: 'datatug-project.json',
+          path: 'datatug-project.json',
+          type: 'file',
+        },
         { name: 'entities', path: 'entities', type: 'dir' },
         { name: 'queries', path: 'queries', type: 'dir' },
         { name: 'README.md', path: 'README.md', type: 'file' },
@@ -398,21 +508,26 @@ describe('GithubProjectReaderService', () => {
 
     it('resolves to an empty list for a folder this project does not have', async () => {
       const { service } = setup();
-      expect(await first(service.listDirectory(PROJECT_ID, 'widgets'))).toEqual([]);
+      expect(await first(service.listDirectory(PROJECT_ID, 'widgets'))).toEqual(
+        [],
+      );
     });
 
     it('resolves to an empty list when the repository does not exist (404)', async () => {
       const { service } = setup();
-      expect(await first(service.listDirectory('r@o@d', 'entities'))).toEqual([]);
+      expect(await first(service.listDirectory('r@o@d', 'entities'))).toEqual(
+        [],
+      );
     });
 
     it('surfaces a friendly message on a 403 of the listing (rate limited)', async () => {
       const { gh, service } = setup();
       // The commit is resolved, the listing is refused.
-      gh.fail.api = (url) => (url.pathname.includes('/git/trees/') ? 403 : undefined);
-      await expect(first(service.listDirectory(PROJECT_ID, 'entities'))).rejects.toThrow(
-        GITHUB_RATE_LIMIT_MESSAGE,
-      );
+      gh.fail.api = (url) =>
+        url.pathname.includes('/git/trees/') ? 403 : undefined;
+      await expect(
+        first(service.listDirectory(PROJECT_ID, 'entities')),
+      ).rejects.toThrow(GITHUB_RATE_LIMIT_MESSAGE);
     });
   });
 
@@ -434,15 +549,22 @@ describe('GithubProjectReaderService', () => {
     it('resolves to undefined on 404 (never an error)', async () => {
       const { service } = setup();
       expect(
-        await first(service.getRawJson(PROJECT_ID, 'entities/Missing/Missing.entity.json')),
+        await first(
+          service.getRawJson(
+            PROJECT_ID,
+            'entities/Missing/Missing.entity.json',
+          ),
+        ),
       ).toBeUndefined();
     });
 
     it('says so when a file is not JSON', async () => {
-      const { service } = setup({ 'demo-project-1/datatug-project.json': '<html>' });
-      await expect(first(service.getRawJson(PROJECT_ID, 'datatug-project.json'))).rejects.toThrow(
-        /not valid JSON/,
-      );
+      const { service } = setup({
+        'demo-project-1/datatug-project.json': '<html>',
+      });
+      await expect(
+        first(service.getRawJson(PROJECT_ID, 'datatug-project.json')),
+      ).rejects.toThrow(/not valid JSON/);
     });
 
     it('names the hosts when none of them answers (a 403 of the file host, the mirror down)', async () => {
@@ -450,8 +572,12 @@ describe('GithubProjectReaderService', () => {
       gh.fail.raw = 403;
       gh.fail.mirror = 503;
       await expect(
-        first(service.getRawText(PROJECT_ID, 'queries/albums/albums_by_title.sql')),
-      ).rejects.toThrow(/raw\.githubusercontent\.com and cdn\.jsdelivr\.net did not answer/);
+        first(
+          service.getRawText(PROJECT_ID, 'queries/albums/albums_by_title.sql'),
+        ),
+      ).rejects.toThrow(
+        /raw\.githubusercontent\.com and cdn\.jsdelivr\.net did not answer/,
+      );
     });
 
     it('caches a file so a second read does not re-fetch it', async () => {
@@ -467,9 +593,13 @@ describe('GithubProjectReaderService', () => {
       const { gh, service } = setup();
       gh.fail.raw = 500;
       gh.fail.mirror = 500;
-      await expect(first(service.getRawText(PROJECT_ID, 'datatug-project.json'))).rejects.toThrow();
+      await expect(
+        first(service.getRawText(PROJECT_ID, 'datatug-project.json')),
+      ).rejects.toThrow();
       gh.fail.raw = undefined;
-      expect(await first(service.getRawText(PROJECT_ID, 'datatug-project.json'))).toBe('{}');
+      expect(
+        await first(service.getRawText(PROJECT_ID, 'datatug-project.json')),
+      ).toBe('{}');
     });
   });
 
@@ -479,7 +609,9 @@ describe('GithubProjectReaderService', () => {
         'demo-project-1/environments/local/catalogs/chinook-local/chinook-local.db.json':
           '{"driver":"sqlite3","dbModel":"chinook"}',
       });
-      const result = await first(service.getCatalogTables(PROJECT_ID, 'local', 'chinook-local'));
+      const result = await first(
+        service.getCatalogTables(PROJECT_ID, 'local', 'chinook-local'),
+      );
 
       expect(result).toEqual({
         tables: [
@@ -492,7 +624,11 @@ describe('GithubProjectReaderService', () => {
 
     it('resolves to an empty catalog when the catalog file has no dbModel', async () => {
       const { service } = setup();
-      expect(await first(service.getCatalogTables(PROJECT_ID, 'local', 'unknown-catalog'))).toEqual({
+      expect(
+        await first(
+          service.getCatalogTables(PROJECT_ID, 'local', 'unknown-catalog'),
+        ),
+      ).toEqual({
         tables: [],
         views: [],
       });
@@ -502,40 +638,98 @@ describe('GithubProjectReaderService', () => {
   describe('listEntityIds', () => {
     it('lists entities/ subfolder names, not entities-summary.json', async () => {
       const { service } = setup();
-      expect(await first(service.listEntityIds(PROJECT_ID))).toEqual(['Album', 'Track']);
+      expect(await first(service.listEntityIds(PROJECT_ID))).toEqual([
+        'Album',
+        'Track',
+      ]);
     });
   });
 
   describe('getQueriesFolder', () => {
     it('preserves MeaningGraph documents and Core70 comparison through nested query catalog and cold query reads', async () => {
-      const semanticModel = createSemanticModel({queryHash:'a'.repeat(64),resultIndex:0,columns:[{name:'ID',dataType:'integer'}]});
-      semanticModel.meaning.concepts = [{id:'customer',kind:'entity',labels:{en:'Customer'},description:'A buyer'}];
-      const {service} = setup({
-        'demo-project-1/queries/sales/regional/customers.query.json': JSON.stringify({id:'customers',title:'Regional customers',type:'SQL',createdAt:'2026-10-21T12:00:00Z',semanticModel,comparison:coreComparison.comparison,parameters:coreComparison.parameters,recordsets:coreComparison.recordsets}),
-        'demo-project-1/queries/sales/regional/customers.query.sql': 'SELECT 1 AS ID',
+      const semanticModel = createSemanticModel({
+        queryHash: 'a'.repeat(64),
+        resultIndex: 0,
+        columns: [{ name: 'ID', dataType: 'integer' }],
+      });
+      semanticModel.meaning.concepts = [
+        {
+          id: 'customer',
+          kind: 'entity',
+          labels: { en: 'Customer' },
+          description: 'A buyer',
+        },
+      ];
+      const { service } = setup({
+        'demo-project-1/queries/sales/regional/customers.query.json':
+          JSON.stringify({
+            id: 'customers',
+            title: 'Regional customers',
+            type: 'SQL',
+            createdAt: '2026-10-21T12:00:00Z',
+            semanticModel,
+            comparison: coreComparison.comparison,
+            parameters: coreComparison.parameters,
+            recordsets: coreComparison.recordsets,
+          }),
+        'demo-project-1/queries/sales/regional/customers.query.sql':
+          'SELECT 1 AS ID',
       });
       const folder = await first(service.getQueriesFolder(PROJECT_ID));
-      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].semanticModel).toEqual(semanticModel);
-      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].createdAt).toBe('2026-10-21T12:00:00Z');
-      expect(folder.folders?.find(item => item.id === 'sales')?.folders?.find(item => item.id === 'regional')?.items?.[0].comparison).toEqual(coreComparison.comparison);
-      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({comparison:coreComparison.comparison,parameters:coreComparison.parameters,recordsets:coreComparison.recordsets});
-      expect(await first(service.getQuery(PROJECT_ID,'sales/regional/customers'))).toMatchObject({semanticModel,text:'SELECT 1 AS ID',createdAt:'2026-10-21T12:00:00Z'});
+      expect(
+        folder.folders
+          ?.find((item) => item.id === 'sales')
+          ?.folders?.find((item) => item.id === 'regional')?.items?.[0]
+          .semanticModel,
+      ).toEqual(semanticModel);
+      expect(
+        folder.folders
+          ?.find((item) => item.id === 'sales')
+          ?.folders?.find((item) => item.id === 'regional')?.items?.[0]
+          .createdAt,
+      ).toBe('2026-10-21T12:00:00Z');
+      expect(
+        folder.folders
+          ?.find((item) => item.id === 'sales')
+          ?.folders?.find((item) => item.id === 'regional')?.items?.[0]
+          .comparison,
+      ).toEqual(coreComparison.comparison);
+      expect(
+        await first(service.getQuery(PROJECT_ID, 'sales/regional/customers')),
+      ).toMatchObject({
+        comparison: coreComparison.comparison,
+        parameters: coreComparison.parameters,
+        recordsets: coreComparison.recordsets,
+      });
+      expect(
+        await first(service.getQuery(PROJECT_ID, 'sales/regional/customers')),
+      ).toMatchObject({
+        semanticModel,
+        text: 'SELECT 1 AS ID',
+        createdAt: '2026-10-21T12:00:00Z',
+      });
     });
 
     it('builds the recursive folder tree, one folder per queries/ subfolder', async () => {
       const { service } = setup({
-        'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
+        'demo-project-1/queries/albums/albums_by_title.sql.json':
+          '{"title":"Albums by title"}',
         'demo-project-1/queries/customers/customer-invoices.query.json':
           '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL","connectionId":"chinook-sqlite"}',
       });
       const result = await first(service.getQueriesFolder(PROJECT_ID));
 
       expect(result.id).toBe('~');
-      expect(result.folders?.map((f) => f.id).sort()).toEqual(['albums', 'customers']);
+      expect(result.folders?.map((f) => f.id).sort()).toEqual([
+        'albums',
+        'customers',
+      ]);
       const albums = result.folders?.find((f) => f.id === 'albums');
       // Legacy `.sql.json` (no "id" field) falls back to the filename-derived
       // bare id — `albums_by_title.sql.json` -> `albums_by_title`.
-      expect(albums?.items).toEqual([{ id: 'albums_by_title', title: 'Albums by title', type: 'SQL' }]);
+      expect(albums?.items).toEqual([
+        { id: 'albums_by_title', title: 'Albums by title', type: 'SQL' },
+      ]);
       const customers = result.folders?.find((f) => f.id === 'customers');
       expect(customers?.items?.[0]).toMatchObject({
         id: 'customer-invoices',
@@ -603,14 +797,16 @@ describe('GithubProjectReaderService', () => {
       );
     });
 
-
     it('resolves a bare id, fetching both the definition and its sidecar body', async () => {
       const { service } = setup({
         'demo-project-1/queries/customers/customer-invoices.query.json':
           '{"id":"customer-invoices","title":"Customer invoices","type":"DTQL","connectionId":"chinook-sqlite"}',
-        'demo-project-1/queries/customers/customer-invoices.query.dtql': 'from:\n  name: Invoice\n',
+        'demo-project-1/queries/customers/customer-invoices.query.dtql':
+          'from:\n  name: Invoice\n',
       });
-      const result = await first(service.getQuery(PROJECT_ID, 'customer-invoices'));
+      const result = await first(
+        service.getQuery(PROJECT_ID, 'customer-invoices'),
+      );
 
       expect(result).toMatchObject({
         id: 'customer-invoices',
@@ -632,12 +828,13 @@ describe('GithubProjectReaderService', () => {
         },
       ];
       const { service } = setup({
-        'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.json': JSON.stringify({
-          id: 'chinook-customer-invoice-join',
-          type: 'DTQL',
-          connectionId: 'chinook-sqlite',
-          relationshipBindings,
-        }),
+        'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.json':
+          JSON.stringify({
+            id: 'chinook-customer-invoice-join',
+            type: 'DTQL',
+            connectionId: 'chinook-sqlite',
+            relationshipBindings,
+          }),
         'demo-project-1/queries/demodb/chinook-customer-invoice-join.query.dtql':
           'from Invoice as i\njoin Customer as c\n  on i.CustomerId = c.CustomerId\n',
       });
@@ -655,16 +852,139 @@ describe('GithubProjectReaderService', () => {
           '{"id":"customer-invoices","type":"DTQL"}',
         'demo-project-1/queries/customers/customer-invoices.query.dtql': 'body',
       });
-      const result = await first(service.getQuery(PROJECT_ID, 'customers/customer-invoices'));
+      const result = await first(
+        service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+      );
       expect(result.id).toBe('customer-invoices');
+    });
+
+    describe('TugQL body forms (datatug-core queryBodyCandidates: the file name decides)', () => {
+      const DEF =
+        'demo-project-1/queries/customers/customer-invoices.query.json';
+      const BODY = 'demo-project-1/queries/customers/customer-invoices.query';
+      const TUGQL_DEF =
+        '{"id":"customer-invoices","title":"Customer invoices","type":"TugQL"}';
+
+      it('reads the text form "<id>.query.tugql" as TugQL', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql`]: 'from Invoice as i\n',
+        });
+        const result = await first(
+          service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+        );
+        expect(result).toMatchObject({
+          type: 'TugQL',
+          text: 'from Invoice as i\n',
+        });
+        expect(
+          gh
+            .urls()
+            .filter(
+              (u) =>
+                u.includes('customer-invoices.query.') && !u.endsWith('.json'),
+            ),
+        ).toEqual([expect.stringMatching(/customer-invoices\.query\.tugql$/u)]);
+      });
+
+      it('reads the structured YAML form "<id>.query.tugql.yaml" as the structured document, with no 404 probe', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        const result = await first(
+          service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+        );
+        expect(result).toMatchObject({
+          type: 'DTQL',
+          text: 'from:\n  name: Invoice\n',
+        });
+        expect(
+          gh
+            .urls()
+            .filter(
+              (u) =>
+                u.includes('customer-invoices.query.') && !u.endsWith('.json'),
+            ),
+        ).toEqual([
+          expect.stringMatching(/customer-invoices\.query\.tugql\.yaml$/u),
+        ]);
+      });
+
+      it('falls back from "<id>.query.tugql" to "<id>.query.tugql.yaml" on a 404 when the tree lists neither', async () => {
+        const gh = new FakeGithub();
+        const files = demoFiles({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql.yaml`]: 'from:\n  name: Invoice\n',
+        });
+        gh.addRepo(REPO, SHA, files);
+        // A tree that does not list the query's body files (truncated or stale): the reader has to probe.
+        const fetchWithoutBodiesInTree: typeof gh.fetch = async (url, init) => {
+          const response = await gh.fetch(url, init);
+          if (!url.includes('/git/trees/')) return response;
+          const json = (await response.json()) as { tree: { path: string }[] };
+          json.tree = json.tree.filter(
+            (e) => !e.path.startsWith(`${BODY}.`) || e.path.endsWith('.json'),
+          );
+          return new Response(JSON.stringify(json), {
+            status: response.status,
+            headers: response.headers,
+          });
+        };
+        TestBed.configureTestingModule({
+          providers: [
+            { provide: GITHUB_FETCH, useValue: fetchWithoutBodiesInTree },
+            { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+            { provide: GITHUB_FILE_STORE, useValue: NO_GITHUB_FILE_STORE },
+          ],
+        });
+        const service = TestBed.inject(GithubProjectReaderService);
+        const result = await first(
+          service.getQuery(PROJECT_ID, 'customers/customer-invoices'),
+        );
+        expect(result).toMatchObject({
+          type: 'DTQL',
+          text: 'from:\n  name: Invoice\n',
+        });
+        const bodyUrls = gh
+          .urls()
+          .filter(
+            (u) =>
+              u.includes('customer-invoices.query.') && !u.endsWith('.json'),
+          );
+        expect(bodyUrls[0]).toMatch(/customer-invoices\.query\.tugql$/u);
+        expect(bodyUrls.at(-1)).toMatch(
+          /customer-invoices\.query\.tugql\.yaml$/u,
+        );
+        expect(bodyUrls.some((u) => u.endsWith('.dtql'))).toBe(false);
+      });
+
+      it('does not fall back past a failure that is not a 404', async () => {
+        const { service, gh } = setup({
+          [DEF]: TUGQL_DEF,
+          [`${BODY}.tugql`]: 'from Invoice as i\n',
+        });
+        gh.fail.raw = (u: URL) =>
+          u.pathname.endsWith('.tugql') ? 500 : undefined;
+        gh.fail.mirror = (u: URL) =>
+          u.pathname.endsWith('.tugql') ? 500 : undefined;
+        await expect(
+          first(service.getQuery(PROJECT_ID, 'customers/customer-invoices')),
+        ).rejects.toThrow();
+        expect(gh.urls().some((u) => u.endsWith('.tugql.yaml'))).toBe(false);
+      });
     });
 
     it('resolves the legacy "<id>.sql.json" shape, body = def filename minus ".json"', async () => {
       const { service } = setup({
-        'demo-project-1/queries/albums/albums_by_title.sql.json': '{"title":"Albums by title"}',
-        'demo-project-1/queries/albums/albums_by_title.sql': 'SELECT * FROM Album',
+        'demo-project-1/queries/albums/albums_by_title.sql.json':
+          '{"title":"Albums by title"}',
+        'demo-project-1/queries/albums/albums_by_title.sql':
+          'SELECT * FROM Album',
       });
-      const result = await first(service.getQuery(PROJECT_ID, 'albums_by_title'));
+      const result = await first(
+        service.getQuery(PROJECT_ID, 'albums_by_title'),
+      );
 
       expect(result).toMatchObject({
         id: 'albums_by_title',
@@ -675,15 +995,17 @@ describe('GithubProjectReaderService', () => {
 
     it('errors for an id with no matching query file (never a thrown 404 from a guessed URL)', async () => {
       const { service } = setup();
-      await expect(first(service.getQuery(PROJECT_ID, 'does-not-exist'))).rejects.toThrow(
-        /does-not-exist/,
-      );
+      await expect(
+        first(service.getQuery(PROJECT_ID, 'does-not-exist')),
+      ).rejects.toThrow(/does-not-exist/);
     });
   });
 
   describe('getBoard', () => {
     it('injects the requested id (the file itself only has a title)', async () => {
-      const { service } = setup({ 'demo-project-1/boards/board1/board.json': '{"title":"1st board"}' });
+      const { service } = setup({
+        'demo-project-1/boards/board1/board.json': '{"title":"1st board"}',
+      });
       expect(await first(service.getBoard(PROJECT_ID, 'board1'))).toEqual({
         id: 'board1',
         title: '1st board',
@@ -738,11 +1060,16 @@ describe('actual legacy entity provenance and equivalent dual layouts', () => {
   );
 });
 
-describe('strict board metadata reads for search projection',()=>{
-  it('refuses a missing full board instead of inventing searchable title metadata',async()=>{
-    const {service}=setup();
-    await expect(first(service.getBoard(PROJECT_ID,'missing',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
-    expect(await first(service.getBoard(PROJECT_ID,'missing'))).toMatchObject({id:'missing',title:'missing'});
+describe('strict board metadata reads for search projection', () => {
+  it('refuses a missing full board instead of inventing searchable title metadata', async () => {
+    const { service } = setup();
+    await expect(
+      first(service.getBoard(PROJECT_ID, 'missing', { requireExisting: true })),
+    ).rejects.toThrow('metadata unavailable');
+    expect(await first(service.getBoard(PROJECT_ID, 'missing'))).toMatchObject({
+      id: 'missing',
+      title: 'missing',
+    });
   });
 });
 
@@ -815,34 +1142,76 @@ describe('strict schema inventory completeness', () => {
       ),
     ).rejects.toThrow();
   });
-  it.each([403, 'network', 'redirect'] as const)('refuses an unresolved, refused or moved commit (%s)',async failure=>{
-    const {service,gh}=strictSetup();
-    gh.fail.api=failure;
-    await expect(first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).rejects.toThrow();
-  });
-  it('ignores a persisted legacy tree without complete provenance',async()=>{
-    const gh=new FakeGithub();gh.addRepo(REPO,SHA,demoFiles());
-    const getFile=vi.fn(async (_commit:string,path:string)=>path==='#tree'?{text:'[]',bytes:2}:undefined);
-    TestBed.configureTestingModule({providers:[
-      {provide:GITHUB_FETCH,useValue:gh.fetch},
-      {provide:GITHUB_CLOCK,useValue:()=>1_000_000},
-      {provide:GITHUB_FILE_STORE,useValue:{...NO_GITHUB_FILE_STORE,getFile}},
-    ]});
-    const service=TestBed.inject(GithubProjectReaderService);
-    expect(await first(service.listDirectory(PROJECT_ID,'dbmodels',{requireComplete:true}))).not.toEqual([]);
-    expect(getFile.mock.calls.some(call=>call[1]==='#tree')).toBe(false);
+  it.each([403, 'network', 'redirect'] as const)(
+    'refuses an unresolved, refused or moved commit (%s)',
+    async (failure) => {
+      const { service, gh } = strictSetup();
+      gh.fail.api = failure;
+      await expect(
+        first(
+          service.listDirectory(PROJECT_ID, 'dbmodels', {
+            requireComplete: true,
+          }),
+        ),
+      ).rejects.toThrow();
+    },
+  );
+  it('ignores a persisted legacy tree without complete provenance', async () => {
+    const gh = new FakeGithub();
+    gh.addRepo(REPO, SHA, demoFiles());
+    const getFile = vi.fn(async (_commit: string, path: string) =>
+      path === '#tree' ? { text: '[]', bytes: 2 } : undefined,
+    );
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: GITHUB_FETCH, useValue: gh.fetch },
+        { provide: GITHUB_CLOCK, useValue: () => 1_000_000 },
+        {
+          provide: GITHUB_FILE_STORE,
+          useValue: { ...NO_GITHUB_FILE_STORE, getFile },
+        },
+      ],
+    });
+    const service = TestBed.inject(GithubProjectReaderService);
+    expect(
+      await first(
+        service.listDirectory(PROJECT_ID, 'dbmodels', {
+          requireComplete: true,
+        }),
+      ),
+    ).not.toEqual([]);
+    expect(getFile.mock.calls.some((call) => call[1] === '#tree')).toBe(false);
   });
 
-  it.each(['[]','"invalid"','null'])('rejects malformed board bodies %s in strict mode',async body=>{
-    const {service}=setup({'demo-project-1/boards/board1/board.json':body});
-    await expect(first(service.getBoard(PROJECT_ID,'board1',{requireExisting:true}))).rejects.toThrow('metadata unavailable');
-  });
-
+  it.each(['[]', '"invalid"', 'null'])(
+    'rejects malformed board bodies %s in strict mode',
+    async (body) => {
+      const { service } = setup({
+        'demo-project-1/boards/board1/board.json': body,
+      });
+      await expect(
+        first(
+          service.getBoard(PROJECT_ID, 'board1', { requireExisting: true }),
+        ),
+      ).rejects.toThrow('metadata unavailable');
+    },
+  );
 });
 
-it.each(['', '   ', '\n\t'])('keeps the neutral entity default for an empty flat definition (%j)',async body=>{
-  const {gh,service}=setup();
-  gh.addRepo(REPO,SHA,{'demo-project-1/datatug-project.json':'{}','demo-project-1/entities/Customer.entity.json':body});
-  expect(await first(service.entityDefinitionPath(PROJECT_ID,'Customer'))).toBe('entities/Customer.entity.json');
-  expect(await first(service.getEntity(PROJECT_ID,'Customer'))).toEqual({id:'Customer',fields:[]});
-});
+it.each(['', '   ', '\n\t'])(
+  'keeps the neutral entity default for an empty flat definition (%j)',
+  async (body) => {
+    const { gh, service } = setup();
+    gh.addRepo(REPO, SHA, {
+      'demo-project-1/datatug-project.json': '{}',
+      'demo-project-1/entities/Customer.entity.json': body,
+    });
+    expect(
+      await first(service.entityDefinitionPath(PROJECT_ID, 'Customer')),
+    ).toBe('entities/Customer.entity.json');
+    expect(await first(service.getEntity(PROJECT_ID, 'Customer'))).toEqual({
+      id: 'Customer',
+      fields: [],
+    });
+  },
+);

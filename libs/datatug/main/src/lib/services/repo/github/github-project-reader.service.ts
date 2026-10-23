@@ -184,6 +184,12 @@ export interface IGithubWireQueryItem {
   publicData?: IQueryDef['publicData'];
 }
 
+/** One body file a query may have; its name alone decides whether it is the structured YAML form. */
+interface IGithubQueryBodyCandidate {
+  readonly fileName: string;
+  readonly structured: boolean;
+}
+
 export interface IGithubWireQueryFolder {
   id: string;
   title?: string;
@@ -306,12 +312,7 @@ export const GITHUB_TIMER = new InjectionToken<GithubSetTimer>('GITHUB_TIMER', {
  * - `moved`: GitHub answered with a redirect (a renamed or moved repository). Refused.
  */
 export type GithubCommitState =
-  | 'given'
-  | 'resolved'
-  | 'remembered'
-  | 'unresolved'
-  | 'missing'
-  | 'moved';
+  'given' | 'resolved' | 'remembered' | 'unresolved' | 'missing' | 'moved';
 
 export interface IGithubCommitResolution {
   readonly state: GithubCommitState;
@@ -983,7 +984,10 @@ export class GithubProjectReaderService {
         return;
       }
       const pinnedUrls = [...this.treeCalls.keys()];
-      while (this.treeCalls.size > MAX_PINNED_TREES_IN_MEMORY && pinnedUrls.length) {
+      while (
+        this.treeCalls.size > MAX_PINNED_TREES_IN_MEMORY &&
+        pinnedUrls.length
+      ) {
         const oldest = pinnedUrls.shift() as string;
         if (oldest !== key) this.treeCalls.delete(oldest);
       }
@@ -1234,7 +1238,7 @@ export class GithubProjectReaderService {
     }
   }
 
-  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.dtql`/`.http` sidecar). */
+  /** Same as {@link getRawJson}, but for a plain-text body (a query's `.sql`/`.tugql`/`.tugql.yaml`/`.dtql`/`.http` sidecar). */
   public getRawText(
     projectId: string,
     relativePath: string,
@@ -1478,10 +1482,16 @@ export class GithubProjectReaderService {
     return this.getRawJson<IGithubBoardFile>(
       projectId,
       `boards/${boardId}/board.json`,
-    ).pipe(map((file) => {
-      if (options?.requireExisting && (!file || typeof file !== 'object' || Array.isArray(file))) throw new Error('Board metadata unavailable');
-      return { id: boardId, title: boardId, ...file };
-    }));
+    ).pipe(
+      map((file) => {
+        if (
+          options?.requireExisting &&
+          (!file || typeof file !== 'object' || Array.isArray(file))
+        )
+          throw new Error('Board metadata unavailable');
+        return { id: boardId, title: boardId, ...file };
+      }),
+    );
   }
 
   // ---------------------------------------------------------------------
@@ -1512,25 +1522,38 @@ export class GithubProjectReaderService {
     return name.slice(0, -'.sql.json'.length);
   }
 
-  /** The sidecar BODY file for one definition file — `<id>.query.json` ->
-   * `<id>.query.<ext>` (ext from `type`: sql/dtql/http); `<id>.sql.json` ->
-   * `<id>.sql` (the def filename itself, minus only the trailing `.json` —
-   * the legacy convention already spells the body's own extension into its
-   * "sql" segment). */
-  private static bodyFileNameFor(defFileName: string, type: string): string {
+  /** The sidecar BODY files one definition file may have, in datatug-core's
+   * order (`pkg/storage/filestore/query_body_files.go` `queryBodyCandidates`):
+   * the file NAME alone decides the form, never the content or the definition.
+   * - `<id>.sql.json` -> `<id>.sql` (the legacy convention spells the body's
+   *   own extension into the def name);
+   * - type `TugQL` (or legacy `DTQL`) -> `<id>.query.tugql` (text form), then
+   *   `<id>.query.tugql.yaml` (structured YAML form), then the legacy
+   *   `<id>.query.dtql` (structured YAML form);
+   * - type `HTTP` -> `<id>.query.http`; anything else -> `<id>.query.sql`. */
+  private static bodyCandidatesFor(
+    defFileName: string,
+    type: string,
+  ): readonly IGithubQueryBodyCandidate[] {
     if (defFileName.endsWith('.sql.json')) {
-      return defFileName.slice(0, -'.json'.length);
+      return [
+        { fileName: defFileName.slice(0, -'.json'.length), structured: false },
+      ];
     }
     const stem = defFileName.slice(0, -'.json'.length);
-    const ext =
-      type === 'HTTP'
-        ? 'http'
-        : type === 'TugQL'
-          ? 'tugql'
-          : type === 'DTQL'
-            ? 'dtql'
-            : 'sql';
-    return `${stem}.${ext}`;
+    if (type === 'TugQL' || type === 'DTQL') {
+      return [
+        { fileName: `${stem}.tugql`, structured: false },
+        { fileName: `${stem}.tugql.yaml`, structured: true },
+        { fileName: `${stem}.dtql`, structured: true },
+      ];
+    }
+    return [
+      {
+        fileName: `${stem}.${type === 'HTTP' ? 'http' : 'sql'}`,
+        structured: false,
+      },
+    ];
   }
 
   /** The full, recursively-nested query folder tree under `queries/` — one
@@ -1635,7 +1658,9 @@ export class GithubProjectReaderService {
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
                 : {}),
-              ...(def && Object.hasOwn(def, 'comparison') ? { comparison: def.comparison } : {}),
+              ...(def && Object.hasOwn(def, 'comparison')
+                ? { comparison: def.comparison }
+                : {}),
               targets: def?.targets,
               parameters: def?.parameters,
               relationshipBindings: def?.relationshipBindings,
@@ -1738,42 +1763,77 @@ export class GithubProjectReaderService {
           switchMap((def) => {
             const bareId = GithubProjectReaderService.defFileBareId(fileName);
             const type = def?.type || 'SQL';
-            const bodyFileName = GithubProjectReaderService.bodyFileNameFor(
+            const bodyDir = folderName ? `queries/${folderName}/` : 'queries/';
+            const candidates = GithubProjectReaderService.bodyCandidatesFor(
               fileName,
               type,
             );
-            const bodyRelPath = folderName
-              ? `queries/${folderName}/${bodyFileName}`
-              : `queries/${bodyFileName}`;
-            return this.getRawText(projectId, bodyRelPath).pipe(
-              map(
-                (text): IGithubWireQueryItem => ({
-                  id: def?.id || bareId,
-                  title: def?.title,
-                  createdAt: def?.createdAt,
-                  type,
-                  text,
-                  ...(def?.connectionId
-                    ? { connectionId: def.connectionId }
-                    : {}),
-                  ...(def?.semanticModel
-                    ? { semanticModel: def.semanticModel }
-                    : {}),
-                  ...(def && Object.hasOwn(def, 'comparison') ? { comparison: def.comparison } : {}),
-                  targets: def?.targets,
-                  parameters: def?.parameters,
-                  relationshipBindings: def?.relationshipBindings,
-                  recordsets: def?.recordsets,
-                  federation: def?.federation,
-                  publicData: def?.publicData,
-                  dbModel: def?.dbModel,
-                  draft: def?.draft,
-                }),
+            // The tree already read names the body file that exists, so it is read first (no extra request). The
+            // rest are probed in datatug-core's order, each only after a 404 (a truncated or stale tree).
+            const treeDir = match.path.slice(
+              0,
+              match.path.length - fileName.length,
+            );
+            const listed = candidates.find((c) =>
+              tree.some(
+                (e) =>
+                  e.type === 'blob' && e.path === `${treeDir}${c.fileName}`,
               ),
+            );
+            return this.readQueryBody(
+              projectId,
+              bodyDir,
+              listed
+                ? [listed, ...candidates.filter((c) => c !== listed)]
+                : candidates,
+            ).pipe(
+              map((body): IGithubWireQueryItem => ({
+                id: def?.id || bareId,
+                title: def?.title,
+                createdAt: def?.createdAt,
+                // The structured YAML form opens as the app's structured document, which the app still types
+                // `DTQL` (as `.query.dtql` did); the full TugQL rename is a separate change.
+                type: body.structured && type === 'TugQL' ? 'DTQL' : type,
+                text: body.text,
+                ...(def?.connectionId
+                  ? { connectionId: def.connectionId }
+                  : {}),
+                ...(def?.semanticModel
+                  ? { semanticModel: def.semanticModel }
+                  : {}),
+                ...(def && Object.hasOwn(def, 'comparison')
+                  ? { comparison: def.comparison }
+                  : {}),
+                targets: def?.targets,
+                parameters: def?.parameters,
+                relationshipBindings: def?.relationshipBindings,
+                recordsets: def?.recordsets,
+                federation: def?.federation,
+                publicData: def?.publicData,
+                dbModel: def?.dbModel,
+                draft: def?.draft,
+              })),
             );
           }),
         );
       }),
+    );
+  }
+
+  /** The first candidate body that is not a 404 (`text` undefined when every one is). Any other failure fails the
+   * read: the next candidate is tried only when this one is absent. */
+  private readQueryBody(
+    projectId: string,
+    bodyDir: string,
+    candidates: readonly IGithubQueryBodyCandidate[],
+  ): Observable<{ readonly text?: string; readonly structured: boolean }> {
+    const [candidate, ...rest] = candidates;
+    return this.getRawText(projectId, `${bodyDir}${candidate.fileName}`).pipe(
+      switchMap((text) =>
+        text === undefined && rest.length
+          ? this.readQueryBody(projectId, bodyDir, rest)
+          : of({ text, structured: candidate.structured }),
+      ),
     );
   }
 }
