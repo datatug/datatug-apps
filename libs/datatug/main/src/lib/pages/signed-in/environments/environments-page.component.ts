@@ -599,15 +599,24 @@ export const environmentManagementNote = (
   const capabilities = state?.capabilities;
   if (!capabilities) return '';
   const notes = new Set<string>();
+  // The agent's reasons are bare phrases ("... are required"); end each as a sentence so two read as two.
+  const sentence = (reason: string | undefined, fallback: string): string => {
+    const text = reason?.trim() || fallback;
+    return /[.!?]$/.test(text) ? text : `${text}.`;
+  };
   if (!capabilities.canCreateEnvironment)
     notes.add(
-      capabilities.reasons?.canCreateEnvironment?.trim() ||
+      sentence(
+        capabilities.reasons?.canCreateEnvironment,
         'Adding environments is unavailable for this project.',
+      ),
     );
   if (!capabilities.canWriteOrder)
     notes.add(
-      capabilities.reasons?.canWriteOrder?.trim() ||
+      sentence(
+        capabilities.reasons?.canWriteOrder,
         'Managing the shared environment order is unavailable for this project.',
+      ),
     );
   return [...notes].join(' ');
 };

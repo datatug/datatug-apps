@@ -390,6 +390,24 @@ describe('Environments management', () => {
     [
       {
         ...state,
+        capabilities: {
+          canReadOrder: true,
+          canWriteOrder: false,
+          canCreateEnvironment: false,
+          // The exact reasons datatug-cli v0.113.0 sends without --allow-writes: no closing period.
+          reasons: {
+            canWriteOrder:
+              'Environment metadata write grant and --allow-writes are required',
+            canCreateEnvironment:
+              'Environment create grant and --allow-writes are required',
+          },
+        },
+      },
+      'Environment create grant and --allow-writes are required. Environment metadata write grant and --allow-writes are required.',
+    ],
+    [
+      {
+        ...state,
         capabilities: { ...state.capabilities, canCreateEnvironment: false },
       },
       'Adding environments is unavailable for this project.',

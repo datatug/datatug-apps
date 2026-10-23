@@ -150,12 +150,17 @@ describe('ProjectEnvironmentStateService scope', () => {
     ).rejects.toBe(failure);
     expect(legacy).not.toHaveBeenCalled();
   });
-  it.each(['0.110.1', 'v0.111.0', '0.112.0'])(
-    'reads a plain-text 404 from released agent %s (no environment-state route) as the legacy list',
-    async (version) => {
-      api.environmentState.mockReturnValue(
-        throwError(() => ({ status: 404, error: '404 page not found\n' })),
-      );
+  it.each([
+    ['0.110.1', 'a plain-text 404', { status: 404, error: '404 page not found\n' }],
+    ['v0.111.0', 'a plain-text 404', { status: 404, error: '404 page not found\n' }],
+    ['0.112.0', 'a plain-text 404', { status: 404, error: '404 page not found\n' }],
+    ['0.110.1', 'status 0', { status: 0, message: 'Unknown Error' }],
+    ['v0.111.0', 'status 0', { status: 0, message: 'Unknown Error' }],
+    ['0.112.0', 'status 0', { status: 0, message: 'Unknown Error' }],
+  ])(
+    'reads released agent %s answering %s (no environment-state route) as the legacy list',
+    async (version, _signal, failure) => {
+      api.environmentState.mockReturnValue(throwError(() => failure));
       api.agentInfo.mockReturnValue(of({ version }));
       const result = await firstValueFrom(
         TestBed.inject(ProjectEnvironmentStateService).view(ref, () =>
