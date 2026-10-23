@@ -91,6 +91,30 @@ describe('plain HTML custom elements', () => {
     expect(fetcher).toHaveBeenCalledTimes(3);
   });
 
+  it.each([
+    ['old-only (removed in TugQL cutover step 9)', { capabilities: { dtql: true }, endpoints: { dtql: '/ovdb/v1/databases/chinook/dtql' }, queryFormat: 'dtql-yaml+json' }],
+    ['new-only', { capabilities: { tugql: true }, endpoints: { tugql: '/ovdb/v1/databases/chinook/tugql' }, queryFormat: 'tugql-yaml+json' }],
+    ['both', { capabilities: { tugql: true, dtql: true }, endpoints: { tugql: '/ovdb/v1/databases/chinook/tugql', dtql: '/ovdb/v1/databases/chinook/dtql' }, queryFormat: 'tugql-yaml+json' }],
+  ])('queries the /tugql route from %s metadata', async (_name, metadata) => {
+    const requested: string[] = [];
+    vi.mocked(fetch).mockImplementation(async (input) => {
+      const url = String(input);
+      requested.push(url);
+      if (url.endsWith('/.well-known/openvaultdb')) return json({ databases: [{ id: 'chinook', url: 'https://example.test/ovdb/dbs/chinook', apiUrl: '/ovdb/v1/databases/chinook' }] });
+      if (url.endsWith('/ovdb/v1/databases/chinook')) return json(metadata);
+      if (url.endsWith('/ovdb/v1/databases/chinook/tugql')) return json({ records: [{ key: 'Album/1', data: { AlbumId: 1 } }] });
+      throw new Error(`unexpected URL: ${url}`);
+    });
+    const grid = document.createElement('datatug-grid');
+    grid.setAttribute('connection', 'https://example.test/ovdb/dbs/chinook');
+    grid.innerHTML = '<tugql-query>from: {name: Album}\nlimit: 1</tugql-query>';
+    document.body.append(grid);
+    await tick();
+    expect(grid.shadowRoot?.textContent).toContain('AlbumId');
+    expect(requested.some((url) => url.endsWith('/dtql'))).toBe(false);
+    expect(requested.at(-1)).toMatch(/\/chinook\/tugql$/u);
+  });
+
   it('renders chart from the same direct source and handles errors', async () => {
     vi.mocked(fetch).mockResolvedValueOnce(json([{ Name: 'A', Total: 4 }]));
     const chart = document.createElement('datatug-chart'); chart.setAttribute('data-url', 'https://example.test/chart.json'); document.body.append(chart);

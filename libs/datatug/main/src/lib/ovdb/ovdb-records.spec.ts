@@ -12,7 +12,7 @@ import {
   type OvdbConnection,
   type OvdbDescriptor,
 } from './ovdb-connection';
-import { getOvdbRecord, createOvdbRecord, ovdbCreateKeyField, deleteOvdbRecord, describeOvdbError, listOvdbRows, resetOvdbDatabase, updateOvdbRecord } from './ovdb-records';
+import { ovdbReadsWithTugql, getOvdbRecord, createOvdbRecord, ovdbCreateKeyField, deleteOvdbRecord, describeOvdbError, listOvdbRows, resetOvdbDatabase, updateOvdbRecord } from './ovdb-records';
 
 const entry = demoSqliteCatalog.chinook;
 
@@ -59,6 +59,17 @@ describe('local OVDB descriptor', () => {
     expect(descriptor.schemas?.collections?.['Album']?.foreignKeys).toEqual([
       { columns: ['ArtistId'], referencedTable: 'Artist', referencedColumns: ['ArtistId'] },
     ]);
+  });
+
+  it.each([
+    ['old-only (removed in TugQL cutover step 9)', { dtql: true, dtqlStreaming: true }],
+    ['new-only', { tugql: true, tugqlStreaming: true }],
+    ['both', { tugql: true, tugqlStreaming: true, dtql: true, dtqlStreaming: true }],
+  ])('reads %s TugQL capabilities as tugql', (_name, capabilities) => {
+    const descriptor = parseOvdbDescriptor({ id: 'x', capabilities: { read: true, ...capabilities } });
+    expect(descriptor.capabilities).toMatchObject({ tugql: true, tugqlStreaming: true, read: true });
+    expect(ovdbReadsWithTugql(descriptor)).toBe(true);
+    expect(ovdbUiCapabilities(descriptor).browse).toBe(true);
   });
 
   it('rejects malformed descriptors', () => {
