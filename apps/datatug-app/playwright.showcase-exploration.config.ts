@@ -1,10 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 import { demodbChromiumLaunch, demodbReporter, demodbServerEnv } from './e2e/helpers/demodb-config';
 
-// Captured-read acceptance only. Refuse an unconfigured run instead of querying providers.
-if (!process.env['DATATUG_E2E_GITHUB_FAKE'])
+// Captured-read acceptance only. Refuse a live GitHub run instead of querying providers: the demo project comes from
+// the GitHub pins (e2e/github-pins.json; CI selects DATATUG_E2E_GITHUB_PINS=demo-independent), which globalSetup checks
+// out and points DATATUG_E2E_GITHUB_FAKE at.
+if (process.env['GITHUB_E2E_MODE'] === 'live')
   throw new Error(
-    'Set DATATUG_E2E_GITHUB_FAKE to the pinned Demo checkout for showcase fixtures.',
+    'The showcase exploration lane reads the pinned Demo checkout only; unset GITHUB_E2E_MODE.',
   );
 const port = process.env['DATATUG_E2E_PORT'] || '44376';
 
