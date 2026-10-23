@@ -277,7 +277,7 @@ describe('SqlEditorPage', () => {
     expect(TestBed.inject(SemanticApiService).runQuery).not.toHaveBeenCalled();
     component.resultChartView.set('chart');
     component.runResult.set({ ...held, usedSourceIds: undefined });
-    expect(component.resultChartReason()).toContain('rights');
+    expect(component.resultChartReason()).toContain('allows charting');
     expect(component.resultChartVisible()).toBe(false);
   });
 
@@ -7426,7 +7426,7 @@ select (
       opener.openFromResult('rid-23');
       expect(created.resultChartUnavailableText()).toBe('Full-result chart preview is available after running the query.');
       (created as unknown as { closeSavedResult(): void }).closeSavedResult();
-      expect(created.resultChartUnavailableText()).toMatch(/^Full-result chart preview unavailable: /);
+      expect(created.resultChartUnavailableText()).toMatch(/^No chart for this result\. /);
     });
 
     it('starts the Current row pane closed for a wide result, one click to open', async () => {

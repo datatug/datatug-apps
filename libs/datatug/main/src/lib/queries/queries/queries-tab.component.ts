@@ -23,6 +23,8 @@ import {
   IonLabel,
   IonText,
 } from '@ionic/angular';
+import { addIcons } from 'ionicons';
+import { lockClosedOutline } from 'ionicons/icons';
 import { Observable, Subscription } from 'rxjs';
 import { ErrorLogger, IErrorLogger } from '@sneat/core';
 import { ActivatedRoute, Router } from '@angular/router';
@@ -43,6 +45,8 @@ import { DatatugNavService } from '../../services/nav/datatug-nav.service';
 import {
   AGENT_PERSONAL_QUERIES_UNSUPPORTED_MESSAGE,
   GITHUB_PERSONAL_QUERIES_MESSAGE,
+  GITHUB_READ_ONLY_QUERIES_MESSAGE,
+  isGithubReadOnlyProject,
   QueriesService,
   isGithubStoreId,
 } from '../queries.service';
@@ -59,9 +63,23 @@ interface IParentFolder extends IQueryFolder {
 
 type QueryType = 'SQL' | 'GraphQL' | 'HTTP';
 
+addIcons({ lockClosedOutline });
+
 @Component({
   selector: 'sneat-datatug-queries-tab',
   templateUrl: 'queries-tab.component.html',
+  styles: [
+    `
+      .queries-read-only {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding-inline: 8px;
+        font-size: 0.8125rem;
+        cursor: help;
+      }
+    `,
+  ],
   imports: [
     ErrorStateComponent,
     QueryListItemComponent,
@@ -626,12 +644,20 @@ export class QueriesTabComponent {
 
   newQuery(): void {
     const project = this.project();
-    if (project)
+    if (project && !isGithubReadOnlyProject(project.ref))
       void this.injector.get(QueriesUiService).openNewQuery(project.ref);
+  }
+
+  public readonly readOnlyMessage = GITHUB_READ_ONLY_QUERIES_MESSAGE;
+
+  /** A project browsed straight from GitHub: New query, New folder and Delete are replaced by a read-only hint. */
+  public readOnlyProject(): boolean {
+    return isGithubReadOnlyProject(this.project()?.ref);
   }
 
   public supportsFolderMutations(): boolean {
     const ref = this.project()?.ref;
+    if (isGithubReadOnlyProject(ref)) return false;
     return !(
       (ref?.spaceID !== undefined) ||
       (ref?.projectApi === 'cloud' &&

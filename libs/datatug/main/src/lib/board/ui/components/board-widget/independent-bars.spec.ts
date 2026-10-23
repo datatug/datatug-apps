@@ -262,7 +262,7 @@ describe('independent source presentation', () => {
         definition,
         true,
       ),
-    ).toThrow(/rights are unavailable/);
+    ).toThrow(/allows charting/);
     expect(() =>
       admitIndependentSource(
         {

@@ -138,7 +138,10 @@ function previewQueries(
               aria-label="Alphabetically"
               title="Alphabetically"
               ><ion-icon [icon]="textIcon" aria-hidden="true" /><ion-label
+                class="query-sort-label"
                 >Alphabetically</ion-label
+              ><ion-label class="query-sort-short-label" aria-hidden="true"
+                >Name</ion-label
               ></ion-segment-button
             >
             <ion-segment-button
@@ -147,7 +150,10 @@ function previewQueries(
               aria-label="Last added"
               title="Last added"
               ><ion-icon [icon]="calendarIcon" aria-hidden="true" /><ion-label
+                class="query-sort-label"
                 >Last added</ion-label
+              ><ion-label class="query-sort-short-label" aria-hidden="true"
+                >Date</ion-label
               ></ion-segment-button
             >
           </ion-segment>
@@ -171,6 +177,9 @@ function previewQueries(
             />
             <span class="query-sort-direction-label">{{
               directionLabel()
+            }}</span>
+            <span class="query-sort-direction-short-label" aria-hidden="true">{{
+              shortDirectionLabel()
             }}</span>
           </ion-button>
         }
@@ -250,21 +259,29 @@ function previewQueries(
         text-transform: none;
         letter-spacing: 0;
       }
-      /* Phones: the sort orders collapse to their icons (the accessible
-         names stay on the buttons) so the header keeps one line. */
+      .query-sort-short-label,
+      .query-sort-direction-short-label {
+        display: none;
+      }
+      /* Phones: the sort orders keep their icon plus a one-word label
+         (Name, Date; Newest, A–Z) so the header keeps one line; the full
+         accessible names stay on the buttons. */
       @media (max-width: 575px) {
-        .query-sort-segment ion-segment-button ion-label {
-          display: none;
-        }
-        .query-sort-segment ion-segment-button ion-icon {
-          margin: 0;
-        }
-        /* The direction toggle keeps its accessible name (aria-label) and title. */
+        .query-sort-segment ion-segment-button .query-sort-label,
         .query-sort-direction-label {
           display: none;
         }
-        .query-sort-direction ion-icon {
-          margin: 0;
+        .query-sort-segment ion-segment-button .query-sort-short-label,
+        .query-sort-direction-short-label {
+          display: inline;
+        }
+        .query-sort-segment ion-segment-button {
+          --padding-start: 6px;
+          --padding-end: 6px;
+        }
+        .query-sort-direction {
+          --padding-start: 4px;
+          --padding-end: 4px;
         }
       }
       .query-limit {
@@ -298,6 +315,16 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       ? this.sortDirection() === 'descending'
         ? 'Newest first'
         : 'Oldest first'
+      : this.sortDirection() === 'ascending'
+        ? 'A–Z'
+        : 'Z–A',
+  );
+  /** The one-word form phones show next to the direction arrow. */
+  protected readonly shortDirectionLabel = computed(() =>
+    this.sortOrder() === 'newest'
+      ? this.sortDirection() === 'descending'
+        ? 'Newest'
+        : 'Oldest'
       : this.sortDirection() === 'ascending'
         ? 'A–Z'
         : 'Z–A',
@@ -337,9 +364,12 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       .slice(0, previewLimit),
   );
 
+  /** Choosing a sort field starts it in its natural direction: names A→Z, dates newest first. */
   protected setSortOrder(value: unknown): void {
-    if (value === 'alphabetical' || value === 'newest')
-      this.sortOrder.set(value);
+    if (value !== 'alphabetical' && value !== 'newest') return;
+    if (value === this.sortOrder()) return;
+    this.sortOrder.set(value);
+    this.sortDirection.set(value === 'alphabetical' ? 'ascending' : 'descending');
   }
   protected readonly total = signal(0);
   protected readonly failure = signal<unknown>(undefined);

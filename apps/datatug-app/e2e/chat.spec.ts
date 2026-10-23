@@ -230,7 +230,7 @@ test('composer can add a provider and restore it after reload', async ({ page })
   await expect(page.locator('ion-footer').getByLabel('AI provider')).toHaveAttribute('aria-label', /DeepSeek/);
   await page.setViewportSize({ width: 390, height: 800 });
   await expect.poll(() => page.locator('ion-footer').evaluate((footer) => {
-    const controls = ['ion-input', 'ion-select', 'ion-button'].map((selector) => {
+    const controls = ['.composer-question ion-input', '.composer-provider ion-select', '.composer-send ion-button'].map((selector) => {
       const element = footer.querySelector(selector);
       if (!element) return null;
       const rect = element.getBoundingClientRect();
@@ -240,11 +240,12 @@ test('composer can add a provider and restore it after reload', async ({ page })
     const [input, dropdown, send] = controls;
     return {
       visible: controls.every((control) => control?.visible === true),
-      inputBeforeProvider: !!input && !!dropdown && input.rect.right < dropdown.rect.left,
+      // Phones: the question gets the whole first line; provider and Send share the next one.
+      inputFullWidthAbove: !!input && !!dropdown && input.rect.bottom <= dropdown.rect.top && input.rect.width >= 300,
       providerBeforeSend: !!dropdown && !!send && dropdown.rect.right < send.rect.left,
       sendWithinViewport: !!send && send.rect.right <= 390,
     };
-  })).toEqual({ visible: true, inputBeforeProvider: true, providerBeforeSend: true, sendWithinViewport: true });
+  })).toEqual({ visible: true, inputFullWidthAbove: true, providerBeforeSend: true, sendWithinViewport: true });
   const stored = await page.evaluate(() => ({
     providers: JSON.parse(localStorage.getItem('datatug.chat.providers.v1') || '[]') as { id: string; name: string }[],
     selected: localStorage.getItem('datatug.chat.selected-provider.v1'),

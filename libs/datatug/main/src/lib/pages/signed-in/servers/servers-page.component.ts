@@ -202,11 +202,13 @@ export class ServersPageComponent implements OnDestroy {
               catalog,
               serverKey(server),
             ]),
-            title: 'Registered catalog',
+            // Named as the catalog page titles it, "<catalog> (<environment>)", so two placements of one
+            // catalog (e.g. dev and local) read apart instead of both showing "Registered catalog".
+            title: `${catalog} (${environment.id})`,
             driver: server.driver,
             detail: serverLocation(server),
             environments: [environment.id],
-            availability: 'Catalog metadata available when scanned',
+            availability: 'Registered catalog · metadata available when scanned',
             target: {
               kind: 'catalog',
               environment: environment.id,
