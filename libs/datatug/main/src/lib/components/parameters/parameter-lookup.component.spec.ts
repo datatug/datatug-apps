@@ -272,4 +272,45 @@ describe('ParameterLookupComponent', () => {
     expect(fixture.componentInstance.cellText(undefined)).toBe('');
     fixture.destroy();
   });
+  it('focuses the filter only once it is enabled, not while the source check keeps it disabled', async () => {
+    vi.useFakeTimers();
+    try {
+      const prepared = deferred<{ sources: { id: string; label: string }[]; preselectedSourceId: string }>();
+      await create({ prepare: () => prepared.promise }, undefined, undefined, false);
+      const bar = (fixture.nativeElement as HTMLElement).querySelector('[data-testid="parameter-lookup-filter"]') as HTMLElement & {
+        disabled?: boolean;
+        setFocus?: () => Promise<void>;
+        getInputElement?: () => Promise<HTMLInputElement>;
+      };
+      const input = document.createElement('input');
+      document.body.appendChild(input);
+      bar.getInputElement = () => Promise.resolve(input);
+      const focusedWhileDisabled: (boolean | undefined)[] = [];
+      bar.setFocus = vi.fn(() => {
+        focusedWhileDisabled.push(bar.disabled);
+        if (!bar.disabled) input.focus();
+        return Promise.resolve();
+      });
+      // The enter animation is over, but the source check is still running: the filter is disabled.
+      await vi.advanceTimersByTimeAsync(500);
+      fixture.detectChanges();
+      expect(bar.disabled).toBe(true);
+      expect(bar.setFocus).not.toHaveBeenCalled();
+      // The check finishes, the filter is enabled, and only then does it take focus.
+      prepared.resolve({ sources: [{ id: 'nw', label: 'Customers · northwind' }], preselectedSourceId: 'nw' });
+      await vi.advanceTimersByTimeAsync(0);
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(10);
+      expect(bar.disabled).toBe(false);
+      expect(bar.setFocus).toHaveBeenCalledTimes(1);
+      expect(focusedWhileDisabled).toEqual([false]);
+      // Later searches do not steal focus again.
+      fixture.componentInstance.onFilter('bott');
+      fixture.detectChanges();
+      await vi.advanceTimersByTimeAsync(500);
+      expect(bar.setFocus).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
