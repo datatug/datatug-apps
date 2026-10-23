@@ -293,6 +293,7 @@ describe('configured source adapter using pinned actual Directory and registry f
   });
   it('uses existing project/environment/catalog services to resolve selected source metadata without querying rows', async () => {
     const environments = {
+      listEnvironments: vi.fn(() => of([{ id: 'web', title: 'Web' }])),
       getEnvSummary: vi.fn(() =>
         of({
           id: 'web',
@@ -337,6 +338,7 @@ describe('configured source adapter using pinned actual Directory and registry f
       },
     };
     const [selected] = await service.list(project);
+    expect(environments.listEnvironments).toHaveBeenCalledWith(project.ref);
     const result = await service.inspect(
       project,
       selected,

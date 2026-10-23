@@ -4,6 +4,7 @@ import '@analogjs/vitest-angular/setup-snapshots';
 import '@analogjs/vitest-angular/setup-serializers';
 import { setupTestBed } from '@analogjs/vitest-angular/setup-testbed';
 import { getTestBed } from '@angular/core/testing';
+import { restoreStorageSpies } from './storage-spies';
 
 export function setupAngularTestingEnvironment() {
   // setupTestBed initialises the test environment once per process, behind a global flag. When spec files share
@@ -278,6 +279,8 @@ export function resetSharedGlobals() {
     delete (window as any).history;
   }
   window.history.replaceState(null, '', '/');
+  restoreStorageSpies(window.localStorage);
+  restoreStorageSpies(window.sessionStorage);
   window.localStorage?.clear();
   window.sessionStorage?.clear();
   document.body.innerHTML = '';

@@ -66,6 +66,7 @@ function sharedQueryPage(rest: string): boolean {
     /^\/search-schema\/[A-Za-z0-9_-]+$/.test(rest) ||
     rest === '/queries' ||
     rest === '/shipping' ||
+    /^\/sources\/[A-Za-z0-9_-]{1,128}$/.test(rest) ||
     /^\/meanings(?:\/(?:new-entity|entity|new-field|field))?$/.test(rest) ||
     rest === '/boards' ||
     rest === '/boards/new' ||

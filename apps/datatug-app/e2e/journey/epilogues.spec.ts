@@ -79,6 +79,9 @@ test.describe('Epilogue A — close/reopen', () => {
     browser,
     request,
   }) => {
+    // Two pages, a fresh context and several 15 s waits do not fit the default 30 s budget on a loaded CI runner
+    // (it timed out at 30.9 s and 31.1 s in two main merge groups, at different steps).
+    test.setTimeout(90_000);
     const agentOrigin = `http://${agentServer.host}:${agentServer.port}`;
     const projectUrl = `/store/${agentServer.storeId}/project/${DEMO_PROJECT_ID}`;
     const customerTableUrl =

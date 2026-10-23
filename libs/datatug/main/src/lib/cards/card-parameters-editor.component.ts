@@ -274,7 +274,7 @@ const isScalar = (type: string): boolean =>
         margin: 0 0 1rem;
         padding: 0 0 0 0.75rem;
         border: 0;
-        border-left: 3px solid var(--ion-color-step-250, #c8c8c8);
+        border-left: 3px solid var(--ion-background-color-step-250, #c8c8c8);
         display: grid;
         gap: 0.5rem;
       }
@@ -313,7 +313,7 @@ const isScalar = (type: string): boolean =>
       .hint {
         margin: 0.25rem 0;
         font-size: 0.85rem;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
       }
       .warn {
         color: var(--ion-color-warning-shade);

@@ -18,7 +18,7 @@ const finished = (file: string, escaped: number, expectedEscape: boolean): TestC
 test('the guard self-test may mark a deliberate escape: it is not counted and does not fail the lane', () => {
   const reporter = new DemodbRequestReporter();
   reporter.onTestEnd(finished('/repo/apps/datatug-app/e2e/demodb-guard-selftest.spec.ts', 1, true));
-  assert.deepEqual(reporter.verdict(), { live: 0, escaped: 0, budget: 0, failed: false });
+  assert.deepEqual(reporter.verdict(), { live: 0, escaped: 0, budget: 0, githubLive: 0, githubBudget: 0, failed: false });
 });
 
 test('any other spec carrying the annotation is a normal test: its escape counts and fails the lane', () => {

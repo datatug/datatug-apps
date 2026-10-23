@@ -288,7 +288,7 @@ for (const id of demoSqliteDatasetIds) {
       await expect(page.getByTestId('ovdb-database-header')).toContainText(
         'editable',
       );
-      await expect(page.getByTestId('reset-database')).toBeVisible();
+      await expect(page.getByTestId('source-menu')).toBeVisible(); // Reset Database sits in its menu
 
       // 4. Open the first table that has rows, a primary key and a text column: read a row.
       const target = db.recordsets.find(
@@ -350,6 +350,7 @@ for (const id of demoSqliteDatasetIds) {
       if (persistent) {
         await expect(cellOfFirstRow()).toHaveText(edited);
         // 8. Reset restores the original data, and that survives a reload.
+        await page.getByTestId('source-menu').click();
         await page.getByTestId('reset-database').click();
         const alert = page.locator('ion-alert');
         await expect(alert).toHaveCount(1);

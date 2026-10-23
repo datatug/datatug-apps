@@ -61,7 +61,7 @@ export const GIT_REVISION_PATTERN = /^[0-9a-f]{40}$/;
  * checked by project-address-rules.ts.
  */
 export const HTTPS_URL_PATTERN =
-  /^https:\/\/[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(\/[!"$-[\]-~]*)?$/;
+  /^https:\/\/[A-Za-z0-9]([A-Za-z0-9.-]*[A-Za-z0-9])?(\/[!"$%&'()*+,\-./0-9:;<=>?@A-Z[\]^_`a-z{|}~]*)?$/;
 /** A link, not a template: no brace. */
 export const URL_NO_BRACES_PATTERN = /^[^{}]*$/;
 /** A URL template has `{table}` exactly once and no other brace. */

@@ -111,18 +111,12 @@ export class RepositoryMeaningsReaderService {
       try {
         let definition: IEntity;
         if (publicGithub) {
-          // Charge raw bytes before parsing or dual-layout reconciliation, including whitespace.
-          for (const path of [
-            `entities/${brief.id}/${brief.id}.entity.json`,
-            `entities/${brief.id}.entity.json`,
-          ])
-            await boundedText(address, path);
+          // Resolve the layout from the repository tree first, so only a file that exists is requested (the other
+          // layout's `.entity.json` would be a 404 for every entity). Raw bytes are charged before parsing.
           const path = await firstValueFrom(
             this.github.entityDefinitionPath(address, brief.id),
           );
-          const text = await firstValueFrom(
-            this.github.getRawText(address, path),
-          );
+          const text = await boundedText(address, path);
           if (text === undefined)
             throw new Error('The project entity definition is unavailable.');
           definition = JSON.parse(text);

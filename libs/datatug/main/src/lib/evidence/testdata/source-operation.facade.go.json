@@ -1,0 +1,169 @@
+{
+  "request": {
+    "spaceID": "space",
+    "projectId": "detective-demo-60096efa830907a862843995",
+    "environment": "demo",
+    "reference": {
+      "storeId": "firestore",
+      "spaceID": "space",
+      "projectId": "detective-demo-60096efa830907a862843995",
+      "sourceId": "shipping-working-copy",
+      "receiptActorId": "actor",
+      "operationId": "source-op-replay",
+      "requestSHA256": "ca6bda5cacf31cdaabb79dabba6223ba572bef05c517fb07f2ecb92210a51a1d",
+      "result": {
+        "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+        "revision": 3,
+        "sha256": "9a27f12f108cb854a6189306921910307963bb3c36ca61ea6076683d9138691b"
+      }
+    }
+  },
+  "open": {
+    "reference": {
+      "storeId": "firestore",
+      "spaceID": "space",
+      "projectId": "detective-demo-60096efa830907a862843995",
+      "sourceId": "shipping-working-copy",
+      "receiptActorId": "actor",
+      "operationId": "source-op-replay",
+      "requestSHA256": "ca6bda5cacf31cdaabb79dabba6223ba572bef05c517fb07f2ecb92210a51a1d",
+      "result": {
+        "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+        "revision": 3,
+        "sha256": "9a27f12f108cb854a6189306921910307963bb3c36ca61ea6076683d9138691b"
+      }
+    },
+    "receipt": {
+      "operationId": "source-op-replay",
+      "actorId": "actor",
+      "requestSHA256": "ca6bda5cacf31cdaabb79dabba6223ba572bef05c517fb07f2ecb92210a51a1d",
+      "action": "replay",
+      "outcome": "applied",
+      "revision": {
+        "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+        "revision": 3,
+        "sha256": "9a27f12f108cb854a6189306921910307963bb3c36ca61ea6076683d9138691b",
+        "fixtureCommit": "38a51dda39d988f2d2bcf23703bd1a969d49f4a3",
+        "fixtureSHA256": "73f0d871607ee5b24de68b5398c25806f556a3126a31e1865fee79b2881977e0",
+        "schemaSHA256": "df7cbb329274eb7b9365c6215ee5083359a43b9ae6f0ee6b3c5f61ef748bedd5",
+        "configuration": 18,
+        "businessClock": "2018-05-20T10:05:00Z",
+        "bytes": 110592,
+        "artifacts": [
+          {
+            "id": "logs/base.jsonl",
+            "sha256": "5814c09c2821dcf5fb7c313d4416fadd71f62519ab8aafe01de0ac6e6a4db65e",
+            "bytes": 6873
+          },
+          {
+            "id": "logs/recovery-11045.jsonl",
+            "sha256": "a03031230dfad126783e557b61631f1173dd6c5867f19e2758e971ffea716379",
+            "bytes": 704
+          }
+        ],
+        "actorId": "actor",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      "acceptedAt": "2026-10-21T12:00:00Z"
+    }
+  },
+  "discovery": {
+    "operations": [
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "space",
+          "projectId": "detective-demo-60096efa830907a862843995",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "actor",
+          "operationId": "source-op-noop",
+          "requestSHA256": "9034071ee2a6f196470dad7f4771902aec51318f0aee3b180c25d437175d645d",
+          "result": {
+            "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+            "revision": 3,
+            "sha256": "9a27f12f108cb854a6189306921910307963bb3c36ca61ea6076683d9138691b"
+          }
+        },
+        "action": "replay",
+        "outcome": "already-applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "space",
+          "projectId": "detective-demo-60096efa830907a862843995",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "actor",
+          "operationId": "source-op-correct",
+          "requestSHA256": "1f8b8ab8cf3083318e02535ab1046f78bcdab2b68e3f63b5355c93d5876fafb8",
+          "result": {
+            "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+            "revision": 2,
+            "sha256": "aaa8560b0c72a05599ddb94ee5e39aac4483589b656b325c3e863297cb3da9c0"
+          }
+        },
+        "action": "correct",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "space",
+          "projectId": "detective-demo-60096efa830907a862843995",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "actor",
+          "operationId": "initialize",
+          "requestSHA256": "914fb149dc4e20909853892ae78e7178fb50ce9cdc176122dfa20aff3dc7df65",
+          "result": {
+            "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+            "revision": 1,
+            "sha256": "bab4dd241f2a61aa2531932a8276795e96e6c84ab622beb15a3a59eabd4caf25"
+          }
+        },
+        "action": "initialize",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "space",
+          "projectId": "detective-demo-60096efa830907a862843995",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "actor",
+          "operationId": "source-op-reset",
+          "requestSHA256": "8dbe099b0f724d1eb0e5945092057eb7cd47c7fcf9a801c96e584a75474fb48e",
+          "result": {
+            "generation": "g-593b672dc679d0de7e2aba81447189e5",
+            "revision": 1,
+            "sha256": "0da923073fdb6ecad5d5c681de87bb056a4ab62711d3788ffbc52ce4c65c10ed"
+          }
+        },
+        "action": "reset",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      },
+      {
+        "reference": {
+          "storeId": "firestore",
+          "spaceID": "space",
+          "projectId": "detective-demo-60096efa830907a862843995",
+          "sourceId": "shipping-working-copy",
+          "receiptActorId": "actor",
+          "operationId": "source-op-replay",
+          "requestSHA256": "ca6bda5cacf31cdaabb79dabba6223ba572bef05c517fb07f2ecb92210a51a1d",
+          "result": {
+            "generation": "g-6431ee2ebebe503da4b7dc30fc77d3d9",
+            "revision": 3,
+            "sha256": "9a27f12f108cb854a6189306921910307963bb3c36ca61ea6076683d9138691b"
+          }
+        },
+        "action": "replay",
+        "outcome": "applied",
+        "acceptedAt": "2026-10-21T12:00:00Z"
+      }
+    ]
+  }
+}

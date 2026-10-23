@@ -5,7 +5,8 @@ import { execFileSync } from 'node:child_process';
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { installFakeGithub } from './helpers/fake-github';
+import { GITHUB_HOST, installFakeGithub } from './helpers/fake-github';
+import { demoProjectPin } from './helpers/github-pins';
 import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 
 /**
@@ -83,18 +84,17 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     await expect(card.getByRole('link', { name: 'Open saved query' })).toHaveAttribute('href', new RegExp(`runtime=${selectionId}`));
     await card.getByRole('link', { name: 'Open saved query' }).click();
     await expect(page).toHaveURL(new RegExp(`runtime=${selectionId}`));
-    const queryRuntime = page.locator('sneat-datatug-sql-editor select option').filter({ hasText: 'working copy' });
-    await expect(queryRuntime).toHaveCount(1);
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
-      .toHaveValue(selectionId, { timeout: 20_000 });
+    // The query page's runtime control is an Ionic select (#513), outside the editor.
+    const runtimeSelect = page.getByTestId('query-execution-runtime');
+    const selectedRuntime = () => runtimeSelect.evaluate((el) => (el as unknown as { value?: string }).value);
+    await expect(runtimeSelect.locator('ion-select-option').filter({ hasText: 'working copy' })).toHaveCount(1);
+    await expect.poll(selectedRuntime, { timeout: 20_000 }).toBe(selectionId);
     await page.getByRole('button', { name: 'Run query', exact: true }).click();
     await expect(page.locator('sneat-datatug-sql-editor .result-grid-viewport')).toContainText(edited, { timeout: 30_000 });
     expect(requests.filter((url) => url.endsWith('/data/chinook.sqlite'))).toHaveLength(1);
     await page.reload();
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('combobox', { name: 'Execution runtime', exact: true }))
-      .toHaveValue(selectionId, { timeout: 20_000 });
-    await expect(page.locator('sneat-datatug-sql-editor').getByRole('alert'))
-      .toContainText('selected working copy is unavailable');
+    await expect.poll(selectedRuntime, { timeout: 20_000 }).toBe(selectionId);
+    await expect(page.getByRole('alert').filter({ hasText: /selected working copy is unavailable/i })).toBeVisible();
     await expect(page.getByRole('button', { name: 'Run query', exact: true })).toBeDisabled();
   } finally {
     rmSync(scratch, { recursive: true, force: true });
@@ -105,8 +105,9 @@ test.beforeEach(async ({ context, baseURL }) => {
   const own = new URL(baseURL ?? 'http://127.0.0.1').origin;
   await context.route('**/*', (route) => {
     const url = new URL(route.request().url());
-    // demodb.dev requests fall through to the guard in helpers/demodb-guard.ts (local fixtures by default).
-    if (DEMODB.test(url.hostname)) return route.fallback();
+    // demodb.dev and GitHub requests fall through to the guard in helpers/demodb-guard.ts (local fixtures and the
+    // pinned GitHub checkouts by default).
+    if (DEMODB.test(url.hostname) || GITHUB_HOST.test(url.hostname)) return route.fallback();
     if (url.origin === own || url.protocol === 'data:' || url.protocol === 'blob:') {
       return route.continue();
     }
@@ -188,15 +189,9 @@ test('demo project GitHub choice carries verified source into the existing setup
   test.skip(!source, 'requires the offline demo project checkout');
   if (!source) return;
   await installPinnedChinookSqlite(context, source);
-  const commit = 'a'.repeat(40);
-  const tree = 'b'.repeat(40);
-  await context.route('https://api.github.com/repos/datatug/datatug-demo-project**', async (route) => {
-    const path = new URL(route.request().url()).pathname;
-    const json = path.endsWith('/commits/main') ? { sha: commit, commit: { tree: { sha: 'c'.repeat(40) } } }
-      : path.includes('/git/trees/') ? { tree: [{ path: 'demo-project-1', type: 'tree', sha: tree }] }
-      : { id: 330379815, owner: { login: 'datatug' }, name: 'datatug-demo-project', default_branch: 'main' };
-    await route.fulfill({ json });
-  });
+  // The repository, its default branch's commit and its root tree come from the pinned checkout (the guard's GitHub fake,
+  // e2e/github-pins.json), in GitHub's response shapes: the summary names the pinned commit.
+  const commit = demoProjectPin().sha;
   await openDataset(page, 'chinook');
   await page.getByTestId('project-copy-github').click();
   await expect(page).toHaveURL(/\/new-project\?/);
@@ -281,6 +276,7 @@ test.describe('Chinook as a local SQLite copy', () => {
     await expect(page.getByTestId('ovdb-rows')).toBeVisible({ timeout: 90_000 });
     if (persistent) await expect(nameCell(page, 'Created in browser')).toBeVisible();
     else await expect(nameCell(page, 'Created in browser')).toHaveCount(0);
+    await page.getByTestId('source-menu').click();
     await page.getByTestId('reset-database').click();
     await confirmAlert(page, 'Reset Database');
     await expect(page.getByTestId('reset-message')).toContainText('reset');
@@ -345,6 +341,7 @@ test.describe('Chinook as a local SQLite copy', () => {
 
     // Reset Database warns, and on confirmation restores the canonical data, which survives a reload.
     await openDataset(page, 'chinook', 'Artist');
+    await page.getByTestId('source-menu').click();
     await page.getByTestId('reset-database').click();
     await expect(alert(page)).toHaveCount(1);
     await expect(alert(page)).toContainText('All your local changes to Chinook (local SQLite) will be lost');

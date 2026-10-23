@@ -1,3 +1,4 @@
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { isQueryCreationTime } from '../../../queries/query-creation-time';
 import { DatePipe } from '@angular/common';
 import {
@@ -91,6 +92,7 @@ function previewQueries(
   selector: 'sneat-datatug-project-queries-preview',
   standalone: true,
   imports: [
+    ErrorStateComponent,
     DatePipe,
     RouterLink,
     IonCard,
@@ -108,13 +110,12 @@ function previewQueries(
       @if (state() === 'loading') {
         <ion-item><ion-label>Loading project queries…</ion-label></ion-item>
       } @else if (state() === 'error') {
-        <ion-item
-          ><ion-label role="alert"
-            >Queries could not be loaded.
-            <a [routerLink]="listHref()">Open Queries</a> to try
-            again.</ion-label
-          ></ion-item
-        >
+        <sneat-datatug-error-state
+          compact
+          what="the queries"
+          [error]="failure()"
+          (retry)="retry()"
+        />
       } @else if (state() === 'empty') {
         <ion-item
           ><ion-label
@@ -221,7 +222,7 @@ function previewQueries(
       }
       .query-limit {
         margin: 0 16px 12px;
-        color: var(--ion-color-medium-shade);
+        color: var(--dt-text-muted);
         font-size: 0.875rem;
       }
     `,
@@ -278,10 +279,18 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
       this.sortOrder.set(value);
   }
   protected readonly total = signal(0);
+  protected readonly failure = signal<unknown>(undefined);
+  private currentRef?: IProjectRef;
+
+  protected retry(): void {
+    this.projectRef = this.currentRef;
+  }
   protected readonly listHref = signal<UrlTree | undefined>(undefined);
 
   @Input() set projectRef(ref: IProjectRef | undefined) {
     this.load?.unsubscribe();
+    this.currentRef = ref;
+    this.failure.set(undefined);
     this.allQueries.set([]);
     this.total.set(0);
     this.listHref.set(
@@ -299,12 +308,16 @@ export class ProjectQueriesPreviewComponent implements OnDestroy {
           this.total.set(all.length);
           this.allQueries.set(all);
           this.state.set(all.length ? 'ready' : 'empty');
-        } catch {
+        } catch (error) {
+          this.failure.set(error);
           this.allQueries.set([]);
           this.state.set('error');
         }
       },
-      error: () => this.state.set('error'),
+      error: (error) => {
+        this.failure.set(error);
+        this.state.set('error');
+      },
     });
   }
 

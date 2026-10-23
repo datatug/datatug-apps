@@ -70,6 +70,12 @@ export const isQueryChanged = (queryState: IQueryState): boolean => {
   ) {
     return true;
   }
+  if (
+    queryState.parameters !== undefined &&
+    JSON.stringify(queryState.parameters) !== JSON.stringify(def.parameters ?? [])
+  ) {
+    return true;
+  }
   if (def.request.queryType !== queryState.request?.queryType) {
     throw new Error(
       `def.request.type !== queryState.request.type: ${def.request.queryType} !== ${queryState.request?.queryType}`,
@@ -517,7 +523,14 @@ export class QueryEditorStateService {
       // so this never fires again and never clobbers in-progress user
       // edits.
       if (wasLoading || state.request?.queryType !== def?.request?.queryType) {
-        state = { ...state, request: def?.request };
+        // The loading placeholder is typed SQL; the page branches on
+        // `queryType` (an HTTP query shows the HTTP editor), so it follows
+        // the loaded request's type too.
+        state = {
+          ...state,
+          request: def?.request,
+          ...(def?.request?.queryType ? { queryType: def.request.queryType } : {}),
+        };
       }
       if (state.title === undefined) {
         state = { ...state, title: def?.title };
@@ -683,6 +696,9 @@ export class QueryEditorStateService {
               text?: string;
               parameters?: readonly IParameterDef[];
               relationshipBindings?: IQueryDef['relationshipBindings'];
+              comparison?: IQueryDef['comparison'];
+              recordsets?: IQueryDef['recordsets'];
+              connectionId?: string;
             }[];
           }[];
         };
@@ -693,6 +709,11 @@ export class QueryEditorStateService {
         (i) => i.id === id || (folder.id && `${folder.id}/${i.id}` === id),
       );
       if (item) {
+        if (Object.hasOwn(item, 'comparison')) {
+          if (!Object.values(QueryType).includes(item.type as QueryType))
+            throw new UnsupportedQueryContractError();
+          return fromProjectQueryWire({ ...item, folderPath: folder.id || '~', type: item.type as QueryType, text: item.text ?? '' });
+        }
         return {
           id: item.id,
           title: item.title ?? item.id,
@@ -857,7 +878,10 @@ export class QueryEditorStateService {
       }
       const problem =
         queryState.request.queryType === QueryType.HTTP
-          ? httpRequestSaveProblem(queryState.request as IHttpQueryRequest)
+          ? httpRequestSaveProblem(
+              queryState.request as IHttpQueryRequest,
+              queryState.parameters ?? queryState.def.parameters,
+            )
           : undefined;
       if (problem) {
         setIsSavingToFalse();
@@ -874,6 +898,9 @@ export class QueryEditorStateService {
         ...(queryState.title !== undefined ? { title: queryState.title } : {}),
         request: savableHttpRequest(queryState.request),
         federation: queryState.federation ?? queryState.def.federation,
+        ...(queryState.parameters !== undefined
+          ? { parameters: queryState.parameters }
+          : {}),
       };
       const sentRequest = queryState.request;
       const saveQuery = queryState.isNew
@@ -903,6 +930,11 @@ export class QueryEditorStateService {
             federation: federationChangedDuringSave
               ? currentState.federation
               : value.federation,
+            parameters:
+              JSON.stringify(currentState.parameters) ===
+              JSON.stringify(queryState.parameters)
+                ? undefined
+                : currentState.parameters,
             isNew: false,
           });
           setIsSavingToFalse();
@@ -956,7 +988,10 @@ export class QueryEditorStateService {
         throw new Error('Load a query and select its branch before saving.');
       const problem =
         queryState.request.queryType === QueryType.HTTP
-          ? httpRequestSaveProblem(queryState.request as IHttpQueryRequest)
+          ? httpRequestSaveProblem(
+              queryState.request as IHttpQueryRequest,
+              queryState.parameters ?? queryState.def.parameters,
+            )
           : undefined;
       if (problem) throw new HttpSaveBlockedError(problem);
       const generation = this.generation;
@@ -966,6 +1001,9 @@ export class QueryEditorStateService {
           title: queryState.title,
           request: queryState.request,
           federation: queryState.federation ?? queryState.def.federation,
+          ...(queryState.parameters !== undefined
+            ? { parameters: queryState.parameters }
+            : {}),
           connectionId:
             queryState.connectionId !== undefined
               ? queryState.connectionId || undefined
@@ -1066,6 +1104,11 @@ export class QueryEditorStateService {
               )
                 ? def.federation
                 : current.federation,
+            parameters:
+              JSON.stringify(current.parameters) ===
+              JSON.stringify(queryState.parameters)
+                ? undefined
+                : current.parameters,
           });
         }),
         map(() => void 0),

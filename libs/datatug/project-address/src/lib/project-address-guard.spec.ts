@@ -196,12 +196,28 @@ function sourcesUnder(dir: string): string[] {
   return out;
 }
 
+/**
+ * Removes every closed `open`…`close` span in one left-to-right pass. Each span becomes a space, so text on either
+ * side can never join into a new delimiter. An unclosed `open` is not a comment: it and the rest are kept, as before.
+ */
+function withoutDelimited(source: string, open: string, close: string): string {
+  let out = '';
+  let from = 0;
+  for (let start = source.indexOf(open); start >= 0; start = source.indexOf(open, from)) {
+    const end = source.indexOf(close, start + open.length);
+    if (end < 0) break;
+    out += source.slice(from, start) + ' ';
+    from = end + close.length;
+  }
+  return out + source.slice(from);
+}
+
 /** Comments never build a path: a line comment (after a space or at the start of the line) and a block comment. */
 function withoutComments(source: string): string {
-  return source
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .replace(/<!--[\s\S]*?-->/g, '')
-    .replace(/(^|\s)\/\/.*$/gm, '$1');
+  return withoutDelimited(withoutDelimited(source, '/*', '*/'), '<!--', '-->').replace(
+    /(^|\s)\/\/.*$/gm,
+    '$1',
+  );
 }
 
 function scanned(): { file: string; shapes: string[] }[] {
@@ -231,6 +247,13 @@ function scanned(): { file: string; shapes: string[] }[] {
 }
 
 describe('no source builds or parses a project path by hand (design 3.4 point 3)', () => {
+  it('strips closed comments and keeps everything after an unclosed one', () => {
+    expect(withoutComments('a /* x */ b <!-- y --> c')).toBe('a   b   c');
+    expect(withoutComments('a /* x */ b /* never closed\nc')).toBe('a   b /* never closed\nc');
+    expect(withoutComments('a <!-- never closed\nb')).toBe('a <!-- never closed\nb');
+    expect(withoutComments('<!<!---->--x')).toBe('<! --x');
+  });
+
   const files = scanned();
 
   it('scans the sources of the app and of every library (a scan of nothing proves nothing)', () => {

@@ -1,0 +1,27 @@
+Actual Backend-emitted original evidence parity fixtures
+
+Backend exact clean source head: c39a6c63926ff84d8ba772982cfb388ecc6afe06
+Production implementation: 5e4c344 (followed by test-only real cold-service reconstruction).
+Reader module: github.com/dal-go/dalgo2logs v0.0.0-20261022001426-a99b6aee8037
+
+backend-original-evidence.json is a VERBATIM copy of opt-in actual Go output:
+  TestShippingOriginalPublishedReaderPOSTAndColdHistory
+  DATATUG_ORIGINAL_EVIDENCE_FIXTURES=/private/tmp/datatug-original-evidence-backend/source-response-fixtures.json
+  SHA256 a12e285ebda6e29c5f559e70c06c76b2fb42f0f7202f382dc561ffeb331a0fb3
+  68651 bytes; availableRequest/Response (request-created e1), blockedRequest/Response
+  (routing-blocked e4), unavailableRequest/Response (independently authorized row).
+
+backend-original-recovery.json is a VERBATIM copy of opt-in actual Go output:
+  TestShippingOriginalRecoveryRequiresActualAcceptedReplay
+  /private/tmp/datatug-original-evidence-backend/source-recovery-fixture.json
+  SHA256 84047e98617ce27a3b8f6e70e62fdc0cd232ba07972fd610f9800f487482989d
+  38403 bytes; recoveryRequest/Response after actual correct/replay and retained
+  events read, only the 11045 recovery artifact admitted.
+
+Fixture generation used the real owning DAL retained event query, original-evidence
+opener and published direct-file reader; Backend tests compare raw span to actual
+packaged source bytes and exercise cold-history/final rights fences. This receipt
+records local source parity, not deployed/provider/signed web acceptance. The JSON
+selector, full pin, source basename, candidate intervals, sourceRef and raw span
+are not rewritten for Apps. original-evidence.spec-helper.ts remains separate,
+explicitly CONTRACT ONLY synthetic data.

@@ -7,6 +7,8 @@ describe('Space-qualified metadata addresses', () => {
     'overview',
     'queries',
     'shipping',
+    'sources/dataset-copy',
+    'sources/' + 'x'.repeat(128),
     'meanings',
     'meanings/new-entity',
     'meanings/entity',
@@ -49,6 +51,11 @@ describe('Space-qualified metadata addresses', () => {
     'cards/other',
     'card/a/b',
     'card',
+    'sources',
+    'sources/a/b',
+    'sources/a.b',
+    'sources/' + 'x'.repeat(129),
+    'sources/%2F',
     'public-data',
   ])('refuses unsupported %s', (page) => {
     expect(tryProjectUrl(ref, page)).toMatchObject({ ok: false });

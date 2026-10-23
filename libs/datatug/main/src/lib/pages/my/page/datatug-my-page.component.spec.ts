@@ -5,6 +5,7 @@ import { signal } from '@angular/core';
 import { HostedCloudLogsAccessService } from '../cloud-logs/hosted-cloud-logs-access.service';
 
 import { DatatugMyPageComponent } from './datatug-my-page.component';
+import template from './datatug-my-page.component.html?raw';
 
 describe('MyPage', () => {
   let component: DatatugMyPageComponent;
@@ -44,6 +45,12 @@ describe('MyPage', () => {
 
   it('should create', () => {
     expect(component).toBeTruthy();
+  });
+
+  it('lets the user connect sign-in methods such as GitHub, without Sneat.app messaging apps', () => {
+    expect(template).toContain(
+      '<sneat-user-auth-accounts [showMessagingApps]="false" />',
+    );
   });
 
   it('hides the hosted log route link until the server confirms access', () => {

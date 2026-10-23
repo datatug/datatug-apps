@@ -1,3 +1,10 @@
+import { readRetainedComparison, comparisonSelectedMember, sameComparisonValue, type RetainedComparison } from './retained-comparison-contract';
+import { frozenComparison } from './retained-comparison-contract';
+import type { IQueryDef } from '../models/definition/query-def';
+import {
+  readOriginalEvidence,
+  type OriginalEvidence,
+} from './original-evidence-contract';
 import {
   decodeEvidenceArtifactRef,
   decodeResult,
@@ -9,6 +16,7 @@ import {
   type ArtifactRef,
   type ExecutionRef,
   type Result,
+  type RowEvidenceSelector,
   type TypedValue,
 } from '@sneat/datatug-semantic';
 import { CheckRun } from '../detective/models';
@@ -59,6 +67,8 @@ export interface RetainedOpenScope extends RetainedEvidenceScope {
   readonly nativeProjectId: string;
 }
 export interface RetainedExecutionView {
+  readonly comparison?: RetainedComparison;
+  readonly originalEvidence?: OriginalEvidence;
   readonly result: Result;
   readonly inputs: Readonly<Record<string, TypedValue>>;
   readonly sourcePin: RetainedSourcePin;
@@ -194,7 +204,7 @@ export function readSelectedInputs(
   value: unknown,
 ): Readonly<Record<string, TypedValue>> {
   const wire = obj(value);
-  const inputs: Record<string, TypedValue> = {};
+  const inputs: Record<string, TypedValue> = Object.create(null);
   for (const [key, raw] of Object.entries(wire)) {
     txt(key);
     inputs[key] = decodeTypedValue(raw);
@@ -205,8 +215,12 @@ export async function readRetainedExecution(
   value: unknown,
   scope: RetainedOpenScope,
   expected?: ExecutionRef,
+  selected?: RowEvidenceSelector,
 ): Promise<RetainedExecutionView> {
+  if (new TextEncoder().encode(JSON.stringify(value)).length > 512 * 1024)
+    throw new Error('Retained response exceeds its read bound.');
   const wire = obj(value, [
+    'comparison',
     'inputs',
     'manifest',
     'savedQuery',
@@ -216,6 +230,7 @@ export async function readRetainedExecution(
     'appliedManifestRef',
     'queryRevision',
     'evidence',
+    'originalEvidence',
   ]);
   const result = decodeResult(wire['result']);
   if (
@@ -258,6 +273,14 @@ export async function readRetainedExecution(
     )
   )
     throw new Error('Retained selected input mismatch.');
+  const declaration = frozenComparison(query as unknown as IQueryDef, inputs);
+  if (declaration) {
+    if (Object.keys(manifest.inputs).length !== 1 || !manifest.inputs['order_id']) throw new Error('Comparison primary manifest is unavailable.');
+  }
+  if (!declaration && wire['comparison'] !== undefined) throw new Error('Unexpected retained comparison.');
+  const comparison = readRetainedComparison(wire['comparison'], {
+    queryId, queryRevision: txt(wire['queryRevision']), manifestRef: manifest.ref, result, declaration, inputs, primary: manifest.inputs['order_id'],
+  });
   if (result.rowEvidence) {
     const sidecar = await verifyRowEvidence(result.rowEvidence, result);
     if (
@@ -270,7 +293,30 @@ export async function readRetainedExecution(
     )
       throw new Error('Retained sidecar source mismatch.');
   }
+  if (selected && wire['originalEvidence'] === undefined)
+    throw new Error(
+      'Original evidence status is missing from the row response.',
+    );
+  const originalEvidence =
+    wire['originalEvidence'] === undefined
+      ? undefined
+      : await readOriginalEvidence(
+          wire['originalEvidence'],
+          result,
+          pin,
+          selected,
+        );
+  if (
+    originalEvidence?.status === 'available' &&
+    !sameComparisonValue(
+      originalEvidence.records[2].fields['order_id'],
+      comparison ? comparisonSelectedMember(comparison, result, originalEvidence.selection) : manifest.inputs['order_id'],
+    )
+  )
+    throw new Error('Original order does not match the admitted manifest.');
   return {
+    ...(comparison ? { comparison } : {}),
+    ...(originalEvidence ? { originalEvidence } : {}),
     result,
     inputs,
     sourcePin: pin,

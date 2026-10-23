@@ -55,7 +55,7 @@ ion-chip {
 }
 .plan-kicker {
   margin: 0;
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
   font-size: 0.82rem;
   font-weight: 650;
 }
@@ -65,7 +65,7 @@ ion-chip {
   line-height: 1.5;
 }
 .checkout-status {
-  color: var(--ion-color-medium-shade);
+  color: var(--dt-text-muted);
 }
 .legal-note {
   font-size: 0.9rem;
@@ -106,7 +106,7 @@ button:disabled {
 .early-access {
   margin-top: 1rem;
   padding-top: 0.9rem;
-  border-top: 1px solid var(--ion-color-step-150);
+  border-top: 1px solid var(--ion-background-color-step-150, transparent);
 }
 .early-access h3 {
   margin: 0;
@@ -139,7 +139,7 @@ section[hidden] {
   gap: 0.75rem 1.25rem;
   margin-top: 1.5rem;
   padding-top: 1rem;
-  border-top: 1px solid var(--ion-color-step-150);
+  border-top: 1px solid var(--ion-background-color-step-150, transparent);
   font-size: 0.9rem;
 }
 @media (min-width: 40rem) {

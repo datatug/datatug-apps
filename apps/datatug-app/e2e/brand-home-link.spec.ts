@@ -15,7 +15,8 @@ for (const safeAreaTop of [0, 20]) {
     if (!homeBounds) throw new Error('Home header has no bounds');
     const homeContent = page.locator('sneat-datatug-home ion-content');
     await expect
-      .poll(async () => (await homeContent.boundingBox())?.y)
+      // 10s: the header settles after Ionic's layout pass, which a 2-vCPU runner with two workers can push past 5s.
+      .poll(async () => (await homeContent.boundingBox())?.y, { timeout: 10_000 })
       .toBe(homeBounds.height);
 
     await page.getByRole('link', { name: 'Sign in', exact: true }).click();
@@ -32,7 +33,8 @@ for (const safeAreaTop of [0, 20]) {
       .poll(async () => (await homeHeader.boundingBox())?.height)
       .toBe(homeBounds.height);
     await expect
-      .poll(async () => (await homeContent.boundingBox())?.y)
+      // 10s: the header settles after Ionic's layout pass, which a 2-vCPU runner with two workers can push past 5s.
+      .poll(async () => (await homeContent.boundingBox())?.y, { timeout: 10_000 })
       .toBe(homeBounds.height);
   });
 }

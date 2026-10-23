@@ -190,6 +190,62 @@ describe('BoardWidgetComponent in card mode', () => {
     expect(el.textContent).toContain('Ann');
   });
 
+  const chartWidget: BoardWidget = {
+    name: 'chart',
+    data: {
+      title: 'Customers by city',
+      sources: [{ id: 'customers', queryId: 'customers/by-id' }],
+      chart: { type: 'bar', categoryColumn: 'City', valueColumn: 'Name' },
+    },
+  };
+
+  it('keeps Refresh chart and Open saved query in the chart body, without a duplicate title', async () => {
+    run.mockResolvedValue({ ...customerRows, limitations: [] });
+    fixture.componentRef.setInput('cardTitle', 'Customers by city');
+    const el = render(chartWidget);
+    await settle();
+    expect(run).toHaveBeenCalledOnce();
+    const buttons = [...el.querySelectorAll('.card-chart-actions ion-button')];
+    const refresh = buttons.find((b) =>
+      b.textContent?.includes('Refresh chart'),
+    ) as HTMLElement;
+    expect(refresh).toBeTruthy();
+    const open = buttons.find((b) =>
+      b.textContent?.includes('Open saved query'),
+    );
+    expect(open?.getAttribute('href')).toBe(
+      '/store/localhost:8989/project/demo/query/customers%2Fby-id?id=customers%2Fby-id&runtime=project',
+    );
+    expect(el.querySelector('.chart-heading p')).toBeNull();
+    refresh.click();
+    await settle();
+    expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows the chart title in the body when it differs from the card title', async () => {
+    run.mockResolvedValue({ ...customerRows, limitations: [] });
+    fixture.componentRef.setInput('cardTitle', 'Customer overview');
+    const el = render(chartWidget);
+    await settle();
+    expect(el.querySelector('.chart-heading p')?.textContent).toContain(
+      'Customers by city',
+    );
+  });
+
+  it('does not repeat a SQL title that matches the card title', async () => {
+    fixture.componentRef.setInput('cardTitle', 'Customer');
+    const el = render({
+      name: 'SQL',
+      data: { title: 'Customer', sql: { queryId: 'customers/by-id' } },
+    });
+    await settle();
+    expect(
+      [...el.querySelectorAll('p')].some(
+        (p) => p.textContent?.trim() === 'Customer',
+      ),
+    ).toBe(false);
+  });
+
   it('shows "No data" for an empty result', async () => {
     run.mockResolvedValue({
       ...customerRows,

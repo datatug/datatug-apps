@@ -1,3 +1,4 @@
+import { mountShippingController } from './shipping-controller.spec-helper';
 import { TestBed } from '@angular/core/testing';
 import { provideHttpClient } from '@angular/common/http';
 import {
@@ -13,7 +14,7 @@ import {
 } from '@sneat/datatug-semantic';
 import { BehaviorSubject, of } from 'rxjs';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
-import { ShippingQueryAccessComponent } from './shipping-query-access.component';
+import { ShippingPublicationController } from './shipping-publication.controller';
 
 describe('Query publication original native identity HTTP fence', () => {
   async function mount() {
@@ -26,7 +27,7 @@ describe('Query publication original native identity HTTP fence', () => {
       ref: { storeId: 'firestore', spaceID: 'space', projectId: 'training' },
     });
     TestBed.configureTestingModule({
-      imports: [ShippingQueryAccessComponent],
+      imports: [],
       providers: [
         provideRouter([]),
         provideHttpClient(),
@@ -43,9 +44,9 @@ describe('Query publication original native identity HTTP fence', () => {
     const bridge = TestBed.inject(SneatApiAuthTokenBridge);
     bridge.setExplicitToken('token-A');
     const http = TestBed.inject(HttpTestingController),
-      fixture = TestBed.createComponent(ShippingQueryAccessComponent);
-    fixture.componentRef.setInput('environments', ['demo']);
-    fixture.componentRef.setInput('canWrite', true);
+      fixture = await mountShippingController(ShippingPublicationController);
+    fixture.setInput('environments', ['demo']);
+    fixture.setInput('canWrite', true);
     fixture.detectChanges();
     await fixture.whenStable();
     fixture.componentInstance.chooseEnvironment('demo');

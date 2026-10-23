@@ -11,6 +11,17 @@ import {
 } from './checkout-analytics-privacy';
 import { ApplicationInitStatus } from '@angular/core';
 
+/** The body of the first `<script>` element in `html`, found by plain string search. */
+function firstInlineScript(html: string): string | undefined {
+  const openTag = '<script>';
+  const start = html.indexOf(openTag);
+  if (start < 0) return undefined;
+  const bodyStart = start + openTag.length;
+  const end = html.indexOf('</script>', bodyStart);
+  return end < 0 ? undefined : html.slice(bodyStart, end);
+}
+
+
 it.each([
   '/checkout/sign-in?plan=pro&period=yearly&checkout=test',
   '/sso?returnTo=%2Fsubscribe%3Fplan%3Dpro%26period%3Dyearly%26checkout%3Dtest',
@@ -48,9 +59,7 @@ it('sets initial-page disable before the GA snippet executes', () => {
   const start = indexHtml.indexOf('<!-- Checkout privacy:');
   const end = indexHtml.indexOf('<!-- Google Analytics', start);
   expect(start).toBeGreaterThan(0);
-  const snippet = indexHtml
-    .slice(start, end)
-    .match(/<script>([\s\S]*?)<\/script>/)?.[1];
+  const snippet = firstInlineScript(indexHtml.slice(start, end));
   if (!snippet) throw new Error('Missing initial checkout privacy script');
   for (const pathname of [
     '/subscribe/',
