@@ -70,6 +70,20 @@ const emptyShellProjectRoutes: Routes = [
 export const datatugProjectRoutes: Routes = [
   ...projectMeaningsRoutes,
   {
+    path: 'data-models',
+    loadComponent: () =>
+      import('../pages/signed-in/logical-models/data-models-page.component').then(
+        (m) => m.DataModelsPageComponent,
+      ),
+  },
+  {
+    path: 'data-models/:modelId/versions/:commit',
+    loadComponent: () =>
+      import('../pages/signed-in/logical-models/data-models-page.component').then(
+        (m) => m.DataModelsPageComponent,
+      ),
+  },
+  {
     path: 'quick-search',
     loadComponent: () =>
       import('../quick-search/quick-search-page.component').then(
