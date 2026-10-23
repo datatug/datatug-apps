@@ -50,9 +50,10 @@ runs:
       uses: actions/cache@v5
       with:
         path: ~/.cache/playwright-apt-archives
-        key: playwright-apt-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}-${{ steps.version.outputs.image }}
+        key: playwright-apt-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}_${{ steps.version.outputs.image }}
+        # "_" ends the browser list, so a chromium job never restores (and re-saves) the chromium-firefox-webkit set.
         restore-keys: |
-          playwright-apt-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}-
+          playwright-apt-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}_
 
     - name: Make apt fail fast, retry and keep downloaded archives
       shell: bash
@@ -95,6 +96,8 @@ runs:
             echo "Playwright install ok in $(( $(date +%s) - start ))s (cache-hit=$CACHE_HIT, archive-cache-hit=$DEBS_HIT)"
             # Hand the archives apt used to the cache step, which saves them at job end when its key missed.
             archives="$HOME/.cache/playwright-apt-archives"
+            # Drop superseded package versions so the archive set does not grow with every runner-image update.
+            sudo apt-get autoclean -qq || true
             find "$archives" -maxdepth 1 -name '*.deb' -delete
             find /var/cache/apt/archives -maxdepth 1 -name '*.deb' -exec cp {} "$archives"/ \;
             echo "Archive cache holds $(find "$archives" -maxdepth 1 -name '*.deb' | wc -l) .debs ($(du -sh "$archives" | cut -f1))"
