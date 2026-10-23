@@ -610,9 +610,11 @@
         (requestChange)="httpRequestChanged($event)"
         [parameters]="httpParameters"
         (parametersChange)="httpParametersChanged($event)"
+        (typedValueChange)="httpTypedValueChanged($event)"
         [rowBinding]="httpRowBinding()"
         [bagEntries]="httpBagEntries()"
         [showRun]="!httpSemanticRun()"
+        [readonly]="isQueryReadOnly()"
       />
     }
   } @else if (isTextQueryWorkspace()) {

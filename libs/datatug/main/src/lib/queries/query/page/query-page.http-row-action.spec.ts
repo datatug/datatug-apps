@@ -128,4 +128,39 @@ describe('HTTP row action: which row is offered', () => {
     internals.syncHttpCheckedRow(api([]));
     expect(component.httpActionRow()).toBeUndefined();
   });
+
+  it('counts a declared default as supplied, and takes a value typed in the HTTP editor as the binding (demo walk item 4)', async () => {
+    const fixture = await create();
+    const component = fixture.componentInstance;
+    const internals = component as unknown as { queryState: unknown; updateBindings(): void };
+    const parameters = [
+      { id: 'date', type: 'date', isRequired: true, defaultValue: '2018-04-23' },
+      { id: 'to', type: 'string', isRequired: true, meta: { entity: 'Country', field: 'Currency' } },
+    ];
+    internals.queryState = {
+      id: 'reference/currency-rate-on-date',
+      queryType: 'HTTP',
+      request: { queryType: 'HTTP', url: 'https://x.test/{date}?to={to}', method: 'GET' },
+      def: { id: 'currency-rate-on-date', request: { queryType: 'HTTP' }, parameters },
+      parameters,
+    };
+    internals.updateBindings();
+    const date = () => component.bindings().find((b) => b.parameterId === 'date');
+    const to = () => component.bindings().find((b) => b.parameterId === 'to');
+    expect(date()).toMatchObject({ value: { type: 'date', value: '2018-04-23' }, origin: 'default' });
+    expect(date()?.blocked).toBeUndefined();
+    expect(to()?.blocked).toBe('missing-required');
+    expect(component.hasBlockedBindings()).toBe(true);
+
+    component.httpTypedValueChanged({ id: 'to', text: 'EUR' });
+    expect(to()).toMatchObject({ value: { type: 'string', value: 'EUR' }, origin: 'user' });
+    expect(component.hasBlockedBindings()).toBe(false);
+
+    component.httpTypedValueChanged({ id: 'to', text: '' });
+    expect(to()?.blocked).toBe('missing-required');
+    expect(component.hasBlockedBindings()).toBe(true);
+
+    component.httpTypedValueChanged({ id: 'date', text: '2018-02-31' });
+    expect(component.hasBlockedBindings()).toBe(true);
+  });
 });

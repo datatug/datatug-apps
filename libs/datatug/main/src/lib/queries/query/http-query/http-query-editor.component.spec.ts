@@ -475,6 +475,36 @@ describe('HttpQueryEditorComponent', () => {
       expect(text()).toContain('only a typed value is used');
     });
 
+    it('shows declarations read-only when the page is read-only, but keeps the values for this run editable (demo walk 8b)', async () => {
+      fixture = TestBed.createComponent(HttpQueryEditorComponent);
+      fixture.componentRef.setInput('request', { ...carrier, headers: [{ name: 'Accept', value: 'application/json' }] });
+      fixture.componentRef.setInput('parameters', [requestId]);
+      fixture.componentRef.setInput('readonly', true);
+      fixture.detectChanges();
+      await fixture.whenStable();
+      // No definition controls: remove, Add parameter, Declare.
+      expect(el().querySelector('.http-param-remove')).toBeNull();
+      expect(el().querySelector('[aria-label="Remove parameter"]')).toBeNull();
+      expect(text()).not.toContain('Add parameter');
+      // Type, Required and the method are disabled; URL, default and meaning are read-only.
+      const prop = (selector: string, name: 'disabled' | 'readonly' | 'placeholder') =>
+        (el().querySelector(selector) as unknown as Record<string, unknown> | null)?.[name];
+      expect(prop('ion-select.http-param-type', 'disabled')).toBe(true);
+      expect(prop('ion-toggle.http-param-required', 'disabled')).toBe(true);
+      expect(prop('ion-select.http-method', 'disabled')).toBe(true);
+      expect(prop('ion-input[aria-label="URL"]', 'readonly')).toBe(true);
+      expect(prop('ion-input.http-param-default', 'readonly')).toBe(true);
+      expect(prop('ion-input.http-param-meta', 'readonly')).toBe(true);
+      // The value for this run is still editable, and asks for the missing required value.
+      expect(prop('ion-input.http-param-value', 'readonly')).toBeFalsy();
+      expect(prop('ion-input.http-param-value', 'placeholder')).toBe('Enter a value to run');
+      protectedApi()['onRequestTab'](new CustomEvent('ionChange', { detail: { value: 'headers' } }));
+      fixture.detectChanges();
+      await fixture.whenStable();
+      expect(el().querySelector('[aria-label="Remove header"]')).toBeNull();
+      expect(text()).not.toContain('Add header');
+    });
+
     it('edits declarations: type, required, default, meaning, credential, remove', async () => {
       await createWith(carrier, [requestId]);
       protectedApi()['setParameterType']('request_id', new CustomEvent('ionChange', { detail: { value: 'integer' } }));

@@ -4452,6 +4452,45 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.queryEditorStateService.updateQueryState(this.queryState);
   }
 
+  /**
+   * A value typed in the HTTP editor becomes the parameter's own binding (the resolver's highest precedence), so a
+   * required parameter with no default that the page asks for can be supplied there and Run enables (demo walk
+   * item 4: currency-rate, country-facts and carrier-status had no other input). Clearing the text drops it again.
+   */
+  public httpTypedValueChanged(change: {
+    readonly id: string;
+    readonly text: string;
+  }): void {
+    const parameter = this.httpParameters.find((p) => p.id === change.id);
+    if (!parameter || parameter.isCredential) return;
+    const errors = new Map(this.nativeParameterErrors());
+    errors.delete(change.id);
+    if (change.text === '') {
+      this.nativeParameterErrors.set(errors);
+      this.userBindingValues.set(
+        new Map(
+          [...this.userBindingValues()].filter(([id]) => id !== change.id),
+        ),
+      );
+      this.updateBindings(change.id);
+      return;
+    }
+    let value: TypedValue;
+    try {
+      value = nativeTypedValue(parameter, change.text);
+    } catch {
+      this.nativeParameterErrors.set(
+        errors.set(
+          change.id,
+          `Enter a valid ${parameter.type} value before running.`,
+        ),
+      );
+      return;
+    }
+    this.nativeParameterErrors.set(errors);
+    this.editBinding(change.id, value);
+  }
+
   /** The applied context-bag entries of this page's session, offered to HTTP parameters. */
   public readonly httpBagEntries = computed<HttpBagEntry[]>(() => {
     const id = this.contextSessionId();
