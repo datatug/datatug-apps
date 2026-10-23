@@ -212,3 +212,32 @@ describe('DatatugStoreGithubService.getProjectSummary: the summary follows the c
     ]);
   });
 });
+
+describe('DatatugStoreGithubService.getProjectSummary: the file’s own id', () => {
+  it('uses the location id and does not warn when datatug-project.json names the project differently', () => {
+    TestBed.configureTestingModule({
+      providers: [
+        {
+          provide: GithubProjectReaderService,
+          useValue: {
+            getRawJson: vi.fn(() => of({ id: 'datatug-demo-project', title: 'DataTug Demo Project' })),
+            visitEpoch: () => '0.0',
+          },
+        },
+      ],
+    });
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try {
+      const next = vi.fn();
+      TestBed.inject(DatatugStoreGithubService)
+        .getProjectSummary('datatug-demo-project@datatug@demo-project-1')
+        .subscribe(next);
+      expect(next).toHaveBeenCalledWith(
+        expect.objectContaining({ id: 'datatug-demo-project@datatug@demo-project-1', title: 'DataTug Demo Project' }),
+      );
+      expect(warn).not.toHaveBeenCalled();
+    } finally {
+      warn.mockRestore();
+    }
+  });
+});
