@@ -6,10 +6,9 @@
   "tags": [],
   "targets": {
     "test": {
-      "executor": "@nx/vitest:test",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "tsConfig": "libs/testing/tsconfig.spec.json"
+        "cwd": ".",
+        "config": "libs/testing/vite.config.mts"
       }
     }
   }

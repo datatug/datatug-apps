@@ -1,6 +1,5 @@
 /// <reference types='vitest' />
 import { defineConfig } from 'vitest/config';
-import { nxViteTsPaths } from '@nx/vite/plugins/nx-tsconfig-paths.plugin';
 import { join } from 'path';
 
 // Unlike libs/datatug/semantic (an Angular component library), this is a
@@ -31,7 +30,7 @@ const coverageDir = join(
 export default defineConfig({
   root: dirname,
   cacheDir: relativeToRoot,
-  plugins: [nxViteTsPaths()],
+  resolve: { tsconfigPaths: true },
   test: {
     name: 'datatug-friendly-error',
     watch: false,

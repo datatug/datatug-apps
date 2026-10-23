@@ -99,7 +99,7 @@ export function isLoopbackAddress(url: string): boolean {
 export function serviceNameOf(url: string): string {
   if (!url) return 'the server';
   if (isLoopbackAddress(url)) return 'the local DataTug agent';
-  let host = '';
+  let host: string;
   try {
     host = new URL(url.startsWith('//') ? `https:${url}` : url).hostname;
   } catch {
