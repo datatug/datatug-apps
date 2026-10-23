@@ -19,17 +19,20 @@ runs:
     - name: Resolve Playwright version
       id: version
       shell: bash
+      env:
+        BROWSERS: ${{ inputs.browsers }}
       run: |
         v=$(grep -m1 -E '^  playwright@[0-9]' pnpm-lock.yaml | sed -E 's/^  playwright@([^:]+):.*/\1/')
         echo "playwright=${v:-unknown}" >> "$GITHUB_OUTPUT"
-        echo "browsers-key=$(echo '${{ inputs.browsers }}' | tr ' ' '-')" >> "$GITHUB_OUTPUT"
+        echo "os-key=${RUNNER_OS}-${RUNNER_ARCH}-${ImageOS:-unknown}-$(. /etc/os-release 2>/dev/null; echo "${VERSION_ID:-na}")" >> "$GITHUB_OUTPUT"
+        echo "browsers-key=$(echo "$BROWSERS" | tr ' ' '-')" >> "$GITHUB_OUTPUT"
 
     - name: Cache Playwright browsers
       id: cache
       uses: actions/cache@v5
       with:
         path: ~/.cache/ms-playwright
-        key: playwright-${{ runner.os }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}
+        key: playwright-${{ steps.version.outputs.os-key }}-${{ steps.version.outputs.playwright }}-${{ steps.version.outputs.browsers-key }}
 
     - name: Make apt fail fast and retry
       shell: bash
@@ -59,7 +62,8 @@ runs:
             exit 0
           fi
           echo "::warning::Playwright install attempt $i timed out or failed"
-          sudo pkill -f 'apt-get|dpkg' 2>/dev/null || true
+          # timeout already killed pnpm; finish any half-configured dpkg state before the next attempt
+          sudo dpkg --configure -a || true
         done
         echo "::error::Playwright install failed after $ATTEMPTS attempts ($(( $(date +%s) - start ))s)"
         exit 1
