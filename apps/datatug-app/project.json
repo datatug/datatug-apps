@@ -15,60 +15,60 @@
     },
     "typecheck-showcase-e2e": {
       "executor": "nx:run-commands",
-      "options": {
-        "command": "tsc --noEmit --project apps/datatug-app/tsconfig.showcase-e2e.json"
-      },
       "cache": false,
       "inputs": ["default"],
-      "outputs": []
+      "outputs": [],
+      "options": {
+        "command": "tsc --noEmit --project apps/datatug-app/tsconfig.showcase-e2e.json"
+      }
     },
     "stamp-build-info": {
       "executor": "nx:run-commands",
+      "outputs": [
+        "{workspaceRoot}/apps/datatug-app/src/build-info.generated.ts",
+        "{workspaceRoot}/apps/datatug-app/src/build-info.json"
+      ],
+      "cache": false,
       "options": {
         "commands": [
           "cp apps/datatug-app/src/build-info.ts apps/datatug-app/src/build-info.generated.ts",
           "sneat-stamp-build-info --ts apps/datatug-app/src/build-info.generated.ts --json apps/datatug-app/src/build-info.json"
         ],
         "parallel": false
-      },
-      "outputs": [
-        "{workspaceRoot}/apps/datatug-app/src/build-info.generated.ts",
-        "{workspaceRoot}/apps/datatug-app/src/build-info.json"
-      ],
-      "cache": false
+      }
     },
     "stamp-ag-grid-license": {
       "executor": "nx:run-commands",
-      "options": {
-        "command": "node tools/stamp-ag-grid-license.mjs"
-      },
       "outputs": [
         "{workspaceRoot}/apps/datatug-app/src/ag-grid-license.generated.ts"
       ],
-      "cache": false
+      "cache": false,
+      "options": {
+        "command": "node tools/stamp-ag-grid-license.mjs"
+      }
     },
     "check-build-info": {
       "executor": "nx:run-commands",
+      "cache": false,
       "options": {
         "command": "sneat-stamp-build-info --check --ts apps/datatug-app/src/build-info.ts"
-      },
-      "cache": false
+      }
     },
     "prepare-recordsetcompare": {
       "executor": "nx:run-commands",
+      "cache": false,
       "options": {
         "command": "python3 tools/recordsetcompare/consume.py prepare",
         "cwd": "."
-      },
-      "cache": false
+      }
     },
     "verify-recordsetcompare-dist": {
       "executor": "nx:run-commands",
+      "cache": false,
       "options": {
         "command": "python3 tools/recordsetcompare/consume.py verify-dist",
         "cwd": "."
-      },
-      "cache": false
+      }
     },
     "build": {
       "executor": "@angular-devkit/build-angular:application",
@@ -80,6 +80,7 @@
       "inputs": ["production", "{workspaceRoot}/tools/recordsetcompare/**/*"],
       "cache": false,
       "outputs": ["{options.outputPath}"],
+      "defaultConfiguration": "production",
       "options": {
         "outputPath": "dist/apps/datatug-app",
         "index": "apps/datatug-app/src/index.html",
@@ -205,8 +206,7 @@
             }
           ]
         }
-      },
-      "defaultConfiguration": "production"
+      }
     },
     "serve": {
       "executor": "@angular-devkit/build-angular:dev-server",
@@ -215,6 +215,8 @@
         "stamp-ag-grid-license",
         "prepare-recordsetcompare"
       ],
+      "defaultConfiguration": "development",
+      "continuous": true,
       "configurations": {
         "production": {
           "buildTarget": "datatug-app:build:production"
@@ -234,8 +236,9 @@
           "proxyConfig": "tools/public-ovdb-proxy.cjs"
         }
       },
-      "defaultConfiguration": "development",
-      "continuous": true
+      "readyWhen": {
+        "signal": true
+      }
     },
     "extract-i18n": {
       "executor": "@angular-devkit/build-angular:extract-i18n",
@@ -244,11 +247,15 @@
       }
     },
     "lint": {
-      "executor": "@nx/eslint:lint"
-    },
-    "test": {
-      "executor": "@nx/vitest:test",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"]
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.eslintrc.json",
+        "{workspaceRoot}/.eslintignore",
+        "{workspaceRoot}/eslint.config.mjs",
+        {
+          "externalDependencies": ["eslint"]
+        }
+      ]
     },
     "e2e": {
       "executor": "nx:run-commands",
@@ -260,9 +267,7 @@
     "e2e-agent-links": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-app-agent-links-e2e"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-agent-links-e2e"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.agent-links.config.ts --forbid-only"
       }
@@ -303,7 +308,9 @@
     "e2e-demo-sqlite-adventureworks": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e"],
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-app-demo-sqlite-adventureworks-e2e"
+      ],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.demo-sqlite-adventureworks.config.ts --forbid-only"
       }
@@ -311,7 +318,9 @@
     "e2e-demo-postgresql": {
       "executor": "nx:run-commands",
       "cache": false,
-      "outputs": ["{workspaceRoot}/coverage/apps/datatug-app-demo-postgresql-e2e"],
+      "outputs": [
+        "{workspaceRoot}/coverage/apps/datatug-app-demo-postgresql-e2e"
+      ],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.demo-postgresql.config.ts --forbid-only"
       }
@@ -379,11 +388,15 @@
         "stamp-ag-grid-license",
         "prepare-recordsetcompare"
       ],
-      "outputs": [
-        "{workspaceRoot}/coverage/apps/datatug-showcase-exploration"
-      ],
+      "outputs": ["{workspaceRoot}/coverage/apps/datatug-showcase-exploration"],
       "options": {
         "command": "playwright test -c apps/datatug-app/playwright.showcase-exploration.config.ts showcase-independent-sources.spec.ts --forbid-only"
+      }
+    },
+    "test": {
+      "options": {
+        "cwd": ".",
+        "config": "apps/datatug-app/vite.config.mts"
       }
     }
   }

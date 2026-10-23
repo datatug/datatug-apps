@@ -24,19 +24,6 @@
       "cache": true,
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"]
-    },
-    "@nx/eslint:lint": {
-      "cache": true,
-      "inputs": [
-        "default",
-        "{workspaceRoot}/.eslintrc.json",
-        "{workspaceRoot}/.eslintignore",
-        "{workspaceRoot}/eslint.config.mjs"
-      ]
-    },
-    "@nx/vitest:test": {
-      "cache": true,
-      "inputs": ["default", "^production"]
     }
   },
   "plugins": [
@@ -45,6 +32,33 @@
       "options": {
         "targetName": "lint"
       }
+    },
+    {
+      "plugin": "@nx/vitest",
+      "options": {
+        "testMode": "watch",
+        "testTargetName": "test"
+      },
+      "include": [
+        "apps/datatug-app/**/*",
+        "libs/datatug/ag-grid/**/*",
+        "libs/datatug/board-models/**/*",
+        "libs/datatug/charts/**/*",
+        "libs/datatug/friendly-error/**/*",
+        "libs/datatug/main/**/*",
+        "libs/datatug/product-profiles/**/*",
+        "libs/datatug/project-address/**/*",
+        "libs/datatug/semantic/**/*",
+        "libs/testing/**/*"
+      ]
+    },
+    {
+      "plugin": "@nx/vitest",
+      "options": {
+        "testMode": "watch",
+        "testTargetName": "test-isolated"
+      },
+      "include": ["libs/datatug/main/**/*"]
     }
   ],
   "generators": {
@@ -61,5 +75,8 @@
       "style": "scss"
     }
   },
-  "analytics": false
+  "analytics": false,
+  "affected": {
+    "legacy": true
+  }
 }

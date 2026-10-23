@@ -9,6 +9,7 @@
     "build": {
       "executor": "@nx/angular:ng-packagr-lite",
       "outputs": ["{workspaceRoot}/dist/{projectRoot}"],
+      "defaultConfiguration": "production",
       "options": {
         "project": "libs/datatug/main/ng-package.json",
         "tsConfig": "libs/datatug/main/tsconfig.lib.json"
@@ -18,45 +19,50 @@
           "tsConfig": "libs/datatug/main/tsconfig.lib.prod.json"
         },
         "development": {}
-      },
-      "defaultConfiguration": "production"
+      }
     },
     "test": {
-      "executor": "@nx/vitest:test",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "dependsOn": ["test-isolated"],
       "options": {
-        "tsConfig": "libs/datatug/main/tsconfig.spec.json"
-      },
-      "dependsOn": ["test-isolated"]
+        "cwd": ".",
+        "config": "libs/datatug/main/vite.config.mts"
+      }
     },
     "test-isolated": {
-      "executor": "@nx/vitest:test",
       "outputs": ["{workspaceRoot}/coverage/{projectRoot}-isolated"],
       "options": {
-        "tsConfig": "libs/datatug/main/tsconfig.spec.json",
-        "configFile": "libs/datatug/main/vite.isolated.config.mts"
+        "cwd": ".",
+        "config": "libs/datatug/main/vite.isolated.config.mts"
       }
     },
     "test-focused": {
-      "executor": "@nx/vitest:test",
+      "executor": "nx:run-commands",
       "cache": false,
       "outputs": [],
       "options": {
-        "tsConfig": "libs/datatug/main/tsconfig.spec.json",
-        "configFile": "libs/datatug/main/vite.focused.config.mts"
+        "cwd": ".",
+        "command": "vitest run --config libs/datatug/main/vite.focused.config.mts"
       }
     },
     "typecheck-spec": {
       "executor": "nx:run-commands",
-      "options": {
-        "command": "tsc --noEmit --project libs/datatug/main/tsconfig.spec.json"
-      },
       "cache": false,
       "inputs": ["default"],
-      "outputs": []
+      "outputs": [],
+      "options": {
+        "command": "tsc --noEmit --project libs/datatug/main/tsconfig.spec.json"
+      }
     },
     "lint": {
-      "executor": "@nx/eslint:lint"
+      "inputs": [
+        "default",
+        "{workspaceRoot}/.eslintrc.json",
+        "{workspaceRoot}/.eslintignore",
+        "{workspaceRoot}/eslint.config.mjs",
+        {
+          "externalDependencies": ["eslint"]
+        }
+      ]
     }
   }
 }
