@@ -420,7 +420,7 @@ Local review commands, run against the app revision above:
 
 ```sh
 NX_DAEMON=false NX_ISOLATE_PLUGINS=false pnpm nx run datatug-app:serve:development --host localhost --port 18785
-NX_DAEMON=false NX_ISOLATE_PLUGINS=false pnpm nx run datatug-app:test --testFiles=apps/datatug-app/src/app/checkout --watch=false --coverage.enabled=false
+NX_DAEMON=false NX_ISOLATE_PLUGINS=false pnpm nx run datatug-app:test -- apps/datatug-app/src/app/checkout --coverage.enabled=false
 node --test tools/checkout-flow.test.mjs
 ```
 

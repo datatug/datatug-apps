@@ -483,6 +483,7 @@ async function startAgent(
         `datatug serve (${binResult.value} ${args.join(' ')}) never answered ` +
           `${pingUrl}: ${String(err)}.${exitNote}\n` +
           `--- captured log (${logFile}) ---\n${logBuffer || '(empty)'}`,
+        { cause: err },
       );
     }
   };

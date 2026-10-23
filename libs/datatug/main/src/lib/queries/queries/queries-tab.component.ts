@@ -326,7 +326,7 @@ export class QueriesTabComponent {
   /**
    * The hover preview's text loader for a row. The folder listing deliberately leaves every query's `text` unset
    * (one read per definition file, none per body), so the text comes from the single-query read, which also reads
-   * the body sidecar (`<id>.query.sql`/`.tugql`/`.http`), cached per project by `QueryTextPreviewService`.
+   * the body sidecar (`<id>.query.sql`/`.tugql`/`.tugql.yaml`/`.http`), cached per project by `QueryTextPreviewService`.
    */
   textLoader(
     query: IQueryDef,

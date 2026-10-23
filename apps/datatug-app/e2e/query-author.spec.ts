@@ -4118,6 +4118,7 @@ test('query context counts stay inline through two digits and unavailable drafts
       const geometry = await contextTabGeometry();
       throw new Error(
         `${message}\nFull context tab geometry: ${JSON.stringify(geometry)}\nOriginal assertion: ${error instanceof Error ? error.message : String(error)}`,
+        { cause: error },
       );
     }
     const geometry = await contextTabGeometry();

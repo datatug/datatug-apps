@@ -37,6 +37,7 @@ describe('build-info.ts (as committed to git)', () => {
           `'git show HEAD:...' (not committed yet?). Original error: ${
             (e as Error).message
           }`,
+        { cause: e },
       );
     }
 

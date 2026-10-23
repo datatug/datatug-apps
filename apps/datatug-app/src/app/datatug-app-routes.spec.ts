@@ -572,6 +572,39 @@ describe('DataTug app routes', () => {
         },
       );
 
+      it('with storage blocked, still moves an in-page question to start-chat without touching sessionStorage', async () => {
+        const original = Object.getOwnPropertyDescriptor(
+          globalThis,
+          'sessionStorage',
+        );
+        Object.defineProperty(globalThis, 'sessionStorage', {
+          configurable: true,
+          get: () => {
+            throw new DOMException(
+              'The operation is insecure.',
+              'SecurityError',
+            );
+          },
+        });
+        try {
+          stash('?msg=Hello');
+          const result = await visit(
+            'datatug.app',
+            '/project/github.com/datatug/chinook-demo/chat',
+          );
+          expect(result.component).toBe(HandoffStub);
+          expect(result.url).toBe(
+            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          );
+          expect(
+            (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
+          ).toBe('?msg=Hello');
+        } finally {
+          if (original)
+            Object.defineProperty(globalThis, 'sessionStorage', original);
+        }
+      });
+
       it('does not transfer a question saved under a lowercase head branch into literal HEAD', async () => {
         const lower =
           '/project/github.com/datatug/chinook-demo/tree/head/-/start-chat';

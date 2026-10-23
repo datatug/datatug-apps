@@ -5,6 +5,7 @@ import {
 } from '@angular/core';
 import { SNEAT_FIREBASE_AUTH } from '@sneat/app-auth';
 import { SneatAuthStateService } from '@sneat/auth-core';
+import { tabStorage } from '@datatug/product-profiles';
 import type { Observable } from 'rxjs';
 import type { Auth } from 'firebase/auth';
 import { GithubAuthProvider, getRedirectResult } from 'firebase/auth';
@@ -30,19 +31,6 @@ export const GITHUB_TOKEN_OWNER_STORAGE_KEY = 'datatug:github:token-owner';
  * GitHub token: the user came back authorised, but DataTug stayed disconnected.
  * Hence an app initializer registered BEFORE `provideSneatAuthenticatedProviders()`.
  */
-/**
- * The tab's sessionStorage, or undefined when the browser blocks it: reading `sessionStorage` itself throws a
- * SecurityError then (blocked site data, some private modes), so it is never touched outside a try. No storage means no
- * token and no owner, never a failed start-up.
- */
-export function tabStorage(): Storage | undefined {
-  try {
-    return globalThis.sessionStorage ?? undefined;
-  } catch {
-    return undefined;
-  }
-}
-
 export async function captureGithubRedirectSignIn(): Promise<void> {
   const auth = inject<Auth>(SNEAT_FIREBASE_AUTH);
   try {

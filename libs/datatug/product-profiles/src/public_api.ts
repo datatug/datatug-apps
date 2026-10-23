@@ -29,3 +29,5 @@ export {
   NOOP_USAGE_EVENT_SINK,
   isUsageEventName,
 } from './lib/usage-events';
+// The one guarded tab sessionStorage, shared by the app shell and the DataTug library (blocked storage is undefined).
+export { tabStorage } from './lib/tab-storage';

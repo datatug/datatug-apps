@@ -71,7 +71,10 @@ class HostComponent {
       [detail]="false"
       [optionActive]="active()"
       (activated)="activations.set(activations() + 1)"
-    />
+      ><span queryRowSubtitle class="secondary"
+        >Query · reports</span
+      ></sneat-datatug-query-list-item
+    >
   `,
 })
 class OptionHostComponent {
@@ -156,7 +159,7 @@ describe('QueryListItemComponent', () => {
   });
 
   it('waits for hover intent, loads once, and shows a highlighted preview described by the focusable element', async () => {
-    const { item, main, preview, settle, setLoader } = await create();
+    const { el, item, main, preview, settle, setLoader } = await create();
     const load = vi.fn(() => of('SELECT id\nFROM orders'));
     await setLoader(load);
     vi.useFakeTimers();
@@ -171,7 +174,10 @@ describe('QueryListItemComponent', () => {
     expect(preview()?.querySelector('.tugql-token-keyword')?.innerHTML).toBe(
       'SELECT',
     );
-    expect(main().getAttribute('aria-describedby')).toBe(preview()?.id);
+    const subtitleId = el.querySelector('.query-row-subtitle')?.id;
+    expect(main().getAttribute('aria-describedby')).toBe(
+      `${subtitleId} ${preview()?.id}`,
+    );
     item().dispatchEvent(new MouseEvent('mouseleave'));
     await settle();
     expect(preview()).toBeNull();
@@ -207,7 +213,10 @@ describe('QueryListItemComponent', () => {
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await settle();
     expect(preview()).toBeNull();
-    expect(main().hasAttribute('aria-describedby')).toBe(false);
+    // Only the subtitle still describes the row.
+    expect(main().getAttribute('aria-describedby')).toBe(
+      main().querySelector('.query-row-subtitle')?.id,
+    );
   });
 
   it('shows nothing when the text is empty or the load fails', async () => {
@@ -274,6 +283,53 @@ describe('QueryListItemComponent', () => {
     expect(press.defaultPrevented).toBe(true);
     option.click();
     expect(fixture.componentInstance.activations()).toBe(1);
+  });
+
+  it('describes a combobox option by its secondary line, which its accessible name replaces', async () => {
+    await TestBed.configureTestingModule({
+      imports: [OptionHostComponent],
+      providers: [
+        provideRouter([{ path: '**', component: RouteStubComponent }]),
+      ],
+    }).compileComponents();
+    const fixture = TestBed.createComponent(OptionHostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const option = el.querySelector('[role="option"]') as HTMLElement;
+    expect(option.getAttribute('aria-label')).toBe(
+      'Top customers, TugQL query',
+    );
+    const ids = option.getAttribute('aria-describedby')?.split(' ') ?? [];
+    expect(ids).toHaveLength(1);
+    const description = ids
+      .map((id) => document.getElementById(id)?.textContent?.trim())
+      .join(' ');
+    expect(description).toBe('Query · reports');
+    // The described element lives inside the option, so it is announced with it.
+    expect(option.contains(document.getElementById(ids[0]))).toBe(true);
+  });
+
+  it('hides the empty subtitle wrapper when nothing is projected', async () => {
+    @Component({
+      imports: [QueryListItemComponent],
+      template: `<sneat-datatug-query-list-item queryTitle="Bare" />`,
+    })
+    class BareHostComponent {}
+    TestBed.configureTestingModule({
+      imports: [BareHostComponent],
+      providers: [
+        provideRouter([{ path: '**', component: RouteStubComponent }]),
+      ],
+    });
+    const fixture = TestBed.createComponent(BareHostComponent);
+    fixture.detectChanges();
+    await fixture.whenStable();
+    const el = fixture.nativeElement as HTMLElement;
+    const subtitle = el.querySelector('.query-row-subtitle') as HTMLElement;
+    // The empty wrapper is hidden and describes nothing.
+    expect(subtitle.textContent?.trim()).toBe('');
+    expect(subtitle.matches(':empty')).toBe(true);
   });
 
   it('is a plain list row (no option role) without optionId', async () => {

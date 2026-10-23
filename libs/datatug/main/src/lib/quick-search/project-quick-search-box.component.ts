@@ -199,7 +199,11 @@ let nextBoxId = 0;
                         (mousedown)="$event.preventDefault()"
                         (click)="close()"
                       >
-                        <ion-icon [name]="option.icon" aria-hidden="true" />
+                        <ion-icon
+                          class="option-icon"
+                          [name]="option.icon"
+                          aria-hidden="true"
+                        />
                         <span class="text">
                           <span class="title">
                             @for (part of option.title; track $index) {
@@ -374,6 +378,12 @@ let nextBoxId = 0;
       font-size: 18px;
       color: var(--ion-color-primary);
     }
+    /* The leading kind icon takes the shared query row's icon column (24px icon, 18px to the title), so every
+       kind's title starts at the same x as a query row's (QueryListItemComponent). */
+    .option > .option-icon {
+      font-size: 24px;
+      margin-inline-end: 8px;
+    }
     .option:hover,
     .option.active {
       background: rgba(var(--ion-color-primary-rgb), 0.1);
@@ -393,9 +403,19 @@ let nextBoxId = 0;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
+    /* Same title and secondary-line type as the shared query row (QueryItemHeadingComponent's h3 and its subtitle). */
+    .title {
+      font-size: 1rem;
+      font-weight: 400;
+      line-height: 1.35;
+    }
     .secondary {
-      font-size: 0.8rem;
-      color: var(--ion-color-medium-shade);
+      margin-top: 2px;
+      font-size: 0.875rem;
+      color: var(--dt-text-muted);
+    }
+    .see-all .title {
+      font-weight: 600;
     }
     mark {
       background: rgba(var(--ion-color-warning-rgb), 0.35);

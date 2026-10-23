@@ -44,7 +44,11 @@ describe('HTTP row action: which row is offered', () => {
     const router = { navigate: vi.fn(async () => true), events: of(), currentNavigation: vi.fn(() => null),
       lastSuccessfulNavigation: vi.fn(() => null), routerState: { root: route } };
     const logger = { logError: vi.fn(), logErrorHandler: vi.fn(() => vi.fn()) };
-    await TestBed.configureTestingModule({ imports: [QueryPageComponent], providers: [
+    // Never `imports: [QueryPageComponent]`: TestBed would then walk the ORIGINAL standalone component's dependency
+    // graph and JIT-compile its 2,000-line template and every child component (editors, grid, charts) that the
+    // override below discards. That once-per-worker compile is what pushed this file past the 5s test timeout
+    // under a loaded machine. createComponent() compiles only the overridden definition.
+    await TestBed.configureTestingModule({ providers: [
       { provide: ProjectMeaningsService, useValue: {} },
       { provide: ErrorLogger, useValue: logger },
       { provide: RandomIdService, useValue: { newRandomId: vi.fn(() => 'q') } },
