@@ -1,3 +1,4 @@
+import { nativeQueryFetch } from './native-query-failure';
 import {
   decodeRightsInventory,
   decodeSourceRights,
@@ -208,13 +209,16 @@ export async function preflightSourceRights(
       ? AbortSignal.any([signal, timeout])
       : timeout;
     effectiveSignal.throwIfAborted();
-    const response = await httpFetch(
+    const response = await nativeQueryFetch(
+      httpFetch,
       `${base}/v1/databases/${encodeURIComponent(database)}`,
       {
         headers: { Accept: 'application/json', ...headers },
         redirect: 'error',
         signal: effectiveSignal,
       },
+      'capability_discovery',
+      true,
     );
     if (response.redirected || !response.ok)
       throw new Error('Source terms preflight unavailable.');

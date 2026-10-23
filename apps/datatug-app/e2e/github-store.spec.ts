@@ -810,7 +810,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
     await expect(pageTitle).toContainText('Artists with albums', {
       timeout: 20_000,
     });
-    await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
+    await expect(pageTitle).toContainText('DataTug Demo Project');
 
     const bodyText = page.getByRole('textbox', { name: 'SQL query' });
     await expect(bodyText).toBeVisible({ timeout: 20_000 });
@@ -864,7 +864,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
         join(project, 'datatug-project.json'),
         JSON.stringify({
           id: 'datatug-demo-project',
-          title: 'DataTug Demo: DemoDB datasets',
+          title: 'DataTug Demo Project',
           environments: [{ id: 'local' }],
         }),
       );
@@ -940,7 +940,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
       // that *something* rendered where the Servers list used to be.
       const pageTitle = dbServerPage.locator('sneat-datatug-page-title');
       await expect(pageTitle).toContainText('DB server:', { timeout: 15_000 });
-      await expect(pageTitle).toContainText('DataTug Demo: DemoDB datasets');
+      await expect(pageTitle).toContainText('DataTug Demo Project');
 
       // The rest of the detail page's own structure — Host/Environments/
       // Databases cards (dbserver-page.component.html) — renders even though

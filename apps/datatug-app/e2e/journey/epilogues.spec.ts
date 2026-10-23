@@ -173,7 +173,7 @@ test.describe('Epilogue A — close/reopen', () => {
     await expect(
       reopenedPage
         .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    ).toHaveText('DataTug Demo Project', { timeout: 15_000 });
     // The empty state must be the REAL empty-context rendering: the assertion
     // above already forced a wait for real content before this check runs, so
     // an absent chip here cannot be "still loading".
@@ -207,7 +207,7 @@ test.describe('Epilogue A — close/reopen', () => {
     await expect(
       freshPage
         .locator('h1.project-title'),
-    ).toHaveText('DataTug Demo: DemoDB datasets', { timeout: 15_000 });
+    ).toHaveText('DataTug Demo Project', { timeout: 15_000 });
     await expect(
       freshPage.locator('sneat-datatug-investigation-context-bar'),
     ).not.toContainText('Customer.ID', { timeout: 5_000 });

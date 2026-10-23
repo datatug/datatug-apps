@@ -38,8 +38,8 @@ The AdventureWorks in-browser journey (download through the chunked gzip parts, 
 Every GitHub repository the e2e suites read is pinned in ONE place, `apps/datatug-app/e2e/github-pins.json`
 (see `apps/datatug-app/e2e/README.md`, "GitHub checkouts"). The browser lanes (Chromium app, Query mobile WebKit,
 demo SQLite) read the demo project at pin `demo-browser` (the validated catalog revision: required creation dates on
-all 59 query definitions and the server-comparison query the showcase specs read); the independent chart sources
-journey (`showcase-independent-sources.spec.ts`), which needs per-database customer queries that pin predates, runs
+every query definition and the server-comparison query the showcase specs read); the independent chart sources
+journey (`showcase-independent-sources.spec.ts`) runs
 through `datatug-app:e2e-showcase-independent` at pin `demo-independent`; the real-agent journey and card-link jobs
 check out pin `demo-agent`. The guard answers `api.github.com`, `raw.githubusercontent.com` and `cdn.jsdelivr.net`
 from shallow checkouts of those commits and fails a test whose GitHub request reaches the network or names a commit

@@ -960,6 +960,13 @@ describe('scopesEqual', () => {
 });
 
 describe('DATATUG_AGENT_BASE_URL contributes the scope’s agentUrl automatically', () => {
+  // The service restores a scope's items from sessionStorage and the TestBed instance outlives each test, so
+  // without this the last test saw items an earlier test (in whatever order) had stored for the default scope.
+  beforeEach(() => {
+    sessionStorage.clear();
+    TestBed.resetTestingModule();
+  });
+
   it('setScope fills in agentUrl from the injected token, not a caller-supplied value', () => {
     TestBed.resetTestingModule();
     TestBed.overrideProvider(DATATUG_AGENT_BASE_URL, {

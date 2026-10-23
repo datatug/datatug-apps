@@ -4,6 +4,8 @@ import {
   provideAppInitializer,
 } from '@angular/core';
 import { SNEAT_FIREBASE_AUTH } from '@sneat/app-auth';
+import { SneatAuthStateService } from '@sneat/auth-core';
+import type { Observable } from 'rxjs';
 import type { Auth } from 'firebase/auth';
 import { GithubAuthProvider, getRedirectResult } from 'firebase/auth';
 
@@ -15,6 +17,9 @@ import { GithubAuthProvider, getRedirectResult } from 'firebase/auth';
  * forbids it), and the two must agree.
  */
 export const GITHUB_TOKEN_STORAGE_KEY = 'datatug:github:token';
+
+/** The Sneat user the token was obtained for; the same key as `datatug-main`'s `github-user-token.ts`. */
+export const GITHUB_TOKEN_OWNER_STORAGE_KEY = 'datatug:github:token-owner';
 
 /**
  * Captures a pending GitHub redirect sign-in at start-up.
@@ -34,6 +39,9 @@ export async function captureGithubRedirectSignIn(): Promise<void> {
       : undefined;
     if (token) {
       sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
+      const owner = credential?.user?.uid;
+      if (owner) sessionStorage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
+      else sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
     }
   } catch {
     // A redirect that carries no usable credential is not an error worth
@@ -45,4 +53,55 @@ export async function captureGithubRedirectSignIn(): Promise<void> {
 /** App initializer that captures a redirect sign-in result, if there is one. */
 export function provideGithubRedirectCapture(): EnvironmentProviders {
   return provideAppInitializer(captureGithubRedirectSignIn);
+}
+
+/**
+ * Announced on `window` when the GitHub token was removed at a Sneat sign-out or account switch. `datatug-main`'s
+ * GitHub readers listen for it and drop, from memory, what they read with that token (the same name is in
+ * `github-user-token.ts`; duplicated for the module-boundary reason above).
+ */
+export const GITHUB_SIGNED_OUT_EVENT = 'datatug:github-signed-out';
+
+/** The part of the Sneat auth state the sign-out watch reads. */
+export interface IGithubSignOutAuthState {
+  readonly status: string;
+  readonly user?: { readonly uid?: string } | null;
+}
+
+/**
+ * Removes the tab's GitHub token when the signed-in Sneat user is not the one it was obtained for: at sign-out, when
+ * another account signs in, and for a token kept with no owner. The token is the user's, and must not go on lifting
+ * (or reading private repositories for) whoever uses the tab next. Comparing with the stored owner, not with the
+ * previous auth event, makes the order of a popup sign-in's auth event and the storing of its token not matter. The
+ * same effect as `GithubOAuthService.forget()` in `datatug-main`, which this app must not import. Returns the
+ * subscription.
+ */
+export function forgetGithubTokenOnSignOut(
+  authState: Observable<IGithubSignOutAuthState>,
+  storage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = globalThis.sessionStorage,
+  target: Pick<EventTarget, 'dispatchEvent'> | undefined = globalThis,
+) {
+  return authState.subscribe((state) => {
+    if (state.status !== 'authenticated' && state.status !== 'notAuthenticated') {
+      return; // still deciding: neither a sign-out nor a new account
+    }
+    const uid = state.status === 'authenticated' ? state.user?.uid || undefined : undefined;
+    try {
+      if (!storage?.getItem(GITHUB_TOKEN_STORAGE_KEY)) return;
+      if ((storage.getItem(GITHUB_TOKEN_OWNER_STORAGE_KEY) || undefined) === uid && uid) return;
+      storage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+      storage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+    } catch {
+      return; // Storage not available: nothing kept there.
+    }
+    target?.dispatchEvent(new Event(GITHUB_SIGNED_OUT_EVENT));
+  });
+}
+
+/** App initializer that forgets the GitHub token at Sneat sign-out and account switch. */
+export function provideGithubSignOutForget(): EnvironmentProviders {
+  return provideAppInitializer(() => {
+    const auth = inject(SneatAuthStateService, { optional: true });
+    if (auth) forgetGithubTokenOnSignOut(auth.authState);
+  });
 }
