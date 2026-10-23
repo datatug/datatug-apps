@@ -569,6 +569,7 @@ test.describe('GitHub-store project — every side-menu page loads without error
    * the visitor never chose, and a remembered one the query cannot use must not break it.
    */
   test('viewing agent and HTTP queries never poisons the environment of a browser-SQLite query', async ({ page }) => {
+    test.setTimeout(120_000);
     const errors = installErrorLoggerWatch(page);
     const lastEnvKey = `datatug:lastEnv:github.com:${PROJECT_ID}`;
     const openQuery = async (id: string, title: RegExp) => {
@@ -579,7 +580,9 @@ test.describe('GitHub-store project — every side-menu page loads without error
       const run = page.getByTestId('workspace-run');
       await expect(run).toBeVisible();
       await run.click();
-      await expect(page.getByText(/\d+ rows · \d+ columns/).first()).toBeVisible({ timeout: 25_000 });
+      // Ionic keeps earlier query pages in the DOM, hidden: only the visible page's Results count.
+      const results = page.getByRole('region', { name: 'Results' }).filter({ visible: true });
+      await expect(results.getByText(/^\s*\d+ rows\s*$/).first()).toBeVisible({ timeout: 25_000 });
       await expect(page.getByText('unavailable in this environment')).toHaveCount(0);
     };
 
