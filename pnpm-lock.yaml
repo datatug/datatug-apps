@@ -98,8 +98,8 @@ importers:
         specifier: github:dal-go/dalgo-js#99165e9e1a39c32abee2b39d6395677843bc3559
         version: https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559
       '@dalgo/indexeddb':
-        specifier: github:dal-go/dalgo-http-adapters#19684666326c9f03c2824f28040c4449277a2f7c&path:/packages/indexeddb
-        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559)
+        specifier: github:dal-go/dalgo-http-adapters#519665be7bab21bae3c388eb2395afb8b6df1be9&path:/packages/indexeddb
+        version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559)
       '@dalgo/ovdb':
         specifier: github:dal-go/dalgo-http-adapters#19684666326c9f03c2824f28040c4449277a2f7c&path:/packages/ovdb
         version: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/ovdb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559)
@@ -2154,12 +2154,12 @@ packages:
     version: 0.7.4
     engines: {node: '>=20'}
 
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/indexeddb':
-    resolution: {gitHosted: true, path: /packages/indexeddb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c}
-    version: 0.3.0
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb':
+    resolution: {gitHosted: true, path: /packages/indexeddb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9}
+    version: 0.1.0
     engines: {node: '>=20'}
     peerDependencies:
-      '@dalgo/core': ^0.6.0
+      '@dalgo/core': ^0.1.0
 
   '@dalgo/ovdb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/ovdb':
     resolution: {gitHosted: true, path: /packages/ovdb, tarball: https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c}
@@ -13685,7 +13685,7 @@ snapshots:
     dependencies:
       yaml: 2.9.1
 
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559)':
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb(@dalgo/core@https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559)':
     dependencies:
       '@dalgo/core': https://codeload.github.com/dal-go/dalgo-js/tar.gz/99165e9e1a39c32abee2b39d6395677843bc3559
 

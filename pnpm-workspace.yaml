@@ -54,7 +54,7 @@ allowBuilds:
   '@dalgo/sqlite-sql@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/sqlite-sql': true
   '@dalgo/sqlite-wasm@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/sqlite-wasm': true
   '@openvaultdb/inprocess@https://codeload.github.com/openvaultdb/openvaultdb-ts/tar.gz/2824d393cc4e7f5b5a11dc54c53f955c41d07387#path:/packages/inprocess': true
-  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/19684666326c9f03c2824f28040c4449277a2f7c#path:/packages/indexeddb': true
+  '@dalgo/indexeddb@https://codeload.github.com/dal-go/dalgo-http-adapters/tar.gz/519665be7bab21bae3c388eb2395afb8b6df1be9#path:/packages/indexeddb': true
   '@firebase/util': true
   '@parcel/watcher': true
   '@sentry/cli': true
