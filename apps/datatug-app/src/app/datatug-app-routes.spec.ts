@@ -364,12 +364,45 @@ describe('DataTug app routes', () => {
       ).toBeNull();
     });
 
+    // Founder 2026-10-23: "make datatug.app/demo open the demo project".
     it.each([
-      ['datatug.app', '/demo', true],
-      ['datatug.app', '/Demo;x=1', true],
-      ['an-unknown-host.example', '/demo', true], // an unrecognized host is the DataTug profile
-    ])('at %s, %s lands on the hand-off page', async (hostname, url) => {
-      expect((await visit(hostname, url)).component).toBe(HandoffStub);
+      ['datatug.app', '/demo'],
+      ['datatug.app', '/Demo;x=1'],
+      ['datatug.app', '/DEMO'],
+      ['an-unknown-host.example', '/demo'], // an unrecognized host is the DataTug profile
+    ])('at %s, %s without a question opens the demo project', async (hostname, url) => {
+      resetHandoffAskedForTests();
+      const result = await visit(hostname, url);
+      expect(result.ok).toBe(true);
+      expect(result.component).toBe(ProjectStub);
+      expect(result.url).toBe('/project/github.com/datatug/datatug-demo-project/demo-project-1');
+    });
+
+    it('/demo replaces itself in the history: Back does not bounce the visitor into the demo again', async () => {
+      resetHandoffAskedForTests();
+      TestBed.configureTestingModule({
+        providers: [
+          { provide: PRODUCT_PROFILE, useValue: resolveProductProfile({ hostname: 'datatug.app' }) },
+          provideRouter([
+            ...routes.filter((r) => r.matcher).map((r) => ({ ...r, loadComponent: () => HandoffStub })),
+            { path: 'project/**', component: ProjectStub },
+            { path: '**', component: OtherStub },
+          ]),
+        ],
+      });
+      const router = TestBed.inject(Router);
+      const location = TestBed.inject(Location);
+      await router.navigateByUrl('/elsewhere');
+      const go = vi.spyOn(location, 'go');
+      const replaceState = vi.spyOn(location, 'replaceState');
+      await router.navigateByUrl('/demo');
+      expect(router.url).toBe('/project/github.com/datatug/datatug-demo-project/demo-project-1');
+      expect(go).not.toHaveBeenCalled();
+      expect(replaceState).toHaveBeenCalledWith(
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1',
+        '',
+        expect.anything(),
+      );
     });
 
     it.each([
@@ -780,14 +813,47 @@ describe('DataTug app routes', () => {
         }
       });
 
-      it('/demo is the holding page with or without a question', async () => {
-        for (const search of ['?q=Hello', '?lang=ru', '']) {
+      it('/demo with a question is the holding page, which shows it back and links to the demo project', async () => {
+        for (const search of ['?q=Hello', '?msg=Hello&lang=ru', '?scenario=x&q=Hi&lang=en']) {
           TestBed.resetTestingModule();
+          resetHandoffAskedForTests();
           stash(search);
-          expect((await visit('datatug.app', '/demo')).component, search).toBe(
-            HandoffStub,
-          );
+          const result = await visit('datatug.app', '/demo');
+          expect(result.component, search).toBe(HandoffStub);
+          expect(result.url, search).toBe('/demo');
         }
+      });
+
+      it('/demo without a question opens the demo project, keeping the rest of the query (utm_…)', async () => {
+        for (const [search, query] of [
+          ['', ''],
+          ['?lang=ru', '?lang=ru'],
+          ['?utm_source=x&utm_medium=y', '?utm_source=x&utm_medium=y'],
+          ['?q=&utm_source=x', '?utm_source=x'],
+          // `/demo` opens the demo project on its default branch, never a ref a link chose.
+          ['?ref=evil&utm_source=x', '?utm_source=x'],
+          ['?utm_campaign=a%20b', '?utm_campaign=a%20b'],
+        ]) {
+          TestBed.resetTestingModule();
+          resetHandoffAskedForTests();
+          stash(search);
+          const result = await visit('datatug.app', '/demo');
+          expect(result.component, search).toBe(ProjectStub);
+          expect(result.url, search).toBe('/project/github.com/datatug/datatug-demo-project/demo-project-1' + query);
+          expect(DEMO_HANDOFF_STASH in window, search).toBe(false);
+        }
+      });
+
+      it('/demo whose query the script did not take out (only the router has it) keeps it too', async () => {
+        TestBed.resetTestingModule();
+        resetHandoffAskedForTests();
+        const result = await visit('datatug.app', '/demo?utm_source=x');
+        expect(result.component).toBe(ProjectStub);
+        expect(result.url).toBe('/project/github.com/datatug/datatug-demo-project/demo-project-1?utm_source=x');
+        TestBed.resetTestingModule();
+        resetHandoffAskedForTests();
+        const asked = await visit('datatug.app', '/demo?q=Hello');
+        expect(asked.component).toBe(HandoffStub);
       });
 
       it('at app.incidentius.com every project chat address still goes to the root, with or without a question', async () => {

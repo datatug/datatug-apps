@@ -10,7 +10,11 @@ import {
   UrlTree,
 } from '@angular/router';
 import { PRODUCT_PROFILE, tabStorage } from '@datatug/product-profiles';
-import { hasOutletGroup } from '@datatug/project-address';
+import {
+  DEMO_PROJECT_REF,
+  hasOutletGroup,
+  projectUrl,
+} from '@datatug/project-address';
 import { cliChatCapability } from './cli-chat-capability';
 import {
   DEMO_HANDOFF_KEY,
@@ -36,7 +40,8 @@ import recordsetcompareLock from '../../recordsetcompare-lock.json';
 
 // The places a hand-off from the sites lands: datatug.io's "Ask DataTug" button opens `/demo`, and the project's
 // `start-chat` page (founder ruling 2026-10-03, design demo-as-github-project.md 3.1) is the confirmation page that
-// takes the question after `#`. Until the live demo can answer a question, both show one holding page instead of
+// takes the question after `#`. `/demo` without a question opens the demo project (founder 2026-10-23). Until the live
+// demo can answer a question, a question on either shows one holding page instead of
 // failing to match any route, which opens Sentry's crash-report dialog and loses the visitor's question. No flag and
 // no sign-in. demo-handoff-capture.ts explains how the question is taken out of the address bar before analytics
 // starts, and which addresses may show it back (isTrustedHandoff: `/demo` and the demo project's own start-chat;
@@ -267,7 +272,8 @@ function urlTreeOfSegments(
 }
 
 /**
- * `canMatch` of the hand-off route: under the DataTug profile the page for `/demo` and for a start-chat address, a
+ * `canMatch` of the hand-off route: under the DataTug profile a replacing redirect to the demo project for `/demo`
+ * without a question, the page for `/demo` with one and for a start-chat address, a
  * replacing redirect to start-chat for an old project chat address that arrived with a question, and no match (the
  * router goes on to the project routes) for a project chat address without one; under every other profile, the root.
  */
@@ -284,6 +290,11 @@ export const handoffOrRoot: CanMatchFn = (_route, segments) => {
       router.getCurrentNavigation()?.extractedUrl.queryParams ?? {},
     ),
   );
+  if (decision.kind === 'open-demo-project')
+    return new RedirectCommand(
+      router.parseUrl(projectUrl(DEMO_PROJECT_REF) + decision.search),
+      { replaceUrl: true },
+    );
   if (decision.kind === 'move-to-start-chat')
     return new RedirectCommand(
       // The ref names the project: it stays (review of eb9f5b26, 1).

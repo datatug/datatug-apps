@@ -8,6 +8,7 @@ import {
   resetHandoffAskedForTests,
   handoffDecision,
   searchAsksQuestion,
+  demoProjectSearch,
 } from './demo-handoff-asked';
 import { routeSegments } from './demo-handoff-path';
 
@@ -102,7 +103,7 @@ describe('which hand-off addresses show the holding page', () => {
       );
     });
 
-    it('/demo needs no question, and its query is stashed as well, for the holding page to capture', () => {
+    it('/demo is taken with or without a question (the demo project, or the holding page), and a question is stashed for the page to capture', () => {
       const e = env({ navigation: 'navigate' });
       expect(shows('/demo', e, '?q=Hello')).toBe(true);
       expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?q=Hello');
@@ -174,11 +175,14 @@ describe('which hand-off addresses show the holding page', () => {
       expect(removed).toEqual([]);
     });
 
-    it('/demo keeps its stash: the page reads the language from it', () => {
-      const e = env({ stash: '?lang=ru', navigation: 'navigate' });
-      expect(shows('/demo', e)).toBe(true);
-      expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?lang=ru');
-      expect(removed).toEqual([]);
+    it('/demo with no question opens the demo project, keeping the rest of its query, and forgets the stash', () => {
+      const e = env({ stash: '?lang=ru&utm_source=x', navigation: 'navigate' });
+      expect(decide('/demo', e)).toEqual({
+        kind: 'open-demo-project',
+        search: '?lang=ru&utm_source=x',
+      });
+      expect(DEMO_HANDOFF_STASH in e.stash).toBe(false);
+      expect(removed).toEqual([DEMO_HANDOFF_KEY]);
     });
 
     it('blocked storage does not throw, and the answer is still no', () => {
@@ -198,13 +202,32 @@ describe('which hand-off addresses show the holding page', () => {
     });
   });
 
-  describe('/demo: always, whatever the query or storage says', () => {
+  describe('/demo: the demo project, or the holding page when a question was asked (founder 2026-10-23)', () => {
     it.each(['/demo', '/Demo', '/demo/', '/demo;x=1'])('%s', (path) => {
-      expect(shows(path, env())).toBe(true);
-      expect(shows(path, env({ stash: '?lang=ru' }))).toBe(true);
-      expect(shows(path, env({ blocked: true, navigation: 'navigate' }))).toBe(
-        true,
-      );
+      const project = { kind: 'open-demo-project', search: '' };
+      expect(decide(path, env({ navigation: 'navigate' }))).toEqual(project);
+      expect(decide(path, env({ stash: '?lang=ru' }))).toEqual({ ...project, search: '?lang=ru' });
+      expect(decide(path, env({ blocked: true, navigation: 'navigate' }))).toEqual(project);
+      expect(decide(path, env({ stash: '?q=Hello' }))).toEqual({ kind: 'page' });
+      resetHandoffAskedForTests();
+      expect(decide(path, env({ navigation: 'navigate' }), '?msg=Hello')).toEqual({ kind: 'page' });
+      resetHandoffAskedForTests();
+    });
+
+    it('a reload of /demo after a question keeps the holding page (the copy kept for this tab)', () => {
+      expect(
+        decide('/demo', env({ stored: '/demo?q=Hello', navigation: 'reload' })),
+      ).toEqual({ kind: 'page' });
+    });
+
+    it.each([
+      ['', ''],
+      ['?utm_source=x&utm_medium=y', '?utm_source=x&utm_medium=y'],
+      ['?scenario=s&lang=en', '?scenario=s&lang=en'],
+      ['?msg=&q=&asked=0&ref=main&a=1', '?a=1'],
+      ['?ref=HEAD', ''],
+    ])('the query %j goes on to the demo project as %j', (search, expected) => {
+      expect(demoProjectSearch(search)).toBe(expected);
     });
   });
 
@@ -393,7 +416,7 @@ describe('the decision for an address (founder ruling 2026-10-03: start-chat is 
     expect(removed).toEqual([]);
   });
 
-  it('/demo is its own page, and a question in its navigation query is stashed', () => {
+  it('/demo with a question is its own page, and a question in its navigation query is stashed', () => {
     const e = env({ navigation: 'navigate' });
     expect(decide('/demo', e, '?q=Hello')).toEqual({ kind: 'page' });
     expect(e.stash[DEMO_HANDOFF_STASH]).toBe('?q=Hello');
