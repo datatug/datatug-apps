@@ -57,7 +57,7 @@ describe('decodeStoredResult', () => {
     const { meta, recordset } = decoded();
     expect(meta.id).toBe('t4');
     expect(meta.db.source).toBe('chinook');
-    expect(meta.query.kind).toBe('dtql');
+    expect(meta.query.kind).toBe('tugql');
     expect(meta.participants.map((p) => p.relation)).toEqual([
       'Invoice',
       'Customer',
@@ -326,7 +326,7 @@ describe('Run again', () => {
       environment: 'local',
       securityContextId: 'sc-1',
       source: 'chinook',
-      dtql: meta.query.dtql,
+      tugql: meta.query.tugql,
       parameters: {},
       bindingOrigins: [],
       mode: 'live',
@@ -338,9 +338,9 @@ describe('Run again', () => {
     const { meta } = decoded({
       query: {
         kind: 'saved',
-        dtql: undefined,
+        tugql: undefined,
         savedQueryId: 'customer-invoices',
-        savedQueryType: 'dtql',
+        savedQueryType: 'tugql',
         parameters: { CustomerId: { type: 'integer', value: '2' } },
       },
     });
@@ -350,7 +350,7 @@ describe('Run again', () => {
       parameters: { CustomerId: { type: 'integer', value: '2' } },
       bindingOrigins: [{ parameterId: 'CustomerId', origin: 'manual' }],
     });
-    expect(request).not.toHaveProperty('dtql');
+    expect(request).not.toHaveProperty('tugql');
   });
 
   it('is blocked, with its reason, where the agent cannot run it', () => {
@@ -394,7 +394,7 @@ describe('Run again', () => {
       'not kept',
     );
     expect(
-      rerunBlocker(decoded({ query: { dtql: undefined } }).meta),
+      rerunBlocker(decoded({ query: { tugql: undefined } }).meta),
     ).toContain('not kept');
   });
 

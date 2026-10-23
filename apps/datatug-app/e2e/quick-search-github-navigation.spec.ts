@@ -2,7 +2,7 @@ import { expect, test } from './helpers/demodb-guard';
 
 /** Real short GitHub routes, guard, boot script, overview submit and pinned file reader. HTTP alone is controlled. */
 test('GitHub overview query survives navigation/reload and typed Checks open safe metadata',async({page},testInfo)=>{
-  const sha='a'.repeat(40),base='/project/github.com/acme/search-navigation/tree/HEAD/demo-project-1/-/';
+  const sha='a'.repeat(40),base='/project/github.com/acme/search-navigation/demo-project-1/-/';
   const files:Record<string,unknown>={
     'demo-project-1/datatug-project.json':{id:'demo-project-1',title:'Search navigation project',access:'public',boards:[],entities:[],environments:[],tags:{customers:1}},
     'demo-project-1/checks/check-a.json':{id:'check-a',title:'Customer freshness',tags:['customers'],steps:[{query:'PRIVATE SQL SHOULD NOT RENDER'}],description:'PRIVATE DESCRIPTION'},

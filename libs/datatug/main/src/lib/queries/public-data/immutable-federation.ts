@@ -1,5 +1,5 @@
 import type { FederatedSourceRights } from '../federated-source-rights';
-import { parseDTQL } from '@dalgo/core';
+import { parseTugQLYaml } from '@dalgo/core';
 import type {
   BoundedFederation,
   BoundedReadReceipt,
@@ -282,7 +282,7 @@ export function createImmutableFederationFetch(
             }
           : {}),
       };
-      parseDTQL(
+      parseTugQLYaml(
         query,
         { tables: [{ name: source.name, fields: [source.keyField] }] },
         { maxLimit: 1000 },
@@ -294,7 +294,7 @@ export function createImmutableFederationFetch(
       headers.set('Accept', 'application/json');
       budget.admitNetwork();
       const response = await http(
-        `${base}/v1/databases/${source.database}/dtql`,
+        `${base}/v1/databases/${source.database}/tugql`,
         {
           method: 'POST',
           headers,
@@ -441,9 +441,9 @@ export function createImmutableFederationFetch(
       if (
         init?.method !== 'POST' ||
         !url.startsWith(prefix) ||
-        !url.endsWith('/dtql')
+        !url.endsWith('/tugql')
       )
-        throw new Error('Only declared bounded DTQL sources may be requested.');
+        throw new Error('Only declared bounded TugQL sources may be requested.');
       const headers = new Headers(init.headers);
       // These are DALgo's local-cache pages, never forwarded to the network.
       if (headers.get('OVDB-Page-Close') === 'true')
@@ -451,7 +451,7 @@ export function createImmutableFederationFetch(
       const query = strictJson(String(init.body)) as {
         from?: { name?: string };
       };
-      const database = url.slice(prefix.length, -'/dtql'.length);
+      const database = url.slice(prefix.length, -'/tugql'.length);
       const source = sources.get(`${database}.${query.from?.name}`);
       if (!source)
         throw new Error(

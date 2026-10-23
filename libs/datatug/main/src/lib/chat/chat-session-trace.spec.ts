@@ -44,7 +44,7 @@ const step = (sessionId: string, turnId: string, index: number, over: Partial<Tr
 });
 
 const result = (source: string, rows: Record<string, unknown>[] = [{ country: 'Ireland' }]): CompletedChatQuery => ({
-  dtql: 'from: {}', generatedDtql: '', dtqlYaml: 'from: {}', sql: '', rows, columns: Object.keys(rows[0] ?? {}),
+  tugql: 'from: {}', generatedTugql: '', tugqlYaml: 'from: {}', sql: '', rows, columns: Object.keys(rows[0] ?? {}),
   metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 1 }, source,
 });
 

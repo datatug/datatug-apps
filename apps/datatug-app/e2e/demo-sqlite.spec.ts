@@ -47,12 +47,12 @@ test('an edited local copy runs on a saved Board card and ordinary query page', 
     board.rows[0].cards[0].widget.data.sql.queryId = 'demodb/live-artist-names';
     writeFileSync(boardPath, JSON.stringify(board));
     writeFileSync(join(project, 'queries/demodb/live-artist-names.query.json'), JSON.stringify({
-      id: 'live-artist-names', title: 'Live artist names', type: 'DTQL', connectionId: 'chinook-sqlite',
+      id: 'live-artist-names', title: 'Live artist names', type: 'TugQL', connectionId: 'chinook-sqlite',
       recordsets: [{ columns: [{ name: 'Name', type: 'string' }] }],
     }));
     // limit 1000: a board card needs a COMPLETE result (query-dispatch.service.ts execute(): hasMore -> "Narrow the query" since
     // 1c6ec429); Artist has 275 rows, so the old limit of 100 made the card show an error instead of the rows.
-    writeFileSync(join(project, 'queries/demodb/live-artist-names.query.dtql'),
+    writeFileSync(join(project, 'queries/demodb/live-artist-names.query.tugql.yaml'),
       'from:\n  name: "Artist"\nlimit: 1000\n');
     execFileSync('git', ['-C', checkout, 'add', '-A']);
     execFileSync('git', ['-C', checkout, '-c', 'user.name=E2E', '-c', 'user.email=e2e@example.test',

@@ -164,8 +164,8 @@ export class SessionComposerComponent {
         inputSnapshotId: inputId, entries: saved.revisions.map((revision) => ({ revisionId: revision.id, conceptId: revision.subject.conceptId, fieldId: revision.subject.fieldId,
           ...(revision.value.kind === 'scalar' ? { scalar: revision.value.scalar } : { count: revision.value.values?.length ?? 0 }) })),
       });
-      if (!interpretation.dtql) throw new Error('This first session adapter supports an Invoice or InvoiceLine query. Workspace actions and JOIN proposals need a separate reviewed action.');
-      const query = sessionChatQuery(interpretation.dtql, saved.revisions, admittedSubjects);
+      if (!interpretation.tugql) throw new Error('This first session adapter supports an Invoice or InvoiceLine query. Workspace actions and JOIN proposals need a separate reviewed action.');
+      const query = sessionChatQuery(interpretation.tugql, saved.revisions, admittedSubjects);
       if (!this.workspace.canExecuteFor(sessionId)) throw new Error('This session stopped before source dispatch. No new source query was started.');
       const recordedVersion = await this.workspace.recordRunExecution(sessionId, saved.runId, { schemaVersion: 1, kind: 'query', queries: [{ id: 'session-chat-query', queryType: 'SQL', text: (query.definition.request as ITextQueryRequest).text,
         connectionId: query.definition.connectionId, parameters: (query.definition.parameters ?? []).map(({ id, type, isRequired }) => ({ id, type, isRequired })) }] }, { InvoiceId: input });
@@ -175,7 +175,7 @@ export class SessionComposerComponent {
       const resultRef = await sessionResultFingerprint(result);
       if (this.sessionId() === sessionId) this.replies.update((replies) => ({ ...replies, [saved.runId]: { inputId, state: 'completed', resultRef, result, sql: (query.definition.request as ITextQueryRequest).text } }));
       if (this.sessionId() === sessionId && !(await tryWriteSessionResultCache(this.cache, cacheKey, this.replies()))) this.error.set('The result is available in this tab, but its display cache could not be saved. The source will not be rerun.');
-      const answer = `Executed DTQL: ${interpretation.dtql}`;
+      const answer = `Executed TugQL: ${interpretation.tugql}`;
       if (!(await this.workspace.reportClientRun(sessionId, saved.runId, 'chat', [{ id: 'query', state: 'completed', resultRef }], runVersion, answer)) && this.sessionId() === sessionId) this.error.set('The result is displayed; its client outcome is unconfirmed. Check and recover the retained operation.');
       await this.loadMessages(sessionId);
     } catch (error) {

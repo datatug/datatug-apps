@@ -1,9 +1,9 @@
-import { isJoinedDTQLQuery, parseDTQL, type DTQLSchema } from '@dalgo/core';
+import { isJoinedTugQLQuery, parseTugQLYaml, type TugQLSchema } from '@dalgo/core';
 import { chatSQLite } from './chat-query-format';
 import { ChatJoinAmbiguityError, ChatForeignKeyManifest, CHINOOK_FK_MANIFEST, ambiguousChatJoinRequest, deriveChatJoin, discoverChatJoinCandidates, validateChatJoinChoice } from './chat-joins';
 import { CHINOOK_SCHEMA } from './chat.types';
 
-const schema: DTQLSchema = { tables: [
+const schema: TugQLSchema = { tables: [
   { schema: 'main', name: 'A', fields: ['Id', 'ParentId', 'PrimaryBId', 'SecondaryBId'] },
   { schema: 'main', name: 'B', fields: ['Id', 'Name'] },
   { schema: 'main', name: 'C', fields: ['AId', 'AParentId', 'Label'] },
@@ -19,7 +19,7 @@ const manifest: ChatForeignKeyManifest = {
 
 describe('Chat FK JOIN discovery', () => {
   it('keeps separate candidate identities for two FKs to one table, self links, and composite links', () => {
-    const query = parseDTQL({ from: { schema: 'main', name: 'A' }, limit: 20 }, schema);
+    const query = parseTugQLYaml({ from: { schema: 'main', name: 'A' }, limit: 20 }, schema);
     const candidates = discoverChatJoinCandidates(query, manifest);
     expect(candidates.filter((item) => item.targetTable === 'B')).toHaveLength(2);
     expect(new Set(candidates.map((item) => item.id)).size).toBe(candidates.length);
@@ -27,8 +27,8 @@ describe('Chat FK JOIN discovery', () => {
     expect(candidates.filter((item) => item.targetTable === 'A').length).toBeGreaterThan(0);
   });
 
-  it('derives validated DTQL for the selected edge, retains existing output IDs and exposes nested candidates', () => {
-    const original = parseDTQL({ from: { schema: 'main', name: 'A' }, limit: 20 }, schema);
+  it('derives validated TugQL for the selected edge, retains existing output IDs and exposes nested candidates', () => {
+    const original = parseTugQLYaml({ from: { schema: 'main', name: 'A' }, limit: 20 }, schema);
     const first = discoverChatJoinCandidates(original, manifest).find((item) => item.foreignKeyId === 'A-primary-B' && item.direction === 'forward');
     expect(first).toBeDefined();
     const joined = deriveChatJoin(original, first?.id || '', schema, manifest);
@@ -37,7 +37,7 @@ describe('Chat FK JOIN discovery', () => {
     }]);
     expect(joined.query.columns?.map((column) => column.as)).toContain('Id');
     expect(joined.query.columns?.map((column) => column.as)).toContain('B.Name');
-    expect(isJoinedDTQLQuery(parseDTQL(joined.dtql, schema))).toBe(true);
+    expect(isJoinedTugQLQuery(parseTugQLYaml(joined.tugql, schema))).toBe(true);
     const next = discoverChatJoinCandidates(joined.query, manifest);
     expect(next.find((item) => item.id === first?.id)).toBeUndefined();
     expect(next.find((item) => item.foreignKeyId === 'A-secondary-B' && item.sourcePath.length === 0)).toBeDefined();
@@ -50,7 +50,7 @@ describe('Chat FK JOIN discovery', () => {
   });
 
   it('appends to an exact nested relation instance and rejects stale edge IDs', () => {
-    const base = parseDTQL({ from: { schema: 'main', name: 'C' }, limit: 5 }, schema);
+    const base = parseTugQLYaml({ from: { schema: 'main', name: 'C' }, limit: 5 }, schema);
     const composite = discoverChatJoinCandidates(base, manifest)[0];
     expect(composite.sourceFields).toEqual(['AId', 'AParentId']);
     const joined = deriveChatJoin(base, composite.id, schema, manifest);
@@ -65,7 +65,7 @@ describe('Chat FK JOIN discovery', () => {
   });
 
   it('keeps repeated relation aliases distinct and refuses an ambiguous agent target', () => {
-    const base = parseDTQL({ from: { schema: 'main', name: 'A' }, limit: 10 }, schema);
+    const base = parseTugQLYaml({ from: { schema: 'main', name: 'A' }, limit: 10 }, schema);
     const first = discoverChatJoinCandidates(base, manifest).find((item) => item.foreignKeyId === 'A-primary-B');
     const joined = deriveChatJoin(base, first?.id || '', schema, manifest);
     const second = discoverChatJoinCandidates(joined.query, manifest).find((item) => item.foreignKeyId === 'A-secondary-B' && !item.sourcePath.length);
@@ -85,11 +85,11 @@ describe('Chat FK JOIN discovery', () => {
   });
 
   it('expands a source-agnostic wildcard into stable, distinct output column IDs', () => {
-    const base = parseDTQL({ from: { schema: 'main', name: 'A' }, limit: 10 }, schema);
+    const base = parseTugQLYaml({ from: { schema: 'main', name: 'A' }, limit: 10 }, schema);
     const first = discoverChatJoinCandidates(base, manifest).find((item) => item.foreignKeyId === 'A-primary-B');
     const joined = deriveChatJoin(base, first?.id || '', schema, manifest);
-    const wildcard = parseDTQL({
-      from: JSON.parse(joined.dtql).from, columns: [{ wildcard: { exclude: ['Name'] } }], limit: 10,
+    const wildcard = parseTugQLYaml({
+      from: JSON.parse(joined.tugql).from, columns: [{ wildcard: { exclude: ['Name'] } }], limit: 10,
     }, schema);
     const second = discoverChatJoinCandidates(wildcard, manifest).find((item) => item.foreignKeyId === 'A-secondary-B' && !item.sourcePath.length);
     const expanded = deriveChatJoin(wildcard, second?.id || '', schema, manifest);
@@ -101,18 +101,18 @@ describe('Chat FK JOIN discovery', () => {
 
   it('uses the pinned Chinook FK to make a real Invoice to Customer query and SQLite preview', () => {
     expect(CHINOOK_FK_MANIFEST.foreignKeys).toHaveLength(11);
-    const invoice = parseDTQL({ from: { schema: 'main', name: 'Invoice' }, limit: 10 }, CHINOOK_SCHEMA);
+    const invoice = parseTugQLYaml({ from: { schema: 'main', name: 'Invoice' }, limit: 10 }, CHINOOK_SCHEMA);
     const edge = discoverChatJoinCandidates(invoice).find((item) => item.targetTable === 'Customer' && item.direction === 'forward');
     const joined = deriveChatJoin(invoice, edge?.id || '', CHINOOK_SCHEMA);
-    expect(joined.dtqlYaml).toContain('joins:');
+    expect(joined.tugqlYaml).toContain('joins:');
     expect(chatSQLite(joined.query)).toContain('"Invoice"."CustomerId" = "Customer"."CustomerId"');
   });
 });
 
 describe('Chat JOIN carries null filters as explicit null tests', () => {
   const field = (source: string, name: string) => ({ kind: 'field', field: { source, field: name } });
-  const invoiceBase = (where: unknown) => parseDTQL({ from: { schema: 'main', name: 'Invoice' }, where, limit: 10 }, CHINOOK_SCHEMA);
-  const deriveFirst = (query: ReturnType<typeof parseDTQL>) => {
+  const invoiceBase = (where: unknown) => parseTugQLYaml({ from: { schema: 'main', name: 'Invoice' }, where, limit: 10 }, CHINOOK_SCHEMA);
+  const deriveFirst = (query: ReturnType<typeof parseTugQLYaml>) => {
     const edge = discoverChatJoinCandidates(query).find((item) => item.targetTable === 'Customer' && item.direction === 'forward');
     return deriveChatJoin(query, edge?.id ?? '', CHINOOK_SCHEMA);
   };
@@ -120,7 +120,7 @@ describe('Chat JOIN carries null filters as explicit null tests', () => {
   it('turns field == null into is-null, qualified by the source it was written against', () => {
     const joined = deriveFirst(invoiceBase({ op: '==', left: { field: 'BillingState' }, right: { value: null } }));
     expect(joined.query.filters).toEqual([{ kind: 'is-null', operand: field('Invoice', 'BillingState') }]);
-    expect(JSON.parse(joined.dtql).where).toEqual({ isNull: { field: 'BillingState', source: 'Invoice' } });
+    expect(JSON.parse(joined.tugql).where).toEqual({ isNull: { field: 'BillingState', source: 'Invoice' } });
     expect(chatSQLite(joined.query)).toContain('"Invoice"."BillingState" IS NULL');
   });
 
@@ -140,7 +140,7 @@ describe('Chat JOIN carries null filters as explicit null tests', () => {
   });
 
   it('rewrites null comparisons inside and/or groups of a joined parent, and leaves the others', () => {
-    const parent = parseDTQL(`from:
+    const parent = parseTugQLYaml(`from:
   schema: main
   name: Invoice
   alias: i
@@ -189,7 +189,7 @@ columns: [{field: InvoiceId, source: i}]
   });
 
   it('rewrites a null written on the left, and leaves null comparisons over an expression as they are', () => {
-    const parent = parseDTQL(`from:
+    const parent = parseTugQLYaml(`from:
   schema: main
   name: Invoice
   alias: i

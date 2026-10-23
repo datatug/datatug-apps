@@ -45,7 +45,7 @@ Saved project definitions can be read from local, GitHub, and cloud stores, whil
 | Local CLI / agent API | Existing saved-query requests supported by `RunQueryRequest` | Branch-qualified or cross-storage execution where the API cannot bind the displayed definition revision; invented branch/head fields |
 | Hosted cloud query API | Existing shared Firestore/space saved-query contract, including server-admitted federation sources | GitHub-backed hosted SQL or any unimplemented server endpoint |
 | OVDB federation | Existing admitted federation graph and structured source protocol | Arbitrary raw SQL over an OVDB URL or generic runtime inference from `source` |
-| Open OVDB working copy | Explicitly selected live provider connection for supported single-source structured DTQL, bounded by rows, columns, response bytes, and time | Raw SQL, unsupported DTQL shapes or parameter binding, silent download of a pristine fixture, unregistered or mismatched runtime |
+| Open OVDB working copy | Explicitly selected live provider connection for supported single-source structured TugQL, bounded by rows, columns, response bytes, and time | Raw SQL, unsupported TugQL shapes or parameter binding, silent download of a pristine fixture, unregistered or mismatched runtime |
 | Browser SQLite worker | Captured SQL and exact scalar inputs over a structurally pinned fixture descriptor of at most 10 MiB | Unpinned or larger fixture, multi-statement/write SQL, unsupported types, or silent fixture fallback |
 | Browser HTTP | No new direct transport in this feature | Arbitrary URL/method execution; existing saved HTTP query requests remain server-owned |
 

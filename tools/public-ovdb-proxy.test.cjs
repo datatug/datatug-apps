@@ -15,7 +15,7 @@ const request = (overrides = {}) => ({
     'content-type': 'application/json',
   },
   method: 'POST',
-  url: route + '/v1/dtql',
+  url: route + '/v1/tugql',
   ...overrides,
 });
 function admitted(req) {
@@ -89,10 +89,10 @@ test('fixed HTTPS targets, redirect refusal and narrow public route admission', 
   );
   for (const url of [
     '/admin',
-    '/v1/dtql?target=https://evil.test',
-    '/v1/../dtql',
-    '/v1/databases/a%2Fb/dtql',
-    '/v1/databases/a/../../dtql',
+    '/v1/tugql?target=https://evil.test',
+    '/v1/../tugql',
+    '/v1/databases/a%2Fb/tugql',
+    '/v1/databases/a/../../tugql',
   ])
     assert.equal(admitted(request({ url: route + url })), false, url);
   for (const method of ['DELETE', 'PUT', 'OPTIONS', 'PATCH'])
@@ -176,14 +176,14 @@ test('normal POST completion preserves streamed response and intended headers', 
       setTimeout(() => res.end('-last'), 40);
     });
   });
-  const response = await fetch(origin + route + '/v1/dtql', {
+  const response = await fetch(origin + route + '/v1/tugql', {
     method: 'POST',
     headers: { ...headers, 'X-Private': 'never-forward' },
     body: '{"query":"public"}',
   });
   assert.equal(await response.text(), 'first-last');
   assert.equal(response.headers.get('set-cookie'), null);
-  assert.equal(received.path, '/v1/dtql');
+  assert.equal(received.path, '/v1/tugql');
   assert.equal(received.body, '{"query":"public"}');
   assert.equal(received.headers.origin, origin);
   assert.equal(received.headers.accept, 'application/json');
@@ -206,7 +206,7 @@ test('disconnect after POST body completion cancels the pending upstream respons
       res.once('close', resolveClosed);
     });
   });
-  const response = await fetch(origin + route + '/v1/dtql', {
+  const response = await fetch(origin + route + '/v1/tugql', {
     method: 'POST',
     headers,
     body: '{}',
@@ -234,7 +234,7 @@ test('proxy returns upstream refusal/redirect without following it', async (t) =
     res.writeHead(302, { Location: 'https://evil.test/private' });
     res.end();
   });
-  const response = await fetch(origin + route + '/v1/dtql', {
+  const response = await fetch(origin + route + '/v1/tugql', {
     method: 'POST',
     headers,
     body: '{}',
@@ -248,7 +248,7 @@ test('proxy returns upstream refusal/redirect without following it', async (t) =
 test('reserves the proxy namespace and keeps production serve unproxied', () => {
   const blocked = config['^/__datatug_public_ovdb(?:/|$)'];
   const response = { end() { this.writableEnded = true; } };
-  blocked.bypass(request({ url: '/__datatug_public_ovdb/arbitrary/v1/dtql' }), response);
+  blocked.bypass(request({ url: '/__datatug_public_ovdb/arbitrary/v1/tugql' }), response);
   assert.equal(response.statusCode, 403);
   assert.equal(response.writableEnded, true);
   const project = require('../apps/datatug-app/project.json');

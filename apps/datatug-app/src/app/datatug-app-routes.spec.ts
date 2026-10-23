@@ -1,8 +1,10 @@
+import { GithubRefUrlSerializer } from './github-ref-url-serializer';
 import { Component } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { Location } from '@angular/common';
 import {
   provideRouter,
+  UrlSerializer,
   Router,
   UrlSegment,
   UrlSegmentGroup,
@@ -202,6 +204,8 @@ describe('DataTug app routes', () => {
             provide: PRODUCT_PROFILE,
             useValue: resolveProductProfile({ hostname }),
           },
+          // As main.ts: a GitHub project's `?ref=` is the repository segment's matrix parameter inside the router.
+          { provide: UrlSerializer, useClass: GithubRefUrlSerializer },
           provideRouter([
             ...routes
               .filter((r) => r.matcher)
@@ -230,7 +234,7 @@ describe('DataTug app routes', () => {
         '/project/github.com/datatug/chinook-demo',
       );
       expect(root.url).toBe(
-        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1',
       );
       expect(root.component).toBe(ProjectStub);
       for (const url of [
@@ -238,6 +242,8 @@ describe('DataTug app routes', () => {
         '/project/github.com/datatug-other/chinook-demo',
         '/project/github.com/datatug/chinook-demo/tree/abc/-/chat',
         '/project/github.com/datatug/chinook-demo/tree/head/-/chat',
+        '/project/github.com/datatug/chinook-demo/chat?ref=head',
+        '/project/github.com/datatug/chinook-demo/chat?ref=abc',
         '/project/github.com/datatug/chinooK-demo/chat',
       ]) {
         TestBed.resetTestingModule();
@@ -246,18 +252,34 @@ describe('DataTug app routes', () => {
       }
     });
 
-    it('redirects the exact shared-project short folder and start-chat addresses', async () => {
-      const short =
-        '/project/github.com/datatug/datatug-demo-project/demo-project-1';
+    it('opens the canonical short folder address, and redirects the historical folder/start-chat alias', async () => {
       const canonical =
-        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
-      const root = await visit('datatug.app', short);
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1';
+      const root = await visit('datatug.app', canonical);
       expect(root.url).toBe(canonical);
       expect(root.component).toBe(ProjectStub);
       TestBed.resetTestingModule();
-      const handoff = await visit('datatug.app', short + '/start-chat');
+      const handoff = await visit('datatug.app', canonical + '/start-chat');
       expect(handoff.url).toBe(canonical + '/-/start-chat');
       expect(handoff.component).toBe(HandoffStub);
+      // The alias keeps the version it names (review of eb9f5b26, 2): never silently the default branch.
+      TestBed.resetTestingModule();
+      const other = await visit(
+        'datatug.app',
+        canonical + '/start-chat?ref=0123abcd',
+      );
+      expect(other.url).toBe(canonical + '/-/start-chat?ref=0123abcd');
+      expect(other.component).toBe(HandoffStub);
+      for (const alias of [
+        '/project/github.com/datatug/chinook-demo?ref=HEAD',
+        '/project/github.com/datatug/chinook-demo/-/chat?ref=HEAD',
+      ]) {
+        TestBed.resetTestingModule();
+        const result = await visit('datatug.app', alias);
+        expect(result.url).toBe(
+          canonical + (alias.includes('/chat') ? '/-/chat' : ''),
+        );
+      }
     });
 
     it('does not promote lookalike folders, owners, refs, or encoded separators to the shared demo', () => {
@@ -294,7 +316,15 @@ describe('DataTug app routes', () => {
         'datatug',
         'datatug-demo-project',
         'demo-project-1',
+        'start-chat',
       ];
+      // The canonical folder address itself is a project address, not the alias.
+      const folder = exact
+        .slice(0, 5)
+        .map((part) => new UrlSegment(part, {}));
+      expect(
+        canonicalDemoShortMatcher(folder, new UrlSegmentGroup(folder, {})),
+      ).toBeNull();
       const segments = exact.map((part) => new UrlSegment(part, {}));
       expect(
         canonicalDemoShortMatcher(
@@ -422,6 +452,30 @@ describe('DataTug app routes', () => {
         },
       );
 
+      it.each([
+        [
+          '/project/github.com/acme/demo/dir/-/chat?ref=feature/x',
+          '/project/github.com/acme/demo/dir/-/start-chat?ref=feature/x',
+        ],
+        [
+          '/project/github.com/acme/demo/chat?ref=v1',
+          '/project/github.com/acme/demo/start-chat?ref=v1',
+        ],
+        // `?ref=HEAD` is the default branch spelled out: dropped (review of 26eb7d1b, 1).
+        [
+          '/project/github.com/acme/demo/dir/-/chat?ref=HEAD',
+          '/project/github.com/acme/demo/dir/-/start-chat',
+        ],
+      ])(
+        '%s with a question moves to %s: the ref names the project and stays (review of eb9f5b26, 1)',
+        async (url, expected) => {
+          stash('?msg=Hello');
+          const result = await visit('datatug.app', url);
+          expect(result.component).toBe(HandoffStub);
+          expect(result.url).toBe(expected);
+        },
+      );
+
       // review r2, B1: the script reads the path its own way, so a spelling of the address that only the router
       // understands arrives with the question still in the navigation's query, and no stash.
       describe('a question in the navigation query that the script did not take out (review r2, B1)', () => {
@@ -446,7 +500,7 @@ describe('DataTug app routes', () => {
             // their original project address with only chat changed to start-chat.
             expect(result.url).toBe(
               url.toLowerCase().includes('/datatug/chinook-demo/')
-                ? '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat'
+                ? '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat'
                 : url.includes('chat')
                   ? url
                       .replace(/^\/*\(?\/*/, '/')
@@ -536,7 +590,7 @@ describe('DataTug app routes', () => {
         const result = await visit('datatug.app', url);
         expect(result.component).toBe(HandoffStub);
         expect(result.url).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
       });
 
@@ -545,7 +599,7 @@ describe('DataTug app routes', () => {
         async (page) => {
           const oldPath = `/project/github.com/datatug/chinook-demo/${page}`;
           const canonical =
-            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat';
+            '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat';
           window.sessionStorage.setItem(
             DEMO_HANDOFF_KEY,
             oldPath + '?msg=Hello&lang=ru',
@@ -594,7 +648,7 @@ describe('DataTug app routes', () => {
           );
           expect(result.component).toBe(HandoffStub);
           expect(result.url).toBe(
-            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+            '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
           );
           expect(
             (window as unknown as Record<string, unknown>)[DEMO_HANDOFF_STASH],
@@ -616,7 +670,7 @@ describe('DataTug app routes', () => {
         );
         const result = await visit('datatug.app', upper);
         expect(result.url).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
         expect(window.sessionStorage.getItem(DEMO_HANDOFF_KEY)).toBe(
           lower + '?msg=NotForHEAD',
@@ -633,10 +687,10 @@ describe('DataTug app routes', () => {
           '/project/github.com/datatug/chinook-demo/chat;x=1',
         );
         expect(result.url).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
         expect(TestBed.inject(Location).path()).toBe(
-          '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+          '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
         );
         // one entry, not two: the chat address is not left behind for Back to return to
         TestBed.inject(Location).back();
@@ -687,7 +741,7 @@ describe('DataTug app routes', () => {
         it('moves the historical project address to the one shared project', async () => {
           const url = '/project/github.com/datatug/chinook-demo/start-chat';
           expect((await visit('datatug.app', url)).url).toBe(
-            '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/start-chat',
+            '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/start-chat',
           );
         });
 

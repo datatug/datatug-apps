@@ -210,7 +210,7 @@ for (const [name, viewport] of [
       const details = paired.locator('.source-details');
       await details.locator(':scope > summary').click();
       await expect(details).toContainText(
-        'https://cloud.openvaultdb.com/v1/dtql',
+        'https://cloud.openvaultdb.com/v1/tugql',
       );
       await expect(details).toContainText('live · OVDB server');
       await expect(details).not.toContainText('protected');

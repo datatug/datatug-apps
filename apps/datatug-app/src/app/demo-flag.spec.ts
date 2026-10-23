@@ -225,7 +225,7 @@ describe('the demo flag (G-F1)', () => {
       '/',
     ];
     const answers = (p: string) => [
-      isTrustedHandoff(p),
+      isTrustedHandoff(p, ''),
       isHandoffPath(p),
       // which page a hand-off address gets is not the flag's either (it is decided by whether a question was asked)
       handoffDecision(routeSegments(p)),

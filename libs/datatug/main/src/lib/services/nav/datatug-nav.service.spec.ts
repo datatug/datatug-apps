@@ -277,20 +277,21 @@ describe('DatatugNavService', () => {
       ['goEntity', goEntity, 'navigateForward', '/entity/Country'],
       ['goBoard', goBoard, 'navigateForward', '/board/sales'],
     ])('%s', (_name, go, method, page) => {
-      const bases: [IProjectContext, string][] = [
-        [agent, '/store/localhost:8989/project/datatug-demo-project'],
-        [github, '/project/github.com/datatug/chinook-demo'],
+      const bases: [IProjectContext, string, boolean][] = [
+        [agent, '/store/localhost:8989/project/datatug-demo-project', false],
+        [github, '/project/github.com/datatug/chinook-demo', false],
         [
           githubFolder,
-          '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
+          '/project/github.com/datatug/datatug-demo-projects/demo-project-1',
+          true,
         ],
-        [githubBare, '/project/github.com/o/r/tree/HEAD/datatug'],
+        [githubBare, '/project/github.com/o/r/datatug', true],
       ];
-      for (const [project, base] of bases) {
+      for (const [project, base, folder] of bases) {
         navMock[method]?.mockClear();
         go(service, project);
         // Under a folder, the page follows `/-`.
-        const tail = base.includes('/tree/') && page ? '/-' + page : page;
+        const tail = folder && page ? '/-' + page : page;
         expect(navMock[method]).toHaveBeenCalledTimes(1);
         expect(navMock[method]?.mock.calls[0][0]).toBe(base + tail);
       }
@@ -374,7 +375,7 @@ describe('DatatugNavService', () => {
         ref: { projectId: DEMO_PROJECT_REF.projectId, storeId: 'github' },
       });
       expect(navMock.navigateRoot).toHaveBeenCalledWith(
-        '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
+        '/project/github.com/datatug/datatug-demo-project/demo-project-1',
         undefined,
       );
     });
@@ -399,7 +400,7 @@ describe('DatatugNavService', () => {
         name: 'Album',
       });
       expect(navMock.navigateRoot).toHaveBeenCalledWith(
-        '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/env/local/db/chinook/table/main.Album',
+        '/project/github.com/datatug/datatug-demo-projects/demo-project-1/-/env/local/db/chinook/table/main.Album',
         undefined,
       );
       service.goQuery(github, {

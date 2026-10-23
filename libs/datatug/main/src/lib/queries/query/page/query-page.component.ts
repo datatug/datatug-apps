@@ -60,7 +60,8 @@ import {
   type TugQLDiagnostic,
   type TugQLFormatOptions,
 } from '@dalgo/core';
-import { parseDocument as parseYamlDocument } from 'yaml';
+import { isTugqlYamlRequest } from '../../tugql-representation';
+import { queryTypeDisplayName } from '../../query-type-display';
 import { NgTemplateOutlet } from '@angular/common';
 import { HeldResultPresentationComponent } from '../../../board/ui/components/held-result-presentation/held-result-presentation.component';
 import {
@@ -171,7 +172,7 @@ type WorkspaceTab =
   | 'tugql'
   | 'preview'
   | 'sql'
-  | 'dtql'
+  | 'tugql-yaml'
   | 'parameters'
   | 'sources'
   | 'related';
@@ -294,50 +295,6 @@ interface CommittedQueryDefinition {
   };
   readonly nativeGraph?: NonNullable<IQueryDef['federation']>['nativeGraph'];
 }
-
-/** A saved DTQL body is legacy only when its source positively names a YAML or
- * JSON query document. TugQL diagnostics are never evidence of a format switch. */
-const isLegacyDtqlSource = (source: string): boolean => {
-  const normalized = source.replace(/^\uFEFF/u, '');
-  const firstLine =
-    normalized
-      .split(/\r?\n/u)
-      .find(
-        (line) =>
-          line.trim() &&
-          !line.trimStart().startsWith('#') &&
-          !/^(?:---|\.\.\.)(?:\s|$)/u.test(line.trimStart()) &&
-          !/^%(?:YAML|TAG)\b/u.test(line.trimStart()),
-      )
-      ?.trimStart() ?? '';
-  // All root keys accepted by @dalgo/core's DTQL document model. A known
-  // mapping key keeps an incomplete YAML draft in its original editor.
-  if (
-    /^(?:from|where|orderBy|limit|offset|columns|groupBy|having|money):(?:\s|$)/u.test(
-      firstLine,
-    )
-  )
-    return true;
-  try {
-    // The actual YAML reader also accepts JSON and flow mappings. This only
-    // identifies the saved source format; query validity remains the engine's job.
-    const parsed = parseYamlDocument(normalized, {
-      prettyErrors: false,
-      strict: true,
-      uniqueKeys: true,
-    });
-    if (parsed.errors.length) return false;
-    const document: unknown = parsed.toJS();
-    return (
-      !!document &&
-      typeof document === 'object' &&
-      !Array.isArray(document) &&
-      Object.hasOwn(document, 'from')
-    );
-  } catch {
-    return false;
-  }
-};
 
 type CommittedQueryResult = Omit<FederatedQueryResult, 'bindingsApplied'> & {
   readonly bindingsApplied: readonly {
@@ -783,7 +740,7 @@ const FROM_JOIN_TABLE_RE =
  * "linked entities/collections" the founder's ruling (S155, 2026-09-10)
  * says the query page must show. Primary source: `parameters[].meta.entity`
  * and `recordsets[].columns[].meta.entity` (`IEntityFieldRef`) — every
- * typed/DTQL query in demo-project-1 (e.g. `customer-invoices`) carries
+ * typed/TugQL query in demo-project-1 (e.g. `customer-invoices`) carries
  * this directly on its `.query.json` definition file, no parsing needed.
  * Falls back to a naive FROM/JOIN table-name scan of the query's own SQL
  * text ({@link FROM_JOIN_TABLE_RE}) only when NO metadata entity was found
@@ -792,8 +749,8 @@ const FROM_JOIN_TABLE_RE =
  * real demo file: `{"title": "Artists with albums"}`, nothing else), so
  * without this fallback that query would show no linked entities at all
  * despite its SQL text plainly naming `Artist`/`Album`. Never applied to a
- * non-SQL request (DTQL's own body is YAML, not SQL — parsing it as SQL
- * would be meaningless; every DTQL query in this demo already has metadata
+ * non-SQL request (TugQL's own body is YAML, not SQL — parsing it as SQL
+ * would be meaningless; every TugQL query in this demo already has metadata
  * anyway) or when metadata already yielded at least one name (metadata is
  * the more precise source, never silently supplemented by a text guess). */
 export function extractLinkedEntityNames(
@@ -1187,7 +1144,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         id,
         isNew: true,
         isLoading: false,
-        queryType: QueryType.DTQL,
+        queryType: QueryType.TugQL,
         def: { ...definition, id },
         request: definition.request,
         connectionId: definition.connectionId,
@@ -1529,18 +1486,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   );
   public readonly workspaceTab = signal<WorkspaceTab>('tugql');
   private readonly loadedTextRepresentation = signal<
-    { readonly scope: string; readonly kind: 'tugql' | 'dtql' } | undefined
+    { readonly scope: string; readonly kind: 'tugql' | 'tugql-yaml' } | undefined
   >(undefined);
-  public readonly isNativeDtqlWorkspace = computed(
+  public readonly isTugqlYamlWorkspace = computed(
     () =>
-      this.queryDef()?.request.queryType === QueryType.DTQL &&
-      this.loadedTextRepresentation()?.kind === 'dtql',
+      this.queryDef()?.request.queryType === QueryType.TugQL &&
+      this.loadedTextRepresentation()?.kind === 'tugql-yaml',
   );
   public readonly isTextQueryWorkspace = computed(() => {
     const type = this.queryDef()?.request.queryType;
     return (
       type === QueryType.SQL ||
-      type === QueryType.DTQL ||
       type === QueryType.TugQL
     );
   });
@@ -1560,10 +1516,10 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public toggleCurrentRowPane(): void {
     this.currentRowPaneChoice.set(!this.currentRowPaneOpen());
   }
-  /** True for TugQL (and its DTQL form) queries; SQL and HTTP queries never get the TugQL link. */
+  /** True for TugQL queries (text and YAML forms); SQL and HTTP queries never get the TugQL link. */
   public readonly isTugqlQuery = computed(() => {
     const type = this.queryDef()?.request.queryType;
-    return type === QueryType.DTQL || type === QueryType.TugQL;
+    return type === QueryType.TugQL;
   });
   public readonly isNativeSqlWorkspace = computed(
     () => this.queryDef()?.request.queryType === QueryType.SQL,
@@ -1650,7 +1606,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.comparisonProjectAccess() === 'public' &&
       this.queryState.id === 'demodb/chinook-customer-invoice-join' &&
       this.queryState.def?.connectionId === 'chinook-sqlite' &&
-      this.queryState.def?.request.queryType === QueryType.DTQL;
+      this.queryState.def?.request.queryType === QueryType.TugQL;
     this.customerInvoiceExample.set(!!admitted);
     if (!admitted || !ref) return;
     const key = JSON.stringify(ref) + ':' + this.queryState.id;
@@ -1864,7 +1820,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     () => this.authorCustomerId().trim().length === 0,
   );
   public readonly authorHasCustomerIdParameter = computed(() => {
-    if (this.isNativeDtqlWorkspace()) return false;
+    if (this.isTugqlYamlWorkspace()) return false;
     const source = this.queryBodyText();
     if (!source) return false;
     const parsed = parseTugQL(source);
@@ -1876,7 +1832,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return false;
   });
   public readonly authorParameterDeclarationCount = computed(() => {
-    if (this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace())
+    if (this.isNativeSqlWorkspace() || this.isTugqlYamlWorkspace())
       return this.queryDef()?.parameters?.length ?? 0;
     const source = this.queryBodyText();
     if (!source) return undefined;
@@ -1923,7 +1879,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return inventory.customerJoined ? 0 : 1;
   }
   public authorSourceOccurrenceCount(): number | undefined {
-    if (this.isNativeDtqlWorkspace()) return undefined;
+    if (this.isTugqlYamlWorkspace()) return undefined;
     if (this.isNativeSqlWorkspace()) {
       const transfer = this.sqlTugqlTransfer();
       return transfer.supported ? transfer.sourceCount : undefined;
@@ -2074,8 +2030,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public readonly isTugqlAuthorJourney = computed(
     () =>
       this.queryDef()?.connectionId === 'chinook-sqlite' &&
-      this.queryDef()?.request.queryType === QueryType.DTQL &&
-      !this.isNativeDtqlWorkspace(),
+      this.queryDef()?.request.queryType === QueryType.TugQL &&
+      !this.isTugqlYamlWorkspace(),
   );
 
   public parameters?: IParameter[];
@@ -2094,11 +2050,9 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         ? 'SQL'
         : type === QueryType.HTTP
           ? 'HTTP'
-          : type === QueryType.DTQL && this.isNativeDtqlWorkspace()
-            ? 'DTQL'
-            : type === QueryType.DTQL || type === QueryType.TugQL
-              ? 'TugQL'
-              : String(type ?? '');
+          : type === QueryType.TugQL
+            ? queryTypeDisplayName(type)
+            : String(type ?? '');
     const source = def.connectionId;
     return source ? `${kind} · ${source}` : kind;
   });
@@ -2149,12 +2103,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return state.startsWith('Unsaved') ? 'Save' : state;
   }
 
-  /** The views that are not tabs of their own for a saved SQL/DTQL query. */
+  /** The views that are not tabs of their own for a saved SQL/TugQL query. */
   public readonly workspaceOverflowTabs = computed<
     readonly { readonly value: WorkspaceTab; readonly label: string }[]
   >(() => {
     if (this.isTugqlAuthorJourney()) return [];
-    const native = this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace();
+    const native = this.isNativeSqlWorkspace() || this.isTugqlYamlWorkspace();
     const tabs: { value: WorkspaceTab; label: string }[] = [
       { value: 'compose', label: 'Compose' },
     ];
@@ -2174,13 +2128,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (
       tab === 'tugql' &&
       !this.isNativeSqlWorkspace() &&
-      !this.isNativeDtqlWorkspace()
+      !this.isTugqlYamlWorkspace()
     )
       return true;
     return this.workspaceTab() === tab;
   }
 
-  /** Required parameters of a saved SQL/DTQL query that still have no value. */
+  /** Required parameters of a saved SQL/TugQL query that still have no value. */
   public readonly nativeMissingRequiredParameters = computed(() => {
     if (this.isTugqlAuthorJourney()) return [];
     const bindings = this.bindings();
@@ -2191,7 +2145,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     });
   });
 
-  /** Why parameters keep Run off for a saved SQL/DTQL query, if they do. */
+  /** Why parameters keep Run off for a saved SQL/TugQL query, if they do. */
   private readonly nativeParameterBlock = computed<
     { readonly message: string; readonly action: string } | undefined
   >(() => {
@@ -2223,7 +2177,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return undefined;
   });
 
-  /** Why Run is off for a saved SQL/DTQL query, in the visitor's words, for
+  /** Why Run is off for a saved SQL/TugQL query, in the visitor's words, for
    * every cause `nativeRunDisabled()` checks; `action` names the Parameters
    * recovery when parameters are the cause. */
   public nativeRunBlock():
@@ -2282,17 +2236,17 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Whether the More views popover is open (for aria-expanded). */
   public readonly workspaceMoreOpen = signal(false);
 
-  /** A saved SQL/DTQL query outside the author journey: views from More open
+  /** A saved SQL/TugQL query outside the author journey: views from More open
    * as one extra tab after Parameters. */
   public nativeOverflowLayout(): boolean {
     return (
       !this.isTugqlAuthorJourney() &&
-      (this.isNativeSqlWorkspace() || this.isNativeDtqlWorkspace())
+      (this.isNativeSqlWorkspace() || this.isTugqlYamlWorkspace())
     );
   }
 
   /** The header offers Rename wherever the page shows no title field (that
-   * field is only for naming a new or untitled saved SQL/DTQL query). */
+   * field is only for naming a new or untitled saved SQL/TugQL query). */
   public canRenameQuery(): boolean {
     if (!this.queryDef() && !this.queryState.def) return false;
     return (
@@ -2328,7 +2282,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     this.queryTitleChanged(new CustomEvent('ionChange', { detail: { value: title } }));
   }
 
-  /** Whether Run is unavailable for a saved SQL/DTQL query right now. */
+  /** Whether Run is unavailable for a saved SQL/TugQL query right now. */
   public nativeRunDisabled(): boolean {
     return (
       this.running() ||
@@ -3873,7 +3827,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     return Symbol('query-definition');
   });
 
-  /** SQL/DTQL body text for the current query, for the `editor=text` panel
+  /** SQL/TugQL body text for the current query, for the `editor=text` panel
    * below — `undefined` for an HTTP query (no text-shaped `request`) or
    * before the query has loaded. */
   public readonly queryBodyText = computed(() => {
@@ -4455,7 +4409,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const selected = withHostedDemoDbSource(definition, sourceId);
     this.queryState = {
       ...this.queryState,
-      queryType: QueryType.DTQL,
+      queryType: QueryType.TugQL,
       request: selected.request,
       federation: selected.federation,
     };
@@ -4505,7 +4459,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       id ? this.sessionWorkspace?.snapshotFor(id) : undefined,
     );
     // The Investigation Context selection and context bindings resolve through the same precedence engine as a
-    // SQL/DTQL parameter (`bindings`); an unblocked value wins over the session snapshot's entry for its field.
+    // SQL/TugQL parameter (`bindings`); an unblocked value wins over the session snapshot's entry for its field.
     const resolved: HttpBagEntry[] = this.effectiveBindings().flatMap(
       (binding) =>
         binding.meta &&
@@ -4777,8 +4731,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.selectWorkspaceTab('sql');
       return;
     }
-    if (value === 'dtql' && this.isNativeDtqlWorkspace()) {
-      this.selectWorkspaceTab('dtql');
+    if (value === 'tugql-yaml' && this.isTugqlYamlWorkspace()) {
+      this.selectWorkspaceTab('tugql-yaml');
       return;
     }
     this.authorContextTabChanged(value);
@@ -5424,7 +5378,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         return;
       }
       const definition = this.queryDef();
-      if (!definition || definition.request.queryType !== QueryType.DTQL)
+      if (!definition || definition.request.queryType !== QueryType.TugQL)
         return;
       const updatedDefinition: IQueryDef = {
         ...definition,
@@ -5480,7 +5434,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     if (
       !definition ||
       definition.connectionId !== 'chinook-sqlite' ||
-      definition.request.queryType !== QueryType.DTQL ||
+      definition.request.queryType !== QueryType.TugQL ||
       this.queryBodyText() === undefined
     )
       return undefined;
@@ -5721,7 +5675,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     const relationshipUndo = this.authorRelationshipUndo();
     if (relationshipUndo && this.canUndoAuthorRelationship(relationshipUndo)) {
       const definition = this.queryDef();
-      if (!definition || definition.request.queryType !== QueryType.DTQL)
+      if (!definition || definition.request.queryType !== QueryType.TugQL)
         return;
       const updatedDefinition: IQueryDef = {
         ...definition,
@@ -5837,8 +5791,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.selectWorkspaceTab(
         definition?.request.queryType === QueryType.SQL
           ? 'sql'
-          : this.isNativeDtqlWorkspace()
-            ? 'dtql'
+          : this.isTugqlYamlWorkspace()
+            ? 'tugql-yaml'
             : 'tugql',
       );
     }
@@ -5852,8 +5806,8 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       this.selectWorkspaceTab(
         definition.request.queryType === QueryType.SQL
           ? 'sql'
-          : this.isNativeDtqlWorkspace()
-            ? 'dtql'
+          : this.isTugqlYamlWorkspace()
+            ? 'tugql-yaml'
             : 'tugql',
       );
       this.authorModeDefaultResolved = true;
@@ -6320,7 +6274,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     try {
       const source = (definition.request as ISqlQueryRequest).text;
       if (
-        definition.request.queryType === QueryType.DTQL &&
+        definition.request.queryType === QueryType.TugQL &&
         definition.connectionId === 'chinook-sqlite' &&
         !definition.federation
       ) {
@@ -6377,7 +6331,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
               detail: { value: plan.expandedSource },
             }),
           );
-          if (this.queryDef()?.request.queryType !== QueryType.DTQL) return;
+          if (this.queryDef()?.request.queryType !== QueryType.TugQL) return;
           if (
             (this.queryDef()?.request as ITextQueryRequest | undefined)
               ?.text !== plan.expandedSource
@@ -7215,18 +7169,18 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         const original =
           (queryState.def?.request as ITextQueryRequest | undefined)?.text ??
           '';
-        const legacyDtql =
-          effectiveDefinition.request.queryType === QueryType.DTQL &&
-          isLegacyDtqlSource(original);
+        const legacyTugql = isTugqlYamlRequest(
+          queryState.def?.request ?? effectiveDefinition.request,
+        );
         this.loadedTextRepresentation.set({
           scope: representationScope,
-          kind: legacyDtql ? 'dtql' : 'tugql',
+          kind: legacyTugql ? 'tugql-yaml' : 'tugql',
         });
         this.selectWorkspaceTab(
           effectiveDefinition.request.queryType === QueryType.SQL
             ? 'sql'
-            : legacyDtql
-              ? 'dtql'
+            : legacyTugql
+              ? 'tugql-yaml'
               : 'tugql',
         );
         // No dead end: a saved query with a required parameter opens on
@@ -7242,7 +7196,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
             )
               return;
             const tab = this.workspaceTab();
-            if (tab === 'sql' || tab === 'dtql' || tab === 'tugql')
+            if (tab === 'sql' || tab === 'tugql-yaml' || tab === 'tugql')
               this.selectWorkspaceTab('parameters');
           },
           { injector: this.injector },
@@ -9578,7 +9532,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
     }
     const request = definition.request as ITextQueryRequest;
     if (
-      ![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(
+      ![QueryType.SQL, QueryType.TugQL].includes(
         request.queryType,
       ) ||
       typeof request.text !== 'string'
@@ -9636,7 +9590,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       queries: [
         {
           id: definition.id ?? this.queryId ?? 'query',
-          queryType: request.queryType as 'SQL' | 'DTQL' | 'TugQL',
+          queryType: request.queryType as 'SQL' | 'TugQL',
           text: request.text,
           ...(definition.connectionId
             ? { connectionId: definition.connectionId }
@@ -10040,7 +9994,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       }
       if (
         !publicSavedQuery &&
-        ![QueryType.DTQL, QueryType.TugQL].includes(
+        ![QueryType.TugQL].includes(
           definition.request.queryType,
         )
       ) {

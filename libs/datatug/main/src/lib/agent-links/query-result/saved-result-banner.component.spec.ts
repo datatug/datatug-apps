@@ -17,7 +17,7 @@ const shown = (
   savedAt: '2026-10-16T08:00:00Z',
   rowsKept: 2,
   hasMore: false,
-  summary: ['Kind: dtql', 'Rows: 2 saved'],
+  summary: ['Kind: tugql', 'Rows: 2 saved'],
   skippedParameters: [],
   ...overrides,
 });
@@ -108,7 +108,7 @@ describe('SavedResultBannerComponent', () => {
       shown({
         mode: 'rows-only',
         notice: 'This result was saved by an older DataTug.',
-        summary: ['Kind: dtql', 'Database: chinook in environment local'],
+        summary: ['Kind: tugql', 'Database: chinook in environment local'],
       }),
     );
     expect(q('saved-result-notice')?.textContent).toContain('older DataTug');

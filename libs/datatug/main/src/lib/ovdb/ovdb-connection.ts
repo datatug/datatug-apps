@@ -4,19 +4,20 @@
 // cloud.openvaultdb.com, the public DemoDB OVDB) and the local, editable SQLite copy
 // running in the browser (`@openvaultdb/inprocess` over `@dalgo/sqlite-wasm`). What
 // the UI offers is decided ONLY by the descriptor's `capabilities`:
-//   - browse (table list, rows): `query` or `dtql` — never `read`, which means keyed
+//   - browse (table list, rows): `query` or `tugql` — never `read`, which means keyed
 //     record reads only (a native PostgreSQL mount reports read: false yet is queryable);
 //   - edit a record: `write` (the update first reads the record by key, so also `read`);
 //   - delete a record: `delete`;
 //   - Reset Database: `reset`.
 // Never the engine name.
+import { withTugqlCapabilities } from './legacy-dtql-ovdb-metadata';
 import { OpenVaultDbHttpError } from '@dalgo/ovdb/client';
 
 /** The `capabilities` map of `GET /v1/databases/{db}` (openvaultdb-go docs/api.md). */
 export interface OvdbCapabilities {
   readonly read?: boolean;
   readonly query?: boolean;
-  readonly dtql?: boolean;
+  readonly tugql?: boolean;
   readonly write?: boolean;
   readonly delete?: boolean;
   readonly reset?: boolean;
@@ -91,7 +92,7 @@ export interface OvdbUiCapabilities {
 export function ovdbUiCapabilities(descriptor: OvdbDescriptor | undefined): OvdbUiCapabilities {
   const c = descriptor?.capabilities ?? {};
   return {
-    browse: c.query === true || c.dtql === true,
+    browse: c.query === true || c.tugql === true,
     edit: c.write === true && c.read === true,
     delete: c.delete === true,
     reset: c.reset === true,
@@ -169,7 +170,7 @@ export function parseOvdbDescriptor(raw: unknown): OvdbDescriptor {
   if (collections !== undefined && !(Array.isArray(collections) && collections.every((name) => typeof name === 'string'))) {
     throw new TypeError('invalid OpenVaultDB descriptor collections');
   }
-  return raw as unknown as OvdbDescriptor;
+  return { ...raw, capabilities: withTugqlCapabilities(raw['capabilities']) } as unknown as OvdbDescriptor;
 }
 
 export function ovdbDatabaseUrl(baseUrl: string, databaseId: string): string {

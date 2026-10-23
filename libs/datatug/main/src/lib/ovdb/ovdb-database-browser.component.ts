@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../nav/project-page-href';
 // Browses one OVDB database: a source status row (its "more actions" menu holds Reset database when the
 // descriptor says `reset`), the table list, and a table's rows with the record view.
 // Every mutation control is decided by the descriptor's capabilities.
@@ -238,7 +239,7 @@ export class OvdbDatabaseBrowserComponent {
 
   readonly connection = input.required<OvdbConnection>();
   /** Router path of the table list; tables open at `[...basePath, 'table', name]`. */
-  readonly basePath = input.required<readonly string[]>();
+  readonly basePath = input.required<readonly ProjectRouterCommand[]>();
   readonly navigationQuery = input<Record<string, unknown>>({});
   readonly table = input<string | undefined>(undefined);
   /** Explicit record → evidence links declared by a project (log-source-declarations.ts), never inferred from the OVDB engine. */

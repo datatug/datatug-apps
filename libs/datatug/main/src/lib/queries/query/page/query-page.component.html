@@ -137,7 +137,7 @@
   }
   <ng-template #queryEditor>
   <ng-template #workspaceTabs>
-    <!-- A saved SQL/DTQL query shows its source and Parameters as tabs; the other
+    <!-- A saved SQL/TugQL query shows its source and Parameters as tabs; the other
          views sit under More and appear as a tab only while open. The TugQL
          author journey keeps every authoring tab visible. -->
     <ion-segment #workspaceTabBar mode="md" class="workspace-main-tabs" data-testid="author-view-tabs" aria-label="Query workspace tabs"
@@ -145,14 +145,14 @@
       @if (isNativeSqlWorkspace()) {
         <ion-segment-button value="sql" data-testid="workspace-sql-tab" aria-label="SQL source"><ion-label>Source</ion-label></ion-segment-button>
       }
-      @if (isNativeDtqlWorkspace()) {
-        <ion-segment-button value="dtql" data-testid="workspace-dtql-tab" aria-label="DTQL source"><ion-label>Source</ion-label></ion-segment-button>
+      @if (isTugqlYamlWorkspace()) {
+        <ion-segment-button value="tugql-yaml" data-testid="workspace-tugql-yaml-tab" aria-label="TugQL YAML source"><ion-label>Source</ion-label></ion-segment-button>
       }
       @if (showWorkspaceTab('compose') && !nativeOverflowLayout()) {
         <ion-segment-button value="compose" data-testid="author-compose-tab" aria-label="Compose"><ion-label>Compose</ion-label></ion-segment-button>
       }
       @if (showWorkspaceTab('tugql') && !nativeOverflowLayout()) {
-        <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>{{ isTugqlAuthorJourney() || (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) ? 'TugQL Query' : 'TugQL' }}</ion-label></ion-segment-button>
+        <ion-segment-button value="tugql" data-testid="author-code-tab" aria-label="TugQL Query"><ion-label>{{ isTugqlAuthorJourney() || (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace()) ? 'TugQL Query' : 'TugQL' }}</ion-label></ion-segment-button>
       }
       @if (showWorkspaceTab('preview') && !nativeOverflowLayout()) {
         <ion-segment-button value="preview" data-testid="author-preview-tab" aria-label="Preview SQL"><ion-label>Preview SQL</ion-label></ion-segment-button>
@@ -1045,24 +1045,24 @@
               } @else { <ion-item lines="none"><ion-label>No SQL source loaded.</ion-label></ion-item> }
             </section>
           }
-          @if (isNativeDtqlWorkspace()) {
-            <section [hidden]="workspaceTab() !== 'dtql'" data-testid="workspace-dtql-pane" aria-label="DTQL source">
-              <!-- DTQL shares the SQL source's code component, so both read the same. -->
-              <sneat-datatug-sql class="query-sql-editor" data-testid="query-body-text" ariaLabel="DTQL source"
+          @if (isTugqlYamlWorkspace()) {
+            <section [hidden]="workspaceTab() !== 'tugql-yaml'" data-testid="workspace-tugql-yaml-pane" aria-label="TugQL YAML source">
+              <!-- TugQL YAML shares the SQL source's code component, so both read the same. -->
+              <sneat-datatug-sql class="query-sql-editor" data-testid="query-body-text" ariaLabel="TugQL YAML source"
                 [sql]="queryBodyText() ?? ''" [disabled]="queryState.isSaving || running()"
                 [readonly]="queryState.saveSupported === false && !project?.ref?.spaceID"
                 [lineNumbers]="false" [autoCloseBrackets]="false" [hashComments]="true" (sqlChanged)="sqlTextChanged($event)" />
             </section>
           }
-          @if (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace()) {
+          @if (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace()) {
             <sneat-author-code-editor class="author-code-editor" data-testid="query-body-text"
               label="TugQL Query" [text]="queryBodyText() ?? ''" [visible]="workspaceTab() === 'tugql'"
               [disabled]="queryState.isSaving || running()" [readOnly]="queryState.saveSupported === false && !project?.ref?.spaceID"
               (textChange)="authorCodeChanged($event)" />
           }
-          <section [hidden]="workspaceTab() !== 'tugql' || (!isNativeSqlWorkspace() && !isNativeDtqlWorkspace())" data-testid="workspace-derived-tugql" aria-label="TugQL Query">
-            @if (isNativeDtqlWorkspace()) {
-              <ion-item lines="none"><ion-label class="ion-text-wrap"><p>This saved DTQL source uses the legacy representation. A verified TugQL import is unavailable; edit and run the DTQL source in its own tab.</p></ion-label></ion-item>
+          <section [hidden]="workspaceTab() !== 'tugql' || (!isNativeSqlWorkspace() && !isTugqlYamlWorkspace())" data-testid="workspace-derived-tugql" aria-label="TugQL Query">
+            @if (isTugqlYamlWorkspace()) {
+              <ion-item lines="none"><ion-label class="ion-text-wrap"><p>This saved query is written as TugQL YAML. A verified conversion to the TugQL text form is unavailable; edit and run it in its own TugQL YAML tab.</p></ion-label></ion-item>
             } @else if (sqlTugqlTransfer(); as transfer) {
               @if (transfer.supported) {
                 <ion-item lines="none"><ion-label class="ion-text-wrap"><p>Read-only TugQL representation of the current SQL draft. SQL remains the saved and executed source.</p></ion-label></ion-item>
@@ -1073,7 +1073,7 @@
             }
           </section>
           <section [hidden]="workspaceTab() !== 'compose'" data-testid="workspace-compose-unavailable" aria-label="Compose">
-            <ion-item lines="none"><ion-label class="ion-text-wrap"><p>Compose is unavailable for this saved query shape. Edit the original {{ isNativeSqlWorkspace() ? 'SQL source' : isNativeDtqlWorkspace() ? 'DTQL source' : 'TugQL Query' }} tab.</p></ion-label></ion-item>
+            <ion-item lines="none"><ion-label class="ion-text-wrap"><p>Compose is unavailable for this saved query shape. Edit the original {{ isNativeSqlWorkspace() ? 'SQL source' : isTugqlYamlWorkspace() ? 'TugQL YAML' : 'TugQL Query' }} tab.</p></ion-label></ion-item>
           </section>
           <section [hidden]="workspaceTab() !== 'preview'" data-testid="workspace-preview-pane" aria-label="Preview SQL">
             @if (isNativeSqlWorkspace()) {

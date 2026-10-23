@@ -48,8 +48,23 @@ export type ShortGithubAddress =
     };
 
 /** The encoded path of an address, as the one place that knows the shapes (`parseProjectUrl`) reads it. */
-const encodedPath = (segments: readonly string[]): string =>
-  '/' + segments.map((s) => encodeURIComponent(s)).join('/');
+const encodedPath = (segments: readonly string[], ref?: string): string =>
+  '/' +
+  segments.map((s) => encodeURIComponent(s)).join('/') +
+  (ref === undefined ? '' : '?ref=' + encodeURIComponent(ref));
+
+/**
+ * The `ref` of a GitHub project address as the router holds it: the matrix parameter `ref` of the repository segment,
+ * where the app's URL serializer puts the `?ref=` query parameter (apps/datatug-app/src/app/github-ref-url-serializer.ts).
+ */
+export function githubRefOfSegments(
+  segments: readonly { readonly parameters: { readonly [name: string]: string } }[],
+): string | undefined {
+  const parameters = segments[3]?.parameters;
+  return parameters && Object.prototype.hasOwnProperty.call(parameters, 'ref')
+    ? parameters['ref']
+    : undefined;
+}
 
 /** How many of the (already normalised) segments are the project locator, given what follows it. */
 const locatorLengthOf = (
@@ -69,6 +84,7 @@ const locatorLengthOf = (
  */
 export function readShortGithubAddress(
   segments: readonly string[],
+  ref?: string,
 ): ShortGithubAddress {
   if (
     segments.length < 2 ||
@@ -83,7 +99,7 @@ export function readShortGithubAddress(
   if (normalised[4] !== undefined && asciiLowerCase(normalised[4]) === 'tree') {
     normalised[4] = 'tree';
   }
-  let parsed = parseProjectUrl(encodedPath(normalised));
+  let parsed = parseProjectUrl(encodedPath(normalised, ref));
   if (!parsed.ok) {
     return { kind: 'refused', reason: parsed.reason };
   }
@@ -91,7 +107,7 @@ export function readShortGithubAddress(
   const page = normalised[locatorLength];
   if (page !== undefined && asciiLowerCase(page) !== page) {
     normalised[locatorLength] = asciiLowerCase(page);
-    parsed = parseProjectUrl(encodedPath(normalised)) as IProjectUrlParts;
+    parsed = parseProjectUrl(encodedPath(normalised, ref)) as IProjectUrlParts;
     locatorLength = locatorLengthOf(normalised, parsed);
   }
   const respelled = normalised.some((segment, i) => segment !== segments[i]);
@@ -285,9 +301,9 @@ export class GithubAddressCheck {
    */
   async decide(
     segments: readonly string[],
-    options: { readonly matrixParameters?: boolean } = {},
+    options: { readonly matrixParameters?: boolean; readonly ref?: string } = {},
   ): Promise<AddressDecision> {
-    const address = readShortGithubAddress(segments);
+    const address = readShortGithubAddress(segments, options.ref);
     if (address.kind === 'not-short-github') {
       return { kind: 'open' };
     }

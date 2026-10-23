@@ -3,6 +3,7 @@ import { convertToParamMap } from '@angular/router';
 import { readProjectApiQuery } from '../nav/project-api-routing';
 import {
   CanMatchFn,
+  RedirectCommand,
   Router,
   Routes,
   UrlMatcher,
@@ -16,6 +17,7 @@ import { hasOutletGroup, pathHasOutletGroup } from '@datatug/project-address';
 import {
   GithubAddressCheck,
   GithubAddressProblemState,
+  githubRefOfSegments,
   readShortGithubAddress,
 } from './github-project-address-check';
 import {
@@ -24,7 +26,10 @@ import {
 } from '../core/datatug-routing-params';
 
 // The short project route (design `demo-as-github-project.md` 3.3, 3.4, 3.4a):
-//   /project/github.com/<owner>/<repo>[/tree/<ref>[/<dir>…]][/-/<page>…]
+//   /project/github.com/<owner>/<repo>[/<dir>…][/-/<page>…][?ref=<ref>]
+// (founder 2026-10-23: no ref for the default branch; the legacy `…/<repo>/tree/<ref>[/<dir>…][/-/<page>…]` redirects).
+// Inside the router the ref is the matrix parameter `ref` of the repository segment (the app's URL serializer moves
+// it there from the query, and back), so that the matcher below can read it.
 // opens the same project pages as `/store/github.com/project/<repo>@<owner>@<dir>/<page>` (which keeps working,
 // with no redirect, until the held task G-A1d). A matcher consumes the project locator and supplies the two
 // positional parameters every page and tracker already reads (`storeId`, `projectId`); the project pages are its
@@ -63,7 +68,7 @@ const paths = (segments: readonly UrlSegment[]): string[] =>
 
 /** Consumes the locator of a project at its short address, and supplies `storeId` and `projectId` (canonical). */
 export const githubProjectMatcher: UrlMatcher = (segments) => {
-  const address = readShortGithubAddress(paths(segments));
+  const address = readShortGithubAddress(paths(segments), githubRefOfSegments(segments));
   if (address.kind !== 'project') {
     return null;
   }
@@ -78,7 +83,7 @@ export const githubProjectMatcher: UrlMatcher = (segments) => {
 
 /** Consumes every `/project/github.com/…` address, whole: whether it is a project or not is the check's to say. */
 export const githubAddressMatcher: UrlMatcher = (segments) =>
-  readShortGithubAddress(paths(segments)).kind === 'not-short-github'
+  readShortGithubAddress(paths(segments), githubRefOfSegments(segments)).kind === 'not-short-github'
     ? null
     : { consumed: segments };
 
@@ -92,10 +97,23 @@ export function urlTreeOfPath(
   queryParams: Record<string, string | string[]>,
   fragment: string | null,
 ): UrlTree {
-  const segments = path
+  // A canonical GitHub address may end with `?ref=<ref>`: inside the router that is the repository segment's matrix
+  // parameter (github-ref-url-serializer.ts).
+  const queryAt = path.indexOf('?');
+  const ref =
+    queryAt < 0
+      ? undefined
+      : (new URLSearchParams(path.slice(queryAt + 1)).get('ref') ?? undefined);
+  const segments = (queryAt < 0 ? path : path.slice(0, queryAt))
     .split('/')
     .slice(1)
-    .map((segment) => new UrlSegment(decodeURIComponent(segment), {}));
+    .map(
+      (segment, i) =>
+        new UrlSegment(
+          decodeURIComponent(segment),
+          i === 3 && ref !== undefined ? { ref } : {},
+        ),
+    );
   const primary = new UrlSegmentGroup(segments, {});
   const root = new UrlSegmentGroup([], { primary });
   primary.parent = root;
@@ -107,7 +125,7 @@ const QUESTION_PARAMS = ['msg', 'q'];
 
 /** The parameters that carry a question at this address: Quick Search owns `q`, so there only `msg` is one. */
 function questionParamsOf(segments: readonly UrlSegment[], allowSearchQuery: boolean): readonly string[] {
-  const address = readShortGithubAddress(paths(segments));
+  const address = readShortGithubAddress(paths(segments), githubRefOfSegments(segments));
   return allowSearchQuery && address.kind === 'project' && address.parts.rest === '/quick-search' ? ['msg'] : QUESTION_PARAMS;
 }
 
@@ -222,6 +240,16 @@ export function urlHasOutletGroup(
   );
 }
 
+/**
+ * Whether a segment has a matrix parameter, another spelling of the address, but for the repository segment's `ref`,
+ * which is how the router holds the address's `?ref=` (github-ref-url-serializer.ts).
+ */
+function hasMatrixParameters(segments: readonly UrlSegment[]): boolean {
+  return segments.some((segment, i) =>
+    Object.keys(segment.parameters).some((name) => !(i === 3 && name === 'ref')),
+  );
+}
+
 /** The short route belongs to the DataTug product profile only. */
 export const datatugProfileForShortRoute = (): boolean =>
   inject(PRODUCT_PROFILE).id === 'datatug';
@@ -252,13 +280,18 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
     return true;
   }
   const typed = router.getCurrentNavigation()?.extractedUrl;
+  if (typed && Object.prototype.hasOwnProperty.call(typed.queryParams, 'ref')) {
+    // A `ref` the serializer left in the query: given twice, or beside a matrix `ref`. No one project.
+    state.problem.set({ kind: 'unsupported', reason: 'invalid-path-segment' });
+    return true;
+  }
   if (
     typed &&
     Object.prototype.hasOwnProperty.call(typed.queryParams, 'projectApi')
   ) {
     // Private registered projects are resolved by the authenticated API. Never
     // ask the anonymous manifest/default-branch reader about this address.
-    const address = readShortGithubAddress(paths(segments));
+    const address = readShortGithubAddress(paths(segments), githubRefOfSegments(segments));
     try {
       const selection = readProjectApiQuery(
         convertToParamMap(typed.queryParams),
@@ -269,10 +302,7 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
         address.parts.github?.ref !== undefined
       )
         throw new Error('Invalid common route');
-      if (
-        !address.parts.isCanonical ||
-        segments.some((segment) => Object.keys(segment.parameters).length)
-      ) {
+      if (!address.parts.isCanonical || hasMatrixParameters(segments)) {
         return urlTreeOfPath(
           address.parts.canonicalPath,
           typed.queryParams,
@@ -289,16 +319,20 @@ export const githubAddressCanMatch: CanMatchFn = async (_route, segments) => {
     }
   }
   const decision = await check.decide(paths(segments), {
-    matrixParameters: segments.some(
-      (segment) => Object.keys(segment.parameters).length > 0,
-    ),
+    matrixParameters: hasMatrixParameters(segments),
+    ref: githubRefOfSegments(segments),
   });
   switch (decision.kind) {
     case 'redirect': {
-      return urlTreeOfPath(
-        decision.path,
-        typed?.queryParams ?? {},
-        typed?.fragment ?? null,
+      // Another spelling of the address (a legacy `/tree/<ref>/…`, `?ref=HEAD`, case, `.git`…) is REPLACED in the
+      // history by the canonical one: Back never returns to the old spelling.
+      return new RedirectCommand(
+        urlTreeOfPath(
+          decision.path,
+          typed?.queryParams ?? {},
+          typed?.fragment ?? null,
+        ),
+        { replaceUrl: true },
       );
     }
     case 'problem':

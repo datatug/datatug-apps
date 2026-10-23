@@ -157,7 +157,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
                       {
                         id: 'invoice-detail',
                         title: 'Invoice totals and customer',
-                        type: 'DTQL',
+                        type: 'TugQL',
                         parameters: [
                           {
                             id: 'invoice_id',
@@ -198,7 +198,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
                 id: 'receipt',
                 title: 'Receipt',
                 request: {
-                  queryType: QueryType.DTQL,
+                  queryType: QueryType.TugQL,
                   text: 'from: {database: invoices-db, name: InvoiceDetail}',
                 },
                 parameters: [
@@ -651,7 +651,7 @@ describe('HostedBoardWorkspaceComponent DOM authoring', () => {
     await f.whenStable();
     expect(f.nativeElement.textContent).not.toContain('Old scope failure');
   });
-  it('authors a native-demo DTQL saved query using the canonical SQL widget and excludes unsupported languages', async () => {
+  it('authors a native-demo TugQL saved query using the canonical SQL widget and excludes unsupported languages', async () => {
     const f = await mount();
     inputTitle(f, 'Invoice investigation');
     await f.whenStable();

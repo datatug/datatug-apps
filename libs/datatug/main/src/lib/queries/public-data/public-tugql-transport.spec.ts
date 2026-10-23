@@ -1,8 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
-import { executePublicDtql, type PublicDtqlSource } from './public-dtql-transport';
+import { executePublicTugql, type PublicTugqlSource } from './public-tugql-transport';
 
-const source: PublicDtqlSource = {
-  endpoint: 'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/dtql',
+const source: PublicTugqlSource = {
+  endpoint: 'https://cloud.openvaultdb.com/v1/databases/northwind-postgresql/tugql',
   databaseId: 'northwind-postgresql',
   collectionId: 'pg1_AAAACW5vcnRod2luZAAAAAZPcmRlcnM',
   requireExecutionSource: true,
@@ -24,7 +24,7 @@ const result = {
   },
 };
 
-describe('public DTQL transport', () => {
+describe('public TugQL transport', () => {
   function observedResponse(body: BodyInit) {
     const response = new Response(body, { status: 200 });
     if (!response.body) throw new Error('Missing response body');
@@ -38,7 +38,7 @@ describe('public DTQL transport', () => {
 
   it('releases a fully consumed response without cancelling its completed reader', async () => {
     const observed = observedResponse(JSON.stringify(result));
-    const executed = await executePublicDtql('query', source, { fetch: observed.fetch });
+    const executed = await executePublicTugql('query', source, { fetch: observed.fetch });
     expect(executed.rowsReturned).toBe(1);
     expect(observed.cancel).not.toHaveBeenCalled();
     expect(observed.release).toHaveBeenCalledOnce();
@@ -46,14 +46,14 @@ describe('public DTQL transport', () => {
 
   it('releases EOF even when the complete bytes fail JSON validation, without accepting them', async () => {
     const observed = observedResponse('not JSON');
-    await expect(executePublicDtql('query', source, { fetch: observed.fetch })).rejects.toThrow('malformed JSON');
+    await expect(executePublicTugql('query', source, { fetch: observed.fetch })).rejects.toThrow('malformed JSON');
     expect(observed.cancel).not.toHaveBeenCalled();
     expect(observed.release).toHaveBeenCalledOnce();
   });
 
   it('cancels an incomplete oversized response instead of admitting any rows', async () => {
     const observed = observedResponse(new ReadableStream({ start(controller) { controller.enqueue(new Uint8Array(1_000_001)); } }));
-    await expect(executePublicDtql('query', source, { fetch: observed.fetch })).rejects.toThrow('browser limit');
+    await expect(executePublicTugql('query', source, { fetch: observed.fetch })).rejects.toThrow('browser limit');
     expect(observed.cancel).toHaveBeenCalledOnce();
     await observed.cancel.mock.results[0].value.catch(() => undefined);
     await Promise.resolve();
@@ -67,7 +67,7 @@ describe('public DTQL transport', () => {
     vi.spyOn(observed.reader, 'read').mockImplementationOnce(async () => {
       const chunk = await read(); controller.abort(); return chunk;
     });
-    await expect(executePublicDtql('query', source, { fetch: observed.fetch, signal: controller.signal })).rejects.toThrow('cancelled');
+    await expect(executePublicTugql('query', source, { fetch: observed.fetch, signal: controller.signal })).rejects.toThrow('cancelled');
     expect(observed.cancel).toHaveBeenCalledOnce();
     await observed.cancel.mock.results[0].value.catch(() => undefined);
     await Promise.resolve();
@@ -77,7 +77,7 @@ describe('public DTQL transport', () => {
   it('cancels a failed body reader and preserves its error', async () => {
     const failure = new Error('body read failed');
     const observed = observedResponse(new ReadableStream({ start(stream) { stream.error(failure); } }));
-    await expect(executePublicDtql('query', source, { fetch: observed.fetch })).rejects.toBe(failure);
+    await expect(executePublicTugql('query', source, { fetch: observed.fetch })).rejects.toBe(failure);
     expect(observed.cancel).toHaveBeenCalledOnce();
     await observed.cancel.mock.results[0].value.catch(() => undefined);
     await Promise.resolve();
@@ -85,24 +85,24 @@ describe('public DTQL transport', () => {
   });
 
   it('retains the independently observed physical source and complete rows', async () => {
-    const executed = await executePublicDtql('from: {name: Orders}\n', source, { fetch: transport(result) });
+    const executed = await executePublicTugql('from: {name: Orders}\n', source, { fetch: transport(result) });
     expect(executed.records[0].data['orders']).toBe(56);
     expect(executed.executionSources).toEqual(result.execution.sources);
     expect(executed.complete).toBe(true);
   });
 
   it('rejects missing source, partial pages and changed columns', async () => {
-    await expect(executePublicDtql('query', source, { fetch: transport({ ...result, execution: undefined }) }))
+    await expect(executePublicTugql('query', source, { fetch: transport({ ...result, execution: undefined }) }))
       .rejects.toThrow(/omitted/);
-    await expect(executePublicDtql('query', source, { fetch: transport({ ...result, nextCursor: 'next' }) }))
+    await expect(executePublicTugql('query', source, { fetch: transport({ ...result, nextCursor: 'next' }) }))
       .rejects.toThrow(/incomplete/);
-    await expect(executePublicDtql('query', source, { fetch: transport({ ...result, columns: ['orders', 'ShipCountry'] }) }))
+    await expect(executePublicTugql('query', source, { fetch: transport({ ...result, columns: ['orders', 'ShipCountry'] }) }))
       .rejects.toThrow(/columns/);
   });
 
   it('rejects a non-integer or non-finite saved row limit before fetching', async () => {
     for (const maxRows of [NaN, Infinity, 1.5]) {
-      await expect(executePublicDtql('query', { ...source, maxRows }, { fetch: transport(result) }))
+      await expect(executePublicTugql('query', { ...source, maxRows }, { fetch: transport(result) }))
         .rejects.toThrow(/browser execution policy/);
     }
   });

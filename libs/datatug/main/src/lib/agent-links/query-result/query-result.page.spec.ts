@@ -853,7 +853,7 @@ describe('QueryResultPageComponent', () => {
         environment: 'local',
         securityContextId: 'sc-7',
         source: 'chinook',
-        dtql: 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n',
+        tugql: 'from: Invoice i\njoin: Customer c on i.CustomerId = c.CustomerId\n',
         parameters: {},
         bindingOrigins: [],
         mode: 'live',
@@ -891,9 +891,9 @@ describe('QueryResultPageComponent', () => {
         invoiceCustomerResult({
           query: {
             kind: 'saved',
-            dtql: undefined,
+            tugql: undefined,
             savedQueryId: 'customer-invoices',
-            savedQueryType: 'dtql',
+            savedQueryType: 'tugql',
             parameters: { CustomerId: { type: 'integer', value: '2' } },
           },
         }),
@@ -909,7 +909,7 @@ describe('QueryResultPageComponent', () => {
         mode: 'live',
         limit: 500,
       });
-      expect(run.request.body).not.toHaveProperty('dtql');
+      expect(run.request.body).not.toHaveProperty('tugql');
       run.flush({
         recordset: { columns: [], rows: [] },
         limitations: [],

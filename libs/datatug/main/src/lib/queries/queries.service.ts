@@ -1,3 +1,4 @@
+import { LEGACY_DTQL_QUERY_TYPE } from '../services/repo/github/legacy-dtql-query';
 import { validateQueryComparison } from './query-comparison';
 import { DevicePersonalQueries, isDevicePersonalQuery } from './device-personal-queries';
 import {
@@ -99,6 +100,8 @@ interface IWireQueryItem {
   title?: string;
   type: string;
   text?: string;
+  /** How a TugQL body is written; unset when the server does not say (then sniffed). */
+  representation?: 'text' | 'yaml';
   draft?: boolean;
   connectionId?: string;
   parameters?: IParameterDef[];
@@ -123,13 +126,17 @@ interface IWireQueryFolder {
  * path (this is the same server, the same flat shape, just reached through
  * `all_queries`/`get_query` instead). `text` is absent from `all_queries`'
  * own response (`loadModuleQueries`, datatug-cli, deliberately never reads
- * a query's SQL/DTQL/HTTP body — only `get_query` does, via
+ * a query's SQL/TugQL/HTTP body — only `get_query` does, via
  * `store.LoadQuery`), so the folder-list view's inline SQL preview
  * (`queries-tab.component.html`'s `sneat-datatug-sql`) renders empty for a
  * query reached that way; the query PAGE (opened via `get_query`) always
  * has the real text.
  */
-function toQueryRequest(type: string, text: string | undefined): IQueryRequest {
+function toQueryRequest(
+  type: string,
+  text: string | undefined,
+  representation?: 'text' | 'yaml',
+): IQueryRequest {
   if (type === QueryType.HTTP) {
     const httpRequest: IHttpQueryRequest = {
       queryType: QueryType.HTTP,
@@ -138,19 +145,29 @@ function toQueryRequest(type: string, text: string | undefined): IQueryRequest {
     };
     return httpRequest;
   }
-  // SQL and DTQL alike: the list/query-page views only ever branch on
+  // A legacy `DTQL` item is TugQL in either form; without a server-declared representation the body is sniffed
+  // (isTugqlYamlRequest). Removed in TugQL cutover step 9.
+  if (type === LEGACY_DTQL_QUERY_TYPE) {
+    return {
+      queryType: QueryType.TugQL,
+      text: text ?? '',
+      ...(representation ? { representation } : {}),
+    } as ITextQueryRequest;
+  }
+  // SQL and TugQL alike: the list/query-page views only ever branch on
   // `queryType === 'SQL'` for the inline-SQL-preview panel
-  // (queries-tab.component.html) — a DTQL query's `text` is its own YAML
+  // (queries-tab.component.html) — a TugQL query's `text` is its own YAML
   // body, harmlessly unused by that branch.
   return {
     queryType: type as QueryType,
     text: text ?? '',
+    ...(representation ? { representation } : {}),
   } as ITextQueryRequest;
 }
 
 function toQueryDef(item: IWireQueryItem): IQueryDef {
-  const { type, text, ...rest } = item;
-  const query = { ...rest, request: toQueryRequest(type, text) };
+  const { type, text, representation, ...rest } = item;
+  const query = { ...rest, request: toQueryRequest(type, text, representation) };
   validateQueryComparison(query);
   return query;
 }

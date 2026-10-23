@@ -24,7 +24,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
     let action: Record<string, unknown>;
     if (question === 'Show 10 customers') {
       attachedTableSeen = system.includes('Attached table: Customer; id: main.Customer');
-      action = { dtql: { from: { schema: 'main', name: 'Customer' }, orderBy: [{ field: 'CustomerId' }], limit: 10 } };
+      action = { tugql: { from: { schema: 'main', name: 'Customer' }, orderBy: [{ field: 'CustomerId' }], limit: 10 } };
     } else if (question === 'Select first 3 customers') {
       const recordSetId = system.match(/RecordSet: ([0-9a-f-]{36})/)?.[1];
       expect(recordSetId).toBeTruthy();
@@ -39,7 +39,7 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
     } else if (question === 'Try current selection without attaching') {
       const selectionId = system.match(/Current Selection: .*?; id: ([0-9a-f-]{36})/)?.[1];
       expect(selectionId).toBeTruthy();
-      action = { dtql: {
+      action = { tugql: {
         from: { schema: 'main', name: 'Invoice' },
         where: { op: 'In', left: { field: 'CustomerId' }, right: { selection: { id: selectionId, field: 'CustomerId' } } },
         limit: 100,
@@ -49,13 +49,13 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
       selectedContextSeen = !!selectionId && !system.includes('CustomerId=1');
       expect(selectionId).toBeTruthy();
       selectedIdForCrossSession = selectionId as string;
-      action = { dtql: {
+      action = { tugql: {
         from: { schema: 'main', name: 'Invoice' },
         where: { op: 'In', left: { field: 'CustomerId' }, right: { selection: { id: selectionId, field: 'CustomerId' } } },
         limit: 100,
       } };
     } else if (question === 'Use an old selection') {
-      action = { dtql: {
+      action = { tugql: {
         from: { schema: 'main', name: 'Invoice' },
         where: { op: 'In', left: { field: 'CustomerId' }, right: { selection: { id: selectedIdForCrossSession, field: 'CustomerId' } } },
         limit: 100,
@@ -158,14 +158,14 @@ test('Chat workspace restores explicit context, selection, dock and a selected f
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
-    const saved = await new Promise<{ data: { dtql: string; parentRecordSetId?: string } }[]>((resolve, reject) => {
+    const saved = await new Promise<{ data: { tugql: string; parentRecordSetId?: string } }[]>((resolve, reject) => {
       const request = database.transaction('ChatQueries', 'readonly').objectStore('ChatQueries').getAll();
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
     });
     database.close();
     const query = saved.map((item) => item.data).find((item) => item.parentRecordSetId);
-    return query ? (JSON.parse(query.dtql) as { where: { right: { values: number[] } } }).where.right.values : [];
+    return query ? (JSON.parse(query.tugql) as { where: { right: { values: number[] } } }).where.right.values : [];
   });
   expect(boundValues).toEqual([selectedCustomerId]);
 

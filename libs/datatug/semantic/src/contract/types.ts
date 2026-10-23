@@ -254,9 +254,9 @@ export interface ExecutionRequest {
   readonly environment: string;
   readonly securityContextId: string;
   readonly source?: string;
-  /** Exactly one of `queryId`/`dtql` is required. */
+  /** Exactly one of `queryId`/`tugql` is required. */
   readonly queryId?: string;
-  readonly dtql?: unknown;
+  readonly tugql?: unknown;
   readonly parameters: Readonly<Record<string, TypedValue>>;
   /** Display provenance only, checked for exactly the submitted parameter keys — never
    * influences authorization (REQ:no-hidden-filters). */
@@ -399,7 +399,7 @@ export interface AvailableSnapshot {
 }
 
 export interface ErrorDetails {
-  /** Owner-projected DTQL blockers; does not expose editable policies. */
+  /** Owner-projected TugQL blockers; does not expose editable policies. */
   readonly authorization?: AuthorizationResult;
   /** Present only on a `SOURCE_UNAVAILABLE` response for an HTTP-typed saved query that
    * has a recorded fixture; always exactly one entry for Phase 1 (one fixture per

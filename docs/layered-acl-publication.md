@@ -5,7 +5,7 @@ This integrates owner authorization diagnostics into the current query page and
 OpenVaultDB page/proxy and preserves current source IDs, session scope checks,
 route layout and Incidentius changes. No policy viewer/editor is added.
 
-The CLI companion PR sends a validated, owner-projected DTQL decision as
+The CLI companion PR sends a validated, owner-projected TugQL decision as
 `details.authorization` beside the existing error body. The semantic decoder
 accepts that optional extension, verifies denial invariants and blocker field
 shapes, and retains unknown reason codes for forward compatibility. The current

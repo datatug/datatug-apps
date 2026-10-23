@@ -47,7 +47,8 @@
          this script to keep them in step): matrix parameters, a trailing slash, letter case, extra leading slashes
          (`//demo`) and a path written as one group at the root (`/(demo)`) do not change what a hand-off address is,
          exactly as the router's parser reads them (`s` is the path as the router has it); a path with an outlet group
-         `(` is not one. A start-chat address (`…/start-chat`, `…/tree/<ref>[/<dir>…]/-/start-chat`) carries the question
+         `(` is not one. A start-chat address (`…/<repo>/start-chat`, `…/<repo>/<dir>…/-/start-chat`, the legacy
+         `…/tree/<ref>[/<dir>…]/-/start-chat`) carries the question
          after `#` (founder ruling 2026-10-03): the whole fragment and the `msg`, `q` and `lang` keys of its query go
          (the other query keys stay), and those keys, fragment first, are kept. On `/demo` and the old chat address the
          whole query goes and is kept. Any other path is untouched, except that every other address under
@@ -137,8 +138,15 @@
           s[i] = s[i].toLowerCase();
         }
         n = s.length;
+        // A page of this project: the root (`…/<repo>/<page>`), the legacy `…/<repo>/tree/<ref>[/<dir>…]/-/<page>`, or
+        // `…/<repo>[/<dir>…]/-/<page>` (where `tree` and `blob` begin the legacy shapes). A `?ref=` is not the path's.
+        function pageOf(name) {
+          return n === 5 ? s[4] === name :
+            n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === name && s.slice(6, n - 2).indexOf('-') < 0 ||
+            s[4] !== 'tree' && s[4] !== 'blob' && n >= 6 && s[n - 2] === '-' && s[n - 1] === name && s.slice(4, n - 2).indexOf('-') < 0;
+        }
         if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
-            (n === 5 ? s[4] === page : n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === page && s.slice(6, n - 2).indexOf('-') < 0 ||
+            (pageOf(page) ||
               asciiShort && n === 6 && s[2] === 'datatug' && s[3] === 'datatug-demo-project' && s[4] === 'demo-project-1' && s[5] === page)) {
           // The confirmation page: the question is after `#`, or (a form post with no script) in the query.
           got = []; left = []; taken = 0;
@@ -157,12 +165,14 @@
         } else if (!q) {
           return;
         } else if ((g ? g[1].indexOf('//') < 0 : p.indexOf('(') < 0) && (s[0] === 'demo' ? n === 1 : s[0] === 'project' && s[1] === 'github.com' && s[2] && s[3] &&
-            (n === 5 ? s[4] === 'chat' : n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === 'chat' && s.slice(6, n - 2).indexOf('-') < 0))) {
+            pageOf('chat'))) {
           window.__datatugHandoffSearch = q;
           // So that a reload before the app has started does not lose the question.
           try { sessionStorage.setItem('datatug.demo.handoff.v1', p.replace(/\/$/, '') + q); } catch (e) {}
           // A browser that refuses must not stop the page: the app still reads the question from the stash.
-          try { history.replaceState(history.state, '', u + p + h); } catch (e) {}
+          // `?ref=` is part of which project the address names (founder 2026-10-23): it stays, the rest goes.
+          kept = q.slice(1).split('&').filter(function (pair) { return keyOf(pair) === 'ref'; });
+          try { history.replaceState(history.state, '', u + p + (kept.length ? '?' + kept.join('&') : '') + h); } catch (e) {}
         } else if (s[0] === 'project' && s[1] && s[1].split('(')[0] === 'github.com') {
           kept = q.slice(1).split('&').filter(function (pair) {
             var key = keyOf(pair);
@@ -170,8 +180,8 @@
             var quickSearch = !g && p.indexOf('(') < 0 && asciiShort &&
               /^[a-z0-9][a-z0-9-]{0,38}$/.test(s[2] || '') && /^(?!\.{1,2}$)[a-z0-9._-]{1,100}$/.test((s[3] || '').replace(/\.git$/, '')) && !/\.git\.git$/.test(s[3] || '') &&
               p.replace(/^\/+/, '').replace(/\/$/, '').split('/').every(function (part) { return !!part; }) &&
-              s.slice(5, n - 2).every(function (part) { return part !== '.' && part !== '..' && part === part.trim() && !/[\\/%?#@]/.test(part); }) &&
-              (n === 5 && s[4] === 'quick-search' || n >= 8 && s[4] === 'tree' && s[5] && s[n - 2] === '-' && s[n - 1] === 'quick-search' && s.slice(6, n - 2).indexOf('-') < 0);
+              s.slice(s[4] === 'tree' ? 5 : 4, n - 2).every(function (part) { return part !== '.' && part !== '..' && part === part.trim() && !/[\\/%?#@]/.test(part); }) &&
+              pageOf('quick-search');
             return key !== 'msg' && (key !== 'q' || quickSearch);
           });
           if (kept.length !== q.slice(1).split('&').length) {

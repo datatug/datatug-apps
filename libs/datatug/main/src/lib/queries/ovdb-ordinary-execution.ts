@@ -14,7 +14,7 @@ import {
   type NativeRootSource,
 } from './ovdb-native-root-result';
 
-/** Consumes the released ordinary /dtql envelope. The worker may stage rows
+/** Consumes the released ordinary /tugql envelope. The worker may stage rows
  * using its existing direct-result sink, but no rows are exposed until the
  * entire response and current source-rights evidence have been validated. */
 export async function consumeOvdbOrdinaryQuery(
@@ -119,7 +119,7 @@ export async function consumeOvdbOrdinaryQuery(
     bindingsApplied: [],
     truncated: false,
     provenance: {
-      source: `${base}${rootSources ? '/v1/dtql' : `/v1/databases/${database}`} (direct OVDB)`,
+      source: `${base}${rootSources ? '/v1/tugql' : `/v1/databases/${database}`} (direct OVDB)`,
       queryId: definition.id,
       mode: 'live',
       observedAt: new Date().toISOString(),

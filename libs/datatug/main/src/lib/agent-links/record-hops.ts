@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../nav/project-page-href';
 import {
   AgentCell,
   AgentForeignKey,
@@ -12,7 +13,7 @@ import { projectPageCommands } from './link-route';
 export interface RecordHop {
   readonly fk: AgentForeignKey;
   /** The router commands of the referenced record's page (no key in them). */
-  readonly commands: readonly string[];
+  readonly commands: readonly ProjectRouterCommand[];
   readonly schema: string;
   /** `pk=<JSON>`: the key, only ever in the fragment. */
   readonly fragment: string;

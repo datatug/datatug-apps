@@ -92,7 +92,7 @@ export function admitIndependentSource(
       tables?.length !== 1 ||
       !base ||
       read.endpoint !==
-        `${base}/v1/databases/${encodeURIComponent(tables[0].database || '')}/dtql` ||
+        `${base}/v1/databases/${encodeURIComponent(tables[0].database || '')}/tugql` ||
       read.queryId !== definition.id ||
       result.provenance.queryId !== definition.id ||
       result.provenance.source !==

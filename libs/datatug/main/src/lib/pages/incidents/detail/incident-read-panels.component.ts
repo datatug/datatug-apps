@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../../../nav/project-page-href';
 import { incidentEventSummary } from '../../../incidents/incident-event-summary';
 import { Component, input } from '@angular/core';
 import { RouterLink, type Params } from '@angular/router';
@@ -47,7 +48,7 @@ export class IncidentReadPanelsComponent {
   readonly evidence = input<readonly IncidentEvidenceTarget[]>([]);
   readonly participants = input<readonly IncidentParticipant[]>([]);
   readonly projects = input<readonly IncidentProjectTarget[]>([]);
-  readonly recordCommands = input<readonly string[] | undefined>(undefined);
+  readonly recordCommands = input<readonly ProjectRouterCommand[] | undefined>(undefined);
   readonly recordQueryParams = input<Params | undefined>(undefined);
 
   protected factValue(fact: IncidentFactView): string {

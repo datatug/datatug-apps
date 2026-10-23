@@ -12,7 +12,7 @@ import { ovdbCollections } from '../../ovdb/ovdb-connection';
 import { DemoProjectContinuationService, matchingDemoConnection } from '../../project/new-project/demo-project-continuation.service';
 import { ProjectQueryApiService } from '../../services/project/project-query-api.service';
 import { DatatugNavContextService } from '../../services/nav/datatug-nav-context.service';
-import { projectPageHref } from '../../nav/project-page-href';
+import { projectPageHref, projectRouterCommands } from '../../nav/project-page-href';
 import { equalProjectRef } from '../../core/project-context';
 import type { QueryConnectionDescriptor } from '../../queries/query-dispatch';
 import { QueryRuntimeRegistry } from '../../queries/query-runtime-registry.service';
@@ -82,7 +82,7 @@ export class ProjectBrowserDbComponent {
     const ref = this.project()?.ref;
     if (!ref) return [];
     // RouterLink receives the helper's exact project path as its first command.
-    return [projectPageHref(ref, ['browser-db', this.declaration()?.id ?? 'demo']).split('?')[0]];
+    return projectRouterCommands(projectPageHref(ref, ['browser-db', this.declaration()?.id ?? 'demo']));
   });
   readonly navigationQuery = computed(() => ({ projectApi: this.project()?.ref.projectApi, branch: this.project()?.ref.branch, demoContinuation: this.query().get('demoContinuation') }));
   constructor() {

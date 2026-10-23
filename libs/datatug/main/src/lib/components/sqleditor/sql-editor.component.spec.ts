@@ -102,10 +102,10 @@ describe('SqlEditorComponent', () => {
     let view = await mount('SELECT 1');
     expect(view.contentDOM.getAttribute('aria-label')).toBe('SQL query');
     expect(view.contentDOM.getAttribute('role')).toBe('textbox');
-    fixture.componentRef.setInput('ariaLabel', 'DTQL source');
+    fixture.componentRef.setInput('ariaLabel', 'TugQL source');
     fixture.detectChanges();
     view = mountCurrentInstance('SELECT 1');
-    expect(view.contentDOM.getAttribute('aria-label')).toBe('DTQL source');
+    expect(view.contentDOM.getAttribute('aria-label')).toBe('TugQL source');
   });
 
   it('honors the line-number input without replacing CodeMirror setup', async () => {

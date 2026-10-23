@@ -8,7 +8,7 @@ import {
 
 const origin = 'https://datatug.app';
 const boardURL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase';
 const expectedSubtree = 'b9743cc8f6306f8421abb0f98b188d10e0fb1b78';
 const allThree = { orders: 1, countries: 1, comparison: 1 };
 type Group = {
@@ -357,7 +357,7 @@ test('bounded deployed showcase network and held-result measurement', async ({
       const details = paired.locator('.source-details');
       await details.locator('summary').click();
       await expect(details).toContainText(
-        'https://cloud.openvaultdb.com/v1/dtql',
+        'https://cloud.openvaultdb.com/v1/tugql',
       );
     });
     await observedAction('keyboard Canada and selected rows', async () => {

@@ -193,6 +193,19 @@ export function isValidGithubRef(ref: unknown): ref is string {
   return isSafePathSegment(ref) && !ref.includes('@');
 }
 
+/**
+ * The ref of a project id or of a project address (`…/<repo>[/<dir>…]?ref=<ref>`): a branch, tag or commit, whose
+ * name may hold `/` (`feature/x`), each `/`-separated piece a {@link isValidGithubRef}. In an address the `/` is
+ * written plainly in the query (`%2F` reads the same). Never `@`: it separates the parts of the id.
+ */
+export function isValidGithubRefName(ref: unknown): ref is string {
+  return (
+    typeof ref === 'string' &&
+    ref !== '' &&
+    ref.split('/').every((piece) => isValidGithubRef(piece))
+  );
+}
+
 export type GithubProjectIdProblem =
   | 'parts'
   | 'owner-or-repo'
@@ -231,7 +244,7 @@ export function readGithubProjectId(
     return { ok: false, reason: 'folder' };
   }
   const named = ref && ref !== GITHUB_DEFAULT_BRANCH_REF ? ref : undefined;
-  if (named !== undefined && !isValidGithubRef(named)) {
+  if (named !== undefined && !isValidGithubRefName(named)) {
     return { ok: false, reason: 'ref' };
   }
   return {

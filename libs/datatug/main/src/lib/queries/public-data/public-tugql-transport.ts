@@ -1,6 +1,6 @@
 import { strictJson } from './strict-json';
 
-export interface PublicDtqlSource {
+export interface PublicTugqlSource {
   readonly endpoint: string;
   readonly databaseId: string;
   readonly collectionId: string;
@@ -9,7 +9,7 @@ export interface PublicDtqlSource {
   readonly expectedFields?: readonly string[];
 }
 
-export interface PublicDtqlResult {
+export interface PublicTugqlResult {
   readonly records: readonly { readonly data: Record<string, unknown> }[];
   readonly fields: readonly string[];
   readonly complete: true;
@@ -19,31 +19,31 @@ export interface PublicDtqlResult {
   readonly raw: unknown;
 }
 
-export class PublicDtqlError extends Error {}
+export class PublicTugqlError extends Error {}
 
-function reject(message: string): never { throw new PublicDtqlError(message); }
+function reject(message: string): never { throw new PublicTugqlError(message); }
 
 function object(value: unknown): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return reject('The public DTQL response has an invalid shape.');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return reject('The public TugQL response has an invalid shape.');
   return value as Record<string, unknown>;
 }
 
 async function boundedJson(response: Response, signal: AbortSignal): Promise<unknown> {
-  if (!response.ok || !response.body) return reject('The public DTQL endpoint refused this query.');
+  if (!response.ok || !response.body) return reject('The public TugQL endpoint refused this query.');
   const MAX_BYTES = 1_000_000;
   const header = response.headers.get('Content-Length');
-  if (header && Number(header) > MAX_BYTES) return reject('The public DTQL response exceeds the browser limit.');
+  if (header && Number(header) > MAX_BYTES) return reject('The public TugQL response exceeds the browser limit.');
   const reader = response.body.getReader();
   const parts: Uint8Array[] = [];
   let length = 0;
   let reachedEnd = false;
   try {
     while (true) {
-      if (signal.aborted) return reject('The public DTQL request was cancelled.');
+      if (signal.aborted) return reject('The public TugQL request was cancelled.');
       const { done, value } = await reader.read();
       if (done) { reachedEnd = true; break; }
       length += value.byteLength;
-      if (length > MAX_BYTES) return reject('The public DTQL response exceeds the browser limit.');
+      if (length > MAX_BYTES) return reject('The public TugQL response exceeds the browser limit.');
       parts.push(value);
     }
   } finally {
@@ -55,19 +55,19 @@ async function boundedJson(response: Response, signal: AbortSignal): Promise<unk
   let offset = 0;
   for (const part of parts) { bytes.set(part, offset); offset += part.byteLength; }
   try { return strictJson(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
-  catch { return reject('The public DTQL endpoint returned malformed JSON.'); }
+  catch { return reject('The public TugQL endpoint returned malformed JSON.'); }
 }
 
 /** Shared public read path; caller binds policy to a saved connection and query. */
-export async function executePublicDtql(
+export async function executePublicTugql(
   query: string,
-  source: PublicDtqlSource,
+  source: PublicTugqlSource,
   options: { readonly fetch?: typeof globalThis.fetch; readonly signal?: AbortSignal } = {},
-): Promise<PublicDtqlResult> {
+): Promise<PublicTugqlResult> {
   const parsedEndpoint = new URL(source.endpoint);
   if (parsedEndpoint.protocol !== 'https:' || parsedEndpoint.username || parsedEndpoint.password ||
-    parsedEndpoint.hash || parsedEndpoint.search || !parsedEndpoint.pathname.endsWith(`/v1/databases/${source.databaseId}/dtql`))
-    return reject('The saved public connection has an invalid HTTPS DTQL endpoint.');
+    parsedEndpoint.hash || parsedEndpoint.search || !parsedEndpoint.pathname.endsWith(`/v1/databases/${source.databaseId}/tugql`))
+    return reject('The saved public connection has an invalid HTTPS TugQL endpoint.');
   if (!query.trim() || query.length > 32_768 || !Number.isSafeInteger(source.maxRows) || source.maxRows < 1 || source.maxRows > 1000)
     return reject('The saved public query exceeds the browser execution policy.');
   const deadline = AbortSignal.timeout(30_000);
@@ -81,14 +81,14 @@ export async function executePublicDtql(
     });
     raw = await boundedJson(response, signal);
   } catch (error) {
-    if (signal.aborted) return reject(deadline.aborted ? 'The public DTQL request timed out.' : 'The public DTQL request was cancelled.');
+    if (signal.aborted) return reject(deadline.aborted ? 'The public TugQL request timed out.' : 'The public TugQL request was cancelled.');
     throw error;
   }
-  if (signal.aborted) return reject(deadline.aborted ? 'The public DTQL request timed out.' : 'The public DTQL request was cancelled.');
+  if (signal.aborted) return reject(deadline.aborted ? 'The public TugQL request timed out.' : 'The public TugQL request was cancelled.');
   const body = object(raw);
   if (body['complete'] !== true || body['nextCursor'] != null || !Array.isArray(body['records']) ||
     body['records'].length > source.maxRows)
-    return reject('The public DTQL response is incomplete or exceeds the saved row limit.');
+    return reject('The public TugQL response is incomplete or exceeds the saved row limit.');
   const records = body['records'].map((item) => {
     const data = object(object(item)['data']);
     return { data };
@@ -98,16 +98,16 @@ export async function executePublicDtql(
   if (!fields.length || fields.length > 40 || fields.some((field) => typeof field !== 'string' || !field) ||
     body['columns'] !== undefined && JSON.stringify(body['columns']) !== JSON.stringify(fields) ||
     records.some(({ data }) => Object.keys(data).length !== fields.length || fields.some((field) => !Object.hasOwn(data, field))))
-    return reject('The public DTQL response has different result columns.');
+    return reject('The public TugQL response has different result columns.');
   const expected = [{ database: source.databaseId, collection: source.collectionId }];
-  let executionSources: PublicDtqlResult['executionSources'] = [];
+  let executionSources: PublicTugqlResult['executionSources'] = [];
   if (body['execution'] !== undefined) {
     const execution = object(body['execution']);
     if (execution['rowsReturned'] !== records.length || JSON.stringify(execution['sources']) !== JSON.stringify(expected))
-      return reject('The public DTQL response came from a different physical source.');
+      return reject('The public TugQL response came from a different physical source.');
     executionSources = expected;
   } else if (source.requireExecutionSource) {
-    return reject('The public DTQL response omitted its required physical source receipt.');
+    return reject('The public TugQL response omitted its required physical source receipt.');
   }
   return { records, fields, complete: true, rowsReturned: records.length, executionSources, observedAt: new Date().toISOString(), raw };
 }

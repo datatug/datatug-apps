@@ -46,7 +46,7 @@ import {
 } from '../../../../services/project/project-assets-api.service';
 import { ProjectQueryApiService } from '../../../../services/project/project-query-api.service';
 import { QueryType } from '../../../../models/definition/query-def';
-import { projectPageHref } from '../../../../nav/project-page-href';
+import { projectPageHref, withQuery } from '../../../../nav/project-page-href';
 import { detectiveErrorMessage } from '../../../../detective/detective-client.service';
 import { IBoardContext } from '../../../../models/definition/board/board';
 import { BoardComponent } from '../../components/board/board.component';
@@ -786,7 +786,7 @@ export class HostedBoardWorkspaceComponent {
           throw new Error('Query catalog exceeds editor limits.');
         for (const item of value.items ?? []) {
           if (
-            ![QueryType.SQL, QueryType.DTQL, QueryType.TugQL].includes(
+            ![QueryType.SQL, QueryType.TugQL].includes(
               item.type as QueryType,
             )
           )
@@ -1037,9 +1037,10 @@ export class HostedBoardWorkspaceComponent {
       this.notice.set('Board saved.');
       if (this.isNew())
         await this.router.navigateByUrl(
-          projectPageHref(ref, ['board', current.board.id]) +
-            '?environment=' +
-            encodeURIComponent(this.scope.environment()),
+          withQuery(
+            projectPageHref(ref, ['board', current.board.id]),
+            'environment=' + encodeURIComponent(this.scope.environment()),
+          ),
           { replaceUrl: true },
         );
     } catch (error) {

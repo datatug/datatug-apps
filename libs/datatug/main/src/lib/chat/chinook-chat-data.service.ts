@@ -1,7 +1,7 @@
 import { Injectable } from '@angular/core';
 import {
-  executeJoinedDTQLQuery, isJoinedDTQLQuery, key, parseDTQL,
-  type DTQLSchema, type ParsedDTQLQuery,
+  executeJoinedTugQLQuery, isJoinedTugQLQuery, key, parseTugQLYaml,
+  type TugQLSchema, type ParsedTugQLQuery,
 } from '@dalgo/core';
 import { IndexedDbDatabase } from '@dalgo/indexeddb';
 import { CHINOOK_SCHEMA } from './chat.types';
@@ -80,12 +80,12 @@ export class ChinookChatDataService {
     });
   }
 
-  async query(scope: string, dtql: string): Promise<{ rows: readonly Record<string, unknown>[]; query: ParsedDTQLQuery<Record<string, unknown>> }> {
+  async query(scope: string, tugql: string): Promise<{ rows: readonly Record<string, unknown>[]; query: ParsedTugQLQuery<Record<string, unknown>> }> {
     if (scope !== this.scope) throw new Error('The project changed before this result could be queried.');
-    const query = parseDTQL(dtql, CHINOOK_SCHEMA as unknown as DTQLSchema, { maxLimit: 1000 });
+    const query = parseTugQLYaml(tugql, CHINOOK_SCHEMA as unknown as TugQLSchema, { maxLimit: 1000 });
     const database = this.requireDatabase();
-    const page = isJoinedDTQLQuery(query)
-      ? await executeJoinedDTQLQuery(database, query, {
+    const page = isJoinedTugQLQuery(query)
+      ? await executeJoinedTugQLQuery(database, query, {
         schema: CHINOOK_SCHEMA,
         resolveSource: (relation) => {
           const schema = relation.schema || 'main';

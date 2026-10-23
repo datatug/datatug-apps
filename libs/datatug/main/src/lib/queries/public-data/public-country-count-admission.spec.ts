@@ -99,7 +99,7 @@ describe('published Northwind SQLite shipping-country aggregate', () => {
     expect(await digest(encoder.encode(savedQuery))).toBe(NORTHWIND_COUNTRY_COUNT_PIN.querySha256);
   });
 
-  it('stops cancelled and oversized publication reads before DTQL execution', async () => {
+  it('stops cancelled and oversized publication reads before TugQL execution', async () => {
     const controller = new AbortController();
     controller.abort();
     let calls = 0;

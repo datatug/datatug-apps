@@ -1,7 +1,7 @@
 // Opens a hosted PostgreSQL DemoDB edition as an OVDB connection: one `GET /v1/databases/<db>-postgresql` on the
 // public OpenVaultDB server (the descriptor), through a fetch that waits out a database that is still mounting.
 // The browser holds no credentials and never learns where the data is stored: every later read is a
-// `POST …/dtql` on the same server.
+// `POST …/tugql` on the same server.
 import {
   fetchOvdbDescriptor,
   type OvdbConnection,

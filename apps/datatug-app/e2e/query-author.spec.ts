@@ -71,17 +71,17 @@ const DEMO_REPO = process.env['DATATUG_E2E_GITHUB_FAKE'];
 const JOIN_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_JOIN'] ?? DEMO_REPO;
 const GRAPH_DEMO_REPO = process.env['DATATUG_E2E_GITHUB_GRAPH'] ?? DEMO_REPO;
 const AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-invoice-author?id=chinook-invoice-author&editor=text&env=local';
 const COUNT_AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-count?id=chinook-customer-invoice-count&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-invoice-count?id=chinook-customer-invoice-count&editor=text&env=local';
 const CTE_AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-count-cte?id=chinook-customer-count-cte&editor=text&env=local';
 const CTE_GRAPH_AUTHOR_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-count-graph?id=chinook-customer-count-graph&editor=text&env=local';
 const PLAYLIST_SQL_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=dev';
-const LEGACY_DTQL_URL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices&editor=text&env=local';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-playlist-composition?id=chinook-playlist-composition&editor=text&env=dev';
+const LEGACY_TUGQL_URL =
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/customers%2Fcustomer-invoices?id=customers%2Fcustomer-invoices&editor=text&env=local';
 const LONG_HEADER_QUERY_TITLE =
   '請求書・顧客向けの長いタイトル — Invoice Author 🚀 東京';
 const LONG_HEADER_PROJECT_TITLE =
@@ -254,6 +254,7 @@ const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
       'demo-project-1',
       'queries',
       'demodb',
+      // The pinned demo project (pin demo-browser) still names TugQL bodies with the legacy extension.
       `${queryId}.query.dtql`,
     ),
     'utf8',
@@ -271,7 +272,8 @@ const savedSqlSource = (queryId: string, repository = DEMO_REPO): string =>
     'utf8',
   );
 
-const savedLegacyDtqlSource = (repository = DEMO_REPO): string =>
+// Reads the pinned demo project, which predates the TugQL cutover (`.query.dtql`); switch with the pin bump (step 9).
+const savedLegacyTugqlSource = (repository = DEMO_REPO): string =>
   readFileSync(join(repository ?? '', 'demo-project-1', 'queries', 'customers', 'customer-invoices.query.dtql'), 'utf8');
 
 const installLongHeaderMetadataVariant = async (page: Page): Promise<void> => {
@@ -1335,8 +1337,8 @@ test('native SQL keeps one reachable workspace row and a read-only TugQL represe
 });
 
 // query-workspace#ac:shared-text-workspace — the saved YAML form remains the authoritative editable source.
-test('legacy DTQL YAML opens in its native source pane through a cold link and refresh', async ({ page }) => {
-  const source = savedLegacyDtqlSource();
+test('legacy TugQL YAML opens in its native source pane through a cold link and refresh', async ({ page }) => {
+  const source = savedLegacyTugqlSource();
   const writes: string[] = [];
   let workersStarted = 0;
   page.on('worker', () => workersStarted++);
@@ -1344,12 +1346,12 @@ test('legacy DTQL YAML opens in its native source pane through a cold link and r
     if (/^https:\/\/api\.github\.com\//u.test(request.url()) && !['GET', 'OPTIONS'].includes(request.method()))
       writes.push(request.url());
   });
-  await page.goto(LEGACY_DTQL_URL);
+  await page.goto(LEGACY_TUGQL_URL);
   const workspace = page.getByTestId('unified-text-workspace');
   const tabs = workspace.getByTestId('author-view-tabs');
-  const sourceTab = tabs.locator('ion-segment-button[value="dtql"]');
+  const sourceTab = tabs.locator('ion-segment-button[value="tugql-yaml"]');
   const parametersTab = tabs.locator('ion-segment-button[value="parameters"]');
-  // DTQL shares the SQL source's code component.
+  // TugQL shares the SQL source's code component.
   const editor = workspace.getByTestId('query-body-text').locator('.cm-content');
   // A required CustomerId opens the workspace on Parameters, so Run is never a dead end.
   await expect(parametersTab).toHaveClass(/segment-button-checked/u, { timeout: 20_000 });
@@ -1365,7 +1367,7 @@ test('legacy DTQL YAML opens in its native source pane through a cold link and r
   await workspace.getByTestId('workspace-more-tab').click();
   await page.getByTestId('workspace-more-tugql').click();
   await expect(page.locator('ion-popover[data-testid="workspace-more-menu"]')).toBeHidden();
-  await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/DTQL source uses the legacy representation.*TugQL import is unavailable/iu);
+  await expect(workspace.getByTestId('workspace-derived-tugql')).toContainText(/written as TugQL YAML.*conversion to the TugQL text form is unavailable/iu);
   await sourceTab.click();
   await pasteCode(page, editor, `${source}limit: 2\n`);
   await expect(sourceTab).toHaveClass(/segment-button-checked/u);
@@ -2342,7 +2344,7 @@ test('Invoice Customer join makes missing ON reviewable and opens an explicit ty
 }) => {
   test.setTimeout(60_000);
   await page.goto(
-    '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/query/chinook-customer-invoice-join?id=chinook-customer-invoice-join&editor=text&env=local',
+    '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/query/chinook-customer-invoice-join?id=chinook-customer-invoice-join&editor=text&env=local',
   );
   const author = page.getByTestId('tugql-author');
   await expect(author).toBeVisible({ timeout: 20_000 });

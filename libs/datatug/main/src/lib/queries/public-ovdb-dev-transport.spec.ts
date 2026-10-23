@@ -5,7 +5,7 @@ import {
 } from './public-ovdb-dev-transport';
 
 const origin = 'http://127.0.0.1:4330';
-const url = 'https://cloud.openvaultdb.com/v1/dtql';
+const url = 'https://cloud.openvaultdb.com/v1/tugql';
 const post = {
   method: 'POST',
   headers: { 'Content-Type': 'application/yaml' },
@@ -62,7 +62,7 @@ describe('application-owned public OVDB development transport', () => {
         'Content-Type': 'application/yaml',
       },
     });
-    expect(forwarded.url).toBe(`${origin}/__datatug_public_ovdb/cloud/v1/dtql`);
+    expect(forwarded.url).toBe(`${origin}/__datatug_public_ovdb/cloud/v1/tugql`);
     expect(await forwarded.clone().text()).toBe('from: overridden');
     expect(forwarded.headers.get('Authorization')).toBeNull();
     expect(forwarded.headers.get('Accept')).toBe('application/json');
@@ -120,7 +120,7 @@ describe('application-owned public OVDB development transport', () => {
       origin,
     );
     for (const [target, init] of [
-      ['https://evil.test/v1/dtql', post],
+      ['https://evil.test/v1/tugql', post],
       [url + '?target=evil', post],
       ['https://cloud.openvaultdb.com/admin', post],
       [url, { method: 'DELETE' }],

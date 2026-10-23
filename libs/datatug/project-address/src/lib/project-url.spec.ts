@@ -62,69 +62,135 @@ describe('parseProjectUrl / projectUrl: the table of design 3.3', () => {
     ],
     [
       "today's demo project in its old repo",
-      '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
+      '/project/github.com/datatug/datatug-demo-projects/demo-project-1',
       'datatug-demo-projects@datatug@demo-project-1',
       '',
     ],
     [
       'the same with a page',
-      '/project/github.com/o/r/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/o/r/demo-project-1/-/chat',
       'r@o@demo-project-1',
       '/chat',
     ],
     [
       'a directory named like a page',
-      '/project/github.com/o/r/tree/HEAD/chat/-/queries',
+      '/project/github.com/o/r/chat/-/queries',
       'r@o@chat',
       '/queries',
     ],
     [
       'a nested directory',
-      '/project/github.com/o/r/tree/HEAD/a/b/c',
+      '/project/github.com/o/r/a/b/c',
       'r@o@a/b/c',
       '',
     ],
     [
       'a tag at the root',
-      '/project/github.com/o/r/tree/v1.0.0',
+      '/project/github.com/o/r?ref=v1.0.0',
       'r@o@@v1.0.0',
       '',
     ],
     [
       'a tag, with a page',
-      '/project/github.com/datatug/chinook-demo/tree/v1.0.0/-/chat',
+      '/project/github.com/datatug/chinook-demo/chat?ref=v1.0.0',
       'chinook-demo@datatug@@v1.0.0',
       '/chat',
     ],
     [
       'a commit with a directory',
-      `/project/github.com/o/r/tree/${SHA}/dir`,
+      `/project/github.com/o/r/dir?ref=${SHA}`,
       `r@o@dir@${SHA}`,
       '',
     ],
     [
       'the default folder "datatug"',
-      '/project/github.com/o/r/tree/HEAD/datatug',
+      '/project/github.com/o/r/datatug',
       'r@o',
       '',
     ],
     [
       'the default folder, with a page',
-      '/project/github.com/o/r/tree/HEAD/datatug/-/queries',
+      '/project/github.com/o/r/datatug/-/queries',
       'r@o',
       '/queries',
     ],
     [
       'the folder "datatug" on a tag',
-      '/project/github.com/o/r/tree/v2/datatug',
+      '/project/github.com/o/r/datatug?ref=v2',
       'r@o@datatug@v2',
       '',
     ],
     [
       'a directory with a space',
-      '/project/github.com/o/r/tree/HEAD/my%20dir',
+      '/project/github.com/o/r/my%20dir',
       'r@o@my dir',
       '',
+    ],
+    [
+      'a branch with a slash, written plainly in the query',
+      '/project/github.com/o/r/demo-project-1?ref=feature/x',
+      'r@o@demo-project-1@feature/x',
+      '',
+    ],
+    [
+      'a branch with a slash, with a page',
+      '/project/github.com/o/r/demo-project-1/-/queries?ref=feature/x',
+      'r@o@demo-project-1@feature/x',
+      '/queries',
+    ],
+    [
+      'a branch at the root, with a page',
+      '/project/github.com/o/r/queries/q1?ref=main',
+      'r@o@@main',
+      '/queries/q1',
+    ],
+    [
+      'a ref with a character that is percent-encoded',
+      '/project/github.com/o/r/d?ref=rel%201',
+      'r@o@d@rel 1',
+      '',
+    ],
+    [
+      'a directory named like a page, with no page',
+      '/project/github.com/o/r/chat/-',
+      'r@o@chat',
+      '',
+    ],
+    [
+      'a directory named tree (the legacy word) keeps the long legacy form',
+      '/project/github.com/o/r/tree/HEAD/tree/x',
+      'r@o@tree/x',
+      '',
+    ],
+    [
+      'a directory named tree on a branch',
+      '/project/github.com/o/r/tree/v1/tree',
+      'r@o@tree@v1',
+      '',
+    ],
+    [
+      'the default branch, a nested folder and a page',
+      '/project/github.com/o/r/a/b/-/queries/x',
+      'r@o@a/b',
+      '/queries/x',
+    ],
+    [
+      'a commit at the root',
+      `/project/github.com/o/r?ref=${SHA}`,
+      `r@o@@${SHA}`,
+      '',
+    ],
+    [
+      'a page of the root project that is not a page name',
+      '/project/github.com/o/r/-/notes',
+      'r@o@',
+      '/notes',
+    ],
+    [
+      'a page of the root project that holds a -',
+      '/project/github.com/o/r/-/servers/db/sqlite3/-',
+      'r@o@',
+      '/servers/db/sqlite3/-',
     ],
   ])('%s: %s', (_name, path, projectId, rest) => {
     expect(parsed(path)).toMatchObject({
@@ -202,26 +268,104 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
     [
       'a link to the project file',
       '/project/github.com/o/r/blob/v1/dir/datatug-project.json',
-      '/project/github.com/o/r/tree/v1/dir',
+      '/project/github.com/o/r/dir?ref=v1',
       'r@o@dir@v1',
     ],
     [
       'a link to the project file, at the root',
       '/project/github.com/o/r/blob/v1/datatug-project.json',
-      '/project/github.com/o/r/tree/v1',
+      '/project/github.com/o/r?ref=v1',
       'r@o@@v1',
     ],
     [
       'a link to the project file on HEAD',
       '/project/github.com/o/r/blob/HEAD/dir/datatug-project.json',
-      '/project/github.com/o/r/tree/HEAD/dir',
+      '/project/github.com/o/r/dir',
       'r@o@dir',
     ],
     [
       'a nested link to the project file',
       '/project/github.com/o/r/blob/v1/a/b/datatug-project.json',
-      '/project/github.com/o/r/tree/v1/a/b',
+      '/project/github.com/o/r/a/b?ref=v1',
       'r@o@a/b@v1',
+    ],
+    [
+      'legacy tree/HEAD with a folder (the old demo address)',
+      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1',
+      'datatug-demo-project@datatug@demo-project-1',
+    ],
+    [
+      'legacy tree/HEAD with a folder and a page',
+      '/project/github.com/o/r/tree/HEAD/demo-project-1/-/board/showcase',
+      '/project/github.com/o/r/demo-project-1/-/board/showcase',
+      'r@o@demo-project-1',
+    ],
+    [
+      'legacy tree/HEAD with a folder named like a page',
+      '/project/github.com/o/r/tree/HEAD/chat',
+      '/project/github.com/o/r/chat/-',
+      'r@o@chat',
+    ],
+    [
+      'legacy tree/<branch>',
+      '/project/github.com/o/r/tree/main/demo-project-1',
+      '/project/github.com/o/r/demo-project-1?ref=main',
+      'r@o@demo-project-1@main',
+    ],
+    [
+      'legacy tree/<sha> with a page',
+      `/project/github.com/o/r/tree/${SHA}/d/-/queries`,
+      `/project/github.com/o/r/d/-/queries?ref=${SHA}`,
+      `r@o@d@${SHA}`,
+    ],
+    [
+      'legacy tree/<tag> at the root with a page',
+      '/project/github.com/datatug/chinook-demo/tree/v1.0.0/-/chat',
+      '/project/github.com/datatug/chinook-demo/chat?ref=v1.0.0',
+      'chinook-demo@datatug@@v1.0.0',
+    ],
+    [
+      'an explicit ?ref=HEAD',
+      '/project/github.com/o/r/demo-project-1?ref=HEAD',
+      '/project/github.com/o/r/demo-project-1',
+      'r@o@demo-project-1',
+    ],
+    [
+      'an explicit ?ref=HEAD at the root, with a page',
+      '/project/github.com/o/r/chat?ref=HEAD',
+      '/project/github.com/o/r/chat',
+      'r@o@',
+    ],
+    [
+      'tree/HEAD with a page and a ref-less query (the page keeps its own parameters)',
+      '/project/github.com/o/r/tree/HEAD/d/-/quick-search?q=x',
+      '/project/github.com/o/r/d/-/quick-search',
+      'r@o@d',
+    ],
+    [
+      'legacy blob/HEAD (default branch)',
+      '/project/github.com/o/r/blob/HEAD/datatug-project.json',
+      '/project/github.com/o/r',
+      'r@o@',
+    ],
+    [
+      'a root page after a needless -',
+      '/project/github.com/o/r/-/chat',
+      '/project/github.com/o/r/chat',
+      'r@o@',
+    ],
+    [
+      'a bare - at the root',
+      '/project/github.com/o/r/-',
+      '/project/github.com/o/r',
+      'r@o@',
+    ],
+    [
+      'a mixed-case legacy word',
+      '/project/github.com/o/r/Tree/v1/d',
+      '/project/github.com/o/r/d?ref=v1',
+      'r@o@d@v1',
     ],
   ])('%s is rewritten', (_name, path, canonicalPath, projectId) => {
     const result = parsed(path);
@@ -238,7 +382,7 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
 
   it('reports a named ref, so the caller can ask GitHub whether it is the default branch', () => {
     expect(
-      parsed('/project/github.com/o/r/tree/main/demo-project-1'),
+      parsed('/project/github.com/o/r/demo-project-1?ref=main'),
     ).toMatchObject({
       projectId: 'r@o@demo-project-1@main',
       github: { owner: 'o', repo: 'r', folder: 'demo-project-1', ref: 'main' },
@@ -269,15 +413,92 @@ describe('parseProjectUrl: one canonical address per project (design 3.4a)', () 
     expect(parsed('/store/localhost:8989/project/p1').github).toBeUndefined();
   });
 
-  it('reads a branch with a slash as ref and directory (not supported: no project is found there)', () => {
+  it('reads a legacy branch with a slash as ref and directory (the legacy shape cannot hold one; ?ref=feature/x can)', () => {
     expect(parsed('/project/github.com/o/r/tree/feature/x')).toMatchObject({
       projectId: 'r@o@x@feature',
       github: { owner: 'o', repo: 'r', folder: 'x', ref: 'feature' },
     });
+    expect(parsed('/project/github.com/o/r?ref=feature/x')).toMatchObject({
+      projectId: 'r@o@@feature/x',
+      github: { owner: 'o', repo: 'r', folder: '', ref: 'feature/x' },
+      isCanonical: true,
+    });
+    expect(parsed('/project/github.com/o/r?ref=feature%2Fx')).toMatchObject({
+      projectId: 'r@o@@feature/x',
+      canonicalPath: '/project/github.com/o/r?ref=feature/x',
+      isCanonical: true,
+    });
+  });
+
+  it('reads ref beside the page\'s own query parameters, and only ref', () => {
+    expect(
+      parsed('/project/github.com/o/r/d/-/quick-search?q=Customer&ref=v1&x=1#f'),
+    ).toMatchObject({
+      projectId: 'r@o@d@v1',
+      rest: '/quick-search',
+      canonicalPath: '/project/github.com/o/r/d/-/quick-search?ref=v1',
+      isCanonical: true,
+    });
+    expect(
+      parsed('/project/github.com/o/r/d/-/quick-search?q=Customer'),
+    ).toMatchObject({ projectId: 'r@o@d', isCanonical: true });
+    expect(
+      parsed('/project/github.com/o/r/d?ref=HEAD&q=x'),
+    ).toMatchObject({ projectId: 'r@o@d', canonicalPath: '/project/github.com/o/r/d', isCanonical: false });
+  });
+
+  it('keeps URL parsing apart from the id format: a ref never adds a part to the id', () => {
+    // The id `repo@org@folder@ref` is built from parsed parts, never from the address text.
+    for (const path of [
+      '/project/github.com/o/r?ref=v1',
+      '/project/github.com/o/r/d?ref=v1',
+      '/project/github.com/o/r/a/b/-/queries?ref=feature/x',
+    ]) {
+      const result = parsed(path);
+      const reading = readGithubProjectId(result.projectId);
+      expect(reading.ok).toBe(true);
+      expect(result.projectId.split('@')).toHaveLength(4);
+      expect(reading.ok && reading.id.repo).toBe('r');
+      expect(reading.ok && reading.id.org).toBe('o');
+    }
+    // An `@` is never read as an id separator: not in the repository, a folder or a ref.
+    expect(parseProjectUrl('/project/github.com/o/r@v1')).toEqual({
+      ok: false,
+      reason: 'invalid-owner-or-repo',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r/d?ref=v1@x')).toEqual({
+      ok: false,
+      reason: 'at-sign-not-supported',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r/a@b')).toEqual({
+      ok: false,
+      reason: 'at-sign-not-supported',
+    });
+    expect(parseProjectUrl('/project/github.com/o@x/r')).toEqual({
+      ok: false,
+      reason: 'invalid-owner-or-repo',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r?ref=')).toEqual({
+      ok: false,
+      reason: 'missing-ref',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r?ref=a&ref=b')).toEqual({
+      ok: false,
+      reason: 'invalid-path-segment',
+    });
+    expect(parseProjectUrl('/project/github.com/o/r/tree/v1/d?ref=v2')).toEqual({
+      ok: false,
+      reason: 'invalid-path-segment',
+    });
+    // A ref spelled with a doubled encoding is not a ref.
+    expect(parseProjectUrl('/project/github.com/o/r?ref=feature%252Fx')).toEqual({
+      ok: false,
+      reason: 'invalid-path-segment',
+    });
   });
 
   it('puts everything after the first "-" in the page part', () => {
-    expect(parsed('/project/github.com/o/r/tree/HEAD/a/-/b/-/c')).toMatchObject(
+    expect(parsed('/project/github.com/o/r/a/-/b/-/c')).toMatchObject(
       {
         projectId: 'r@o@a',
         rest: '/b/-/c',
@@ -329,11 +550,6 @@ describe('parseProjectUrl: inputs that are not supported', () => {
       'a directory segment named - in a link to the project file',
       '/project/github.com/o/r/blob/main/-/datatug-project.json',
       'dash-directory-not-supported',
-    ],
-    [
-      'a page named - in the short form',
-      '/project/github.com/o/r/-/chat',
-      'invalid-path-segment',
     ],
     [
       'an encoded slash in the owner',
@@ -406,7 +622,10 @@ describe('parseProjectUrl: inputs that are not supported', () => {
       'invalid-path-segment',
     ],
     ['a dot-dot repo', '/project/github.com/o/..', 'invalid-owner-or-repo'],
-    ['an @ in the repo', '/project/github.com/o/r@x', 'invalid-owner-or-repo'],
+    ['an @ in the owner', '/project/github.com/o@x/r', 'invalid-owner-or-repo'],
+    ['an @ in the repo', '/project/github.com/o/r@v1', 'invalid-owner-or-repo'],
+    ['an empty ref', '/project/github.com/o/r/d?ref=', 'missing-ref'],
+    ['a ref with a dot segment', '/project/github.com/o/r?ref=a/../b', 'invalid-path-segment'],
     [
       'an underscore in the owner',
       '/project/github.com/o_x/r',
@@ -577,19 +796,19 @@ describe('parseProjectUrl: the old shape', () => {
       '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1',
       'datatug-demo-projects@datatug@demo-project-1',
       '',
-      '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1',
+      '/project/github.com/datatug/datatug-demo-projects/demo-project-1',
     ],
     [
       '/store/github.com/project/datatug-demo-projects@datatug@demo-project-1/queries/q',
       'datatug-demo-projects@datatug@demo-project-1',
       '/queries/q',
-      '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/queries/q',
+      '/project/github.com/datatug/datatug-demo-projects/demo-project-1/-/queries/q',
     ],
     [
       '/store/github.com/project/datatug-demo-projects%40datatug%40demo-project-1/chat',
       'datatug-demo-projects@datatug@demo-project-1',
       '/chat',
-      '/project/github.com/datatug/datatug-demo-projects/tree/HEAD/demo-project-1/-/chat',
+      '/project/github.com/datatug/datatug-demo-projects/demo-project-1/-/chat',
     ],
     [
       '/store/github.com/project/r@o@/chat',
@@ -601,25 +820,25 @@ describe('parseProjectUrl: the old shape', () => {
       '/store/github.com/project/r@o/chat',
       'r@o',
       '/chat',
-      '/project/github.com/o/r/tree/HEAD/datatug/-/chat',
+      '/project/github.com/o/r/datatug/-/chat',
     ],
     [
       '/store/github/project/r@o',
       'r@o',
       '',
-      '/project/github.com/o/r/tree/HEAD/datatug',
+      '/project/github.com/o/r/datatug',
     ],
     [
       '/store/github.com/project/R@O@dir/',
       'r@o@dir',
       '',
-      '/project/github.com/o/r/tree/HEAD/dir',
+      '/project/github.com/o/r/dir',
     ],
     [
       '/store/github.com/project/r@o@@v1.0.0',
       'r@o@@v1.0.0',
       '',
-      '/project/github.com/o/r/tree/v1.0.0',
+      '/project/github.com/o/r?ref=v1.0.0',
     ],
   ])(
     '%s resolves to the same project as its short address',
@@ -674,7 +893,7 @@ describe('projectUrl', () => {
     [
       { storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' },
       undefined,
-      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1',
     ],
     [
       { storeId: 'github.com', projectId: 'chinook-demo@datatug@' },
@@ -694,32 +913,42 @@ describe('projectUrl', () => {
     [
       { storeId: 'github', projectId: 'r@o@d' },
       'queries/q',
-      '/project/github.com/o/r/tree/HEAD/d/-/queries/q',
+      '/project/github.com/o/r/d/-/queries/q',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o' },
       undefined,
-      '/project/github.com/o/r/tree/HEAD/datatug',
+      '/project/github.com/o/r/datatug',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@datatug' },
       'chat',
-      '/project/github.com/o/r/tree/HEAD/datatug/-/chat',
+      '/project/github.com/o/r/datatug/-/chat',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@@v1.0.0' },
       'chat',
-      '/project/github.com/o/r/tree/v1.0.0/-/chat',
+      '/project/github.com/o/r/chat?ref=v1.0.0',
+    ],
+    [
+      { storeId: 'github.com', projectId: 'r@o@d@feature/x' },
+      'queries',
+      '/project/github.com/o/r/d/-/queries?ref=feature/x',
+    ],
+    [
+      { storeId: 'github.com', projectId: 'r@o@@rel 1' },
+      undefined,
+      '/project/github.com/o/r?ref=rel%201',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@d@HEAD' },
       undefined,
-      '/project/github.com/o/r/tree/HEAD/d',
+      '/project/github.com/o/r/d',
     ],
     [
       { storeId: 'github.com', projectId: 'r@o@my dir' },
       undefined,
-      '/project/github.com/o/r/tree/HEAD/my%20dir',
+      '/project/github.com/o/r/my%20dir',
     ],
     // Not GitHub: unchanged from what the app builds today (`/store/<id>/project/<id>/<page>`).
     [
@@ -753,7 +982,11 @@ describe('projectUrl', () => {
       'r@o@a/b',
       'r@o@@v1',
       `r@o@d@${SHA}`,
-    ]) {
+      'r@o@d@feature/x',
+      'r@o@chat',
+      'r@o@tree/x',
+      'r@o@@HEAD',
+    ].map((id) => (id === 'r@o@@HEAD' ? 'r@o@' : id))) {
       for (const page of [undefined, 'chat', 'queries/x/y']) {
         const url = projectUrl({ storeId: 'github.com', projectId }, page);
         expect(parsed(url)).toMatchObject({
@@ -781,8 +1014,9 @@ describe('projectUrl writes the page as plain text, percent-encoded (issue #180)
     ['%2e%2e/x', '/%252e%252e/x'], // the text `%2e%2e`, which is not `..`
     ["it's", "/it's"],
   ])('page %j is written as %s, in both address shapes', (page, written) => {
-    const short = projectUrl({ storeId: 'github.com', projectId: 'r@o@' }, page);
-    expect(short).toBe('/project/github.com/o/r' + written);
+    // A folder project: its page always follows `/-` (a root page that is not a page name does too).
+    const short = projectUrl({ storeId: 'github.com', projectId: 'r@o@d' }, page);
+    expect(short).toBe('/project/github.com/o/r/d/-' + written);
     const legacy = projectUrl({ storeId: 'localhost:8989', projectId: 'p' }, page);
     expect(legacy).toBe('/store/localhost:8989/project/p' + written);
     for (const url of [short, legacy]) {
@@ -806,8 +1040,8 @@ describe('projectUrl writes the page as plain text, percent-encoded (issue #180)
 describe('DEMO_PROJECT_REF (G-A1c)', () => {
   it('is the demo project at its short address, and the trusted project', () => {
     expect(DEMO_PROJECT_REF).toEqual({ storeId: 'github.com', projectId: 'datatug-demo-project@datatug@demo-project-1' });
-    expect(projectUrl(DEMO_PROJECT_REF)).toBe('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1');
-    expect(projectUrl(DEMO_PROJECT_REF, 'chat')).toBe('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat');
+    expect(projectUrl(DEMO_PROJECT_REF)).toBe('/project/github.com/datatug/datatug-demo-project/demo-project-1');
+    expect(projectUrl(DEMO_PROJECT_REF, 'chat')).toBe('/project/github.com/datatug/datatug-demo-project/demo-project-1/-/chat');
     expect(isTrustedProjectAddress(DEMO_PROJECT_REF)).toBe(true);
   });
 });
@@ -826,8 +1060,8 @@ describe('projectUrl writes a page given as segments (G-A1c)', () => {
     [['query', '50%'], '/query/50%25'],
     [['servers', 'db', 'sqlite3', '-'], '/servers/db/sqlite3/-'],
   ])('segments %j are written as %j, in both address shapes', (segments, written) => {
-    const short = projectUrl(github, segments);
-    expect(short).toBe('/project/github.com/o/r' + written);
+    const short = projectUrl({ storeId: 'github.com', projectId: 'r@o@d' }, segments);
+    expect(short).toBe('/project/github.com/o/r/d' + (written ? '/-' + written : ''));
     const legacy = projectUrl(agent, segments);
     expect(legacy).toBe('/store/localhost:8989/project/p' + written);
     for (const url of [short, legacy]) {
@@ -865,7 +1099,8 @@ describe('projectUrl refuses what it cannot write exactly (design review S2)', (
     ['github.com', 'r@o@-', undefined],
     ['github.com', 'r@o@..', undefined],
     ['github.com', 'r@o@.', undefined],
-    ['github.com', 'r@o@d@a/b', undefined],
+    ['github.com', 'r@o@d@a//b', undefined],
+    ['github.com', 'r@o@d@a/../b', undefined],
     ['github.com', 'r@o@d@..', undefined],
     ['github.com', 'r@o@a?b', undefined],
     ['github.com', 'r@o_x@d', undefined],
@@ -911,30 +1146,41 @@ describe('projectUrl refuses what it cannot write exactly (design review S2)', (
     }
   });
 
-  it('spells out a tree address for a page that would read as part of the locator', () => {
-    // Page "tree/x" on a root project must not become `…/o/r/tree/x` (that is ref "x").
+  it('writes a page that would read as part of the locator after /-', () => {
+    // Page "tree/x" on a root project must not become `…/o/r/tree/x` (the legacy shape: ref "x").
     expect(
       projectUrl({ storeId: 'github.com', projectId: 'r@o@' }, 'tree/x'),
-    ).toBe('/project/github.com/o/r/tree/HEAD/-/tree/x');
+    ).toBe('/project/github.com/o/r/-/tree/x');
     expect(
       projectUrl({ storeId: 'github.com', projectId: 'r@o@' }, 'blob/x'),
-    ).toBe('/project/github.com/o/r/tree/HEAD/-/blob/x');
+    ).toBe('/project/github.com/o/r/-/blob/x');
     expect(projectUrl({ storeId: 'github.com', projectId: 'r@o@' }, '-')).toBe(
-      '/project/github.com/o/r/tree/HEAD/-/-',
+      '/project/github.com/o/r/-/-',
     );
-    expect(parsed('/project/github.com/o/r/tree/HEAD/-/tree/x')).toMatchObject({
+    expect(parsed('/project/github.com/o/r/-/tree/x')).toMatchObject({
       projectId: 'r@o@',
       rest: '/tree/x',
       isCanonical: true,
     });
-    // …and a root address whose page is "tree/x" is NOT the root project: it is ref x.
+    // …and a root address whose page is "tree/x" is NOT the root project: it is the legacy ref x.
     expect(parsed('/project/github.com/o/r/tree/x')).toMatchObject({
       projectId: 'r@o@@x',
       rest: '',
+      isCanonical: false,
+      canonicalPath: '/project/github.com/o/r?ref=x',
     });
+    // A folder that starts with the legacy word keeps the long legacy form, which is then canonical.
+    expect(parsed('/project/github.com/o/r/tree/v1/tree/x')).toMatchObject({
+      projectId: 'r@o@tree/x@v1',
+      isCanonical: true,
+    });
+    expect(projectUrl({ storeId: 'github.com', projectId: 'r@o@tree/x' })).toBe(
+      '/project/github.com/o/r/tree/HEAD/tree/x',
+    );
+    // …and cannot hold a ref with a slash: no address.
     expect(
-      parsed('/project/github.com/o/r/tree/HEAD/-/tree/x').canonicalPath,
-    ).toBe('/project/github.com/o/r/tree/HEAD/-/tree/x');
+      tryProjectUrl({ storeId: 'github.com', projectId: 'r@o@tree/x@feature/x' }),
+    ).toMatchObject({ ok: false });
   });
 
   // The property: for every accepted {store, id, page}, parseProjectUrl(projectUrl(x)) is x (the id in its

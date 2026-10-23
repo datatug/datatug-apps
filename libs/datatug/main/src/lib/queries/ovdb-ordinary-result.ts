@@ -1,7 +1,7 @@
 import { JsonNumberToken, strictJsonNumbers } from './public-data/strict-json';
 import type { OvdbStreamRecord } from './ovdb-json-record-stream';
 
-/** The released OVDB /dtql endpoint returns a complete JSON envelope without
+/** The released OVDB /tugql endpoint returns a complete JSON envelope without
  * the newer stream footer. Buffer only its bounded response and validate the
  * entire envelope before exposing any rows to the caller. */
 export interface OvdbOrdinaryResult {

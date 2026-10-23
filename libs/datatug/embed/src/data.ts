@@ -1,3 +1,4 @@
+import { capabilityListOffersTugql, tugqlEndpoint, tugqlQueryFormat, withTugqlCapabilities } from './legacy-dtql-ovdb-metadata';
 export type Row = Record<string, unknown>;
 export interface TableData {
   rows: Row[];
@@ -116,20 +117,22 @@ export async function loadConnection(connection: string, query: string, paramete
   if (!database?.apiUrl) throw new Error('OVDB discovery does not list this database connection URL.');
   const apiUrl = safeHttpUrl(database.apiUrl, discoveryUrl.href);
   const metadataResponse = await checked(await fetch(apiUrl, { signal, credentials: 'same-origin', headers: { Accept: 'application/json' } }), 'OVDB database metadata');
-  const metadata = await metadataResponse.json() as { capabilities?: unknown; endpoints?: { dtql?: string }; queryFormat?: string };
+  const metadata = await metadataResponse.json() as { capabilities?: unknown; endpoints?: { tugql?: string; dtql?: string }; queryFormat?: string };
   const capabilities = metadata.capabilities ?? database.capabilities;
-  const canQuery = Array.isArray(capabilities) ? capabilities.includes('dtql') : object(capabilities) && capabilities['dtql'] === true;
-  if (!canQuery || !metadata.endpoints?.dtql) throw new Error('This OVDB database does not advertise DTQL queries.');
-  const endpoint = safeHttpUrl(metadata.endpoints.dtql, apiUrl.href);
+  const canQuery = Array.isArray(capabilities) ? capabilityListOffersTugql(capabilities) : object(capabilities) && withTugqlCapabilities(capabilities)['tugql'] === true;
+  const advertised = tugqlEndpoint(metadata.endpoints);
+  if (!canQuery || !advertised) throw new Error('This OVDB database does not advertise TugQL queries.');
+  const endpoint = safeHttpUrl(advertised, apiUrl.href);
+  const queryFormat = tugqlQueryFormat(metadata.queryFormat);
   let body: string, contentType: string;
-  if (metadata.queryFormat === 'dtql-yaml+json') {
+  if (queryFormat === 'tugql-yaml+json') {
     body = JSON.stringify({ query, parameters });
     contentType = 'application/json';
-  } else if (metadata.queryFormat === 'dtql-yaml') {
-    if (Object.keys(parameters).length) throw new Error('This OVDB endpoint does not support bound DTQL parameters.');
+  } else if (queryFormat === 'tugql-yaml') {
+    if (Object.keys(parameters).length) throw new Error('This OVDB endpoint does not support bound TugQL parameters.');
     body = query;
     contentType = 'application/yaml';
-  } else throw new Error(`Unsupported OVDB query format: ${metadata.queryFormat ?? 'missing'}.`);
-  const response = await checked(await fetch(endpoint, { method: 'POST', signal, credentials: 'same-origin', headers: { 'Content-Type': contentType, Accept: 'application/json' }, body }), 'DTQL query');
+  } else throw new Error(`Unsupported OVDB query format: ${queryFormat ?? 'missing'}.`);
+  const response = await checked(await fetch(endpoint, { method: 'POST', signal, credentials: 'same-origin', headers: { 'Content-Type': contentType, Accept: 'application/json' }, body }), 'TugQL query');
   return tableFromJson(await response.json());
 }

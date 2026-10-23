@@ -12,12 +12,12 @@ test('the advertised GitHub Chinook demo seeds all tables, attaches context and 
   await page.route('https://api.deepseek.com/chat/completions', async (route) => {
     const body = route.request().postDataJSON() as { messages: { content: string }[] };
     expect(body.messages[0].content).toContain('main.Customer');
-    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ dtql: {
+    await route.fulfill({ json: { choices: [{ message: { content: JSON.stringify({ tugql: {
       from: { schema: 'main', name: 'Customer' }, orderBy: [{ field: 'CustomerId' }], limit: 3,
     } }) } }] } });
   });
 
-  await page.goto('/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/chat');
+  await page.goto('/project/github.com/datatug/datatug-demo-project/demo-project-1/-/chat');
   await page.getByLabel('Ask about project data').fill('Show the first three customers');
   await expect(page.getByRole('button', { name: 'Send' })).toBeEnabled({ timeout: 45_000 });
   const counts = await page.evaluate(async () => {

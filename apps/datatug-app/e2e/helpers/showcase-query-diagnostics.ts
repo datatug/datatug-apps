@@ -6,14 +6,14 @@ const queryEndpoint = (raw: string): string | undefined => {
     if (url.username || url.password || url.search || url.hash) return;
     if (
       url.origin === 'https://ovdb.demodb.dev' &&
-      url.pathname === '/v1/databases/northwind/dtql'
+      url.pathname === '/v1/databases/northwind/tugql'
     )
-      return 'northwind-dtql';
+      return 'northwind-tugql';
     if (
       url.origin === 'https://cloud.openvaultdb.com' &&
-      url.pathname === '/v1/dtql'
+      url.pathname === '/v1/tugql'
     )
-      return 'comparison-dtql';
+      return 'comparison-tugql';
   } catch {
     /* Unknown addresses are never retained. */
   }
@@ -91,11 +91,11 @@ export function installFetchDiagnostics(): void {
         !url.hash &&
         method === 'POST'
           ? url.origin === 'https://ovdb.demodb.dev' &&
-            url.pathname === '/v1/databases/northwind/dtql'
-            ? 'northwind-dtql'
+            url.pathname === '/v1/databases/northwind/tugql'
+            ? 'northwind-tugql'
             : url.origin === 'https://cloud.openvaultdb.com' &&
-                url.pathname === '/v1/dtql'
-              ? 'comparison-dtql'
+                url.pathname === '/v1/tugql'
+              ? 'comparison-tugql'
               : undefined
           : undefined;
       if (!endpoint || rows.length >= 12) return operation;

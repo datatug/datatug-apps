@@ -230,7 +230,7 @@ describe('Common API query editor journey', () => {
     h.denied.next(ref);
     expect(h.service.getQueryState('q')).toBeUndefined();
   });
-  it.each([QueryType.SQL, QueryType.DTQL] as const)(
+  it.each([QueryType.SQL, QueryType.TugQL] as const)(
     'opens and conditionally saves a nested plain %s query with a leaf definition ID',
     async (type) => {
       const h = harness();

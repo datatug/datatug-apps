@@ -7,10 +7,12 @@ export const countryFixture = (name: string) =>
     'utf8',
   );
 export const countryBoardURL =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/board/showcase';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/board/showcase';
 export const countryOrders = JSON.parse(
   countryFixture('northwind-orders-records.json'),
 ) as Record<string, unknown>[];
+// Reads of `demo-project-1/queries/**/*.query.dtql` below follow the pinned demo-project checkout,
+// which predates the TugQL cutover; switch them to `.query.tugql.yaml` with the demo pin bump (step 9).
 const customerCounts = JSON.parse(countryFixture('customer-country-source-counts.json')) as Record<string, { rows: { country: string; customers: number }[] }>;
 const snapshot = JSON.parse(countryFixture('ovdb-inspector-snapshot.json'));
 const publication = countryFixture('northwind-orders-rights.json');
@@ -111,7 +113,7 @@ export async function installCountryComparisonFixture(
       ) ||
         (url.origin === new URL(baseURL).origin &&
           url.pathname.startsWith('/__datatug_public_ovdb/'))) &&
-      /^\/v1\/(?:databases\/[^/]+\/)?dtql$/.test(queryPath);
+      /^\/v1\/(?:databases\/[^/]+\/)?tugql$/.test(queryPath);
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !queryRead)
       mutations.push(`${method} ${url.href}`);
   });
@@ -133,7 +135,7 @@ export async function installCountryComparisonFixture(
         '/__datatug_public_ovdb/cloud',
         '',
       );
-      const customerDatabase = path === '/v1/databases/northwind/dtql' ? 'northwind' : path === '/v1/databases/chinook/dtql' ? 'chinook' : undefined;
+      const customerDatabase = path === '/v1/databases/northwind/tugql' ? 'northwind' : path === '/v1/databases/chinook/tugql' ? 'chinook' : undefined;
       if (customerDatabase && route.request().method() === 'POST') {
         const body = route.request().postData() ?? '';
         const query = readFileSync(join(source, `demo-project-1/queries/demodb/${customerDatabase}-customer-country-counts-server.query.dtql`), 'utf8');
@@ -148,7 +150,7 @@ export async function installCountryComparisonFixture(
         // Pinned SQLite-derived real aggregates in the public transport envelope, not a captured server receipt.
         return route.fulfill({ contentType: route.request().headers()['accept']?.includes('application/vnd.openvaultdb.query-stream+json') ? 'application/vnd.openvaultdb.query-stream+json' : 'application/json', json: { records: rows.map((data) => ({ data })), columns: ['country', 'customers'], complete: true, execution: { route: 'database', rowsReturned: rows.length, sources: [{ database: customerDatabase, collection: customerDatabase === 'northwind' ? 'Customers' : 'Customer' }] }, ...(simulatedProvider ? terms(customerDatabase) : {}) } });
       }
-      if (path === '/v1/dtql' && route.request().method() === 'POST') {
+      if (path === '/v1/tugql' && route.request().method() === 'POST') {
         const body = route.request().postData() ?? '';
         rootBodies.push(body);
         expect(body).toBe(rootText);
@@ -176,9 +178,9 @@ export async function installCountryComparisonFixture(
         return markAnswered('comparison');
       }
       if (path === '/v1/databases/northwind')
-        return route.fulfill({ json: { ...snapshot.northwind, ...(simulatedProvider ? { serverId: fixtureServerId, sourceRights: terms('northwind').sourceRights } : {}), capabilities: { ...snapshot.northwind.capabilities, dtql: true, dtqlStreaming: !options.customerOrdinary, dtqlStreamingErrors: !options.customerOrdinary } } });
+        return route.fulfill({ json: { ...snapshot.northwind, ...(simulatedProvider ? { serverId: fixtureServerId, sourceRights: terms('northwind').sourceRights } : {}), capabilities: { ...snapshot.northwind.capabilities, tugql: true, tugqlStreaming: !options.customerOrdinary, tugqlStreamingErrors: !options.customerOrdinary } } });
       if (path === '/v1/databases/chinook')
-        return route.fulfill({ json: { ...snapshot.chinook, ...(simulatedProvider ? { serverId: fixtureServerId, sourceRights: terms('chinook').sourceRights } : {}), capabilities: { ...snapshot.chinook.capabilities, dtql: true, dtqlStreaming: !options.customerOrdinary, dtqlStreamingErrors: !options.customerOrdinary } } });
+        return route.fulfill({ json: { ...snapshot.chinook, ...(simulatedProvider ? { serverId: fixtureServerId, sourceRights: terms('chinook').sourceRights } : {}), capabilities: { ...snapshot.chinook.capabilities, tugql: true, tugqlStreaming: !options.customerOrdinary, tugqlStreamingErrors: !options.customerOrdinary } } });
       return route.abort();
     },
   );
@@ -201,8 +203,8 @@ export async function installCountryComparisonFixture(
             ...snapshot.northwind,
             capabilities: {
               ...snapshot.northwind.capabilities,
-              dtqlStreaming: false,
-              dtqlStreamingErrors: false,
+              tugqlStreaming: false,
+              tugqlStreamingErrors: false,
             },
           },
         });
@@ -234,7 +236,7 @@ export async function installCountryComparisonFixture(
         });
         return markAnswered('inspector-counts');
       }
-      if (text === countryFixture('northwind-orders-query.dtql')) {
+      if (text === countryFixture('northwind-orders-query.tugql.yaml')) {
         posts.push('orders');
         await route.fulfill({
           json: {

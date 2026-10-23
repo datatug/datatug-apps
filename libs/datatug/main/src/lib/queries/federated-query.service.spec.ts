@@ -20,7 +20,7 @@ describe('federated query worker boundary', () => {
     const definition = {
       id: 'query',
       title: 'Query',
-      request: { queryType: QueryType.DTQL, text: '{}' },
+      request: { queryType: QueryType.TugQL, text: '{}' },
     } as IQueryDef;
     await expect(service.run(definition)).rejects.toThrow(
       /does not support query workers/,
@@ -57,7 +57,7 @@ describe('federated query worker boundary', () => {
     const definition = {
       id: 'query',
       title: 'Query',
-      request: { queryType: QueryType.DTQL, text: '{}' },
+      request: { queryType: QueryType.TugQL, text: '{}' },
     } as IQueryDef;
     const sourceEvent = {
       database: 'db',

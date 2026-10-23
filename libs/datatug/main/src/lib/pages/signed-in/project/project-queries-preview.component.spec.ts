@@ -199,7 +199,7 @@ describe('project query overview', () => {
     const link = el.querySelector('.tab-panel-header a');
     expect(link?.textContent?.trim()).toBe('Queries');
     expect(link?.getAttribute('href')).toBe(
-      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/queries',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/queries',
     );
     el.querySelector('ion-input')?.dispatchEvent(
       new CustomEvent('ionInput', { detail: { value: 'chinook' } }),

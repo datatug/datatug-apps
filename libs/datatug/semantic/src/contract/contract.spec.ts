@@ -330,7 +330,7 @@ describe('contract fixtures decode without throwing', () => {
     });
   });
 
-  it('ExecutionRequest fixtures (adhoc dtql, saved query, snapshot) carry valid typed parameters', () => {
+  it('ExecutionRequest fixtures (adhoc tugql, saved query, snapshot) carry valid typed parameters', () => {
     // ExecutionRequest is client-constructed, never server-decoded — there is no
     // decodeExecutionRequest. This proves each fixture's `parameters` values are
     // still valid TypedValues (the one part of the shape that IS decoded, inside

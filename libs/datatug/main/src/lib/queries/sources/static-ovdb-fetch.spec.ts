@@ -16,7 +16,7 @@ function memoryFetch(requested: string[] = []): typeof fetch {
 }
 
 const post = (send: typeof fetch, database: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> =>
-  send(`${base}/v1/databases/${database}/dtql`, { method: 'POST', headers, body: JSON.stringify(body) });
+  send(`${base}/v1/databases/${database}/tugql`, { method: 'POST', headers, body: JSON.stringify(body) });
 
 describe('static OVDB adapter', () => {
   it('pages a collection the way an OVDB snapshot does, with a token, and closes it', async () => {
@@ -57,15 +57,15 @@ describe('static OVDB adapter', () => {
     expect(await keys([{ field: 'n' }, { field: 'n' }])).toEqual(['b', 'd', 'a', 'c']);
   });
 
-  it('answers 404 for anything that is not a known collection or the dtql endpoint', async () => {
+  it('answers 404 for anything that is not a known collection or the tugql endpoint', async () => {
     const send = createStaticOvdbFetch({ baseUrl: base }, memoryFetch());
     expect((await post(send, 'db', { from: { name: 'nope' } })).status).toBe(404);
     expect((await post(send, 'db', { from: { name: '../x' } })).status).toBe(404);
     expect((await post(send, 'db', {})).status).toBe(404);
     expect((await send(`${base}/v1/databases/db/records/items/k1`)).status).toBe(404);
-    expect((await send(new URL(`${base}/v1/databases/db/dtql`), { method: 'GET' })).status).toBe(404);
-    expect((await send('https://elsewhere.example.test/v1/databases/db/dtql', { method: 'POST' })).status).toBe(404);
-    expect((await send(new Request(`${base}/v1/databases/db/dtql`))).status).toBe(404);
+    expect((await send(new URL(`${base}/v1/databases/db/tugql`), { method: 'GET' })).status).toBe(404);
+    expect((await send('https://elsewhere.example.test/v1/databases/db/tugql', { method: 'POST' })).status).toBe(404);
+    expect((await send(new Request(`${base}/v1/databases/db/tugql`))).status).toBe(404);
   });
 
   it('retries a file that failed to load', async () => {

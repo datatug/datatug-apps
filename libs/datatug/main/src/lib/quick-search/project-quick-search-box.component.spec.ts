@@ -221,7 +221,7 @@ describe('ProjectQuickSearchBoxComponent', () => {
     );
     await fixture.whenStable();
     expect(String(navigate.mock.calls.at(-1)?.[0])).toBe(
-      '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1/-/quick-search?q=Customer',
+      '/project/github.com/datatug/datatug-demo-project/demo-project-1/-/quick-search?q=Customer',
     );
   });
 

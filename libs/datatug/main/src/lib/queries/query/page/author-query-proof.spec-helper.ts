@@ -1,8 +1,8 @@
-import type { RecursiveDTQLQuery } from '@dalgo/core';
+import type { RecursiveTugQLQuery } from '@dalgo/core';
 import type { PublicSqliteQueryPreview } from '../../public-sqlite-tugql';
 
 const invoiceQuery = {
-  kind: 'recursive-dtql',
+  kind: 'recursive-tugql',
   from: { kind: 'table', name: 'Invoice', alias: 'i', joins: [] },
   limit: 7,
   columns: [
@@ -13,7 +13,7 @@ const invoiceQuery = {
       },
     },
   ],
-} satisfies RecursiveDTQLQuery;
+} satisfies RecursiveTugQLQuery;
 
 export function testAuthorProof(): PublicSqliteQueryPreview['authorProof'] {
   return {

@@ -180,6 +180,8 @@ export interface IGithubWireQueryItem {
   title?: string;
   type: string;
   text?: string;
+  /** Set by the GitHub reader from the body file name; see ./query-body-files.ts. */
+  representation?: 'text' | 'yaml';
   /** See `IQueryDef.savedQueryType`. */
   savedQueryType?: string;
   draft?: boolean;
@@ -1497,7 +1499,7 @@ export class GithubProjectReaderService {
   // ---------------------------------------------------------------------
 
   /** File-name suffixes this reader recognizes as a query DEFINITION file
-   * (as opposed to a sidecar body file like `.sql`/`.dtql`/`.http`, or a
+   * (as opposed to a sidecar body file like `.sql`/`.tugql`/`.http`, or a
    * body file that happens to share a definition's own stem, e.g. the
    * legacy `<id>.sql` next to `<id>.sql.json`). Deliberately wider than
    * datatug-cli's own `all_queries`/`get_query` (which only recognize
@@ -1525,7 +1527,7 @@ export class GithubProjectReaderService {
    * its "sql" segment); a TugQL (or legacy DTQL) `<id>.query.json` -> the one
    * body file {@link selectTugqlBodyFile} picks from the sibling file names;
    * otherwise `<id>.query.http` for HTTP and `<id>.query.sql` for the rest.
-   * Mirrors the TugQL rename lane (branch `tugql-rename`, step 7). */
+   */
   private static bodyFileFor(
     defFileName: string,
     type: string,
@@ -1638,7 +1640,11 @@ export class GithubProjectReaderService {
               title: def?.title,
               createdAt: def?.createdAt,
               tags: def?.tags,
-              type: def?.type || 'SQL',
+              // The legacy DTQL type is TugQL (./legacy-dtql-query.ts).
+              type:
+                def?.type === LEGACY_DTQL_QUERY_TYPE
+                  ? 'TugQL'
+                  : def?.type || 'SQL',
               ...(def?.connectionId ? { connectionId: def.connectionId } : {}),
               ...(def?.semanticModel
                 ? { semanticModel: def.semanticModel }
@@ -1783,15 +1789,16 @@ export class GithubProjectReaderService {
                   id: def?.id || bareId,
                   title: def?.title,
                   createdAt: def?.createdAt,
-                  // The structured YAML form opens as the app's structured document, which the app still types
-                  // `DTQL` (as `.query.dtql` did); the full TugQL rename is a separate change.
-                  // Hashes of saved meaning uses and semantic models keep the declared type (`savedQueryType`).
-                  ...(body.text !== undefined &&
-                  body.representation === 'yaml' &&
-                  type === 'TugQL'
-                    ? { type: 'DTQL', savedQueryType: type }
-                    : { type }),
+                  // The legacy DTQL type is TugQL (its body, either form, is sniffed). Hashes of saved
+                  // meaning uses keep the declared type (`savedQueryType`) until the demo project migrates.
+                  type: type === LEGACY_DTQL_QUERY_TYPE ? 'TugQL' : type,
+                  ...(type === LEGACY_DTQL_QUERY_TYPE
+                    ? { savedQueryType: type }
+                    : {}),
                   text: body.text,
+                  ...(body.representation
+                    ? { representation: body.representation }
+                    : {}),
                   ...(def?.connectionId
                     ? { connectionId: def.connectionId }
                     : {}),

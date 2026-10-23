@@ -116,7 +116,8 @@ describe('readGithubProjectId (the strict reading)', () => {
     ['r@o@a\u0000', 'folder'],
     ['r@o@a\u007f', 'folder'],
     ['r@o@d@..', 'ref'],
-    ['r@o@d@a/b', 'ref'],
+    ['r@o@d@a//b', 'ref'],
+    ['r@o@d@a/../b', 'ref'],
     ['r@o@d@a b ', 'ref'],
     ['r@o@d@a%b', 'ref'],
   ])('refuses %j (%s)', (id, reason) => {

@@ -29,7 +29,7 @@ import {
 } from '@ionic/angular';
 import { InvestigationScenario, ScenarioStep } from './models';
 import { Observable } from 'rxjs';
-import { projectPageHref } from '../nav/project-page-href';
+import { projectPageHref, withQuery } from '../nav/project-page-href';
 import { DatatugNavContextService } from '../services/nav/datatug-nav-context.service';
 import {
   InvalidPublicScenarioError,
@@ -140,7 +140,7 @@ export class PublicScenariosPageComponent {
     if (step.kind === 'check') {
       return projectPageHref(this.projectRef(), ['checks', step.ref]);
     }
-    return `${projectPageHref(this.projectRef(), ['query', step.ref])}?id=${encodeURIComponent(step.ref)}`;
+    return withQuery(projectPageHref(this.projectRef(), ['query', step.ref]), `id=${encodeURIComponent(step.ref)}`);
   }
 
   protected stepInstruction(step: ScenarioStep): string {

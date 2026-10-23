@@ -13,28 +13,28 @@ status: Draft
 
 ## Summary
 
-Build one local trial of browser Chat from project navigation through provider configuration, DTQL interpretation, DALgo IndexedDB execution and AG Grid. Keep provider credentials in this browser's localStorage by explicit user choice; the local agent uses each key for one request without persisting it. Do not release before the user tries the result.
+Build one local trial of browser Chat from project navigation through provider configuration, TugQL interpretation, DALgo IndexedDB execution and AG Grid. Keep provider credentials in this browser's localStorage by explicit user choice; the local agent uses each key for one request without persisting it. Do not release before the user tries the result.
 
 ## User journey
 
 1. The user opens a project and clicks **Chat**. The URL names the same store and project; the page loads directly after refresh without another click.
 2. The page checks this project's Chinook seed. While it loads, the page says so; once ready, the composer is usable. If the seed or agent is unavailable, the page explains the next step.
 3. The user clicks **Add AI provider**, selects DeepSeek, sees the default protocol, base URL and `deepseek-flash`, enters a key, and saves. The saved endpoint appears in Chat's selector and remains selected after reload.
-4. The user asks “Show last 100 orders”. The submitted message appears immediately; progress is visible without another action. A valid DTQL action yields 100 actual Invoice rows in a sortable, resizable grid, with InvoiceId 412 first and 313 last.
+4. The user asks “Show last 100 orders”. The submitted message appears immediately; progress is visible without another action. A valid TugQL action yields 100 actual Invoice rows in a sortable, resizable grid, with InvoiceId 412 first and 313 last.
 5. The user asks the remaining five sample questions; each yields the expected Chinook rows or a clear error. Switching to another project cannot show or query the former project's data.
 
 ## Approach
 
-Use a pinned SQLite-to-JSON fixture generator and project-scoped DALgo storage. Add strict DTQL-to-structured-query validation in `@dalgo/core`; extend the adapter only for verified defects. The local agent reuses the CLI Chat Google ADK conversation and `run_dtql` tool in browser-interpretation mode, accepts OpenAI-compatible and Anthropic provider settings without persisting keys, and returns an action only. Keep the app responsible for provider settings, route state and the grid. Deterministic model fakes prove the browser path; a separate credentialed smoke is conditional on the user's local key. No chat-session persistence, saved result sets or general query engine is added.
+Use a pinned SQLite-to-JSON fixture generator and project-scoped DALgo storage. Add strict TugQL-to-structured-query validation in `@dalgo/core`; extend the adapter only for verified defects. The local agent reuses the CLI Chat Google ADK conversation and `run_tugql` tool in browser-interpretation mode, accepts OpenAI-compatible and Anthropic provider settings without persisting keys, and returns an action only. Keep the app responsible for provider settings, route state and the grid. Deterministic model fakes prove the browser path; a separate credentialed smoke is conditional on the user's local key. No chat-session persistence, saved result sets or general query engine is added.
 
 ## Tasks
 
-### Task 1: DALgo DTQL boundary
+### Task 1: DALgo TugQL boundary
 
 **Status:** in_progress
-**Verifies:** browser-chat-phase-1#ac:bounded-dtql
+**Verifies:** browser-chat-phase-1#ac:bounded-tugql
 
-Implement and test strict single-source DTQL parsing/validation and conversion to `StructuredQuery`. Include qualified source names, order, comparison, limit, unknown fields and unsupported constructs. Exercise the published IndexedDB adapter with those queries; fix any adapter bug at its source.
+Implement and test strict single-source TugQL parsing/validation and conversion to `StructuredQuery`. Include qualified source names, order, comparison, limit, unknown fields and unsupported constructs. Exercise the published IndexedDB adapter with those queries; fix any adapter bug at its source.
 
 ### Task 2: Pinned browser seed
 
@@ -46,9 +46,9 @@ Generate fixture data and a version manifest from the pinned SQLite hash with li
 ### Task 3: Local model interpreter and provider settings
 
 **Status:** planning
-**Verifies:** browser-chat-phase-1#ac:provider-settings, browser-chat-phase-1#ac:bounded-dtql
+**Verifies:** browser-chat-phase-1#ac:provider-settings, browser-chat-phase-1#ac:bounded-tugql
 
-Expose a bounded local-agent POST accepting question, compact schema and selected endpoint configuration, returning DTQL only. Support the two named protocols. In the app add editable provider presets, localStorage persistence and endpoint selection with no key in navigation or logs. Test with a deterministic fake provider.
+Expose a bounded local-agent POST accepting question, compact schema and selected endpoint configuration, returning TugQL only. Support the two named protocols. In the app add editable provider presets, localStorage persistence and endpoint selection with no key in navigation or logs. Test with a deterministic fake provider.
 
 ### Task 4: Chat route, menu and grid
 

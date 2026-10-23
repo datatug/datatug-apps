@@ -226,9 +226,9 @@ function validateRuntimeTarget(
       !connection.fixtureSha256 || !/^[a-f0-9]{64}$/u.test(connection.fixtureSha256) ||
       binding.descriptor.canonical?.sha256 !== connection.fixtureSha256)
       throw new QueryDispatchError('The selected OVDB runtime does not match the query connection in this project.');
-    if (request.definition.request.queryType !== QueryType.TugQL && request.definition.request.queryType !== QueryType.DTQL)
-      throw new QueryDispatchError('This OVDB runtime supports structured DTQL queries; raw SQL is unavailable.');
-    if (binding.descriptor.capabilities.query !== true && binding.descriptor.capabilities.dtql !== true)
+    if (request.definition.request.queryType !== QueryType.TugQL)
+      throw new QueryDispatchError('This OVDB runtime supports structured TugQL queries; raw SQL is unavailable.');
+    if (binding.descriptor.capabilities.query !== true && binding.descriptor.capabilities.tugql !== true)
       throw new QueryDispatchError('The selected OVDB runtime does not support query execution.');
   }
   if (target.kind === 'local-agent' && (!target.agentStoreId || !request.environment || !request.securityContextId || !request.queryId))

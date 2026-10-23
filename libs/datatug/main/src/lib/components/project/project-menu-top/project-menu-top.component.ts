@@ -34,7 +34,11 @@ import {
   incidentProjectRouteScope,
 } from '../../../incidents/incident-navigation';
 import { PRODUCT_PROFILE } from '@datatug/product-profiles';
-import { projectPageHref } from '../../../nav/project-page-href';
+import {
+  projectPageHref,
+  projectRouterCommands,
+  type ProjectRouterCommand,
+} from '../../../nav/project-page-href';
 import { isCanonicalPublicDemo } from '../../../detective/public-scenario-catalog';
 import { addIcons } from 'ionicons';
 import {
@@ -267,7 +271,7 @@ export class ProjectMenuTopComponent implements OnDestroy {
     const syncSession = () => {
       this.currentUrl.set(this.router?.url || location.href);
       const parsed = this.router
-        ? parseProjectUrl(this.router.url.split('?')[0])
+        ? parseProjectUrl(this.router.url)
         : undefined;
       this.inSessionWorkspace.set(
         !!parsed?.ok && /^\/sessions\/[^/]+(?:\/|$)/.test(parsed.rest),
@@ -328,12 +332,12 @@ export class ProjectMenuTopComponent implements OnDestroy {
     return isCanonicalPublicDemo(this.project?.ref);
   }
 
-  incidentsProjectRoute(): string {
+  incidentsProjectRoute(): ProjectRouterCommand[] {
     const projectRef = this.project?.ref;
     if (projectRef) {
-      return projectPageHref(projectRef, 'incidents').split('?')[0];
+      return projectRouterCommands(projectPageHref(projectRef, 'incidents'));
     }
-    return '/incidents';
+    return ['/incidents'];
   }
 
   projectPageRoute(page: ProjectTopLevelPage): UrlTree | string {

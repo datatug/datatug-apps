@@ -20,13 +20,13 @@ describe('projectPageHref (G-A1c)', () => {
       'github',
       'r@o@d',
       'entities',
-      '/project/github.com/o/r/tree/HEAD/d/-/entities',
+      '/project/github.com/o/r/d/-/entities',
     ],
     [
       'github.com',
       'r@o@@v1.0.0',
       ['query', 'a/b'],
-      '/project/github.com/o/r/tree/v1.0.0/-/query/a%2Fb',
+      '/project/github.com/o/r/query/a%2Fb?ref=v1.0.0',
     ],
     ['localhost:8989', 'p1', undefined, '/store/localhost:8989/project/p1'],
     [

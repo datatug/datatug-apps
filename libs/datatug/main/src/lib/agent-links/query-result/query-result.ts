@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../../nav/project-page-href';
 import type { RunQueryRequest, TypedValue } from '@sneat/datatug-semantic';
 import { projectPageCommands } from '../link-route';
 
@@ -60,7 +61,7 @@ export interface ResultDb {
 
 export interface ResultQuery {
   readonly kind: string;
-  readonly dtql?: string;
+  readonly tugql?: string;
   readonly from?: string;
   readonly savedQueryId?: string;
   readonly savedQueryType?: string;
@@ -162,7 +163,7 @@ export interface ResultRecordset {
 export interface ResultEditor {
   /** The canonical query text; absent in an older result, a saved HTTP query, or when it was too large. */
   readonly text?: string;
-  readonly language?: 'dtql' | 'sql' | 'http';
+  readonly language?: 'tugql' | 'sql' | 'http';
   /** The `datatug://<project>/<db>?env=<env>` reference of the database. */
   readonly dbRef?: string;
   /** Each value is a TypedValue or a set `{type: 'set', values: TypedValue[]}`. */
@@ -230,7 +231,7 @@ export function decodeStoredResult(response: unknown): StoredResult {
     },
     query: {
       kind: str(q['kind']),
-      ...(typeof q['dtql'] === 'string' ? { dtql: q['dtql'] } : {}),
+      ...(typeof q['tugql'] === 'string' ? { tugql: q['tugql'] } : {}),
       ...(typeof q['from'] === 'string' ? { from: q['from'] } : {}),
       ...(typeof q['savedQueryId'] === 'string'
         ? { savedQueryId: q['savedQueryId'] }
@@ -351,7 +352,7 @@ function decodeEditor(top: unknown, fromMeta: Obj): ResultEditor {
   const language = q['language'];
   return {
     ...(typeof q['text'] === 'string' && q['text'] ? { text: q['text'] } : {}),
-    ...(language === 'dtql' || language === 'sql' || language === 'http'
+    ...(language === 'tugql' || language === 'sql' || language === 'http'
       ? { language }
       : {}),
     ...(typeof q['dbRef'] === 'string' && q['dbRef'] ? { dbRef: q['dbRef'] } : {}),
@@ -463,8 +464,8 @@ export function resultDbIds(meta: ResultMeta): DbIds | undefined {
 
 /** A name in a list that opens the table metadata page (and its records page) of the agent's table routes. */
 export interface TableLink {
-  readonly commands: readonly string[];
-  readonly recordsCommands: readonly string[];
+  readonly commands: readonly ProjectRouterCommand[];
+  readonly recordsCommands: readonly ProjectRouterCommand[];
   readonly queryParams: { readonly schema: string };
 }
 
@@ -709,7 +710,7 @@ export function rerunBlocker(meta: ResultMeta): string | undefined {
     }
     return undefined;
   }
-  if (!meta.query.dtql) return 'The query was not kept with these results.';
+  if (!meta.query.tugql) return 'The query was not kept with these results.';
   if (
     Object.values(meta.query.parameters ?? {}).some(
       (v) => obj(v)['type'] === 'set',
@@ -723,7 +724,7 @@ export function rerunBlocker(meta: ResultMeta): string | undefined {
 /**
  * The `exec/run_query` request of "Run again", the one the query page sends: the project, environment and source of
  * the result, its parameters with one `manual` binding origin each, `mode: 'live'` and {@link RERUN_LIMIT} rows, and
- * either the saved query's id or the ad-hoc query's DTQL text. Undefined when {@link rerunBlocker} names a reason.
+ * either the saved query's id or the ad-hoc query's TugQL text. Undefined when {@link rerunBlocker} names a reason.
  */
 export function rerunRequest(
   meta: ResultMeta,
@@ -741,7 +742,7 @@ export function rerunRequest(
     source: ids.source,
     ...(meta.query.kind === 'saved'
       ? { queryId: meta.query.savedQueryId }
-      : { dtql: meta.query.dtql }),
+      : { tugql: meta.query.tugql }),
     parameters,
     bindingOrigins: Object.keys(parameters).map((parameterId) => ({
       parameterId,

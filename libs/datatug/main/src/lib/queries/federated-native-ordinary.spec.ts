@@ -33,7 +33,7 @@ function pendingDiscovery() {
   return { fetcher, started };
 }
 
-describe('hosted DemoDB ordinary DTQL responses', () => {
+describe('hosted DemoDB ordinary TugQL responses', () => {
   afterEach(() => vi.restoreAllMocks());
 
   it.each([
@@ -54,7 +54,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
         return url.endsWith(`/${database}`)
           ? Response.json({
               id: database,
-              capabilities: { dtql: true, query: true, read: true },
+              capabilities: { tugql: true, query: true, read: true },
             })
           : Response.json({
               records: [{ data: { [field]: value } }],
@@ -75,7 +75,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
       );
       expect(calls.map(({ url }) => url)).toEqual([
         `https://ovdb.demodb.dev/v1/databases/${database}`,
-        `https://ovdb.demodb.dev/v1/databases/${database}/dtql`,
+        `https://ovdb.demodb.dev/v1/databases/${database}/tugql`,
       ]);
       expect(calls[1].init?.method).toBe('POST');
       expect(calls[1].init?.body).toBe(
@@ -98,7 +98,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
       const url = String(input);
       urls.push(url);
       return url.endsWith('/chinook')
-        ? Response.json({ id: 'chinook', capabilities: { dtql: true, query: true, read: true } })
+        ? Response.json({ id: 'chinook', capabilities: { tugql: true, query: true, read: true } })
         : Response.json({
             complete: true,
             records: [{ data: { CustomerId: 1 } }],
@@ -109,7 +109,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
     await runFederatedQuery(definition, undefined, '', undefined, undefined, 'full', undefined, undefined, { fetch: fetcher });
     expect(urls).toEqual([
       'https://ovdb.demodb.dev/v1/databases/chinook',
-      'https://ovdb.demodb.dev/v1/databases/chinook/dtql',
+      'https://ovdb.demodb.dev/v1/databases/chinook/tugql',
     ]);
   });
 
@@ -119,20 +119,20 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
       const url = String(input); urls.push(url);
       expect(init?.redirect).toBe('error');
       return url.endsWith('/chinook')
-        ? Response.json({ id: 'chinook', serverId: '', capabilities: { dtql: true, read: true } })
+        ? Response.json({ id: 'chinook', serverId: '', capabilities: { tugql: true, read: true } })
         : Response.json({ complete: true, records: [{ data: { CustomerId: 1 } }],
             columns: ['CustomerId'], execution: { route: 'database', rowsReturned: 1 } });
     });
     const result = await runFederatedQuery(createHostedDemoDbQuery('new-query'), undefined, '',
       undefined, undefined, 'full', undefined, undefined, { fetch: fetcher });
-    expect(urls).toEqual(['https://ovdb.demodb.dev/v1/databases/chinook', 'https://ovdb.demodb.dev/v1/databases/chinook/dtql']);
+    expect(urls).toEqual(['https://ovdb.demodb.dev/v1/databases/chinook', 'https://ovdb.demodb.dev/v1/databases/chinook/tugql']);
     expect(result.sourceRights).toBeUndefined();
     expect(result.usedSourceIds).toBeUndefined();
   });
 
   it('refuses unexpected rights evidence from the legacy mode instead of adopting an identity', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) => String(input).endsWith('/chinook')
-      ? Response.json({ id: 'chinook', serverId: '', capabilities: { dtql: true, read: true } })
+      ? Response.json({ id: 'chinook', serverId: '', capabilities: { tugql: true, read: true } })
       : Response.json({ complete: true, records: [], columns: [], execution: { rowsReturned: 0 },
           usedSourceIds: ['ovdb:https%3A%2F%2Funexpected.test/chinook/Customer'] }));
     await expect(runFederatedQuery(createHostedDemoDbQuery('new-query'), undefined, '',
@@ -144,7 +144,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
     const definition = createHostedDemoDbQuery('new-query');
     if (!definition.federation) throw new Error('Missing federation');
     const fetcher = vi.fn<typeof fetch>(async () => Response.json({
-      id: 'chinook', serverId: '', capabilities: { dtql: true, read: true },
+      id: 'chinook', serverId: '', capabilities: { tugql: true, read: true },
     }));
     await expect(runFederatedQuery({ ...definition, federation: { ...definition.federation,
       expectedServerIdentity: { baseUrl: 'https://ovdb.demodb.dev', serverId: 'https://ovdb.demodb.dev' } } },
@@ -157,7 +157,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
       Response.json({
         id: 'adventureworks',
-        capabilities: { dtql: true, read: true },
+        capabilities: { tugql: true, read: true },
       }),
     );
     await expect(
@@ -179,7 +179,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
   it('shows a bounded mapped ordinary HTTP error without scanning tables', async () => {
     const fetcher = vi.fn<typeof fetch>(async (input) =>
       String(input).endsWith('/chinook')
-        ? Response.json({ id: 'chinook', capabilities: { dtql: true, read: true } })
+        ? Response.json({ id: 'chinook', capabilities: { tugql: true, read: true } })
         : Response.json(
             { error: { code: 'unsupported', message: 'The query cannot run.' } },
             { status: 422 },
@@ -207,7 +207,7 @@ describe('hosted DemoDB ordinary DTQL responses', () => {
         elapsedAtDiscovery(now - start);
         return Response.json({
           id: 'chinook',
-          capabilities: { dtql: true, query: true, read: true },
+          capabilities: { tugql: true, query: true, read: true },
         });
       }
       return Response.json({

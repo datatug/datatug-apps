@@ -35,7 +35,7 @@ describe('checkProjectAddress: concrete addresses every project must pass (3.6)'
     ['plain http', 'http://chinookdb.com/data/x.json'],
     [
       'http to localhost, which the executor allows today',
-      'http://localhost:50501/v1/databases/x/dtql',
+      'http://localhost:50501/v1/databases/x/tugql',
     ],
     ['http to 127.0.0.1', 'http://127.0.0.1/x'],
     ['http to [::1]', 'http://[::1]/x'],

@@ -83,9 +83,11 @@ function input(): {
       const query = metadata(location);
       return {
         ...query,
-        text: files[
-          `demo-project-1/queries/${location}.query.${query.type.toLowerCase()}`
-        ],
+        text:
+          files[`demo-project-1/queries/${location}.query.tugql.yaml`] ??
+          files[
+            `demo-project-1/queries/${location}.query.${query.type.toLowerCase()}`
+          ],
       };
     }),
   };

@@ -23,7 +23,7 @@ describe('native graph saved inputs do not grant execution authority', () => {
     vi.stubGlobal('fetch', http);
     const definition = {
       id: 'forged',
-      request: { queryType: 'DTQL' },
+      request: { queryType: 'TugQL' },
       federation: {
         ovdbBaseUrl: 'https://runtime.example',
         tables: [],
@@ -62,7 +62,7 @@ describe('native graph saved inputs do not grant execution authority', () => {
       );
       const definition = {
         id: 'saved-fixture',
-        request: { queryType: 'DTQL' },
+        request: { queryType: 'TugQL' },
         federation: {
           ovdbBaseUrl: 'https://runtime.example',
           tables: [],
@@ -116,7 +116,7 @@ describe('native graph saved inputs do not grant execution authority', () => {
         fixture.multiplicity.affiliations.map((data, index) => ({ key: String(index), data })),
         budget, transport, 'https://runtime.example', graphFixtureMetadataTransport);
       const result = nativeGraphRunResponse(execution, await execution.run(1), 'partial-fixture', 'Explicit partial fixture');
-      const definition = { id: 'partial-fixture', request: { queryType: 'DTQL' },
+      const definition = { id: 'partial-fixture', request: { queryType: 'TugQL' },
         federation: { ovdbBaseUrl: 'https://runtime.example', tables: [], nativeGraph: plan } } as unknown as IQueryDef;
       const saved = saveRuntimePins(definition, definition, result);
       expect(saved.federation?.nativeGraph).toEqual(plan);

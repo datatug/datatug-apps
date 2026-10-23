@@ -20,11 +20,11 @@ import countries from './fixtures/geo-ingitdb-github/countries.ingr?raw';
 import population from './fixtures/geo-ingitdb-github/population_wb.ingr?raw';
 import aliases from './fixtures/geo-ingitdb-github/country_aliases.ingr?raw';
 import chinookMeta from './fixtures/geo-ingitdb-github/chinook-customers-per-million.query.json';
-import chinookText from './fixtures/geo-ingitdb-github/chinook-customers-per-million.query.dtql?raw';
+import chinookText from './fixtures/geo-ingitdb-github/chinook-customers-per-million.query.tugql.yaml?raw';
 import northwindMeta from './fixtures/geo-ingitdb-github/northwind-customer-countries.query.json';
-import northwindText from './fixtures/geo-ingitdb-github/northwind-customer-countries.query.dtql?raw';
+import northwindText from './fixtures/geo-ingitdb-github/northwind-customer-countries.query.tugql.yaml?raw';
 import worldMeta from './fixtures/geo-ingitdb-github/countries-currency-population.query.json';
-import worldText from './fixtures/geo-ingitdb-github/countries-currency-population.query.dtql?raw';
+import worldText from './fixtures/geo-ingitdb-github/countries-currency-population.query.tugql.yaml?raw';
 
 const base = 'https://ovdb.example.test';
 /** Requests are told apart by their parsed origin or host, never by a substring of the URL. */
@@ -57,7 +57,7 @@ function serve(override: Record<string, () => Response> = {}): string[] {
     requested.push(url);
     if (override[url]) return override[url]();
     if (files[url] !== undefined) return new Response(files[url], { status: 200, headers: { 'Content-Type': 'text/plain', 'Cache-Control': 'max-age=300' } });
-    const match = /^https:\/\/ovdb\.example\.test\/v1\/databases\/([^/]+)\/dtql$/.exec(url);
+    const match = /^https:\/\/ovdb\.example\.test\/v1\/databases\/([^/]+)\/tugql$/.exec(url);
     if (!match) return new Response('not found', { status: 404 });
     if (new Headers(init.headers).get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });
     const { from } = JSON.parse(init.body as string) as { from: { name: string } };
@@ -68,7 +68,7 @@ function serve(override: Record<string, () => Response> = {}): string[] {
 
 const definition = (meta: typeof chinookMeta | typeof northwindMeta | typeof worldMeta, text: string): IQueryDef => ({
   id: meta.id, title: meta.title,
-  request: { queryType: 'DTQL', text },
+  request: { queryType: 'TugQL', text },
   federation: { ...meta.federation, ovdbBaseUrl: base, expectedServerIdentity: undefined },
   recordsets: meta.recordsets,
 } as unknown as IQueryDef);

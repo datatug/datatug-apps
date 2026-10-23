@@ -1,5 +1,5 @@
 import { parseTugQL, resolveTugQL } from '@dalgo/core';
-import type { RecursiveDTQLQuery, RecursiveDTQLRelation, TugQLResolved, TugQLTree } from '@dalgo/core';
+import type { RecursiveTugQLQuery, RecursiveTugQLRelation, TugQLResolved, TugQLTree } from '@dalgo/core';
 import {
   compilePublicSqliteTugQL,
   requireCustomerIdParameterSource,
@@ -121,10 +121,10 @@ it('compiles a bounded graph with independent leaves, renamed outputs, and SQL-o
   const field = (source: string, name: string) => ({ kind: 'field' as const, field: { source, field: name } });
   const literal = (value: number) => ({ kind: 'literal' as const, value });
   const compare = (left: ReturnType<typeof field> | { kind: 'aggregate'; function: 'count'; args: readonly { kind: 'star' }[] }, operator: '>=' | '==', right: ReturnType<typeof literal>) => ({ kind: 'comparison' as const, left, operator, right });
-  const relation = (name: string, alias: string): RecursiveDTQLRelation => ({ kind: 'table', name, alias, joins: [] });
-  const derived = (query: RecursiveDTQLQuery, alias: string): RecursiveDTQLRelation => ({ kind: 'query', query: { ...query, as: alias }, joins: [] });
-  const invoiceCount: RecursiveDTQLQuery = {
-    kind: 'recursive-dtql',
+  const relation = (name: string, alias: string): RecursiveTugQLRelation => ({ kind: 'table', name, alias, joins: [] });
+  const derived = (query: RecursiveTugQLQuery, alias: string): RecursiveTugQLRelation => ({ kind: 'query', query: { ...query, as: alias }, joins: [] });
+  const invoiceCount: RecursiveTugQLQuery = {
+    kind: 'recursive-tugql',
     from: relation('Invoice', 'i'),
     groupBy: [field('i', 'CustomerId')],
     having: compare({ kind: 'aggregate', function: 'count', args: [{ kind: 'star' }] }, '>=', literal(7)),
@@ -134,8 +134,8 @@ it('compiles a bounded graph with independent leaves, renamed outputs, and SQL-o
       { expression: { kind: 'aggregate', function: 'count', args: [{ kind: 'star' }] }, as: 'InvoiceCount' },
     ],
   };
-  const eligible: RecursiveDTQLQuery = {
-    kind: 'recursive-dtql',
+  const eligible: RecursiveTugQLQuery = {
+    kind: 'recursive-tugql',
     from: derived(invoiceCount, 'counts'),
     where: compare(field('counts', 'InvoiceCount'), '>=', literal(7)),
     limit: 100,
@@ -144,8 +144,8 @@ it('compiles a bounded graph with independent leaves, renamed outputs, and SQL-o
       { expression: field('counts', 'InvoiceCount'), as: 'Count' },
     ],
   };
-  const customer: RecursiveDTQLQuery = {
-    kind: 'recursive-dtql',
+  const customer: RecursiveTugQLQuery = {
+    kind: 'recursive-tugql',
     from: relation('Customer', 'i'),
     where: compare(field('i', 'CustomerId'), '>=', literal(1)),
     orderBy: [{ field: { source: 'i', field: 'CustomerId' }, direction: 'asc' }],
@@ -157,7 +157,7 @@ it('compiles a bounded graph with independent leaves, renamed outputs, and SQL-o
       { expression: field('i', 'Email') },
     ],
   };
-  const rootFrom: RecursiveDTQLRelation = {
+  const rootFrom: RecursiveTugQLRelation = {
     ...derived(customer, 'customer'),
     joins: [{
       type: 'inner',
@@ -165,8 +165,8 @@ it('compiles a bounded graph with independent leaves, renamed outputs, and SQL-o
       on: [{ left: { source: 'totals', field: 'Key' }, operator: '==', right: { source: 'customer', field: 'CustomerKey' } }],
     }],
   };
-  const root: RecursiveDTQLQuery = {
-    kind: 'recursive-dtql',
+  const root: RecursiveTugQLQuery = {
+    kind: 'recursive-tugql',
     from: rootFrom,
     orderBy: [{ field: { source: 'totals', field: 'Key' }, direction: 'asc' }],
     limit: 10,
@@ -218,8 +218,8 @@ it('compiles a bounded graph with independent leaves, renamed outputs, and SQL-o
   })).toThrow('must connect Invoice.CustomerId and Customer.CustomerId');
 
   const customerFrom = relation('Customer', 'customer');
-  const invoiceJoinRoot: RecursiveDTQLQuery = {
-    kind: 'recursive-dtql',
+  const invoiceJoinRoot: RecursiveTugQLQuery = {
+    kind: 'recursive-tugql',
     from: {
       ...customerFrom,
       joins: [{

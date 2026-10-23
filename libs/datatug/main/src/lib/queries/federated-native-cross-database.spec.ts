@@ -19,7 +19,7 @@ const definition: IQueryDef = {
   id: 'comparison',
   title: 'Customer records by shared country',
   request: {
-    queryType: QueryType.DTQL,
+    queryType: QueryType.TugQL,
     text: `from:
   database: northwind
   name: Customers
@@ -84,11 +84,11 @@ function fetcherFor(body: unknown = envelope()) {
     const url = String(input);
     expect(init?.redirect).toBe('error');
     expect(init?.signal).toBeTruthy();
-    if (url === `${base}/v1/dtql`) return Response.json(body);
+    if (url === `${base}/v1/tugql`) return Response.json(body);
     const database = url.split('/').at(-1);
     expect(['northwind', 'chinook']).toContain(database);
     expect(init?.method).not.toBe('POST');
-    return Response.json({ id: database, capabilities: { dtql: true } });
+    return Response.json({ id: database, capabilities: { tugql: true } });
   });
 }
 const run = (
@@ -117,7 +117,7 @@ describe('native cross-database OVDB execution', () => {
       ([, init]) => init?.method === 'POST',
     );
     expect(posts).toHaveLength(1);
-    expect(posts[0][0]).toBe(`${base}/v1/dtql`);
+    expect(posts[0][0]).toBe(`${base}/v1/tugql`);
     expect(posts[0][1]?.body).toBe(
       (definition.request as ITextQueryRequest).text,
     );
@@ -133,7 +133,7 @@ describe('native cross-database OVDB execution', () => {
     ]);
     expect(result.ordinarySources).toEqual(envelope().execution.sources);
     expect(result.ordinaryComplete).toBe(true);
-    expect(result.provenance.source).toBe(`${base}/v1/dtql (direct OVDB)`);
+    expect(result.provenance.source).toBe(`${base}/v1/tugql (direct OVDB)`);
     expect(result.nativeDirect).toBe(true);
     expect(result.provenance).not.toHaveProperty('executionProfile');
     expect(result.sourceRights).toBeUndefined();
@@ -294,12 +294,12 @@ describe('native cross-database OVDB execution', () => {
   it('preflights distinct source rights under the admitted server identity', async () => {
     const fetcher = fetcherFor();
     fetcher.mockImplementation(async (input) =>
-      String(input).endsWith('/dtql')
+      String(input).endsWith('/tugql')
         ? Response.json(envelope())
         : Response.json({
             id: String(input).split('/').at(-1),
             serverId: base,
-            capabilities: { dtql: true },
+            capabilities: { tugql: true },
           }),
     );
     if (!definition.federation)
@@ -329,9 +329,9 @@ describe('native cross-database OVDB execution', () => {
 
   it('refuses unsupported capability without a POST or client fallback', async () => {
     const fetcher = vi.fn<typeof fetch>(async () =>
-      Response.json({ id: 'northwind', capabilities: { dtql: false } }),
+      Response.json({ id: 'northwind', capabilities: { tugql: false } }),
     );
-    await expect(run(fetcher)).rejects.toThrow('requires DTQL');
+    await expect(run(fetcher)).rejects.toThrow('requires TugQL');
     expect(fetcher).toHaveBeenCalledOnce();
   });
 
@@ -340,7 +340,7 @@ describe('native cross-database OVDB execution', () => {
     const implementation = fetcher.getMockImplementation();
     if (!implementation) throw new Error('Expected mock transport');
     fetcher.mockImplementation((input, init) =>
-      String(input).endsWith('/v1/dtql')
+      String(input).endsWith('/v1/tugql')
         ? Promise.resolve(
             Response.json(
               {
@@ -371,7 +371,7 @@ describe('native cross-database OVDB execution', () => {
       });
       const normal = fetcherFor();
       const fetcher = vi.fn<typeof fetch>(async (input, init) => {
-        if (stage === 'discovery' || String(input).endsWith('/v1/dtql')) {
+        if (stage === 'discovery' || String(input).endsWith('/v1/tugql')) {
           started();
           return new Response(new ReadableStream<Uint8Array>(), {
             headers: { 'Content-Type': 'application/json' },

@@ -20,7 +20,7 @@ export interface ProjectQueryWire extends ProjectQueryMetadataWire {
   readonly id: string;
   readonly title?: string;
   readonly purpose?: string;
-  readonly type: QueryType.SQL | QueryType.TugQL | QueryType.DTQL | QueryType.HTTP;
+  readonly type: QueryType.SQL | QueryType.TugQL | QueryType.HTTP;
   /** The query text; for an HTTP query, its URL. */
   readonly text: string;
   /** The saved request of an HTTP query beyond its URL; never holds credentials. */
@@ -124,10 +124,10 @@ export function toProjectQueryWire(
     query['request'],
     isHttp
       ? ['queryType', 'url', 'method', 'headers', 'body']
-      : ['queryType', 'text'],
+      : ['queryType', 'text', 'representation'],
   );
   if (
-    ![QueryType.SQL, QueryType.TugQL, QueryType.DTQL, QueryType.HTTP].includes(
+    ![QueryType.SQL, QueryType.TugQL, QueryType.HTTP].includes(
       query['request'].queryType,
     )
   )

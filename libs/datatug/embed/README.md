@@ -24,39 +24,39 @@ and renders 50 rows per page by default (`page-size` can be 1–500). Search,
 sort, and paging operate on the loaded result, so the source should bound the
 result size. Returned values are written with `textContent`, never HTML.
 
-## OVDB and DTQL
+## OVDB and TugQL
 
 ```html
 <script type="module" src="/embed/datatug.js"></script>
 <datatug-grid connection="https://chinookdb.com/ovdb/dbs/chinook">
-  <dtql-query>
+  <tugql-query>
 from: {name: Album}
 where: {op: '==', left: {field: ArtistId}, right: {param: ArtistID}}
 limit: 10
-  </dtql-query>
-  <dtql-param name="ArtistID" type="number" value="1"></dtql-param>
+  </tugql-query>
+  <tugql-param name="ArtistID" type="number" value="1"></tugql-param>
 </datatug-grid>
 ```
 
 The connection is the canonical HTTPS database identity and a normal browser
 page. The component requests `/.well-known/openvaultdb` on its origin, finds
 the exact database URL, requests that entry's `apiUrl`, and uses only the
-advertised `endpoints.dtql`. The metadata must advertise
-`capabilities.dtql: true` and `queryFormat: "dtql-yaml+json"`. The component
-POSTs `{ "query": "<DTQL YAML>", "parameters": {"ArtistID": 1} }` as JSON.
+advertised `endpoints.tugql`. The metadata must advertise
+`capabilities.tugql: true` and `queryFormat: "tugql-yaml+json"`. The component
+POSTs `{ "query": "<TugQL YAML>", "parameters": {"ArtistID": 1} }` as JSON.
 Parameters are separate typed values; the client never substitutes query text.
 The endpoint must bind parameter expression nodes safely. An endpoint that
-advertises `queryFormat: "dtql-yaml"` receives the raw YAML body and cannot
+advertises `queryFormat: "tugql-yaml"` receives the raw YAML body and cannot
 accept bound parameters through this component.
 
 This browser discovery/metadata shape is currently implemented by the
 ChinookDB OVDB adapter. The existing OpenVaultDB Go server exposes a thinner
-well-known document and raw YAML DTQL endpoint; it needs the advertised
+well-known document and raw YAML TugQL endpoint; it needs the advertised
 database/API links and capability metadata before the embed can connect to it
 by canonical URL. The component does not guess a database ID or API path.
 
-The child query must be valid current YAML-native DTQL. One nonempty
-`<dtql-query>` is required. `<dtql-param>` names are passed through unchanged,
+The child query must be valid current YAML-native TugQL. One nonempty
+`<tugql-query>` is required. `<tugql-param>` names are passed through unchanged,
 and must be unique and nonempty. Its `value` attribute defaults to a string;
 `type="number|boolean|null|string"` parses attributes. The DOM property
 `param.value = 456` accepts a string, number, boolean, or null and overrides the
@@ -66,7 +66,7 @@ automatically. Call `grid.refresh()` or `grid.reload()` explicitly if source
 data changes at the same URL. Each refresh cancels the previous request.
 
 `connection` and `data-url` are mutually exclusive. A direct source cannot
-contain DTQL children. Bad configuration, unsupported capability, HTTP errors,
+contain TugQL children. Bad configuration, unsupported capability, HTTP errors,
 and cross-origin failures appear in the component and emit `datatug-error`
 with `{message}`. A successful load emits `datatug-data-loaded` with
 `{rows,columns,metadata}`. Clicking a grid row, or focusing it and pressing

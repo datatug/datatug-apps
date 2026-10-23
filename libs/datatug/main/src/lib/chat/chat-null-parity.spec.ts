@@ -59,8 +59,8 @@ describe('null rows across the single-source adapter, the join-aware engine and 
     [...new Set(rows.map((row) => row[key]))].sort();
 
   /** What the engine returns, and what the SQL the Chat previews returns in SQLite. */
-  async function run(dtql: string, key = 'CustomerId'): Promise<{ engine: unknown[]; preview: unknown[]; rows: number; previewRows: number; sql: string }> {
-    const { rows, query } = await service.query(scope, dtql);
+  async function run(tugql: string, key = 'CustomerId'): Promise<{ engine: unknown[]; preview: unknown[]; rows: number; previewRows: number; sql: string }> {
+    const { rows, query } = await service.query(scope, tugql);
     const sql = chatSQLite(query);
     const previewRows = db.prepare(sql.replace(/;$/, '')).all() as Record<string, unknown>[];
     return { engine: distinct(rows, key), preview: distinct(previewRows, key), rows: rows.length, previewRows: previewRows.length, sql };
@@ -113,7 +113,7 @@ describe('null rows across the single-source adapter, the join-aware engine and 
       expect(distinct(parent.rows)).toEqual(expected);
       const edge = discoverChatJoinCandidates(parent.query).find((item) => item.targetTable === 'Invoice' && item.direction === 'reverse');
       const derived = deriveChatJoin(parent.query, edge?.id ?? '', schema);
-      const child = await run(derived.dtql);
+      const child = await run(derived.tugql);
       expect(child.engine).toEqual(expected.filter((id) => withInvoices.includes(id)));
       // The join's own SQL preview is what runs, too.
       expect(child.preview).toEqual(child.engine);
@@ -123,7 +123,7 @@ describe('null rows across the single-source adapter, the join-aware engine and 
     it('stays the same through a second derived join', async () => {
       const parent = await service.query(scope, single(cmp('<', 'Embraer')));
       const first = deriveChatJoin(parent.query, discoverChatJoinCandidates(parent.query).find((item) => item.targetTable === 'Invoice')?.id ?? '', schema);
-      const joined = await service.query(scope, first.dtql);
+      const joined = await service.query(scope, first.tugql);
       const next = discoverChatJoinCandidates(joined.query).find((item) => item.sourceAlias === 'Customer' && item.targetTable === 'Employee');
       const second = deriveChatJoin(joined.query, next?.id ?? '', schema);
       // Employee is empty in the fixture, so the inner join keeps nothing, and the filter is still the carried one.

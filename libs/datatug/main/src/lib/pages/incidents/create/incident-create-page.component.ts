@@ -1,3 +1,4 @@
+import type { ProjectRouterCommand } from '../../../nav/project-page-href';
 import {
   Component,
   DestroyRef,
@@ -249,7 +250,7 @@ export class IncidentCreatePageComponent {
     this.errorMessage.set(undefined);
   }
 
-  protected cancelIncidentLink(): readonly string[] {
+  protected cancelIncidentLink(): readonly ProjectRouterCommand[] {
     return incidentPageCommands(this.router.url);
   }
 

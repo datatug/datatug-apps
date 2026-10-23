@@ -220,7 +220,7 @@ describe('friendlyError', () => {
   it('names the service, and says to run `datatug serve`, for a loopback failure', () => {
     const e = friendlyError({
       status: 0,
-      url: 'http://127.0.0.1:50501/v1/databases/countries/dtql?key=abc',
+      url: 'http://127.0.0.1:50501/v1/databases/countries/tugql?key=abc',
       message:
         'Http failure response for http://127.0.0.1:50501/v1: 0 Unknown Error',
     });

@@ -15,7 +15,7 @@ status: Approved
 
 ## Summary
 
-The web-side **communication layer** between the DataTug Web UI and the local DataTug DAL backend daemon (`datatug serve` + the serve-brokered query-builder broker). It ingests the deep link the terminal AI-agent produces, exchanges the one-time code for a session token, connects to the local daemon over HTTP (commands) and WebSocket (live updates), and brokers the query-builder protocol for the [`query-builder`](../query-builder/README.md) screen: subscribing to the tab's live current query + results + **mode**, maintaining the in-page change history, sending mode-appropriate edits (structured AST edits in DTQL mode, verbatim native text in native mode), parameter values, revert, and run, and transporting candidate options. This Feature owns the client/transport contract only; the screen and its controls are specified in `query-builder`.
+The web-side **communication layer** between the DataTug Web UI and the local DataTug DAL backend daemon (`datatug serve` + the serve-brokered query-builder broker). It ingests the deep link the terminal AI-agent produces, exchanges the one-time code for a session token, connects to the local daemon over HTTP (commands) and WebSocket (live updates), and brokers the query-builder protocol for the [`query-builder`](../query-builder/README.md) screen: subscribing to the tab's live current query + results + **mode**, maintaining the in-page change history, sending mode-appropriate edits (structured AST edits in TugQL mode, verbatim native text in native mode), parameter values, revert, and run, and transporting candidate options. This Feature owns the client/transport contract only; the screen and its controls are specified in `query-builder`.
 
 ## Problem
 
@@ -37,7 +37,7 @@ Using the host and token from the link, the layer MUST open an HTTP channel (for
 
 #### REQ: subscribe-live
 
-On connecting, the layer MUST subscribe over WebSocket to the tab and expose to the UI the tab's current query, its mode (`dtql` or `native`), and latest results, applying every subsequent daemon-pushed update (including a mode change from a `dtql`→`native` conversion) so the UI reflects the live state without manual refresh.
+On connecting, the layer MUST subscribe over WebSocket to the tab and expose to the UI the tab's current query, its mode (`tugql` or `native`), and latest results, applying every subsequent daemon-pushed update (including a mode change from a `tugql`→`native` conversion) so the UI reflects the live state without manual refresh.
 
 #### REQ: maintain-history
 
@@ -51,7 +51,7 @@ On a page reload, the layer MUST rehydrate the tab's current query and results f
 
 #### REQ: send-structured-edits
 
-For a `dtql`-mode tab the layer MUST send the user's deterministic edits (add/remove/select field-or-column, add filter, set ordering, select nested/sub-collection) to the daemon as structured operations on the tab — never as prose.
+For a `tugql`-mode tab the layer MUST send the user's deterministic edits (add/remove/select field-or-column, add filter, set ordering, select nested/sub-collection) to the daemon as structured operations on the tab — never as prose.
 
 #### REQ: send-native-text
 
@@ -123,7 +123,7 @@ If the daemon is unreachable, the token/code is invalid, or the WebSocket drops,
 
 ### AC: edits-sent-structured (verifies REQ:send-structured-edits)
 
-**Given** a connected `dtql`-mode tab
+**Given** a connected `tugql`-mode tab
 **When** the user adds a filter through the UI
 **Then** the layer sends it to the daemon as a structured edit operation, not as prose.
 

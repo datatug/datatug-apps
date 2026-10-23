@@ -2,7 +2,7 @@
 //
 // Production has no hosted OVDB database for the demo's reference data yet (the public Chinook server
 // has no `geo` database), so the demo can read the same records from static JSON published with the app.
-// This module answers the OVDB wire protocol the federated executor speaks (POST /v1/databases/<db>/dtql
+// This module answers the OVDB wire protocol the federated executor speaks (POST /v1/databases/<db>/tugql
 // with paging headers) from those files, so the join, the grouping and the arithmetic still run in the
 // browser engine through `runFederatedQuery`: only the *source of the rows* differs.
 //
@@ -54,7 +54,7 @@ export function createStaticOvdbFetch(source: StaticOvdbSource, realFetch: typeo
 
   return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
-    const match = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/v1/databases/([^/]+)/(?:dtql|tugql)$`).exec(url);
+    const match = new RegExp(`^${base.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}/v1/databases/([^/]+)/(?:tugql|tugql)$`).exec(url);
     if (!match || init?.method !== 'POST') return json({ error: 'not found' }, 404);
     const headers = new Headers(init.headers);
     if (headers.get('OVDB-Page-Close') === 'true') return new Response(null, { status: 204 });

@@ -4,7 +4,7 @@ import type { IQueryDef } from '../models/definition/query-def';
 import { runFederatedQuery, type FederatedSourceLoaded } from './federated-query-executor';
 
 const definition = (): IQueryDef => ({
-  id: 'q', title: 'q', request: { queryType: 'DTQL', text: 'from: {database: db, name: items, alias: i}\ncolumns: [{field: name, source: i}]\n' },
+  id: 'q', title: 'q', request: { queryType: 'TugQL', text: 'from: {database: db, name: items, alias: i}\ncolumns: [{field: name, source: i}]\n' },
   federation: { ovdbBaseUrl: 'https://ovdb.example.test', tables: [{ name: 'items', database: 'db', fields: ['name'] }] },
 } as unknown as IQueryDef);
 

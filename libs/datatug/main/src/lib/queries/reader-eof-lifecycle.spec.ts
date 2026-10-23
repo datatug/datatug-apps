@@ -49,7 +49,7 @@ const definition: IQueryDef = {
   id: 'artists',
   title: 'Artists',
   request: {
-    queryType: QueryType.DTQL,
+    queryType: QueryType.TugQL,
     text: JSON.stringify({
       from: { database: 'music', name: 'Artist' },
       limit: 2,
@@ -108,7 +108,7 @@ const readers: ReaderCase[] = [
     name: 'native capability GET',
     valid: JSON.stringify({
       id: 'music',
-      capabilities: { dtql: true, dtqlStreaming: true },
+      capabilities: { tugql: true, tugqlStreaming: true },
     }),
     maximum: 1048576,
     async run(response, signal) {

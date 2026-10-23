@@ -3,7 +3,7 @@ import { installPinnedChinookSqlite } from './helpers/pinned-chinook-sqlite';
 import { activePage } from './journey/helpers/active-page';
 
 const project =
-  '/project/github.com/datatug/datatug-demo-project/tree/HEAD/demo-project-1';
+  '/project/github.com/datatug/datatug-demo-project/demo-project-1';
 const fake = process.env['DATATUG_E2E_GITHUB_FAKE'];
 
 test.beforeEach(async ({ context }) => {

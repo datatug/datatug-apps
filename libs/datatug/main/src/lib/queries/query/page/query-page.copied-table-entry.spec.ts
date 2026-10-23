@@ -107,7 +107,7 @@ describe('copied browser table query entry', () => {
     params.next(route.snapshot.queryParamMap);
     expect(component.queryId).toBe('table-draft-query');
     const definition: IQueryDef = { id: '', title: 'Artist (browser copy)', connectionId: 'chinook-sqlite',
-      request: { queryType: QueryType.DTQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } as ITextQueryRequest };
+      request: { queryType: QueryType.TugQL, text: 'from:\n  name: "Artist"\nlimit: 100\n' } as ITextQueryRequest };
     if (pendingChange) {
       if (pendingChange === 'runtime') component.selectWorkingCopy('another-runtime');
       route.snapshot.queryParamMap = convertToParamMap({ ...original, [pendingChange]: pendingChange === 'runtime' ? 'another-runtime' : pendingChange === 'env' ? 'another-env' : 'table-draft-query' });
@@ -135,7 +135,7 @@ describe('copied browser table query entry', () => {
     expect(component.queryDef()).toMatchObject({ id: 'table-draft-query', request: definition.request, connectionId: definition.connectionId });
     expect(component.selectedWorkingCopy()).toBe('runtime-edited');
     expect(component.runError()).toBeUndefined();
-    expect(fixture.nativeElement.querySelector('output').textContent).toBe('table-draft-query|demo|DTQL');
+    expect(fixture.nativeElement.querySelector('output').textContent).toBe('table-draft-query|demo|TugQL');
     component.ionViewDidEnter();
     expect(router.navigate.mock.calls.at(-1)?.[1]).toMatchObject({ queryParams: { id: undefined, env: 'demo' } });
     const edited = { ...component.queryState.request, text: 'from: Artist\nlimit: 25' } as ITextQueryRequest;

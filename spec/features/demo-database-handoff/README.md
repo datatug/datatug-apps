@@ -19,7 +19,7 @@ After I edit a demo database, project copying must preserve my working data and 
 
 ## Behavior
 
-I edit a SQLite table and choose one of the two existing project copy options. If I keep exploring, nothing interrupts the table. With GitHub I review a prefilled project title and folder, choose an existing writable repository, complete sign-in and authorization if needed, and merge the existing setup PR. The app then opens that copied project with my edited browser database and the same table. It says “Project files in GitHub; database and edits in this browser”. Query this table opens a bounded DTQL draft on the existing Query screen using that same database.
+I edit a SQLite table and choose one of the two existing project copy options. If I keep exploring, nothing interrupts the table. With GitHub I review a prefilled project title and folder, choose an existing writable repository, complete sign-in and authorization if needed, and merge the existing setup PR. The app then opens that copied project with my edited browser database and the same table. It says “Project files in GitHub; database and edits in this browser”. Query this table opens a bounded TugQL draft on the existing Query screen using that same database.
 
 With local Git I download the active edited SQLite file, enter its actual saved file path and keep a safe dataset-based project-folder default, and receive executable commands to clone the source project, register it, add the downloaded database in environment local, and serve the project. This path needs no sign-in. The app never claims a clone command includes browser edits, never silently substitutes upstream data, and never sends a runtime selection ID or browser database bytes in project setup requests.
 
@@ -49,7 +49,7 @@ Given a closed runtime, lost memory-only session, changed data version or denied
 
 ### AC: query-table
 
-Given a validated table and runtime, when Query this table is selected, then the existing project Query route opens a bounded unsaved DTQL draft, selects the destination connection and its declared environment, and returns the edited row values. Identifiers are structured and validated; no raw SQL is generated. Missing draft/runtime context shows recovery.
+Given a validated table and runtime, when Query this table is selected, then the existing project Query route opens a bounded unsaved TugQL draft, selects the destination connection and its declared environment, and returns the edited row values. Identifiers are structured and validated; no raw SQL is generated. Missing draft/runtime context shows recovery.
 
 ### AC: smooth-form
 

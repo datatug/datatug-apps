@@ -40,8 +40,8 @@ describe('ChatPageComponent failed turns', () => {
     listBookmarks: vi.fn(async () => []),
     context: vi.fn(() => ''),
     appendQuestion: vi.fn(async (_scope: string, _session: string, question: string): Promise<ChatTurn> => ({ id: 'new', question, state: 'loading' })),
-    bindRecordSet: vi.fn(async (_scope: string, _session: string, dtql: string) => ({
-      dtql,
+    bindRecordSet: vi.fn(async (_scope: string, _session: string, tugql: string) => ({
+      tugql,
       parentRecordSetId: undefined,
     })),
     failQuestion: vi.fn(
@@ -58,7 +58,7 @@ describe('ChatPageComponent failed turns', () => {
       turn: { id, question: 'Sales by country?', state: 'result' as const },
     })),
   };
-  const assistant = { workingCopies: () => [], context: vi.fn(async (ref) => ({ ref, connections: [], environments: [], queries: [], entities: [] })), answer: vi.fn(async () => ({ dtql: 'from: Equipment', generatedDtql: '{}', dtqlYaml: '', sql: '', rows: [], columns: [], source: '', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 0 } })) };
+  const assistant = { workingCopies: () => [], context: vi.fn(async (ref) => ({ ref, connections: [], environments: [], queries: [], entities: [] })), answer: vi.fn(async () => ({ tugql: 'from: Equipment', generatedTugql: '{}', tugqlYaml: '', sql: '', rows: [], columns: [], source: '', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 0 } })) };
   const data = {
     ensureSeed: vi.fn<(...args: Parameters<ChinookChatDataService['ensureSeed']>) => Promise<void>>(
       async () => undefined,
@@ -68,7 +68,7 @@ describe('ChatPageComponent failed turns', () => {
   const joiner = { candidates: vi.fn((): unknown[] => []) };
   const interpreter = {
     interpret: vi.fn<ChatInterpretService['interpret']>(async () => ({
-      dtql: '{}',
+      tugql: '{}',
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     })),
   };
@@ -151,7 +151,7 @@ describe('ChatPageComponent failed turns', () => {
     joiner.candidates.mockImplementation(() => []);
     eligibility.read.mockImplementation(() => of({ aiAllowed: true }));
     interpreter.interpret.mockImplementation(async () => ({
-      dtql: '{}',
+      tugql: '{}',
       metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0 },
     }));
   });
@@ -172,7 +172,7 @@ describe('ChatPageComponent failed turns', () => {
     if (change === 'auth') authState.next({ status: 'authenticated', user: { uid: 'other-actor' } });
     else routeQuery.next(convertToParamMap({ env: change === 'environment' ? 'test' : 'prod', aiConnection: change === 'connection' ? 'shipping' : 'factory' }));
     expect(signal?.aborted).toBe(true);
-    resolve({ dtql: 'from: Equipment', generatedDtql: '{}', dtqlYaml: '', sql: '', rows: [], columns: [], source: '', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 0 } });
+    resolve({ tugql: 'from: Equipment', generatedTugql: '{}', tugqlYaml: '', sql: '', rows: [], columns: [], source: '', metrics: { requestBytes: 0, responseBytes: 0, interpretMs: 0, queryMs: 0 } });
     await pending;
     expect(store.completeQuery).not.toHaveBeenCalled();
     expect(component.turns()).toEqual([]);
@@ -554,7 +554,7 @@ describe('ChatPageComponent failed turns', () => {
       question: 'Customers?',
       state: 'result',
       recordSetId: 'rs1',
-      dtql: '{}',
+      tugql: '{}',
       rows: [{ CustomerId: 1 }],
     };
     const relatedError = (): HTMLElement | null => (fixture.nativeElement as HTMLElement).querySelector('.join-candidates .turn-error');
