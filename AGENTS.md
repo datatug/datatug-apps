@@ -57,6 +57,24 @@ The fix, worked out in `libs/datatug/main/src/lib/pages/signed-in/project/projec
 
 `tools/zoneless-allowlist.txt` is a temporary carve-out for components not yet converted — it must only ever shrink. Converting a file removes it from the list; a newly authored file must never be added to it.
 
+# Card headers
+
+Every `<ion-card>` starts with exactly one header row: `<ion-item-divider color="light">`, the title in an `ion-label`, any actions in `slot="end"`. Never a bare `ion-card-header` (with or without `ion-card-title`), and never a header-less card. This is the single pattern; do not pick another from the UI bible.
+
+```html
+<ion-card>
+  <ion-item-divider color="light">
+    <ion-label>Title</ion-label>
+    <ion-button slot="end" fill="clear" size="small">Action</ion-button>
+  </ion-item-divider>
+  <ion-card-content>...</ion-card-content>
+</ion-card>
+```
+
+Only exception: an error card, `<ion-card color="danger">`, whose divider is `color="danger"`. Nothing else.
+
+`tools/check-card-headers.mjs` (`pnpm run check:card-headers`, wired into CI's `build` job next to `check:zoneless`) parses every `*.component.html` under `libs/` and `apps/` and fails when a card's first child is not that divider (it understands `@if`/`@for`/`@switch`). `tools/card-header-allowlist.txt` lists the cards that still violate, as `path: count`. It may only shrink: a new violation fails, and so does a stale entry (convert the card, then lower or delete the line). Never add to it. Briefs for any lane that touches a template with a card must cite this section.
+
 # Product architecture
 
 - Before adding or changing a DataTug screen, component or demo workflow, read [rule:datatug-ui-is-domain-neutral](https://github.com/datatug/backstage/blob/main/spec/rules/README.md).

@@ -166,6 +166,18 @@ jobs:
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:check-zoneless-fields
 
+      # Every <ion-card> starts with <ion-item-divider color="light"> (AGENTS.md
+      # "Card headers"). Whole-repo template scan; the allowlist
+      # tools/card-header-allowlist.txt may only shrink (new and stale entries
+      # both fail).
+      - name: check:card-headers (card header rule)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        run: pnpm run check:card-headers
+
+      - name: test:check-card-headers (checker's own unit tests)
+        if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
+        run: pnpm run test:check-card-headers
+
       - name: test:stamp-ag-grid-license (optional AG Grid key stamping)
         if: ${{ needs.preflight.result == 'success' && needs.preflight.outputs.mode == 'full' }}
         run: pnpm run test:stamp-ag-grid-license
