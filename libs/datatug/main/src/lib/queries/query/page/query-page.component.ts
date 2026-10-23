@@ -1,4 +1,5 @@
 import { EvidenceCopyLinkComponent } from '../../../evidence/evidence-copy-link.component';
+import { ErrorStateComponent } from '../../../components/error-state/error-state.component';
 import { friendlyError, redactErrorText } from '@datatug/friendly-error';
 import {
   prepareLocalMeaningSave,
@@ -855,6 +856,7 @@ function declaredParameterDefault(
   templateUrl: './query-page.component.html',
   styleUrl: './query-page.component.scss',
   imports: [
+    ErrorStateComponent,
     EvidenceCopyLinkComponent,
     ResultCellCardsComponent,
     SemanticMappingDialogComponent,
@@ -2040,6 +2042,12 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   /** Current selected query's header label; normalized only for presentation. */
   public readonly queryPageTitle = signal('Query');
 
+  /**
+   * Why the saved query could not be read (GitHub limiting anonymous reads, an outage): the page then shows that one
+   * state with Retry, never an empty editor with Run.
+   */
+  public readonly queryLoadError = signal<unknown>(undefined);
+
   /** The header's second line: what kind of query this is and the source it reads. */
   public readonly querySourceSubtitle = computed(() => {
     const def = this.queryDef();
@@ -2286,6 +2294,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
   public nativeRunDisabled(): boolean {
     return (
       this.running() ||
+      this.queryLoadError() !== undefined ||
       this.demoDraftLoading() ||
       !!this.demoDraftRecovery() ||
       this.unavailableWorkingCopy() ||
@@ -7081,6 +7090,7 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         // A closed or unresolved selection must never inherit the previous
         // query's name while the editor state catches up.
         this.queryPageTitle.set('Query');
+        this.queryLoadError.set(undefined);
         return;
       }
       // The editor service emits a loading placeholder before a same-ID saved
@@ -7098,10 +7108,13 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
         this.authorSavedDefinition.set(undefined);
       this.syncHttpRowBinding(queryState.id ?? '');
       const currentTitle = queryState.title ?? queryState.def?.title;
+      this.queryLoadError.set(queryState.loadError);
       this.queryPageTitle.set(
         typeof currentTitle === 'string'
           ? currentTitle.trim() || 'Query'
-          : 'Query',
+          : // Not read: the query's own name, from its id (`customers/customer-invoices` → `customer-invoices`).
+            (queryState.loadError !== undefined && queryState.id?.split('/').pop()) ||
+              'Query',
       );
       if (
         this.navigationDraft?.query.id === queryState.id &&
@@ -8284,6 +8297,11 @@ export class QueryPageComponent implements OnDestroy, ViewDidEnter {
       queryParams: { projectApi: 'cloud', branch },
       queryParamsHandling: 'merge',
     });
+  }
+
+  /** Retry of a query that could not be read: nothing was loaded, so there is no draft to lose. */
+  public retryQueryLoad(): void {
+    if (this.queryState.id) this.queryEditorStateService.reloadQuery(this.queryState.id);
   }
 
   public reloadSavedQuery(): void {

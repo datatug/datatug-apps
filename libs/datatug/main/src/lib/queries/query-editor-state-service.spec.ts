@@ -638,3 +638,44 @@ function throwErrorLike(message: string) {
   // match real HTTP error timing — see this describe block's own test.
   return defer(() => Promise.reject(new Error(message)));
 }
+
+describe('QueryEditorStateService — a GitHub project query that cannot be read', () => {
+  const ID = 'customers/rate-limited-invoices';
+
+  it('keeps the failure on the query (no project_full fallback, no toast) and clears it on reload', async () => {
+    const project = {
+      ref: { storeId: 'github.com', projectId: 'demo-repo@datatug@demo-project-1' },
+      summary: { id: 'demo', title: 'Demo', access: 'public' as const },
+    };
+    const limited = new Error('GitHub API rate limit reached for this browser');
+    const answers: (() => unknown)[] = [
+      () => {
+        throw limited;
+      },
+      () => ({ id: 'rate-limited-invoices', title: 'Invoices', request: { queryType: QueryType.SQL, text: 'select 1' } }),
+    ];
+    const getQueryMock = vi.fn(() => defer(async () => (answers.shift() as () => unknown)()));
+    const getFullMock = vi.fn();
+    TestBed.resetTestingModule();
+    TestBed.configureTestingModule({
+      providers: [
+        QueryEditorStateService,
+        provideMockErrorLogger(),
+        { provide: QueriesService, useValue: { getQuery: getQueryMock } },
+        { provide: ProjectService, useValue: { getFull: getFullMock } },
+        { provide: DatatugNavContextService, useValue: { currentProject: of(project), currentEnv: of(undefined) } },
+      ],
+    });
+    const service = TestBed.inject(QueryEditorStateService);
+    service.openQuery(ID);
+    await new Promise((r) => setTimeout(r));
+    expect(getFullMock).not.toHaveBeenCalled();
+    expect(service.getQueryState(ID)).toMatchObject({ isLoading: false, loadError: limited });
+
+    service.reloadQuery(ID);
+    await new Promise((r) => setTimeout(r));
+    const state = service.getQueryState(ID);
+    expect(state?.loadError).toBeUndefined();
+    expect(state?.def?.title).toBe('Invoices');
+  });
+});

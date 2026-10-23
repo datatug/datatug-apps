@@ -30,7 +30,7 @@ import { ProjectItemService } from '../services/repo/project-item-service';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 
-const isGithubStoreId = (storeId: string): boolean =>
+export const isGithubStoreId = (storeId: string): boolean =>
   storeId === STORE_ID_GITHUB_COM || storeId === STORE_TYPE_GITHUB;
 
 /**

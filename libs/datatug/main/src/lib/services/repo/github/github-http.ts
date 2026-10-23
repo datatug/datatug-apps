@@ -199,7 +199,7 @@ export async function githubGet(
 }
 
 type GithubOutcomeWithEtag =
-  | GithubOutcome
+  | Exclude<GithubOutcome, { kind: 'ok' }>
   | (Extract<GithubOutcome, { kind: 'ok' }> & { readonly etag?: string });
 
 function withoutEtag(out: GithubOutcomeWithEtag): GithubOutcome {

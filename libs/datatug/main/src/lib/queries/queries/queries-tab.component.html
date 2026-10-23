@@ -2,6 +2,14 @@
   <ion-item>
     <ion-label>Loading queries...</ion-label>
   </ion-item>
+} @else if (loadError() !== undefined) {
+  <sneat-datatug-error-state
+    data-testid="queries-load-error"
+    what="the queries of this project"
+    [compact]="true"
+    [error]="loadError()"
+    (retry)="retryLoad()"
+  />
 } @else if (personalQueriesNotice(); as notice) {
   <ion-item>
     <ion-label color="medium">{{ notice }}</ion-label>

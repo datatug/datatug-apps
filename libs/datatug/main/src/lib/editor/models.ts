@@ -71,4 +71,9 @@ export interface IQueryState extends IQueryStateDto {
   readonly branchHead?: string;
   readonly saveError?: string;
   readonly saveSupported?: boolean;
+  /**
+   * Why a saved query read from GitHub could not be loaded (a rate limit, an outage): the page shows it as its one
+   * state, with Retry, instead of an empty editor with Run.
+   */
+  readonly loadError?: unknown;
 }
