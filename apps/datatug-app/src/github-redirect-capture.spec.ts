@@ -5,8 +5,8 @@ import {
   GITHUB_TOKEN_STORAGE_KEY,
   IGithubSignOutAuthState,
   forgetGithubTokenOnSignOut,
-  tabStorage,
 } from './github-redirect-capture';
+import { tabStorage } from '@datatug/product-profiles';
 
 describe('forgetGithubTokenOnSignOut', () => {
   function watch() {
