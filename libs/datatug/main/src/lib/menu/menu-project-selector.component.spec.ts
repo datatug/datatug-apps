@@ -135,7 +135,7 @@ describe('MenuProjectSelectorComponent', () => {
     const currentStoreId = new BehaviorSubject<string | undefined>('github.com');
     const currentProject = new BehaviorSubject<IProjectContext | undefined>({
       ref,
-      summary: { id: ref.projectId, title: 'DataTug Demo: DemoDB datasets' },
+      summary: { id: ref.projectId, title: 'DataTug Demo Project' },
     } as IProjectContext);
     const setCurrentProject = vi.fn();
     const goProject = vi.fn();
@@ -157,7 +157,7 @@ describe('MenuProjectSelectorComponent', () => {
     fixture.detectChanges();
 
     expect(fixture.componentInstance.projects().map(({ id }) => id)).toEqual([ref.projectId]);
-    expect(fixture.componentInstance.projects()[0].title).toBe('DataTug Demo: DemoDB datasets');
+    expect(fixture.componentInstance.projects()[0].title).toBe('DataTug Demo Project');
     expect(fixture.componentInstance.projectChoiceDescription(fixture.componentInstance.projects()[0])).toBe('datatug/datatug-demo-project · demo-project-1');
     fixture.componentInstance.switchProject({ detail: { value: ref.projectId } } as CustomEvent);
     expect(goProject).toHaveBeenCalledWith(expect.objectContaining({ ref }));

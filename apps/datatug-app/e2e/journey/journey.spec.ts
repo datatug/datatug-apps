@@ -274,7 +274,7 @@ test.describe('J1 — first useful result (the null-action path)', () => {
     // The project heading proves the real summary request completed and the
     // address has the expected human-readable title.
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
 
@@ -333,7 +333,7 @@ test.describe('J2 — from a value to related knowledge', () => {
     // the title assertion mechanism.
     await page.goto(projectUrl);
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
 
@@ -497,7 +497,7 @@ test.describe('J2b — HTTP reference source', () => {
     // J1's own goToCatalogTables() doc comment describes.
     await page.goto(projectUrl);
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
@@ -572,7 +572,7 @@ test.describe('J2b — HTTP reference source', () => {
     // S121b) — same click path as the sub-test above.
     await page.goto(projectUrl);
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
@@ -652,7 +652,7 @@ test.describe('J3 — carrying context', () => {
     // J1's own goToCatalogTables() doc comment describes.
     await page.goto(projectUrl);
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
     await goToCatalogTables(page, DEMO_ENV_ID, DEMO_DB_CATALOG_ID);
@@ -794,7 +794,7 @@ test.describe('J4 — restricted principal', () => {
     // assertion mechanism.
     await page.goto(projectUrl);
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
 
@@ -1044,7 +1044,7 @@ test.describe('Personal queries tab — datatug-cli v0.24.0 root=personal (S174)
     // mechanism.
     await page.goto(projectUrl);
     await expect(page.locator('h1.project-title')).toHaveText(
-      'DataTug Demo: DemoDB datasets',
+      'DataTug Demo Project',
       { timeout: 15_000 },
     );
 
