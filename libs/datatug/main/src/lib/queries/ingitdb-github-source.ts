@@ -301,17 +301,19 @@ export class IngitdbGithubSources {
 }
 
 /**
- * True when a federated query sends anything to its OVDB server: a lookup, or
- * a table whose database is not one of its inGitDB sources on GitHub. A query
+ * True when a federated query sends anything to its OVDB server: a lookup, a
+ * bounded run (it always preflights and reads through OVDB), or a table whose
+ * database is not one of its inGitDB sources on GitHub. A query
  * reading only GitHub sends no OVDB request, so it asks for no OVDB token.
  */
 export function federationReadsOvdb(federation: {
   readonly tables: readonly { readonly database?: string }[];
   readonly lookups?: readonly unknown[];
+  readonly bounds?: unknown;
   readonly ingitdbSources?: readonly IngitdbSourceRef[];
 } | undefined): boolean {
   if (!federation) return false;
-  if (federation.lookups?.length) return true;
+  if (federation.lookups?.length || federation.bounds) return true;
   const git = new Set((federation.ingitdbSources ?? []).map((source) => source.database));
   return !federation.tables.length || federation.tables.some((table) => !table.database || !git.has(table.database));
 }
