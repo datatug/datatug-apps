@@ -25,7 +25,7 @@
 // document→subcollection model, e.g.
 //   spaces/$records/family.yaml               # top-level record
 //   spaces/family/contacts/$records/c1.yaml   # nested record
-import { Injectable, inject } from '@angular/core';
+import { Injectable, InjectionToken, inject } from '@angular/core';
 import type {
   CollectionEntry,
   CollectionSchema,
@@ -130,8 +130,17 @@ export function treeBackedGetContents(
   };
 }
 
+/** Makes the `@ingitdb/client-github` client. Injected so a test sees the options it is made with. */
+export const VAULT_CLIENT_FACTORY = new InjectionToken<
+  typeof createIngitDbClient
+>('VAULT_CLIENT_FACTORY', {
+  providedIn: 'root',
+  factory: () => createIngitDbClient,
+});
+
 @Injectable()
 export class VaultExplorerService {
+  private readonly createClient = inject(VAULT_CLIENT_FACTORY);
   private readonly fetchFn = inject(GITHUB_FETCH);
   private readonly userToken = inject(GITHUB_USER_TOKEN);
   private client?: IngitDbGithubClient;
@@ -144,16 +153,24 @@ export class VaultExplorerService {
    * persisted (no localStorage/IndexedDB/cookies).
    */
   connect(token?: string): void {
-    // With a token the client keeps its answers in memory only: what a token read (perhaps a private repository) is
-    // never written to the browser's database.
-    const client = createIngitDbClient(
-      token ? { token, cache: false } : { token: undefined },
+    // With any token — typed, or the signed-in user's, which the listing below uses — the client keeps its answers in
+    // memory only: record ids and names that come from a listing read with a token (perhaps of a private repository)
+    // are never written to the browser's database, whose keys carry no identity.
+    const withToken = !!(token || usableGithubToken(this.userToken()));
+    const client = this.createClient(
+      withToken ? { token: token || undefined, cache: false } : { token: undefined },
     );
     const api = client.githubApi;
     this.trees = new Map();
     api.getContents = treeBackedGetContents(
-      // The listing goes with the typed token, else the signed-in user's (read now: a sign-out applies at once).
-      (repo, ref) => this.tree(repo, ref, usableGithubToken(token || this.userToken())),
+      // The listing goes with the typed token, else the signed-in user's (read at each call: a sign-out applies at
+      // once). A client made without a token caches, so its listing is never asked with one.
+      (repo, ref) =>
+        this.tree(
+          repo,
+          ref,
+          withToken ? usableGithubToken(token || this.userToken()) : undefined,
+        ),
       api.getContents.bind(api) as VaultGetContents,
     ) as typeof api.getContents;
     this.client = client;

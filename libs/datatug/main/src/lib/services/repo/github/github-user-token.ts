@@ -8,6 +8,13 @@ import { InjectionToken } from '@angular/core';
 export const GITHUB_TOKEN_STORAGE_KEY = 'datatug:github:token';
 
 /**
+ * The Sneat user (Firebase uid) the token was obtained for, kept next to it. The app removes the token when the
+ * signed-in user is not its owner (sign-out, another account), whichever of the auth event and the storing of the
+ * token comes first.
+ */
+export const GITHUB_TOKEN_OWNER_STORAGE_KEY = 'datatug:github:token-owner';
+
+/**
  * Announced on `window` by the app when it removed the token at a Sneat sign-out or account switch
  * (`apps/datatug-app/src/github-redirect-capture.ts`, same name): the readers then drop what they read with it.
  */
@@ -49,6 +56,7 @@ export function rejectGithubUserToken(token: string): void {
   try {
     if (globalThis.sessionStorage?.getItem(GITHUB_TOKEN_STORAGE_KEY) === token) {
       globalThis.sessionStorage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+      globalThis.sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
     }
   } catch {
     // Storage not available: the in-page rejection still applies.
@@ -85,6 +93,7 @@ export function readGithubUserToken(): string | undefined {
 export function forgetGithubUserToken(): void {
   try {
     globalThis.sessionStorage?.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+    globalThis.sessionStorage?.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
   } catch {
     // Nothing kept.
   }

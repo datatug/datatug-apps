@@ -584,15 +584,17 @@ export class GithubProjectReaderService {
 
   /**
    * Changes whenever the commit this visit reads a project at is replaced: the visit moved to another commit (GitHub,
-   * asked again, named one), or the repository was forgotten. A caller that keeps something it read (the summary of
-   * the project) drops it when this is not what it was when it read it. Read-only: starts nothing. Throws for an id that
-   * is not valid.
+   * asked again, named one), the repository was forgotten, or who reads changed (a sign-in, a sign-out, another
+   * account: what one identity read is never kept for another). A caller that keeps something it read (the summary of
+   * the project, the quick-search snapshot) drops it when this is not what it was when it read it. Starts no read.
+   * Throws for an id that is not valid.
    */
   public visitEpoch(projectId: string): string {
     const id = readableId(projectId);
     const repoKey = `${id.org}/${id.repo}`.toLowerCase();
-    const session = this.sessions.get(this.sessionKey(id, this.auth()));
-    return `${this.generation(repoKey)}.${session?.epoch ?? 0}`;
+    const auth = this.auth();
+    const session = this.sessions.get(this.sessionKey(id, auth));
+    return `${auth.identity}.${this.generation(repoKey)}.${session?.epoch ?? 0}`;
   }
 
   private session(id: IGithubProjectId): IGithubSession {

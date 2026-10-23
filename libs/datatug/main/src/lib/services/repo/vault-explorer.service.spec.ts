@@ -4,6 +4,7 @@ import { GITHUB_FETCH } from './github/github-project-reader.service';
 import { GITHUB_USER_TOKEN } from './github/github-user-token';
 import {
   VaultExplorerService,
+  VAULT_CLIENT_FACTORY,
   contentsFromTree,
   treeBackedGetContents,
   subcollectionNamesFromContents,
@@ -188,5 +189,49 @@ describe('treeBackedGetContents fallback', () => {
     expect(fetchFn).toHaveBeenCalledTimes(2);
     const second = (fetchFn.mock.calls[1] as unknown as [string, RequestInit])[1];
     expect((second.headers as Record<string, string> | undefined)?.['Authorization']).toBeUndefined();
+  });
+});
+
+describe('VaultExplorerService client cache', () => {
+  function made(typed: string | undefined, signedIn: string | undefined) {
+    const options: unknown[] = [];
+    const fetchFn = vi.fn(async () => new Response(JSON.stringify(VAULT_TREE)));
+    TestBed.configureTestingModule({
+      providers: [
+        VaultExplorerService,
+        { provide: GITHUB_FETCH, useValue: fetchFn },
+        { provide: GITHUB_USER_TOKEN, useValue: () => signedIn },
+        {
+          provide: VAULT_CLIENT_FACTORY,
+          useValue: (o: unknown) => {
+            options.push(o);
+            return { githubApi: { getContents: vi.fn() } };
+          },
+        },
+      ],
+    });
+    const service = TestBed.inject(VaultExplorerService);
+    service.connect(typed);
+    return { options, service, fetchFn };
+  }
+
+  it('keeps answers out of the browser database when the user is signed in to GitHub', async () => {
+    const { options, service, fetchFn } = made(undefined, 'gho_user');
+    expect(options).toEqual([{ token: undefined, cache: false }]);
+    await service.listSubcollections('o/vault', 'spaces/family', 'main');
+    const init = (fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string>)['Authorization']).toBe('Bearer gho_user');
+  });
+
+  it('keeps answers out of the browser database with a typed token', () => {
+    expect(made('gho_typed', undefined).options).toEqual([{ token: 'gho_typed', cache: false }]);
+  });
+
+  it('caches as before, and lists anonymously, with no token at all', async () => {
+    const { options, service, fetchFn } = made(undefined, undefined);
+    expect(options).toEqual([{ token: undefined }]);
+    await service.listSubcollections('o/vault', 'spaces/family', 'main');
+    const init = (fetchFn.mock.calls[0] as unknown as [string, RequestInit])[1];
+    expect((init.headers as Record<string, string> | undefined)?.['Authorization']).toBeUndefined();
   });
 });

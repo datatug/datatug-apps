@@ -1,4 +1,5 @@
 import {
+  GITHUB_TOKEN_OWNER_STORAGE_KEY,
   GITHUB_TOKEN_STORAGE_KEY,
   forgetGithubUserToken,
   readGithubUserToken,
@@ -155,7 +156,7 @@ export class GithubOAuthService {
         `GitHub did not return an access token for the "${GITHUB_REPO_SCOPE}" scope`,
       );
     }
-    this.setToken(token);
+    this.setToken(token, credential.user?.uid);
     return token;
   }
 
@@ -199,7 +200,13 @@ export class GithubOAuthService {
     }
   }
 
-  private setToken(token: string): void {
+  /** Keeps the token with the Sneat user it was obtained for (see `GITHUB_TOKEN_OWNER_STORAGE_KEY`). */
+  private setToken(token: string, owner: string | undefined): void {
     sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
+    if (owner) {
+      sessionStorage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
+    } else {
+      sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+    }
   }
 }

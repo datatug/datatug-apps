@@ -18,6 +18,9 @@ import { GithubAuthProvider, getRedirectResult } from 'firebase/auth';
  */
 export const GITHUB_TOKEN_STORAGE_KEY = 'datatug:github:token';
 
+/** The Sneat user the token was obtained for; the same key as `datatug-main`'s `github-user-token.ts`. */
+export const GITHUB_TOKEN_OWNER_STORAGE_KEY = 'datatug:github:token-owner';
+
 /**
  * Captures a pending GitHub redirect sign-in at start-up.
  *
@@ -36,6 +39,9 @@ export async function captureGithubRedirectSignIn(): Promise<void> {
       : undefined;
     if (token) {
       sessionStorage.setItem(GITHUB_TOKEN_STORAGE_KEY, token);
+      const owner = credential?.user?.uid;
+      if (owner) sessionStorage.setItem(GITHUB_TOKEN_OWNER_STORAGE_KEY, owner);
+      else sessionStorage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
     }
   } catch {
     // A redirect that carries no usable credential is not an error worth
@@ -63,30 +69,32 @@ export interface IGithubSignOutAuthState {
 }
 
 /**
- * Removes the tab's GitHub token when the Sneat user signs out or another account signs in: the token is the user's,
- * and must not go on lifting (or reading private repositories for) whoever uses the tab next. The same effect as
- * `GithubOAuthService.forget()` in `datatug-main`, which this app must not import. Returns the subscription.
+ * Removes the tab's GitHub token when the signed-in Sneat user is not the one it was obtained for: at sign-out, when
+ * another account signs in, and for a token kept with no owner. The token is the user's, and must not go on lifting
+ * (or reading private repositories for) whoever uses the tab next. Comparing with the stored owner, not with the
+ * previous auth event, makes the order of a popup sign-in's auth event and the storing of its token not matter. The
+ * same effect as `GithubOAuthService.forget()` in `datatug-main`, which this app must not import. Returns the
+ * subscription.
  */
 export function forgetGithubTokenOnSignOut(
   authState: Observable<IGithubSignOutAuthState>,
-  storage: Pick<Storage, 'removeItem'> | undefined = globalThis.sessionStorage,
+  storage: Pick<Storage, 'getItem' | 'removeItem'> | undefined = globalThis.sessionStorage,
   target: Pick<EventTarget, 'dispatchEvent'> | undefined = globalThis,
 ) {
-  let signedIn: string | undefined;
   return authState.subscribe((state) => {
     if (state.status !== 'authenticated' && state.status !== 'notAuthenticated') {
       return; // still deciding: neither a sign-out nor a new account
     }
     const uid = state.status === 'authenticated' ? state.user?.uid || undefined : undefined;
-    if (signedIn && uid !== signedIn) {
-      try {
-        storage?.removeItem(GITHUB_TOKEN_STORAGE_KEY);
-      } catch {
-        // Storage not available: nothing kept there.
-      }
-      target?.dispatchEvent(new Event(GITHUB_SIGNED_OUT_EVENT));
+    try {
+      if (!storage?.getItem(GITHUB_TOKEN_STORAGE_KEY)) return;
+      if ((storage.getItem(GITHUB_TOKEN_OWNER_STORAGE_KEY) || undefined) === uid && uid) return;
+      storage.removeItem(GITHUB_TOKEN_STORAGE_KEY);
+      storage.removeItem(GITHUB_TOKEN_OWNER_STORAGE_KEY);
+    } catch {
+      return; // Storage not available: nothing kept there.
     }
-    signedIn = uid;
+    target?.dispatchEvent(new Event(GITHUB_SIGNED_OUT_EVENT));
   });
 }
 
