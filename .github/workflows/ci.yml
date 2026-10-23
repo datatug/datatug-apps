@@ -1174,7 +1174,10 @@ jobs:
     needs: [preflight, build]
     env:
       GH_TOKEN: ${{ github.token }}
-      DATATUG_CLI_REF: ${{ vars.DATATUG_LINKS_CLI_REF }}
+      # Pinned here, not by the repository variable: the app speaks datatug-cli's TugQL wire contract (stored result
+      # `query.tugql`, editor language `tugql`, Run again request `tugql`), which starts at v0.108.0; v0.102.1 and older
+      # answer `dtql`. Bump with the app. DATATUG_LINKS_CLI_REF only switches the job on.
+      DATATUG_CLI_REF: v0.108.0
     steps:
       - name: Require successful metadata preflight
         run: test '${{ needs.preflight.result }}' = success && test '${{ needs.build.result }}' = success

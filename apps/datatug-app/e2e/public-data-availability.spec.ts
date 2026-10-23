@@ -11,7 +11,9 @@ import { activePage } from './journey/helpers/active-page';
  */
 const revision = 'a'.repeat(40);
 const repository = 'fabric-fixture/public-data';
-const project = `/project/github.com/${repository}@${revision}/sample/-`;
+// A GitHub project at a non-default ref: the canonical `?ref=` address (project-url.ts; `@<ref>` was dropped).
+const project = `/project/github.com/${repository}/sample/-`;
+const ref = `ref=${revision}`;
 const fixtures = resolve(
   'libs/datatug/main/src/lib/queries/fixtures/public-data-fabric/representation',
 );
@@ -254,7 +256,7 @@ async function idleWithoutData(
   }
 }
 async function loadAndInspect(page: Page) {
-  await page.goto(`${project}/public-data`);
+  await page.goto(`${project}/public-data?${ref}`);
   const view = activePage(page);
   await view
     .getByRole('button', { name: 'Load configured sources', exact: true })
@@ -270,7 +272,7 @@ test('configured source inspection repaints asynchronously, explains missing map
   page,
 }, testInfo) => {
   const traffic = await installMetadata(page);
-  await page.goto(`${project}/public-data`);
+  await page.goto(`${project}/public-data?${ref}`);
   await expect(
     activePage(page).getByRole('button', {
       name: 'Load configured sources',
@@ -352,7 +354,7 @@ test('reopening a saved pending plan keeps its pins without automatic metadata o
   page,
 }, testInfo) => {
   const traffic = await installMetadata(page, { failure: 'checksum' });
-  await page.goto(`${project}/query/pending?id=pending`);
+  await page.goto(`${project}/query/pending?id=pending&${ref}`);
   const view = activePage(page);
   await expect(
     view.getByText('Saved public-data lookup', { exact: true }),
@@ -409,7 +411,7 @@ async function showCapturedFixture(page: Page, evidence: unknown) {
 }
 test('captured source rights render safely at result use and changing current metadata stays idle', async ({ page }, testInfo) => {
   const traffic = await installMetadata(page);
-  await page.goto(`${project}/public-data`);
+  await page.goto(`${project}/public-data?${ref}`);
   const view = activePage(page);
   await expect(view.getByRole('button', { name: 'Load configured sources', exact: true })).toBeEnabled();
   const right = { ...rightsWire.structured.sourceRights[0], attribution: { text: 'Fixture credit <img src=x onerror=alert(1)>' }, freeSource: { text: 'Fixture data freely available', url: 'https://example.org/free' }, transformations: ['XML restructured into rows'] };

@@ -18,8 +18,9 @@ export interface IQueryBodyFile {
  *
  * `<id>.query.tugql` is the TugQL text form and `<id>.query.tugql.yaml` the
  * structured YAML form; the file name alone decides, and having both is an
- * error. A definition of the legacy `DTQL` type reads `<id>.query.dtql` as
- * TugQL YAML (see ./legacy-dtql-query.ts).
+ * error. A definition of the legacy `DTQL` type reads `<id>.query.dtql`, which
+ * holds either form, so its representation is left unset and sniffed from the
+ * body (see ./legacy-dtql-query.ts).
  */
 export function selectTugqlBodyFile(
   stem: string,
@@ -41,12 +42,15 @@ export function selectTugqlBodyFile(
       `A saved TugQL query has more than one body file (${present.join(', ')}); keep exactly one.`,
     );
   }
-  if (present[0] === yamlName || present[0] === legacyName) {
-    return { fileName: present[0], representation: 'yaml' };
+  if (present[0] === yamlName) {
+    return { fileName: yamlName, representation: 'yaml' };
+  }
+  if (present[0] === legacyName) {
+    // Either form: the reader sniffs it (isTugqlYamlRequest).
+    return { fileName: legacyName };
   }
   // Neither exists: name the text form so the missing-file path reports it.
-  return {
-    fileName: textName,
-    representation: type === LEGACY_DTQL_QUERY_TYPE ? 'yaml' : 'text',
-  };
+  return type === LEGACY_DTQL_QUERY_TYPE
+    ? { fileName: textName }
+    : { fileName: textName, representation: 'text' };
 }

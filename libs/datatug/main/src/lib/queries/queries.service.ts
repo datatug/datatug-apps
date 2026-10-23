@@ -145,12 +145,13 @@ function toQueryRequest(
     };
     return httpRequest;
   }
-  // A legacy `DTQL` item is TugQL in its YAML form (removed in TugQL cutover step 9).
+  // A legacy `DTQL` item is TugQL in either form; without a server-declared representation the body is sniffed
+  // (isTugqlYamlRequest). Removed in TugQL cutover step 9.
   if (type === LEGACY_DTQL_QUERY_TYPE) {
     return {
       queryType: QueryType.TugQL,
       text: text ?? '',
-      representation: 'yaml',
+      ...(representation ? { representation } : {}),
     } as ITextQueryRequest;
   }
   // SQL and TugQL alike: the list/query-page views only ever branch on

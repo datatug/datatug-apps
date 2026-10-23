@@ -1,6 +1,8 @@
 import coreComparison from '../../../queries/testdata/core-v070-query-comparison.json';
 import { createSemanticModel } from '../../../queries/semantic-mapping';
 import { firstValueFrom } from 'rxjs';
+import { isTugqlYamlRequest } from '../../../queries/tugql-representation';
+import { QueryType, type ITextQueryRequest } from '../../../models/definition/query-def';
 import { TestBed } from '@angular/core/testing';
 
 import { GithubProjectIdError } from '../../../nav/github-project-address';
@@ -653,13 +655,33 @@ describe('GithubProjectReaderService', () => {
         );
       });
 
-      it('reads the legacy DTQL type with its <id>.query.dtql body as TugQL YAML (removed in TugQL cutover step 9)', async () => {
+      it('reads the legacy DTQL type with its <id>.query.dtql body as TugQL, form left to sniffing (removed in TugQL cutover step 9)', async () => {
         const { service } = setup({
           [DEF]: '{"id":"fresh-query","type":"DTQL"}',
           [`${BODY}.dtql`]: 'from:\n  name: Invoice\n',
         });
         const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
-        expect(result).toMatchObject({ type: 'TugQL', representation: 'yaml', text: 'from:\n  name: Invoice\n' });
+        expect(result).toMatchObject({ type: 'TugQL', text: 'from:\n  name: Invoice\n' });
+        expect(result).not.toHaveProperty('representation');
+        expect(
+          isTugqlYamlRequest({ queryType: QueryType.TugQL, text: result?.text ?? '' } as ITextQueryRequest),
+        ).toBe(true);
+      });
+
+      // The pinned demo project's <id>.query.dtql files hold BOTH forms (e.g. chinook-invoice-author is TugQL text);
+      // forcing YAML hid the TugQL author for every text one (PR #536 CI).
+      it('reads a legacy <id>.query.dtql body in the TugQL text form as text, not YAML', async () => {
+        const source = 'parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nselect i.InvoiceId\n';
+        const { service } = setup({
+          [DEF]: '{"id":"fresh-query","type":"DTQL"}',
+          [`${BODY}.dtql`]: source,
+        });
+        const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
+        expect(result).toMatchObject({ type: 'TugQL', savedQueryType: 'DTQL', text: source });
+        expect(result).not.toHaveProperty('representation');
+        expect(
+          isTugqlYamlRequest({ queryType: QueryType.TugQL, text: result?.text ?? '' } as ITextQueryRequest),
+        ).toBe(false);
       });
 
       it('rejects a legacy DTQL query that also has a new body file', async () => {
@@ -845,10 +867,10 @@ describe('GithubProjectReaderService', () => {
         const result = await first(service.getQuery(PROJECT_ID, 'fresh/fresh-query'));
         expect(result).toMatchObject({
           type: 'TugQL',
-          representation: 'yaml',
           savedQueryType: 'DTQL',
           text: 'from:\n  name: Invoice\n',
         });
+        expect(result).not.toHaveProperty('representation');
       });
 
       it('does not fall back past a failure that is not a 404', async () => {

@@ -12,6 +12,7 @@ import {
 import { QUERY_PROJ_ITEM_SERVICE } from './queries.service.token';
 import { GithubProjectReaderService } from '../services/repo/github/github-project-reader.service';
 import { IProjectRef } from '../core/project-context';
+import { isTugqlYamlRequest } from './tugql-representation';
 
 describe('QueriesService', () => {
   beforeEach(() => {
@@ -149,6 +150,28 @@ describe('QueriesService — GitHub-store getQuery (S155)', () => {
     expect(result?.request).toEqual({ queryType: 'TugQL', text: 'from:\n  name: Invoice\n' });
     expect(result?.parameters?.[0].meta).toEqual({ entity: 'Customer', field: 'ID' });
     expect(result?.recordsets?.[0].columns[0].meta).toEqual({ entity: 'Invoice', field: 'ID' });
+  });
+
+  // A pre-rename agent (and the pinned demo project) serves `type: "DTQL"` for BOTH TugQL forms; only the body says
+  // which. Forcing YAML hid the TugQL author for text bodies (PR #536 CI).
+  it.each([
+    ['text', 'parameters (\n  @CustomerId integer required\n)\nfrom Invoice as i\nselect i.InvoiceId\n', false],
+    ['YAML', 'from:\n  name: Invoice\n', true],
+  ])('a legacy DTQL item with a %s body is TugQL, its form sniffed from the body', (_form, text, yaml) => {
+    const service = createService(() => of({ id: 'q', type: 'DTQL', text }));
+    let result: import('../models/definition/query-def').IQueryDef | undefined;
+    service.getQuery(projRef, 'demodb/q').subscribe((def) => (result = def));
+    expect(result?.request).toEqual({ queryType: 'TugQL', text });
+    expect(isTugqlYamlRequest(result?.request)).toBe(yaml);
+  });
+
+  it('a legacy DTQL item keeps a representation the server declares', () => {
+    const service = createService(() =>
+      of({ id: 'q', type: 'DTQL', text: 'from Invoice', representation: 'yaml' }),
+    );
+    let result: import('../models/definition/query-def').IQueryDef | undefined;
+    service.getQuery(projRef, 'demodb/q').subscribe((def) => (result = def));
+    expect(result?.request).toEqual({ queryType: 'TugQL', text: 'from Invoice', representation: 'yaml' });
   });
 });
 

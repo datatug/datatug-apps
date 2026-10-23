@@ -254,7 +254,8 @@ const savedQuerySource = (queryId: string, repository = DEMO_REPO): string =>
       'demo-project-1',
       'queries',
       'demodb',
-      `${queryId}.query.tugql.yaml`,
+      // The pinned demo project (pin demo-browser) still names TugQL bodies with the legacy extension.
+      `${queryId}.query.dtql`,
     ),
     'utf8',
   );
@@ -1348,7 +1349,7 @@ test('legacy TugQL YAML opens in its native source pane through a cold link and 
   await page.goto(LEGACY_TUGQL_URL);
   const workspace = page.getByTestId('unified-text-workspace');
   const tabs = workspace.getByTestId('author-view-tabs');
-  const sourceTab = tabs.locator('ion-segment-button[value="tugql"]');
+  const sourceTab = tabs.locator('ion-segment-button[value="tugql-yaml"]');
   const parametersTab = tabs.locator('ion-segment-button[value="parameters"]');
   // TugQL shares the SQL source's code component.
   const editor = workspace.getByTestId('query-body-text').locator('.cm-content');

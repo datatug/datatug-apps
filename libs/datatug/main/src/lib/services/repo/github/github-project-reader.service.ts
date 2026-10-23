@@ -1789,7 +1789,7 @@ export class GithubProjectReaderService {
                   id: def?.id || bareId,
                   title: def?.title,
                   createdAt: def?.createdAt,
-                  // The legacy DTQL type is TugQL (its body is the YAML form). Hashes of saved
+                  // The legacy DTQL type is TugQL (its body, either form, is sniffed). Hashes of saved
                   // meaning uses keep the declared type (`savedQueryType`) until the demo project migrates.
                   type: type === LEGACY_DTQL_QUERY_TYPE ? 'TugQL' : type,
                   ...(type === LEGACY_DTQL_QUERY_TYPE
